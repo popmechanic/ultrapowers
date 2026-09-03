@@ -12,8 +12,10 @@
 // The load-bearing leg is (j): the preflight's whole exec sequence, frozen as
 // a literal — the engine checkout's cleanliness, HEAD and manifest reads, the
 // target's cache clone (a first-use `clone`, or a `fetch origin` when the
-// clone exists) and the `cat-file -e <base>^{commit}` that refuses a base
-// origin does not carry. Any added, dropped or reordered command reddens here.
+// clone exists), the `cat-file -e <base>^{commit}` that refuses a base origin
+// does not carry, and the `merge-base --is-ancestor <base>
+// refs/remotes/origin/HEAD` that refuses one origin holds off its default
+// branch (#579). Any added, dropped or reordered command reddens here.
 //
 // No network, no ssh, no gh: `exec` is a stub, `provision` and `destroy` are
 // the injected seams, and every byte of state lives under one `fs.mkdtemp`.
@@ -238,7 +240,9 @@ try {
   //     HEAD, its manifest; the target's first-use clone (the token file is
   //     absent here, so the clone's env carries no GH_TOKEN) or its
   //     credentialed fetch; the `cat-file` that refuses a base origin does not
-  //     carry; then, from the aborted provision's teardown, the two captures.
+  //     carry and the `merge-base --is-ancestor` that refuses one origin holds
+  //     off its default branch (#579); then, from the aborted provision's
+  //     teardown, the two captures.
   const PULL =
     'ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ' +
     "fleet-run-plan-j.exe.xyz sh > <root>/ev/sandbox-logs/fleet-run-plan-j-<ts>/sandbox-logs.tgz <<'FLEET_PULL_EOF'\n" +
@@ -253,6 +257,7 @@ try {
     'git -C <root>/repo show HEAD:.claude-plugin/plugin.json',
     `git -c credential.helper= -c credential.helper='!gh auth git-credential' clone https://github.com/o/r.git <root>/targets/o--r`,
     `git -C <root>/targets/o--r cat-file -e ${BASE_SHA}^{commit}`,
+    `git -C <root>/targets/o--r merge-base --is-ancestor ${BASE_SHA} refs/remotes/origin/HEAD`,
     PULL,
     STAT,
   ]
@@ -263,6 +268,7 @@ try {
     'git -C <root>/repo show HEAD:.claude-plugin/plugin.json',
     `git -C <root>/targets/o--r -c credential.helper= -c credential.helper='!gh auth git-credential' fetch origin`,
     `git -C <root>/targets/o--r cat-file -e ${BASE_SHA}^{commit}`,
+    `git -C <root>/targets/o--r merge-base --is-ancestor ${BASE_SHA} refs/remotes/origin/HEAD`,
     PULL,
     STAT,
   ]

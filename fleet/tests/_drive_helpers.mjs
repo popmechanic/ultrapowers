@@ -176,7 +176,19 @@ export const setupDriveFixture = async () => {
     // the sandbox integrated — never a rebase. `gh pr create` itself is stubbed
     // (below); the token file stands in for /home/exedev/.fleet/github-token.
     const originRepo = path.join(tmp, 'origin.git')
-    const originInit = await sh(`git init -q --bare "${originRepo}" && git -C "${repoDir}" remote add origin "${originRepo}"`, tmp)
+    // `symbolic-ref HEAD` is not decoration (#579): the bare is initialised
+    // under whatever `init.defaultBranch` the ambient config says, so under
+    // git's own default its HEAD names `master` — a branch this fixture never
+    // creates, because it pushes `main:main`. A clone cut from a bare whose
+    // HEAD dangles gets NO `refs/remotes/origin/HEAD`, and the drive's
+    // default-branch check would then refuse every base with code 128. Naming
+    // `main` explicitly makes the bare's default branch the one it actually
+    // holds, whatever the ambient config says.
+    const originInit = await sh(
+      `git init -q --bare "${originRepo}" && git -C "${originRepo}" symbolic-ref HEAD refs/heads/main && ` +
+        `git -C "${repoDir}" remote add origin "${originRepo}"`,
+      tmp,
+    )
     assert.equal(originInit.code, 0, `origin fixture failed: ${originInit.stderr}`)
     // #575: origin really HOLDS the base. The driver's preflight asks the
     // target's cache clone `cat-file -e <baseSha>^{commit}` after a `fetch
