@@ -5,75 +5,80 @@
  * The one piece of `fleet/` that runs on a user's laptop, straight out of the
  * installed plugin cache, where no `node_modules` directory under `fleet/` has
  * ever existed. Hence the built-ins-only rule: every specifier here is
- * `node:`-prefixed or exactly `./preflight.mjs`.
+ * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * `fleet/preflight.mjs` asks whether the orchestrator can fetch from a sandbox,
- * which presupposes that both VMs exist. The doctor checks that they do, and
- * that the posture the RUNBOOK builds is still in place, without changing
- * anything: every read-only row is a read, so running it twice is the same as
- * running it once. On a miss a row names the RUNBOOK section that fixes it.
+ * Three rows, all reads. Running the doctor twice is the same as running it
+ * once: nothing here creates, copies or removes a VM, and nothing writes a
+ * file. A red row names the `references/first-run.md` section that builds the
+ * piece and, where there is one, the exact command.
+ *
+ * There are no token rows, because after the lift no token is on any disk the
+ * doctor could stat: the Claude subscription reaches a sandbox through the
+ * `claude-max` http-proxy integration, whose bearer is injected at exe.dev's
+ * edge, and GitHub reaches it through the per-target integration pair. What
+ * used to be two secret-file rows is one `integrations` row.
  */
 
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-import { preflight } from './preflight.mjs'
-
 const execFileAsync = promisify(execFile)
 
-/** The config file's four keys and their defaults — an operator who followed
- *  the RUNBOOK needs no `~/.ultrapowers/fleet.json` at all. */
+/** The config file's keys and their defaults — an operator who followed the
+ *  first-run walk needs no `~/.ultrapowers/fleet.json` at all.
+ *
+ *  These are byte-identical to `FLEET_DEFAULTS` in fleet/lobby.mjs, and copied
+ *  rather than imported on purpose: the doctor is the one file that has to run
+ *  when nothing else in the fleet does, so it imports nothing. The copy is
+ *  pinned by fleet/tests/test_doctor.mjs, which imports both and compares them
+ *  — two readers of one config file that disagree about a default would
+ *  certify a fleet the launcher never looks at. */
 export const DOCTOR_DEFAULTS = Object.freeze({
-  orchestrator: 'fleet-orchestrator',
   golden: 'fleet-golden',
-  repoDir: '/home/exedev/repo',
-  tokenPath: '/home/exedev/.fleet/claude-oauth-token'
+  fleetRuns: '~/.ultrapowers/fleet-runs',
+  vmTokenPath: '~/.ultrapowers/vm-token'
 })
 
-/** The six rows, in the order the doctor reports them. */
-export const ROW_IDS = Object.freeze([
-  'exe-dev',
-  'orchestrator',
-  'golden',
-  'token',
-  'github-token',
-  'preflight'
-])
+/** The three rows, in the order the doctor reports them. Each id is also a
+ *  `## ` heading in skills/ultrapowers/references/first-run.md. */
+export const ROW_IDS = Object.freeze(['exe-dev', 'integrations', 'golden'])
 
-/** Each row's `fix` is the exact `## ` heading in fleet/RUNBOOK.md that repairs it. */
+/** Each row's `fix` is the `## ` heading in first-run.md that repairs it. */
 const FIXES = Object.freeze({
-  'exe-dev': 'exe.dev account',
-  orchestrator: 'Orchestrator VM',
-  golden: 'Golden VM build',
-  token: 'Engine auth — the Max subscription, delivered per run (#213)',
-  'github-token': 'GitHub auth (#368) — the orchestrator opens the PR',
-  preflight: 'Preflight'
+  'exe-dev': 'exe-dev',
+  integrations: 'integrations',
+  golden: 'golden'
 })
 
-const PROBE_VM = 'fleet-doctor-probe'
-/** Where every sandbox keeps its engine clone — a fixed path on the golden,
- *  not the orchestrator's `repoDir`. */
-const ENGINE_DIR = '/home/exedev/repo'
-/** The GitHub token a publish actually opens — a literal here, mirroring
- *  `GITHUB_TOKEN_PATH` in fleet/drive.mjs rather than importing it, because
- *  doctor.mjs may import nothing but `node:` and ./preflight.mjs. It is
- *  deliberately not a config key: a doctor that let the path be overridden
- *  would certify a file the run never opens. */
-const GITHUB_TOKEN_PATH = '/home/exedev/.fleet/github-token'
+/** The stamp a golden build leaves: the sha256 of the `golden-setup.sh` that
+ *  built it. Comparing the two is the whole of the golden row — an image built
+ *  from an older script is the failure mode a hand-built golden had no way to
+ *  report. */
+const GOLDEN_STAMP = '/home/exedev/.fleet-golden'
+const GOLDEN_SCRIPT = fileURLToPath(new URL('./golden-setup.sh', import.meta.url))
+
+/** The integrations every fleet has, whatever it drives. */
+const TAG = 'fleet'
+const RUNS_INTEGRATION = 'fleet-runs'
+const OAUTH_INTEGRATION = 'claude-max'
+const NOTIFY_INTEGRATION = 'notify'
+
 const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
 
-const HEX40 = /^[0-9a-f]{40}/
-const MODE = /^[0-7]{3,4}$/
-/** A GitHub login: alphanumerics and inner hyphens, nothing else. Anything a
- *  failing `gh` prints — a JSON error body, a usage line — falls outside it. */
-const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
+const SHA256 = /^[0-9a-f]{64}$/
+/** `owner/repo`, the only shape that may be interpolated into an ssh string. */
+const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
 
 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
 const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
+
+/** `owner/repo` → the stem both per-target integration objects are named for. */
+export const targetStem = (target) => `t-${String(target).replace(/\//g, '-')}`
 
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
@@ -102,7 +107,8 @@ export async function loadFleetConfig ({ path: configPath } = {}) {
   return config
 }
 
-/** The RUNBOOK §Preflight exec shape: resolve `{ code, stdout }`, never reject. */
+/** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
+ *  every row with a stub and the CLI drives them with a shell. */
 export async function defaultExec (cmd) {
   try {
     const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
@@ -124,240 +130,190 @@ async function exeDevRow (exec) {
   return row('exe-dev', 'missing', `ssh exe.dev whoami answered code ${res.code} with no account name`)
 }
 
-/** The `version` of the manifest the `show` command printed, or null when the
- *  command failed, printed no JSON, or carried no version string. */
-function manifestVersion (stdout) {
+// ── integrations ─────────────────────────────────────────────────────────────
+
+/**
+ * `integrations list --json` read defensively. The doctor asks two questions of
+ * each object — does it exist, and is it attached to `tag:fleet` — and both
+ * answers have to survive a field rename on exe.dev's side without turning a
+ * healthy fleet red for the wrong reason. So the reader takes the top level as
+ * either an array or an object with an array under `integrations`, a name from
+ * `name` or `id`, and attachments from whichever of the plausible keys is
+ * present, each entry either the string `tag:fleet` / `vm:fleet-run-3` or an
+ * object carrying a `tag` or `vm` key.
+ */
+export function parseIntegrations (stdout) {
+  let parsed
   try {
-    const version = JSON.parse(String(stdout ?? ''))?.version
-    return typeof version === 'string' && version !== '' ? version : null
+    parsed = JSON.parse(String(stdout ?? ''))
+  } catch {
+    return null
+  }
+  const list = Array.isArray(parsed)
+    ? parsed
+    : (Array.isArray(parsed?.integrations) ? parsed.integrations : null)
+  if (list === null) return null
+
+  const out = new Map()
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue
+    const name = typeof entry.name === 'string' ? entry.name : entry.id
+    if (typeof name !== 'string' || name === '') continue
+    out.set(name, { name, tags: attachedTags(entry) })
+  }
+  return out
+}
+
+const ATTACHMENT_KEYS = ['attachments', 'attached', 'attachedTo', 'attached_to', 'targets']
+
+function attachedTags (entry) {
+  const tags = new Set()
+  for (const key of ATTACHMENT_KEYS) {
+    const value = entry[key]
+    if (!Array.isArray(value)) continue
+    for (const item of value) {
+      if (typeof item === 'string' && item.startsWith('tag:')) tags.add(item.slice(4))
+      else if (item && typeof item === 'object' && typeof item.tag === 'string') tags.add(item.tag)
+    }
+  }
+  if (Array.isArray(entry.tags)) {
+    for (const tag of entry.tags) if (typeof tag === 'string') tags.add(tag)
+  }
+  return tags
+}
+
+/**
+ * One `ssh` and one verdict for every integration a launch needs. The row's
+ * detail names the FIRST thing wrong and the command that builds it, because
+ * the objects are built in pairs and a stranger reading four failures at once
+ * cannot tell which one to run first.
+ *
+ * `claude-max` and the `-rw` half of a target pair are checked for the opposite
+ * of the others: they must exist and must NOT be attached to the tag. A
+ * writable grant on the shared tag is the one arrangement that makes every
+ * sandbox on the account able to push to the target for as long as the object
+ * lives, which is the posture the whole lift exists to remove.
+ */
+async function integrationsRow (exec, target) {
+  const res = await exec(`ssh exe.dev "integrations list --json"`)
+  if (res.code !== 0) {
+    return row('integrations', 'missing', `integrations list answered code ${res.code}`)
+  }
+  const found = parseIntegrations(res.stdout)
+  if (found === null) {
+    return row('integrations', 'missing', 'integrations list printed no readable JSON')
+  }
+
+  const wants = [
+    { name: RUNS_INTEGRATION, tagged: true, fix: 'first-run.md §integrations builds it' },
+    { name: OAUTH_INTEGRATION, tagged: false, fix: 'first-run.md §integrations builds it' },
+    { name: NOTIFY_INTEGRATION, tagged: null, fix: 'enable notify on the exe.dev Integrations page' }
+  ]
+  if (target !== null) {
+    const stem = targetStem(target)
+    const fix = `node fleet/target.mjs add ${target}`
+    wants.push({ name: `${stem}-ro`, tagged: true, fix })
+    wants.push({ name: `${stem}-rw`, tagged: false, fix })
+  }
+
+  for (const want of wants) {
+    const have = found.get(want.name)
+    if (have === undefined) {
+      return row('integrations', 'missing', `no ${want.name} integration — ${want.fix}`)
+    }
+    if (want.tagged === true && !have.tags.has(TAG)) {
+      return row('integrations', 'missing', `${want.name} is not attached to tag:${TAG} — ${want.fix}`)
+    }
+    if (want.tagged === false && have.tags.has(TAG)) {
+      return row(
+        'integrations',
+        'missing',
+        `${want.name} is attached to tag:${TAG}, which grants it to every fleet VM — detach it`
+      )
+    }
+  }
+
+  const names = wants.map((w) => w.name).join(', ')
+  return row('integrations', 'ok', names)
+}
+
+// ── golden ───────────────────────────────────────────────────────────────────
+
+/** The sha256 of the checked-in `fleet/golden-setup.sh`, or null when the
+ *  script is not readable from this plugin copy. */
+export async function goldenScriptSha () {
+  try {
+    const bytes = await fsp.readFile(GOLDEN_SCRIPT)
+    return createHash('sha256').update(bytes).digest('hex')
   } catch {
     return null
   }
 }
 
 /**
- * Three commands rather than one. The HEAD is what makes the row green; the
- * manifest and the tag are what make it useful — the version read is the
- * manifest at the orchestrator checkout's HEAD, the same commit a run pushes
- * as the engine, so what the doctor prints is what a run will execute. A
- * checkout that predates `.claude-plugin/plugin.json`, or a repo with no tags
- * to describe, is still an orchestrator: a failed read of either leaves the
- * row green and says only that the version is unreadable.
- */
-async function orchestratorRow (exec, config) {
-  const host = `${config.orchestrator}.exe.xyz`
-  const res = await exec(`ssh ${host} 'git -C ${config.repoDir} rev-parse HEAD'`)
-  const manifest = await exec(`ssh ${host} 'git -C ${config.repoDir} show HEAD:.claude-plugin/plugin.json'`)
-  const described = await exec(`ssh ${host} 'git -C ${config.repoDir} describe --tags --always'`)
-
-  const head = firstLine(res.stdout)
-  if (res.code !== 0 || !HEX40.test(head)) {
-    return row(
-      'orchestrator',
-      'missing',
-      `no repo HEAD at ${config.repoDir} on ${config.orchestrator} (code ${res.code}: ${head || 'no output'})`
-    )
-  }
-
-  const version = manifest.code === 0 ? manifestVersion(manifest.stdout) : null
-  const describe = described.code === 0 ? firstLine(described.stdout) : ''
-  const at = `${config.orchestrator} at ${head.slice(0, 40)}`
-  return row(
-    'orchestrator',
-    'ok',
-    version !== null && describe !== ''
-      ? `${at} — ultrapowers ${version} (${describe})`
-      : `${at} — version unreadable`
-  )
-}
-
-/**
- * Three commands rather than one compound line: a single shell line makes the
- * first failure indistinguishable from the others, and a red golden row has to
- * name which of the three checks failed. The settings check is the one that
- * costs money — auth precedence is ANTHROPIC_API_KEY > apiKeyHelper >
- * CLAUDE_CODE_OAUTH_TOKEN, so a stray key in the golden's settings.json
- * silently bills a gateway instead of the subscription.
+ * A golden is right when the image was built by the script this plugin ships.
+ * The build writes the script's sha256 into `/home/exedev/.fleet-golden`, so
+ * one `cat` and one local hash answer it — no probe VM, no inventory of what
+ * the image contains, and no way for the two to agree by accident.
  *
- * The first command asks what a run actually consumes: an engine clone at
- * /home/exedev/repo whose `fleet/node_modules` is installed. The golden keeps an
- * inert plugin from earlier builds, and the doctor does not look for it —
- * a plugin list answers a question no run asks.
+ * A stamp that differs is not a broken image, it is an OLD one: the plugin has
+ * moved on and the golden has not, which is exactly what `fleet/golden.sh
+ * build` then `verify` then `swap` fixes.
  */
 async function goldenRow (exec, config) {
-  const host = `${config.golden}.exe.xyz`
-  const engine = await exec(`ssh ${host} 'test -d ${ENGINE_DIR}/fleet/node_modules && git -C ${ENGINE_DIR} rev-parse HEAD'`)
-  const xdist = await exec(`ssh ${host} 'python3 -c "import xdist"'`)
-  const settings = await exec(`ssh ${host} 'cat ~/.claude/settings.json'`)
-
-  const failures = []
-  const engineHead = firstLine(engine.stdout)
-  if (engine.code !== 0 || !HEX40.test(engineHead)) {
-    failures.push(
-      `engine: no engine clone with fleet/node_modules at ${ENGINE_DIR} on ${config.golden} (code ${engine.code}: ${engineHead || 'no output'})`
-    )
-  }
-  if (xdist.code !== 0) {
-    failures.push(`xdist: python3 -c "import xdist" answered code ${xdist.code}`)
-  }
-  if (settings.code !== 0) {
-    failures.push(`settings: could not read ~/.claude/settings.json (code ${settings.code})`)
-  } else {
-    const text = String(settings.stdout ?? '')
-    const stray = ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL'].filter((k) => text.includes(k))
-    if (stray.length > 0) {
-      failures.push(`settings: ${stray.join(' and ')} in ~/.claude/settings.json would outrank the subscription token`)
-    }
-  }
-
-  if (failures.length === 0) {
-    return row('golden', 'ok', `${config.golden}: engine clone, xdist and settings all clean`)
-  }
-  return row('golden', 'missing', failures.join('; '))
-}
-
-/**
- * The token value never leaves the remote shell — `head -c 10` feeds `grep -q`
- * there, and only the yes/no result travels back. This row refuses to
- * propagate stdout into `detail` beyond the mode line and `prefix-ok`, so even
- * a mis-built command cannot echo the secret into a transcript.
- */
-async function tokenRow (exec, config) {
-  const res = await exec(
-    `ssh ${config.orchestrator}.exe.xyz 'stat -c %a ${config.tokenPath} && head -c 10 ${config.tokenPath} | grep -q ^sk-ant-oat && echo prefix-ok'`
-  )
-  const lines = String(res.stdout ?? '').split('\n').map((l) => l.trim())
-  const mode = lines.find((l) => MODE.test(l)) ?? null
-  const prefixOk = lines.includes('prefix-ok')
-  const modePart = mode === null ? 'mode unreadable' : `mode ${mode}`
-  const prefixPart = prefixOk ? 'prefix-ok' : 'prefix check failed'
-
-  if (res.code === 0 && lines.includes('600') && prefixOk) {
-    return row('token', 'ok', `${modePart}, ${prefixPart}`)
-  }
-  return row('token', 'missing', `${modePart}, ${prefixPart} (code ${res.code})`)
-}
-
-/**
- * The GitHub token the orchestrator publishes with, checked the way the OAuth
- * row checks its own: one command, `$(cat …)` expanded in the orchestrator's
- * shell so the token value never travels to the laptop, and a detail that
- * carries only the mode and the one name the command was asked for.
- *
- * Without a target the question is "is this token still valid" and the answer
- * is a login. With one it is the sharper "can this token see the repo I am
- * about to drive" — a fine-grained token can be valid and still 404 on the
- * repository, which is a failed publish at the end of a run rather than a red
- * row before it. On a 404 `gh` prints a JSON error body to stdout, so the row
- * reads the mode as the first `^[0-7]{3,4}$` line, the login as the first
- * other line that looks like a login, and the repository as a line strictly
- * equal to the target; every other line is dropped unread.
- */
-async function githubTokenRow (exec, config, target) {
-  const query = target === null
-    ? 'gh api user -q .login'
-    : `gh api repos/${target} -q .full_name`
-  const res = await exec(
-    `ssh ${config.orchestrator}.exe.xyz 'stat -c %a ${GITHUB_TOKEN_PATH} && GH_TOKEN=$(cat ${GITHUB_TOKEN_PATH}) ${query}'`
-  )
-
-  const lines = String(res.stdout ?? '').split('\n').map((l) => l.trim())
-  const modeAt = lines.findIndex((l) => MODE.test(l))
-  const mode = modeAt === -1 ? null : lines[modeAt]
-  const rest = lines.filter((_, i) => i !== modeAt)
-  const name = target === null
-    ? (rest.find((l) => LOGIN.test(l)) ?? null)
-    : (rest.includes(target) ? target : null)
-
-  const modePart = mode === null ? 'mode unreadable' : `mode ${mode}`
-  if (res.code === 0 && mode === '600' && name !== null) {
+  const res = await exec(`ssh ${config.golden}.exe.xyz cat ${GOLDEN_STAMP}`)
+  const stamp = firstLine(res.stdout)
+  if (res.code !== 0 || !SHA256.test(stamp)) {
     return row(
-      'github-token',
-      'ok',
-      target === null ? `${modePart}, token valid as ${name}` : `${modePart}, reaches ${target}`
+      'golden',
+      'missing',
+      `no build stamp at ${GOLDEN_STAMP} on ${config.golden} (code ${res.code}) — fleet/golden.sh build`
     )
   }
-  return row(
-    'github-token',
-    'missing',
-    target === null
-      ? `${modePart}, token rejected (code ${res.code})`
-      : `${modePart}, cannot reach ${target} (code ${res.code})`
-  )
-}
-
-/**
- * The only row that creates anything, so it is opt-in via `probe` and stays
- * out of the way while an earlier row is red — a missing golden cannot be
- * cloned, and a missing orchestrator cannot fetch. The `rm` runs in a
- * `finally`, so a rejected preflight never strands a probe VM on the account.
- */
-async function preflightRow (exec, config, probe, priorAllOk) {
-  if (!probe) return row('preflight', 'skipped', 'not requested — pass --probe to clone a probe VM')
-  if (!priorAllOk) return row('preflight', 'skipped', 'skipped while an earlier row is red')
-
-  let status = 'missing'
-  let detail = ''
-  try {
-    const cp = await exec(`ssh exe.dev "cp ${config.golden} ${PROBE_VM} --json"`)
-    if (cp.code !== 0) {
-      detail = `could not clone ${config.golden} into ${PROBE_VM} (code ${cp.code})`
-    } else {
-      const { verdict } = await preflight({
-        orchVm: config.orchestrator,
-        probeVm: PROBE_VM,
-        exec
-      })
-      detail = verdict
-      status = verdict === 'BLOCKED' ? 'missing' : 'ok'
-    }
-  } catch (error) {
-    detail = `probe failed: ${error?.message ?? error}`
-  } finally {
-    try {
-      await exec(`ssh exe.dev "rm ${PROBE_VM} --json"`)
-    } catch {
-      // The probe row is already red; a failed teardown adds nothing to say.
-    }
+  const want = await goldenScriptSha()
+  if (want === null) {
+    return row('golden', 'missing', `cannot read ${GOLDEN_SCRIPT} to hash it`)
   }
-  return row('preflight', status, detail)
+  if (stamp !== want) {
+    return row(
+      'golden',
+      'missing',
+      `${config.golden} was built by golden-setup.sh ${stamp.slice(0, 12)}, this plugin ships ${want.slice(0, 12)} — fleet/golden.sh build`
+    )
+  }
+  return row('golden', 'ok', `${config.golden} built by golden-setup.sh ${want.slice(0, 12)}`)
 }
 
 /**
  * Run every row against `config` and resolve `{ config, rows, verdict }`.
- * `exec(cmd)` resolves `{ code, stdout }` exactly as fleet/preflight.mjs
- * consumes it, so a test drives the doctor with a stub.
+ * `exec(cmd)` resolves `{ code, stdout }`, so a test drives the doctor with a
+ * stub. `target` is `owner/repo` or null; anything else is refused rather than
+ * interpolated into an ssh string.
  */
-export async function doctor ({ config, exec, probe = false, target = null } = {}) {
+export async function doctor ({ config, exec, target = null } = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
+  const want = target === null || target === undefined ? null : String(target)
+  if (want !== null && !TARGET.test(want)) {
+    throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
+  }
 
-  const readOnly = [
+  const rows = [
     await exeDevRow(run),
-    await orchestratorRow(run, cfg),
-    await goldenRow(run, cfg),
-    await tokenRow(run, cfg),
-    await githubTokenRow(run, cfg, target ?? null)
+    await integrationsRow(run, want),
+    await goldenRow(run, cfg)
   ]
-  const priorAllOk = readOnly.every((r) => r.status === 'ok')
-  const last = await preflightRow(run, cfg, probe === true, priorAllOk)
-  const rows = [...readOnly, last]
-
-  const verdict = priorAllOk && (last.status === 'ok' || last.status === 'skipped')
-    ? 'ready'
-    : 'not-ready'
-
+  const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
 export function parseArgs (argv) {
-  const opts = { json: false, probe: false, configPath: null, target: null }
+  const opts = { json: false, configPath: null, target: null }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--json') opts.json = true
-    else if (arg === '--probe') opts.probe = true
     else if (arg === '--config') {
       i += 1
       opts.configPath = argv[i] ?? null
@@ -369,13 +325,13 @@ export function parseArgs (argv) {
   return opts
 }
 
-const PAD = Math.max(...['ok', 'missing', 'skipped'].map((s) => s.length))
+const PAD = Math.max(...['ok', 'missing'].map((s) => s.length))
 
 export function renderRows (rows) {
   const out = []
   for (const r of rows) {
     out.push(`${r.status.padEnd(PAD)} ${r.id}  ${r.detail}`)
-    if (r.status === 'missing') out.push(`    → RUNBOOK §${r.fix}`)
+    if (r.status === 'missing') out.push(`    → references/first-run.md §${r.fix}`)
   }
   return out.join('\n')
 }
@@ -383,12 +339,7 @@ export function renderRows (rows) {
 async function main (argv) {
   const opts = parseArgs(argv)
   const config = await loadFleetConfig({ path: opts.configPath ?? DEFAULT_CONFIG_PATH() })
-  const result = await doctor({
-    config,
-    exec: defaultExec,
-    probe: opts.probe,
-    target: opts.target
-  })
+  const result = await doctor({ config, exec: defaultExec, target: opts.target })
   process.stdout.write(
     opts.json ? `${JSON.stringify(result)}\n` : `${renderRows(result.rows)}\n`
   )

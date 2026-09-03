@@ -1,11 +1,9 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with six rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with three rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
-A section says what the piece is, which `fleet/RUNBOOK.md` section builds it,
-and the two or three things the RUNBOOK — written for the operator who built
-the fleet — does not say to someone meeting it for the first time. It does not
-restate the RUNBOOK's steps.
+A section says what the piece is, gives the one command that builds it, and
+names the two or three things a newcomer would not know.
 
 Commands a human runs interactively are offered as `! <command>`, so the human
 runs them and sees the output. After each one, re-run
@@ -18,126 +16,135 @@ create, copy and delete them. This row is `missing` when the alias does not
 resolve or the account rejects the key — nothing below it can be checked until
 it answers.
 
-Build it from RUNBOOK §exe.dev account. Two things that section assumes and a
-stranger will not have: the alias is an SSH host entry, not a URL, so
-`! ssh exe.dev whoami` (the command the doctor runs) is the whole test; and the key you register here is
-your laptop's, distinct from the orchestrator's own key registered later in
-§Orchestrator VM.
+Build it by signing up at exe.dev, registering a public key on the account
+through the web UI, and pointing `~/.ssh/config` at that key:
 
-Until this row is `ok`, expect the four rows below it to read `missing` too:
-each of them is an `ssh` to a `*.exe.xyz` host, and without a working account
-none of those commands can land. Fix this row first and run the doctor again
-before touching the others — only `preflight` is ever `skipped`.
+```
+Host *.exe.xyz exe.dev
+  StrictHostKeyChecking accept-new
+  IdentitiesOnly yes
+  IdentityFile ~/.ssh/id_ed25519
+```
 
-## orchestrator
+Then `! ssh exe.dev whoami` — the command the doctor runs — should print your
+username.
 
-One long-lived VM, `fleet-orchestrator` by default, that holds the fleet's only
-credentials and is the machine every run is driven from. It is small: it never
-runs an engine, it dispatches sandboxes that do.
+Three things a stranger will not know:
 
-Build it from RUNBOOK §Orchestrator VM. What that section does not say to a
-newcomer: the name is configurable — the doctor and this skill both read
-`orchestrator` from `~/.ultrapowers/fleet.json`, so a second fleet is a second
-name, not a second procedure — and the VM needs its own SSH key registered on
-the account, because the sandboxes push run branches back to its checkout and a
-key that only exists on your laptop cannot carry that.
+- `exe.dev` is an SSH host entry, not a URL. Nothing here talks to a web API,
+  and `IdentitiesOnly yes` is the line that keeps a laptop with many loaded
+  keys from offering the wrong one first and being refused before it reaches
+  this one.
+- The `*.exe.xyz` pattern matters as much as `exe.dev` itself: the golden and
+  every run VM are reached by name under that domain, so a config stanza that
+  covers only the lobby leaves both rows below unreadable.
+- **Rate limits are per key.** The key that runs the janitor should be
+  registered separately, with `ssh-key add --tag=fleet`, so it can act only on
+  fleet-tagged VMs. That is the narrowest credential exe.dev offers and the
+  only long-lived secret the fleet keeps on any disk.
 
-Build the golden first, even though the doctor lists this row above it:
-RUNBOOK §Orchestrator VM step 1 reuses the golden's setup script and step 2
-tags the golden.
+Until this row is `ok`, expect the two rows below it to read `missing` too:
+both are `ssh` commands, and without a working account neither can land. Fix
+this row first and run the doctor again before touching the others.
 
-Its checkout at `/home/exedev/repo` is the engine: what is checked out there is
-what every run pushes to its sandbox, and the launch step pins it to the newest
-release on `main` first.
-The GitHub token it holds has to reach every repository you will drive;
-ultrapowers itself is one of them.
+## integrations
+
+An exe.dev integration is a credential injected at the network edge: the VM
+sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
+the secret on the way out. The VM never holds it, never sees it, and cannot
+read it back. Attachments are per VM or per tag, and time-boxed.
+
+Five objects, and the doctor names whichever one is wrong first:
+
+| object | what it is | attached to |
+|---|---|---|
+| `fleet-runs` | the private repo holding plans, receipts and evidence | `tag:fleet` |
+| `claude-max` | the Claude subscription, as an http-proxy | per run, never a tag |
+| `notify` | the push channel a run reports on | `tag:fleet` |
+| `t-<owner>-<repo>-ro` | read access to one target repository | `tag:fleet` |
+| `t-<owner>-<repo>-rw` | write access to that target | per run, never a tag |
+
+The per-target pair is one command:
+
+```bash
+node <plugin-root>/fleet/target.mjs add <owner>/<repo>
+```
+
+Run it once per repository you will drive; ultrapowers itself is one of them.
+The doctor only asks about a target's pair when you pass
+`--target <owner>/<repo>`, so a fleet with no targets yet is still `ready`.
+
+`claude-max` is the one you build by hand, because its bearer is a token from
+a browser flow:
+
+```bash
+claude setup-token > ~/.fleet-oauth-token
+chmod 600 ~/.fleet-oauth-token
+ssh exe.dev "integrations add http-proxy --name claude-max \
+  --target https://api.anthropic.com --bearer=- \
+  --header 'anthropic-beta: <the beta list>'" < ~/.fleet-oauth-token
+rm ~/.fleet-oauth-token
+```
+
+Three things that command hides:
+
+- **`--bearer=-` reads the token from stdin.** That is why the value is piped
+  from the file rather than typed: it never appears in a shell history, in an
+  `--env`, in the golden image, or in this conversation. After the integration
+  exists the local file has no further use — delete it. Rotation is one
+  `integrations edit claude-max --bearer=-` with a fresh token on stdin.
+- **The `anthropic-beta` header is a build input, not decoration.** The proxy
+  does not forward the client's own beta header, so the nine flags Claude Code
+  sends have to be injected here or `claude -p` answers 400 on a beta it was
+  counting on. Re-capture the list when the CLI version changes, and rebuild
+  the golden — the two travel together.
+- **A writable integration is never attached to a tag.** `claude-max` and the
+  `-rw` half of a target pair are granted per VM, for a bounded window, at
+  launch and at approval. On the shared tag they would be a standing grant to
+  every VM on the account for as long as the object lives — which is the
+  posture this whole arrangement exists to remove. The doctor turns the row red
+  for a tag attachment on either of them.
+
+`notify` is enabled once from exe.dev's Integrations page and attached to
+`tag:fleet`; nothing else has to be done to it.
 
 ## golden
 
-The image every sandbox is cloned from: node, the repo checkout, pytest and
-Bun, warm. A run's cost and its failure modes are mostly decided here, which is
-why it is built by hand. Nothing about the image chooses what a run executes —
-the repo clone at `/home/exedev/repo` is the engine every run checks out at the
-`fleet-engine` ref the orchestrator pushes.
+The image every sandbox is copied from: node, the engine clone with its
+dependencies installed, pytest and Bun, warm. A `cp` of it takes seconds and
+inherits the `fleet` tag, so a run's cost and its failure modes are mostly
+decided here.
 
-Build it from RUNBOOK §Golden VM build.
-The golden is built by the human, one RUNBOOK step at a time, and re-checked with the doctor after each; this walk verifies, it does not build.
-A from-scratch golden gets its `~/.claude/settings.json` from the setup script
-in RUNBOOK §Golden VM build step 1, and the doctor's golden row reads that file.
-A wrong image built quickly is harder to debug than a right one built slowly:
-the gotchas that section records — PEP 668's `--break-system-packages`, Bun on
-the workers' login-shell PATH rather than only the interactive one, the Bun
-cache measured by path rather than through `bun pm cache` — each cost a run to
-find, and each is invisible until a sandbox fails halfway through a wave.
+It is built by a script that is checked into this repo, and the build stamps
+that script's sha256 into `/home/exedev/.fleet-golden`. The doctor's row is
+that comparison and nothing else: an image whose stamp does not equal
+`fleet/golden-setup.sh`'s hash is not broken, it is **old** — the plugin moved
+on and the golden did not.
 
-Take the steps in the order the RUNBOOK gives them and stop at the first one
-whose output surprises you.
+Three commands, in this order:
 
-## token
+```bash
+sh <plugin-root>/fleet/golden.sh build fleet-golden-next
+sh <plugin-root>/fleet/golden.sh verify fleet-golden-next
+sh <plugin-root>/fleet/golden.sh swap
+```
 
-The engine inside each sandbox bills a Claude Max subscription through a
-one-year OAuth token. This is the first of two rows that touch a secret;
-github-token is the other.
+Three things a newcomer would not know:
 
-Build it from RUNBOOK §Engine auth — the Max subscription, delivered per run
-(#213). The token comes from `! claude setup-token`, a browser flow that prints
-the token to the terminal.
-The token is written to a 0600 file directly from the command's output, never through the clipboard, and its value is never pasted into this conversation.
-The clipboard rule is not caution for its own sake: a copy of the command text
-once overwrote a freshly issued token, and the failure surfaces a run later as
-an auth error with no trace of where the value went. Redirect the command's
-output to the file, then `chmod 600` it.
+- **`verify` is not optional and `swap` is separate for a reason.** The golden
+  in use keeps serving runs while the new one is built and checked; the swap is
+  the only step that changes what a launch copies, and it is one rename. Never
+  delete the golden to make room for a rebuild — a build that then fails leaves
+  no image at all. A build that fails verify costs a VM, not a run.
+- **Never `defaults write dev.exe new.setup-script`.** That setting is
+  account-wide: it would apply the fleet's first-boot script to every VM you
+  ever create, including ones that have nothing to do with a run. The script is
+  passed to the one `new` that builds the golden and nowhere else.
+- **The golden carries no `ANTHROPIC_*` anywhere.** Auth precedence puts an API
+  key ahead of the subscription, so a stray variable in the image bills a
+  gateway instead of the Max plan, silently, for every run. The base URL is set
+  by the boot unit on the engine's child process only.
 
-The doctor checks that the file exists, is mode 0600, and starts with the
-expected prefix. It reports that as yes or no; it does not read the value back
-to anyone, and neither should this walk.
-
-## github-token
-
-The orchestrator holds one GitHub token, at `/home/exedev/.fleet/github-token`,
-and every run spends it: once a run resolves, the orchestrator pushes the run
-branch to GitHub and opens the pull request with it. A sandbox never sees
-GitHub — it pushes its branch to the orchestrator's checkout over the tunnel —
-and the golden carries no copy; the only copy off the orchestrator is the file
-you save while building it, which you scp across and can then delete.
-
-Build it from RUNBOOK §GitHub auth (#368) — the orchestrator opens the PR.
-Three things that section does not say to a newcomer. It is a fine-grained
-personal access token, and the two permissions it needs are exactly
-`Contents: Read and write` and `Pull requests: Read and write` — a classic
-token or a wider scope is not what this is. Its repository access has to cover
-every repository you will drive, ultrapowers itself among them, because a run
-against a repository the token cannot reach fails at the push, after the work
-is done. And unlike the Claude token, this one comes from a browser page rather
-than a command, so there is no output to redirect:
-The token is saved to a 0600 file straight from the GitHub page, never through
-this conversation: its value is never pasted here.
-
-The doctor checks that the file is mode 0600 and that `gh` accepts it — with
-`--target <owner>/<repo>`, that it reaches that repository as well. It reports
-the login and a yes or no; it never reads the value back, and neither should
-this walk.
-
-A new target means widening this token's repository access before its first
-drive; the doctor's `--target <owner>/<repo>` flag is the check, and a red row
-here costs a launch, not a run.
-
-## preflight
-
-The one link no fact sheet demonstrated directly: VM→VM `git fetch` over SSH
-between the orchestrator and a sandbox, with an HTTPS `git ls-remote` fallback.
-Without it, provisioning cannot deliver the base ref or pull a run branch back.
-
-Check it from RUNBOOK §Preflight. This is the row the doctor's `--probe` flag
-exists for: `! node <plugin-root>/fleet/doctor.mjs --json --probe` clones the
-golden into a throwaway VM named `fleet-doctor-probe`, runs
-`fleet/preflight.mjs` against it, and removes it when it is done. Because the
-probe costs a VM, the doctor skips it unless asked — so `--probe` is the last
-thing setup runs, once the five rows above it are `ok`.
-
-Offer the probe as the doctor's own flag rather than as a hand-typed clone and
-delete. The removal step names a VM, and a mistyped VM name in a delete is a
-mistake nothing recovers.
-
-A `ready` verdict from the probing run means the fleet is whole. Anything else
-names the row that is still red.
+The build quiesces the image before the first copy, because `cp` is not
+promised to be application-consistent. Take the three commands in order and
+stop at the first one whose output surprises you.
