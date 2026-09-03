@@ -300,7 +300,7 @@ test('the engine argv is the contract, and only the child env carries the Anthro
   assert.equal(engine.length, 1)
   assert.deepEqual(engine[0], [
     'systemd-run', '--user', '--scope', '--unit=fleet-engine-7',
-    '-p', 'MemoryMax=40G', '-p', 'MemorySwapMax=0', '--wait', '--collect',
+    '-p', 'MemoryMax=40G', '-p', 'MemorySwapMax=0',
     'env', '-u', 'CLAUDE_CONFIG_DIR',
     'ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz',
     'CLAUDE_CODE_OAUTH_TOKEN=placeholder',
