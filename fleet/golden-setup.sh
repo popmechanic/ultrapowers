@@ -150,16 +150,18 @@ step "source at $(git -C "$SRC" rev-parse HEAD)"
 # --- the bootstrap and its unit ---------------------------------------------
 # The bootstrap lives OUTSIDE any checkout (run-68: a boot script replaced at
 # its own path by the engine checkout), mode 755 so systemd can exec it. The
-# unit is installed and reloaded but NOT enabled: the launcher starts it over
-# ssh once the assignment is written and the grants are attached, so a boot
-# never races a grant and a fresh copy of the golden does nothing on its own.
+# unit is a TEMPLATE, `fleet-run@.service`, instanced per run as
+# `fleet-run@<N>.service`; it is installed and reloaded but NOT enabled: the
+# launcher starts the instance over ssh once the assignment is written and the
+# grants are attached, so a boot never races a grant and a fresh copy of the
+# golden does nothing on its own.
 [ -f "$SRC/fleet/fleet-bootstrap.sh" ] || fail 'fleet/fleet-bootstrap.sh missing from the source'
-[ -f "$SRC/fleet/fleet-run.service" ] || fail 'fleet/fleet-run.service missing from the source'
+[ -f "$SRC/fleet/fleet-run@.service" ] || fail 'fleet/fleet-run@.service missing from the source'
 install -m 755 "$SRC/fleet/fleet-bootstrap.sh" "$BOOTSTRAP"
 install -d "$UNIT_DIR"
-install -m 644 "$SRC/fleet/fleet-run.service" "$UNIT_DIR/fleet-run.service"
+install -m 644 "$SRC/fleet/fleet-run@.service" "$UNIT_DIR/fleet-run@.service"
 bash -n "$BOOTSTRAP" || fail 'the installed bootstrap does not parse'
-step "installed $BOOTSTRAP (755) and $UNIT_DIR/fleet-run.service"
+step "installed $BOOTSTRAP (755) and $UNIT_DIR/fleet-run@.service"
 
 # --- bun cache --------------------------------------------------------------
 # Warm the global package cache IN THE IMAGE so it clones with every sandbox
@@ -200,9 +202,9 @@ step "lingering: $(loginctl show-user "$ME" -p Linger 2>/dev/null || echo Linger
 XDG_RUNTIME_DIR=/run/user/$(id -u)
 export XDG_RUNTIME_DIR
 if systemctl --user daemon-reload 2>/dev/null; then
-  step 'user manager reloaded; fleet-run.service installed, not enabled'
+  step 'user manager reloaded; fleet-run@.service installed, not enabled'
 else
-  step 'no user bus yet; the manager reads fleet-run.service when it starts'
+  step 'no user bus yet; the manager reads fleet-run@.service when it starts'
 fi
 
 # --- prune ------------------------------------------------------------------

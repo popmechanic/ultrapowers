@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # fleet/fleet-bootstrap.sh — the golden's only moving part, installed at
-# /home/exedev/fleet-bootstrap.sh and started by fleet-run.service.
+# /home/exedev/fleet-bootstrap.sh and started by fleet-run@<N>.service, which
+# passes the run number as $1 (optional: used only to check the comment agrees).
 #
 # Immutable on purpose. run-68 died because the boot script re-exec'd itself from
 # a checkout that replaced it at its own path while bash kept reading the old
 # inode. So no run ever overwrites this file: it reads the assignment once, clones
-# the engine the assignment names into its own content-addressed directory, and
-# execs THAT checkout's boot script. A boot-script fix ships as an engine sha; the
-# golden is rebuilt for tools only.
-#
-# Writes /home/exedev/engines/ and /home/exedev/fleet-boot.log, nothing else.
-# FLEET_HOME relocates both for the exam and is unset in production.
+# the engine it names into a content-addressed directory, and execs THAT checkout's
+# boot script. A boot-script fix ships as an engine sha; the golden is rebuilt for
+# tools only. Writes engines/ and fleet-boot.log under FLEET_HOME (/home/exedev).
 set -euo pipefail
 home="${FLEET_HOME:-/home/exedev}"
 say() { printf '%s bootstrap: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$home/fleet-boot.log" >&2; }
@@ -19,7 +17,10 @@ say() { printf '%s bootstrap: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee 
 # unit, so an empty or malformed one is a launcher bug and the run fails here.
 comment="$(curl -fsS https://reflection.int.exe.xyz/comment | sed -n 's/.*"comment"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')" \
   || { say 'reflection /comment unreachable'; exit 1; }
-say "comment: ${comment:-<empty>}"
+say "comment: ${comment:-<empty>}${1:+ (unit run=$1)}"
+# The unit instance and the comment name the same run, or this is the wrong box.
+run="$(printf '%s\n' "$comment" | tr ' ' '\n' | sed -n 's/^run=\([0-9]\{1,\}\)$/\1/p' | head -n 1)"
+[ -z "${1:-}" ] || [ "$1" = "$run" ] || { say "unit run=$1 but the comment says run=${run:-<none>} — refusing"; exit 1; }
 sha="$(printf '%s\n' "$comment" | tr ' ' '\n' | sed -n 's/^engine=\([0-9a-f]\{40\}\)$/\1/p' | head -n 1)"
 [ -n "$sha" ] || { say 'no engine=<40 hex> in the comment — nothing to run'; exit 1; }
 

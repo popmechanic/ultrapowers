@@ -15,7 +15,7 @@
  * `updatedAt`, or the plan commit's date when no status was ever committed;
  * `created_at` on the `ls` row is undocumented and never consulted.
  *
- * `--dry-run` issues every read and no `rm`. There is no grant sweep:
+ * `--dry-run` issues every read and no `rm`. There is no attachment sweep:
  * attachments carry `--for` and lapse by themselves.
  */
 

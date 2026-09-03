@@ -57,7 +57,7 @@ const janitorIn = (ws, argv = [], exec) => janitor({ argv, exec, config: ws.conf
     3: { state: 'failed', updatedAt: hoursAgo(2) },
     4: { state: 'done', updatedAt: hoursAgo(0.5) },
     5: { state: 'running', updatedAt: hoursAgo(2) },
-    6: { state: 'awaiting-grant', updatedAt: hoursAgo(2) }
+    6: { state: 'publishing', updatedAt: hoursAgo(2) }
   })
   const fleet = [
     vmRow(vm(1)), vmRow(vm(1, 'dead')), vmRow(vm(2)), vmRow(vm(3)), vmRow(vm(4)), vmRow(vm(5)),
@@ -97,7 +97,7 @@ const janitorIn = (ws, argv = [], exec) => janitor({ argv, exec, config: ws.conf
 {
   const ws = workspace({
     5: { state: 'running', updatedAt: hoursAgo(10) },
-    6: { state: 'awaiting-grant', updatedAt: hoursAgo(7) },
+    6: { state: 'publishing', updatedAt: hoursAgo(7) },
     9: { state: 'running', updatedAt: hoursAgo(1) }
   })
   ws.runs.commitPlan(7, '2026-01-01T00:00:00+00:00')
@@ -118,7 +118,7 @@ const janitorIn = (ws, argv = [], exec) => janitor({ argv, exec, config: ws.conf
   assert.deepEqual(exec.mutating(), [], '(2) nothing removed')
   assert.deepEqual(result.stale.map((s) => [s.run, s.vm, s.state, s.from]), [
     [5, vm(5), 'running', 'status.json'],
-    [6, vm(6), 'awaiting-grant', 'status.json'],
+    [6, vm(6), 'publishing', 'status.json'],
     [7, vm(7), null, 'plans/run-7.md']
   ], '(2) 5 and 6 are silent for over six hours; 7 never committed a status and its plan is from January; 8 has no age; 9 is fresh; the golden is not a run')
   assert.equal(result.stale[2].lastUpdate, '2026-01-01T00:00:00.000Z', '(2) the plan commit is the age when no status was committed')
