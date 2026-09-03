@@ -1,15 +1,17 @@
 """The golden is a script, and these are the claims the script makes.
 
 `fleet/golden-setup.sh` builds the image, `fleet/golden-bootstrap.sh` is the few
-hundred bytes that fetch it at a sha, and `fleet/golden.sh` builds, verifies and
-swaps. Every exam here runs one of them and watches what it does — a stub
-`FLEET_SSH` stands in for the whole exe.dev platform, a stub `curl` stands in
-for GitHub. Nothing here pins a sentence of a document.
+hundred bytes that fetch it at a sha, `fleet/fleet-bootstrap.sh` is the image's
+one moving part (exercised end to end in `fleet/tests/test_fleet_bootstrap.mjs`),
+`fleet/fleet-run.service` is the unit the launcher starts, and `fleet/golden.sh`
+builds, verifies and swaps. Every exam here runs one of them and watches what it
+does — a stub `FLEET_SSH` stands in for the whole exe.dev platform, a stub `curl`
+stands in for GitHub. Nothing here pins a sentence of a document.
 
 The gotchas being defended are the ones the RUNBOOK's §Golden VM build paid for
 in dead images: a setup script that runs as `exedev` (so every privileged line
-needs `sudo -n`), a bootstrap that must fit down a pipe, and a golden that must
-carry no credentials.
+needs `sudo -n`), a bootstrap that must fit down a pipe, a golden that must
+carry no credentials — and, since run-68, no engine checkout either.
 
 Offline: no network, no ssh, no VM.
 """
@@ -26,9 +28,10 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SETUP = ROOT / "fleet/golden-setup.sh"
-BOOTSTRAP = ROOT / "fleet/golden-bootstrap.sh"
+GOLDEN_BOOTSTRAP = ROOT / "fleet/golden-bootstrap.sh"
+FLEET_BOOTSTRAP = ROOT / "fleet/fleet-bootstrap.sh"
 GOLDEN = ROOT / "fleet/golden.sh"
-UNIT = ROOT / "fleet/fleet-boot.service"
+UNIT = ROOT / "fleet/fleet-run.service"
 
 # The contract's literal. The golden's settings.json is the only file the image
 # carries that Claude Code reads, and this is exactly what it must hold.
@@ -58,30 +61,33 @@ def run(argv, **kw):
 
 
 def test_posix_scripts_pass_sh_n():
-    for path in (SETUP, BOOTSTRAP):
+    # These two run under `sh`: exe.dev feeds the golden bootstrap to /bin/sh,
+    # and the golden bootstrap runs the setup script with `sh`.
+    for path in (SETUP, GOLDEN_BOOTSTRAP):
         r = run(["sh", "-n", str(path)])
         assert r.returncode == 0, f"{path.name}: {r.stderr}"
 
 
 def test_all_scripts_pass_bash_n():
-    for path in (SETUP, BOOTSTRAP, GOLDEN):
+    for path in (SETUP, GOLDEN_BOOTSTRAP, FLEET_BOOTSTRAP, GOLDEN):
         r = run(["bash", "-n", str(path)])
         assert r.returncode == 0, f"{path.name}: {r.stderr}"
 
 
 def test_scripts_are_executable():
-    for path in (SETUP, BOOTSTRAP, GOLDEN):
+    for path in (SETUP, GOLDEN_BOOTSTRAP, FLEET_BOOTSTRAP, GOLDEN):
         assert path.stat().st_mode & stat.S_IXUSR, f"{path.name} is not executable"
 
 
 # --- the golden carries no credentials --------------------------------------
 
 
-def test_setup_script_names_no_anthropic_anything():
+@pytest.mark.parametrize("path", [SETUP, FLEET_BOOTSTRAP, UNIT], ids=lambda p: p.name)
+def test_image_files_name_no_anthropic_anything(path):
     # The OAuth token lives at exe.dev's edge and reaches only the engine's
     # child environment. An image that carries ANTHROPIC_* could leak the
     # subscription if a single clone were compromised.
-    assert "ANTHROPIC" not in SETUP.read_text()
+    assert "ANTHROPIC" not in path.read_text()
 
 
 def test_settings_heredoc_is_the_contract_object():
@@ -99,13 +105,13 @@ def test_settings_heredoc_is_the_contract_object():
 # --- the script runs as exedev, not root ------------------------------------
 
 
-@pytest.mark.parametrize("needle", ["apt-get", "ln -sf"])
+@pytest.mark.parametrize("needle", ["apt-get", "ln -sf", "/etc/apt/", "enable-linger"])
 def test_privileged_lines_take_sudo_n(needle):
     # exe.dev runs a setup script as `exedev`. Without `sudo -n` the install
     # stops on "Could not open lock file" and the VM comes up with no node.
     hits = [l for l in sh_lines(SETUP) if needle in l]
     assert hits, f"no {needle!r} line at all — this check would pass vacuously"
-    offenders = [l for l in hits if "sudo -n" not in l]
+    offenders = [l for l in hits if "sudo -n" not in l and not l.startswith("printf ")]
     assert offenders == [], offenders
 
 
@@ -117,12 +123,77 @@ def test_bun_is_proved_on_a_non_login_shell():
     assert [l for l in lines if "bash -lc" in l] == []
 
 
-def test_the_stamp_is_the_scripts_own_bytes():
-    lines = [l for l in sh_lines(SETUP) if "sha256sum" in l]
-    assert any('sha256sum "$0"' in l for l in lines), lines
+# --- the image is tools plus one bootstrap; nothing of the repo stays -------
 
 
-# --- the bootstrap ----------------------------------------------------------
+def test_no_engine_checkout_in_the_image():
+    # run-68: the boot script re-exec'd from a checkout that replaced it at its
+    # own path. The bootstrap clones each run's engine at its own sha, so a
+    # repo in the image could only ever be a stale one.
+    text = SETUP.read_text()
+    assert "/home/exedev/repo" not in text
+    assert "REPO_DIR" not in text
+    # Whatever is cloned for the build is a scratch directory, removed before
+    # the stamp so a half-built image cannot stamp with a repo left behind.
+    lines = list(sh_lines(SETUP))
+    clone = next(i for i, l in enumerate(lines) if l.startswith("git clone"))
+    assert 'mktemp -d' in lines[clone - 1] or 'mktemp -d' in lines[clone - 2], lines[clone - 2:clone + 1]
+    removed = [i for i, l in enumerate(lines) if l.startswith('rm -rf "$SRC"')]
+    stamp = next(i for i, l in enumerate(lines) if "sha256sum" in l and '"$0"' in l)
+    assert removed and removed[0] < stamp, "the scratch clone must go before the stamp"
+
+
+def test_setup_installs_the_immutable_bootstrap_and_the_unit_from_the_source():
+    lines = list(sh_lines(SETUP))
+    assert "BOOTSTRAP=/home/exedev/fleet-bootstrap.sh" in lines
+    assert 'install -m 755 "$SRC/fleet/fleet-bootstrap.sh" "$BOOTSTRAP"' in lines
+    assert 'install -m 644 "$SRC/fleet/fleet-run.service" "$UNIT_DIR/fleet-run.service"' in lines
+    text = SETUP.read_text()
+    assert "systemctl --user daemon-reload" in text
+    assert "loginctl enable-linger" in text
+    # `systemctl --user` cannot find the bus without this, and a first-boot
+    # setup script has no XDG_RUNTIME_DIR of its own.
+    assert "XDG_RUNTIME_DIR=/run/user/$(id -u)" in text
+
+
+def test_setup_enables_nothing():
+    # The launcher starts fleet-run.service over ssh once the assignment is
+    # written and the grants attached. A unit enabled at boot would start a
+    # run on every fresh copy with no assignment — the v1 shape.
+    assert [l for l in sh_lines(SETUP) if "systemctl --user enable" in l] == []
+    assert [l for l in sh_lines(SETUP) if ".wants/" in l] == []
+    assert "OnActiveSec" not in SETUP.read_text(), "no timer units in the image"
+
+
+def test_setup_reads_the_source_out_at_the_bootstrapped_sha():
+    lines = list(sh_lines(SETUP))
+    checkout = [l for l in lines if "checkout" in l]
+    assert any('"$GOLDEN_SHA"' in l for l in checkout), checkout
+    assert any("fetch -q origin" in l and '"$GOLDEN_SHA"' in l for l in lines), lines
+    # The checkout has to precede everything read out of the source.
+    at = next(i for i, l in enumerate(lines) if "checkout" in l and "GOLDEN_SHA" in l)
+    for needle in ('"$SRC/fleet/fleet-bootstrap.sh"', '"$SRC/fleet/fleet-run.service"',
+                   '"$SRC/$BUN_FIXTURE"'):
+        later = [i for i, l in enumerate(lines) if needle in l]
+        assert later and min(later) > at, f"{needle} is read before the checkout"
+
+
+def test_setup_installs_gh_and_busybox():
+    lines = list(sh_lines(SETUP))
+    assert any("apt-get install -y gh" in l for l in lines), lines
+    assert any("apt-get install -y busybox" in l for l in lines), lines
+
+
+def test_the_stamp_is_the_scripts_own_bytes_and_comes_last():
+    lines = list(sh_lines(SETUP))
+    stamps = [i for i, l in enumerate(lines) if 'sha256sum "$0"' in l]
+    assert len(stamps) == 1, lines
+    after = lines[stamps[0] + 1:]
+    # Only the stamp's own write and its step lines may follow it.
+    assert all(l.startswith(("printf '%s\\n' \"$STAMP\"", "step ")) for l in after), after
+
+
+# --- the golden bootstrap ---------------------------------------------------
 
 
 def print_bootstrap(sha=SHA):
@@ -146,23 +217,11 @@ def test_generated_bootstrap_names_the_versioned_url():
 
 def test_generated_bootstrap_exports_the_sha_for_the_setup_script():
     # The image must be built from the commit the script came from. Without
-    # this the clone sits on the default branch and a golden built for an
+    # this the source sits on the default branch and a golden built for an
     # unmerged branch dies on the first file that branch added.
     out = print_bootstrap()
     assert f"GOLDEN_SHA={SHA}" in out or "GOLDEN_SHA=$SHA" in out
     assert "export GOLDEN_SHA" in out
-
-
-def test_setup_checks_the_clone_out_at_the_bootstrapped_sha():
-    lines = list(sh_lines(SETUP))
-    checkout = [l for l in lines if "checkout" in l]
-    assert any('"$GOLDEN_SHA"' in l for l in checkout), checkout
-    assert any("fetch -q origin" in l and '"$GOLDEN_SHA"' in l for l in lines), lines
-    # The checkout has to precede everything read out of the repo.
-    at = next(i for i, l in enumerate(lines) if "checkout" in l and "GOLDEN_SHA" in l)
-    for needle in ("npm ci", "fleet-boot.service", '"$REPO_DIR/$BUN_FIXTURE"'):
-        later = [i for i, l in enumerate(lines) if needle in l]
-        assert later and min(later) > at, f"{needle} is read before the checkout"
 
 
 def _curl_stub(bindir, payload="echo RAN-SETUP\n"):
@@ -190,7 +249,7 @@ def test_the_template_refuses_to_run(tmp_path):
     bindir.mkdir()
     env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", TMPDIR=str(tmp_path))
     env.update(_curl_stub(bindir))
-    r = run(["sh", str(BOOTSTRAP)], env=env)
+    r = run(["sh", str(GOLDEN_BOOTSTRAP)], env=env)
     assert r.returncode != 0
     assert "template" in r.stderr
 
@@ -210,21 +269,21 @@ def test_the_generated_bootstrap_fetches_and_runs_the_setup_script(tmp_path):
     assert (tmp_path / "golden-setup.sh").exists()
 
 
-# --- the boot unit ----------------------------------------------------------
+# --- the run unit -----------------------------------------------------------
 
 
-def test_boot_unit_starts_the_sandbox_boot_script_at_boot():
+def test_run_unit_is_a_oneshot_of_the_immutable_bootstrap_with_nothing_to_enable():
     cfg = configparser.ConfigParser()
     cfg.optionxform = str
     cfg.read_string(UNIT.read_text())
-    assert cfg["Service"]["ExecStart"] == "/home/exedev/repo/fleet/sandbox-boot.sh"
-    assert cfg["Install"]["WantedBy"] == "default.target"
-    assert cfg["Service"]["Restart"] == "on-failure"
-    assert cfg["Service"]["RestartSec"] == "10"
-    assert cfg["Service"]["Type"] == "simple"
-    # The script backgrounds `busybox httpd` for the status page; the default
-    # kill mode reaps it with the script and the janitor never sees `done`.
-    assert cfg["Service"]["KillMode"] == "process"
+    assert cfg["Service"]["Type"] == "oneshot"
+    assert cfg["Service"]["ExecStart"] == "/home/exedev/fleet-bootstrap.sh"
+    # The launcher starts it; nothing may enable it at boot.
+    assert "Install" not in cfg.sections()
+    # The page and the engine are services of their own now; the kill-mode
+    # escape hatch and the restart loop were the v1 shape.
+    assert "KillMode" not in cfg["Service"]
+    assert "Restart" not in cfg["Service"]
 
 
 def test_verify_does_not_require_a_lockfile():
@@ -233,28 +292,7 @@ def test_verify_does_not_require_a_lockfile():
     assert "package-lock" not in GOLDEN.read_text()
 
 
-def test_setup_installs_and_enables_the_boot_unit():
-    text = SETUP.read_text()
-    assert "fleet/fleet-boot.service" in text  # the checked-in unit, not a copy
-    assert "systemctl --user enable fleet-boot.service" in text
-    assert "loginctl enable-linger" in text
-    # `systemctl --user` cannot find the bus without this, and a first-boot
-    # setup script has no XDG_RUNTIME_DIR of its own.
-    assert "XDG_RUNTIME_DIR=/run/user/$(id -u)" in text
-
-
-def test_setup_installs_the_six_hour_deadman():
-    text = SETUP.read_text()
-    assert "OnActiveSec=6h" in text
-    assert "/home/exedev/repo/fleet/sandbox-boot.sh deadman" in text
-    assert "systemctl --user enable fleet-deadman.timer" in text
-
-
 # --- golden.sh verify, against a stubbed platform ---------------------------
-
-
-def head_sha():
-    return run(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).stdout.strip()
 
 
 def sha256_of_setup():
@@ -270,14 +308,17 @@ host=$1
 cmd=$2
 case "$cmd" in
   'cat /home/exedev/.fleet-golden') echo "$STUB_STAMP" ;;
-  *'rev-parse HEAD'*) echo "$STUB_HEAD" ;;
+  'stat -c %a /home/exedev/fleet-bootstrap.sh') echo "$STUB_BOOTSTRAP_MODE" ;;
+  *'is-enabled fleet-run.service'*) echo "$STUB_ENABLED" ;;
+  *'test -e /home/exedev/repo'*) echo "$STUB_REPO" ;;
+  *'busybox --list'*) echo 1 ;;
+  'gh --version') echo 'gh version 2.80.0 (2026-08-01)' ;;
   'node --version') echo v24.4.0 ;;
   'npm --version') echo 11.0.0 ;;
   *'bun --version'*) echo 1.4.0 ;;
   *'import xdist'*) echo 3.6.1 ;;
-  *'stat -c %a'*) echo "$STUB_MODE" ;;
-  *'is-enabled fleet-boot.service'*) echo "$STUB_ENABLED" ;;
-  *'grep -c ANTHROPIC'*) echo "$STUB_ANTHROPIC" ;;
+  'stat -c %a /home/exedev/.claude/settings.json') echo "$STUB_MODE" ;;
+  *'grep -l ANTHROPIC_'*) echo "$STUB_ANTHROPIC" ;;
   'rm '*) echo '{"removed":true}' ;;
   'rename '*) echo '{"renamed":true}' ;;
   *'ls --json'*) echo "$STUB_LS" ;;
@@ -300,11 +341,12 @@ def stub(tmp_path):
             FLEET_SSH=str(path),
             STUB_LOG=str(log),
             STUB_STAMP=sha256_of_setup(),
-            STUB_HEAD=head_sha(),
+            STUB_BOOTSTRAP_MODE="755",
+            STUB_ENABLED="static",
+            STUB_REPO="absent",
             STUB_MODE="600",
-            STUB_ENABLED="enabled",
             STUB_ANTHROPIC="0",
-            STUB_LS='["fleet-golden","fleet-run-1"]',
+            STUB_LS='["fleet-golden","fleet-r1-2609031200-ab12"]',
         )
         env.update(over)
         return run([str(GOLDEN)] + argv, env=env)
@@ -313,13 +355,23 @@ def stub(tmp_path):
     return call
 
 
+ROWS = ("stamp:", "fleet-bootstrap.sh: 755", "fleet-run.service: static",
+        "/home/exedev/repo: absent", "busybox: httpd", "gh: gh version",
+        "node:", "npm:", "bun:", "xdist:", "settings.json: 600", "no ANTHROPIC_*")
+
+
 def test_verify_passes_when_the_stamp_matches_the_checked_in_script(stub):
     r = stub(["verify", "fleet-golden-next"])
     assert r.returncode == 0, r.stdout + r.stderr
-    rows = ("stamp:", "engine clone:", "node:", "npm:", "bun:", "xdist:",
-            "settings.json: 600")
-    for row in rows:
+    for row in ROWS:
         assert row in r.stdout, r.stdout
+
+
+def test_verify_accepts_a_unit_that_reads_as_disabled(stub):
+    # A unit that grew an [Install] section and was still left alone.
+    r = stub(["verify", "fleet-golden-next"], STUB_ENABLED="disabled")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "fleet-run.service: disabled" in r.stdout
 
 
 def test_verify_fails_and_names_both_stamps_when_the_image_drifted(stub):
@@ -333,9 +385,12 @@ def test_verify_fails_and_names_both_stamps_when_the_image_drifted(stub):
 @pytest.mark.parametrize(
     "override, expected",
     [
-        ({"STUB_HEAD": "c" * 40}, "engine clone"),
+        ({"STUB_BOOTSTRAP_MODE": "644"}, "fleet-bootstrap.sh"),
+        ({"STUB_BOOTSTRAP_MODE": ""}, "fleet-bootstrap.sh"),
+        ({"STUB_ENABLED": "enabled"}, "enabled"),
+        ({"STUB_ENABLED": ""}, "fleet-run.service"),
+        ({"STUB_REPO": "present"}, "/home/exedev/repo"),
         ({"STUB_MODE": "644"}, "644"),
-        ({"STUB_ENABLED": "disabled"}, "disabled"),
         ({"STUB_ANTHROPIC": "1"}, "ANTHROPIC"),
     ],
 )
