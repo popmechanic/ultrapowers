@@ -15,10 +15,12 @@
  *      three ids in order; every row carries id/status/detail/fix.
  *   3  commands — a green run issues exactly three reads, in order, with the
  *      configured golden name substituted, and nothing else.
- *   4  integrations — each of the five objects missing, mis-attached or
- *      tag-attached when it must not be turns the row red, and the detail names
- *      the object; with --target the two per-target objects join the check and
- *      the detail carries the `fleet/target.mjs add` command.
+ *   4  integrations — each of the five objects missing, or on the tag when it
+ *      must not be (only `fleet-runs` rides `tag:fleet`), turns the row red,
+ *      and the detail names the object; with --target the two per-target
+ *      objects join the check and the detail carries the `fleet/target.mjs
+ *      add` command; a `t-…-ro`/`-rw` on the tag is red with or without
+ *      --target.
  *   5  golden — no stamp → red; a stamp that is some other sha256 → red; a
  *      stamp equal to golden-setup.sh's sha256 → green.
  *   6  verdict — `ready` exactly when all three rows are ok.
@@ -86,7 +88,7 @@ const fullCatalog = () => [
   { name: 'fleet-runs', attachments: ['tag:fleet'] },
   { name: 'claude-max', attachments: [] },
   { name: 'notify', attachments: ['tag:fleet'] },
-  { name: `${STEM}-ro`, attachments: ['tag:fleet'] },
+  { name: `${STEM}-ro`, attachments: ['vm:fleet-r7-2609032215-a1b2'] },
   { name: `${STEM}-rw`, attachments: [] }
 ]
 
@@ -287,6 +289,25 @@ for (const suffix of ['-ro', '-rw']) {
   })
   const row = rowById(await doctor({ config: CONFIG, exec, target: TARGET }), 'integrations')
   assert.equal(row.status, 'missing', '4 a writable target grant on the tag turns the row red')
+}
+
+for (const suffix of ['-ro', '-rw']) {
+  // Grants are per VM: a -ro on the tag cannot be detached from one VM when
+  // -rw has to take its place, so it is as red as a -rw there — and it is red
+  // whether or not --target named it, since any target's pair is checked.
+  const catalog = fullCatalog().map((e) =>
+    e.name === `${STEM}${suffix}` ? { ...e, attachments: ['tag:fleet'] } : e
+  )
+  const { exec } = makeExec({
+    [CMD.integrations]: { code: 0, stdout: integrationsJson(catalog) }
+  })
+  const named = rowById(await doctor({ config: CONFIG, exec, target: TARGET }), 'integrations')
+  assert.equal(named.status, 'missing', `4 ${STEM}${suffix} on the tag turns the row red with --target`)
+  assert.ok(named.detail.includes(`${STEM}${suffix}`), `4 the detail names it; got ${named.detail}`)
+  assert.ok(named.detail.includes('detach'), `4 and says to detach; got ${named.detail}`)
+  const unnamed = rowById(await doctor({ config: CONFIG, exec }), 'integrations')
+  assert.equal(unnamed.status, 'missing', `4 ${STEM}${suffix} on the tag turns the row red without --target too`)
+  assert.ok(unnamed.detail.includes(`${STEM}${suffix}`), `4 the detail names it; got ${unnamed.detail}`)
 }
 
 {

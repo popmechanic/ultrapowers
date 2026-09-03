@@ -1,30 +1,31 @@
 /**
  * fleet/lobby.mjs — the laptop's half of the fleet, in one place.
  *
- * After the lift there is no orchestrator and no control VM. A run's identity
- * is its VM name (`fleet-run-<N>`), which is also its DNS name, its status URL,
- * its `comment` key, its `ls` row and its `rm` argument. Everything the laptop
- * does is either a git command against `popmechanic/fleet-runs` or one exe.dev
- * lobby verb issued as `ssh exe.dev "<verb …>"`.
+ * There is no orchestrator and no control VM. A run is a number N; its plan is
+ * `plans/run-N.md` in `popmechanic/fleet-runs`; its VM is one incarnation
+ * named `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by the pattern
+ * `fleet-r<N>-*`. Everything the laptop does is either a git command against
+ * `fleet-runs` or one exe.dev lobby verb issued as `ssh exe.dev "<verb …>"`.
  *
  * This module is what the four laptop CLIs (`launch`, `grant`, `janitor`,
- * `target`) share: the exec seam, the config file, the two name validators, and
- * tolerant readers for the two JSON payloads the lobby answers with. It runs
- * from the installed plugin cache, so — like `doctor.mjs` — every specifier is
- * `node:`-prefixed and there are no npm dependencies.
+ * `target`) share: the exec seam, the config file, the name validators, and
+ * the two lobby readers. It runs from the installed plugin cache, so — like
+ * `doctor.mjs` — every specifier is `node:`-prefixed and there are no npm
+ * dependencies.
  *
  * ## The exec seam
  *
  * One function, `exec(cmd, argv)`, resolving `{ code, stdout, stderr }` and
  * never rejecting. It is `execFile`, never a shell string: nothing this process
  * builds is ever parsed by a local shell. The exe.dev lobby still parses the
- * remote half (`ssh exe.dev "cp fleet-golden fleet-run-7 --json"` is one argv
+ * remote half (`ssh exe.dev "cp fleet-golden fleet-r7-… --json"` is one argv
  * element), so every value interpolated into that string is validated first —
- * `isSafeTarget`, `isFullSha`, `isRunNumber` — and the only quoted field (the
- * assignment comment) is built exclusively from validated parts.
+ * `isSafeTarget`, `isFullSha`, `isRunNumber`, `isVmName` — and the only quoted
+ * field (the assignment comment) is built exclusively from validated parts.
  */
 
 import { execFile } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -34,33 +35,51 @@ const execFileAsync = promisify(execFile)
 
 // ── Names and shas ──────────────────────────────────────────────────────────
 
-/**
- * `owner/repo`: exactly one slash, each half a git-safe name. Copied verbatim
- * from `fleet/drive.mjs` (deleted by the lift). The target is spelled into the
- * clone URL, the integration object's name and the assignment comment, so it is
- * checked before anything is provisioned.
- */
+/** `owner/repo`: exactly one slash, each half a git-safe name. */
 export const isSafeTarget = (value) =>
   typeof value === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)
 
-/**
- * A git object name, as a pointer half. Copied verbatim from
- * `fleet/shim-main.mjs` (deleted by the lift).
- */
+/** A git object name, as a pointer half. */
 export const isSafeSha = (value) => typeof value === 'string' && /^[0-9a-f]{7,64}$/.test(value)
 
 /**
- * The stricter shape the assignment comment carries. `isSafeSha` admits an
- * abbreviation, and an abbreviation would let two clones resolve one `base=`
- * differently — so `base=` and `engine=` are full shas or nothing.
+ * The stricter shape the assignment comment carries. An abbreviation would let
+ * two clones resolve one `base=` differently — so `base=` and `engine=` are
+ * full shas or nothing.
  */
 export const isFullSha = (value) => isSafeSha(value) && value.length === 40
 
 /** A run number: a positive decimal integer with no leading zero. */
 export const isRunNumber = (value) => /^[1-9][0-9]*$/.test(String(value))
 
-/** `fleet-run-<N>` — the run's VM name, DNS name, comment key and `rm` argument. */
-export const vmNameFor = (run) => `fleet-run-${run}`
+/**
+ * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev keeps a
+ * deleted name reserved, so a name is minted once per launch and never derived
+ * from N alone — the run's durable identity is N, in the comment, the branch
+ * and `fleet-runs`; the VM name is only where it is running this time.
+ */
+const VM_NAME = /^fleet-r([1-9][0-9]*)-[0-9]{10}-[0-9a-f]{4}$/
+
+const stamp = (date) => {
+  const two = (n) => String(n).padStart(2, '0')
+  return `${String(date.getUTCFullYear()).slice(2)}${two(date.getUTCMonth() + 1)}${two(date.getUTCDate())}${two(date.getUTCHours())}${two(date.getUTCMinutes())}`
+}
+
+export const vmNameFor = (run, now = new Date(), rand = randomBytes(2).toString('hex')) =>
+  `fleet-r${run}-${stamp(now)}-${rand}`
+
+export const isVmName = (value) => typeof value === 'string' && VM_NAME.test(value)
+
+/** The run number a VM name carries, or null when the name is not a run's. */
+export const runOfVmName = (name) => {
+  const match = VM_NAME.exec(String(name ?? ''))
+  return match ? Number(match[1]) : null
+}
+
+/** Every incarnation of run N, as the server-side `ls` pattern. */
+export const vmPatternFor = (run) => `fleet-r${run}-*`
+/** The whole fleet. */
+export const FLEET_PATTERN = 'fleet-r*'
 
 /** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name. */
 export const targetSlug = (target) => String(target).replace('/', '-')
@@ -70,7 +89,7 @@ export const roIntegrationFor = (target) => `t-${targetSlug(target)}-ro`
 export const rwIntegrationFor = (target) => `t-${targetSlug(target)}-rw`
 
 /** The run's status page, served by `busybox httpd` on the VM's port 8000. */
-export const statusUrlFor = (run) => `https://${vmNameFor(run)}.exe.xyz/status.json`
+export const statusUrlFor = (vmName) => `https://${vmName}.exe.xyz/status.json`
 
 // ── Constants the whole laptop side agrees on ───────────────────────────────
 
@@ -108,9 +127,8 @@ export const expandHome = (value) => {
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
  * file means all defaults; an unknown key is ignored; a key the file omits
- * stays at its default. Same shape as the pre-lift `doctor.mjs` — copied, not
- * imported, because the doctor is being rewritten and neither file should be
- * able to break the other.
+ * stays at its default. Same shape as `doctor.mjs`'s — copied, not imported,
+ * because the doctor imports nothing so that it runs when nothing else does.
  */
 export async function loadFleetConfig ({ path: configPath } = {}) {
   const target = configPath ?? DEFAULT_CONFIG_PATH()
@@ -153,8 +171,24 @@ export async function defaultExec (cmd, argv = [], options = {}) {
   }
 }
 
-/** One lobby verb: `ssh exe.dev "<remote>"`, the remote half as ONE argv element. */
-export const lobby = (exec, remote) => exec('ssh', [EXE_HOST, remote])
+/** Everything a command printed, in one string — what an error carries. */
+export const output = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
+
+/**
+ * One lobby verb: `ssh exe.dev "<remote>"`, the remote half as ONE argv
+ * element. A non-zero exit is a `LobbyError` carrying ALL of the output,
+ * verbatim: exe.dev documents no error envelope, so nothing is parsed out and
+ * nothing is dropped. `tolerate(res)` names the non-zero answers that are fine
+ * (a detach of a grant that already lapsed).
+ */
+export async function lobby (exec, remote, { tolerate = () => false } = {}) {
+  const res = await exec('ssh', [EXE_HOST, remote])
+  if (res.code !== 0 && !tolerate(res)) {
+    const verb = remote.split(/\s+/)[0]
+    throw new LobbyError(`exe.dev ${verb} failed (exit ${res.code}):\n${output(res)}`)
+  }
+  return res
+}
 
 /** A git command against a checkout, through the same seam. */
 export const git = (exec, dir, argv) => exec('git', ['-C', dir, ...argv])
@@ -178,7 +212,7 @@ export const refuse = (message) => {
   throw new Refusal(message)
 }
 
-/** A lobby verb that ran and failed: exit 1, the verb and its stderr named. */
+/** A verb that ran and failed: exit 1, its whole output in the message. */
 export class LobbyError extends Error {
   constructor (message) {
     super(message)
@@ -187,7 +221,7 @@ export class LobbyError extends Error {
   }
 }
 
-/** Run a CLI `main`, print a refusal or failure as one line, set the exit code. */
+/** Run a CLI `main`, print a refusal or failure verbatim, set the exit code. */
 export async function runCli (main, argv) {
   try {
     await main(argv)
@@ -262,55 +296,36 @@ export function parseJson (stdout) {
   }
 }
 
+const str = (value) => (typeof value === 'string' && value !== '' ? value : null)
+
 /**
- * The rows of a `--json` listing, whatever wrapper the verb chose: a bare
- * array, or the first array-valued property of an object (`{"vms": […]}`,
- * `{"integrations": […]}`). Written tolerantly on purpose — the payload shape
- * is the lobby's to change, and a launcher that dies on a new wrapper key is
- * worse than one that reads the array it can see.
+ * `ssh exe.dev "ls '<pattern>' --json"` → the rows under `.vms[]`, and ONLY
+ * those: `.shared_vms[]` are other people's machines, and reading every array
+ * in the envelope is how run-69 counted a shared VM as fleet. The pattern is
+ * matched server-side, so the fleet is `fleet-r*` and one run is `fleet-r<N>-*`.
+ * `vm_name`, `ssh_dest`, `ssh_host`, `status` are documented; `comment` and
+ * `tags` are not, so they are read as optional and are null when absent.
  */
-export function jsonRows (payload) {
-  if (Array.isArray(payload)) return payload
-  if (payload && typeof payload === 'object') {
-    // `ls --json` is `{ shared_vms: [...], vms: [...] }` — key order put the
-    // one shared VM first and hid every fleet VM from grant (run-69). Every
-    // array in the envelope is rows; the one named for the verb is not special.
-    const rows = []
-    for (const value of Object.values(payload)) {
-      if (Array.isArray(value)) rows.push(...value)
-    }
-    return rows
-  }
-  return []
-}
-
-const firstString = (row, keys) => {
-  for (const key of keys) {
-    if (typeof row?.[key] === 'string' && row[key] !== '') return row[key]
-  }
-  return null
-}
-
-/** `ssh exe.dev "ls --json"` → `[{ name, comment, createdAt, raw }]`. */
-export async function listVms (exec) {
-  const res = await lobby(exec, 'ls --json')
-  if (res.code !== 0) {
-    throw new LobbyError(`ls --json failed (code ${res.code}): ${String(res.stderr).trim()}`)
-  }
-  return jsonRows(parseJson(res.stdout)).map((row) => ({
-    name: firstString(row, ['name', 'vm', 'vm_name', 'id']),
-    comment: firstString(row, ['comment']) ?? '',
-    createdAt: firstString(row, ['created_at', 'createdAt', 'created', 'creation_time']),
-    raw: row
-  })).filter((row) => row.name)
+export async function listVms (exec, pattern = FLEET_PATTERN) {
+  const res = await lobby(exec, `ls '${pattern}' --json`)
+  const payload = parseJson(res.stdout)
+  const rows = Array.isArray(payload?.vms) ? payload.vms : []
+  return rows
+    .map((row) => ({
+      name: str(row?.vm_name),
+      sshDest: str(row?.ssh_dest),
+      sshHost: str(row?.ssh_host),
+      status: str(row?.status),
+      comment: str(row?.comment),
+      tags: Array.isArray(row?.tags) ? row.tags : null
+    }))
+    .filter((row) => row.name)
 }
 
 /**
- * One attachment of an integration object, normalised to `{ kind, value }`
- * where `kind` is `vm` or `tag`. The lobby may spell an attachment as a string
- * (`"vm:fleet-run-7"`, `"tag:fleet"`) or as an object (`{type,name}`, `{vm}`,
- * `{tag}`); all four are read. Shape agreed with the doctor's `integrations`
- * row, which reads the same payload the same way.
+ * One attachment, normalised to `{ kind, value }` where `kind` is `vm` or
+ * `tag`. The listing may spell it as a string (`"vm:fleet-r7-…"`, `"tag:fleet"`)
+ * or as an object (`{type,name}`, `{vm}`, `{tag}`); all four are read.
  */
 function normaliseAttachment (entry) {
   if (typeof entry === 'string') {
@@ -324,7 +339,7 @@ function normaliseAttachment (entry) {
     if (typeof entry.vm === 'string') return { kind: 'vm', value: entry.vm }
     if (typeof entry.tag === 'string') return { kind: 'tag', value: entry.tag }
     const kind = entry.type === 'tag' ? 'tag' : entry.type === 'vm' ? 'vm' : null
-    const value = firstString(entry, ['name', 'value', 'target'])
+    const value = str(entry.name) ?? str(entry.value) ?? str(entry.target)
     if (kind && value) return { kind, value }
   }
   return null
@@ -333,35 +348,20 @@ function normaliseAttachment (entry) {
 /** `ssh exe.dev "integrations list --json"` → `[{ name, repository, attachments }]`. */
 export async function listIntegrations (exec) {
   const res = await lobby(exec, 'integrations list --json')
-  if (res.code !== 0) {
-    throw new LobbyError(
-      `integrations list --json failed (code ${res.code}): ${String(res.stderr).trim()}`
-    )
-  }
-  return jsonRows(parseJson(res.stdout)).map((row) => {
+  const payload = parseJson(res.stdout)
+  const rows = Array.isArray(payload) ? payload
+    : Array.isArray(payload?.integrations) ? payload.integrations : []
+  return rows.map((row) => {
     const raw = row?.attachments ?? row?.attached ?? row?.attachedTo ?? row?.attached_to ??
       row?.targets ?? []
     const attachments = (Array.isArray(raw) ? raw : [raw]).map(normaliseAttachment).filter(Boolean)
     return {
-      name: firstString(row, ['name', 'integration', 'id']),
-      repository: firstString(row, ['repository', 'repo']),
-      attachments,
-      raw: row
+      name: str(row?.name) ?? str(row?.integration) ?? str(row?.id),
+      repository: str(row?.repository) ?? str(row?.repo),
+      attachments
     }
   }).filter((row) => row.name)
 }
-
-/** Is this integration attached to `vm:<vm>` right now? */
-export const attachedToVm = (integration, vm) =>
-  (integration?.attachments ?? []).some((a) => a.kind === 'vm' && a.value === vm)
-
-/** Is this integration attached to any tag (a grant no per-VM detach can lift)? */
-export const attachedToTag = (integration) =>
-  (integration?.attachments ?? []).some((a) => a.kind === 'tag')
-
-/** Every VM name this integration is attached to. */
-export const attachedVms = (integration) =>
-  (integration?.attachments ?? []).filter((a) => a.kind === 'vm').map((a) => a.value)
 
 // ── The assignment comment ──────────────────────────────────────────────────
 
@@ -412,15 +412,11 @@ export async function ensureFleetRuns (exec, configuredPath) {
   if (!present) {
     await fsp.mkdir(path.dirname(dir), { recursive: true })
     const res = await exec('git', ['clone', FLEET_RUNS_URL, dir])
-    if (res.code !== 0) {
-      refuse(`fleet-runs: git clone ${FLEET_RUNS_URL} failed: ${String(res.stderr).trim()}`)
-    }
+    if (res.code !== 0) refuse(`fleet-runs: git clone ${FLEET_RUNS_URL} failed:\n${output(res)}`)
     return dir
   }
   const res = await git(exec, dir, ['pull', '--rebase'])
-  if (res.code !== 0) {
-    refuse(`fleet-runs: git pull --rebase in ${dir} failed: ${String(res.stderr).trim()}`)
-  }
+  if (res.code !== 0) refuse(`fleet-runs: git pull --rebase in ${dir} failed:\n${output(res)}`)
   return dir
 }
 
@@ -450,4 +446,21 @@ export async function readCommittedStatus (fleetRunsDir, run) {
   } catch {
     return null
   }
+}
+
+/** Every `runs/<N>/status.json` in the clone, as `[{ run, status }]`, N ascending. */
+export async function listCommittedStatuses (fleetRunsDir) {
+  let names
+  try {
+    names = await fsp.readdir(path.join(fleetRunsDir, 'runs'))
+  } catch {
+    return []
+  }
+  const runs = names.filter(isRunNumber).map(Number).sort((a, b) => a - b)
+  const out = []
+  for (const run of runs) {
+    const status = await readCommittedStatus(fleetRunsDir, run)
+    if (status) out.push({ run, status })
+  }
+  return out
 }

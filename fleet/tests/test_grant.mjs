@@ -1,15 +1,16 @@
 /**
  * fleet/tests/test_grant.mjs — the approval.
  *
- * Three things must hold or the grant is not a gate at all:
+ * What must hold or the grant is not a gate at all:
  *
- *   1. the run's state must be exactly `awaiting-grant`. Any other state — and
- *      a missing status — refuses, with no integration touched;
- *   2. DETACH the read grant BEFORE attaching the write grant, always. The two
- *      must never overlap on one VM, because `github.int.exe.xyz` resolves one
- *      credential per repository;
- *   3. a `-ro` object that rides `tag:fleet` cannot be detached per VM. The
- *      grant says so and proceeds rather than pretending, or dying.
+ *   1. the run's committed state must be exactly `awaiting-grant`. Any other
+ *      state, and a missing status, refuses with no lobby verb issued;
+ *   2. the VM is found by pattern, `ls 'fleet-r<N>-*' --json`, and there must
+ *      be exactly one: none refuses naming the pattern, two refuse naming both;
+ *   3. DETACH the read grant BEFORE attaching the write grant, always; a detach
+ *      that finds nothing attached is fine, any other detach failure stops the
+ *      attach and prints the lobby's words;
+ *   4. `.shared_vms` rows are never the run's VM.
  */
 
 import assert from 'node:assert/strict'
@@ -17,13 +18,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { grant, renderGrant, DEFAULT_FOR, REQUIRED_STATE } from '../grant.mjs'
+import { LobbyError } from '../lobby.mjs'
 import {
-  answer, cleanup, makeExec, makeFleetRuns, sshRule, tempDir, thrown, writeStatus
+  answer, cleanup, makeExec, makeFleetRuns, sshRule, tempDir, thrown, vmRow, vmsPayload, writeStatus
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'popmechanic/smoke'
-const VM = 'fleet-run-5'
+const VM = 'fleet-r5-2609032215-a1b2'
+const PATTERN = "ls 'fleet-r5-*' --json"
 const NOW = new Date('2026-09-03T12:00:00.000Z')
+const COMMENT = `run=5 plan=${'a'.repeat(40)} target=${TARGET} base=${'b'.repeat(40)} engine=${'c'.repeat(40)}`
 
 function workspace ({ state = REQUIRED_STATE, run = 5 } = {}) {
   const root = tempDir('fleet-grant-')
@@ -38,184 +42,165 @@ function workspace ({ state = REQUIRED_STATE, run = 5 } = {}) {
 }
 
 const rules = ({
-  comment = `run=5 plan=${'a'.repeat(40)} target=${TARGET} base=${'b'.repeat(40)} engine=${'c'.repeat(40)}`,
-  integrations = [
-    { name: 't-popmechanic-smoke-ro', attachments: [`vm:${VM}`] },
-    { name: 't-popmechanic-smoke-rw', attachments: [] }
-  ],
+  vms = [vmRow(VM, { comment: COMMENT })],
+  shared = [],
   detach = answer('')
 } = {}) => [
-  sshRule('ls --json', answer([{ name: VM, comment }])),
-  sshRule('integrations list --json', answer(integrations)),
+  sshRule('ls ', vmsPayload(vms, shared)),
   sshRule('integrations detach', detach),
   sshRule('integrations attach', answer(''))
 ]
 
+const grantIn = (ws, argv = ['5'], exec) => grant({ argv, exec, config: ws.config, now: () => NOW })
+
 // ── 1. The state check ──────────────────────────────────────────────────────
 {
-  for (const state of ['running', 'booting', 'publishing', 'done', 'parked', 'failed']) {
+  for (const state of ['booting', 'running', 'publishing', 'done', 'parked', 'failed']) {
     const ws = workspace({ state })
     const exec = makeExec({ rules: rules() })
-    const error = await thrown(() => grant({ argv: ['5'], exec, config: ws.config, now: () => NOW }))
+    const error = await thrown(() => grantIn(ws, ['5'], exec))
     assert.equal(error?.exitCode, 2, `(1) state ${state} refuses`)
-    assert.match(error.message, new RegExp(`not ${REQUIRED_STATE}`), `(1) and names the state it wanted`)
-    assert.deepEqual(exec.mutating(), [], `(1) state ${state} touches no integration`)
+    assert.match(error.message, new RegExp(`not ${REQUIRED_STATE}`), '(1) and names the state it wanted')
+    assert.deepEqual(exec.lobby(), [], `(1) state ${state} issues no lobby verb at all`)
     ws.cleanup()
   }
   const missing = workspace({ state: null })
   const exec = makeExec({ rules: rules() })
-  const error = await thrown(() => grant({ argv: ['5'], exec, config: missing.config, now: () => NOW }))
+  const error = await thrown(() => grantIn(missing, ['5'], exec))
   assert.equal(error?.exitCode, 2, '(1) no committed status refuses')
   assert.match(error.message, /runs\/5\/status\.json/, '(1) and names the file it looked for')
-  assert.deepEqual(exec.mutating(), [], '(1) and touches no integration')
+  assert.deepEqual(exec.lobby(), [], '(1) and issues no lobby verb')
   missing.cleanup()
-}
-{
-  const exec = makeExec({ rules: rules() })
+
   const ws = workspace()
-  const error = await thrown(() => grant({ argv: ['nope'], exec, config: ws.config }))
-  assert.equal(error?.exitCode, 2, '(1) a non-numeric run refuses')
-  assert.equal(exec.calls.length, 0, '(1) before any exec')
+  const exec2 = makeExec({ rules: rules() })
+  const bad = await thrown(() => grantIn(ws, ['nope'], exec2))
+  assert.equal(bad?.exitCode, 2, '(1) a non-numeric run refuses')
+  assert.equal(exec2.calls.length, 0, '(1) before any exec')
+  const badFor = await thrown(() => grantIn(ws, ['5', '--for', 'fifteen'], exec2))
+  assert.equal(badFor?.exitCode, 2, '(1) an unparseable --for refuses')
+  assert.equal(exec2.calls.length, 0, '(1) before any exec')
   ws.cleanup()
 }
 
-// ── 2. Detach, then attach ──────────────────────────────────────────────────
+// ── 2. The VM by pattern, then detach, then attach ──────────────────────────
 {
   const ws = workspace()
   const exec = makeExec({ rules: rules() })
-  const result = await grant({ argv: ['5'], exec, config: ws.config, now: () => NOW })
+  const result = await grantIn(ws, ['5'], exec)
   assert.deepEqual(exec.lobby(), [
-    'ls --json',
-    'integrations list --json',
+    PATTERN,
     `integrations detach t-popmechanic-smoke-ro vm:${VM}`,
-    `integrations attach t-popmechanic-smoke-rw vm:${VM} --for=15m`
-  ], '(2) status, target, detach, attach — in that order')
+    `integrations attach t-popmechanic-smoke-rw vm:${VM} --for 15m`
+  ], '(2) the pattern lookup, detach, attach — in that order, nothing else')
+  assert.ok(exec.calls.every((c) => c.cmd !== 'ssh' || c.argv[0] === 'exe.dev'), '(2) no ssh into the VM')
+  assert.equal(result.vm, VM, '(2) the VM came from the ls row')
   assert.equal(result.for, DEFAULT_FOR, '(2) the default window is 15m')
   assert.equal(result.expiresAt, '2026-09-03T12:15:00.000Z', '(2) the expiry is now + the window')
   assert.equal(result.target, TARGET, '(2) the target came from the VM comment')
-  assert.deepEqual(result.warnings, [], '(2) a per-VM read grant needs no warning')
-  assert.match(renderGrant(result), /t-popmechanic-smoke-rw attached to vm:fleet-run-5 for 15m/, '(2) the printed line')
-  ws.cleanup()
-}
-{
-  const ws = workspace()
-  const exec = makeExec({ rules: rules() })
-  const result = await grant({ argv: ['5', '--for', '30m'], exec, config: ws.config, now: () => NOW })
-  assert.ok(exec.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for=30m`), '(2) --for is honoured')
-  assert.equal(result.expiresAt, '2026-09-03T12:30:00.000Z', '(2) and moves the expiry')
-  ws.cleanup()
-}
-{
-  const ws = workspace()
-  const exec = makeExec({ rules: rules() })
-  const error = await thrown(() => grant({ argv: ['5', '--for', 'fifteen'], exec, config: ws.config }))
-  assert.equal(error?.exitCode, 2, '(2) an unparseable --for refuses')
-  assert.equal(exec.calls.length, 0, '(2) before any exec')
-  ws.cleanup()
-}
-
-// ── 3. The tag-attached read grant, and a detach that finds nothing ─────────
-{
-  const ws = workspace()
-  const exec = makeExec({
-    rules: rules({
-      integrations: [
-        { name: 't-popmechanic-smoke-ro', attachments: ['tag:fleet'] },
-        { name: 't-popmechanic-smoke-rw', attachments: [] }
-      ]
-    })
-  })
-  const result = await grant({ argv: ['5'], exec, config: ws.config, now: () => NOW })
-  assert.ok(
-    !exec.lobby().some((line) => line.startsWith('integrations detach')),
-    '(3) a tag attachment is not detached per VM — it cannot be'
-  )
-  assert.equal(result.warnings.length, 1, '(3) but the operator is warned')
-  assert.match(result.warnings[0], /rides tag:fleet/, '(3) that read access remains')
-  assert.ok(exec.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for=15m`), '(3) and the write grant still lands')
-  assert.match(renderGrant(result), /^warning: /, '(3) the warning is printed first')
-  ws.cleanup()
-}
-{
-  const ws = workspace()
-  const exec = makeExec({
-    rules: rules({ detach: answer('', { code: 1, stderr: 'integration not attached to vm:fleet-run-5' }) })
-  })
-  const result = await grant({ argv: ['5'], exec, config: ws.config, now: () => NOW })
-  assert.ok(exec.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for=15m`),
-    '(3) a detach that answers "not attached" is tolerated — the grant may have lapsed')
-  assert.equal(result.vm, VM, '(3) and the grant completes')
-  ws.cleanup()
-}
-
-// ── 4. No writable object, and no target to be had ──────────────────────────
-{
-  const ws = workspace()
-  const exec = makeExec({
-    rules: rules({ integrations: [{ name: 't-popmechanic-smoke-ro', attachments: [] }] })
-  })
-  const error = await thrown(() => grant({ argv: ['5'], exec, config: ws.config }))
-  assert.equal(error?.exitCode, 2, '(4) a missing -rw object refuses')
-  assert.match(error.message, /node fleet\/target\.mjs add popmechanic\/smoke/,
-    '(4) and names the command that makes one')
-  assert.deepEqual(exec.mutating(), [], '(4) nothing was attached or detached')
-  ws.cleanup()
-}
-{
-  const ws = workspace()
-  const exec = makeExec({ rules: rules({ comment: 'run=5 state=expired' }) })
-  const error = await thrown(() => grant({ argv: ['5'], exec, config: ws.config }))
-  assert.equal(error?.exitCode, 2, '(4) a comment with no target= refuses')
-  assert.match(error.message, /--target/, '(4) and points at the override')
+  assert.match(renderGrant(result), new RegExp(`t-popmechanic-smoke-rw attached to vm:${VM} for 15m`), '(2) the printed line')
   ws.cleanup()
 
   const ws2 = workspace()
-  const exec2 = makeExec({ rules: rules({ comment: 'run=5 state=expired' }) })
-  const result = await grant({
-    argv: ['5', '--target', TARGET], exec: exec2, config: ws2.config, now: () => NOW
-  })
-  assert.equal(result.target, TARGET, '(4) --target overrides the comment')
+  const exec2 = makeExec({ rules: rules() })
+  const result2 = await grantIn(ws2, ['5', '--for', '30m'], exec2)
+  assert.ok(exec2.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for 30m`), '(2) --for is honoured')
+  assert.equal(result2.expiresAt, '2026-09-03T12:30:00.000Z', '(2) and moves the expiry')
   ws2.cleanup()
 }
 
-// ── 5. --live reads the status page with a VM token ────────────────────────
+// ── 2b. Zero rows, two rows ─────────────────────────────────────────────────
+{
+  const none = workspace()
+  const exec = makeExec({ rules: rules({ vms: [] }) })
+  const error = await thrown(() => grantIn(none, ['5'], exec))
+  assert.equal(error?.exitCode, 2, '(2b) no VM for the pattern refuses')
+  assert.match(error.message, /ls 'fleet-r5-\*' --json/, '(2b) naming the pattern it sent')
+  assert.deepEqual(exec.mutating(), [], '(2b) nothing was attached or detached')
+  none.cleanup()
+
+  const two = workspace()
+  const other = 'fleet-r5-2609031100-beef'
+  const exec2 = makeExec({ rules: rules({ vms: [vmRow(VM, { comment: COMMENT }), vmRow(other, { comment: COMMENT })] }) })
+  const error2 = await thrown(() => grantIn(two, ['5'], exec2))
+  assert.equal(error2?.exitCode, 2, '(2b) two incarnations refuse — the grant cannot pick')
+  assert.ok(error2.message.includes(VM) && error2.message.includes(other), '(2b) naming both')
+  assert.deepEqual(exec2.mutating(), [], '(2b) nothing was attached or detached')
+  two.cleanup()
+}
+
+// ── 3. Detach answers ───────────────────────────────────────────────────────
+{
+  const ws = workspace()
+  const exec = makeExec({
+    rules: rules({ detach: answer('', { code: 1, stderr: `integration not attached to vm:${VM}\n` }) })
+  })
+  const result = await grantIn(ws, ['5'], exec)
+  assert.ok(exec.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for 15m`),
+    '(3) a detach that answers "not attached" is tolerated — the read grant lapsed on its own')
+  assert.equal(result.vm, VM, '(3) and the grant completes')
+  ws.cleanup()
+
+  const ws2 = workspace()
+  const exec2 = makeExec({
+    rules: rules({ detach: answer('permission denied for integration t-popmechanic-smoke-ro\n', { code: 1 }) })
+  })
+  const error = await thrown(() => grantIn(ws2, ['5'], exec2))
+  assert.ok(error instanceof LobbyError, '(3) any other detach failure is a failure')
+  assert.match(error.message, /exe\.dev integrations failed \(exit 1\):\n/, '(3) the verb named')
+  assert.match(error.message, /permission denied for integration/, '(3) the lobby\'s own words')
+  assert.ok(!exec2.lobby().some((line) => line.startsWith('integrations attach')), '(3) and the write grant is NOT attached over a read grant that may still stand')
+  ws2.cleanup()
+}
+
+// ── 4. The target: the comment, or --target ─────────────────────────────────
+{
+  const ws = workspace()
+  const exec = makeExec({ rules: rules({ vms: [vmRow(VM)] }) })
+  const error = await thrown(() => grantIn(ws, ['5'], exec))
+  assert.equal(error?.exitCode, 2, '(4) a row with no comment refuses rather than crashing')
+  assert.match(error.message, /--target/, '(4) and points at the override')
+  assert.deepEqual(exec.mutating(), [], '(4) nothing mutated')
+  ws.cleanup()
+
+  const ws2 = workspace()
+  const exec2 = makeExec({ rules: rules({ vms: [vmRow(VM, { comment: 'run=5' })] }) })
+  const result = await grantIn(ws2, ['5', '--target', TARGET], exec2)
+  assert.equal(result.target, TARGET, '(4) --target overrides a comment without target=')
+  ws2.cleanup()
+}
+
+// ── 5. --live reads the VM's own status page with a VM token ────────────────
 {
   const ws = workspace({ state: 'running' })
   fs.writeFileSync(path.join(ws.root, 'vm-token'), 'exe1-abc\n')
   const exec = makeExec({
-    rules: [
-      ...rules(),
-      {
-        when: (cmd) => cmd === 'curl',
-        answer: answer({ run: '5', state: REQUIRED_STATE })
-      }
-    ]
+    rules: [...rules(), { when: (cmd) => cmd === 'curl', answer: answer({ run: '5', state: REQUIRED_STATE }) }]
   })
-  const result = await grant({ argv: ['5', '--live'], exec, config: ws.config, now: () => NOW })
+  const result = await grantIn(ws, ['5', '--live'], exec)
   const curl = exec.calls.find((c) => c.cmd === 'curl')
   assert.ok(curl, '(5) --live reads over HTTPS')
-  assert.ok(curl.argv.includes('https://fleet-run-5.exe.xyz/status.json'), '(5) the run\'s own status URL')
+  assert.ok(curl.argv.includes(`https://${VM}.exe.xyz/status.json`), '(5) the VM\'s own status URL — so the ls came first')
   assert.ok(curl.argv.includes('X-Exedev-Authorization: Bearer exe1-abc'), '(5) with the VM token')
-  assert.equal(result.source, 'https://fleet-run-5.exe.xyz/status.json',
-    '(5) and the live page — not the committed file, which still says running')
+  assert.equal(result.source, `https://${VM}.exe.xyz/status.json`, '(5) the live page, not the committed file that still says running')
   ws.cleanup()
 
   const noToken = workspace({ state: 'running' })
   const exec2 = makeExec({ rules: rules() })
-  const error = await thrown(() => grant({ argv: ['5', '--live'], exec: exec2, config: noToken.config }))
+  const error = await thrown(() => grantIn(noToken, ['5', '--live'], exec2))
   assert.equal(error?.exitCode, 2, '(5) --live with no token file refuses')
-  assert.match(error.message, /ssh-key generate-api-key --vm=fleet-run-5/,
-    '(5) and names the per-VM minting command, because VM tokens are per VM')
+  assert.match(error.message, new RegExp(`ssh-key generate-api-key --vm=${VM}`), '(5) naming the per-VM minting command')
   noToken.cleanup()
 }
 
-// (6) `ls --json` is `{ shared_vms, vms }`; the rows are every array, not the
-// first one — run-69 was invisible behind the one shared VM.
+// ── 6. A shared VM is never the run's ───────────────────────────────────────
 {
-  const { jsonRows } = await import('../lobby.mjs')
-  const rows = jsonRows({ shared_vms: [{ vm_name: 'snw-build' }], vms: [{ vm_name: 'fleet-run-69' }] })
-  assert.deepEqual(rows.map((r) => r.vm_name), ['snw-build', 'fleet-run-69'], '(6) every envelope array is rows')
+  const ws = workspace()
+  const exec = makeExec({ rules: rules({ vms: [], shared: [vmRow(VM, { comment: COMMENT })] }) })
+  const error = await thrown(() => grantIn(ws, ['5'], exec))
+  assert.equal(error?.exitCode, 2, '(6) a row under shared_vms is not a fleet VM, however it is named')
+  assert.deepEqual(exec.mutating(), [], '(6) and nothing is granted to it')
+  ws.cleanup()
 }
 
 console.log('ALL TESTS PASSED')
-

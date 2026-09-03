@@ -6,18 +6,17 @@
  *   node fleet/target.mjs list
  *   node fleet/target.mjs gc
  *
- * Per target, exactly two objects, created once and then left alone:
+ * Per target, exactly two objects, created once, attached to NOTHING:
  *
- *   t-<owner>-<repo>-ro   --readonly --attach tag:fleet
- *   t-<owner>-<repo>-rw   --act-as-user, attached to NOTHING
+ *   t-<owner>-<repo>-ro   --readonly
+ *   t-<owner>-<repo>-rw   --act-as-user
  *
- * The read-only object rides the shared `fleet` tag on purpose: read access to
- * one repository is harmless on a tag, and putting it there removes the
- * attach→boot race for reads — a sandbox that boots before an attach lands
- * would otherwise fail its first clone. The writable object is never on a tag
- * and never on a VM except for the fifteen minutes after a run is green
- * (`fleet/grant.mjs`), because a tag-attached write credential is a credential
- * every sandbox in the fleet holds.
+ * Both are attached per VM and per window, by the tools that need them: the
+ * launcher attaches `-ro` for the run's six hours, the grant swaps it for
+ * `-rw` for fifteen minutes. Nothing GitHub rides `tag:fleet` except
+ * `fleet-runs` — a tag attachment is a credential every sandbox holds, and a
+ * tag-attached `-ro` cannot be detached from one VM when `-rw` has to take its
+ * place, since `github.int.exe.xyz` resolves one credential per repo.
  *
  * `add` is idempotent: an object that exists is left exactly as it is and
  * reported as `skipped`. `gc` reports and never deletes — it names integration
@@ -30,10 +29,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  FLEET_TAG,
-  LobbyError,
   Refusal,
-  attachedToTag,
   defaultExec,
   isSafeTarget,
   listIntegrations,
@@ -50,9 +46,9 @@ export const USAGE = `usage: node fleet/target.mjs add <owner>/<repo>
 
 export const usage = () => USAGE
 
-/** The two `integrations add` lines, verbatim, for a target. */
+/** The two `integrations add` lines, verbatim, for a target. No `--attach`. */
 export const addCommands = (target) => [
-  `integrations add github --name ${roIntegrationFor(target)} --repository ${target} --readonly --attach tag:${FLEET_TAG}`,
+  `integrations add github --name ${roIntegrationFor(target)} --repository ${target} --readonly`,
   `integrations add github --name ${rwIntegrationFor(target)} --repository ${target} --act-as-user`
 ]
 
@@ -73,10 +69,7 @@ async function add ({ exec, target }) {
       results.push({ name, action: 'skipped', command: null })
       continue
     }
-    const res = await lobby(exec, command)
-    if (res.code !== 0) {
-      throw new LobbyError(`target: \`${command}\` failed (code ${res.code}): ${String(res.stderr).trim()}`)
-    }
+    await lobby(exec, command)
     results.push({ name, action: 'created', command })
   }
   return { verb: 'add', target, results }
@@ -85,12 +78,7 @@ async function add ({ exec, target }) {
 async function list ({ exec }) {
   const rows = (await listIntegrations(exec))
     .filter((row) => isTargetIntegration(row.name))
-    .map((row) => ({
-      name: row.name,
-      repository: row.repository,
-      tagged: attachedToTag(row),
-      attachments: row.attachments
-    }))
+    .map((row) => ({ name: row.name, repository: row.repository, attachments: row.attachments }))
   return { verb: 'list', results: rows }
 }
 
@@ -130,6 +118,9 @@ export async function target ({ argv, exec = defaultExec }) {
   throw new Refusal(`target: unknown verb ${JSON.stringify(verb ?? null)}\n${usage()}`)
 }
 
+const attachedTo = (attachments) =>
+  attachments.length === 0 ? 'unattached' : attachments.map((a) => `${a.kind}:${a.value}`).join(' ')
+
 export const renderTarget = (result) => {
   if (result.verb === 'add') {
     return result.results.map((r) => `${r.action} ${r.name}`).join('\n')
@@ -137,7 +128,7 @@ export const renderTarget = (result) => {
   if (result.verb === 'list') {
     if (result.results.length === 0) return 'no target integrations'
     return result.results
-      .map((r) => `${r.name}  ${r.repository ?? '?'}  ${r.tagged ? `tag:${FLEET_TAG}` : 'per-vm'}`)
+      .map((r) => `${r.name}  ${r.repository ?? '?'}  ${attachedTo(r.attachments)}`)
       .join('\n')
   }
   const missing = result.results.filter((r) => r.verdict !== 'present')

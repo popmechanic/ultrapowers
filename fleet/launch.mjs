@@ -2,27 +2,25 @@
 /**
  * fleet/launch.mjs — start one run. The whole client, on the laptop.
  *
- * A run is a VM named `fleet-run-<N>` and a comment on it. The launcher does
- * five things, in this order, and then walks away:
+ * A run is a number N. The launcher, in this order:
  *
- *   1. reads the world (`ls --json`, `billing usage --json`,
- *      `integrations list --json`) and refuses if it does not like it;
- *   2. commits the plan and its verdicts to `popmechanic/fleet-runs` and takes
- *      that commit's sha as `plan=`;
- *   3. `cp` the golden to `fleet-run-<N>` (the `fleet` tag is inherited, and
- *      with it the standing read grants);
- *   4. attaches the run's per-VM, time-boxed grants — `claude-max` for 6 h, the
- *      target's `-ro` object for 4 h when it is not already on the tag;
- *   5. writes the assignment comment — LAST, because the comment IS the start
- *      signal: the sandbox boots inert and polls Reflection until it appears.
+ *   1. commits the plan and its verdicts to `popmechanic/fleet-runs` as
+ *      `plans/run-N.md` and takes that commit's sha as `plan=`;
+ *   2. `cp`s the golden to a fresh VM name (`fleet-r<N>-<yymmddHHMM>-<4 hex>`,
+ *      `--copy-tags` so the `fleet` tag and `fleet-runs` come with it);
+ *   3. attaches the run's per-VM, time-boxed grants — `claude-max` for 6 h and
+ *      the target's `-ro` object for 6 h when one exists;
+ *   4. writes the assignment comment — the record the sandbox reads once;
+ *   5. waits until `ssh <ssh_dest> true` answers, then starts the run:
+ *      `systemctl --user start fleet-run.service`.
  *
- * Nothing here reaches into a VM. There is no ssh session, no rsync, no
- * heredoc; the sandbox learns everything it needs from its own name, its own
- * comment, and GitHub.
+ * Start AFTER attach: the boot never races a grant. Nothing on the VM polls;
+ * the comment is not a signal, the ssh start is.
  *
- * A refusal (exit 2) always happens before step 3, so the account is exactly as
- * it was. A failure after that (exit 1) names the verb that failed; the run's
- * VM may exist without a comment, which is inert and reaped by the janitor.
+ * A refusal (exit 2) happens before step 2, so the account is exactly as it
+ * was. A failure after that (exit 1) prints the lobby's own words: exe.dev
+ * documents no error envelope, so a refused name or a full account is shown
+ * verbatim rather than paraphrased.
  */
 
 import fsp from 'node:fs/promises'
@@ -33,10 +31,8 @@ import {
   CLAUDE_INTEGRATION,
   COMMENT_MAX_BYTES,
   ENGINE_URL,
-  FLEET_TAG,
   Refusal,
   LobbyError,
-  attachedToTag,
   buildComment,
   defaultExec,
   ensureFleetRuns,
@@ -49,8 +45,8 @@ import {
   listVms,
   loadFleetConfig,
   lobby,
+  output,
   parseArgs,
-  parseComment,
   roIntegrationFor,
   runCli,
   statusUrlFor,
@@ -71,62 +67,34 @@ export const OVERLAP_VALUES = Object.freeze(['fold', 'serialize'])
 export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
 
 /** How long each grant the launcher attaches lives. Wall clock; it lapses. */
-export const CLAUDE_GRANT_FOR = '6h'
-export const READ_GRANT_FOR = '4h'
+export const GRANT_FOR = '6h'
 
-/** Refuse to `cp` when the account is within this many VMs of its plan limit. */
-export const VM_HEADROOM = 2
+/** The start command, run over ssh on the VM once it answers. The user
+ *  manager needs XDG_RUNTIME_DIR set for a non-login ssh session. */
+export const START_COMMAND =
+  'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run.service'
 
-/**
- * Read `vm_count` and `max_vms`. `billing usage --json` is the meter; on the
- * accounts measured so far it also carries the limit, and when it does not the
- * limit comes from `billing plan --json`. Both are read-only and both run
- * before any mutating verb.
- */
-async function readCapacity (exec) {
-  const usageRes = await lobby(exec, 'billing usage --json')
-  if (usageRes.code !== 0) {
-    throw new LobbyError(
-      `billing usage --json failed (code ${usageRes.code}): ${String(usageRes.stderr).trim()}`
-    )
-  }
-  let payload
-  try {
-    payload = JSON.parse(String(usageRes.stdout).trim())
-  } catch {
-    payload = null
-  }
-  const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
-  const vmCount = number(payload?.vm_count ?? payload?.vmCount)
-  let maxVms = number(payload?.max_vms ?? payload?.maxVms)
-  if (vmCount !== null && maxVms === null) {
-    const planRes = await lobby(exec, 'billing plan --json')
-    if (planRes.code === 0) {
-      try {
-        const plan = JSON.parse(String(planRes.stdout).trim())
-        maxVms = number(plan?.max_vms ?? plan?.maxVms)
-      } catch { /* an unreadable plan payload is the same as no limit */ }
-    }
-  }
-  return { vmCount, maxVms }
-}
+/** How long to wait for the fresh VM to answer ssh, and how often to ask. */
+export const SSH_WAIT_MS = 120_000
+export const SSH_RETRY_MS = 3_000
+const SSH_OPTS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5']
+
+/** `ssh_dest` is an argv element, never shell text — but it is still checked
+ *  to be one host-ish token before it is handed to ssh. */
+const SSH_DEST = /^[A-Za-z0-9._@:-]+$/
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * The engine sha, when `--engine` was not given: the tip of the PUBLIC
- * ultrapowers repository, read with `git ls-remote`.
- *
- * The simplest honest rule. The sandbox clones `https://github.com/popmechanic/
- * ultrapowers.git` at `engine=`, so the only shas that can possibly work are
- * the ones GitHub already has; a local `HEAD` in this checkout is a sha the
- * sandbox cannot fetch. If the operator wants a release commit or an older
- * engine, `--engine <40-hex>` pins it — no rule here can guess that.
+ * ultrapowers repository, read with `git ls-remote`. The sandbox clones from
+ * GitHub at `engine=`, so the only shas that can work are the ones GitHub
+ * already has; a local `HEAD` is a sha the sandbox cannot fetch.
  */
 async function defaultEngineSha (exec) {
   const res = await exec('git', ['ls-remote', ENGINE_URL, 'HEAD'])
   if (res.code !== 0) {
-    throw new Refusal(
-      `engine: git ls-remote ${ENGINE_URL} HEAD failed: ${String(res.stderr).trim()}`
-    )
+    throw new Refusal(`engine: git ls-remote ${ENGINE_URL} HEAD failed:\n${output(res)}`)
   }
   const sha = String(res.stdout).trim().split(/\s+/)[0] ?? ''
   if (!isFullSha(sha)) {
@@ -138,27 +106,12 @@ async function defaultEngineSha (exec) {
 }
 
 /**
- * The next run number: one past the highest `run=<N>` visible anywhere. Two
- * sources, because either alone goes stale — a live VM's comment knows about a
- * run whose plan is not yet merged into this clone, and `plans/run-<N>.md`
- * knows about a run whose VM has already been reaped.
+ * Everything the launcher does, with the exec seam, the clock, the sleep and
+ * the name's random half injected. Answers the launched run's record.
  */
-export function nextRunNumber ({ vms, highestPlan }) {
-  let best = highestPlan
-  for (const vm of vms) {
-    const fromComment = parseComment(vm.comment).run
-    if (isRunNumber(fromComment)) best = Math.max(best, Number(fromComment))
-    const fromName = /^fleet-run-([1-9][0-9]*)$/.exec(vm.name ?? '')
-    if (fromName) best = Math.max(best, Number(fromName[1]))
-  }
-  return best + 1
-}
-
-/**
- * Everything the launcher does, with the exec seam and the clock injected.
- * Answers `{ run, vm, statusUrl, comment, plan, base, engine, target }`.
- */
-export async function launch ({ argv, exec = defaultExec, config, now = () => new Date() }) {
+export async function launch ({
+  argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand
+}) {
   const { opts, positional } = parseArgs(argv, { flags: ['json'] })
 
   // ── Local validation. Nothing has been executed at this point, and nothing
@@ -214,28 +167,13 @@ export async function launch ({ argv, exec = defaultExec, config, now = () => ne
   const settings = config ?? await loadFleetConfig({ path: opts.config })
   const golden = opts.golden ?? settings.golden
 
-  // ── Reads. Still nothing mutated. ─────────────────────────────────────────
+  // ── Reads. Still nothing mutated. The run number is one past the highest
+  //    plan in fleet-runs: a plan is committed before any VM exists, so the
+  //    plans directory is the complete record of runs ever launched. ────────
   const fleetRunsDir = await ensureFleetRuns(exec, settings.fleetRuns)
-  const vms = await listVms(exec)
-  const run = opts.run ? Number(opts.run) : nextRunNumber({
-    vms,
-    highestPlan: await highestPlanRun(fleetRunsDir)
-  })
-  const vm = vmNameFor(run)
-  if (vms.some((row) => row.name === vm)) {
-    throw new Refusal(`launch: ${vm} already exists — pass --run <N> for a free number`)
-  }
-
-  const { vmCount, maxVms } = await readCapacity(exec)
-  if (vmCount !== null && maxVms !== null && vmCount >= maxVms - VM_HEADROOM) {
-    throw new Refusal(
-      `launch: no room — vm_count ${vmCount} of max_vms ${maxVms} (need ${VM_HEADROOM} spare); reap with node fleet/janitor.mjs`
-    )
-  }
-
-  const integrations = await listIntegrations(exec)
+  const run = opts.run ? Number(opts.run) : await highestPlanRun(fleetRunsDir) + 1
   const roName = roIntegrationFor(target)
-  const ro = integrations.find((row) => row.name === roName) ?? null
+  const ro = (await listIntegrations(exec)).some((row) => row.name === roName)
   const engine = opts.engine ?? await defaultEngineSha(exec)
 
   // ── The plan commit. A local git failure is still a refusal: exe.dev has
@@ -258,38 +196,44 @@ export async function launch ({ argv, exec = defaultExec, config, now = () => ne
   }
   const planSha = await commitPlan({ exec, dir: fleetRunsDir, added, run })
 
-  // ── The four lobby verbs. The comment is last. ────────────────────────────
+  // ── The lobby verbs, then the ssh start. ──────────────────────────────────
+  const vm = vmNameFor(run, now(), rand)
   const commands = []
   const verb = async (remote) => {
     commands.push(remote)
-    const res = await lobby(exec, remote)
-    if (res.code !== 0) {
-      throw new LobbyError(`launch: \`${remote}\` failed (code ${res.code}): ${String(res.stderr).trim()}`)
-    }
-    return res
+    return lobby(exec, remote)
   }
 
-  await verb(`cp ${golden} ${vm} --json`)
-  await verb(`integrations attach ${CLAUDE_INTEGRATION} vm:${vm} --for=${CLAUDE_GRANT_FOR}`)
-  let readGrant = 'none'
-  if (ro && attachedToTag(ro)) {
-    readGrant = `tag:${FLEET_TAG}`
-  } else if (ro) {
-    await verb(`integrations attach ${roName} vm:${vm} --for=${READ_GRANT_FOR}`)
-    readGrant = `vm --for=${READ_GRANT_FOR}`
-  } else {
-    readGrant = 'none — public target, or run node fleet/target.mjs add ' + target
+  await verb(`cp ${golden} ${vm} --copy-tags --json`)
+  await verb(`integrations attach ${CLAUDE_INTEGRATION} vm:${vm} --for ${GRANT_FOR}`)
+  let readGrant = 'none — public target, or run node fleet/target.mjs add ' + target
+  if (ro) {
+    await verb(`integrations attach ${roName} vm:${vm} --for ${GRANT_FOR}`)
+    readGrant = `${roName} vm --for ${GRANT_FOR}`
   }
-
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   await verb(`comment ${vm} '${comment}'`)
+
+  const row = (await listVms(exec, vm)).find((entry) => entry.name === vm)
+  if (!row?.sshDest || !SSH_DEST.test(row.sshDest)) {
+    throw new LobbyError(
+      `launch: ls '${vm}' --json shows no usable ssh_dest for the VM cp just made (got ${JSON.stringify(row?.sshDest ?? null)}); start it by hand: ssh <ssh_dest> '${START_COMMAND}'`
+    )
+  }
+  const sshDest = row.sshDest
+  await waitForSsh({ exec, sshDest, vm, now, sleep })
+  const start = await exec('ssh', [sshDest, START_COMMAND])
+  if (start.code !== 0) {
+    throw new LobbyError(`launch: ssh ${sshDest} '${START_COMMAND}' failed (exit ${start.code}):\n${output(start)}`)
+  }
 
   return {
     run,
     runId: `run-${run}`,
     vm,
+    sshDest,
     golden,
-    statusUrl: statusUrlFor(run),
+    statusUrl: statusUrlFor(vm),
     comment,
     plan: planSha,
     planPath: `plans/${planName}`,
@@ -305,25 +249,41 @@ export async function launch ({ argv, exec = defaultExec, config, now = () => ne
 }
 
 /**
+ * A fresh `cp` answers `ls` before it answers ssh. Ask `ssh <dest> true` until
+ * it does, for at most SSH_WAIT_MS; a VM that never answers is reported with
+ * the last ssh output and the start command, since the grants and the comment
+ * are already in place and only the start is owed.
+ */
+async function waitForSsh ({ exec, sshDest, vm, now, sleep }) {
+  const deadline = now().getTime() + SSH_WAIT_MS
+  for (;;) {
+    const res = await exec('ssh', [...SSH_OPTS, sshDest, 'true'])
+    if (res.code === 0) return
+    if (now().getTime() >= deadline) {
+      throw new LobbyError(
+        `launch: ${vm} did not answer ssh ${sshDest} within ${SSH_WAIT_MS / 1000} s; last answer (exit ${res.code}):\n${output(res)}\nits grants and comment are in place — start it by hand: ssh ${sshDest} '${START_COMMAND}'`
+      )
+    }
+    await sleep(SSH_RETRY_MS)
+  }
+}
+
+/**
  * Commit the plan (and its verdicts) and answer the commit's sha. A push that
  * loses a race is retried once behind a rebase — `plans/` is append-only, so
  * the rebase can only be clean.
  */
 async function commitPlan ({ exec, dir, added, run }) {
   const add = await git(exec, dir, ['add', '--', ...added])
-  if (add.code !== 0) throw new Refusal(`fleet-runs: git add failed: ${String(add.stderr).trim()}`)
+  if (add.code !== 0) throw new Refusal(`fleet-runs: git add failed:\n${output(add)}`)
   const commit = await git(exec, dir, ['commit', '-m', `plan run-${run}`])
-  if (commit.code !== 0) {
-    throw new Refusal(`fleet-runs: git commit failed: ${String(commit.stderr || commit.stdout).trim()}`)
-  }
+  if (commit.code !== 0) throw new Refusal(`fleet-runs: git commit failed:\n${output(commit)}`)
   let push = await git(exec, dir, ['push'])
   if (push.code !== 0) {
     await git(exec, dir, ['pull', '--rebase'])
     push = await git(exec, dir, ['push'])
   }
-  if (push.code !== 0) {
-    throw new Refusal(`fleet-runs: git push failed: ${String(push.stderr).trim()}`)
-  }
+  if (push.code !== 0) throw new Refusal(`fleet-runs: git push failed:\n${output(push)}`)
   const head = await git(exec, dir, ['rev-parse', 'HEAD'])
   const sha = String(head.stdout).trim()
   if (!isFullSha(sha)) {
@@ -332,9 +292,10 @@ async function commitPlan ({ exec, dir, added, run }) {
   return sha
 }
 
-/** The three lines a launched run prints: its id, where to watch, what it was told. */
+/** The four lines a launched run prints: its id, its VM, where to watch, what it was told. */
 export const renderLaunch = (result) => [
   result.runId,
+  result.vm,
   result.statusUrl,
   result.comment
 ].join('\n')

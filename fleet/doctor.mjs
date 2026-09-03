@@ -193,11 +193,12 @@ function attachedTags (entry) {
  * the objects are built in pairs and a stranger reading four failures at once
  * cannot tell which one to run first.
  *
- * `claude-max` and the `-rw` half of a target pair are checked for the opposite
- * of the others: they must exist and must NOT be attached to the tag. A
- * writable grant on the shared tag is the one arrangement that makes every
- * sandbox on the account able to push to the target for as long as the object
- * lives, which is the posture the whole lift exists to remove.
+ * Only `fleet-runs` rides `tag:fleet`. `claude-max` and BOTH halves of a
+ * target pair must exist and must NOT be on the tag: the launcher attaches
+ * `-ro` per VM for the run's window and the grant swaps it for `-rw`, and a
+ * tag-attached `-ro` can neither be detached from one VM nor share the repo's
+ * one credential slot with `-rw`. Any `t-…-ro`/`t-…-rw` on the tag is red,
+ * whether or not `--target` named it.
  */
 async function integrationsRow (exec, target) {
   const res = await exec(`ssh exe.dev "integrations list --json"`)
@@ -217,7 +218,7 @@ async function integrationsRow (exec, target) {
   if (target !== null) {
     const stem = targetStem(target)
     const fix = `node fleet/target.mjs add ${target}`
-    wants.push({ name: `${stem}-ro`, tagged: true, fix })
+    wants.push({ name: `${stem}-ro`, tagged: false, fix })
     wants.push({ name: `${stem}-rw`, tagged: false, fix })
   }
 
@@ -233,7 +234,16 @@ async function integrationsRow (exec, target) {
       return row(
         'integrations',
         'missing',
-        `${want.name} is attached to tag:${TAG}, which grants it to every fleet VM — detach it`
+        `${want.name} is attached to tag:${TAG}, which grants it to every fleet VM — ssh exe.dev "integrations detach ${want.name} tag:${TAG}"`
+      )
+    }
+  }
+  for (const [name, have] of found) {
+    if (/^t-.+-(ro|rw)$/.test(name) && have.tags.has(TAG)) {
+      return row(
+        'integrations',
+        'missing',
+        `${name} is attached to tag:${TAG} — grants are per VM; ssh exe.dev "integrations detach ${name} tag:${TAG}"`
       )
     }
   }
