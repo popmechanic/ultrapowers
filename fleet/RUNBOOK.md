@@ -1,32 +1,38 @@
-# Fleet RUNBOOK — golden VM build and the live W1 procedure
+# Fleet RUNBOOK
 
-This is the operator procedure for the §W1 "one remote run, end to end" slice
-(spec: `docs/superpowers/specs/2026-08-21-width-program.md` §Phase W1). It is a
-document, not code — every command below names a real file and a real exported
-signature from the tasks that built it (`fleet/preflight.mjs`,
-`fleet/provision.mjs`, `fleet/orchestrator.mjs`, `fleet/drive.mjs`,
-`fleet/shim-main.mjs`), so it can be followed by an operator with an `exe.dev`
-account and nothing else.
+The operator procedure for the fleet: what to build once, what happens per run,
+how the golden is made, how to read capacity, what the trust boundary actually
+promises, and how to roll back. It is a document, not code — every command
+below names a real file in `fleet/`.
 
-No step here touches `skills/ultrapowers/scripts/`, `skills/ultrapowers/kernel/`,
-— the run engine is `fleet/run-engine.mjs` (0.3.0, Amendment 10).
+## The shape
 
-## exe.dev account
+A run's identity is its VM name. `fleet-run-<N>` is also its DNS name, its
+status URL, its `comment` key, its row in `ls` and its argument to `rm`. There
+is no orchestrator and no control VM. The laptop issues three lobby verbs per
+run — copy the golden, attach the Claude subscription to that copy for the
+run's window, write the assignment comment — and the comment is the start
+signal. The target's read grant needs no verb of its own: it rides the `fleet`
+tag, and the copy inherits it. The sandbox boots inert, reads its own name and
+comment from Reflection, clones what it needs from GitHub through exe.dev's
+GitHub integration, runs the engine under a systemd scope with the Claude token
+injected at exe.dev's edge, serves its own status page, commits receipts and
+evidence to the `fleet-runs` repository, posts to `notify`, waits for the write
+grant, then pushes its branch and opens its own pull request. A janitor reaps
+the VMs of runs that are done.
 
-Everything below assumes an exe.dev account whose SSH key is registered, so
-that `ssh exe.dev whoami` prints your username. Nothing else in this file
-works without it: every VM is created, cloned and removed by an
-`ssh exe.dev ...` command, so the account is the first thing to build and the
-first row the doctor checks.
+Nothing on any VM holds a secret. The two long-lived credentials are a
+tag-scoped ssh key on whichever machine runs the janitor, and a VM HTTPS token
+on the laptop for reading a status page.
 
-1. Sign up at exe.dev and note the username it gives you.
-2. Register the public half of a local key on the account, through the web UI.
-   A key generated for this is fine:
-   `ssh-keygen -t ed25519 -N "" -C exe-dev -f ~/.ssh/id_ed25519`.
-3. Point the laptop's `~/.ssh/config` at that key for the two host patterns the
-   fleet uses — `exe.dev` itself, and the `*.exe.xyz` VMs it creates. This is
-   the same stanza §Orchestrator VM writes on the orchestrator for the
-   orchestrator's own key:
+## One-time setup
+
+Four things, and `fleet/doctor.mjs` tells you which of them you are missing.
+`skills/ultrapowers/references/first-run.md` walks each of its rows for someone
+meeting the fleet for the first time; this is the short form.
+
+**1. The exe.dev account.** Register a key, and point `~/.ssh/config` at it for
+both host patterns:
 
 ```
 Host *.exe.xyz exe.dev
@@ -35,810 +41,180 @@ Host *.exe.xyz exe.dev
   IdentityFile ~/.ssh/id_ed25519
 ```
 
-`IdentitiesOnly yes` is the line that keeps a laptop with many loaded keys from
-offering the wrong one first and being refused before it reaches this one.
+`ssh exe.dev whoami` printing your username is the whole of this step.
 
-Then check it:
+**2. A tag-scoped key on whichever VM runs the janitor.** Register it with
+`ssh-key add --tag=fleet`. Measured 2026-09-03: such a key sees only
+fleet-tagged VMs in `ls --json`, can `comment` a fleet VM, gets "not found" for
+anything else — and is refused `integrations attach` and `detach` outright. So
+the janitor's key reaps and writes comments; the write grant stays the
+laptop's act, which is where the pre-merge gate already lives. A run that
+finishes while the laptop sleeps simply waits for its PR.
 
-```bash
-ssh exe.dev whoami
+The janitor's cron line, every five minutes:
+
+```
+*/5 * * * * node /home/exedev/repo/fleet/janitor.mjs
 ```
 
-That printing your username is the whole of this step. A `Permission denied`
-means the key is not registered on the account, or `IdentitiesOnly` is unset
-and the agent offered a different key first. `node fleet/doctor.mjs` reports
-this same check as its first row (§Doctor).
-
-## Golden VM build
-
-**Rebuilding an existing golden: build the replacement, then swap.** Step 1
-below creates `fleet-golden` by name, but that VM already exists and every run
-clones it (`fleet/drive-one.mjs` `DEFAULTS.golden`). Do NOT `rm` it to make
-room — a rebuild that fails partway then leaves no golden and no run can be
-provisioned until it is repaired. Instead:
-
-1. `ssh exe.dev "cp fleet-golden fleet-golden-next --json"` and apply the
-   deltas to the clone. The setup script writes `~/.claude/settings.json`, so
-   a from-scratch golden carries it; the doctor's golden row reads that file.
-   The clone inherits the `fleet` tag, which the orchestrator's tag-scoped key
-   needs in order to `cp` it — a from-scratch replacement has to be tagged by
-   hand (`ssh exe.dev "tag fleet-golden-next fleet"`) before the orchestrator
-   can reach it.
-2. Verify: every check in this section, run against `fleet-golden-next`.
-3. Prove it with a real run: `node fleet/drive-one.mjs … --golden fleet-golden-next`.
-4. Only then `ssh exe.dev "rm fleet-golden"` and
-   `ssh exe.dev "rename fleet-golden-next fleet-golden"`. Renaming keeps the
-   `drive-one` default correct with no code change.
-
-One hand-maintained golden VM: exeuntu + node + pytest + Bun + a warmed repo
-clone. **No superpowers, no credentials of any kind** — the golden image holds
-nothing that could leak if a clone were ever compromised (spec §W1a).
+**3. The integration objects.** Three, plus a pair per target repository:
 
 ```bash
-# 1. Create the VM. exeuntu ships `claude` (Claude Code) and Shelley; node is
-#    not preinstalled, which is what the setup script is for. The script runs
-#    at first boot as `exedev`, not root (`exe-setup.service`), so every
-#    privileged line takes `sudo -n`; without it the install stops on "Could
-#    not open lock file … are you root?" and the VM comes up with no node and
-#    no npm (measured 2026-09-03 on two fresh VMs, #588). The script also
-#    writes the golden's `~/.claude/settings.json`: golden-only files belong in
-#    this version-controlled script, not in hand work after the boot.
-cat > /tmp/fleet-golden-setup.sh <<'EOF'
-#!/bin/sh
-set -eu
-curl -fsSL https://deb.nodesource.com/setup_lts.x -o /tmp/nodesource-setup.sh
-sudo -n bash /tmp/nodesource-setup.sh
-sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
-rm -f /tmp/nodesource-setup.sh
-install -d -m 700 /home/exedev/.claude
-cat > /home/exedev/.claude/settings.json <<'JSON'
+ssh exe.dev "integrations add github --name fleet-runs \
+  --repository <owner>/fleet-runs --act-as-user --attach tag:fleet"
+node fleet/target.mjs add <owner>/<repo>     # creates the -ro / -rw pair
+```
+
+`notify` is enabled once from exe.dev's Integrations page and attached to
+`tag:fleet`. `claude-max` is the Claude subscription as an `http-proxy`
+integration, its bearer piped in on stdin and its `anthropic-beta` header
+injected because the proxy does not forward the client's own; first-run.md
+§integrations carries that command and the reasons behind each of its flags.
+
+Two rules the doctor enforces, because both were paid for: a **writable**
+integration is never attached to a tag, and a target's read-only and writable
+grants never overlap on one VM. `fleet/target.mjs list` shows the pairs and
+`fleet/target.mjs gc` reconciles `integrations list --json` against them,
+because `rm` on a VM leaves integration objects behind.
+
+**4. The golden.** `fleet/golden.sh build`, then `verify`, then `swap` — see
+§The golden below.
+
+Laptop configuration lives in `~/.ultrapowers/fleet.json`; every key is
+optional:
+
+```json
 {
-  "env": { "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "0" },
-  "permissions": { "defaultMode": "bypassPermissions" }
+  "golden": "fleet-golden",
+  "fleetRuns": "~/.ultrapowers/fleet-runs",
+  "vmTokenPath": "~/.ultrapowers/vm-token"
 }
-JSON
-chmod 600 /home/exedev/.claude/settings.json
-EOF
-#    A laptop path handed to `ssh exe.dev new` is read on exe.dev's side, where
-#    it does not exist; pipe the script in on stdin instead (exe.dev docs,
-#    §Setup scripts). The outer `'EOF'` is quoted, so `$` stays literal, and
-#    the inner heredoc needs its own terminator.
-ssh exe.dev "new --name=fleet-golden --cpu=8 --memory=16GB --setup-script=/dev/stdin --json" < /tmp/fleet-golden-setup.sh
-
-# 2. Clone the repo into the exact path provision.mjs and shim-main.mjs expect
-#    (fleet/shim-main.mjs: REPO_DIR = '/home/exedev/repo').
-ssh fleet-golden.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.git /home/exedev/repo'
-#    The engine commits inside the sandbox and the suite is pytest, so the
-#    image needs a git identity and pytest (python3 ships with exeuntu):
-ssh fleet-golden.exe.xyz 'git config --global user.name fleet && git config --global user.email fleet@localhost'
-#    `--break-system-packages` is REQUIRED, not optional: exeuntu's python3.12
-#    is PEP 668 externally-managed, so a plain `pip install --user` refuses
-#    outright ("This environment is externally managed") and the golden comes
-#    up without xdist while pytest itself still answers `--version` from
-#    /usr/local/lib/python3.12/dist-packages. Verified 2026-08-30.
-ssh fleet-golden.exe.xyz 'python3 -m pip install --user --break-system-packages pytest pytest-xdist && python3 -m pytest --version'
-ssh fleet-golden.exe.xyz 'python3 -c "import xdist; print(xdist.__version__)"'   # the import is the check, not the install's exit code
-#    pytest-xdist halves suite wall inside runs (#426): test-command detection
-#    emits `-n auto` when xdist is importable, serial pytest otherwise — so an
-#    older golden without it degrades gracefully instead of failing. Opt out
-#    per run with ULTRAPOWERS_XDIST=0 in the driver env, or pass an explicit
-#    --test-cmd (e.g. for a target repo whose suite is not parallel-safe).
-
-# Bun for greenfield TypeScript targets (#425). One static binary; the target's
-# own `bun install` then needs no network beyond the registry. The fleet DRIVER
-# stays on node — its spawn/SIGTERM semantics are the measured ones.
-ssh fleet-golden.exe.xyz 'curl -fsSL https://bun.sh/install | bash'
-#    The installer puts bun in `~/.bun/bin` and adds it to `~/.bashrc`, which is
-#    a LOGIN-shell path — and the engine never uses a login shell. `ultra_run.py`
-#    runs the suite as `subprocess.run(cmd, shell=True)` (`/bin/sh -c`) and
-#    `ultra_gate.py` spawns `["bash", run_acceptance.sh]`; neither reads
-#    `~/.profile` or `~/.bashrc`. An image with bun only on the login PATH looks
-#    healthy and cannot run a single Bun target — measured 2026-09-03, when
-#    `/bin/sh -c 'bun --version'` on this golden exited 127 while
-#    `bash -lc` answered 1.4.0 (#456). Symlink into a directory that is already
-#    on the non-interactive PATH instead of editing any profile:
-ssh fleet-golden.exe.xyz 'sudo ln -sf /home/exedev/.bun/bin/bun /usr/local/bin/bun && sudo ln -sf /home/exedev/.bun/bin/bunx /usr/local/bin/bunx'
-#    Prove it the way the ENGINE will see it — a non-login shell. `bash -lc` here
-#    is a check that cannot fail: it passes on exactly the broken image.
-ssh fleet-golden.exe.xyz 'bash -c "bun --version && bunx --version"'   # both non-empty
-#    Warm Bun's global package cache IN THE IMAGE so it clones with every
-#    sandbox instead of being refetched per run (#425 item 3). With the cache
-#    warm, a target's `bun install` is a hardlink operation: measured 574 ms
-#    laptop-side and 17 ms on the golden with `--offline` (2026-08-30), against
-#    a cold-cache fetch of the npm registry on every cell. `bun install --offline`
-#    succeeding IS the proof the cache is real — it cannot pass by silently
-#    reaching the registry.
-ssh fleet-golden.exe.xyz 'bash -c "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install && rm -rf node_modules bun.lock"'
-#    Measure the cache by PATH — never with a `du -sh` of `$(bun pm cache)`:
-#    outside a project dir `bun pm cache` exits non-zero with "No package.json
-#    was found", the substitution collapses to empty, and `du -sh` silently
-#    measures `.` instead — printing a healthy-looking 535M for $HOME on a
-#    golden whose cache is cold. A check that cannot fail is not a check
-#    (2026-08-30).
-ssh fleet-golden.exe.xyz 'bash -c "du -sh ~/.bun/install/cache"'   # tens of MB: the cache survives
-ssh fleet-golden.exe.xyz 'bash -c "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install --offline && rm -rf node_modules bun.lock"'
-
-# 3. Install fleet's own node deps inside the clone (fleet/node_modules stays
-#    gitignored — the shim imports tinybase + ws). Nothing else is installed
-#    into the image: the engine arrives per run as a pushed ref, and no
-#    superpowers install is present — deliberately (see the note after step 6).
-ssh fleet-golden.exe.xyz 'cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
-
-# 4. Warm the clone once so the first real run pays no cold cost (pyc caches)
-#    and prove the suite actually runs in the image:
-ssh fleet-golden.exe.xyz 'cd /home/exedev/repo && python3 -m pytest -q tests/test_version_sync.py'
-
-# 5. Prune the golden's Claude transcripts before trusting the image. Every
-#    `claude` invocation above leaves a session transcript under
-#    ~/.claude/projects; those ride into every sandbox clone and land in the
-#    evidence bundle `driveOne` pulls (#197), polluting the ultralearn sense
-#    corpus — six-day-old golden transcripts have been found in run bundles.
-#    Prune once, here, at the end of the build: nothing the image does
-#    afterwards writes another transcript.
-ssh fleet-golden.exe.xyz 'rm -rf ~/.claude/projects/*'
-
-# 6. Verify the posture before trusting the image for real runs.
-ssh fleet-golden.exe.xyz 'claude --version'   # non-empty
-#    That version is the CLI the workers run, not the engine a run executes —
-#    the engine arrives as the pushed `fleet-engine` ref (the note below). Keep
-#    the CLI fresh through `fleet/update-cli.sh` (§Live W1 run), the one entry
-#    point, which updates golden and orchestrator together.
-ssh fleet-golden.exe.xyz 'nproc'              # must print 8 (the --cpu=8 above; #179 fact sheet §1)
-ssh fleet-golden.exe.xyz 'test -d /home/exedev/repo/.git && echo clone-ok'
-ssh fleet-golden.exe.xyz 'git -C /home/exedev/repo remote get-url origin && test -z "$(git -C /home/exedev/repo status --porcelain)" && echo clone-clean'
-ssh fleet-golden.exe.xyz 'which claude-code-superpowers || echo no-superpowers-ok'
 ```
 
-**The engine is the orchestrator checkout, pushed as `fleet-engine` (#575).**
-What a run executes is the orchestrator's `/home/exedev/repo` at the commit the
-launch step pinned, pushed to the sandbox's `/home/exedev/repo` as
-`fleet-engine`; the repository being built is a separate push, `fleet-base`,
-delivered to `/home/exedev/target` from that target's cache clone under
-`/home/exedev/targets/`. No plugin is installed on any sandbox, so nothing
-about the golden's image chooses the engine: a branch, or main between
-releases, runs its own engine by virtue of being what the orchestrator has
-checked out. What still needs a golden rebuild is a dependency change in
-`fleet/package.json` — the image carries `fleet/node_modules`, and no push can
-add to it. Rebuild with the swap procedure at the top of this section.
+Those are the defaults; the values shown are what you get with no file at all.
+`fleetRuns` is a local clone of the `fleet-runs` repository, made for you on
+first use. `vmTokenPath` holds a token minted with
+`ssh exe.dev "ssh-key generate-api-key --vm=<vm> --exp=…"`, which is how a
+laptop script reads a run's status page through the proxy without a browser.
+Always pass `--exp`.
 
-Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
-issues `ssh exe.dev "cp fleet-golden fleet-<runId> --json"` as its first command
-— never `fleet-golden` itself, which stays untouched between runs.
+## Per run
 
-## Orchestrator VM
-
-One long-lived VM (`fleet-orchestrator`) runs the TinyBase ws-server, the
-driver, and holds the only credentials in the fleet (§W1a). It is the machine
-you run every drive FROM; sandboxes push their run branches back to its
-checkout.
-
-**Build the golden first (§Golden VM build): step 1 reuses its setup script and
-step 2 tags it, so an orchestrator built before the golden stops at its first
-command.**
+Three commands, and none of them is an ssh into a VM.
 
 ```bash
-# 1. Create it (small — it never runs an engine; the sandboxes do). The setup
-#    script is the golden's, written in §Golden VM build step 1 and piped in
-#    on stdin the same way.
-ssh exe.dev "new --name=fleet-orchestrator --cpu=2 --memory=4GB --setup-script=/dev/stdin --json" < /tmp/fleet-golden-setup.sh
-
-# 2. Its own SSH key, registered on the account SCOPED BY TAG so the key can
-#    reach fleet VMs (cp/rm/stat for provisioning + teardown) but nothing else
-#    on the account (#213).
-ssh fleet-orchestrator.exe.xyz 'ssh-keygen -t ed25519 -N "" -C fleet-orchestrator -f ~/.ssh/id_ed25519 && cat ~/.ssh/id_ed25519.pub'
-ssh exe.dev "ssh-key add --tag=fleet '<the printed public key>'"
-ssh exe.dev "tag fleet-golden fleet"        # every fleet VM carries the tag; provisionRun copies fleet-golden, so clones inherit it
-ssh fleet-orchestrator.exe.xyz 'printf "Host *.exe.xyz exe.dev\n  StrictHostKeyChecking accept-new\n  IdentitiesOnly yes\n  IdentityFile ~/.ssh/id_ed25519\n" > ~/.ssh/config && chmod 600 ~/.ssh/config'
-
-# 3. A clone of this repo at the same path the shim expects, with fleet's deps.
-ssh fleet-orchestrator.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.git /home/exedev/repo && cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
-#    This checkout is the engine every run pushes: whatever is here is what the
-#    drive delivers to the sandbox as `fleet-engine` (drive-one.mjs runs out of
-#    it; where the drive runs from is not a flag), and the #282 versionStamp
-#    cross-check reads plugin.json from HEAD of it. A dirty checkout refuses to
-#    drive (#575). Before a drive, pin it to the newest release on `main` — the last
-#    commit that touched .claude-plugin/plugin.json — and read the stamp back:
-ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q $(git -C /home/exedev/repo log -1 --format=%H origin/main -- .claude-plugin/plugin.json) && git -C /home/exedev/repo show HEAD:.claude-plugin/plugin.json'
+node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
-**Hand work on the orchestrator.**
-The orchestrator carries no `pytest-xdist`, so a suite run there is serial: `python3 -m pytest` without `-n auto` (141 s for the fleet files, measured 2026-09-01).
+The launcher commits the plan and its `.gate-verdicts.json` to `fleet-runs`,
+copies the golden to `fleet-run-<N>` (which inherits the `fleet` tag and with
+it the read grants), attaches `claude-max` to that VM for the run's window, and
+writes the assignment comment that starts it. It prints the run number and
+`https://fleet-run-<N>.exe.xyz/`. A refusal — an unpushed base, a malformed
+target, a missing integration — exits 2 before any lobby verb runs, so a
+refused launch has changed nothing on the account.
 
-The OAuth token lands here in the next section and the GitHub token in the one
-after (#368); nothing else secret lives on it.
+The engine the run drives with defaults to the public tip of this repository on
+GitHub, because the sandbox clones from GitHub and a commit that exists only on
+your laptop is unfetchable. `--engine <sha>` pins anything else — a release
+commit, or an older engine when the run is about an engine change.
 
-The orchestrator shell has no GitHub push credential (the drive pushes with its own token inside `drive.mjs`), so adoption or rescue work done by hand there is fetched to the laptop over ssh and pushed from the laptop:
+Then walk away. `notify` reports gate-green, parked, failed, and the deadman.
+The status page is JSON: `state` moves `booting` → `running` →
+`awaiting-grant` → `publishing` → `done`, or stops at `parked` or `failed`.
 
 ```bash
-# The orchestrator's own `main` after a hand adoption or a rescue commit
-# (#533) — name `refs/fleet/run-<N>` instead when it is a run tip you are
-# rescuing (§Park triage). A `git push` typed on the orchestrator itself dies
-# with `could not read Username` (#537); only the laptop has the credential.
-git fetch ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/repo main:orchestrator-main
-git log --oneline main..orchestrator-main   # read what you are about to push
-git push origin orchestrator-main:main
+node fleet/grant.mjs <N>
 ```
 
-## Engine auth — the Max subscription, delivered per run (#213)
+The approval act, once the phone says `awaiting-grant`. It reads the run's
+state, detaches the target's read-only grant from that VM, attaches the
+writable one for fifteen minutes (`--for` changes the window), and the sandbox
+pushes and opens its PR. Never both grants at once.
 
-The engine (`claude -p` inside each sandbox) bills the operator's Claude
-**Max subscription**, not the hosting provider's LLM gateway. Two facts from
-the Claude Code auth docs drive the setup: `claude setup-token` issues a
-one-year subscription OAuth token for headless use via
-`CLAUDE_CODE_OAUTH_TOKEN`, and auth precedence is
-`ANTHROPIC_API_KEY` > `apiKeyHelper` > `CLAUDE_CODE_OAUTH_TOKEN` — so the
-golden must carry **no** `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`
-(with them present every run silently bills the provider's gateway instead;
-that is how runs 1–8 burned ~$5 each of exe.dev Shelley credits).
+By default it reads the `status.json` the sandbox **committed** to
+`fleet-runs/runs/<N>/`, after a pull — plain git, no exe.dev token. `--live`
+reads the VM's own status page over HTTPS instead, which needs a token minted
+for that one VM:
 
 ```bash
-# 1. On the operator laptop, once a year (browser flow; prints the token):
-claude setup-token
-#    Save the printed token to a 0600 file, e.g. ~/.secrets/fleet-claude-oauth-token.
-
-# 2. Put it on the ORCHESTRATOR only — it holds the credentials (§W1a); the
-#    golden image holds none. Never echo it into a shell history or a transcript.
-scp ~/.secrets/fleet-claude-oauth-token fleet-orchestrator.exe.xyz:/home/exedev/.fleet/claude-oauth-token
-ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /home/exedev/.fleet/claude-oauth-token'
-
-# 3. Golden settings.json: NO ANTHROPIC_* keys. Edit with jq, never a heredoc
-#    overwrite (that dropped enabledPlugins once and cost a run — see #193).
-#    The file exists because the golden's setup script wrote it (§Golden VM
-#    build step 1); on a fresh golden this is a no-op.
-ssh -n fleet-golden.exe.xyz 'f=~/.claude/settings.json; jq "del(.env.ANTHROPIC_BASE_URL, .env.ANTHROPIC_API_KEY)" $f > $f.new && mv $f.new $f && cat $f'
-#    expected: env keeps CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS; permissions intact.
+ssh exe.dev "ssh-key generate-api-key --vm=fleet-run-<N> --exp=1h"
 ```
 
-The driver passes the token as `engineEnv` (below). `provisionRun` delivers it
-to the sandbox as `/home/exedev/fleet-env` (umask 077, same heredoc pattern as
-`fleet-run.json`) and starts the shim with `set -a && . /home/exedev/fleet-env
-&& set +a && nohup node …` — sourced, never on an argv, never in the image. The
-shim logs `claude auth status` (`authMethod`, `subscriptionType`) to `shim.log`
-right before the engine launch, so every run's pulled evidence (#197) names the
-credential it rode; expect `"authMethod":"oauth"`/subscription, **not**
-`"api_key"`. A sandbox only holds the token for the run's lifetime; rotate with
-a fresh `setup-token` if one is ever suspected compromised.
-
-Max usage is one 5-hour + weekly window **per account across all machines**, so
-the fleet shares the window of whichever account's token it rides. That line
-used to end "that — not vCPU — bounds width", and was cited for years-in-agent-
-time as the reason runs must be serial. **Measured 2026-09-01 (#454,
-`evals/frontier/results/2026-08-31-concurrent-drains.md`): it does not bind
-through N=3 concurrent drains** — six gate-green runs in one window, batch wall
-0.26× of serial-equivalent at N=3, zero 429s, no per-drain degradation. Serial-
-by-default is retired for independent plans; the ceiling is somewhere above
-N=3 and still unmeasured. Concurrent-launch shape (each drive needs its own
-`--port` and `--db-dir`, and each launch its own subshell with the cwd set — a
-chain of them after the first loses the `cd`; `setsid -f` rather than
-`nohup ... &` for the same reason as the single run below):
+That per-VM minting is why the live read is not the default. Either way the run
+has to be in `awaiting-grant`, which the sandbox sets only after its engine
+scope is empty.
 
 ```bash
-ssh -n fleet-orchestrator.exe.xyz 'for r in 41 42 43; do (cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan.md> run-$r --target <owner>/<repo> --base <sha> --port $((8146+r)) --db-dir /tmp/fleet-orch-run$r </dev/null >/home/exedev/fleet-evidence/drive-run-$r.out 2>&1); done; exit'
+node fleet/janitor.mjs [--dry-run] [--sweep-grants]
 ```
 
-Note the operator runs multiple subscriber accounts in rotation (#513): a
-`/usage` read is **per account**, so meter the token the fleet is actually
-riding, not whichever token the laptop Keychain holds.
-There is no per-invocation spend flag, and **there is no longer a per-run token
-cap** — it was deleted in #400 (one-driver Amendment 4): it never fired in
-twelve runs (peak run-18, 63%), metered dollars when the scarce resource is the
-rate window, and was calibrated from size means. The shim's `readSessionTokens`
-still writes the `spend` ledger; nothing enforces against it. **The rate window
-is the spend control, and reading it is the operator's job.**
+Reaps. It lists fleet VMs, reads each status, `rm`s the ones that are `done` or
+long-failed, and marks a run `expired` after six hours without finishing.
+`--dry-run` prints what it would do; `--sweep-grants` also detaches grants left
+behind. It is a cron job; run it by hand when its machine has been asleep.
 
-## GitHub auth (#368) — the orchestrator opens the PR
-
-The second (and last) secret in the fleet. After a run resolves, `driveOne`
-pushes the fetched run branch to `origin` (GitHub) and opens the PR itself —
-see §Live W1 run "The orchestrator opens the PR". That needs a **fine-grained
-personal access token scoped to the repositories you drive** with exactly
-`Contents: Read and write` + `Pull requests: Read and write` (nothing else —
-no `Workflows`, no org scope). A target outside the token's repository access
-parks the run at publish with a 403; the branch and its receipts are still
-pinned in the target's cache clone under `/home/exedev/targets/`. It lives
-beside the OAuth token, on the orchestrator only: never on the golden, never in
-a sandbox (the sandbox still pushes to the orchestrator's checkout over the
-tunnel exactly as today and never sees GitHub). Every new target needs this
-token's repository access widened before its first drive:
-`node fleet/doctor.mjs --target <owner>/<repo>` is the check, and
-`/ultrapowers` runs it before every launch, so a too-narrow token costs a
-launch, not a run.
+If a VM must go right now:
 
 ```bash
-# 1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate:
-#    Repository access: every repository you will drive with `/ultrapowers`, ultrapowers itself included.
-#    Permissions: Contents (Read and write), Pull requests (Read and write).
-#    Save the printed token to a 0600 file, e.g. ~/.secrets/fleet-github-token.
-
-# 2. Put it on the ORCHESTRATOR only — same pattern as the OAuth token.
-scp ~/.secrets/fleet-github-token fleet-orchestrator.exe.xyz:/home/exedev/.fleet/github-token
-ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /home/exedev/.fleet/github-token'
-
-# 3. Prove it, without printing it: gh reads GH_TOKEN from the env, and
-#    gh prints the token masked itself (`- Token: github_pat_****…`), so
-#    nothing here needs to filter the output.
-ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && GH_TOKEN=$(cat /home/exedev/.fleet/github-token) gh auth status'
+ssh exe.dev "rm fleet-run-7 fleet-run-9 --json"
 ```
 
-`driveOne` reads the file (`--github-token-path` overrides the path) and hands
-it to `git push` and `gh pr create` **only** as the `GH_TOKEN` environment
-variable of those two commands (`exec(cmd, {env})`, layered per command — never
-on an argv, never exported into the driver process, never in `detail`, and
-scrubbed from any command output that is recorded). The push authenticates
-through `-c credential.helper='!gh auth git-credential'`, so nothing is written
-to the orchestrator's git config; the clone's `origin` must stay the **https**
-URL from §Orchestrator VM. A missing token file is not a failure of the run:
-`detail.errors` gets `github-token missing at … — PR not opened`, the branch is
-still fetched into the orchestrator checkout, and the gate read is exactly what
-it would have been. Rotate by generating a new token and repeating step 2.
+`rm` accepts several names at once. An orphan on exe.dev costs width and
+average disk, not hourly money — the billing pool is fixed — so a janitor every
+five minutes is plenty and there is nothing to page about.
 
-## Doctor
+## The golden
 
-`node fleet/doctor.mjs` is the read-only check of everything above: one row per
-section — exe.dev account, orchestrator, golden, token, github-token — and a
-sixth, preflight, that runs only with `--probe` because it clones the golden
-into a throwaway `fleet-doctor-probe` VM and removes it.
+The image every sandbox is copied from. `cp` takes seconds and warm caches
+multiply by concurrency, which is why the fleet copies an image rather than
+building each sandbox.
+
+`fleet/golden-setup.sh` is the whole build as one first-boot script: node,
+git identity from Reflection, pytest with xdist, Bun with its symlinks and a
+warmed cache, the engine clone with `npm ci` already run in `fleet/`, the
+settings file, the boot unit, a transcript prune, and a stamp at
+`/home/exedev/.fleet-golden` holding the script's own sha256. Over the size
+limit for a setup script, `fleet/golden-bootstrap.sh` is what is actually
+passed to `new` — 308 bytes that `curl` the versioned script from GitHub at a
+sha. Measured 2026-09-03: thirty seconds to a built VM.
 
 ```bash
-node fleet/doctor.mjs           # the five read-only rows
-node fleet/doctor.mjs --target <owner>/<repo>   # plus: can the token reach that repo?
-node fleet/doctor.mjs --probe   # plus preflight, which clones a VM and removes it
-node fleet/doctor.mjs --json    # the same verdicts as one JSON object
+sh fleet/golden.sh build fleet-golden-next     # a fresh VM from golden-setup.sh
+sh fleet/golden.sh verify fleet-golden-next    # prove it is the image the script builds
+sh fleet/golden.sh swap                        # make it the image runs are copied from
 ```
 
-A missing row names the section of this file that builds it; `--json` is what
-`/ultrapowers setup` reads. Re-run it after every step of a build; a green
-doctor is the posture check, not the build's exit code.
+`verify` is not optional and `swap` is separate on purpose: the golden in
+service keeps serving runs while the new one is built and checked, and only the
+swap changes what a launch copies. **Never `rm fleet-golden` to make room for a
+rebuild** — a build that fails then leaves no image at all, and the fleet is
+down until someone repairs it by hand. Build under the second name, verify it,
+drive one real run on it, and only then swap. A build that fails costs a VM,
+not a run.
 
-The `--probe` row is the §Preflight procedure below, run for you; the section
-that follows is where its verdicts are explained and where to go when the
-VM→VM fetch is the leg that failed.
+**Never `defaults write dev.exe new.setup-script`.** That setting is
+account-wide — it would apply the fleet's first-boot script to every VM you
+ever create. The script is passed to the one `new` that builds the golden and
+nowhere else.
 
-## Preflight
+Two build inputs travel with the image and have to be re-captured together when
+the Claude CLI version changes: the CLI itself, and the `anthropic-beta` header
+list injected by the `claude-max` integration. The golden carries no
+`ANTHROPIC_*` variable anywhere; the base URL is set by the boot unit on the
+engine's child process only, and the run's log line recording
+`claude auth status` stays, so a run that ever reads `api_key` is caught.
 
-`fleet/preflight.mjs` exports `preflight({orchVm, probeVm, exec})` — the one
-transport link no #179 fact demonstrated directly: VM→VM `git fetch` over SSH,
-with a symmetric HTTPS `git ls-remote` fallback. Run it against the
-orchestrator VM and a throwaway clone of `fleet-golden` before the first real
-run:
-
-Run from the repo root — the inline `-e` script below imports `./fleet/preflight.mjs`
-by relative path, resolved against the working directory:
-
-```bash
-ssh exe.dev "cp fleet-golden fleet-preflight-probe --json"
-
-node --input-type=module -e '
-  import { preflight } from "./fleet/preflight.mjs"
-  import { execFile } from "node:child_process"
-
-  const exec = (cmd) =>
-    new Promise((resolve) => {
-      execFile("/bin/sh", ["-c", cmd], { maxBuffer: 10*1024*1024 }, (error, stdout, stderr) =>
-        resolve({ code: error?.code ?? 0, stdout: `${stdout}${stderr}` })
-      )
-    })
-
-  const result = await preflight({ orchVm: "fleet-orchestrator", probeVm: "fleet-preflight-probe", exec })
-  console.log(JSON.stringify(result))
-'
-
-ssh exe.dev "rm fleet-preflight-probe --json"
-```
-
-- `verdict: 'ssh'` — proceed to the live run as designed.
-- `verdict: 'https-fallback'` — the symmetric HTTPS remotes work but direct
-  SSH does not; proceed, but **record `https-fallback` in the run's gate-read
-  detail** (`fleet/drive.mjs`'s `detail.errors`, or a note alongside
-  `reportPath`) so §W1d's read is honest about which transport carried the run.
-- `verdict: 'BLOCKED'` — **stop.** Neither leg works; provisioning cannot
-  deliver the base ref or pull the run branch back. Fix connectivity (exe.dev
-  account/firewall/SSH key) before attempting a live run.
-
-## Live W1 run
-
-`fleet/drive.mjs` exports `driveOne(...)` — a library function that starts the
-orchestrator, provisions a sandbox via `provisionRun`/`destroySandbox`
-(`fleet/provision.mjs`), watches the run to `gate-green` or `parked`, and
-writes the §W1d gate read to disk. The committed CLI `fleet/drive-one.mjs`
-wraps it (#193): no throwaway script to retype, nothing left untracked in the
-checkout, and it works from any cwd (the base is pushed from the checkout the
-CLI lives in — `--repo-dir` overrides).
-
-```bash
-# On the orchestrator, after the "bring the clone to the base ref" step above.
-# runId is unique per account lifetime — NEVER reuse one (#211); the token is
-# read from /home/exedev/.fleet/claude-oauth-token (--token-path overrides) and
-# travels only as engineEnv — see "Engine auth" above.
-#
-# Detach it from your ssh session: the remote job inherits the channel's stdin,
-# so `ssh -n` alone is not enough — redirect stdin from /dev/null too, or a
-# human terminal sits blocked for the whole run. And the redirects alone are not
-# enough either: measured 2026-09-01 with a 45 s child, `nohup … </dev/null >f
-# 2>&1 &` held the client for the child's whole 47 s (so did `& disown` and
-# `& exit 0`), while a NEW SESSION released it in 2 s. `setsid -f` is that new
-# session in one greppable token (`/bin/setsid` is on the golden), and it
-# backgrounds by itself — no trailing `&` (#524).
-# tests/test_launch_snippet_detaches.py pins this shape on every launch line here.
-# `mkdir -p` first: the redirect below is the SHELL's, evaluated before the driver
-# runs, so it does not benefit from drive.mjs's own mkdir of evidenceDir (#466).
-# The plan is staged OUTSIDE the engine checkout, in a per-run directory: the
-# checkout is the engine (§Orchestrator VM) and a plan file dropped into it
-# would ride to the sandbox as an engine change. `--target` and `--base` name
-# the repository the run builds — ultrapowers is just one of them.
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/plans/run-<fresh>'
-rsync -a docs/superpowers/plans/<the-approved-plan>.md docs/superpowers/plans/<the-approved-plan>.gate-verdicts.json fleet-orchestrator.exe.xyz:/home/exedev/plans/run-<fresh>/
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs /home/exedev/plans/run-<fresh>/<the-approved-plan>.md run-<fresh> --target <owner>/<repo> --base <sha> </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1'
-
-# Race the plan instead (#511, operator asks for it by name): K whole runs of
-# one plan, driven concurrently from this single process — so it detaches the
-# same way, and the raceId is a fresh `run-N` whose attempts become run-<N>-a/b/c.
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/race.mjs launch /home/exedev/plans/run-<fresh>/<the-approved-plan>.md run-<fresh> --k 3 --target <owner>/<repo> --base <sha> </dev/null >/home/exedev/fleet-evidence/race-run-<fresh>.out 2>&1'
-# Then read it: `node fleet/race.mjs judge run-<fresh>` (RUNBOOK evidence dir).
-
-# Updating Claude Code on the fleet: NEVER by hand and never on a schedule —
-# version drift is event-driven (sandboxes inherit the golden's binary; the
-# auto-updater is frozen via DISABLE_AUTOUPDATER in the worker env), so the
-# one entry point is the workflow, which updates golden + orchestrator
-# together and runs ONLY the four live parity probes at the moment of change
-# (tests/test_update_cli.py pins the probe list and sentinels):
-#   bash fleet/update-cli.sh [<version>]
-# A red probe prints the rollback for both hosts and refuses the version.
-
-# Watch it (the shim/driver progress log rides stderr into the same file):
-ssh fleet-orchestrator.exe.xyz 'tail -f /tmp/drive-run-<fresh>.out'
-
-# Better (#421): subscribe as a LIVE SYNC PEER instead of tailing a log. The
-# drive mints a read-side observer token into <dbDir>/observer.json; tunnel
-# the ws port, fetch the token, and every worker event / phase / stage pushes
-# to the laptop as it happens (fleet/watch.mjs, read-only by construction):
-ssh -N -L 8180:127.0.0.1:8180 fleet-orchestrator.exe.xyz &
-ssh fleet-orchestrator.exe.xyz 'cat /tmp/fleet-orch-live/observer.json' > /tmp/observer.json
-node fleet/watch.mjs --observer /tmp/observer.json --run run-<fresh>
-```
-
-Knobs, all optional (defaults = the W2 charter constants):
-`--port 8180` (any explicit port; concurrent drains take distinct ports),
-`--db-dir /tmp/fleet-orch-live` (the orchestrator's per-path SQLite persister
-dir; concurrent drains take distinct dirs — that separation is the W2a isolation),
-`--golden fleet-golden`, `--ttl-hours 4` (store-token lease TTL — size to the plan's
-expected wall clock with margin; a short lease expires mid-run and reads as a
-heartbeat timeout, #279), `--evidence-dir DIR` (default `/home/exedev/fleet-evidence` — durable, NOT under `/tmp`, #466), `--sandbox-cpu N` /
-`--sandbox-memory SIZE` (the run sandbox's size — §Sandbox sizing, just below; width
-itself is bounded by the
-subscription streams, `WIDTH` in `run-main.mjs`), `--allow-unfit-plan` (only with a
-specific operator pre-authorization for the manual-judgment task named by the
-#322 refusal — never a standing default). `node fleet/drive-one.mjs` with no
-arguments prints the usage line.
-
-**Sandbox sizing (#546).**
-A run sandbox defaults to 16 vCPU and 48 GB; --sandbox-cpu and --sandbox-memory override it.
-The account pool is one shared 16 vCPU / 64 GB allocation across every VM, so an allocation
-is a cap and not a reservation — §Billing below, "the plan meters CONSUMPTION, not
-allocation".
-Raising the default therefore costs nothing while the sandbox is idle, and idle is most of a
-run: workers wait on model round-trips, and suite runs are bursts between turns.
-The old "widest wave width + 2" rule sized against a number that constrains nothing; run-49
-drew 1.5 of 8 cores at width 8.
-What a wide run actually spends is sandbox MEMORY, ~3 GB per busy implementer: run-51 sat an
-eleven-wide wave at load 2.89 on the golden's 8 vCPU with 3 GB used of 15, and run-52 — the
-flags typed by hand — peaked at load 4.28 on 16 vCPU with 3.6 GB used of 48.
-This is a default rather than a clamp: the flags keep overriding it in both directions.
-
-Two things a live run needs now live in `fleet/` proper, so the script above
-needs no exec wrapper of its own:
-
-- **Transport (#196).** exe.dev VMs share no private network and raw VM→VM TCP
-  is blocked, so `provisionRun` opens an SSH reverse tunnel
-  (`ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R <port>:127.0.0.1:<port> fleet-<runId>.exe.xyz`)
-  after the sandbox is reachable and before the shim starts — which is what
-  keeps `driveOne`'s default `wsUrl` `ws://127.0.0.1:<port>/fleet` true on both
-  ends. A tunnel that fails to open throws out of `provisionRun` (the run is
-  recorded red in `detail.errors`, the sandbox still torn down). `destroySandbox`
-  kills the detached tunnel process after the `rm`. Every sandbox-bound ssh (and
-  git-over-ssh) command carries
-  `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` because sandboxes
-  are ephemeral — a fresh `fleet-<runId>.exe.xyz` per run, never reused, so there
-  is no host key worth pinning and a reused/recycled hostname would otherwise
-  trip a stale `known_hosts` entry (#211); lobby (`exe.dev`) and golden
-  (`fleet-golden.exe.xyz`) connections keep the normal host-key config. A socket
-  that dies mid-engine-phase is logged once in shim.log and rescued only at the
-  terminal publish — if the engine phase outlives heartbeatTimeoutMs from the
-  drop, the driver times out and destroys the sandbox before the rescue can run.
-  Mid-run reconnect is a W2 item.
-- **Evidence before teardown (#197).** `driveOne` pulls the small sandbox
-  artifacts — `shim.log`, `fleet-run.json`, `~/.claude/projects` (engine
-  transcripts), and the gitignored `repo/.claude/ultrapowers/run-*/` dirs — to
-  `<evidenceDir>/sandbox-logs/fleet-<runId>-<stamp>/sandbox-logs.tgz` before
-  every `destroySandbox` (normal end of run and the cap-overshoot action alike),
-  where `evidenceDir` is `/home/exedev/fleet-evidence` (#466). The pull is best-effort and
-  bounded (`logPullTimeoutMs`, default 120 s): a failed pull lands in
-  `detail.errors` and teardown proceeds. `detail.sandboxLogs` names the archive,
-  or is `null`.
-
-  On the same leg, one control-plane capture that only exists while the VM does:
-  `stat <vm> --json --range=24h` → `<evidenceDir>/stat-<runId>.json`, bounded by
-  its own `logPullTimeoutMs`. The raw payload is kept whether or not it parses;
-  the derived read is `detail.sandboxStat` (`{peakCores, meanCores,
-  peakMemBytes}`, or `null`). Every failure here — refused command, non-zero
-  exit, timeout, bad JSON — lands in `detail.errors` and leaves the field
-  `null`; `destroySandbox` still runs. (There is no credit-spend capture: the
-  engine rides the Max subscription, and `shim.log`'s `engine auth` line is the
-  per-run receipt of that route.)
-
-  Keep `dbDir` across runs — never `rm` it; a persisted store is test-pinned safe
-  (prior-run rows do not perturb a new run's gate read). Evidence lives outside it
-  in `evidenceDir` (`/home/exedev/fleet-evidence`, #466 — a durable path, not a
-  derivative of `dbDir`), so a fresh-store experiment never deletes evidence. `detail.sandboxStat` is a floor estimate — `stat` samples every
-  10 minutes.
-
-`driveOne` requires an explicit `runId` (it refuses to run without one —
-runIds are unique per account lifetime, #211) and defaults `ttlMs` to 4h — pass
-`--ttl-hours` explicitly for anything unusual. There is no `--cap-tokens`: it is
-**refused as an unknown flag**, not silently ignored (#400).
-`destroySandbox` (`fleet/provision.mjs`) is
-called by `driveOne` itself before it returns, so the sandbox is already torn
-down by the time this script prints its output — see **Teardown guarantee**
-below for the one case that still needs an operator's hand.
-
-**Headless fitness (#322, #337).** `driveOne` refuses a plan carrying any task
-whose verification can only be evidenced by human judgment — the known class
-is the instruction-only doc task (`implementation` type, every Files entry a
-`.md`, no `Test:` entry). run-14 proved such a task makes a `deferred:manual`
-park a certainty, discovered only after ~47 min and 203k tokens. Before
-dispatching: rewrite the verification into runtime/external form (add a
-pinning test), or route that task to a local drain. `allowUnfitPlan: true`
-(`--allow-unfit-plan`) overrides — pass it only with a specific operator
-pre-authorization for that manual ack, and the override is recorded in
-`detail.errors`. The plan assessed is the **file at `<plan.md>`** — any
-readable file, shipped in the run assignment and known to the sandbox by its
-basename (#544, #575); nothing reads a plan out of git, so there is no
-committed copy for it to diverge from. What must be clean is the ENGINE
-checkout the drive runs out of: an uncommitted change to a tracked file there
-is refused before any provisioning (`is not clean` — commit, stash or discard
-it), because the engine is pushed at HEAD and a tree HEAD does not name cannot
-be what the sandbox ran. An untracked file is not: the push ships that HEAD
-alone, so a stray `drive-run-*.out` or a plan staged in the checkout can never
-reach a sandbox and is tolerated (#579).
-
-**The orchestrator opens the PR (#368).** Once the run resolves and its
-branch is fetched into the target's cache clone as `refs/fleet/<runId>`
-(#575), `driveOne` — after teardown, so the billing clock never waits on
-GitHub — pushes the fetched tip to that clone's `origin` (the target's own
-GitHub repository) **as-is** (`git push origin <tip-sha>:refs/heads/<runBranch>`;
-merge commits included, never rebased — a linear replay re-creates the overlap
-the fold unioned, #363) and opens the PR with `gh pr create --repo <owner>/<repo>
---head <runBranch> --body-file <evidenceDir>/pr-body-<runId>.md` — no `--base`:
-a foreign PR targets GitHub's default branch. The body is the
-gate receipt (`fleet-receipts/<runId>/gate-receipt.json`, read off the branch
-at its receipt pointer) rendered: verdict, checks, acks, the five §W1d legs,
-spend, `autoResolved` and the completeness-critic findings when the receipt
-carries them (they live in the engine's gitignored `report.json`, which is in
-the evidence bundle and not on the branch), the receipt pointers, the driver's
-notes, then `Closes #N` lines from the plan header and the standard trailer.
-Green → a normal PR; parked with `parkedPublish` → a **draft** PR titled
-`[parked] …` with the ack list first (§Park triage). A gate-green run whose
-receipts do not resolve gets NO PR (`PR not opened: gate-green but receipts
-unresolvable …` in `detail.errors`) — diagnose first, per §Gate read.
-
-The plan's **`Closes` convention** (new with #368 — no plan carried one
-before): in the plan header, above the first `## ` section, a
-`**Closes:** #N, #M` line (or a bare `Closes #N` line). The title's
-`(#318 #319)` parenthetical and `**Spec:**` prose are references, not closes,
-and are never harvested; neither is anything below the first section heading.
-
-The result is `detail.pullRequest` — `{number, url, draft, branch}` — and the
-url is stamped on the runs row (`pullRequestUrl`). Any failure (token missing,
-push refused, `gh` error) lands in `detail.errors`, leaves `pullRequest`
-`null`, and never touches the gate read: green stays green, parked stays
-parked. The branch is still fetched locally in that case, so nothing is lost —
-push and open the PR by hand from the orchestrator checkout, never from the
-laptop.
-
-**Merge is still the human's.** The orchestrator never enables auto-merge; the
-operator reviews and merges on GitHub (and deletes the branch there).
-
-This **deletes** the laptop-side integration procedure used through run-20
-(2026-08-28, three times in one sitting), every step of it: `git fetch
-<orchestrator> <runBranch>` onto the laptop → pin the tip as `keep/run-N` →
-rebase-or-merge onto main → local test run → `gh pr create` from the laptop →
-`gh pr merge --auto` → hand-delete the surviving branch — and with it the
-`keep/run-N` pinning habit and the `FETCH_HEAD`-only near-loss class (#333
-item 1): the branch lives on GitHub the moment the run ends. The laptop never
-fetches a run branch again.
-
-## Gate read
-
-`driveOne` writes its return value's `read` object verbatim to `reportPath`
-(default `<evidenceDir>/gate-read-<runId>.json`) — the file **is** the §W1d read,
-byte for byte. Check it against the five pre-registered questions:
-
-| Field | §W1d question |
-|---|---|
-| `o1` | Did provision → claim → run → gate-green → receipts complete with zero store-caused failures (nothing the guard had to converge away)? |
-| `receiptsResolvable` | Does every receipt the run produced resolve at its `sha` on the fetched sandbox integration branch (the real `ultra/integration-*` branch from the sandbox, stored in `runs.<runId>.branch`, fetched for real — not simulated)? Three verification legs: (1) object existence (`git cat-file -e <sha>`), (2) reachability from the run branch (`git merge-base --is-ancestor <sha> refs/fleet/<runId>` — the fetch's own refspec pins the tip in the target's cache clone, #575), (3) path dereference in the tree (`git cat-file -e <sha>:<path>` — receipts are committed under `fleet-receipts/<runId>/` on the run branch). |
-| `leaseContinuity` | Did the lease renew across the whole run with no false expiry? |
-| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, and do they match what the driver pushed (#282)? The installed-plugin half died at 0.3.0 with the install it checked (`drive.mjs:1123-1127`): no plugin participates in the run, and comparing the golden's bootstrap plugin to the pushed manifest would go permanently red at the first release bump. versionStamp attests the checkout stamp alone. |
-| `spendObservational` | `{reported, ledger}` — the run report's own token total vs. the shim's spend-row sum. **Observational at n=1 by construction** (spec §W1d, finding F6): this first run's own numbers are the input, not a pass/fail check yet. |
-
-`o1` through `versionStamp` must all be `true`. A `false` `o1` (or a non-empty
-`detail.errors` in the sibling `<reportPath minus .json>.detail.json`) means
-stop and diagnose before touching the constants below — per spec, W1 failure
-modes are provisioning/auth/store bugs and cost nothing to fix or abandon; the
-run engine was never touched.
-
-The sibling detail also carries `pullRequest` (#368): `{number, url, draft,
-branch}` for the PR the orchestrator opened on the run branch, or `null` with
-the reason in `errors`. Post the gate read on #189 **with the PR number**; the
-review and the merge happen on GitHub — the run branch is never fetched to the
-laptop (§Live W1 run, "The orchestrator opens the PR").
-
-**Constants this first run sets** (spec §W1c/§W1d — "set at the W1 gate from
-the first run's measured burn"), to be filled in once a `spendObservational`
-reading exists and recorded here or in the docket cap config, not invented in
-advance:
-
-- ~~**Cap defaults**~~ — **deleted (#400).** There is no `capTokens`, no
-  docket-wide budget cap and no `budgets` table. The `spend` ledger is kept as
-  observation; nothing acts on it. Do not reintroduce a threshold fitted to a
-  handful of runs — that is the mistake this deletion is undoing.
-- **Anomaly multiple** — the burn-rate page (spec §W1c enforcement layer 1)
-  stays inert until a trailing window of ≥5 runs exists (W2 at the earliest);
-  this run only seeds the baseline it will eventually page against.
-- **§W1d spend-vs-report tolerance** — the acceptable drift between
-  `spendObservational.reported` and `.ledger` becomes a pass/fail bound from W2
-  on; W1 only observes and records it.
-
-## Park triage (#318)
-
-A parked run that published receipts is not lost work. `driveOne` fetches the
-parked run's integration branch exactly as it does a gate-green run's, and
-reports it as `detail.parkedPublish` — `{branch, fetched: true,
-receiptsResolvable, unapproved: true}`, or `null` when nothing was fetched —
-in the gate-read detail. **`unapproved` means exactly that:** no standing
-grant covers the branch, so merging it requires an explicit operator ack of
-the parked gate receipt's `acks`. **The park card is the draft PR** (#368):
-when `parkedPublish` is non-null the orchestrator has already pushed the
-branch and opened a draft PR titled `[parked] …` whose body leads with the
-ack list (`detail.pullRequest`, `draft: true`). Acking is marking the PR
-ready for review; rejecting is closing it. Merge stays the human's, on
-GitHub — no re-drive, and no laptop-side fetch/rebase/PR.
-
-On every park, triage in this order:
-
-1. Read `detail.parkedPublish` and `detail.pullRequest`. Non-null
-   `parkedPublish` means exactly one thing (#336): the parked run's branch IS
-   fetched into the orchestrator checkout (`fetched` is always `true` when
-   the object exists), and `pullRequest` names the draft PR that wraps it
-   (or is `null` with the push/`gh`/token reason in `errors` — then push and
-   open the draft by hand from the orchestrator checkout). Review the acks
-   at the top of the PR body; `receiptsResolvable` says whether every receipt
-   pointer resolved on the branch. Mark ready to ack, close to reject.
-2. `parkedPublish: null` → nothing survived on this side, for one of two
-   reasons — the park published nothing, or the branch could not be fetched
-   before teardown (`detail.errors` carries `fetch <branch> failed (code N)`
-   or `unsafe branch name …`). Either way, recover via the run-14
-   evidence-diff pattern: the per-task review diffs in the pulled evidence
-   (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
-   apply cleanly to base (PR #317 precedent); reconstruct any
-   integration-only fixes from `report.json`.
-3. **The run's tip is already pinned — do not hand-rescue it.** Every fetched
-   run tip lands on `refs/fleet/<runId>` in the TARGET's cache clone on the
-   orchestrator (`/home/exedev/targets/<owner>--<repo>`, #575) the moment the
-   fetch succeeds — the fetch is the pin — before the publish leg can fail
-   (#497). It survives `git reset --hard` on the engine checkout (the first
-   step of launching the next run) and `gc`. The drive logs `pinned run tip:
-   refs/fleet/<runId> -> <sha>` when it happens. So a failed publish is
-   recoverable, not fatal:
-
-   ```bash
-   # 1. the run tip is already pinned on the orchestrator (#497) — confirm it
-   ssh fleet-orchestrator.exe.xyz 'cd /home/exedev/targets/<owner>--<repo> && git rev-parse refs/fleet/run-<N>'
-   #    expect the sha the drive logged as `pinned run tip: … -> <sha>`
-   # 2. fetch that pinned ref to your laptop over ssh
-   git fetch ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/targets/<owner>--<repo> refs/fleet/run-<N>:refs/heads/ultra/integration-run-<N>
-   # 3. push it with an operator credential — the drive's token could not
-   git push origin ultra/integration-run-<N>
-   # 4. open the PR by hand, carrying this gate receipt as the body
-   gh pr create --draft --head ultra/integration-run-<N> --title '[parked] fleet run-<N>' --body-file pr-body-run-<N>.md
-   ```
-
-   Since #524 you do not have to fill those in by hand. When the publish leg
-   itself fails, the drive re-renders the card it already wrote and leaves
-   these same four commands in it, under a `## Rescue` heading, with this run's
-   real ref, sha, branch and host substituted — read it at
-   `<evidenceDir>/pr-body-run-<N>.md` (`/home/exedev/fleet-evidence/` unless
-   `--evidence-dir` moved it) and paste from there. Note where it is NOT: a
-   failed publish means no PR was opened, so no card on GitHub carries the
-   block — step 4 above is what puts that body on GitHub, and the PR it opens
-   is the one that carries it. When the drive never got as far as writing a
-   card at all (no fetched tip, no token), this block is the rescue.
-
-   **Two cases the pin does NOT cover**, so check before assuming: a run that
-   was never fetched (gate-green but zero receipt rows — the fetch is
-   receipt-gated), and a `runId` git refuses as a ref name (`detail.errors`
-   says so explicitly).
-
-4. **Harvest the `minor` group of `report.json`'s `completenessFindings` into
-   issues explicitly** — run-14's carried a real socket-leak defect that
-   existed nowhere else. Only the `minor` group needs this hand step: since
-   #474 a `blocking` finding stops the run at the driver (`criticDecision`
-   refuses before `--approve`, leaving a `critic-block.json` beside the gate
-   receipt), so it is already on the record and needs no manual harvest.
-
-## Teardown guarantee
-
-`driveOne` already calls `destroySandbox({vmName, exec})` (`fleet/provision.mjs`)
-before returning, which issues:
-
-```bash
-ssh exe.dev "rm fleet-<runId> --json"
-```
-
-If a run's process is killed mid-flight (operator Ctrl-C, host crash) before
-that teardown leg runs, the sandbox is orphaned and still billing. **There is
-no provider-side TTL** — `provisionRun` issues a bare `cp`, and the `ttlMs`
-nearby is the store-token lease, not a VM lifetime — so "orphaned" means
-orphaned until someone runs `rm`.
-
-**The claim-lease reaper (#400) reclaims it, and here is exactly what it can
-promise.** The orchestrator's sweep destroys a sandbox whose claim lease expired
-with no drive heartbeat (a live drive renews the lease, so an expired lease
-*is* the absence of a heartbeat), after a further `REAP_GRACE_MS` margin,
-recording the reason as liveness — never spend.
-
-But **there is no long-lived orchestrator process**: `drive.mjs` starts one per
-drive, in-process, so the sweep that would reap a leak dies with the drive that
-caused it. What makes reclamation work anyway is that `--db-dir` is shared
-across runs *by default*, and persisted, so the dead run's claim row is still
-there when the **next** drive's orchestrator loads the store — and its first
-sweep reaps the orphan.
-
-**Reclamation is therefore scoped to one `--db-dir`, and that matters**, because
-the knobs above tell you to give concurrent drains **distinct** db-dirs (the W2a
-isolation). A run driven under its own db-dir is invisible to every other run's
-reaper: if it dies, **nothing will ever reclaim its sandbox** except the manual
-`rm` below. That is the price of the isolation, and it is the right trade for a
-concurrent drain you are watching — but **check for orphans by hand after a
-concurrent drain**, because the reaper will not.
-
-So, within one db-dir:
-
-- a **concurrent** drive sharing it reaps within a sweep;
-- otherwise the orphan is reclaimed at **the next drive start** using that
-  db-dir, not within one lease period;
-- if no further run uses that db-dir, **nothing reaps**.
-
-**A finished run is never reaped.** Nothing clears a claim on completion, so
-every successful run leaves one that ages out; the reaper keys on the *run's
-status* as well as the lease, and only a run still `pending`/`claimed`/`running`
-is treated as an orphan. Without that, the first sweep of every new drive would
-try to `rm` every run in the db-dir's history.
-
-So the manual recovery below is still the operator's tool, and the one to reach
-for if a VM must go now:
-
-```bash
-ssh exe.dev "ls --json"              # fleet-<runId> VMs with no live drive
-ssh exe.dev "rm fleet-<runId> --json"
-```
-
-`rm` accepts multiple VM names in one call (#179 fact sheet §6) — sweep every
-orphan in one shot: `ssh exe.dev "rm fleet-run-1 fleet-run-2 --json"`.
-
-**Cleaning up a stuck sandbox is always `ssh exe.dev "rm <vmName> --json"`.**
-(This paragraph used to contrast that with `sweep_worktrees.sh`, a local
-worktree reclaimer deleted in Phase 0 / 0.2.26. Fleet sandboxes are disposable
-`exe.dev` VMs, never worktrees — #386 residual, cleared.)
-
+The build quiesces the image before the first `cp`, because `cp` is not
+promised to be application-consistent.
 
 ## Capacity — read the meter, never sum the allocation
 
 **One command answers "do we have room":**
 
 ```bash
-ssh exe.dev "billing usage --json"   # what the plan actually meters
-ssh exe.dev "billing plan  --json"   # the limits it meters against
+ssh exe.dev "billing usage --json --range=24h"   # what the plan actually meters
+ssh exe.dev "billing plan  --json"               # the limits it meters against
 ```
 
 **The plan meters CONSUMPTION, not allocation, and the difference is large
@@ -869,7 +245,56 @@ per-VM, and the instrument is:
 
 ```bash
 ssh exe.dev "stat <vmName> --json --range=24h"
+ssh exe.dev "billing credits usage --group=box"
 ```
 
-which `drive.mjs:212` already captures per run into the evidence bundle. Peak
-vs mean for a wave is read from there, not from `billing usage`.
+`--range=24h` is what makes `billing usage` answer about today rather than
+about the cycle average; without it the reading is smoothed past the thing you
+are asking about.
+
+**RAM is the binding shared pool, and `stat` is too coarse to govern it.**
+Roughly 3 GB per busy implementer against 64 GB account-wide is about eighteen
+busy implementers summed over every sandbox, and exceeding it is an OOM rather
+than a slowdown. `stat` samples about every ten minutes and `billing usage` is
+cycle-averaged, so neither answers the per-wave question. The instrument that
+does is **PSI, read inside the sandbox**: `/proc/pressure/{cpu,memory,io}`,
+sampled every ten seconds into the run's event log, with `MemoryMax` on the
+engine's scope bounding the failure when the governor is too late.
+
+## Trust
+
+What the fleet promises, stated so it cannot be over-read.
+
+**The empty-scope check is the sandbox asserting about itself.** Before a run
+reaches `awaiting-grant` it checks that its engine's systemd scope is inactive,
+and `grant.mjs` reads that state off the status page. That is protection
+against an accident — a grant issued while a model is still running — and not
+protection against a hostile model, which could report anything it liked.
+
+What actually bounds a hostile model is the arrangement around it: **fifteen
+minutes**, **one repository**, **a pull request rather than a merge**, and **a
+human at the merge button**. Every one of those is mechanical; the scope check
+is the only one that is not, and it is the one to distrust.
+
+Two consequences worth keeping in view. Grants lapse on wall-clock and there is
+nothing to revoke afterwards, so a run that stalls between gate-green and
+approval simply loses its window and needs a fresh `grant.mjs`. And delivery
+TTL narrows exposure, not blast radius: the Claude token is good for its year
+if it is ever stolen — which is why it is on no VM, only at the edge.
+
+## Rollback
+
+The lift is one release. If it does not hold:
+
+```
+/plugin marketplace update ultrapowers      # then pin 0.3.4
+```
+
+The old orchestrator VM and the old golden are **untouched** until 0.3.5 has
+driven several runs — the previous fleet stays running, with its own key, its
+own image and its own store, so rolling the plugin back is the whole of the
+rollback. Nothing in the new path writes to anything the old path reads.
+
+Remove the old orchestrator and its golden only after the new shape has been
+green across a week of runs, and reap the old fleet's VMs by hand at that
+point — its reaper dies with it.
