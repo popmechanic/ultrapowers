@@ -209,4 +209,13 @@ const rules = ({
   noToken.cleanup()
 }
 
+// (6) `ls --json` is `{ shared_vms, vms }`; the rows are every array, not the
+// first one — run-69 was invisible behind the one shared VM.
+{
+  const { jsonRows } = await import('../lobby.mjs')
+  const rows = jsonRows({ shared_vms: [{ vm_name: 'snw-build' }], vms: [{ vm_name: 'fleet-run-69' }] })
+  assert.deepEqual(rows.map((r) => r.vm_name), ['snw-build', 'fleet-run-69'], '(6) every envelope array is rows')
+}
+
 console.log('ALL TESTS PASSED')
+

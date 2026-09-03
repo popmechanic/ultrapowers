@@ -272,9 +272,14 @@ export function parseJson (stdout) {
 export function jsonRows (payload) {
   if (Array.isArray(payload)) return payload
   if (payload && typeof payload === 'object') {
+    // `ls --json` is `{ shared_vms: [...], vms: [...] }` — key order put the
+    // one shared VM first and hid every fleet VM from grant (run-69). Every
+    // array in the envelope is rows; the one named for the verb is not special.
+    const rows = []
     for (const value of Object.values(payload)) {
-      if (Array.isArray(value)) return value
+      if (Array.isArray(value)) rows.push(...value)
     }
+    return rows
   }
   return []
 }
