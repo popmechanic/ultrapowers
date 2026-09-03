@@ -1,31 +1,102 @@
-# The lift — shared contract (2026-09-03). Every builder reads this first.
+# The fleet contract (v2, 2026-09-03 — after Counsel 2). Every builder reads this first.
 
-Source of truth for the design: /Users/marcusestes/Websites/ultrapowers/docs/superpowers/specs/2026-09-03-fleet-on-the-grain.md — its LAST two sections win: `## Counsel — two Shelleys…` (the shape) and `### OAuth, decided` (edge injection). Earlier sections describing a control VM, a peer channel, a broker or `/lease` are SUPERSEDED. Also read `gh issue view 589 --comments` for the two reviews if you need the reasoning.
+Design record: `docs/superpowers/specs/2026-09-03-fleet-on-the-grain.md`, whose `## Counsel 2` section
+(Sol + Opus on the papercuts of runs 65–69) is the authority for everything below. Where v1 of this
+file (git history) and this text disagree, this text wins. The engine (`run-main.mjs`, `run-engine.mjs`,
+`run-worker.mjs`, `run-waves.mjs`, `confine-hook.mjs`, `fitness.mjs`, `roles/`) is untouched.
 
 ## The shape in one paragraph
-A run's identity is its VM name (`fleet-run-<N>`), which is also its DNS name, its status URL, its `comment` key, its `ls` row and its `rm` argument. There is no orchestrator and no control VM. The laptop (or any long-lived VM holding the tag-scoped ssh key) issues three lobby verbs per run: `cp` the golden, `integrations attach` the run's grants, and `comment` the assignment — the comment is the START SIGNAL. The sandbox boots inert, reads its own name and comment from Reflection, clones what it needs from GitHub through exe.dev's GitHub integration, runs the engine under a systemd scope with the Claude OAuth token injected at exe.dev's edge (the token is on no VM), serves its own status page, commits receipts and evidence to a `fleet-runs` git repo, posts to `notify`, waits for the write grant, pushes its branch and opens its own PR. A janitor cron reaps VMs whose status is `done`. The engine (`fleet/run-main.mjs`, `run-engine.mjs`, `run-worker.mjs`, `run-waves.mjs`, `confine-hook.mjs`, `fitness.mjs`, `roles/`) is UNTOUCHED.
+A run is a number N. Its plan is `plans/run-N.md` in `popmechanic/fleet-runs`, committed by the launcher
+before any VM exists. The launcher `cp`s the golden to a fresh, never-reused VM name, attaches the run's
+integrations to THAT VM, writes the assignment as the VM comment (the record), waits for ssh, and STARTS
+the run over ssh: `systemctl --user start fleet-run.service`. The golden carries only an immutable
+bootstrap, which reads the assignment once, clones the engine at `engine=` into a content-addressed
+directory, and execs the checkout's `fleet/sandbox-boot.sh`. The boot script runs the engine as a
+transient user SERVICE with a memory cap, serves a status page from its own transient service, commits
+receipts and `status.json` to fleet-runs at every transition, and — only when there is something to
+publish — waits for the write grant, pushes and opens the PR. The janitor and the grant tool read
+fleet-runs, never a VM. No orchestrator, no control VM, no token on any VM.
 
-## Literals (spell them exactly)
-- VM names: golden `fleet-golden` (config `golden`); run VM `fleet-run-<N>`; tag `fleet` on every fleet VM (`cp` inherits tags).
-- Comment (≤200 bytes, single line, space-separated `key=value`, keys in this order):
-  `run=<N> plan=<40-hex sha in fleet-runs> target=<owner>/<repo> base=<40-hex> engine=<40-hex>`
-  Optional trailing keys: `overlap=fold|serialize`, `tier=standard|mostCapable`. Nothing else. Written by the tag-scoped key; the sandbox can only READ it (`curl -fsS https://reflection.int.exe.xyz/comment` → JSON `{"comment": "..."}`; `/` → `{"name": ...}`; `/tags`; `/integrations`).
-- fleet-runs repo: `popmechanic/fleet-runs` (private). Layout: `plans/run-<N>.md`, `plans/run-<N>.gate-verdicts.json` (committed by the launcher BEFORE cp; `plan=` is that commit's sha), `runs/<N>/receipt.json`, `runs/<N>/gate-receipt.json`, `runs/<N>/report.json`, `runs/<N>/events.jsonl`, `runs/<N>/status.json` (committed by the sandbox at the end; append-only paths, so concurrent runs never conflict; retry the push on non-fast-forward after a `pull --rebase`).
-- GitHub integration objects (exe.dev): `fleet-runs` (github, `--repository popmechanic/fleet-runs --act-as-user --attach tag:fleet`); per target: `t-<owner>-<repo>-ro` (`--readonly --attach tag:fleet`) and `t-<owner>-<repo>-rw` (`--act-as-user`, NEVER attached to a tag; attached per VM `--for 15m` at approval, after `detach`ing the `-ro` grant from that VM — never overlap). Slashes in `<owner>/<repo>` become `-`. In-sandbox: `git clone https://github.int.exe.xyz/<owner>/<repo>.git`, `GH_HOST=github.int.exe.xyz gh pr create …`. A PUBLIC target may be cloned from `https://github.com/<owner>/<repo>.git` when no `-ro` integration exists; the engine repo (public) is always cloned from `https://github.com/popmechanic/ultrapowers.git`.
-- Claude OAuth: exe.dev http-proxy integration `claude-max` (`--target https://api.anthropic.com --bearer=- --header 'anthropic-beta: <the 9-flag list captured from Claude Code>'`), attached per VM `--for 6h` at launch. In the sandbox the ENGINE'S CHILD ENV ONLY carries `ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz` and `CLAUDE_CODE_OAUTH_TOKEN=placeholder`. The golden image carries NO `ANTHROPIC_*` anywhere. `claude auth status` must report `authMethod: oauth_token` — the boot script logs it.
-- Sandbox paths: engine `/home/exedev/repo` (clone of ultrapowers at `engine=`; `npm ci` in `fleet/` is pre-warmed by the golden); target `/home/exedev/target` (clone at `base=`); fleet-runs `/home/exedev/fleet-runs`; status `/home/exedev/www/status.json` served by `busybox httpd -f -p 8000 -h /home/exedev/www` (exe.dev proxies port 8000 at `https://fleet-run-<N>.exe.xyz/`, auth by the operator's session or a VM token via `X-Exedev-Authorization: Bearer`); golden stamp `/home/exedev/.fleet-golden` (the sha256 of `fleet/golden-setup.sh` that built it).
-- status.json: `{"run":"<N>","state":"booting|running|awaiting-grant|publishing|done|parked|failed","phase":"<free text>","pr":"<url or null>","branch":"ultra/integration-run-<N>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`.
-- Engine invocation (from run-main.mjs's own usage): `node /home/exedev/repo/fleet/run-main.mjs /home/exedev/fleet-runs/plans/run-<N>.md run-<N> --repo /home/exedev/target [--tier …] [--overlap …]`, cwd `/home/exedev/target`, under `systemd-run --user --scope --unit=fleet-engine-<N> -p MemoryMax=40G -p MemorySwapMax=0`, with the env above. It writes `fleet-receipts/run-<N>/gate-receipt.json` and `.claude/ultrapowers/run-run-<N>/{report.json,events.jsonl,receipt.json,…}` inside `/home/exedev/target` and leaves the run's product on branch `ultra/integration-run-<N>` in the target clone. `ULTRAPOWERS_FLEET_RUN=run-<N>` must be in its env (run-main's main() sets it itself from the runId; setting it too is harmless).
-- Approval readiness: the sandbox polls `https://reflection.int.exe.xyz/integrations` until `t-<owner>-<repo>-rw` appears (and `-ro` is gone), then pushes. The empty-scope check (`systemctl --user is-active fleet-engine-<N>.scope` → inactive) is what the LAUNCHER/grant tool verifies before granting, via the status page (`state: awaiting-grant` is set only after the scope is empty).
-- notify: `curl -fsS -X POST -H 'content-type: application/json' -d '{"title":"...","message":"..."}' https://notify.int.exe.xyz/` — at `awaiting-grant`, `done`, `parked`, `failed`, and from the deadman.
-- Janitor: `ssh exe.dev "ls --json"` → for each `fleet-run-*`, GET its `/status.json` with a VM token; `rm` on `done` or `failed` older than 1h; mark `comment … state=expired` and notify after 6h without `done`. Runs from cron on any VM whose ssh key is registered with `--tag=fleet`.
-- Laptop config `~/.ultrapowers/fleet.json`: `{"golden":"fleet-golden","fleetRuns":"/path/to/local/clone/of/fleet-runs","vmTokenPath":"~/.ultrapowers/vm-token"}` (all optional with those defaults; `vmTokenPath` holds a token from `ssh exe.dev ssh-key generate-api-key --vm=<vm> --exp=…` when the launcher needs to read a status page).
-- Naming for exe.dev verbs on the laptop: the launcher runs `ssh exe.dev "<verb …> --json"` through an `exec` seam so tests can stub it. Never interpolate user data into a shell string without `isSafeSha`/`isSafeTarget`-style validation (keep those two validators; delete the rest).
+## Literals
+- **Run id:** `N` = 1 + max N over `fleet-runs/plans/run-*.md` (`--run N` overrides). `RUN_ID=run-N`.
+- **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev reserves deleted
+  names forever, so a name is one incarnation and is never derived from N alone. Lookup by pattern:
+  `ssh exe.dev "ls 'fleet-r<N>-*' --json"`; the whole fleet: `ls 'fleet-r*' --json`. Read `.vms[]` ONLY
+  (`.shared_vms` are other people's). Contractual row fields: `vm_name`, `ssh_dest`, `ssh_host`, `status`.
+  `comment`, `tags`, `created_at` are undocumented: read them as optional, never crash on their absence,
+  never decide from `created_at`. Use `ssh_dest` for ssh/scp, never `<vm_name>.exe.xyz`.
+- **Golden:** `fleet-golden` (config `golden`), tag `fleet`; `cp <golden> <vm> --copy-tags --json`.
+- **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
+  `run=<N> plan=<40-hex sha in fleet-runs> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
+  optional `overlap=fold|serialize`, `tier=standard|mostCapable`. Written once by the launcher; the
+  sandbox reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails
+  the run if it is absent or malformed. Nobody rewrites it.
+- **Launch order (launcher):** commit plan → `cp` → `integrations attach claude-max vm:<vm> --for 6h` →
+  `integrations attach t-<owner>-<repo>-ro vm:<vm> --for 6h` (skip when the target is public and no
+  `-ro` integration exists) → `comment <vm> '<assignment>'` → wait until `ssh <ssh_dest> true` succeeds
+  (retry ≤120 s) → `ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run.service'`.
+  Start AFTER attach: the boot never races the grant.
+- **Golden contents (golden-setup.sh):** node, bun, npm, xdist, `busybox`, `gh`, the immutable
+  `/home/exedev/fleet-bootstrap.sh` (a copy of `fleet/fleet-bootstrap.sh`, mode 755), the user unit
+  `~/.config/systemd/user/fleet-run.service` (a copy of `fleet/fleet-run.service`, `Type=oneshot`,
+  `ExecStart=/home/exedev/fleet-bootstrap.sh`, installed and daemon-reloaded but NOT enabled — the
+  launcher starts it), `loginctl enable-linger exedev`, stamp `/home/exedev/.fleet-golden` = sha256 of
+  `fleet/golden-setup.sh` written LAST. No `/home/exedev/repo`, no engine pre-clone, no `ANTHROPIC_*`.
+- **Bootstrap (`fleet/fleet-bootstrap.sh`, ≤40 lines, bash, `set -euo pipefail`):** read the comment once
+  → parse `engine=` (40 hex or fail) → `dst=/home/exedev/engines/<sha>`; if absent, clone
+  `https://github.com/popmechanic/ultrapowers.git` to `$dst.tmp`, `git checkout -q <sha>`, `mv` →
+  `exec "$dst/fleet/sandbox-boot.sh" boot` with `FLEET_ASSIGNMENT='<comment>'` in its env. It never writes
+  anywhere but `/home/exedev/engines/` and `/home/exedev/fleet-boot.log`. It is never overwritten by a run.
+- **Boot script (`fleet/sandbox-boot.sh`), invoked by the bootstrap:** takes the assignment from
+  `FLEET_ASSIGNMENT` (one Reflection read as fallback; no polling loop). Paths: engine
+  `/home/exedev/engines/<sha>` (`ENGINE_REPO_DIR`), target `/home/exedev/target` (clone at `base=` through
+  `https://github.int.exe.xyz/<owner>/<repo>.git`, public fallback `https://github.com/...`), fleet-runs
+  `/home/exedev/fleet-runs`, status `/home/exedev/www/status.json` + `engine.log`, boot log
+  `/home/exedev/fleet-boot.log`. Engine deps: `npm ci` (or `npm install` without a lockfile) in
+  `fleet/` ONLY when `fleet/package.json` declares dependencies.
+  - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
+    (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
+  - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
+    env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
+    ULTRAPOWERS_FLEET_RUN=run-N node <engine>/fleet/run-main.mjs /home/exedev/fleet-runs/plans/run-N.md run-N --repo /home/exedev/target [--tier …] [--overlap …]`,
+    cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
+    service's (`--wait`). `claude auth status` must show `oauth_token` — logged before the engine starts.
+    No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
+  - after the engine: exit 1 WITH a gate receipt is a verdict (parked), not a failure. `ahead = git rev-list
+    --count <base>..ultra/integration-run-N`; `ahead == 0` → state `parked`, evidence committed, NO grant
+    wait, NO push, NO PR. Otherwise `awaiting-grant` (written only after `systemctl --user is-active
+    fleet-engine-<N>.service` is inactive) → poll Reflection `/integrations` for `t-<owner>-<repo>-rw`
+    (≤ `WRITE_GRANT_TIMEOUT`) → `git push origin ultra/integration-run-N` → `GH_HOST=github.int.exe.xyz gh pr
+    create --repo <owner>/<repo> --head ultra/integration-run-N --title … --body-file …` (`--draft` unless the
+    verdict is PASS) → `done` (PASS) or `parked`. `gh auth status` is NOT a health check (the token is at the
+    edge); `gh repo view <owner>/<repo> --json nameWithOwner` is.
+  - re-entry is idempotent: a page already `done`/`parked`/`failed` with the engine marker present exits 0;
+    a recorded `pr` is never opened twice; clones present are not re-cloned; `runs/<N>/` is never checked
+    out over. A failure at ANY step commits and pushes a `failed` page before exiting (pre-clone included).
+- **status.json:** `{"run":"<N>","state":"booting|running|awaiting-grant|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
+  — the SAME bytes are served at `/status.json` and committed to `fleet-runs/runs/<N>/status.json` at every
+  transition (plus `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`).
+  Append-only paths; `pull --rebase` and retry on non-fast-forward.
+- **Grant (`fleet/grant.mjs <N>`):** `git pull` fleet-runs → require `runs/<N>/status.json` state
+  `awaiting-grant` (`--live` reads `https://<vm>.exe.xyz/status.json` with the VM token instead) → find
+  the VM by `ls 'fleet-r<N>-*' --json` → `integrations detach t-<owner>-<repo>-ro vm:<vm>` (ignore "not
+  attached") → `integrations attach t-<owner>-<repo>-rw vm:<vm> --for 15m`. `-ro` and `-rw` are never
+  attached to one VM at once; NO GitHub integration is attached to `tag:fleet` except `fleet-runs`.
+- **Janitor (`fleet/janitor.mjs`):** `git pull` fleet-runs; for each `runs/<N>/status.json` in
+  `done|parked|failed` with `updatedAt` older than 1 h → `ls 'fleet-r<N>-*' --json` → `rm <vm> --json` for
+  each row. For each `ls 'fleet-r*' --json` row whose N has no status update in 6 h → notify once
+  (`https://notify.int.exe.xyz/` is a VM-side endpoint; from the laptop the janitor prints it). No ssh into
+  any VM, no `created_at`.
+- **Lobby errors:** every lobby call captures stdout+stderr; on non-zero exit the tool prints ALL of it
+  verbatim (`exe.dev <verb> failed (exit N):\n<output>`) — no envelope is documented.
+- **Laptop config `~/.ultrapowers/fleet.json`:** `{"golden":"fleet-golden","fleetRuns":"~/.ultrapowers/fleet-runs","vmTokenPath":"~/.ultrapowers/vm-token"}`.
+- **Naming for exe.dev verbs:** through the `exec` seam so tests stub them; `isSafeSha`/`isSafeTarget`
+  validate anything interpolated. Never a `--cmds` lobby key on any VM.
 
 ## Rules
-- Amendment 10: models never run git; every git/gh command here is run by scripts (boot, launcher), never by an agent prompt.
-- No secret on disk anywhere except the tag-scoped ssh key on the janitor's VM and the VM token on the laptop. No `--env`, no heredocs of secrets, no token files on any VM.
-- Never attach a writable integration to a tag. Never overlap `-ro` and `-rw` on one VM.
-- Scripts are POSIX sh where possible (`#!/bin/sh`, `set -eu`), bash only when needed; every script passes `sh -n`/`bash -n`.
-- Tests: pytest under `tests/` and node `.mjs` under `fleet/tests/` (sentinel `ALL TESTS PASSED`, <120 s, no network, stub `curl`/`git`/`gh`/`ssh`/`systemd-run` via a PATH shim directory or an `exec` seam). Test behaviour, not sentences. No test may pin a sentence of a document.
-- Keep files small and named for what they do. Prefer deleting to adapting.
+- Amendment 10: models never run git; every git/gh command is a script's.
+- No secret on any VM. `--for` on every attachment.
+- Scripts pass `bash -n`; tests: pytest under `tests/`, node `.mjs` under `fleet/tests/` (sentinel `ALL
+  TESTS PASSED`, <120 s, no network, stub `curl`/`git`/`gh`/`ssh`/`systemd-run`/`systemctl` via a PATH shim).
+  Test behaviour, not sentences; no test pins a sentence of a document.
+- Prefer deleting to adapting. A file named for what it does.
