@@ -351,7 +351,7 @@ assert.deepEqual(
   { ...DOCTOR_DEFAULTS },
   {
     orchestrator: 'fleet-orchestrator',
-    golden: 'fleet-golden',
+    golden: 'fleet-golden-next',
     repoDir: '/home/exedev/repo',
     tokenPath: '/home/exedev/.fleet/claude-oauth-token'
   },

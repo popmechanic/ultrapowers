@@ -26,7 +26,11 @@ import { isSafeSha } from './shim-main.mjs'
 export const REPO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 export const DEFAULTS = Object.freeze({
-  golden: 'fleet-golden',
+  // #456: the default points at `fleet-golden-next`, the image where `bun` is
+  // on the PATH a non-interactive spawn gets (two /usr/local/bin symlinks).
+  // The old `fleet-golden` is kept, not renamed away: it is the rollback, and
+  // renaming would lean on an exe.dev verb nothing in this tree attests (#453).
+  golden: 'fleet-golden-next',
   port: 8180,
   dbDir: '/tmp/fleet-orch-live',
   // #466: NOT `${dbDir}-evidence`. The store dir is /tmp by design (a fresh-store
