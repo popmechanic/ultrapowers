@@ -663,7 +663,15 @@ render_card() { # $1 = outcome; prints the body file's path
 }
 
 publish() { # $1 = outcome (gate-green|parked)
-  local body title heading out draft=()
+  local body title heading out draft=() ahead
+  # run-69: a parked run whose every task was blocked has a branch equal to
+  # BASE, and GitHub refuses a PR with no commits. Nothing to publish is a
+  # parked outcome with no PR, not a failure.
+  ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "$BASE_SHA..$BRANCH" 2>/dev/null || echo 1)"
+  if [ "$ahead" = "0" ]; then
+    log "publish: $BRANCH has no commits ahead of $BASE_SHA — parked without a PR"
+    return 0
+  fi
   write_status publishing "pushing $BRANCH"
   fleet_git -C "$TARGET_DIR" push origin "$BRANCH" || fail "publish: push $BRANCH"
   body="$(render_card "$1")"

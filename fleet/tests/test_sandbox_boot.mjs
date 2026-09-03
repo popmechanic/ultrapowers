@@ -116,6 +116,9 @@ case "$1" in
                 fi ;;
     esac
     case "$3" in
+      rev-list) if [ -n "\${STUB_NO_COMMITS:-}" ]; then echo 0; else echo 3; fi; exit 0 ;;
+    esac
+    case "$3" in
       commit) [ -f "$2/runs/7/status.json" ] && cat "$2/runs/7/status.json" >>"$FLEET_HOME/commits.log" ;;
     esac ;;
 esac
@@ -313,8 +316,10 @@ test('the comment is parsed into the clone and checkout argv, target at base and
 
   // The clone is LEFT at base: the integration branch is the engine's to create.
   assert.equal(git.filter((a) => a.includes('switch')).length, 0)
-  assert.equal(git.filter((a) => a.join(' ').includes('ultra/integration-run-7')).length, 1,
-    'the only mention of the run branch is the push')
+  assert.deepEqual(
+    git.filter((a) => a.join(' ').includes('ultra/integration-run-7')).map((a) => a[3]),
+    ['rev-list', 'push'],
+    'the run branch is only counted against base and pushed — never created or switched to')
 
   // The comment is read until it carries an assignment — three polls here.
   assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl comment')).length, 3)
@@ -687,6 +692,16 @@ test('an engine exit of 1 with a gate receipt is a verdict, not a failure', () =
   const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_VERDICT: 'NEEDS_ACK' })
   assert.notEqual(statusOf(ctx).state, 'failed', r.stdout + r.stderr)
   assert.ok(readLog(ctx, 'fleet-boot.log').includes('a verdict, not a crash'))
+})
+
+test('a parked run with no commits ahead of base is parked without a PR', () => {
+  // run-69: every task blocked, branch == BASE, GitHub refuses an empty PR.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK', STUB_NO_COMMITS: '1', STUB_RO_GONE: '1' })
+  assert.equal(statusOf(ctx).state, 'parked', r.stdout + r.stderr)
+  assert.equal(argvLines(ctx, 'gh').length, 0, 'no PR is attempted')
+  assert.equal(argvLines(ctx, 'git').filter((a) => a[3] === 'push' && a[2] === `${ctx.home}/target`).length, 0,
+    'the empty branch is not pushed')
 })
 
 test('re-entering after a finished engine re-runs neither the engine nor the PR', () => {
