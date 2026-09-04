@@ -132,8 +132,8 @@ approved plan, **is** the authorization to execute — no further approval pause
    ```
 
    It prints the run id, the VM name, the status URL and the assignment
-   comment. Read all four back to the user: the run is `run-<N>`, the VM is
-   `fleet-r<N>-…`, and `https://<vm>.exe.xyz/status.json` is its status page.
+   comment. Tell the user all four: the run is `run-<N>`, the VM is
+   `fleet-r<N>-…`, and its status page is `https://<vm>.exe.xyz/status.json`.
    Nothing else needs staging — the launcher commits the plan to the target's
    `ultra/plan-run-<N>` branch, then creates the VM in one lobby call with
    both integrations attached, the assignment as its comment, and a setup
@@ -143,8 +143,15 @@ approved plan, **is** the authorization to execute — no further approval pause
    state is `status.json`, the same bytes on the VM's status page and on the
    run's evidence branch at every transition: `booting` → `running` →
    `publishing` → `done`, or `parked` or `failed`. When the user asks how the
-   run is doing, read `https://<vm>.exe.xyz/status.json`, or the evidence
-   branch once the VM has been reaped.
+   run is doing, read `status.json` off the evidence branch — it is there from
+   the first transition and stays after the VM is reaped:
+
+   ```bash
+   gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>' --jq .content | base64 -d
+   ```
+
+   The page at https://<vm>.exe.xyz/status.json is the operator's own: a
+   browser logged in to exe.dev reads it, this agent does not.
 
 4. **The PR is the gate.** There is no approval command. When the engine is
    done and the branch is ahead of base, the sandbox pushes it and opens the
