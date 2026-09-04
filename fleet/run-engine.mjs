@@ -242,6 +242,21 @@ export const runEvidenceBlock = (runs) => {
     'stdout and stderr combined, last 4,000 characters.' +
     runs.map((r) => '\n\n$ ' + r.cmd + '\nexit ' + r.exit + '\n' + r.stdout).join('')
 }
+// #638 — the task's own exam, executed by the driver. A Proof that names
+// `Test:` paths buys an examiner in wave 0, and until now nobody ever RAN what
+// that examiner wrote on the implementer's tree: a verdict could be settled by
+// reading the tests instead of running them. This block is the other half — the
+// bytes of the driver's own execution, so the referee reads a result rather
+// than a claim. One exam per task, so the input is one record or null; null
+// renders nothing at all (the run-51 rule), which is what keeps the prompt of a
+// task with no exam byte-identical to the one it had before this existed.
+export const examEvidenceBlock = (exam) => {
+  if (!exam || typeof exam !== 'object') return ''
+  return '\n\nEXAM EVIDENCE: the driver executed this task\'s exam command itself, ' +
+    'in this task\'s own clone, on the tree the patch above describes — stdout and ' +
+    'stderr combined, last 4,000 characters.' +
+    '\n\n$ ' + exam.cmd + '\nexit ' + exam.exit + '\n' + exam.stdout
+}
 // #604 (b)+(c) — the INTEGRATED `Run:` proofs. The per-task execution above
 // answers "does this command pass on the patch its author wrote"; it cannot
 // answer "does it still pass on the tree the wave actually adopted", and the
@@ -928,6 +943,18 @@ export async function runEngine({
       }
       return runs
     }
+    // The task's own exam, on the same terms (#638). The pair that dispatched
+    // the examiner is the pair that gates this — plus `examBlobs`, which is the
+    // driver's record that the examiner actually left tests behind: a blocked
+    // or dead examiner writes no file, and `command not found` is not a red
+    // exam, it is the absence of one (the task proceeds unexamined, as it did).
+    const examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)
+    const runExam = async (iter) => {
+      if (!examRunnable) return null
+      const r = await sh(examTestCmd, cloneDir)
+      appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examTestCmd, exit: r.code, iter })
+      return { cmd: examTestCmd, exit: r.code, stdout: tail(r.stdout + r.stderr) }
+    }
     const runChecks = async (iter) => {
       const checks = []
       for (const c of constraintChecks) {
@@ -951,12 +978,17 @@ export async function runEngine({
     const RUN_FAIL = (r) => 'the Proof\'s Run: command failed: ' + r.cmd + ' — exit ' + r.exit
     const CHECK_FAIL = (c) => 'the Global Constraints Check: command failed: ' + c.cmd +
       ' — exit ' + c.exit
-    if (proofRuns.length || constraintChecks.length) {
+    // A red exam is a red of the same standing as a red `Run:`: the Proof's
+    // `Test:` paths are the task's contract just as its `Run:` commands are.
+    const EXAM_FAIL = (e) => 'the Proof\'s exam failed: ' + e.cmd + ' — exit ' + e.exit
+    if (proofRuns.length || constraintChecks.length || examRunnable) {
       const prePass = async () => {
         const reds = []
         for (const r of await runCommands(0)) {
           if (r.exit !== 0) reds.push({ line: RUN_FAIL(r), stdout: r.stdout })
         }
+        const e = await runExam(0)
+        if (e && e.exit !== 0) reds.push({ line: EXAM_FAIL(e), stdout: e.stdout })
         for (const c of await runChecks(0)) {
           if (c.exit === 0) continue
           if (c.minor) { noteMinorCheck(c); continue }
@@ -1023,6 +1055,9 @@ export async function runEngine({
       // run-wide suite (`bash -lc`, SHELL_TIMEOUT_MS), same cwd the implementer
       // just wrote to, same tail-truncation the rest of the evidence uses.
       const runEvidence = await runCommands(iter)
+      // The exam, freshly executed for this round on the same terms (#638):
+      // round 2 grades the repair, not the tree that predates it.
+      const examEvidence = await runExam(iter)
       const checkEvidence = await runChecks(iter)
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
@@ -1030,7 +1065,8 @@ export async function runEngine({
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
         globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
-        runEvidenceBlock(runEvidence) + checkEvidenceBlock(checkEvidence)
+        runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
+        checkEvidenceBlock(checkEvidence)
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -1095,6 +1131,16 @@ export async function runEngine({
           detail: 'the Proof\'s Run: command failed: ' + r.cmd + ' — exit ' + r.exit }])
         judgmentCalls.push('task ' + task.id + ': Run: proof `' + r.cmd + '` exited ' + r.exit +
           ' in review round ' + iter + ' — blocking, whatever the reviewer returned')
+      }
+      // A red exam outranks the reviewer's verdict for the same reason a red
+      // `Run:` does — and more sharply, since the exam is the submission's own
+      // grading. The detail names the command and the exit code because the fix
+      // round reads these lines as its instructions.
+      if (examEvidence && examEvidence.exit !== 0) {
+        issues = issues.concat([{ severity: 'blocking', detail: EXAM_FAIL(examEvidence) }])
+        judgmentCalls.push('task ' + task.id + ': the Proof\'s exam `' + examEvidence.cmd +
+          '` exited ' + examEvidence.exit + ' in review round ' + iter +
+          ' — blocking, whatever the reviewer returned')
       }
       // A red non-minor `Check:` is read exactly as a red `Run:` is: the run
       // declared the constraint, the driver ran it, and the referee's verdict
