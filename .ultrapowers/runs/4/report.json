@@ -1,0 +1,305 @@
+{
+  "integrationBranch": "ultra/integration-run-4",
+  "baseSha": "2cc873fb2d040fbe081f35ff0ababc408eaa6500",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "666775d173d54a1fd3ef24b4d41f401e540203ae",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-4/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Doc drift the freeze forbids fixing here: `skills/ultradocket/SKILL.md:51-55` still says \"`docket_lib` still parses a `**Seal:**` field and `compile_docket` still validates it\". After this patch compile_docket validates nothing about Seal, so that sentence is false. The fix lies in `skills/ultradocket/SKILL.md`, which is outside this task's FILES and pinned byte-identical by the \"no shipped document changes\" global constraint \u2014 so it is correctly left alone here, but the editor should route the SKILL.md rewording (the same paragraph already forward-references it: \"Deleting the residual machinery is #386\"). No test breaks: `tests/test_docs_agree_with_code.py` scopes its DOCUMENTS to `skills/ultrapowers/SKILL.md`, `references/first-run.md`, `fleet/RUNBOOK.md` and `README.md`, not the ultradocket skill.; Dangling back-reference left by the M3 deletion: `evals/drainprobe/probecli/cli.py:5` reads \"`probecli` via tests/drainprobe/conftest.py. Not plugin machinery.\" \u2014 that conftest no longer exists. Out of scope by construction (the task's Context says \"`evals/` stays\", and `evals/drainprobe/probecli/cli.py` is in neither FILES nor SIBLING FILES), and the Proof's fourth `Run:` deliberately asserts the payload survives. Advisory only; worth a one-line docstring touch in a later task.; concern: plan-defect: `test_duplicate_plan_paths_fail_loud` in tests/test_compile_docket.py is not in the task's delete list and M2 requires the file's other 19 tests to pass, but it was green ONLY because its two same-Plan entries carried disagreeing Seals and tripped the cluster-Seal disagreement raise this task orders deleted \u2014 the actual duplicate-Plan raise was already removed when PLAN-TOGETHER clusters landed (#122), as compile_docket.py's own comment records. Deleting the Seal check left it asserting a raise that no longer occurs (verified: DID NOT RAISE). Task-local fix: rewrote it to assert the clustering the compiler actually performs (order == ['p.md'], units == {'p.md': ['1','2']}, collisions == []) and renamed it to test_duplicate_plan_paths_cluster_into_one_unit, with a docstring recording why. Nothing in the Proof or elsewhere pins the old name; collected count for the file stays 19 and total stays 1461.; concern: doc-drift (not fixed, frozen by global constraint): skills/ultradocket/SKILL.md:51 states \"`docket_lib` still parses a `**Seal:**` field and `compile_docket` still validates it, because the disposition vocabulary is frozen\". After this commit compile_docket no longer validates Seal at all, so that sentence is stale. The GLOBAL CONSTRAINT requires every skills/*/SKILL.md to be byte-identical to BASE, so I left it untouched. No test pins it (tests/test_docs_agree_with_code.py has no reference to compile_docket or Seal), so the suite stays green \u2014 but a later layer should correct that sentence. The SKILL.md text itself names deleting the residual machinery as #386.; concern: Proof-leg fragility worth flagging for later layers: leg (d)'s greps require `runs only inside a fleet sandbox` and `the launcher sets it on the VM` to each be contiguous IN THE SOURCE TEXT of ultra_run.py, not merely in the concatenated runtime string. My first reflow of the refusal produced the exactly-correct runtime message but split a fragment across two source lines and failed the leg. The implicit-concatenation line breaks in ultra_run.py:458-461 are therefore load-bearing for the Proof and should not be re-wrapped by a formatter.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "74e7c535b12bb7475135673d8f2af85a8b93deaf",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-4/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Naming: the merged leg-(b) test is named `test_b_a_positive_value_sets_the_multiplier`, but one of its two parameter cases is `None` \u2014 the variable *unset*, which is not a positive value (that case's id is `unset-defaults-to-four`). The function name overclaims relative to what it parametrizes; the sibling test immediately below it, `test_b_a_value_that_is_not_a_positive_number_falls_back`, already owns the \"positive number\" vocabulary, so the two names now read as a contrast that the bodies do not draw. A name covering both cases \u2014 e.g. `test_b_the_multiplier_follows_the_environment` \u2014 would match the behavior asserted. Purely advisory: the Proof pins `grep -c 'def test_b_' = 3` and the collected count at 10, both of which any rename preserves, and the assertions themselves are a faithful transcription of the two deleted tests (`slack()` and `deadline_budget(300)` for each of unset\u21924/1200 and \"1\"\u21921/300).; concern: plan-defect: M1 asserts the surviving file \"still defines three `test_b_` ... functions\", but BASE defines four (`test_b_unset_defaults_to_four`, `test_b_one_takes_the_base_at_face_value`, `test_b_a_value_that_is_not_a_positive_number_falls_back`, `test_b_both_modules_carry_the_same_variable_name_and_default`) and removing leg (f) does not change that count \u2014 so the second Run: line stayed red after the task's Context was implemented as written. The Context separately says leg (b) \"stays verbatim\", which contradicts the graded grep. I treated the Proof as the contract and made the count 3 the only way that also holds the same command's `collects exactly 10` clause: folded the two single-value tests into one parametrized `test_b_a_positive_value_sets_the_multiplier` with ids `unset-defaults-to-four` and `one-takes-the-base-at-face-value`. Every assertion is preserved (slack() and deadline_budget(300) for both unset and \"1\") and it still collects 2 items, so file collection stays 10 and the suite stays 1470. No test coverage was dropped, but leg (b) is not byte-verbatim as the Context said it would be.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d10604cd769245de2b9b599df5e74217c903ddbd",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-4/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale test name in tests/test_session_hook.py: `test_ultrawrite_description_triggers_on_every_plan` no longer asserts anything about triggering on every plan \u2014 the patch correctly removes `assert \"ANY implementation plan\" in frontmatter` (M4 requires it gone), leaving only the `\"superpowers:writing-plans\" not in frontmatter` register sweep. The submission renamed the sibling test (`test_session_start_recommends_by_analysis_not_reflex` -> `test_session_start_carries_no_reflex_recommendation`) for exactly this reason but left this one named for a behaviour it no longer checks; a reader will believe the trigger is still pinned when it is not. Rename it to what it checks, e.g. `test_ultrawrite_description_names_no_retired_dependency`, and drop the now-orphaned comment lines about the plan-writing MOMENT. No Proof `Run:` greps this name and the five-test count is unaffected, so the rename is safe against the exam.; tests/test_session_hook.py: `test_ultrawrite_description_triggers_on_every_plan` keeps its old name but no longer asserts the behaviour that name states. M4 correctly requires the `\"ANY implementation plan\"` assertion to go, and the patch removes it, so the only assertion left is the absence sweep `\"superpowers:writing-plans\" not in frontmatter` \u2014 the test now passes whether or not the description triggers on every plan. The task's Context did exactly this rename for the sibling case (`test_session_start_recommends_by_analysis_not_reflex` -> `test_session_start_carries_no_reflex_recommendation`); the same treatment here would keep the file honest. Not blocking: no Machine clause is left unverified (M4 asks only that all five tests survive and the seven phrases go, and leg (d) greps the sweep text, not this function's name), and the rename is safe against leg (d) \u2014 it does not change the collected count of 5, nor the `grep -c '\"superpowers:writing-plans\" not in'` count of 2.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "50a7a4c26193a68bea938e2c211617fe2d516f9f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-4/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "tests/conftest.py imports corpuslib at module scope (`sys.path.insert(...); import corpuslib`). Because this conftest is the suite-wide one, an ImportError in evals/frontier/corpuslib.py now aborts collection of all 1472 tests, where at BASE it only failed the four corpus modules that imported it themselves. Nothing in the Claim requires the import to be eager \u2014 `fixture_corpus` is the only user. Moving the two lines inside the fixture body keeps the blast radius where it was and still satisfies the `grep -B3 'def fixture_corpus' | grep -q 'scope=\"session\"'` leg, since the decorator stays adjacent to the def. (The sys.path insertion itself is not new exposure: the four corpus modules already insert the same directory at import time during collection.); tests/conftest.py's hook matches on `item.fspath.basename`, the legacy py.path attribute (as the task's Context suggested). `item.path.name` is the pathlib equivalent available since pytest 7 and is not scheduled for removal; swapping it costs nothing and keeps the hook off a deprecated accessor. Behaviourally identical today \u2014 Run 3 confirms the ordering holds \u2014 so advisory only.; concern: plan-defect: the task's Context says \"Keep each file's fixture NAME so its tests are untouched\", which contradicts M1 and the second Proof leg (`! grep -q 'def fixture_corpus'` in all four files) \u2014 the conftest fixture returns a 2-tuple while each module needs a 3-tuple, so keeping the name would require a pytest same-name override, which M1's prose (\"none defines its own fixture_corpus\") rules out. Resolved in favour of the graded Claim/Proof: the module fixtures are renamed (`corpus_by_wave` in test_corpuslib.py, `corpus_entries` in test_arm_weave.py and test_classify.py; `replayed` kept its name in test_replay_corpus.py) and their consumers' parameter names updated. No test assertion was changed \u2014 only fixture/parameter identifiers.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-4/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1430 items]\n\n........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n..............................................................           [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1430 passed, 5 warnings in 112.28s (0:01:52) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1461",
+      "exit": 1,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -qE 'test_suite_gate_(runs_harness_sims_green|red_sim_parks|sim_false_green_is_error|no_harness_diff_skips_sims|harness_diff_no_sim_is_error)|make_js_suite_repo|_branch_editing|GREEN_SIM|RED_SIM|SILENT_SIM|needs_node|NODE = shutil' tests/test_run_acceptance.py && test \"$(python3 -m pytest --collect-only -q tests/test_run_acceptance.py 2>/dev/null | grep -c '::')\" = 21 && python3 -m pytest -q tests/test_run_acceptance.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 2.20s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -q 'sealed' skills/ultradocket/scripts/compile_docket.py && ! grep -qE 'test_sealed_entry_without_seal_fails_loud|test_mixed_sealed_and_suite_queue_compiles|test_sealed_cluster_member_missing_seal_raises_naming_member' tests/test_compile_docket.py && grep -q 'test_suite_entry_without_seal_compiles' tests/test_compile_docket.py && test \"$(python3 -m pytest --collect-only -q tests/test_compile_docket.py 2>/dev/null | grep -c '::')\" = 19 && python3 -m pytest -q tests/test_compile_docket.py",
+      "exit": 0,
+      "stdout": "...................                                                      [100%]\n19 passed in 0.35s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "test ! -e tests/drainprobe && test ! -e tests/test_marker_compiler.py && test -e evals/drainprobe/probecli/cli.py",
+      "exit": 1,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -q 'drive-one' skills/ultrapowers/scripts/ultra_run.py && ! grep -q 'orchestrator' skills/ultrapowers/scripts/ultra_run.py && grep -q 'ULTRAPOWERS_FLEET_RUN is unset' skills/ultrapowers/scripts/ultra_run.py && grep -q 'runs only inside a fleet sandbox' skills/ultrapowers/scripts/ultra_run.py && grep -q 'the launcher sets it on the VM' skills/ultrapowers/scripts/ultra_run.py && ! grep -q 'drive-one' tests/test_ultra_run.py && grep -q 'def test_unset_fleet_run_refuses_before_any_other_stage' tests/test_ultra_run.py && grep -q 'the launcher sets it on the VM' tests/test_ultra_run.py && python3 -m pytest -q tests/test_ultra_run.py tests/test_deadline_slack.py",
+      "exit": 0,
+      "stdout": "...................................................................      [100%]\n67 passed in 5.80s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1470",
+      "exit": 1,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'test_f_' tests/test_deadline_slack.py && ! grep -q 'sys.executable' tests/test_deadline_slack.py && ! grep -q '\"-m\", \"pytest\"' tests/test_deadline_slack.py && ! grep -q 'def _env' tests/test_deadline_slack.py && test \"$(grep -c 'def test_b_' tests/test_deadline_slack.py)\" = 3 && test \"$(grep -c 'def test_d_' tests/test_deadline_slack.py)\" = 3 && test \"$(python3 -m pytest --collect-only -q tests/test_deadline_slack.py 2>/dev/null | grep -c '::')\" = 10 && ! grep -rnE 'pytest\\.main\\(|\"-m\", \"pytest\"' tests/ | grep -vE '^tests/(test_review_peer|test_check_renders_pin_is_tree_independent|test_ultralearn_swallows)\\.py:' | grep -q . && python3 -m pytest -q tests/test_deadline_slack.py",
+      "exit": 0,
+      "stdout": "..........                                                               [100%]\n10 passed in 0.06s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'spawnSync(process.execPath' fleet/tests/test_deadline_slack.mjs && ! grep -q 'WORKER_SPEC' fleet/tests/test_deadline_slack.mjs && ! grep -q 'runWorkerSpec' fleet/tests/test_deadline_slack.mjs && grep -q 'deadlineBudget(300)' fleet/tests/test_deadline_slack.mjs && grep -q 'the three deadlines in test_run_worker.mjs are seam calls' fleet/tests/test_deadline_slack.mjs && grep -q '< 5000' fleet/tests/test_deadline_slack.mjs && node fleet/tests/test_deadline_slack.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1443",
+      "exit": 1,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(python3 -m pytest --collect-only -q tests/test_proof_modes_documented.py 2>/dev/null | grep -c '::')\" = 2 && grep -q 'def test_leg_e_m5_validate_skill_prints_skill_ok' tests/test_proof_modes_documented.py && grep -q 'def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files' tests/test_proof_modes_documented.py && ! grep -qE 'M[1-4]_|git show|_ensure_base_present' tests/test_proof_modes_documented.py && python3 -m pytest -q tests/test_proof_modes_documented.py",
+      "exit": 0,
+      "stdout": "..                                                                       [100%]\n2 passed in 0.04s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q 'test_contract_states_the_invariants' tests/test_marker_contract.py && test \"$(python3 -m pytest --collect-only -q tests/test_marker_contract.py 2>/dev/null | grep -c '::')\" = 12 && python3 -m pytest -q tests/test_marker_contract.py",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 0.01s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -qE 'test_opens_by_naming_its_audience|test_pins_the_header_marker_layout_verbatim|test_branch_clause_present|test_branch_clauses_in_canonical_order|test_rubric_token_present|PINNED_HEADER_SENTENCE|BRANCH_CLAUSES|RUBRIC_TOKENS' tests/test_ultrawrite_skill.py && test \"$(python3 -m pytest --collect-only -q tests/test_ultrawrite_skill.py 2>/dev/null | grep -c '::')\" = 17 && python3 -m pytest -q tests/test_ultrawrite_skill.py tests/test_recommendation_rubric.py",
+      "exit": 0,
+      "stdout": "...............................                                          [100%]\n31 passed in 0.06s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(python3 -m pytest --collect-only -q tests/test_session_hook.py 2>/dev/null | grep -c '::')\" = 5 && ! grep -qE 'authorizes execution|no approval pause|ANY implementation plan|do not default to ultrapowers|parallel width|t\u22654|risk override' tests/test_session_hook.py && grep -q '\"ultrapowers:ultrawrite\" in' tests/test_session_hook.py && grep -q '\"/ultrapowers <plan-path>\" in' tests/test_session_hook.py && grep -q '\"subagent-driven-development\" in' tests/test_session_hook.py && grep -q '\"executing-plans\" in' tests/test_session_hook.py && grep -q 'startswith(\"<ultrapowers-routing>\")' tests/test_session_hook.py && grep -q 'hooks.json' tests/test_session_hook.py && grep -q '\"ultraplan\" not in' tests/test_session_hook.py && test \"$(grep -c '\"superpowers:writing-plans\" not in' tests/test_session_hook.py)\" = 2 && grep -q '\"(recommended for marked plans)\" not in' tests/test_session_hook.py && python3 -m pytest -q tests/test_session_hook.py",
+      "exit": 0,
+      "stdout": ".....                                                                    [100%]\n5 passed in 0.01s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q 'test_plan_markers_documents_the_peer_marker' tests/test_review_peer.py && ! grep -q 'or .lean.' tests/test_review_peer.py && grep -q 'Review:\\*\\* peer' tests/test_review_peer.py && test \"$(python3 -m pytest --collect-only -q tests/test_review_peer.py 2>/dev/null | grep -c '::')\" = 15 && python3 -m pytest -q tests/test_review_peer.py",
+      "exit": 0,
+      "stdout": "...............                                                          [100%]\n15 passed in 0.62s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1472",
+      "exit": 1,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "grep -B3 'def fixture_corpus' tests/conftest.py | grep -q 'scope=\"session\"' && ! grep -q 'def fixture_corpus' tests/test_corpuslib.py && ! grep -q 'def fixture_corpus' tests/test_arm_weave.py && ! grep -q 'def fixture_corpus' tests/test_classify.py && ! grep -q 'def fixture_corpus' tests/test_replay_corpus.py && test \"$(grep -c 'make_fixture_corpus(' tests/test_replay_corpus.py tests/test_arm_weave.py tests/test_classify.py | awk -F: '{s+=$2} END{print s}')\" = 0 && test \"$(grep -c 'make_fixture_corpus(' tests/test_corpuslib.py)\" = 3 && python3 -m pytest -q -p no:xdist tests/test_corpuslib.py tests/test_arm_weave.py tests/test_classify.py tests/test_replay_corpus.py && python3 -m pytest -q -n auto tests/test_corpuslib.py tests/test_arm_weave.py tests/test_classify.py tests/test_replay_corpus.py",
+      "exit": 0,
+      "stdout": "...........................................................              [100%]\n59 passed in 11.93s\nbringing up nodes...\nbringing up nodes...\n\n...........................................................              [100%]\n59 passed in 5.32s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -c \"import glob,os,subprocess,sys; slow=['test_run_engine_examiner.mjs','test_sandbox_boot.mjs','test_exam_edited_patches.mjs','test_run_engine_integrated_runs.mjs','test_run_engine_proof_runs.mjs','test_deadline_slack.mjs']; names=sorted(os.path.basename(p) for p in glob.glob('fleet/tests/test_*.mjs')); exp=[s for s in slow if s in names]+[n for n in names if n not in slow]; out=subprocess.run([sys.executable,'-m','pytest','tests/','--collect-only','-q'],capture_output=True,text=True).stdout.splitlines(); head=out[:len(names)]; assert all(l.startswith('tests/test_fleet_suite.py::test_fleet_mjs[') for l in head), head; got=[l.split('[',1)[1].rstrip(']') for l in head]; assert got==exp, (got, exp)\" && grep -q 'SLOW_FIRST' tests/test_fleet_suite.py && grep -q 'pytest_collection_modifyitems' tests/conftest.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "grep -A8 'Report skill prose sizes' .github/workflows/ci.yml | grep -q -- '--collect-only -q | tail -n 1' && grep -q -- '--durations=10' .github/workflows/ci.yml && test \"$(grep -c 'validate_skill.py skills/' .github/workflows/ci.yml)\" = 4 && ! grep -q 'ultraplan' .github/workflows/ci.yml && python3 -m pytest -q tests/test_validate_skill.py",
+      "exit": 0,
+      "stdout": "..........                                                               [100%]\n10 passed in 0.29s\n"
+    }
+  ],
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n..........................................s............................. [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n..............................................................           [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1429 passed, 1 skipped, 5 warnings in 111.30s (0:01:51) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1472 passed, 5 warnings in 114.95s (0:01:54) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "076312529d8d4edd2209e973b05ad28a50249816",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-4/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-4/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.4770000000000003,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 4,
+    "tasks_planned": 4,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": ".github/workflows/ci.yml \u2014 the new `Report collected test count` step (line 56-57) and `--durations=10` on `Run tests` (line 60)",
+      "reason": "external",
+      "why": "Structure is verified statically (the count command sits 7 lines after the `Report skill prose sizes` step name, within M3's eight-line window; `--durations=10` present; exactly four `validate_skill.py skills/` lines; no `ultraplan`) and `tests/test_validate_skill.py` passes against it (driver evidence, 10 passed). But the Claim's operative clause \u2014 that the CI log actually carries the collected count, the suite wall and the ten slowest items \u2014 is only observable in a GitHub Actions run, which this sandbox cannot execute."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: plan-defect: M1 asserts the surviving file \"still defines three `test_b_` ... functions\", but BASE defines four (`test_b_unset_defaults_to_four`, `test_b_one_takes_the_base_at_face_value`, `test_b_a_value_that_is_not_a_positive_number_falls_back`, `test_b_both_modules_carry_the_same_variable_name_and_default`) and removing leg (f) does not change that count \u2014 so the second Run: line stayed red after the task's Context was implemented as written. The Context separately says leg (b) \"stays verbatim\", which contradicts the graded grep. I treated the Proof as the contract and made the count 3 the only way that also holds the same command's `collects exactly 10` clause: folded the two single-value tests into one parametrized `test_b_a_positive_value_sets_the_multiplier` with ids `unset-defaults-to-four` and `one-takes-the-base-at-face-value`. Every assertion is preserved (slack() and deadline_budget(300) for both unset and \"1\") and it still collects 2 items, so file collection stays 10 and the suite stays 1470. No test coverage was dropped, but leg (b) is not byte-verbatim as the Context said it would be.",
+    "task 4: plan-defect: the task's Context says \"Keep each file's fixture NAME so its tests are untouched\", which contradicts M1 and the second Proof leg (`! grep -q 'def fixture_corpus'` in all four files) \u2014 the conftest fixture returns a 2-tuple while each module needs a 3-tuple, so keeping the name would require a pytest same-name override, which M1's prose (\"none defines its own fixture_corpus\") rules out. Resolved in favour of the graded Claim/Proof: the module fixtures are renamed (`corpus_by_wave` in test_corpuslib.py, `corpus_entries` in test_arm_weave.py and test_classify.py; `replayed` kept its name in test_replay_corpus.py) and their consumers' parameter names updated. No test assertion was changed \u2014 only fixture/parameter identifiers.",
+    "task 1: plan-defect: `test_duplicate_plan_paths_fail_loud` in tests/test_compile_docket.py is not in the task's delete list and M2 requires the file's other 19 tests to pass, but it was green ONLY because its two same-Plan entries carried disagreeing Seals and tripped the cluster-Seal disagreement raise this task orders deleted \u2014 the actual duplicate-Plan raise was already removed when PLAN-TOGETHER clusters landed (#122), as compile_docket.py's own comment records. Deleting the Seal check left it asserting a raise that no longer occurs (verified: DID NOT RAISE). Task-local fix: rewrote it to assert the clustering the compiler actually performs (order == ['p.md'], units == {'p.md': ['1','2']}, collisions == []) and renamed it to test_duplicate_plan_paths_cluster_into_one_unit, with a docstring recording why. Nothing in the Proof or elsewhere pins the old name; collected count for the file stays 19 and total stays 1461.",
+    "task 1: doc-drift (not fixed, frozen by global constraint): skills/ultradocket/SKILL.md:51 states \"`docket_lib` still parses a `**Seal:**` field and `compile_docket` still validates it, because the disposition vocabulary is frozen\". After this commit compile_docket no longer validates Seal at all, so that sentence is stale. The GLOBAL CONSTRAINT requires every skills/*/SKILL.md to be byte-identical to BASE, so I left it untouched. No test pins it (tests/test_docs_agree_with_code.py has no reference to compile_docket or Seal), so the suite stays green \u2014 but a later layer should correct that sentence. The SKILL.md text itself names deleting the residual machinery as #386.",
+    "task 1: Proof-leg fragility worth flagging for later layers: leg (d)'s greps require `runs only inside a fleet sandbox` and `the launcher sets it on the VM` to each be contiguous IN THE SOURCE TEXT of ultra_run.py, not merely in the concatenated runtime string. My first reflow of the refusal produced the exactly-correct runtime message but split a fragment across two source lines and failed the leg. The implicit-concatenation line breaks in ultra_run.py:458-461 are therefore load-bearing for the Proof and should not be re-wrapped by a formatter.",
+    "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1461 (task 1) exited 1 on the adopted tree \u2014 it passed in the task's own clone; the fold changed the answer, so the run is BLOCKED whatever the critic returns",
+    "integrated Run: test ! -e tests/drainprobe && test ! -e tests/test_marker_compiler.py && test -e evals/drainprobe/probecli/cli.py (task 1) exited 1 on the adopted tree \u2014 it passed in the task's own clone; the fold changed the answer, so the run is BLOCKED whatever the critic returns",
+    "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1470 (task 2) exited 1 on the adopted tree \u2014 it passed in the task's own clone; the fold changed the answer, so the run is BLOCKED whatever the critic returns",
+    "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1443 (task 3) exited 1 on the adopted tree \u2014 it passed in the task's own clone; the fold changed the answer, so the run is BLOCKED whatever the critic returns",
+    "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1472 (task 4) exited 1 on the adopted tree \u2014 it passed in the task's own clone; the fold changed the answer, so the run is BLOCKED whatever the critic returns"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, Proof leg (c) / M3 (\"The directory `tests/drainprobe/` does not exist\") is literally false against the integrated working tree, and the driver's fourth Run: (`test ! -e tests/drainprobe && test ! -e tests/test_marker_compiler.py && test -e evals/drainprobe/probecli/cli.py`) exits 1 for that reason. I checked each conjunct: `tests/test_marker_compiler.py` is absent, `evals/drainprobe/probecli/cli.py` is present, and both source files under `tests/drainprobe/` (`conftest.py`, `test_drainprobe_smoke.py`) are deleted \u2014 but the directory survives holding only `tests/drainprobe/__pycache__/conftest.cpython-312-pytest-7.4.4.pyc` and `tests/drainprobe/__pycache__/test_drainprobe_smoke.cpython-312-pytest-7.4.4.pyc`. `.gitignore:1-2` ignores `__pycache__/` and `*.pyc`, so the committed tree does satisfy M3 and there is no collection or suite effect (pytest collects `.py` only; the driver's suite is green). Minor rather than blocking: the deliverable is correct in git, but the leg will keep exiting 1 for anyone who re-runs it in this clone, so the Proof no longer self-certifies."
+    },
+    {
+      "severity": "minor",
+      "detail": "No leg or test in the delivered tree pins the integrated collected count, and all four tasks' count legs fail on it: task 1 M6 (`= 1461`), task 2 M3 (`= 1470`), task 3 M6 (`= 1443`) and task 4 M4 (`= 1472`) each exit 1 in the driver's INTEGRATED RUN EVIDENCE. This is by design, not a regression \u2014 every one of those Machine restatements is explicitly scoped \"in this task's tree\", and /home/exedev/plans/run-4.md:28-32 states the pins are per-task, not cumulative \u2014 so it is not a Claim shortfall. Recording the integrator's arithmetic the referees escalated (items [1] M6, [2], [3], [4] M4): BASE 1472 \u2212 11 (task 1: 5 harness sims + 3 docket Seal tests + 2 drainprobe smoke + 1 marker_compiler) \u2212 2 (task 2: the parametrized `test_f_`) \u2212 29 (task 3: 12+1+15+1) \u00b1 0 (task 4 adds and deletes no test) = 1430 expected on the integrated tree. This is derived from the per-file counts the driver did execute (test_run_acceptance.py 21, test_compile_docket.py 19, test_deadline_slack.py 10, test_proof_modes_documented.py 2, test_marker_contract.py 12, test_ultrawrite_skill.py 17, test_session_hook.py 5, test_review_peer.py 15 \u2014 all exit 0), not executed by me. I confirmed by grep that no file under tests/ contains any of the literals 1472/1461/1470/1443, so no test asserts a count and the stale pins cannot break the suite; the consequence is only that the post-integration count is unowned."
+    },
+    {
+      "severity": "minor",
+      "detail": "`evals/drainprobe/probecli/cli.py:5` still reads \"`probecli` via tests/drainprobe/conftest.py. Not plugin machinery.\" \u2014 a dangling reference to the file task 1 deleted. Task 1's Context deliberately keeps `evals/` (\"the #454 measurement payload\") and its Files list does not include this path, so the omission is in-scope-compliant; but only the whole-tree view shows that the surviving eval payload now documents its `sys.path` entry point as a file that no longer exists. Nothing executes the docstring, so the suite is unaffected."
+    },
+    {
+      "severity": "minor",
+      "detail": "`tests/test_session_hook.py:9` imports `re`, which is now unused: task 3's M4 removal of the seven sentence assertions took the last `re.` call site with it (I grepped the file for `re.` \u2014 no matches). The file's other imports (`json`, `pathlib`, `subprocess`, `tempfile`) are still referenced. CI runs no linter (`.github/workflows/ci.yml` has no flake8/ruff step), so this is dead weight rather than a failure \u2014 noting it because the task-3 referee's escalation asserted every surviving import in the trimmed files is still referenced, and for this one file that is not the case."
+    },
+    {
+      "severity": "minor",
+      "detail": "`tests/test_session_hook.py:61` `test_ultrawrite_description_triggers_on_every_plan` no longer tests triggering: task 3's M4 removed its `\"ANY implementation plan\"` assertion, leaving only `assert \"superpowers:writing-plans\" not in frontmatter` \u2014 a register sweep whose name promises a behaviour it does not check. Task 3's Context named only the third test (`test_session_start_recommends_by_analysis_not_reflex`) for renaming and that rename was done correctly (now `test_session_start_carries_no_reflex_recommendation`, tests/test_session_hook.py:67), so this is compliant with the contract as written; the stale name is worth an issue because it will read as coverage that is not there."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 4 Claim (\"The corpus is built once per session\") and M1 hold as written \u2014 `tests/conftest.py:27-36` defines `fixture_corpus` at `scope=\"session\"`, the four sibling files define none (verified by read: `tests/test_corpuslib.py:29` `corpus_by_wave`, `tests/test_arm_weave.py:28` `corpus_entries`, `tests/test_classify.py:28` `corpus_entries`, `tests/test_replay_corpus.py:40` `replayed` are all thin module-scoped wrappers over the session pair, and `make_fixture_corpus(` survives only 3\u00d7 in test_corpuslib.py) \u2014 but under the Global Constraint's own `-n auto`, pytest-xdist gives each worker its own session, so the real kernel CLI still builds the corpus once per worker that receives any of the four modules, not once per run. That is strictly better than BASE's 4 module-scope builds per such worker, and the plan's Goal wording (\"built once per session\") is satisfied; flagging it because the audit's point 5 savings (3 \u00d7 13 s) will be only partly realized in the configuration CI actually runs (`.github/workflows/ci.yml:60`), which the integrated view is the first place to see."
+    },
+    {
+      "severity": "blocking",
+      "detail": "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1461 (task 1) exited 1 on the adopted tree"
+    },
+    {
+      "severity": "blocking",
+      "detail": "integrated Run: test ! -e tests/drainprobe && test ! -e tests/test_marker_compiler.py && test -e evals/drainprobe/probecli/cli.py (task 1) exited 1 on the adopted tree"
+    },
+    {
+      "severity": "blocking",
+      "detail": "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1470 (task 2) exited 1 on the adopted tree"
+    },
+    {
+      "severity": "blocking",
+      "detail": "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1443 (task 3) exited 1 on the adopted tree"
+    },
+    {
+      "severity": "blocking",
+      "detail": "integrated Run: test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1472 (task 4) exited 1 on the adopted tree"
+    }
+  ],
+  "blockedWaves": []
+}

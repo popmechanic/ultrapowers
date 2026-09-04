@@ -1,0 +1,339 @@
+{
+  "ok": true,
+  "stamp": "run-4",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-4"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Tests of deleted mechanisms go, with the two code sites they name",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultradocket/scripts/compile_docket.py",
+          "skills/ultrapowers/scripts/ultra_run.py",
+          "tests/drainprobe/conftest.py",
+          "tests/drainprobe/test_drainprobe_smoke.py",
+          "tests/test_compile_docket.py",
+          "tests/test_marker_compiler.py",
+          "tests/test_run_acceptance.py",
+          "tests/test_ultra_run.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The two nested re-runs of whole test files go",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_deadline_slack.mjs",
+          "tests/test_deadline_slack.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The verbatim sentence pins on documents go; referent pins and register sweeps stay",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_marker_contract.py",
+          "tests/test_proof_modes_documented.py",
+          "tests/test_review_peer.py",
+          "tests/test_session_hook.py",
+          "tests/test_ultrawrite_skill.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The bridge collects first and slowest first, the corpus is built once, CI prints the count",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          ".github/workflows/ci.yml",
+          "tests/conftest.py",
+          "tests/test_arm_weave.py",
+          "tests/test_classify.py",
+          "tests/test_corpuslib.py",
+          "tests/test_fleet_suite.py",
+          "tests/test_replay_corpus.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`fixture_corpus`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "Tests of deleted mechanisms go, with the two code sites they name",
+          "files": [
+            "skills/ultradocket/scripts/compile_docket.py",
+            "skills/ultrapowers/scripts/ultra_run.py",
+            "tests/drainprobe/conftest.py",
+            "tests/drainprobe/test_drainprobe_smoke.py",
+            "tests/test_compile_docket.py",
+            "tests/test_marker_compiler.py",
+            "tests/test_run_acceptance.py",
+            "tests/test_ultra_run.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultradocket/scripts/compile_docket.py",
+            "skills/ultrapowers/scripts/ultra_run.py",
+            "tests/drainprobe/conftest.py",
+            "tests/drainprobe/test_drainprobe_smoke.py",
+            "tests/test_compile_docket.py",
+            "tests/test_marker_compiler.py",
+            "tests/test_run_acceptance.py",
+            "tests/test_ultra_run.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1461",
+            "! grep -qE 'test_suite_gate_(runs_harness_sims_green|red_sim_parks|sim_false_green_is_error|no_harness_diff_skips_sims|harness_diff_no_sim_is_error)|make_js_suite_repo|_branch_editing|GREEN_SIM|RED_SIM|SILENT_SIM|needs_node|NODE = shutil' tests/test_run_acceptance.py && test \"$(python3 -m pytest --collect-only -q tests/test_run_acceptance.py 2>/dev/null | grep -c '::')\" = 21 && python3 -m pytest -q tests/test_run_acceptance.py",
+            "! grep -q 'sealed' skills/ultradocket/scripts/compile_docket.py && ! grep -qE 'test_sealed_entry_without_seal_fails_loud|test_mixed_sealed_and_suite_queue_compiles|test_sealed_cluster_member_missing_seal_raises_naming_member' tests/test_compile_docket.py && grep -q 'test_suite_entry_without_seal_compiles' tests/test_compile_docket.py && test \"$(python3 -m pytest --collect-only -q tests/test_compile_docket.py 2>/dev/null | grep -c '::')\" = 19 && python3 -m pytest -q tests/test_compile_docket.py",
+            "test ! -e tests/drainprobe && test ! -e tests/test_marker_compiler.py && test -e evals/drainprobe/probecli/cli.py",
+            "! grep -q 'drive-one' skills/ultrapowers/scripts/ultra_run.py && ! grep -q 'orchestrator' skills/ultrapowers/scripts/ultra_run.py && grep -q 'ULTRAPOWERS_FLEET_RUN is unset' skills/ultrapowers/scripts/ultra_run.py && grep -q 'runs only inside a fleet sandbox' skills/ultrapowers/scripts/ultra_run.py && grep -q 'the launcher sets it on the VM' skills/ultrapowers/scripts/ultra_run.py && ! grep -q 'drive-one' tests/test_ultra_run.py && grep -q 'def test_unset_fleet_run_refuses_before_any_other_stage' tests/test_ultra_run.py && grep -q 'the launcher sets it on the VM' tests/test_ultra_run.py && python3 -m pytest -q tests/test_ultra_run.py tests/test_deadline_slack.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The two nested re-runs of whole test files go",
+          "files": [
+            "fleet/tests/test_deadline_slack.mjs",
+            "tests/test_deadline_slack.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_deadline_slack.mjs",
+            "tests/test_deadline_slack.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1470",
+            "! grep -q 'test_f_' tests/test_deadline_slack.py && ! grep -q 'sys.executable' tests/test_deadline_slack.py && ! grep -q '\"-m\", \"pytest\"' tests/test_deadline_slack.py && ! grep -q 'def _env' tests/test_deadline_slack.py && test \"$(grep -c 'def test_b_' tests/test_deadline_slack.py)\" = 3 && test \"$(grep -c 'def test_d_' tests/test_deadline_slack.py)\" = 3 && test \"$(python3 -m pytest --collect-only -q tests/test_deadline_slack.py 2>/dev/null | grep -c '::')\" = 10 && ! grep -rnE 'pytest\\.main\\(|\"-m\", \"pytest\"' tests/ | grep -vE '^tests/(test_review_peer|test_check_renders_pin_is_tree_independent|test_ultralearn_swallows)\\.py:' | grep -q . && python3 -m pytest -q tests/test_deadline_slack.py",
+            "! grep -q 'spawnSync(process.execPath' fleet/tests/test_deadline_slack.mjs && ! grep -q 'WORKER_SPEC' fleet/tests/test_deadline_slack.mjs && ! grep -q 'runWorkerSpec' fleet/tests/test_deadline_slack.mjs && grep -q 'deadlineBudget(300)' fleet/tests/test_deadline_slack.mjs && grep -q 'the three deadlines in test_run_worker.mjs are seam calls' fleet/tests/test_deadline_slack.mjs && grep -q '< 5000' fleet/tests/test_deadline_slack.mjs && node fleet/tests/test_deadline_slack.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The verbatim sentence pins on documents go; referent pins and register sweeps stay",
+          "files": [
+            "tests/test_marker_contract.py",
+            "tests/test_proof_modes_documented.py",
+            "tests/test_review_peer.py",
+            "tests/test_session_hook.py",
+            "tests/test_ultrawrite_skill.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "tests/test_marker_contract.py",
+            "tests/test_proof_modes_documented.py",
+            "tests/test_review_peer.py",
+            "tests/test_session_hook.py",
+            "tests/test_ultrawrite_skill.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1443",
+            "test \"$(python3 -m pytest --collect-only -q tests/test_proof_modes_documented.py 2>/dev/null | grep -c '::')\" = 2 && grep -q 'def test_leg_e_m5_validate_skill_prints_skill_ok' tests/test_proof_modes_documented.py && grep -q 'def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files' tests/test_proof_modes_documented.py && ! grep -qE 'M[1-4]_|git show|_ensure_base_present' tests/test_proof_modes_documented.py && python3 -m pytest -q tests/test_proof_modes_documented.py",
+            "! grep -q 'test_contract_states_the_invariants' tests/test_marker_contract.py && test \"$(python3 -m pytest --collect-only -q tests/test_marker_contract.py 2>/dev/null | grep -c '::')\" = 12 && python3 -m pytest -q tests/test_marker_contract.py",
+            "! grep -qE 'test_opens_by_naming_its_audience|test_pins_the_header_marker_layout_verbatim|test_branch_clause_present|test_branch_clauses_in_canonical_order|test_rubric_token_present|PINNED_HEADER_SENTENCE|BRANCH_CLAUSES|RUBRIC_TOKENS' tests/test_ultrawrite_skill.py && test \"$(python3 -m pytest --collect-only -q tests/test_ultrawrite_skill.py 2>/dev/null | grep -c '::')\" = 17 && python3 -m pytest -q tests/test_ultrawrite_skill.py tests/test_recommendation_rubric.py",
+            "test \"$(python3 -m pytest --collect-only -q tests/test_session_hook.py 2>/dev/null | grep -c '::')\" = 5 && ! grep -qE 'authorizes execution|no approval pause|ANY implementation plan|do not default to ultrapowers|parallel width|t\u22654|risk override' tests/test_session_hook.py && grep -q '\"ultrapowers:ultrawrite\" in' tests/test_session_hook.py && grep -q '\"/ultrapowers <plan-path>\" in' tests/test_session_hook.py && grep -q '\"subagent-driven-development\" in' tests/test_session_hook.py && grep -q '\"executing-plans\" in' tests/test_session_hook.py && grep -q 'startswith(\"<ultrapowers-routing>\")' tests/test_session_hook.py && grep -q 'hooks.json' tests/test_session_hook.py && grep -q '\"ultraplan\" not in' tests/test_session_hook.py && test \"$(grep -c '\"superpowers:writing-plans\" not in' tests/test_session_hook.py)\" = 2 && grep -q '\"(recommended for marked plans)\" not in' tests/test_session_hook.py && python3 -m pytest -q tests/test_session_hook.py",
+            "! grep -q 'test_plan_markers_documents_the_peer_marker' tests/test_review_peer.py && ! grep -q 'or .lean.' tests/test_review_peer.py && grep -q 'Review:\\*\\* peer' tests/test_review_peer.py && test \"$(python3 -m pytest --collect-only -q tests/test_review_peer.py 2>/dev/null | grep -c '::')\" = 15 && python3 -m pytest -q tests/test_review_peer.py"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The bridge collects first and slowest first, the corpus is built once, CI prints the count",
+          "files": [
+            ".github/workflows/ci.yml",
+            "tests/conftest.py",
+            "tests/test_arm_weave.py",
+            "tests/test_classify.py",
+            "tests/test_corpuslib.py",
+            "tests/test_fleet_suite.py",
+            "tests/test_replay_corpus.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`fixture_corpus`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            ".github/workflows/ci.yml",
+            "tests/conftest.py",
+            "tests/test_arm_weave.py",
+            "tests/test_classify.py",
+            "tests/test_corpuslib.py",
+            "tests/test_fleet_suite.py",
+            "tests/test_replay_corpus.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1472",
+            "grep -B3 'def fixture_corpus' tests/conftest.py | grep -q 'scope=\"session\"' && ! grep -q 'def fixture_corpus' tests/test_corpuslib.py && ! grep -q 'def fixture_corpus' tests/test_arm_weave.py && ! grep -q 'def fixture_corpus' tests/test_classify.py && ! grep -q 'def fixture_corpus' tests/test_replay_corpus.py && test \"$(grep -c 'make_fixture_corpus(' tests/test_replay_corpus.py tests/test_arm_weave.py tests/test_classify.py | awk -F: '{s+=$2} END{print s}')\" = 0 && test \"$(grep -c 'make_fixture_corpus(' tests/test_corpuslib.py)\" = 3 && python3 -m pytest -q -p no:xdist tests/test_corpuslib.py tests/test_arm_weave.py tests/test_classify.py tests/test_replay_corpus.py && python3 -m pytest -q -n auto tests/test_corpuslib.py tests/test_arm_weave.py tests/test_classify.py tests/test_replay_corpus.py",
+            "python3 -c \"import glob,os,subprocess,sys; slow=['test_run_engine_examiner.mjs','test_sandbox_boot.mjs','test_exam_edited_patches.mjs','test_run_engine_integrated_runs.mjs','test_run_engine_proof_runs.mjs','test_deadline_slack.mjs']; names=sorted(os.path.basename(p) for p in glob.glob('fleet/tests/test_*.mjs')); exp=[s for s in slow if s in names]+[n for n in names if n not in slow]; out=subprocess.run([sys.executable,'-m','pytest','tests/','--collect-only','-q'],capture_output=True,text=True).stdout.splitlines(); head=out[:len(names)]; assert all(l.startswith('tests/test_fleet_suite.py::test_fleet_mjs[') for l in head), head; got=[l.split('[',1)[1].rstrip(']') for l in head]; assert got==exp, (got, exp)\" && grep -q 'SLOW_FIRST' tests/test_fleet_suite.py && grep -q 'pytest_collection_modifyitems' tests/conftest.py",
+            "grep -A8 'Report skill prose sizes' .github/workflows/ci.yml | grep -q -- '--collect-only -q | tail -n 1' && grep -q -- '--durations=10' .github/workflows/ci.yml && test \"$(grep -c 'validate_skill.py skills/' .github/workflows/ci.yml)\" = 4 && ! grep -q 'ultraplan' .github/workflows/ci.yml && python3 -m pytest -q tests/test_validate_skill.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The frozen periphery is untouched: `skills/ultrapowers/scripts/gate_check.py`, `ultra_gate.py`\n  and `run_acceptance.sh` are byte-identical to BASE.\n- No shipped document changes: every file under `skills/*/SKILL.md`, `skills/*/references/`,\n  `fleet/roles/`, `fleet/CONTRACT.md`, `fleet/RUNBOOK.md`, `README.md` and `hooks/` is\n  byte-identical to BASE \u2014 this layer edits tests, two code sites named below, and CI.\n- The referent pins and register sweeps the audit keeps are untouched:\n  `tests/test_docs_agree_with_code.py`, `tests/test_report_runbook.py`,\n  `tests/test_ultralearn_docs.py`, `tests/test_validate_skill.py`,\n  `tests/test_recommendation_rubric.py` are byte-identical to BASE.\n- `python3 -m pytest tests/ -n auto` passes.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-4/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-4/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-4/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-4/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
