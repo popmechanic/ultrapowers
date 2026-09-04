@@ -51,13 +51,11 @@ def plan_writes(plan_path):
 
 def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
     """Compile queued docket entries into execution order and parallelism
-    projection. A Seal is required only for `sealed`-disposition plans; `suite`
-    and `waived` plans are verified by the committed suite / operator and carry
-    no held-out seal. Order is pure score-descending (v1).
+    projection. Every plan is verified by the committed suite / operator, so no
+    entry carries a held-out seal. Order is pure score-descending (v1).
 
-    Raises ValueError for malformed queued entries: missing Plan, missing Seal
-    on a sealed-disposition plan, or a PLAN-TOGETHER cluster whose members
-    disagree on Engine (or, when sealed, on Seal).
+    Raises ValueError for malformed queued entries: a missing Plan, or a
+    PLAN-TOGETHER cluster whose members disagree on Engine.
     """
     entries = [e for e in docket_lib.parse_docket(docket_text) if e.state == "queued"]
 
@@ -67,10 +65,6 @@ def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
 
     # Resolve each plan once: (writes, acceptance mode). Uncompilable -> friendly raise.
     facts = {e.plan: facts_resolver(e.plan) for e in entries}
-
-    no_seal = [e.issue for e in entries if facts[e.plan][1] == "sealed" and not e.seal]
-    if no_seal:
-        raise ValueError(f"queued sealed-disposition entries missing a Seal: {no_seal}")
 
     # PLAN-TOGETHER clusters (#122): unit = unique Plan path; queued entries
     # sharing a Plan advance together. The old duplicate-Plan raise rejected a
@@ -89,10 +83,6 @@ def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
             raise ValueError(
                 f"cluster {plan} members disagree on Engine ({names}): "
                 "PLAN-TOGETHER entries must share one executor")
-        if facts[plan][1] == "sealed" and len({m.seal for m in members}) > 1:
-            names = ", ".join("#" + m.issue for m in members)
-            raise ValueError(
-                f"sealed cluster {plan} members disagree on Seal ({names})")
 
     unit_score = {plan: max(float(m.score.split()[0]) for m in members)
                   for plan, members in units.items()}

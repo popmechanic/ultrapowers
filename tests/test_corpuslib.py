@@ -26,14 +26,14 @@ def _git(repo, *args):
 
 
 @pytest.fixture(scope="module")
-def fixture_corpus(tmp_path_factory):
-    """One build of the fixture corpus, shared read-only by the shape tests.
+def corpus_by_wave(fixture_corpus):
+    """The session corpus (`conftest.fixture_corpus`) indexed by wave.
 
-    Scoped to a pytest tmp dir (never a checked-in fixture directory) so the
-    suite still owns every byte it writes.
+    Read-only: the shape tests below only ever read these bytes. The tests that
+    need a fresh build — the shape probe and the determinism check — call the
+    builder themselves, since what they assert on IS the build.
     """
-    dest = tmp_path_factory.mktemp("fold-corpus")
-    repo, corpus = corpuslib.make_fixture_corpus(dest)
+    repo, corpus = fixture_corpus
     entries = corpuslib.load_corpus_index(corpus)
     return repo, corpus, {e.wave: e for e in entries}
 
@@ -104,8 +104,8 @@ def test_answer_shapes_are_plain_dataclasses():
 # The fixture corpus — layout, and the four scenario seeds
 # --------------------------------------------------------------------------
 
-def test_fixture_layout_and_index(fixture_corpus):
-    repo, corpus, by_wave = fixture_corpus
+def test_fixture_layout_and_index(corpus_by_wave):
+    repo, corpus, by_wave = corpus_by_wave
     assert sorted(by_wave) == [1, 2, 3, 4, 5]
     base_sha = by_wave[1].base_sha
     for wave, entry in sorted(by_wave.items()):
@@ -117,8 +117,8 @@ def test_fixture_layout_and_index(fixture_corpus):
             assert (entry.wave_dir / ("task-%s.patch" % task_id)).is_file()
 
 
-def test_fixture_base_commit_contents(fixture_corpus):
-    repo, corpus, by_wave = fixture_corpus
+def test_fixture_base_commit_contents(corpus_by_wave):
+    repo, corpus, by_wave = corpus_by_wave
     names = _git(repo, "ls-tree", "-r", "--name-only", by_wave[1].base_sha).split()
     assert names == ["a.txt", "b.txt", "bin.dat", "c.txt", "d.txt"]
     blob = subprocess.run(["git", "-C", str(repo), "show",
@@ -127,8 +127,8 @@ def test_fixture_base_commit_contents(fixture_corpus):
     assert b"\x00" in blob and len(blob) < 256      # small, and binary to the kernel
 
 
-def test_wave1_disjoint_files_fold_clean(fixture_corpus):
-    _repo, _corpus, by_wave = fixture_corpus
+def test_wave1_disjoint_files_fold_clean(corpus_by_wave):
+    _repo, _corpus, by_wave = corpus_by_wave
     entry = by_wave[1]
     events = _events(entry)
     assert [(e["type"], e.get("task")) for e in events] == [
@@ -138,8 +138,8 @@ def test_wave1_disjoint_files_fold_clean(fixture_corpus):
     assert _patch_paths(entry, "1b") == ["b.txt"]
 
 
-def test_wave2_same_anchor_appends_auto_union(fixture_corpus):
-    _repo, _corpus, by_wave = fixture_corpus
+def test_wave2_same_anchor_appends_auto_union(corpus_by_wave):
+    _repo, _corpus, by_wave = corpus_by_wave
     entry = by_wave[2]
     events = _events(entry)
     assert [e["type"] for e in events] == ["base", "fold", "fold", "resolve"]
@@ -154,8 +154,8 @@ def test_wave2_same_anchor_appends_auto_union(fixture_corpus):
     assert "c right addition" in events[-1]["lines"]
 
 
-def test_wave3_overlapping_region_contends_with_xaxbx_context(fixture_corpus):
-    repo, _corpus, by_wave = fixture_corpus
+def test_wave3_overlapping_region_contends_with_xaxbx_context(corpus_by_wave):
+    repo, _corpus, by_wave = corpus_by_wave
     entry = by_wave[3]
     assert [e["type"] for e in _events(entry)] == ["base", "fold", "fold"]
     (conflict,) = json.loads((entry.wave_dir / "conflicts.json").read_text())
@@ -171,8 +171,8 @@ def test_wave3_overlapping_region_contends_with_xaxbx_context(fixture_corpus):
                    if line.startswith(" ") or line.startswith("+"))
 
 
-def test_wave4_deletion_adjacency_and_binary_seeds(fixture_corpus):
-    repo, _corpus, by_wave = fixture_corpus
+def test_wave4_deletion_adjacency_and_binary_seeds(corpus_by_wave):
+    repo, _corpus, by_wave = corpus_by_wave
     entry = by_wave[4]
     assert [e["type"] for e in _events(entry)] == ["base", "fold", "fold"]
     assert _patch_paths(entry, "4a") == ["b.txt"]
@@ -197,9 +197,9 @@ def test_wave4_deletion_adjacency_and_binary_seeds(fixture_corpus):
     assert "GIT binary patch" in near
 
 
-def test_fixture_patches_apply_over_the_base(fixture_corpus, tmp_path):
+def test_fixture_patches_apply_over_the_base(corpus_by_wave, tmp_path):
     """Every corpus patch is a real `git apply`-able diff against the base."""
-    repo, _corpus, by_wave = fixture_corpus
+    repo, _corpus, by_wave = corpus_by_wave
     env = dict(os.environ, GIT_INDEX_FILE=str(tmp_path / "probe-index"))
     for entry in sorted(by_wave.values(), key=lambda e: e.wave):
         for task_id in entry.tasks:

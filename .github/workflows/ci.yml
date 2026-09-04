@@ -50,5 +50,11 @@ jobs:
       - name: Report skill prose sizes
         run: wc -w skills/*/SKILL.md fleet/roles/*.md 2>/dev/null || true
 
+      # Reported beside the prose sizes, and for the same reason: a number that
+      # moves is worth seeing in the log without opening the run. The count is
+      # the suite's own size; --durations=10 below is where the wall goes.
+      - name: Report collected test count
+        run: python -m pytest tests/ --collect-only -q | tail -n 1
+
       - name: Run tests
-        run: python -m pytest tests/ -n auto -v
+        run: python -m pytest tests/ -n auto -v --durations=10

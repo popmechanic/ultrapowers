@@ -25,10 +25,12 @@ import corpuslib  # noqa: E402
 
 
 @pytest.fixture(scope="module")
-def fixture_corpus(tmp_path_factory):
-    """One build of the fixture corpus, shared read-only by the wave tests."""
-    dest = tmp_path_factory.mktemp("classify-corpus")
-    repo, corpus = corpuslib.make_fixture_corpus(dest)
+def corpus_entries(fixture_corpus):
+    """The session corpus (`conftest.fixture_corpus`) indexed by wave.
+
+    Read-only: Arm G clones the repo into each test's own `tmp_path`.
+    """
+    repo, corpus = fixture_corpus
     entries = corpuslib.load_corpus_index(corpus)
     return repo, corpus, {e.wave: e for e in entries}
 
@@ -127,8 +129,8 @@ W1_B = corpuslib.B_TXT.replace("b two\n", "b two (task 1b)\n").encode()
 W2_UNION = b"c one\nc two\nc anchor\nc left addition\nc right addition\nc three\nc four\n"
 
 
-def test_git_answer_disjoint_wave_is_class_one_everywhere(fixture_corpus, tmp_path):
-    repo, _, entries = fixture_corpus
+def test_git_answer_disjoint_wave_is_class_one_everywhere(corpus_entries, tmp_path):
+    repo, _, entries = corpus_entries
     weave = corpuslib.ArmResult({"a.txt": corpuslib.PathAnswer("clean", W1_A),
                                  "b.txt": corpuslib.PathAnswer("clean", W1_B)}, True)
     git = arm_git.git_answer(repo, entries[1], weave, work=tmp_path)
@@ -139,8 +141,8 @@ def test_git_answer_disjoint_wave_is_class_one_everywhere(fixture_corpus, tmp_pa
     assert [(v["path"], v["cls"]) for v in classify.classify(weave, git)] == [("a.txt", 1), ("b.txt", 1)]
 
 
-def test_git_answer_same_anchor_wave_conflicts_where_the_weave_unioned(fixture_corpus, tmp_path):
-    repo, _, entries = fixture_corpus
+def test_git_answer_same_anchor_wave_conflicts_where_the_weave_unioned(corpus_entries, tmp_path):
+    repo, _, entries = corpus_entries
     weave = corpuslib.ArmResult({"c.txt": corpuslib.PathAnswer("clean", W2_UNION)}, True)
     git = arm_git.git_answer(repo, entries[2], weave, work=tmp_path)
     assert git.complete is True
@@ -151,8 +153,8 @@ def test_git_answer_same_anchor_wave_conflicts_where_the_weave_unioned(fixture_c
     assert git.per_path["c.txt"].content == W2_UNION
 
 
-def test_git_answer_binary_path_is_reported_binary(fixture_corpus, tmp_path):
-    repo, _, entries = fixture_corpus
+def test_git_answer_binary_path_is_reported_binary(corpus_entries, tmp_path):
+    repo, _, entries = corpus_entries
     weave = corpuslib.ArmResult({}, True)
     git = arm_git.git_answer(repo, entries[4], weave, work=tmp_path)
     assert git.complete is True
@@ -160,8 +162,8 @@ def test_git_answer_binary_path_is_reported_binary(fixture_corpus, tmp_path):
     assert git.per_path["b.txt"].status == "clean"
 
 
-def test_git_answer_class_five_wave_is_contended_on_both_arms(fixture_corpus, tmp_path):
-    repo, _, entries = fixture_corpus
+def test_git_answer_class_five_wave_is_contended_on_both_arms(corpus_entries, tmp_path):
+    repo, _, entries = corpus_entries
     weave = corpuslib.ArmResult({"d.txt": corpuslib.PathAnswer("contended")}, True)
     git = arm_git.git_answer(repo, entries[3], weave, work=tmp_path)
     assert git.per_path["d.txt"].status == "contended"
@@ -172,32 +174,32 @@ def test_git_answer_class_five_wave_is_contended_on_both_arms(fixture_corpus, tm
 # The ride-along predicates
 # --------------------------------------------------------------------------
 
-def test_xaxbx_true_on_the_class_five_seed(fixture_corpus):
-    _, _, entries = fixture_corpus
+def test_xaxbx_true_on_the_class_five_seed(corpus_entries):
+    _, _, entries = corpus_entries
     assert classify.xaxbx_flag(corpuslib.D_TXT, _patch_texts(entries[3]), "d.txt") is True
 
 
-def test_xaxbx_false_on_the_disjoint_wave(fixture_corpus):
-    _, _, entries = fixture_corpus
+def test_xaxbx_false_on_the_disjoint_wave(corpus_entries):
+    _, _, entries = corpus_entries
     texts = _patch_texts(entries[1])
     assert classify.xaxbx_flag(corpuslib.A_TXT, texts, "a.txt") is False
     assert classify.xaxbx_flag(corpuslib.B_TXT, texts, "b.txt") is False
 
 
-def test_deletion_adjacency_names_the_pair_and_the_file(fixture_corpus):
-    _, _, entries = fixture_corpus
+def test_deletion_adjacency_names_the_pair_and_the_file(corpus_entries):
+    _, _, entries = corpus_entries
     assert classify.deletion_adjacency(entries[4]) == [
         {"path": "b.txt", "task_del": "4a", "task_near": "4b", "deleted_line": 5},
     ]
 
 
-def test_deletion_adjacency_empty_on_the_disjoint_wave(fixture_corpus):
-    _, _, entries = fixture_corpus
+def test_deletion_adjacency_empty_on_the_disjoint_wave(corpus_entries):
+    _, _, entries = corpus_entries
     assert classify.deletion_adjacency(entries[1]) == []
 
 
-def test_deletion_adjacency_reports_the_lowest_line_in_the_window(fixture_corpus):
-    _, _, entries = fixture_corpus
+def test_deletion_adjacency_reports_the_lowest_line_in_the_window(corpus_entries):
+    _, _, entries = corpus_entries
     # 4a deletes base lines 5 and 6; 4b's hunk spans base lines 6..10. At k=0
     # only line 6 is inside the span, so widening the window is what pulls the
     # reported line down to 5.

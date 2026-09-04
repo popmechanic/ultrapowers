@@ -2,7 +2,25 @@ import fcntl
 import glob, os, subprocess, pytest
 
 FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
-TESTS = sorted(glob.glob(os.path.join(FLEET, "tests", "test_*.mjs")))
+
+# Measured wall at 0.3.11: 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s. Under
+# `--dist load` a worker that picks up an 83 s sim last holds the whole suite
+# open, so the six longest go out first, longest first; the rest follow
+# alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
+SLOW_FIRST = ('test_run_engine_examiner.mjs', 'test_sandbox_boot.mjs',
+              'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
+              'test_run_engine_proof_runs.mjs', 'test_deadline_slack.mjs')
+
+
+def _slowest_first(paths):
+    """`paths` ordered SLOW_FIRST-then-alphabetical by basename."""
+    by_name = {os.path.basename(p): p for p in paths}
+    ordered = [by_name[name] for name in SLOW_FIRST if name in by_name]
+    ordered += [by_name[name] for name in sorted(by_name) if name not in SLOW_FIRST]
+    return ordered
+
+
+TESTS = _slowest_first(glob.glob(os.path.join(FLEET, "tests", "test_*.mjs")))
 
 
 def _ensure_node_modules():

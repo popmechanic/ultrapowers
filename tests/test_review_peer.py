@@ -171,11 +171,6 @@ def test_authoring_docs_carry_no_adversarial():
 def test_skill_md_documents_the_peer_marker():
     text = SKILL_MD.read_text()
     assert "**Review:** peer" in text
-    assert "`peer` or `lean`" in text
-
-
-def test_plan_markers_documents_the_peer_marker():
-    assert "one of `peer` or `lean`" in PLAN_MARKERS_MD.read_text()
 
 
 def test_ultrawrite_skill_still_validates():

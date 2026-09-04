@@ -456,9 +456,9 @@ def main(argv=None):
     fleet_run = os.environ.get("ULTRAPOWERS_FLEET_RUN", "").strip()
     if not stage("fleet-run", bool(fleet_run),
                  success="fleet run " + fleet_run,
-                 failure="ULTRAPOWERS_FLEET_RUN is unset — `/ultrapowers` runs "
-                         "only inside a fleet sandbox — launch `drive-one` on "
-                         "the orchestrator"):
+                 failure="ULTRAPOWERS_FLEET_RUN is unset"
+                         " — `/ultrapowers` runs only inside a fleet sandbox"
+                         " — the launcher sets it on the VM"):
         return bail()
 
     r = sh(["git", "rev-parse", "--show-toplevel"], cwd=a.repo)

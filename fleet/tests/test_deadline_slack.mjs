@@ -7,19 +7,17 @@
 // scale with the machine: one environment variable, one multiplier, no other
 // knob.
 //
-// Legs (a), (c) and (e) of the task's Proof live here; (b), (d) and (f) are
-// the same shape against the python half, in tests/test_deadline_slack.py.
+// Legs (a) and (c) of the task's Proof live here; (b) and (d) are the same
+// shape against the python half, in tests/test_deadline_slack.py.
 
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { slack, deadlineBudget, SLACK_ENV, DEFAULT_SLACK } from './deadline-slack.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const ROOT = path.resolve(HERE, '..', '..')
 
 // The module reads the variable per call, so the legs set it in place rather
 // than respawning a node process per value.
@@ -63,8 +61,7 @@ assert.equal(DEFAULT_SLACK, 4)
 
 // ── (c) the three deadlines in test_run_worker.mjs are seam calls [M3] ──────
 
-const WORKER_SPEC = path.join(HERE, 'test_run_worker.mjs')
-const worker = fs.readFileSync(WORKER_SPEC, 'utf8')
+const worker = fs.readFileSync(path.join(HERE, 'test_run_worker.mjs'), 'utf8')
 
 assert.ok(!worker.includes('< 5000'),
   'test_run_worker.mjs still bounds an elapsed time by the bare constant 5000')
@@ -88,23 +85,5 @@ assert.ok(bound.includes('graceMs'), `the bound must name the case's graceMs, go
 assert.ok(!/\d{3,}/.test(bound),
   `the bound must be computed from what the case configured, not a bare literal, got: ${bound}`)
 console.log('ok - (c) the elapsed bound is computed from the case\'s own timeoutMs and graceMs')
-
-// ── (e) the spec still passes, slack set and unset [M5] ─────────────────────
-
-const runWorkerSpec = (value) => {
-  const env = { ...process.env }
-  if (value === null) delete env.FLEET_TEST_SLACK
-  else env.FLEET_TEST_SLACK = value
-  return spawnSync(process.execPath, [WORKER_SPEC], { cwd: ROOT, env, encoding: 'utf8' })
-}
-
-for (const value of [null, '1']) {
-  const label = value === null ? 'unset' : `FLEET_TEST_SLACK=${value}`
-  const r = runWorkerSpec(value)
-  assert.equal(r.status, 0, `test_run_worker.mjs exited ${r.status} with ${label}:\n${r.stdout}${r.stderr}`)
-  assert.ok(r.stdout.includes('ALL TESTS PASSED'),
-    `test_run_worker.mjs printed no sentinel with ${label}:\n${r.stdout}${r.stderr}`)
-  console.log(`ok - (e) node fleet/tests/test_run_worker.mjs passes with ${label}`)
-}
 
 console.log('ALL TESTS PASSED')
