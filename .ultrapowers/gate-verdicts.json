@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2d257c1cfe9f16d131ab604addf1dbeda7e472bfdf142c36f87d6b6eae6b1e47",
+      "verdict": "pass",
+      "reason": "round 3: M1 by the public-name equality Run + lru_cache + test_readers; M2 by the first Run: file absent, repo-wide import ban, top-level _readers import, no local redefinition sweep, per-name reach-through loop; M3 by collect = 9; M4 by git diff --quiet on the slicer tests; M5 by the numstat 1/1 bound + literals; M6 by the four absences and three presences"
+    }
+  },
+  "tally": {
+    "tasks": 1,
+    "pass": 1,
+    "fail": 0,
+    "rounds": {
+      "1": 3
+    },
+    "dispatched": 3
+  }
+}
