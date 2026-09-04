@@ -145,7 +145,10 @@ const eventsOf = (runDir) => {
   assert.equal(report.coverage.complete, true, 'sim precondition: the task merged')
   // A per-round MAXIMUM would read about 200 here and fail this bound; the sum
   // of the two individually-measured calls reads about 230.
-  assert.ok(eco.reviewerMs >= 230,
+  // 215, not 230: setTimeout(30) + setTimeout(200) summed read 229 on CI (timers
+  // fire a millisecond or two early against Date.now); the bound only has to sit
+  // clear of the ~200 a per-round maximum would read.
+  assert.ok(eco.reviewerMs >= 215,
     'a concurrent pair contributes BOTH durations (30 ms + 200 ms), got: ' + eco.reviewerMs)
   assert.ok(eco.reviewerMs < 1000,
     'and only the reviewer calls, not the whole run: ' + eco.reviewerMs)
@@ -192,7 +195,9 @@ const eventsOf = (runDir) => {
   assert.equal(calls.filter((l) => l.startsWith('review:')).length, 4,
     'sim precondition: two pair rounds, four reviewer calls: ' + calls.join(','))
 
-  assert.ok(eco.reviewerMs >= 120,
+  // 100, not 120: four 30 ms timers summed read 117 on CI (same early-fire
+  // slack); a per-round maximum would read ~60, well under the bound.
+  assert.ok(eco.reviewerMs >= 100,
     'four reviewers at 30 ms each are summed, not maxed: ' + eco.reviewerMs)
   assert.ok(eco.reviewerMs < 1000, 'and nothing else is counted: ' + eco.reviewerMs)
   assert.equal(eco.blockingFindings, 2,
