@@ -5,7 +5,7 @@ alongside the derived `testCmd` (#515), `--emit-args` writes `proofTests` on
 every wave entry — for a claims-v1 task the list of its Proof `Test:` paths in
 Proof order (the very list `testCmd` derives from), `[]` when the Proof names
 none; for a legacy-grammar task `[]`. The list is the Proof's, the command is
-only derivable for the two runnable shapes, so the two keys disagree whenever
+only derivable for the three runnable shapes, so the two keys disagree whenever
 the Proof names something unrunnable — that is the point of shipping both.
 
 Leg (f) pins the rest of the entry: with `proofTests` deleted, the `waves`
