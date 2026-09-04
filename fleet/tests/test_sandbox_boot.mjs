@@ -192,7 +192,13 @@ case "$verb" in
   show)
     case "$a1" in
       *:.ultrapowers/plan.md) printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"; exit 0 ;;
+      *:.ultrapowers/gate-verdicts.json) printf '{"tasks":{"1":{"verdict":"pass"}},"tally":{"tasks":1}}\\n'; exit 0 ;;
     esac
+    exit 0 ;;
+  cat-file)
+    # \`cat-file -e <plan>:.ultrapowers/gate-verdicts.json\`: the record is on the
+    # branch unless the case says otherwise.
+    [ -n "\${STUB_NO_VERDICTS:-}" ] && exit 1
     exit 0 ;;
   worktree)
     # \`worktree add\` is answered by creating the directory. The first
@@ -593,6 +599,29 @@ test('the plan comes off the target\'s plan branch, before the engine  [M1 / leg
   // plan travelled the whole way.
   assert.equal(prPosts(ctx)[0].title, `fleet run-7: ${PLAN_H1}`,
     'the PR title reads the H1 of the plan fetched from the plan branch')
+})
+
+test('the gate verdict record lands beside the plan under the compiler\'s name  [M1]', () => {
+  const ctx = green()
+  const H = ctx.home
+  const verdicts = path.join(H, 'plans', 'run-7.gate-verdicts.json')
+  assert.ok(fs.existsSync(verdicts), 'run-7.gate-verdicts.json is not beside plans/run-7.md')
+  assert.deepEqual(JSON.parse(fs.readFileSync(verdicts, 'utf8')),
+    { tasks: { 1: { verdict: 'pass' } }, tally: { tasks: 1 } },
+    'the record is the branch\'s .ultrapowers/gate-verdicts.json, byte for byte')
+  const shows = argvLines(ctx, 'git').filter((a) => a[1] === '-C' && a[3] === 'show')
+  assert.ok(shows.some((a) => a[4] === `${PLAN_SHA}:.ultrapowers/gate-verdicts.json`),
+    'the record is read out of the plan commit, not from anywhere else')
+})
+
+test('a plan branch without a verdict record is a legacy-grammar plan, not a failure  [M1]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_NO_VERDICTS: '1' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const H = ctx.home
+  assert.ok(!fs.existsSync(path.join(H, 'plans', 'run-7.gate-verdicts.json')), 'no record is invented')
+  assert.ok(fs.existsSync(path.join(H, 'plans', 'run-7.md')), 'the plan itself still lands')
+  assert.equal(statusOf(ctx).state, 'done', 'the run proceeds without a record')
 })
 
 test('the engine is a transient service with the contract argv; only its child env carries the Anthropic pair  [M1, M5/(g)]', () => {
