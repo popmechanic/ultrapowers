@@ -3,6 +3,10 @@
 //
 //   node fleet/claude-token.mjs login     browser consent → code from the clipboard →
 //                                         tokens → the edge proxy; nothing printed
+//   node fleet/claude-token.mjs login --code-from-clipboard
+//                                         the same, with no question at the terminal:
+//                                         the process polls the clipboard until the
+//                                         copied `code#state` carries THIS login's state
 //   node fleet/claude-token.mjs refresh   rotate before a run when < 30 min remain
 //   node fleet/claude-token.mjs status    when the current access token expires
 //
@@ -38,6 +42,9 @@ export const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', acc
 export const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
 export const LOCK_STALE_MS = 2 * 60 * 1000
 export const REFRESH_AHEAD_MS = 30 * 60 * 1000
+// `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
+export const CLIPBOARD_POLL_MS = 2 * 1000
+export const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
@@ -64,6 +71,18 @@ export function authorizeUrlFor ({ challenge, state }) {
 // The callback page shows `code#state`; the fragment is not part of the code.
 export const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
 
+// Matching on the state is what makes polling safe: nothing already on the
+// clipboard can carry a state minted milliseconds ago, and neither can a code
+// from someone else's flow — so the poll never exchanges a stray value. A value
+// with no `#`, or with a different state, answers null and is skipped.
+export function codeForState (pasted, state) {
+  const [code, fragment, ...rest] = String(pasted).trim().split('#')
+  if (rest.length || fragment === undefined) return null
+  if (fragment.trim() !== state) return null
+  const clean = code.trim()
+  return clean || null
+}
+
 // ---- seams: everything that touches the world goes through `deps` ------------
 
 export function defaultDeps () {
@@ -76,6 +95,7 @@ export function defaultDeps () {
       const r = spawnSync('pbpaste', [], { encoding: 'utf8' })
       return r.status === 0 ? r.stdout : ''
     },
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     prompt: async (question) => {
       const rl = readline.createInterface({ input: process.stdin, output: process.stderr })
       const answer = await new Promise((resolve) => rl.question(question, resolve))
@@ -202,14 +222,36 @@ const iso = (ms) => new Date(ms).toISOString()
 
 // ---- verbs ----------------------------------------------------------------
 
-export async function login (deps) {
+// The chat-driven wait: the agent runs this from a Bash tool that has no
+// interactive stdin, so nobody can press Enter. The process polls the clipboard
+// itself and only exchanges a value whose `#state` is this login's, which is why
+// waiting is safe — see `codeForState`. Returns the clean code.
+async function pollClipboardForCode (deps, state) {
+  const deadline = deps.now() + CLIPBOARD_WAIT_MS
+  for (;;) {
+    const code = codeForState(deps.clipboard(), state)
+    if (code) return code
+    if (deps.now() >= deadline) {
+      throw new Error(`--code-from-clipboard: no code for this login appeared on the clipboard within ${CLIPBOARD_WAIT_MS / 60000} minutes — copy the code from the callback page and run login again`)
+    }
+    await deps.sleep(CLIPBOARD_POLL_MS)
+  }
+}
+
+export async function login (deps, { codeFromClipboard = false } = {}) {
   const p = pkce(deps.random)
   const url = authorizeUrlFor(p)
   deps.log('Opening claude.ai to authorize the fleet. Approve, then copy the code it shows.')
-  if (!deps.open(url)) deps.log(`Open this URL yourself:\n${url}`)
-  await deps.prompt('When the code is on your clipboard, press Enter… ')
-  const code = cleanCode(deps.clipboard())
-  if (!code) throw new Error('the clipboard holds no code — copy it from the callback page and run login again')
+  if (!deps.open(url) || codeFromClipboard) deps.log(`Open this URL yourself:\n${url}`)
+  let code
+  if (codeFromClipboard) {
+    deps.log('Waiting for the code on the clipboard — approve in the browser and copy it.')
+    code = await pollClipboardForCode(deps, p.state)
+  } else {
+    await deps.prompt('When the code is on your clipboard, press Enter… ')
+    code = cleanCode(deps.clipboard())
+    if (!code) throw new Error('the clipboard holds no code — copy it from the callback page and run login again')
+  }
   const tokens = await exchange(deps, { code, verifier: p.verifier, state: p.state })
   writeRecord(deps, tokens)
   const how = installBearer(deps, tokens.accessToken)
@@ -251,10 +293,10 @@ export function status (deps) {
 
 export async function main (argv, deps = defaultDeps()) {
   const [verb, ...rest] = argv
-  if (verb === 'login') return login(deps)
+  if (verb === 'login') return login(deps, { codeFromClipboard: rest.includes('--code-from-clipboard') })
   if (verb === 'refresh') return refresh(deps, { force: rest.includes('--force') })
   if (verb === 'status') return status(deps)
-  throw new Error('usage: node fleet/claude-token.mjs login | refresh [--force] | status')
+  throw new Error('usage: node fleet/claude-token.mjs login [--code-from-clipboard] | refresh [--force] | status')
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {

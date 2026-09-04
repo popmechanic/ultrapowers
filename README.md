@@ -92,19 +92,13 @@ work-in-progress was restored byte-for-byte.
 
 ## How it works
 
-ultrapowers is built on **Dynamic Workflows** — a capability Claude Code added to its own runtime,
-where a single script fans a job out across many subagents at once (up to sixteen), each working in
-isolation, while their intermediate work stays out of your main session.
-([Claude Code's docs explain the feature →](https://code.claude.com/docs/en/workflows)) This whole
-project started as an experiment with that new native machinery: *what happens if you point it at a
-real, approved plan?*
+ultrapowers runs on an exe.dev fleet you provision — the plugin is the client, and the engine is
+`fleet/run-engine.mjs`. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on
+a disposable sandbox of its own; every wave, per-task review, fold and test suite executes there.
+Nothing builds, tests, or merges on your machine. When you approve the finished result at the gate,
+the sandbox opens the pull request on the repository you ran in, with the gate receipt in its body.
 
-### How it runs
-
-ultrapowers runs on an exe.dev fleet you provision — the plugin is the client. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on a disposable sandbox of its own; every wave, review, and test suite executes there, and when you approve the finished result the sandbox opens the pull request with the gate receipt in its body. There is no local engine: nothing builds, tests, or merges on your machine. Provisioning the fleet is a one-time setup — see [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md).
-
-The clearest way to see what it does is to zoom in — the whole plan, then one task, then a single
-agent.
+The clearest way to see what it does is to zoom in — the whole plan, then one task.
 
 ### The whole plan, at a distance
 
@@ -153,39 +147,28 @@ mistake another wave's work for this task's. If the
 review asks for a fix, the task loops until it passes, then **merges back** onto the one integration
 branch.
 
-### Zoom in again: the agents at work
-
-Now watch a wave run. Every node in the graph becomes a live agent, building its task in its own
-worktree — a wave fans out to as many agents as the plan calls for, running them all at once. Here,
-that's *forty-six*:
-
-<p align="center">
-  <img src="docs/assets/swarm.gif" width="840" alt="One wave of an ultrapowers run: all 46 of its agents shown as nodes between the plan above and the integration branch below. Each node's ring colour is its model — Haiku, Sonnet, or Opus — and an inner arc fills as that agent builds its task.">
-</p>
-
-Each ring's colour is the model that agent runs on: the builders are Haiku and Sonnet, the reviewers
-Opus. That's the whole idea in one picture — cheap models do the building, your frontier model does the
-judging — multiplied across dozens of agents at the same time.
-
-And this is exactly what it looks like running in Claude Code:
-
-<p align="center">
-  <img src="docs/assets/workflow-run.png" width="900" alt="The same ultrapowers-run workflow as it actually appears in Claude Code's terminal: the Wave 1 agent list with per-agent model, worktree, token, tool, and time totals.">
-</p>
+The model each task runs on is the whole idea in miniature: the builder is a cheap model, the
+reviewer is your frontier one — cheap models do the building, your frontier model does the judging —
+multiplied across every task a wave holds at once. When a wave's tasks have all passed their
+reviews, the engine folds them onto the integration branch and the next wave starts.
 
 ### It doesn't improvise
 
-The script that orchestrates all of this is committed and frozen; it never writes a fresh version of
+The engine that orchestrates all of this is committed and frozen; it never writes a fresh version of
 itself at runtime. Same plan in, same structure out. And every run happens in a sandbox that exists
 only for that run — nothing it does can touch your checkout, and nothing it leaves behind survives it.
 
-None of it this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
-dependency graphs, git worktrees, disposable sandboxes — wired onto a new runtime, each doing one small job
-well. 
+None of this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
+dependency graphs, git worktrees, disposable sandboxes — each doing one small job well.
 
 ## Get started
 
-Install it from inside Claude Code:
+Four steps, once each. All of it happens inside Claude Code: the agent does the work and asks you to
+choose. The only things it cannot do for you are the consents that are yours to give in a browser.
+
+### 1. Install the plugin
+
+From inside Claude Code:
 
 ```
 /plugin marketplace add popmechanic/ultrapowers
@@ -195,16 +178,45 @@ Install it from inside Claude Code:
 **Superpowers is optional.** ultrapowers authors and runs plans on its own. Install Superpowers
 alongside it if you want its brainstorming and practice skills as companions.
 
-### Before your first run
+### 2. `/ultrapowers setup`
 
-Authoring needs no configuration: `ultrawrite`, `compile_plan.py`, `ultradocket` and
-`ultralearn` are local Python plus `gh`, and you can write, gate and compile plans without
-an exe.dev account. Only `/ultrapowers <plan-path>` needs the fleet — an exe.dev account, a
-handful of integration objects, and one image you build with a single command, following
-`fleet/RUNBOOK.md`. Run `/ultrapowers setup` first: it checks each piece of the fleet and
-walks you through building any piece you are missing.
+Run `/ultrapowers setup` and answer what it asks. The agent runs the doctor, reads its rows —
+`exe-dev`, `capacity`, `claude`, `github`, `integrations` — and fixes every red row with you,
+offering each choice as options rather than asking you to invent an answer. Setup is safe to
+re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches what is still red.
 
-**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. The engine (`fleet/run-main.mjs`, spawned on the sandbox) runs there, never on your machine, so the plugin works from any Claude Code surface that can publish a plan. A run builds the repository you run `/ultrapowers` in and opens its pull request there; ultrapowers itself is just one such repository.
+Three browser consents are yours to give, because only you can give them. You sign up at exe.dev and
+add your ssh key; you approve the GitHub app on your account; you approve ultrapowers on claude.ai,
+which hands back a single code, copied into the answer the agent asks you for. Everything else setup
+does itself.
+
+**What a run costs.** A run bills your Claude Max subscription through an edge proxy, plus one
+exe.dev VM for the hours the run is up.
+
+### 3. Write the plan
+
+Authoring needs no fleet and no account: ask for the `ultrawrite` skill and hand it your spec,
+however you arrived at it. It writes a claims-v1 plan — each task a contract and the proof that
+decides it, no steps to retype. You read that plan and approve it. That is the first of your two
+checkpoints.
+
+### 4. Build
+
+In the repository you want built, run `/ultrapowers <plan-path>`. The plan rides to the sandbox on
+that repository's `ultra/plan-run-<N>` branch, and the run happens there: waves, per-task reviews,
+folds, the suite. Watch it or walk away.
+
+At the end you get the finished result and your second checkpoint. Approve it, and the sandbox
+opens the pull request on that repository — ultrapowers itself is just one such repository. Its
+body carries the gate receipt and links the evidence branch. Merge it or close it; either way, the
+run is over and the sandbox is gone.
+
+### One hazard: keep the GitHub integration personal
+
+`--act-as-user` is unavailable on team integrations. On an exe.dev *team* account that means every
+pull request a run opens is authored by `exe-dev-github-integration[bot]` rather than by you, and
+nothing downstream can undo it. Set the fleet up on your personal exe.dev account, and if setup
+offers you a choice of accounts, the GitHub integration has to stay personal.
 
 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)
