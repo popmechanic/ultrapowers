@@ -40,6 +40,11 @@ const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', st
   assert.throws(() => parseArgs(['plan.md']), /expected exactly/)
   assert.throws(() => parseArgs(['plan.md', 'run 24']), /runId must be/)
   assert.throws(() => parseArgs(['plan.md', 'run-24', '--bogus', 'x']), /unknown flag/)
+  // The bootstrap knob's three states (run-66): unset (null → ultra_run.py
+  // derives from the lockfile), '' (disables), a command (wins).
+  assert.equal(p.bootstrapCmd, null)
+  assert.equal(parseArgs(['plan.md', 'run-24', '--repo', '/t', '--bootstrap-cmd', '']).bootstrapCmd, '')
+  assert.equal(parseArgs(['plan.md', 'run-24', '--repo', '/t', '--bootstrap-cmd', 'bun install']).bootstrapCmd, 'bun install')
   // #575: the target is mandatory. The engine builds the tree it is pointed
   // at; a default pointing it at its own checkout is the deleted self-host
   // case, so an omitted --repo is a refusal, not an inference.
@@ -537,6 +542,34 @@ function freshRepo(name) {
   assert.equal(out.code, 1)
   assert.equal(out.verdict, 'empty-plan')
   assert.ok(!fs.existsSync(path.join(runDir, 'clones')), 'no clone is cut for an empty plan')
+}
+
+// The bootstrap knob reaches ultra_run.py exactly as given (run-66): unset is
+// NOT passed (the driver derives), '' IS passed (the driver disables), a
+// command is passed verbatim. The preflight argv is the one seam.
+{
+  const preflightArgv = (calls) => calls.find((c) =>
+    path.basename(c[1] || '') === 'ultra_run.py' && !c.includes('--validate-knobs'))
+  const drive = async (name, bootstrapCmd) => {
+    const repoDir = freshRepo(name)
+    const runId = 'run-' + name
+    const { exec, calls } = makeExecStub({ repoDir, runId, waves: WAVES })
+    await runMain(
+      { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd, cli: 'claude' },
+      { exec, log: () => {}, runEngineFn: async () => ({ integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [] }),
+        makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }) },
+    )
+    return preflightArgv(calls)
+  }
+  const unset = await drive('boot-unset', null)
+  assert.ok(unset, 'preflight ran')
+  assert.ok(!unset.includes('--bootstrap-cmd'), 'unset: the driver derives, nothing is passed')
+  const empty = await drive('boot-empty', '')
+  const i = empty.indexOf('--bootstrap-cmd')
+  assert.ok(i > 0, "'' is forwarded, not dropped as falsy")
+  assert.equal(empty[i + 1], '', "'' rides verbatim so ultra_run.py disables derivation")
+  const given = await drive('boot-given', 'bun install')
+  assert.equal(given[given.indexOf('--bootstrap-cmd') + 1], 'bun install')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

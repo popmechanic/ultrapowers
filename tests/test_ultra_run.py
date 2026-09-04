@@ -73,7 +73,8 @@ def test_happy_path_receipt(tmp_path):
     # install, so there is no contract left to check.)
     assert [s["stage"] for s in receipt["stages"]] == [
         "fleet-run", "git-repo", "worktree-probe",
-        "compile", "test-command", "dirty-baseline", "base-branch"]
+        "compile", "test-command", "bootstrap-command", "dirty-baseline",
+        "base-branch"]
     assert receipt["stages"][0]["detail"] == "fleet run run-test"
     run_dir = repo / ".claude/ultrapowers/run-t1"
     assert (run_dir / "receipt.json").is_file()
@@ -356,7 +357,27 @@ def test_detect_test_cmd_bun_rung(tmp_path, lockfile):
     (tmp_path / "package.json").write_text('{"scripts": {"test": "bun test"}}')
     (tmp_path / lockfile).write_text("")
     cmd, rule = detect_test_cmd(tmp_path)
-    assert (cmd, rule) == ("bun test", "package-json-bun")
+    assert (cmd, rule) == ("bun run test", "package-json-bun")
+
+
+def test_bun_rung_runs_the_package_test_script_not_the_literal(tmp_path):
+    """#600: the smoke repo's script is `bunx tsc --noEmit && bun test`; the
+    literal `bun test` dropped the typecheck and runs 67/69/70/71 parked on
+    the exam's tsc leg while the driver's suite read green. Like the npm and
+    pnpm rungs, the Bun rung runs the SCRIPT."""
+    (tmp_path / "package.json").write_text(
+        '{"scripts": {"test": "bunx tsc --noEmit && bun test"}}')
+    (tmp_path / "bun.lock").write_text("")
+    assert detect_test_cmd(tmp_path) == ("bun run test", "package-json-bun")
+
+
+def test_bun_rung_falls_back_to_bun_test_without_a_script(tmp_path):
+    """No `test` script + a Bun lockfile: `bun test` is the runner's own
+    discovery, the fallback #600 names. A lockfile-less package.json without
+    a script still derives nothing (below), so this is Bun-specific."""
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "x"}}')
+    (tmp_path / "bun.lockb").write_text("")
+    assert detect_test_cmd(tmp_path) == ("bun test", "bun-lockfile")
 
 
 def test_detect_test_cmd_bun_vs_pnpm_precedence(tmp_path):

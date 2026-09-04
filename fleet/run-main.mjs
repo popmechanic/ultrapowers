@@ -120,7 +120,8 @@ const FLAGS = Object.freeze({
 
 export const usage = () =>
   'usage: node fleet/run-main.mjs <plan.md> <runId> --repo DIR [--tier standard|mostCapable] ' +
-  '[--overlap fold|serialize] [--test-cmd CMD] [--bootstrap-cmd CMD] [--cli BIN]'
+  '[--overlap fold|serialize] [--test-cmd CMD] [--bootstrap-cmd CMD|\'\'] [--cli BIN]\n' +
+  '  --bootstrap-cmd: omit to derive the install from the target\'s lockfile; \'\' disables it'
 
 export function parseArgs(argv) {
   const positional = []
@@ -476,7 +477,12 @@ export async function runMain(parsed, deps = {}) {
   stage('preflight')
   const runArgv = [path.join(scripts, 'ultra_run.py'), planPath, '--stamp', stamp]
   if (testCmd) runArgv.push('--test-cmd', testCmd)
-  if (bootstrapCmd) runArgv.push('--bootstrap-cmd', bootstrapCmd)
+  // Forwarded whenever it was GIVEN, the empty string included: the one
+  // derivation lives in ultra_run.py (derive_bootstrap_cmd — the lockfile-
+  // implied install, run-66), where an unset knob derives and `''` disables.
+  // Dropping a falsy `''` here would turn the operator's "no bootstrap" into
+  // "derive one".
+  if (bootstrapCmd !== null && bootstrapCmd !== undefined) runArgv.push('--bootstrap-cmd', bootstrapCmd)
   if (overlap) runArgv.push('--overlap', overlap)
   const pre = await exec(py, runArgv, { cwd: repoDir, env: pyEnv })
   if (pre.code !== 0) {

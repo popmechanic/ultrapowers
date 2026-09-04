@@ -3,8 +3,9 @@
 
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
 fleet-run (the sandbox env contract), git-repo check, worktree-capability
-probe, plan compile, test-command derivation, dirty baseline, and baseBranch
-from the launched checkout.
+probe, plan compile, test-command derivation, bootstrap-command derivation
+(the lockfile-implied install, run-66), dirty baseline, and baseBranch from
+the launched checkout.
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
 contract: the engine (fleet/run-main.mjs) reads it instead of re-deriving the
@@ -67,12 +68,18 @@ def detect_test_cmd(root):
             scripts = json.loads(pkg.read_text()).get("scripts") or {}
         except (json.JSONDecodeError, AttributeError):
             scripts = {}
+        bun_lock = (root / "bun.lock").is_file() or (root / "bun.lockb").is_file()
         if "test" in scripts:
             if (root / "pnpm-lock.yaml").is_file():
                 return "pnpm test", "package-json-pnpm"
-            if (root / "bun.lock").is_file() or (root / "bun.lockb").is_file():
-                return "bun test", "package-json-bun"
+            # `bun run test` runs the package's own script, like the npm and
+            # pnpm rungs; the literal `bun test` dropped a `bunx tsc --noEmit
+            # &&` prefix on the smoke repo (#600, runs 67/69/70/71).
+            if bun_lock:
+                return "bun run test", "package-json-bun"
             return "npm test", "package-json-npm"
+        if bun_lock:
+            return "bun test", "bun-lockfile"
     mk = root / "Makefile"
     if mk.is_file() and re.search(r"^test\s*:", mk.read_text(errors="ignore"), re.M):
         return "make test", "makefile-test"
@@ -80,6 +87,63 @@ def detect_test_cmd(root):
         return "go test ./...", "go-mod"
     if (root / "Cargo.toml").is_file():
         return "cargo test", "cargo-toml"
+    return None, None
+
+
+def _pip_externally_managed():
+    """PEP 668: whether the `python3` on PATH (the one a derived `python3 -m
+    pip` would run) refuses installs outside a venv. Probed from a neutral cwd
+    like `_xdist_available`. Fail closed: a probe that cannot answer counts as
+    managed, so a derived pip install is never the thing that reddens
+    preflight on a distro Python."""
+    probe = ("import os, sys, sysconfig; print(int(sys.prefix == sys.base_prefix "
+             "and os.path.exists(os.path.join(sysconfig.get_path('stdlib'), "
+             "'EXTERNALLY-MANAGED'))))")
+    try:
+        r = subprocess.run(["python3", "-c", probe], capture_output=True,
+                           text=True, timeout=30, cwd=tempfile.gettempdir())
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    return r.returncode != 0 or r.stdout.strip() != "0"
+
+
+def derive_bootstrap_cmd(root):
+    """The per-worktree dependency install the target's lockfile/manifest
+    implies, or (None, reason). File presence only, never runs anything (the
+    requirements rung asks the PATH python3 whether PEP 668 applies — an
+    import-free probe, not an install).
+
+    run-66 (2026-09-03) failed `knob-validate` before wave 1: the smoke repo's
+    suite is RED at BASE until `bun install` runs, and nothing derived the
+    bootstrap the driver already knew how to rehearse and provision. This is
+    the DEFAULT for `bootstrapCmd` — an explicit `--bootstrap-cmd` wins, and
+    `--bootstrap-cmd ''` disables derivation.
+
+    The JS rungs mirror detect_test_cmd's precedence (pnpm before bun) so a
+    tree carrying both lockfiles installs with the runner its suite runs
+    under. A lockfile-less package.json installs with `--no-package-lock`:
+    validate_knobs reads any tree mutation as a red bootstrap, and a freshly
+    written package-lock.json is exactly that. Returns (command, rule); a
+    (None, rule) names why a present manifest derived nothing, (None, None)
+    means no manifest at all."""
+    root = Path(root)
+    if (root / "package.json").is_file():
+        if (root / "pnpm-lock.yaml").is_file():
+            return "pnpm install --frozen-lockfile", "pnpm-lockfile"
+        if (root / "bun.lock").is_file() or (root / "bun.lockb").is_file():
+            return "bun install --frozen-lockfile", "bun-lockfile"
+        if (root / "package-lock.json").is_file():
+            return "npm ci", "npm-lockfile"
+        return "npm install --no-package-lock", "package-json"
+    if (root / "uv.lock").is_file():
+        return "uv sync", "uv-lock"
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file() and "[tool.uv" in pyproject.read_text(errors="ignore"):
+        return "uv sync", "pyproject-uv"
+    if (root / "requirements.txt").is_file():
+        if _pip_externally_managed():
+            return None, "requirements-txt-externally-managed"
+        return "python3 -m pip install -r requirements.txt", "requirements-txt"
     return None, None
 
 
@@ -91,8 +155,9 @@ LLM_DERIVES = [
     "from the task's Proof `Test:` paths and pre-filled on the wave entries "
     "(run-wide testCmd is driver-derived — knob or detection — and already "
     "stamped in the args file and receipt)",
-    "nothing for bootstrapCmd — pass --bootstrap-cmd to the preflight driver "
-    "instead, so the receipt and the gate share the validated value",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/"
+    "manifest (or the --bootstrap-cmd knob) and stamped in the args file and "
+    "receipt, so validation, the engine and the gate share one value",
     "nothing for review depth — it is plan-authored (**Review:** marker), "
     "pre-filled on the args wave entries",
 ]
@@ -348,8 +413,10 @@ def main(argv=None):
     ap.add_argument("--test-cmd", default=None,
                     help="run-wide suite command; wins over detection")
     ap.add_argument("--bootstrap-cmd", default=None,
-                    help="per-worktree dependency install; stamped into the "
-                         "receipt so the gate provisions its acceptance worktree")
+                    help="per-worktree dependency install; wins over the "
+                         "lockfile-derived default, '' disables it; stamped "
+                         "into the receipt so the gate provisions its "
+                         "acceptance worktree")
     ap.add_argument("--overlap", choices=OVERLAP_CHOICES, default=None,
                     help="scheduling knob forwarded to compile_plan.py's "
                          "--overlap; omit to use the compiler's own default "
@@ -464,10 +531,29 @@ def main(argv=None):
                  failure="no test command detected — pass --test-cmd <run-wide "
                          "suite command>; the gate refuses to run without one"):
         return bail()
+    # The bootstrap knob: explicit wins, '' disables, unset derives from the
+    # target's lockfile/manifest (run-66). The stage is informational — no
+    # bootstrap is a valid outcome — but its detail names what was derived
+    # and why, so a receipt can answer "why did the clones never install?".
+    if a.bootstrap_cmd is not None:
+        knob = a.bootstrap_cmd.strip()
+        bootstrap_cmd, boot_src = (knob, "knob") if knob else (None, "disabled")
+        boot_note = "none — --bootstrap-cmd '' disables derivation"
+    else:
+        bootstrap_cmd, rule = derive_bootstrap_cmd(root)
+        boot_src = ("detected:" + rule) if bootstrap_cmd else None
+        if rule == "requirements-txt-externally-managed":
+            boot_note = ("none — requirements.txt present but the PATH python3 "
+                         "is externally managed (PEP 668)")
+        else:
+            boot_note = "none — no lockfile or manifest derives one"
+    stage("bootstrap-command", True,
+          success=("%s (%s)" % (bootstrap_cmd, boot_src)) if bootstrap_cmd
+                  else boot_note)
     args_obj = json.loads(args_file.read_text())
     args_obj["testCmd"] = test_cmd
-    if a.bootstrap_cmd:
-        args_obj["bootstrapCmd"] = a.bootstrap_cmd
+    if bootstrap_cmd:
+        args_obj["bootstrapCmd"] = bootstrap_cmd
     args_file.write_text(json.dumps(args_obj, indent=2))
 
     r = write_dirty_baseline(root)
@@ -500,8 +586,9 @@ def main(argv=None):
                     "workflowName": "ultrapowers-run",
                     "llmDerives": LLM_DERIVES,
                     "testCmd": test_cmd, "testCmdSource": test_src})
-    if a.bootstrap_cmd:
-        receipt["bootstrapCmd"] = a.bootstrap_cmd
+    if bootstrap_cmd:
+        receipt["bootstrapCmd"] = bootstrap_cmd
+        receipt["bootstrapCmdSource"] = boot_src
     (run_dir / "receipt.json").write_text(json.dumps(receipt, indent=2))
     print(json.dumps(receipt, indent=2))
     return 0
