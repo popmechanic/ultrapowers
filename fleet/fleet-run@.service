@@ -23,4 +23,4 @@ After=network-online.target
 Type=exec
 RemainAfterExit=yes
 RuntimeMaxSec=6h
-ExecStart=/home/exedev/fleet-bootstrap.sh %i
+ExecStart=/usr/local/lib/fleet/bootstrap.sh %i

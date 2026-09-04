@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# fleet/fleet-bootstrap.sh — the golden's only moving part, installed at
-# /home/exedev/fleet-bootstrap.sh and started by fleet-run@<N>.service, which
-# passes the run number as $1 (optional: used only to check the comment agrees).
+# fleet/fleet-bootstrap.sh — the image's only moving part, installed root-owned and
+# 0555 at /usr/local/lib/fleet/bootstrap.sh by the first-boot setup script, started
+# by fleet-run@<N>.service, which passes the run number as $1 (optional, checked).
 #
 # Immutable on purpose. run-68 died because the boot script re-exec'd itself from
 # a checkout that replaced it at its own path while bash kept reading the old
 # inode. So no run ever overwrites this file: it reads the assignment once, clones
 # the engine it names into a content-addressed directory, and execs THAT checkout's
-# boot script. A boot-script fix ships as an engine sha; the golden is rebuilt for
+# boot script. A boot-script fix ships as an engine sha; the image is rebuilt for
 # tools only. Writes engines/ and fleet-boot.log under FLEET_HOME (/home/exedev).
 set -euo pipefail
 home="${FLEET_HOME:-/home/exedev}"
