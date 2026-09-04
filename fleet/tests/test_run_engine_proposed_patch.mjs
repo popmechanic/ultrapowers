@@ -7,13 +7,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 import { REVIEWER_SCHEMA } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-patch-'))
-const here = path.dirname(fileURLToPath(import.meta.url))
 const HEADER = 'PROPOSED PATCH (from the referee — apply it when it is right; say why not when it is not):'
 const PATCH1 = '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-1\n+2\n'
 const PATCH2 = '--- a/y\n+++ b/y\n@@ -1 +1 @@\n-a\n+b\n'
@@ -118,13 +115,6 @@ const fixRequired = (issues) => ({ verdict: 'FIX_REQUIRED', issues })
   assert.equal(issueBlock(fix),
     '\n\nBlocking issues to resolve:\n- v1 is wrong\n- v1 is also late')
   assert.equal(report.tasks[0].proposedPatches, 0)
-}
-
-// ── (d) [M4] and the existing fix-round sim is untouched ───────────────────
-{
-  const out = execFileSync('node', [path.join(here, 'test_run_engine_fixloop.mjs')],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  assert.equal(out.trim(), 'ALL TESTS PASSED')
 }
 
 // ── (e) [M2] three issues, only the third carries a patch ──────────────────
