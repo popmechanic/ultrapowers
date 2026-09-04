@@ -4,38 +4,58 @@
  *
  *   node fleet/janitor.mjs [--age 1h] [--dry-run] [--config <path>] [--json]
  *
- * It reads `fleet-runs`, never a VM: `git pull`, then for every
- * `runs/<N>/status.json` in `done|parked|failed` whose `updatedAt` is older
- * than `--age` (1 h), `ls 'fleet-r<N>-*' --json` and `rm <vm> --json` for each
- * row. The hour is for the operator to read a status page before it goes.
+ * The janitor is the expiry. It reads the *target*, never a side repository and
+ * never a VM: one `ls 'fleet-r*' --json` through the lobby gives the fleet, and
+ * every row carries its own assignment comment, so `run=` and `target=` come
+ * out of the row itself. The run's state comes from the target's evidence
+ * branch, read on the laptop with the same `gh` everything else uses:
  *
- * Then the stale report: every `ls 'fleet-r*' --json` row whose N has had no
- * status update in six hours — a boot that never committed, an engine that
- * stopped writing — is printed, never removed: a stuck VM is evidence. Age is
- * `updatedAt`, or the plan commit's date when no status was ever committed;
- * `created_at` on the `ls` row is undocumented and never consulted.
+ *   gh api repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>
+ *
+ * — the contents envelope, whose base64 `content` is the status page. A row in
+ * `done|parked|failed` whose `updatedAt` is older than `--age` (1 h) is removed
+ * with `rm <vm> --json`. The hour is for the operator to read a status page
+ * before it goes; the rows are already one per VM, so every incarnation of a
+ * finished run is reaped by its own row.
+ *
+ * Three things are never removed and reported instead:
+ *
+ *   unknown — a row with no comment, or a comment carrying no `target=`: there
+ *             is nothing to read, so there is nothing to decide on.
+ *   stale   — a live run silent for six hours, and a run with no evidence at
+ *             all whose `ultra/plan-run-<N>` commit is over six hours old. A
+ *             boot that never committed, an engine that stopped writing: a
+ *             stuck VM is evidence, so it is printed, never removed.
+ *
+ * Age is the evidence page's `updatedAt`, else the plan commit's committer
+ * date; `created_at` on the `ls` row is undocumented and never consulted.
  *
  * `--dry-run` issues every read and no `rm`. There is no attachment sweep:
  * attachments carry `--for` and lapse by themselves.
  */
 
+import { Buffer } from 'node:buffer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
   Refusal,
   defaultExec,
-  git,
+  evidenceBranchFor,
+  isRunNumber,
+  isSafeTarget,
+  isVmName,
   listVms,
   loadFleetConfig,
   lobby,
   parseArgs,
+  parseComment,
   parseDuration,
+  parseJson,
+  planBranchFor,
   runCli,
-  runOfVmName,
-  vmPatternFor
+  runOfVmName
 } from './lobby.mjs'
-import { ensureFleetRuns, listCommittedStatuses } from './fleet-runs.mjs'
 
 export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--config <path>] [--json]'
 
@@ -48,11 +68,55 @@ export const DEFAULT_AGE = '1h'
 /** No status update for this long is a stale run, reported and left alone. */
 export const STALE_MS = 6 * 60 * 60 * 1000
 
-/** When `plans/run-<N>.md` was committed — the launch's own durable timestamp. */
-async function planCommittedAt (exec, fleetRunsDir, run) {
-  const res = await git(exec, fleetRunsDir, ['log', '-1', '--format=%cI', '--', `plans/run-${run}.md`])
-  const at = Date.parse(String(res.stdout).trim())
-  return res.code === 0 && Number.isFinite(at) ? at : null
+/**
+ * One `gh api <path>` on the laptop, through the exec seam. An absent file is
+ * exit 1 with `HTTP 404`, which is an answer and not a failure — every reader
+ * here gets `null` for it and decides for itself what an absence means.
+ */
+const ghApi = async (exec, apiPath) => {
+  const res = await exec('gh', ['api', apiPath])
+  return res.code === 0 ? parseJson(res.stdout) : null
+}
+
+/**
+ * The run's status page off its evidence branch. The answer is the contents
+ * envelope — base64 under `content` — and nothing else is accepted: a bare
+ * status document would mean `gh` answered something other than the contents
+ * API, and guessing there is how a janitor reaps on a payload it never read.
+ */
+async function readEvidence (exec, target, run) {
+  const apiPath =
+    `repos/${target}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
+  const payload = await ghApi(exec, apiPath)
+  if (!payload || typeof payload.content !== 'string') return null
+  const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
+  return decoded && typeof decoded === 'object' ? decoded : null
+}
+
+/**
+ * When `ultra/plan-run-<N>` was committed — the launch's own durable timestamp,
+ * and the only age a run with no evidence has.
+ */
+async function planCommittedAt (exec, target, run) {
+  const branch = planBranchFor(run)
+  const payload = await ghApi(exec, `repos/${target}/branches/${branch}`)
+  const at = Date.parse(String(payload?.commit?.commit?.committer?.date ?? ''))
+  return Number.isFinite(at) ? at : null
+}
+
+/**
+ * A row's assignment: the run and the target its comment carries, or null when
+ * the comment is absent or says nothing this tool can read. The comment's
+ * `run=` is the run; the name's is the fallback, since the name is only where
+ * the run is running this time.
+ */
+function assignmentOf (row) {
+  if (!isVmName(row.name)) return null
+  const fields = parseComment(row.comment)
+  const run = isRunNumber(fields.run) ? Number(fields.run) : runOfVmName(row.name)
+  const target = isSafeTarget(fields.target) ? fields.target : null
+  if (run === null || target === null) return null
+  return { run, target }
 }
 
 /** Everything the janitor does, with the exec seam and the clock injected. */
@@ -62,54 +126,85 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
   const age = opts.age === undefined || opts.age === true ? DEFAULT_AGE : String(opts.age)
   const ageMs = parseDuration(age)
   if (ageMs === null) throw new Refusal(`janitor: --age must look like 1h or 30m, got ${JSON.stringify(age)}`)
-  const settings = config ?? await loadFleetConfig({ path: opts.config })
+  // The janitor sizes nothing, so it wants no setting; it still reads the
+  // config the other CLIs read, because a `--config` it silently ignored would
+  // be a lie. `~/.ultrapowers/fleet.json` is the only file under
+  // `~/.ultrapowers/` it opens — the run's state lives on the target.
+  if (config === undefined) await loadFleetConfig({ path: opts.config })
 
-  const fleetRunsDir = await ensureFleetRuns(exec, settings.fleetRuns)
-  const statuses = await listCommittedStatuses(fleetRunsDir)
   const nowMs = now().getTime()
+  const rows = await listVms(exec)
 
-  // ── Reap: finished, and finished long enough ago. ─────────────────────────
+  // ── Read first, every row, whatever the verdict: --dry-run reads the same. ─
   const actions = []
-  const reaped = new Set()
-  for (const { run, status } of statuses) {
-    if (!REAPABLE_STATES.includes(status.state)) continue
-    const updated = Date.parse(status.updatedAt)
-    if (!Number.isFinite(updated) || nowMs - updated < ageMs) continue
-    for (const row of await listVms(exec, vmPatternFor(run))) {
-      const command = `rm ${row.name} --json`
-      actions.push({ kind: 'rm', vm: row.name, run, state: status.state, updatedAt: status.updatedAt, command, applied: !dryRun })
-      reaped.add(row.name)
-      if (!dryRun) await lobby(exec, command)
+  const stale = []
+  const unknown = []
+  for (const row of rows) {
+    const assignment = assignmentOf(row)
+    if (assignment === null) {
+      unknown.push({ vm: row.name, comment: row.comment })
+      continue
+    }
+    const { run, target } = assignment
+    const status = await readEvidence(exec, target, run)
+
+    if (status === null) {
+      // No evidence was ever committed: the plan commit is the only age there is.
+      const planned = await planCommittedAt(exec, target, run)
+      if (planned !== null && nowMs - planned >= STALE_MS) {
+        stale.push({
+          vm: row.name,
+          run,
+          state: null,
+          lastUpdate: new Date(planned).toISOString(),
+          from: planBranchFor(run)
+        })
+      }
+      continue
+    }
+
+    const state = typeof status.state === 'string' ? status.state : null
+    const updatedAt = typeof status.updatedAt === 'string' ? status.updatedAt : null
+    const updated = Date.parse(String(updatedAt))
+    // An age nobody recorded is not six hours; it is unknown, and left alone.
+    if (!Number.isFinite(updated)) continue
+
+    if (REAPABLE_STATES.includes(state) && nowMs - updated >= ageMs) {
+      actions.push({
+        kind: 'rm',
+        vm: row.name,
+        run,
+        state,
+        updatedAt,
+        command: `rm ${row.name} --json`,
+        applied: !dryRun
+      })
+      continue
+    }
+    if (nowMs - updated >= STALE_MS) {
+      stale.push({
+        vm: row.name,
+        run,
+        state,
+        lastUpdate: new Date(updated).toISOString(),
+        from: evidenceBranchFor(run)
+      })
     }
   }
 
-  // ── Report: alive, but silent for six hours. ──────────────────────────────
-  const byRun = new Map(statuses.map(({ run, status }) => [run, status]))
-  const stale = []
-  for (const row of await listVms(exec)) {
-    if (reaped.has(row.name)) continue
-    const run = runOfVmName(row.name)
-    if (run === null) continue
-    const status = byRun.get(run) ?? null
-    const last = status ? Date.parse(status.updatedAt) : await planCommittedAt(exec, fleetRunsDir, run)
-    // An age nobody recorded is not six hours; it is unknown, and left alone.
-    if (!Number.isFinite(last) || nowMs - last < STALE_MS) continue
-    stale.push({
-      vm: row.name,
-      run,
-      state: status?.state ?? null,
-      lastUpdate: new Date(last).toISOString(),
-      from: status ? 'status.json' : `plans/run-${run}.md`
-    })
+  // ── Then the only mutation the janitor has. ───────────────────────────────
+  if (!dryRun) {
+    for (const action of actions) await lobby(exec, action.command)
   }
 
-  return { dryRun, age, actions, stale }
+  return { dryRun, age, actions, stale, unknown }
 }
 
 export const renderJanitor = (result) => {
   const lines = [
     ...result.actions.map((a) => `${result.dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}`),
-    ...result.stale.map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`)
+    ...result.stale.map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
+    ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`)
   ]
   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
 }

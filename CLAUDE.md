@@ -54,39 +54,48 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   the signed input; `plans/` holds the claims-v1 plans ultrawrite emits (plus each plan's
   `.gate-verdicts.json`). **Untracked since #544 (2026-09-02):** the whole of `docs/superpowers/`
   is in `.git/info/exclude` and `docs/README.md` is the tracked stub. A plan reaches the fleet
-  only as `plans/run-N.md`, committed to the private `popmechanic/fleet-runs` repository by
-  `fleet/launch.mjs` before any VM exists (#597/#598 move the plan and the evidence onto the
-  target repository itself). A plan may not ask a worker to read a spec path — the sandbox has
+  only as `.ultrapowers/plan.md`, one commit on the run's base that `fleet/launch.mjs` pushes to
+  the TARGET repository as `ultra/plan-run-<N>` before any VM exists (#597/#598); the run answers
+  on two more branches of that same repository, `ultra/evidence-run-<N>` (the record, under
+  `.ultrapowers/runs/<N>/`) and `ultra/integration-run-<N>` (the work, and the PR's head).
+  A plan may not ask a worker to read a spec path — the sandbox has
   none. `docs/superpowers/intents/` is two historical 2026-08-28 docs from the pre-#390
   seven-slot shape — nothing writes there now.
 - `evals/fixtures/` — 14 sample plan repos (the legacy-grammar compiler corpus — `wide`,
   `chained`, `mixed`, `flawed`, `degrade`, … — plus `claims`, the claims-v1 one) used as test
   data by the compiler tests; `pytest.ini` keeps pytest from collecting them.
-- `fleet/` — the fleet in its **sandbox-owns-its-run** shape (0.3.5 lift, 0.3.6 grant collapse;
-  `fleet/CONTRACT.md` is the authority for every literal, `fleet/RUNBOOK.md` the operator
-  procedure — the contract wins). `launch.mjs` commits the plan to fleet-runs, `cp`s the golden
-  to `fleet-r<N>-<stamp>-<rand>`, attaches `claude-max` and `gh-<owner>-<repo>` to that VM
-  `--for 6h`, writes the assignment as the VM comment, and starts `fleet-run@<N>.service` over
-  ssh. The golden's immutable bootstrap (`fleet-bootstrap.sh`) reads the comment once, clones
-  the engine at `engine=` into `/home/exedev/engines/<sha>`, and execs that checkout's
-  `sandbox-boot.sh`, which runs the engine as a transient user service under the edge-injected
-  Claude OAuth token (`claude-max` is an `http-proxy` that injects the bearer and nothing else —
-  an injected header replaces the client's), serves status on port 8000, commits evidence to
-  fleet-runs at every transition, and pushes and opens its own PR over REST with `prAuthor`
-  recorded. The PR is the gate; there is no grant step. `claude-token.mjs` owns the credential
-  (loom-style OAuth on the laptop, refresh token in the keychain, refreshed before every launch,
-  single-flight — #602); `janitor.mjs` reads fleet-runs, never a VM; `target.mjs` creates the
-  per-target integration; `doctor.mjs` says what is missing; `golden.sh` builds, verifies and
-  swaps the golden. The engine itself is untouched by the lift (#402): `run-main.mjs` (entry) →
+- `fleet/` — the fleet in its **target-owns-the-record** shape (0.3.5 lift, 0.3.6 grant collapse,
+  #597/#598 the move onto the target; `fleet/CONTRACT.md` is the authority for every literal,
+  `fleet/RUNBOOK.md` the operator procedure — the contract wins). `launch.mjs` validates, reads
+  the pool from `billing plan --json`, computes N from the target's own `ultra/*-run-*` branches,
+  refreshes the Claude bearer, pushes the plan as one commit on base to `ultra/plan-run-<N>`
+  (tree = base + `.ultrapowers/plan.md`), then issues ONE lobby verb: a per-run `new` carrying the
+  VM name `fleet-r<N>-<stamp>-<rand>`, `--tag fleet`, the assignment as `--comment`, both
+  integrations, `--cpu`/`--memory` from `~/.ultrapowers/fleet.json`, and the generated setup script
+  on stdin — no image to copy, no attach, no ssh wait, no explicit start. The setup script installs
+  the toolchain, the immutable bootstrap at `/usr/local/lib/fleet/bootstrap.sh` and the unit
+  template, then starts `fleet-run@<N>.service`. The bootstrap (`fleet-bootstrap.sh`) reads the
+  comment once, clones the engine at `engine=` into `/home/exedev/engines/<sha>`, and execs that
+  checkout's `sandbox-boot.sh`, which runs the engine as a transient user service under the
+  edge-injected Claude OAuth token (`claude-max` is an `http-proxy` that injects the bearer and
+  nothing else — an injected header replaces the client's), serves status on port 8000, commits
+  evidence to the target's `ultra/evidence-run-<N>` under `.ultrapowers/runs/<N>/` at every
+  transition, and pushes `ultra/integration-run-<N>` and opens its own PR over REST with
+  `prAuthor` recorded. The PR is the gate; there is no grant step. `claude-token.mjs` owns the
+  credential (loom-style OAuth on the laptop, refresh token in the keychain, refreshed before every
+  launch, single-flight — #602); `janitor.mjs` reads each fleet VM's comment and the target's
+  evidence branch through `gh api`, never a VM's disk; `target.mjs` creates the per-target
+  integration; `doctor.mjs` says which of its five rows is missing. The engine itself is untouched
+  by the lift (#402): `run-main.mjs` (entry) →
   `run-engine.mjs` (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),
   `run-waves.mjs` (clones-at-BASE + `withPatchCapture`), `confine-hook.mjs` (the implementer's
   `PreToolUse` boundary), `fitness.mjs`, `roles/`. No orchestrator, no control VM, no token on
-  any VM — the orchestrator, its TinyBase store, the tunnel, the run shim, `drive-one.mjs`,
-  `race.mjs` and `waves.js` were all deleted between 0.3.0 and 0.3.5. Next: #597 replaces `cp`
-  + the golden with per-run `new` + a setup script; #598 is the first-run experience. Own npm
-  deps in `fleet/package.json`; tests join the suite via `tests/test_fleet_suite.py`. Not plugin
-  machinery — the sandbox clones the engine at the sha the assignment names, so changes here
-  never require a plugin release.
+  any VM and none in any argv — the orchestrator, its TinyBase store, the tunnel, the run shim,
+  `drive-one.mjs`, `race.mjs` and `waves.js` went between 0.3.0 and 0.3.5, and the
+  `popmechanic/fleet-runs` state repository, the golden image and its build script were deleted at
+  #597. Own npm deps in `fleet/package.json`; tests join the suite via `tests/test_fleet_suite.py`.
+  Not plugin machinery — the sandbox clones the engine at the sha the assignment names, so changes
+  here never require a plugin release.
 
 ## Wayfinding (program-scale routing) — decided on #180
 
@@ -163,7 +172,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   and costing width.
 - **One merge, one writer.** Manyana merges file *content* at the fold, and that is the only
   merge in the system. Run STATE has exactly one writer per run — the sandbox — and its record
-  is git: `fleet-runs/runs/<N>/status.json` plus the receipts, committed at every transition,
+  is git: `.ultrapowers/runs/<N>/status.json` plus the receipts, on the target's
+  `ultra/evidence-run-<N>` branch, committed at every transition,
   `pull --rebase` on a non-fast-forward. The pre-0.3.5 "row axis / cell axis" store rule
   (TinyBase MergeableStore, HLC-stamped per slot, *status is a register, evidence is a set,
   totals are folds*) is history with the store; whether the live multi-run record wants a CRDT
@@ -178,7 +188,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   one had driven runs.
 - **Don't vendor the vendor** — before building a mechanism, ask whether exe.dev already provides
   it (identity, credentials at the edge, the VM comment, tags, the first-boot setup script, cold
-  start). Reason: a custom OCI golden image was rejected on exactly this ground on 2026-09-04
+  start). Reason: a custom OCI base image was rejected on exactly this ground on 2026-09-04
   ("vendoring exe.dev's staged-image cold start"), so #597 is plain `new` + a setup script.
 - **Ask Shelley before any VM-side hack** — on any papercut on a VM or in a lobby verb, put the
   symptom, what was tried and the constraint to Shelley (exe.dev's assistant, on `fleet-counsel`;
