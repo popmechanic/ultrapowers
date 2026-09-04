@@ -272,3 +272,55 @@ def test_a_pytest_runner_that_exits_nonzero_is_red_and_probed_once(tmp_path):
     ]
     assert [argv for _cwd, argv in calls(log)] == ["-m pytest --version"]
     assert_no_probe_left(repo)
+
+
+# --- the third runner: `bun test` (the greenfield stack's exam) --------------
+# Grep found the compiler's consumer of the shape (#642) and not this table:
+# run-2 on ultrapowers-walk (2026-09-04) died at preflight, every `bun test`
+# command `"runner": null, "ok": false`. A stub `bun` keeps this offline and
+# green on a CI runner that has no Bun.
+
+BUN_A = "bun test tests/count.test.ts"
+BUN_B = "bun test tests/reverse.test.ts tests/palindrome.test.ts"
+
+
+def stub_bun(tmp_path, log, exit_code=0):
+    bin_dir = tmp_path / "stub-bun"
+    bin_dir.mkdir()
+    stub = bin_dir / "bun"
+    stub.write_text("#!/bin/sh\n"
+                    "printf '%s\\t%s\\n' \"$(pwd -P)\" \"$*\" >> " + json.dumps(str(log)) + "\n"
+                    "echo 1.4.0\nexit " + str(exit_code) + "\n")
+    stub.chmod(stub.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"])
+
+
+def test_bun_test_commands_probe_bun_version_once(tmp_path):
+    repo = make_repo(tmp_path)
+    log = tmp_path / "bun.log"
+    args_path = write_args(repo, [entry("1", testCmd=BUN_A), entry("2", testCmd=BUN_B)])
+    r = validate(repo, args_path, env=stub_bun(tmp_path, log))
+    assert r.returncode == 0, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert v["ok"] is True
+    assert v["perTaskTestCmds"] == [
+        {"cmd": BUN_A, "runner": "bun test", "ok": True},
+        {"cmd": BUN_B, "runner": "bun test", "ok": True},
+    ]
+    assert [argv for _, argv in calls(log)] == ["--version"], "one probe for two commands"
+    assert_no_probe_left(repo)
+
+
+def test_a_bun_that_will_not_start_is_red_and_the_node_slot_stays_green(tmp_path):
+    repo = make_repo(tmp_path)
+    log = tmp_path / "bun.log"
+    args_path = write_args(repo, [entry("1", testCmd=BUN_A), entry("2", testCmd=NODE_A)])
+    r = validate(repo, args_path, env=stub_bun(tmp_path, log, exit_code=1))
+    assert r.returncode == 1, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert v["ok"] is False
+    assert v["perTaskTestCmds"] == [
+        {"cmd": BUN_A, "runner": "bun test", "ok": False},
+        {"cmd": NODE_A, "runner": "node", "ok": True},
+    ]
+    assert_no_probe_left(repo)
