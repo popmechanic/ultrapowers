@@ -2,11 +2,13 @@
 
 The implementer's inner loop (red -> green iteration) runs task-scoped tests
 only (#515): for a claims-v1 task whose Proof `Test:` paths are all
-`fleet/tests/test_*.mjs` or `tests/**/*.py`, `--emit-args` writes a `testCmd`
-on the task's wave entry — one `node <path>` per `.mjs` path in Proof order,
-then a single `python3 -m pytest -q <py paths in Proof order>` when any `.py`
-path is present, joined with ` && `. Anything else (a path outside those two
-shapes, no Proof `Test:` line at all, a legacy-grammar body) carries None.
+`fleet/tests/test_*.mjs`, `tests/**/*.py` or `tests/**/*.test.ts`, `--emit-args`
+writes a `testCmd` on the task's wave entry — one `node <path>` per `.mjs` path
+in Proof order, then a single `python3 -m pytest -q <py paths in Proof order>`
+when any `.py` path is present, then a single `bun test <ts paths in Proof
+order>` when any `.test.ts` path is present, joined with ` && `. Anything else
+(a path outside those three shapes, no Proof `Test:` line at all, a
+legacy-grammar body) carries None.
 The run-wide command still runs at the integration head and the gate.
 """
 import json
@@ -127,7 +129,7 @@ def test_two_py_paths_collapse_into_one_pytest_invocation(tmp_path):
         "python3 -m pytest -q tests/test_b.py tests/sub/test_a.py")
 
 
-# --- (c) any path outside the two shapes poisons the whole command ----------
+# --- (c) any path outside the three shapes poisons the whole command --------
 
 def test_non_test_path_beside_a_py_path_yields_none(tmp_path):
     entries = _compile_tasks(tmp_path, _task(
@@ -199,3 +201,27 @@ def test_check_renders_output_never_mentions_test_cmd():
         capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
     assert [line for line in p.stdout.splitlines() if "testCmd" in line] == []
+
+
+# The greenfield stack (Bun + TypeScript) is the third runnable shape. Before
+# 2026-09-04 a `tests/x.test.ts` path derived None, and the engine dispatches
+# the examiner only when a task command exists — so no Bun target ever got a
+# peer-written exam (runs 74 and 1: `exam: null` on every task).
+def test_bun_test_paths_derive_one_bun_test_process():
+    assert derive_task_test_cmd(["tests/count.test.ts"]) == "bun test tests/count.test.ts"
+    assert derive_task_test_cmd(["tests/b.test.ts", "tests/a.test.ts"]) == \
+        "bun test tests/b.test.ts tests/a.test.ts"
+    assert derive_task_test_cmd(["tests/unit/deep.test.ts"]) == "bun test tests/unit/deep.test.ts"
+
+
+def test_bun_paths_follow_node_and_pytest_parts():
+    assert derive_task_test_cmd(
+        ["tests/z.test.ts", "fleet/tests/test_a.mjs", "tests/y.py"]) == \
+        "node fleet/tests/test_a.mjs && python3 -m pytest -q tests/y.py && bun test tests/z.test.ts"
+
+
+def test_a_ts_path_that_is_not_a_bun_test_still_voids_the_command():
+    # `src/x.ts` is a module, `tests/helpers.ts` a fixture: neither is an exam
+    # `bun test <path>` can run, and a partial command would drop a named exam.
+    assert derive_task_test_cmd(["tests/count.test.ts", "tests/helpers.ts"]) is None
+    assert derive_task_test_cmd(["src/count.ts"]) is None

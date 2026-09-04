@@ -900,32 +900,43 @@ def parse_claims_body(body, task_id, plan_claim=None):
 # full suite still runs at the integration head and the gate.
 MJS_PROOF_TEST_RE = re.compile(r"^fleet/tests/test_[^/]*\.mjs$")
 PY_PROOF_TEST_RE = re.compile(r"^tests/(?:[^/]+/)*[^/]+\.py$")
+# The greenfield stack's exam shape (Bun + TypeScript, `bun test <file>`).
+# Without it a Bun target's Proof `Test:` paths derived no task command, and
+# the engine dispatches the examiner only when one exists — so no Bun target
+# ever got a peer-written exam, `Review: peer` or not (walk 3, 2026-09-04:
+# runs 74 and 1 both report `exam: null` on every task).
+BUN_PROOF_TEST_RE = re.compile(r"^tests/(?:[^/]+/)*[^/]+\.test\.ts$")
 
 
 def derive_task_test_cmd(proof_tests):
     """The task-scoped test command a Proof's `Test:` paths derive, or None.
 
     `proof_tests` is the task's Proof `Test:` paths in PROOF ORDER. Every path
-    must match one of the two runnable shapes or the whole command is None —
+    must match one of the three runnable shapes or the whole command is None —
     a partial command would quietly drop an exam the Proof named, which is
     worse than falling back to the run-wide suite. The `.mjs` paths become one
     `node <path>` each, in Proof order; the `.py` paths collapse into a single
-    `python3 -m pytest -q <paths>` (also Proof order) appended last, because
-    one pytest process over N files beats N processes.
+    `python3 -m pytest -q <paths>` (also Proof order), and the `.test.ts`
+    paths into a single `bun test <paths>`, each appended after the node
+    parts, because one process over N files beats N processes.
     """
     if not proof_tests:
         return None
-    node_paths, py_paths = [], []
+    node_paths, py_paths, bun_paths = [], [], []
     for path in proof_tests:
         if MJS_PROOF_TEST_RE.match(path):
             node_paths.append(path)
         elif PY_PROOF_TEST_RE.match(path):
             py_paths.append(path)
+        elif BUN_PROOF_TEST_RE.match(path):
+            bun_paths.append(path)
         else:
             return None
     parts = ["node " + path for path in node_paths]
     if py_paths:
         parts.append("python3 -m pytest -q " + " ".join(py_paths))
+    if bun_paths:
+        parts.append("bun test " + " ".join(bun_paths))
     return " && ".join(parts)
 
 
