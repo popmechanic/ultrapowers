@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import harvest_runs  # noqa: E402  (provides _records()/_iter_blocks_indexed())
+import _readers  # noqa: E402  (provides records()/iter_blocks_indexed())
 from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
 
 # A run's 14 worker transcripts sliced whole totalled 564,293 chars on run-30
@@ -130,7 +130,7 @@ def envelope_section(envelope, budget=ENVELOPE_BUDGET):
 def _worker_lines(records):
     """Transcript blocks a fleet lens needs, in order.
 
-    NOT `harvest_runs.slice_transcript`. That function's `SLICE_KEYWORDS` gate
+    NOT the Workflow-era `slice_transcript`. That function's `SLICE_KEYWORDS` gate
     was written for the single LLM-orchestrator transcript, where 'wave'/'gate'/
     'integrationBranch' mark the interesting turns. Against a WORKER transcript
     it selects almost at random and drops every assistant turn: across fleet
@@ -142,18 +142,18 @@ def _worker_lines(records):
     files).
     """
     lines = []
-    for _idx, record, block in harvest_runs._iter_blocks_indexed(records):
+    for _idx, record, block in _readers.iter_blocks_indexed(records):
         rtype = record.get("type")
-        txt = harvest_runs._block_text(block).strip()
+        txt = _readers.block_text(block).strip()
         if not txt:
             continue
         btype = block.get("type")
         if btype == "text" and rtype in ("user", "assistant"):
-            if len(txt) > harvest_runs.SLICE_TURN_MAX:
-                txt = (txt[:harvest_runs.SLICE_TURN_MAX]
-                       + f"\n…[truncated {len(txt) - harvest_runs.SLICE_TURN_MAX} chars]")
+            if len(txt) > _readers.SLICE_TURN_MAX:
+                txt = (txt[:_readers.SLICE_TURN_MAX]
+                       + f"\n…[truncated {len(txt) - _readers.SLICE_TURN_MAX} chars]")
             lines.append(f"**{rtype}:** {txt}")
-        elif any(k in txt.lower() for k in harvest_runs.SLICE_KEYWORDS):
+        elif any(k in txt.lower() for k in _readers.SLICE_KEYWORDS):
             # #137: tool_result blocks ride user-TYPE records — label them by
             # block type so machine output is never attributed to the human.
             label = "tool_result" if btype == "tool_result" else rtype
@@ -168,13 +168,13 @@ def worker_slice(transcript_path, budget=WORKER_BUDGET):
     An unreadable transcript yields "" plus a stderr diagnostic.
     """
     # Wider than OSError, and the slicing is INSIDE the guard:
-    #   - `_records` reads strict UTF-8, so a transcript still streaming to disk
+    #   - `records()` reads strict UTF-8, so a transcript still streaming to disk
     #     whose tail ends mid-multibyte raises UnicodeDecodeError (a ValueError);
-    #   - `_records` filters unparseable lines but not non-dict values, and
+    #   - `records()` filters unparseable lines but not non-dict values, and
     #     `_worker_lines` calls `.get()` on each record -> AttributeError.
     # The advisory contract says skip with a diagnostic, never traceback.
     try:
-        records = harvest_runs._records(transcript_path)
+        records = _readers.records(transcript_path)
         text = _worker_lines(records)
     except (OSError, ValueError, AttributeError, TypeError) as exc:
         swallow("unreadable transcript yields an empty slice, never a "

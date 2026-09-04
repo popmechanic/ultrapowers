@@ -180,7 +180,7 @@ def test_bundle_dates_itself_from_the_event_log_when_no_version_is_given(tmp_pat
     # single entry dated at checkout time, AFTER T0. The walk then breaks on its
     # first row and returns epoch None. Pin the timeline instead of asking the
     # clone what its history was.
-    monkeypatch.setattr(hfr.harvest_runs, "_release_timeline",
+    monkeypatch.setattr(hfr._readers, "release_timeline",
                         lambda: (("2026-08-28T10:52:30-07:00", "0.2.26"),
                                  ("2026-08-29T14:03:52-07:00", "0.3.0")))
     _, b = _bundle(tmp_path)
@@ -294,7 +294,7 @@ def test_main_with_no_runs_found_is_a_clean_zero(tmp_path, capsys):
 # ---------- #464 item 1: every bundle tarball is named sandbox-logs.tgz ----------
 
 def test_two_bundles_unpack_to_separate_directories(tmp_path):
-    # fetch_bundles writes <dest>/<bundle>/sandbox-logs.tgz, so `path.stem` is
+    # A logs pull writes <dest>/<bundle>/sandbox-logs.tgz, so `path.stem` is
     # the SAME string for every bundle. A stem-keyed unpack dir made each
     # tarball re-report every run extracted before it: 8 tarballs -> 36 dirs.
     src = tmp_path / "src"
@@ -479,22 +479,3 @@ def test_a_run_that_carries_findings_is_never_reported_looked_empty(tmp_path, ca
 
     assert rc == 0
     assert _lines(capsys.readouterr().err, "LOOKED-EMPTY:") == []
-
-
-def test_remote_harvest_of_an_unreachable_host_fails_loud(tmp_path, monkeypatch, capsys):
-    # run-45 critic finding, closed: with fetch_bundles now raising, a dead
-    # host on the harvest path is a counted failure — exit 2 (every input
-    # failed) and a FAILED-LOOKUP line — never a quiet "0 failed" success.
-    import os as _os
-    import stat as _stat
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    stub = bin_dir / "ssh"
-    stub.write_text("#!/bin/sh\nexit 255\n")
-    stub.chmod(stub.stat().st_mode | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
-    monkeypatch.setenv("PATH", f"{bin_dir}{_os.pathsep}{_os.environ['PATH']}")
-    rc = hfr.main([
-        "--remote", "no-such-host", "--cache", str(tmp_path / "cache")])
-    err = capsys.readouterr().err
-    assert rc == 2
-    assert "FAILED-LOOKUP:" in err and "no-such-host" in err
