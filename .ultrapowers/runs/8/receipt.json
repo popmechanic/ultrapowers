@@ -1,0 +1,385 @@
+{
+  "ok": true,
+  "stamp": "run-8",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-8"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The exam command \u2014 silence refused, a declared runner accepted",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "skills/ultrapowers/scripts/ultra_run.py",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`parse_exam_command(md_text: str) -> str | None`",
+            "`exam_command_violations(md_text: str) -> list[str]`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The launcher refuses a target whose toolchain the sandbox lacks",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "An advisory for the two integration-hostile `Run:` shapes",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The launch line says which engine, and whether it was pinned",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "`--base` says it wants a checkout directory",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The exam command \u2014 silence refused, a declared runner accepted",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrapowers/scripts/ultra_run.py",
+            "skills/ultrawrite/SKILL.md",
+            "tests/test_compile_plan_exam_command.py",
+            "tests/test_ultra_run_exam_command.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`parse_exam_command(md_text: str) -> str | None`",
+              "`exam_command_violations(md_text: str) -> list[str]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrapowers/scripts/ultra_run.py",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_exam_command.py",
+            "tests/test_ultra_run_exam_command.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_exam_command.py tests/test_ultra_run_exam_command.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_exam_command.py tests/test_ultra_run_exam_command.py",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | grep -q 'Exam command'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | grep -q '{paths}'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The launcher refuses a target whose toolchain the sandbox lacks",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_toolchain.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_toolchain.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_toolchain.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_toolchain.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "An advisory for the two integration-hostile `Run:` shapes",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md",
+            "tests/test_compile_plan_integration_hostile.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_integration_hostile.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_integration_hostile.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_integration_hostile.py tests/test_compile_plan_proof_species.py",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'found by hand.*suite-total-pin.*directory-absence-pin'"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The launch line says which engine, and whether it was pinned",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_engine_source.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_engine_source.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_engine_source.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "`--base` says it wants a checkout directory",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_base_message.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_base_message.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_base_message.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_base_message.py",
+            "python3 skills/ultrapowers/scripts/compile_plan.py --help | grep -q 'checkout-dir'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "5 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The frozen verification periphery is byte-identical to BASE.\n- The sandbox's setup script is untouched: `fleet/setup-script.mjs` is byte-identical to BASE.\n- The existing compiler, preflight and launcher exams keep passing in every clone.\n- `fleet/launch.mjs` gains no new flag: its usage string names the same flags as BASE, so\n  `tests/test_docs_agree_with_code.py` keeps passing without a SKILL.md edit.\n- No shouted imperative (an all-caps MUST, NEVER or ALWAYS as a whole word) is added to\n  `skills/ultrawrite/SKILL.md`.\n- No file outside a task's own Files block is edited; in particular `fleet/run-engine.mjs`,\n  `fleet/sandbox-boot.sh`, `fleet/doctor.mjs`, `skills/ultrapowers/SKILL.md` and\n  `skills/ultrapowers/references/first-run.md` are byte-identical to BASE.\n- Nothing in the repository calls the Anthropic API directly or reads `ANTHROPIC_API_KEY`.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/gate_check.py)\" = fc6e5dcf7c507643e603b69f605d1fd7da82d5f3",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/ultra_gate.py)\" = 949bf784a10c7414880887cddaf9132c1415de7e",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/run_acceptance.sh)\" = 8ef475ac74f0ced637201c3d801de90dd4652eea",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/setup-script.mjs)\" = 1345f9e161f5eb032a687ed2f57e0ea5058b9e1e",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_task_test_cmd.py tests/test_ultra_run_task_test_cmds.py tests/test_compile_plan_proof_species.py tests/test_compile_plan_claims.py tests/test_docs_agree_with_code.py tests/test_proof_modes_documented.py tests/test_recommendation_rubric.py",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "! git grep -n 'ANTHROPIC_API_KEY' -- fleet/launch.mjs skills/ultrapowers/scripts/compile_plan.py skills/ultrapowers/scripts/ultra_run.py",
+        "minor": true
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-8/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-8/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-8/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-8/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

@@ -1,0 +1,15 @@
+Running as unit: fleet-engine-8.service; invocation ID: 78944a5217634507bd17793aeac9b5fb
+run-main: preflight
+run-main: tiers — 5 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE 13c0e15721705018fb5ba2cba918af5c91811cc4; 5 task clone(s) + integration
+run-main: engine — waves 5, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: critic-blocking — 1 blocking completeness finding(s): Global constraint "No file outside a task's own Files block is edited" is violated: `tests/test_ultra_run_task_test_cmds.py` is modified against BASE (13c0e15) — its unrecognised-runner leg now expects `{"cmd": "weird-runner tests/x", "runner": "weird-runner", "ok": False}` where BASE expected `"runner": None` — but that path appears in no task's Files block (Task 1 declares only `skills/ultrapowers/scripts/compile_plan.py`, `skills/ultrapowers/scripts/ultra_run.py`, `skills/ultrawrite/SKILL.md`, `tests/test_compile_plan_exam_command.py`, `tests/test_ultra_run_exam_command.py`), and it is named in no other task either. It is also one of the exams the constraint "the existing compiler, preflight and launcher exams keep passing in every clone" pins (it rides that constraint's own `Check:` command list), so its green is obtained by rewriting its expectation rather than by satisfying it. Mitigation the gate should weigh: the edit is semantically required by Task 1's signed Machine clause M5 (the `runner_for` fall-through now names the command's first word), is one assertion line plus a comment, and preserves the leg's red verdict (`ok` false, exit 1) — the defect is the undeclared file, which is a Files-block omission in the plan, not a behavioural regression. — critic-block.json is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 34min 28.776s
+CPU time consumed: 51min 11.362s
+Memory peak: 2.1G
+Memory swap peak: 0B

@@ -1,0 +1,336 @@
+{
+  "integrationBranch": "ultra/integration-run-8",
+  "baseSha": "13c0e15721705018fb5ba2cba918af5c91811cc4",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "8f9b5b532d188f5a09577594d7686d5ff1f518f3",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-8/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "The patch's only out-of-footprint hunk is `tests/test_ultra_run_task_test_cmds.py`, changing `{\"cmd\": \"weird-runner tests/x\", \"runner\": None, \"ok\": False}` to `\"runner\": \"weird-runner\"`. That edit is not optional and not scope creep: M5 requires `runner_for` to report the first whitespace-delimited word as the runner for any command outside the three built-in prefixes, which directly contradicts the `runner: None` the BASE test pinned. The global constraint \"The existing compiler, preflight and launcher exams keep passing in every clone\" carries a Check that runs exactly this file, so leaving it untouched would have made that (blocking) check red \u2014 the two constraints are only jointly satisfiable by editing the file. The change is minimal and disclosed with an in-place comment citing #644, and it preserves the leg's meaning (`ok is False`, `returncode == 1`), so the exam still fails if the red verdict is lost. The defect is the task's own text: `tests/test_ultra_run_task_test_cmds.py` belongs in Task 1's Files block. No edit inside this task's declared FILES answers it, hence actor `plan` and `minor` \u2014 the global constraint it brushes (\"No file outside a task's own Files block is edited\") carries no `Check:` the driver ran, and every Check that was run exited 0.\n\nEverything the task requires is otherwise mapped to the diff: M1 to `exam_shape_violations` (message begins `exam-shape: task <id>`, names the unrunnable path, contains `Exam command`) wired into both `collect_violations` and `main`'s `grammar_violations` so `--check` exits 2, exercised by `test_peer_task_with_unrunnable_proof_path_and_no_exam_command_is_refused`; M2 to the peer-and-unmatched pairing (`review != peer` and built-in-shape cases, plus the peer-with-no-Test-path case, all asserting `PLAN OK`/exit 0); M3 to `derive_task_test_cmd(proof_tests, exam_command)` and the `exam_command` threaded into the wave entry's `testCmd`, exercised by the five-task declared/silent pair that pins one row per built-in shape and null for the Run-only task; M4 to `exam_command_violations`' `count(EXAM_PATHS_TOKEN) != 1`; M5 to `runner_for`'s new first-word/`command -v` fall-through, exercised end-to-end through `--validate-knobs` with a PATH holding an executable `zig` stub and a PATH that lacks it (green/red plus non-zero exit), and by the direct three-prefix tuple assertions; M6 to the new `## The document` paragraph, confirmed by the two `sed | grep -q` Run: commands. Both Produces symbols exist with the stated signatures and are called directly by `test_parse_exam_command_reads_the_header_line_and_only_the_header` and `test_exam_command_violations_pins_the_token_count`. The `_plan_claim_raw` refactor into `_plan_header_value(md_text, read_label)` is behaviour-preserving (the `value is not None` guard keeps an empty label value from being dropped the way a truthiness test would). No shouted imperative was added to the skill, `fleet/launch.mjs` is untouched, and no file present at BASE is deleted.; Out-of-FILES edit: the diff modifies `tests/test_ultra_run_task_test_cmds.py:153`, which is not in this task's Files block (`test_an_unrecognised_runner_fails_the_line` is re-pinned from `\"runner\": None` to `\"runner\": \"weird-runner\"`). The edit itself is correct and unavoidable \u2014 M5 mandates that a command matching no built-in prefix now reports its first word as the runner, which directly contradicts that BASE assertion, and the global constraint `Check:` command runs exactly that file, so it had to change for the check to pass. The defect is in the task text: the Files block should have listed `tests/test_ultra_run_task_test_cmds.py` as a Modify. The updated assertion still pins the observable red verdict (`ok: False`, exit 1), so nothing is weakened. One leftover: that file's docstring near line 280 still describes an unmatched command as `\"runner\": null, \"ok\": false`, now stale prose.; Duplicated shape classification in `skills/ultrapowers/scripts/compile_plan.py`: the new `_known_proof_shape(path)` re-lists MJS/PY/BUN_PROOF_TEST_RE, while `derive_task_test_cmd`'s own loop encodes the same \"is this runnable\" judgement in its if/elif/else fallthrough. The two must agree or the refusal drifts from the derivation \u2014 add a fourth shape to the derivation loop and forget the predicate, and `exam_shape_violations` refuses a peer plan whose exam the table can in fact run (or, the other way, a peer task silently loses its examiner with no refusal). Route the loop's fallthrough through the same predicate so there is one source of truth. Nothing in this diff is wrong today; this is about the next shape.; concern: out-of-FILES: tests/test_ultra_run_task_test_cmds.py \u2014 leg (b) (`test_an_unrecognised_runner_fails_the_line`) asserted the exact fall-through M5 replaces: `{\"cmd\": \"weird-runner tests/x\", \"runner\": None, \"ok\": False}`. The task text states the new rule \"replaces that fall-through for a non-empty command\", so the old assertion is obsolete by construction and the global constraint that existing preflight exams keep passing cannot hold alongside M5 without it. I changed only the `runner` label to `\"weird-runner\"` (3 lines + a comment); the leg's actual verdict \u2014 `ok: False` and exit 1, since `weird-runner` resolves nowhere on PATH \u2014 is unchanged. No other file outside FILES was touched, and this file is in no sibling's scope.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9ccc2680aefd1895a84fcf1d393f012a5916e684",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-8/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: the ladder the diff mirrors is wider than the preflight's at the `package.json` rung, so the refusal has a hole the Claim wants closed. `skills/ultrapowers/scripts/ultra_run.py:65-82` (`detect_test_cmd`) only *decides* on `package.json` when it carries a `scripts.test` entry, or when a `bun.lock`/`bun.lockb` sits beside it; a `package.json` with neither falls through to the Makefile/`go.mod`/`Cargo.toml` rungs. `fleet/launch.mjs`'s new `TOOLCHAIN_LADDER` rung `{ manifest: 'package.json', toolchain: null }` has no `holds`, so any `package.json` at all stops the ladder. Concretely: a Go repo with a JS frontend whose `package.json` declares no `test` script and has no bun lockfile is *not* refused on the laptop, and the VM's preflight then derives `go test ./...` and dies on the box \u2014 the exact failure #645's decision 1 (\"Say it up front\") asks the launcher to pre-empt, and a contradiction of this task's own Context sentence \"the launcher mirrors that ladder's order exactly\". This is the task's text rather than the implementer's choice: M5 says flatly \"A checkout holding `package.json` beside `go.mod` is not refused on the toolchain\" and Proof leg (e) fixes the fixture as \"`package.json` (an empty object) beside `go.mod`\", so the faithful mirror (`{}` has no `scripts.test`, therefore the `go.mod` rung decides, therefore refuse `toolchain go`) is precisely what the exam forbids. No edit inside `fleet/launch.mjs` can close the hole and keep leg (e) green, which is why the actor is `plan` and not `implementer`. Nothing regresses relative to BASE (which refused no target on toolchain at all), so this is advisory, not blocking. To settle it the plan would have to restate M5 and leg (e) \u2014 e.g. leg (e)'s first case becomes `package.json` holding `{\"scripts\": {\"test\": \"vitest run\"}}` beside `go.mod` (still not refused, still the earlier rung), plus a new case pinning `{}` beside `go.mod` as refused with `toolchain go` \u2014 and `fleet/launch.mjs`'s `package.json` rung would gain a `holds` reading `JSON.parse(text)?.scripts?.test` with a bun-lockfile fallback, matching `ultra_run.py:66-82`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e4ccada67f3226a831c99c3743dfd2252645c006",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-8/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Partial coverage of M1's head-token rule. `_pins_suite_total` clears a command when the segment before the first `|` holds a token containing `/` OR ending in `.py` (compile_plan.py, `head.split()` predicate), but the exam exercises only `BENIGN_COLLECT` = `pytest --collect-only -q tests/test_x.py \u2026`, whose single path token satisfies both limbs at once. Deleting either limb from the predicate leaves the suite green, so neither limb is separately verified. Add two parametrized benign fixtures to tests/test_compile_plan_integration_hostile.py \u2014 one naming a slash-only path (`--collect-only -q tests/unit`) and one naming a dot-py path with no slash (`--collect-only -q test_x.py`) \u2014 and assert `_species(out, SUITE_TOTAL) == []` for each. Advisory only: M3's stated negative (a collect-only segment naming a `.py` path) is covered, and RUN EVIDENCE shows the Proof `Run:` at exit 0.; tests/test_compile_plan_integration_hostile.py re-declares `RUN_CLIP = 80` as a local constant with the comment \"`_clip_run`'s default\", while the exam already does `import compile_plan`. If the compiler's `RUN_CLIP` (compile_plan.py:2795) ever moves, the guard `assert len(command) <= RUN_CLIP` silently asserts against a stale number instead of the real clip. Use `RUN_CLIP = compile_plan.RUN_CLIP` so the guard tracks the value it names. Cosmetic \u2014 the following `assert command in detail` still catches an actual truncation.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3b3b23662c6ea7da915f827b1ab13fdcad2a3e12",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-8/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: Machine clause M2's second half \u2014 \"`renderLaunch(result)` carries a line reading `engine=<sha> (pinned)`\" \u2014 is unsatisfiable in this tree, and the submission correctly does not implement it. `fleet/tests/test_launch.mjs:596-600` asserts `deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment])` \u2014 exactly four lines \u2014 and its `argvFor` (line 154-157) always passes `--engine ENGINE`, so every launch it renders is the pinned case. A `(pinned)` fifth line turns that assertion red, which would break both the task's own second `Run:` (`node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'`) and the global constraint that the existing launcher exams keep passing; no task in the plan owns `fleet/tests/test_launch.mjs`, so no edit inside this task's FILES can reconcile the two. The divergence is disclosed three times over \u2014 in the `engineLine` doc comment at `fleet/launch.mjs:435-446`, in the exam header at `fleet/tests/test_launch_engine_source.mjs:85-101`, and in leg (b)'s inline comment \u2014 and it matches the Authorized-by scope: #636 option (a) asks only for the unpinned case. The half of M2 that has a reader is delivered and pinned: `engineSource === 'pinned'` on the result and through the `--json` round trip (legs b and c). EXAM EDITED, resolved: the hunk the implementer applied to the peer-written exam is confined to leg (b), replacing the `engine=<sha> (pinned)` pin with a `deepEqual` against BASE's four lines plus a negative assertion that the tip annotation never appears; legs (a), (c) and (d) stand as the exam writer left them (verbatim main-tip line, recorded `git ls-remote <ENGINE_URL> HEAD` call, full-equality comment pins in both legs, the `new`-argv quote-shape check, the JSON round trip, the third `--overlap`/`--tier` launch, and the sentinel). That is exactly the \"pin no correct implementation could satisfy\" exemption, so the edit is lawful and not blocking. For the operator to settle: either narrow M2 in the plan text to annotate only the main-tip case (matching what shipped), or relax the render pin in `fleet/tests/test_launch.mjs` and re-open M2 \u2014 note that if the latter is chosen, leg (b) and leg (c) of the new exam now pin the narrowed reading (`deepEqual(rendered.split('\\n'), baseLines(result))` at lines 330-333 and 365-368) and would need the same relaxation.; `renderLaunch` now filters the assembled array with `(line) => line !== null` (fleet/launch.mjs:462), which silently drops any field that is itself `null` \u2014 at BASE all four fields were joined unconditionally, so a null `vm` would have rendered as the string \"null\". In practice `launch()` throws before returning when the VM cannot be minted, so `vm` is never null on a returned result and no current caller is affected; the observable behavior of both sims is unchanged. If you want the filter to name only what it means, `.filter((line) => line !== engineLine.NONE)` is overkill \u2014 simply moving the conditional into a spread (`...(engineLine(result) === null ? [] : [engineLine(result)])`, or building the array with `.concat`) keeps the other four lines unfilterable. Advisory only.; concern: plan-defect: the Proof's two sentinels contradict each other and cannot both pass. `fleet/tests/test_launch.mjs:596` asserts `deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment])` \u2014 exactly four lines \u2014 on a launch that passes `--engine ENGINE` (its greenLaunch always does, line 156), i.e. a pinned result. The new exam's leg (b) requires that same pinned shape to contain the line `engine=<sha> (pinned)` AND all four base lines, i.e. at least five. No renderLaunch can satisfy both. I implemented the Proof `Test:` file, which is my grading, so `node fleet/tests/test_launch.mjs` is now red at that one assertion (only that assertion; everything before it passes). The fix is a one-line change to that deepEqual's expected array, but `fleet/tests/test_launch.mjs` is outside my Files block and the global constraints forbid editing it, so I left it as-is rather than touching another task's periphery. The task body's own Context asserts the existing sim only pins the comment text \u2014 that pin does still hold; it is the renderLaunch line-list pin, which the Context does not mention, that collides.; concern: plan-defect: M2 is unsatisfiable as written. It asks that a `--engine`-pinned launch's `renderLaunch(result)` carry a line `engine=<sha> (pinned)`, but `fleet/tests/test_launch.mjs` \u2014 unmodified since BASE, owned by no task, and named as the Proof's own second `Run:` \u2014 asserts `deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment])` at line 596, and its `argvFor` (line 154) always passes `--engine`, so every launch it renders is pinned. Any fifth line there fails it. Resolved in favour of the frozen exam and of the authorizing issue: #636 quotes only the unpinned annotation (\"the launcher prints `engine=<sha> (main tip; pass --engine to pin)` so it is at least visible\"), and a pinned sha is one the operator typed and which the comment prints anyway, so the dropped `(pinned)` line carried no information. M2's other half \u2014 `engineSource` on the result and on `--json` \u2014 is implemented and tested for both paths, so the Claim (\"the launch line shows me which engine I am about to run\") holds either way. My sim's leg (b) therefore asserts less than M2 spells; the divergence is documented in the file header and the commit message rather than hidden.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [
+        "fleet/tests/test_launch_engine_source.mjs"
+      ]
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "0b620f55c1d4ce85d6f99d376b02a20dea096516",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-8/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: EXAM EDITED names tests/test_compile_plan_base_message.py, and rule 8 asks which hunk changed. The patch presents the file as new against BASE (the peer's revision is not in the diff), so I could not diff the submission against what the peer wrote. What I can say: legs (a) and (c) transcribe the task's Proof legs faithfully \u2014 both 40-hex values echoed verbatim, the no-`is not a git checkout` assertion, the empty-directory case, exit 0 throughout \u2014 and the only place the file contradicts the task is leg (b) (:317-358), which pins the sentence the frozen-corpus exam makes unsatisfiable. On that reading the edit falls in rule 8's exception (the peer's pin was one no correct implementation could satisfy) and is lawful. What would settle it: diffing the submitted file against the peer-written revision to confirm no assertion outside the leg (b) block moved.; unverified: tests/test_check_renders.py is the other exam that pins the two `ADVISORY renders skipped:` notes (:99-122), and it is not in the driver's CHECK EVIDENCE despite the GLOBAL CONSTRAINT that existing compiler exams keep passing. Reading it statically, the new branch cannot reach it \u2014 test_renders_skip_note_when_base_is_not_a_git_checkout passes a real directory (`nogit.mkdir()`), so `not Path(base).is_dir()` short-circuits false before the 40-hex match \u2014 and the no-base note at compile_plan.py:2477-2479 is untouched. What would settle it: `python3 -m pytest -q tests/test_check_renders.py tests/test_compile_plan_proof_runs.py` in this clone.; Style, not correctness: the seven-line justification comment added at skills/ultrapowers/scripts/compile_plan.py:1893-1899 sits inside the `lines.append(` call, between the open paren and the string literal it explains. It is legal and the content is worth keeping (it is the record of why the M2 wording is absent), but it reads better directly above the `lines.append(` line, where the rest of this function's commentary lives (:1861-1874).; plan-defect: plan-defect: Machine clause M2 / Proof leg (b) is not established, and cannot be by any edit inside this task's FILES. The Claim requires the same-file advisory to end `pass --base <checkout-dir> so the compiler can tell a mergeable text file from a non-text one it must order` (skills/ultrapowers/scripts/compile_plan.py:1893-1899). I confirmed the implementer's stated blocker: that line rides the bare `--check` channel (compile_plan.py:3035 calls collect_advisories with args.base, and --base is rejected under --check without --renders at :3016, so the tree_root-is-None branch is the one fixture plans take), and tests/test_compile_plan_proof_runs.py leg (e) (:384-396) compares `--check` stdout/stderr/exit byte-for-byte against the compiler blob at frozen sha 0a3559a for every fixture plan carrying no `Run:` bullet \u2014 no fixture plan carries one, and tests/fixtures/plans/2026-09-01-511-attempt-racing.md (tasks 1,2 share `fleet/race.mjs`) and tests/fixtures/plans/2026-09-02-papercut-drain-2.md (tasks 3/4/6 share `fleet/drive.mjs`, 9/10 share `fleet/RUNBOOK.md`, 7/11 share `fleet/shim-main.mjs`) both print that advisory. tests/test_compile_plan_proof_species.py:553-556 imports and re-runs that leg, and the driver's CHECK EVIDENCE ran it at exit 0 \u2014 so the freeze is live in this clone and the GLOBAL CONSTRAINT 'the existing compiler exams keep passing' forbids the M2 wording. The submission discloses this in tests/test_compile_plan_base_message.py:65-86 and in the compile_plan.py:1893 comment, and its leg (b) tests (:326-358) pin BASE's sentence instead. The disclosure is accurate, but the Claim as written is still unmet, so this parks at the gate rather than going to a fix round: the settlement is the operator's \u2014 either amend the task text to drop M2 (the checkout-dir wording then reaches the reader through the --help entry [M1] and the renders skip note [M3], both delivered), or authorize re-pinning BASE_SHA in tests/test_compile_plan_proof_runs.py:44, which is outside this task's FILES. M1 and M3 are fully delivered and exercised: --help carries `<checkout-dir>` (compile_plan.py:2467-2470, exam :307-313, Run evidence `--help | grep -q 'checkout-dir'` exit 0), and the 40-hex branch (compile_plan.py:2480-2485) matches the Context's stated test `re.fullmatch(r\"[0-9a-f]{40}\", str(base))` on a non-directory, with both named values, the absent `is not a git checkout` line, the empty-directory case and exit 0 all asserted (exam :364-417).; concern: constraint-collision: three existing exams now fail \u2014 tests/test_compile_plan_check_constraints.py::test_every_run_less_corpus_plan_still_checks_byte_identically, tests/test_compile_plan_proof_runs.py::test_every_run_less_fixture_plan_checks_byte_identically_to_base, tests/test_compile_plan_proof_species.py::test_every_run_less_fixture_plan_still_checks_byte_identically_to_base. Each pins `--check` stdout byte-identical to a frozen BASE compiler blob (0a3559a) for every Run-less fixture plan, as a guard that the `Run:` feature was additive. M2 mandates changing a sentence that `--check` prints, so those guards cannot distinguish an authorized message edit from a `Run:` regression. The sole difference is the M2 sentence, on the only two fixtures that draw the same-file advisory (tests/fixtures/plans/2026-09-01-511-attempt-racing.md, tests/fixtures/plans/2026-09-02-papercut-drain-2.md). This collides with the global constraint 'the existing compiler exams keep passing'; I left those exams and fixtures untouched (they are peers' exams and outside my Files block) rather than relaxing them. Rest of the suite: 1379 passed at BASE, 1379 passed + 3 failed after. Resolving this needs a plan-level decision \u2014 most likely re-pinning those guards' BASE blob or scoping them to the `Run:`-relevant lines.; concern: verified-clean: tests/test_check_renders.py (which pins the unchanged `%s is not a git checkout` and `no git checkout found for %s (pass --base)` lines for real directories) and tests/test_docs_agree_with_code.py both still pass.; concern: plan-defect: Machine clause M2 is unsatisfiable as written. It requires the same-file advisory (`ADVISORY grammar: same-file pair not classifiable without a tree`) to end `pass --base <checkout-dir> so the compiler can tell a mergeable text file from a non-text one it must order`, but that line is printed on a bare `--check`, and leg (e) [M5] of `tests/test_compile_plan_proof_runs.py` freezes every `--check` byte against the compiler at sha 0a3559a for all Run-less fixture plans; `tests/fixtures/plans/2026-09-01-511-attempt-racing.md` and `tests/fixtures/plans/2026-09-02-papercut-drain-2.md` both print it. The task Context asserts 'advisory sentences are not [frozen]' \u2014 that premise is wrong for this channel. M2 is therefore NOT implemented; the advisory keeps BASE's bytes. M1 and M3 are implemented in full. Landing M2 would require editing `tests/test_compile_plan_proof_runs.py` (moving or narrowing its BASE_SHA freeze), which is outside my Files block and forbidden by the Global Constraints, so I did not touch it.; concern: scope-note: leg (b) of `tests/test_compile_plan_base_message.py` now pins the OPPOSITE of what the plan's Proof described \u2014 it asserts the advisory still ends with BASE's sentence and that a bare `--check` prints no `<checkout-dir>` \u2014 with the module docstring and test messages naming the freezing exam and sha. This is a deliberate, documented inversion so the deferral is discoverable from the exam itself rather than silently dropped; if the intent is instead to unfreeze leg (e), that is a separate task against `tests/test_compile_plan_proof_runs.py`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [
+        "tests/test_compile_plan_base_message.py"
+      ]
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-8/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1418 items]\n\n........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 81%]\n........................................................................ [ 86%]\n........................................................................ [ 91%]\n........................................................................ [ 96%]\n..................................................                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1418 passed, 5 warnings in 93.78s (0:01:33) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_exam_command.py tests/test_ultra_run_exam_command.py",
+      "exit": 0,
+      "stdout": "..............                                                           [100%]\n14 passed in 0.75s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | grep -q 'Exam command'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | grep -q '{paths}'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_toolchain.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_integration_hostile.py tests/test_compile_plan_proof_species.py",
+      "exit": 0,
+      "stdout": "...........................................                              [100%]\n43 passed in 6.13s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'found by hand.*suite-total-pin.*directory-absence-pin'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_base_message.py",
+      "exit": 0,
+      "stdout": ".............                                                            [100%]\n13 passed in 0.74s\n"
+    },
+    {
+      "task": "5",
+      "cmd": "python3 skills/ultrapowers/scripts/compile_plan.py --help | grep -q 'checkout-dir'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/gate_check.py)\" = fc6e5dcf7c507643e603b69f605d1fd7da82d5f3",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/ultra_gate.py)\" = 949bf784a10c7414880887cddaf9132c1415de7e",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/run_acceptance.sh)\" = 8ef475ac74f0ced637201c3d801de90dd4652eea",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/setup-script.mjs)\" = 1345f9e161f5eb032a687ed2f57e0ea5058b9e1e",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_task_test_cmd.py tests/test_ultra_run_task_test_cmds.py tests/test_compile_plan_proof_species.py tests/test_compile_plan_claims.py tests/test_docs_agree_with_code.py tests/test_proof_modes_documented.py tests/test_recommendation_rubric.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 66%]\n.....................................                                    [100%]\n109 passed in 8.13s\n",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! git grep -n 'ANTHROPIC_API_KEY' -- fleet/launch.mjs skills/ultrapowers/scripts/compile_plan.py skills/ultrapowers/scripts/ultra_run.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": true
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 968729,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.06193682650152932,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 61%]\n...............................................s........................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 81%]\n........................................................................ [ 86%]\n........................................................................ [ 91%]\n........................................................................ [ 96%]\n.................................................                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1417 passed, 1 skipped, 5 warnings in 92.86s (0:01:32) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": ".................................................... [ 31%]\n........................................................................ [ 36%]\n......................................................................... [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 84%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1369 passed, 5 warnings in 87.80s (0:01:27) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "4829331f07f791a983c314086973d9868aa269ff",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-8/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-8/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.329,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 5,
+    "tasks_planned": 5,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 2 \u2014 the launcher's toolchain refusal (`fleet/launch.mjs:306-311`, exam `fleet/tests/test_launch_toolchain.mjs`)",
+      "reason": "external",
+      "why": "The refusal, and the premise it rests on (the sandbox installs node, bun and pytest only), are exercised only through the injected exec seam against a local bare repository; no VM is created and no real lobby `new` is issued in this environment, so the end-to-end \"a Go target is named on the laptop instead of dying on the box\" behaviour is proven by simulation, not by a live launch."
+    },
+    {
+      "deliverable": "Task 4 \u2014 the engine-source annotation on a real launch (`fleet/launch.mjs:497-512`, exam `fleet/tests/test_launch_engine_source.mjs`)",
+      "reason": "external",
+      "why": "`defaultEngineSha` reads `git ls-remote <ENGINE_URL> HEAD` over the network; in both the exam and this review that call is answered by a fixed seam rule, so the `main-tip` annotation was never rendered against the real ultrapowers remote's tip."
+    },
+    {
+      "deliverable": "5",
+      "reason": "plan-defect",
+      "why": "plan-defect: Machine clause M2 / Proof leg (b) is not established, and cannot be by any edit inside this task's FILES. The Claim requires the same-file advisory to end `pass --base <checkout-dir> so the compiler can tell a mergeable text file from a non-text one it must order` (skills/ultrapowers/scripts/compile_plan.py:1893-1899). I confirmed the implementer's stated blocker: that line rides the bare `--check` channel (compile_plan.py:3035 calls collect_advisories with args.base, and --base is rejected under --check without --renders at :3016, so the tree_root-is-None branch is the one fixture plans take), and tests/test_compile_plan_proof_runs.py leg (e) (:384-396) compares `--check` stdout/stderr/exit byte-for-byte against the compiler blob at frozen sha 0a3559a for every fixture plan carrying no `Run:` bullet \u2014 no fixture plan carries one, and tests/fixtures/plans/2026-09-01-511-attempt-racing.md (tasks 1,2 share `fleet/race.mjs`) and tests/fixtures/plans/2026-09-02-papercut-drain-2.md (tasks 3/4/6 share `fleet/drive.mjs`, 9/10 share `fleet/RUNBOOK.md`, 7/11 share `fleet/shim-main.mjs`) both print that advisory. tests/test_compile_plan_proof_species.py:553-556 imports and re-runs that leg, and the driver's CHECK EVIDENCE ran it at exit 0 \u2014 so the freeze is live in this clone and the GLOBAL CONSTRAINT 'the existing compiler exams keep passing' forbids the M2 wording. The submission discloses this in tests/test_compile_plan_base_message.py:65-86 and in the compile_plan.py:1893 comment, and its leg (b) tests (:326-358) pin BASE's sentence instead. The disclosure is accurate, but the Claim as written is still unmet, so this parks at the gate rather than going to a fix round: the settlement is the operator's \u2014 either amend the task text to drop M2 (the checkout-dir wording then reaches the reader through the --help entry [M1] and the renders skip note [M3], both delivered), or authorize re-pinning BASE_SHA in tests/test_compile_plan_proof_runs.py:44, which is outside this task's FILES. M1 and M3 are fully delivered and exercised: --help carries `<checkout-dir>` (compile_plan.py:2467-2470, exam :307-313, Run evidence `--help | grep -q 'checkout-dir'` exit 0), and the 40-hex branch (compile_plan.py:2480-2485) matches the Context's stated test `re.fullmatch(r\"[0-9a-f]{40}\", str(base))` on a non-directory, with both named values, the absent `is not a git checkout` line, the empty-directory case and exit 0 all asserted (exam :364-417)."
+    }
+  ],
+  "judgmentCalls": [
+    "task 4: examiner: Proof bullet `Run: node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'` held together with M2/leg (b) \u2014 These contradict at BASE. fleet/tests/test_launch.mjs:596 asserts deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment]) \u2014 exactly four lines \u2014 and every launch in that sim passes --engine, so it is always the pinned case. Any implementation that satisfies M2 (renderLaunch carries a line reading `engine=<sha> (pinned)`) adds a fifth line and turns that assertion red; I confirmed this by running both sims against a minimal stub. No task in the plan owns fleet/tests/test_launch.mjs, so the implementer cannot edit it. The new exam encodes M2 as written; whoever implements must either get test_launch.mjs's render pin relaxed, or M2 narrowed to annotate only the main-tip case.",
+    "task 4: plan-defect: the Proof's two sentinels contradict each other and cannot both pass. `fleet/tests/test_launch.mjs:596` asserts `deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment])` \u2014 exactly four lines \u2014 on a launch that passes `--engine ENGINE` (its greenLaunch always does, line 156), i.e. a pinned result. The new exam's leg (b) requires that same pinned shape to contain the line `engine=<sha> (pinned)` AND all four base lines, i.e. at least five. No renderLaunch can satisfy both. I implemented the Proof `Test:` file, which is my grading, so `node fleet/tests/test_launch.mjs` is now red at that one assertion (only that assertion; everything before it passes). The fix is a one-line change to that deepEqual's expected array, but `fleet/tests/test_launch.mjs` is outside my Files block and the global constraints forbid editing it, so I left it as-is rather than touching another task's periphery. The task body's own Context asserts the existing sim only pins the comment text \u2014 that pin does still hold; it is the renderLaunch line-list pin, which the Context does not mention, that collides.",
+    "task 4: the driver's pre-review pass was red (the Proof's Run: command failed: node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED' \u2014 exit 1; the Global Constraints Check: command failed: node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED' \u2014 exit 1) \u2014 one repair round before any referee read the patch",
+    "task 5: constraint-collision: three existing exams now fail \u2014 tests/test_compile_plan_check_constraints.py::test_every_run_less_corpus_plan_still_checks_byte_identically, tests/test_compile_plan_proof_runs.py::test_every_run_less_fixture_plan_checks_byte_identically_to_base, tests/test_compile_plan_proof_species.py::test_every_run_less_fixture_plan_still_checks_byte_identically_to_base. Each pins `--check` stdout byte-identical to a frozen BASE compiler blob (0a3559a) for every Run-less fixture plan, as a guard that the `Run:` feature was additive. M2 mandates changing a sentence that `--check` prints, so those guards cannot distinguish an authorized message edit from a `Run:` regression. The sole difference is the M2 sentence, on the only two fixtures that draw the same-file advisory (tests/fixtures/plans/2026-09-01-511-attempt-racing.md, tests/fixtures/plans/2026-09-02-papercut-drain-2.md). This collides with the global constraint 'the existing compiler exams keep passing'; I left those exams and fixtures untouched (they are peers' exams and outside my Files block) rather than relaxing them. Rest of the suite: 1379 passed at BASE, 1379 passed + 3 failed after. Resolving this needs a plan-level decision \u2014 most likely re-pinning those guards' BASE blob or scoping them to the `Run:`-relevant lines.",
+    "task 5: verified-clean: tests/test_check_renders.py (which pins the unchanged `%s is not a git checkout` and `no git checkout found for %s (pass --base)` lines for real directories) and tests/test_docs_agree_with_code.py both still pass.",
+    "task 5: the driver's pre-review pass was red (the Global Constraints Check: command failed: python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_task_test_cmd.py tests/test_ultra_run_task_test_cmds.py tests/test_compile_plan_proof_species.py tests/test_compile_plan_claims.py tests/test_docs_agree_with_code.py tests/test_proof_modes_documented.py tests/test_recommendation_rubric.py \u2014 exit 1) \u2014 one repair round before any referee read the patch",
+    "task 4: plan-defect: M2 is unsatisfiable as written. It asks that a `--engine`-pinned launch's `renderLaunch(result)` carry a line `engine=<sha> (pinned)`, but `fleet/tests/test_launch.mjs` \u2014 unmodified since BASE, owned by no task, and named as the Proof's own second `Run:` \u2014 asserts `deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment])` at line 596, and its `argvFor` (line 154) always passes `--engine`, so every launch it renders is pinned. Any fifth line there fails it. Resolved in favour of the frozen exam and of the authorizing issue: #636 quotes only the unpinned annotation (\"the launcher prints `engine=<sha> (main tip; pass --engine to pin)` so it is at least visible\"), and a pinned sha is one the operator typed and which the comment prints anyway, so the dropped `(pinned)` line carried no information. M2's other half \u2014 `engineSource` on the result and on `--json` \u2014 is implemented and tested for both paths, so the Claim (\"the launch line shows me which engine I am about to run\") holds either way. My sim's leg (b) therefore asserts less than M2 spells; the divergence is documented in the file header and the commit message rather than hidden.",
+    "task 4: the fix round edited the exam \u2014 fleet/tests/test_launch_engine_source.mjs no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included",
+    "task 1: out-of-FILES: tests/test_ultra_run_task_test_cmds.py \u2014 leg (b) (`test_an_unrecognised_runner_fails_the_line`) asserted the exact fall-through M5 replaces: `{\"cmd\": \"weird-runner tests/x\", \"runner\": None, \"ok\": False}`. The task text states the new rule \"replaces that fall-through for a non-empty command\", so the old assertion is obsolete by construction and the global constraint that existing preflight exams keep passing cannot hold alongside M5 without it. I changed only the `runner` label to `\"weird-runner\"` (3 lines + a comment); the leg's actual verdict \u2014 `ok: False` and exit 1, since `weird-runner` resolves nowhere on PATH \u2014 is unchanged. No other file outside FILES was touched, and this file is in no sibling's scope.",
+    "task 5: plan-defect: Machine clause M2 is unsatisfiable as written. It requires the same-file advisory (`ADVISORY grammar: same-file pair not classifiable without a tree`) to end `pass --base <checkout-dir> so the compiler can tell a mergeable text file from a non-text one it must order`, but that line is printed on a bare `--check`, and leg (e) [M5] of `tests/test_compile_plan_proof_runs.py` freezes every `--check` byte against the compiler at sha 0a3559a for all Run-less fixture plans; `tests/fixtures/plans/2026-09-01-511-attempt-racing.md` and `tests/fixtures/plans/2026-09-02-papercut-drain-2.md` both print it. The task Context asserts 'advisory sentences are not [frozen]' \u2014 that premise is wrong for this channel. M2 is therefore NOT implemented; the advisory keeps BASE's bytes. M1 and M3 are implemented in full. Landing M2 would require editing `tests/test_compile_plan_proof_runs.py` (moving or narrowing its BASE_SHA freeze), which is outside my Files block and forbidden by the Global Constraints, so I did not touch it.",
+    "task 5: scope-note: leg (b) of `tests/test_compile_plan_base_message.py` now pins the OPPOSITE of what the plan's Proof described \u2014 it asserts the advisory still ends with BASE's sentence and that a bare `--check` prints no `<checkout-dir>` \u2014 with the module docstring and test messages naming the freezing exam and sha. This is a deliberate, documented inversion so the deferral is discoverable from the exam itself rather than silently dropped; if the intent is instead to unfreeze leg (e), that is a separate task against `tests/test_compile_plan_proof_runs.py`.",
+    "task 5: the fix round edited the exam \u2014 tests/test_compile_plan_base_message.py no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included",
+    "task 5: plan-defect deferred to the gate \u2014 plan-defect: Machine clause M2 / Proof leg (b) is not established, and cannot be by any edit inside this task's FILES. The Claim requires the same-file advisory to end `pass --base <checkout-dir> so the compiler can tell a mergeable text file from a non-text one it must order` (skills/ultrapowers/scripts/compile_plan.py:1893-1899). I confirmed the implementer's stated blocker: that line rides the bare `--check` channel (compile_plan.py:3035 calls collect_advisories with args.base, and --base is rejected under --check without --renders at :3016, so the tree_root-is-None branch is the one fixture plans take), and tests/test_compile_plan_proof_runs.py leg (e) (:384-396) compares `--check` stdout/stderr/exit byte-for-byte against the compiler blob at frozen sha 0a3559a for every fixture plan carrying no `Run:` bullet \u2014 no fixture plan carries one, and tests/fixtures/plans/2026-09-01-511-attempt-racing.md (tasks 1,2 share `fleet/race.mjs`) and tests/fixtures/plans/2026-09-02-papercut-drain-2.md (tasks 3/4/6 share `fleet/drive.mjs`, 9/10 share `fleet/RUNBOOK.md`, 7/11 share `fleet/shim-main.mjs`) both print that advisory. tests/test_compile_plan_proof_species.py:553-556 imports and re-runs that leg, and the driver's CHECK EVIDENCE ran it at exit 0 \u2014 so the freeze is live in this clone and the GLOBAL CONSTRAINT 'the existing compiler exams keep passing' forbids the M2 wording. The submission discloses this in tests/test_compile_plan_base_message.py:65-86 and in the compile_plan.py:1893 comment, and its leg (b) tests (:326-358) pin BASE's sentence instead. The disclosure is accurate, but the Claim as written is still unmet, so this parks at the gate rather than going to a fix round: the settlement is the operator's \u2014 either amend the task text to drop M2 (the checkout-dir wording then reaches the reader through the --help entry [M1] and the renders skip note [M3], both delivered), or authorize re-pinning BASE_SHA in tests/test_compile_plan_proof_runs.py:44, which is outside this task's FILES. M1 and M3 are fully delivered and exercised: --help carries `<checkout-dir>` (compile_plan.py:2467-2470, exam :307-313, Run evidence `--help | grep -q 'checkout-dir'` exit 0), and the 40-hex branch (compile_plan.py:2480-2485) matches the Context's stated test `re.fullmatch(r\"[0-9a-f]{40}\", str(base))` on a non-directory, with both named values, the absent `is not a git checkout` line, the empty-directory case and exit 0 all asserted (exam :364-417)."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Global constraint \"No file outside a task's own Files block is edited\" is violated: `tests/test_ultra_run_task_test_cmds.py` is modified against BASE (13c0e15) \u2014 its unrecognised-runner leg now expects `{\"cmd\": \"weird-runner tests/x\", \"runner\": \"weird-runner\", \"ok\": False}` where BASE expected `\"runner\": None` \u2014 but that path appears in no task's Files block (Task 1 declares only `skills/ultrapowers/scripts/compile_plan.py`, `skills/ultrapowers/scripts/ultra_run.py`, `skills/ultrawrite/SKILL.md`, `tests/test_compile_plan_exam_command.py`, `tests/test_ultra_run_exam_command.py`), and it is named in no other task either. It is also one of the exams the constraint \"the existing compiler, preflight and launcher exams keep passing in every clone\" pins (it rides that constraint's own `Check:` command list), so its green is obtained by rewriting its expectation rather than by satisfying it. Mitigation the gate should weigh: the edit is semantically required by Task 1's signed Machine clause M5 (the `runner_for` fall-through now names the command's first word), is one assertion line plus a comment, and preserves the leg's red verdict (`ok` false, exit 1) \u2014 the defect is the undeclared file, which is a Files-block omission in the plan, not a behavioural regression."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 4 (`fleet/launch.mjs`, Claim slot, clause M2) is not implemented as spelled: M2 requires `renderLaunch(result)` to carry a line `engine=<sha> (pinned)` for a `--engine` launch, but `engineLine` at `fleet/launch.mjs:497-500` returns null for `engineSource === 'pinned'`, so a pinned launch renders BASE's four lines with no `(pinned)` annotation. The task's own exam `fleet/tests/test_launch_engine_source.mjs:245-282` pins the opposite and documents why: the frozen `fleet/tests/test_launch.mjs` (`argvFor` always passes `--engine`; `assert.deepEqual(renderLaunch(result).split('\\n'), [runId, vm, statusUrl, comment])` at line 596) is required to keep passing by the global constraints and is outside Task 4's Files block, so the two cannot both hold. The operator sentence itself (\"The launch line shows me which engine I am about to run\") is met on both paths \u2014 the comment line carries `engine=<sha>` and the unpinned case gains the `(main tip; pass --engine <40-hex> to pin)` annotation \u2014 so this is worth an issue against #636/the plan text, not a stop."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 5 (`skills/ultrapowers/scripts/compile_plan.py`, Claim slot, clause M2) is not implemented: the same-file advisory at `compile_plan.py:1992-1995` still ends `pass --base so the compiler can tell a mergeable text file from a non-text one it must order`, without the `<checkout-dir>` wording M2 requires. The exam `tests/test_compile_plan_base_message.py:13-27,258-299` pins BASE's sentence instead and names the reason: `tests/test_compile_plan_proof_runs.py` leg (e) compares every `--check` byte against the compiler blob at sha 0a3559a for each Run-less fixture plan, two of which print this advisory, and that exam is required to keep passing by the global constraints. The Claim quoted from #637 (\"say `--base <checkout-dir>`\") is therefore met in two of the three message sites \u2014 the `--base` help entry (`compile_plan.py:3151-3156`) and the renders-skip note (`compile_plan.py:2575-2576`) \u2014 and unmet in the third."
+    },
+    {
+      "severity": "minor",
+      "detail": "Context-literal disagreement between Task 2's launcher ladder and the ladder it says it mirrors: `TOOLCHAIN_LADDER` at `fleet/launch.mjs:148-155` makes `package.json` an unconditional Node rung, while `detect_test_cmd` at `skills/ultrapowers/scripts/ultra_run.py:66-83` only decides on `package.json` when it carries a `test` script or a bun lockfile, and otherwise falls through to `Makefile` \u2192 `go.mod` \u2192 `Cargo.toml`. Task 2's Context says the launcher \"mirrors that ladder's order exactly\", and its clause M5 signs the `package.json`-beside-`go.mod` non-refusal, so the divergence is contract-blessed \u2014 but its consequence is the failure Task 2's Claim names: a Go or Rust checkout carrying an incidental, test-script-less `package.json` (and no bun lockfile) is not refused on the laptop, and the preflight in the VM then derives `go test ./...` / `cargo test` on a box that installs node, bun and pytest only. Worth an issue against #645, not a stop."
+    }
+  ],
+  "blockedWaves": []
+}
