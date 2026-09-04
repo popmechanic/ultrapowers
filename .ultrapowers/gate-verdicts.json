@@ -1,0 +1,36 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "fc3577d4c3667b911673e4ddde781e10774a43687fce760a7dd3f4da8ef07713",
+      "verdict": "pass",
+      "reason": "round 2: M1 by (a) anchored alternation over five names + seven helpers, count = 21, file green; M2 by (b) sealed absent, three names absent, kept sibling present and green, count = 19; M3/M4 by (c) with the over-deletion guard; M5 by (d) three fragments + test name + tail; M6 by (e) exact 1461"
+    },
+    "3": {
+      "hash": "e28ce1ec6d714e9aa0a854c53cb252e13d9bb0a8718bf6ce39003dc77563f062",
+      "verdict": "pass",
+      "reason": "round 3: M1 by (a) count 2 + both defs + sweep; M2/M3/M5 by (b)/(c)/(e) absence + exact counts + green; M4 by (d) seven-phrase sweep + six referents + three sweeps; M6 by (f) 1443"
+    },
+    "4": {
+      "hash": "17c484f7bb8646c2acb67654958c396cc3528ebbc2fbf436a7bd4ec3bebb0694",
+      "verdict": "pass",
+      "reason": "round 3: M1 by (a) decorator within 3 lines, four siblings clean, builder census 0/0/0/3, both process modes; M2 by (b) derived expected order equality over the first N ids; M3 by (c) -A8 scoping + durations + four validate lines; M4 by (d) 1472"
+    },
+    "2": {
+      "hash": "8bedcfb5f6502ed74b4b834e6fde27829ca7b0a40ad6ad8e0ab18ca1078c9d47",
+      "verdict": "pass",
+      "reason": "round 4: M1 by (a) four absences, counts 3/3/10, green run, and the exclusion-filtered suite-wide absence pipeline; M2 by (b) three absences + three survivals + sentinel; M3 by (c) exact 1470"
+    }
+  },
+  "tally": {
+    "tasks": 4,
+    "pass": 4,
+    "fail": 0,
+    "rounds": {
+      "1": 2,
+      "2": 4,
+      "3": 3,
+      "4": 3
+    },
+    "dispatched": 12
+  }
+}
