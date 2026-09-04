@@ -1,0 +1,183 @@
+{
+  "integrationBranch": "ultra/integration-run-9",
+  "baseSha": "cc5e24ea352cb9a48c89db276b7c184926990334",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "90733414f480f374dd1502fbcb383e6783f0556b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-9/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "The Produces contract `examEvidenceBlock(exam: {cmd, exit, stdout} | null) -> string` is exported (fleet/run-engine.mjs, `export const examEvidenceBlock`) but nothing in the suite imports it. The new sim only observes it indirectly, through the review prompt the engine builds, so demoting the export to a module-local `const` (or renaming it) would break the declared interface while `node fleet/tests/test_run_engine_exam_evidence.mjs` still prints ALL TESTS PASSED. The repo's own convention for exactly this shape is a named pin: `fleet/tests/test_run_engine_pre_review.mjs:114` pins `checkEvidenceBlock` and `fleet/tests/test_run_engine_integrated_runs.mjs:100-105` pins `integratedRunEvidenceBlock`, both via a namespace import (so an absent export reads as a named assertion rather than a link-time SyntaxError) plus the null/undefined -> '' cases. Add the same three lines to the new sim.; plan-defect: M2 (and Proof leg (b)) require that a task with `testCmd: null` / empty `proofTests` gets \"no `EXAM EVIDENCE` text anywhere in its review prompt\", while M4 requires `fleet/roles/reviewer.md` to carry a paragraph naming `EXAM EVIDENCE` \u2014 and every review prompt opens with `roles.reviewer` verbatim (fleet/run-engine.mjs:1027). Read literally the two clauses cannot both hold. The submission discloses this in the sim (fleet/tests/test_run_engine_exam_evidence.mjs, the comment above `promptTail`) and pins the satisfiable reading: the block header `EXAM EVIDENCE:` is absent from the whole prompt, and the phrase in any form is absent from the driver-built tail after the role text. That reading is the right one and matches how `RUN EVIDENCE` already distinguishes role prose from block header, so nothing in this diff needs to change; the text to correct is M2's own wording in the task body, which no edit inside `FILES` can reach.; The exam guard is `const examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)`, one condition wider than M1 and the Context, which both name `proofTests.length && examTestCmd` \u2014 \"the same pair that dispatches the examiner\". The extra `examBlobs` term is disclosed in the comment above it and is correct: `examBlobs` is non-null only on the examiner's DONE branch (fleet/run-engine.mjs:824), so without it a BLOCKED or dead examiner \u2014 which writes no test file and leaves the task deliberately unexamined (fleet/run-engine.mjs:814-822) \u2014 would have its `testCmd` run against a tree with no tests, minting a spurious red, a `fix:<id>:0` round and a `proof-red` row for a task that BASE let through. The gap is that no leg exercises it: every scenario in the new sim has the examiner stub return DONE, so the branch that justifies the divergence is the one branch the suite does not observe. Add a scenario whose exam stub returns `{ status: 'BLOCKED' }` and assert `row.exam === 'blocked'`, no `driver:exam-run` event, no `EXAM EVIDENCE:` block, and no `fix:` dispatch.; Disclosed guard divergence, noted for the record rather than as a defect. M1 conditions the exam run on \"a non-empty `testCmd` and ... at least one `proofTests` path\", and the Context names the guard as `proofTests.length && examTestCmd`, \"the same pair that dispatches the examiner\". `fleet/run-engine.mjs` (patch line ~55) uses `Boolean(proofTests.length && examTestCmd && examBlobs)`. `examBlobs` is non-null only when the examiner returned DONE (run-engine.mjs:824 at BASE), so a task whose examiner is `blocked` now runs no exam. The narrowing is disclosed in the comment above the guard and is the correct reading \u2014 a blocked examiner writes no test file, so `bash t1_test.sh` would exit 127 and turn \"the implementer proceeds unexamined\" (run-engine.mjs:817-822) into a `proof-red` failure. Lawful under the disclosed-divergence rule; the only gap is that no leg of `test_run_engine_exam_evidence.mjs` pins it. If you want it pinned, add a scenario whose `exam:` stub returns `{status: 'BLOCKED'}` and assert `events` is empty and the review prompt carries no `EXAM EVIDENCE:` block.; plan-defect: M2 requires that a task with a null `testCmd` or empty `proofTests` gets \"no `EXAM EVIDENCE` text anywhere in its review prompt\", while M4 requires `fleet/roles/reviewer.md` to carry a paragraph naming `EXAM EVIDENCE` \u2014 and every review prompt opens with `roles.reviewer` verbatim (run-engine.mjs:1027). The literal clause is unsatisfiable by construction. The submission discloses this at test lines 238-247 and adopts the only coherent reading: the driver-built block is `EXAM EVIDENCE:` (colon), the role prose is `EXAM EVIDENCE,` (comma), and `promptTail()` \u2014 the prompt minus the role text \u2014 is checked for the phrase in any form. It also pins the distinction by asserting reviewer.md never contains the colon form (test line 574). The reading is sound and the divergence is disclosed, so nothing here blocks; the fix for the clause itself is in the task text, outside FILES.; Prose nit in `fleet/roles/reviewer.md`: the new paragraph describes the exam as \"the `TEST COMMAND` its Proof `Test:` paths are graded by\". `TEST COMMAND:` is a prompt header the implementer, fix and examiner prompts carry (run-engine.mjs:211) but the reviewer prompt does not, so a referee may look for a line that is never in its own input. The command is already quoted verbatim inside the EXAM EVIDENCE block; dropping the backticked header name (e.g. \"the test command its Proof `Test:` paths are graded by\") removes the false pointer without touching either Proof grep, both of which match on `EXAM EVIDENCE ... in this task's clone ... exit 0 ... not a finding` and `EXAM EVIDENCE[^.]*fix loop's`.; concern: exam: `fleet/tests/test_run_engine_exam_fix_edit.mjs` is red in this tree, and not because of my implementation. Its leg (g)/M7 scans every file changed since BASE d6efce4 for newly-gained all-caps NEV/ALW/MU words; the peer's exam file `fleet/tests/test_run_engine_exam_evidence.mjs` is new since that sha and its line 452 assertion `!/\\b(MUST|NEVER|ALWAYS)\\b/.test(text)` \u2014 the check that reviewer.md keeps its register \u2014 necessarily spells all three, so the leg reports `fleet/tests/test_run_engine_exam_evidence.mjs gained upper-case NEV/ALW/MU word(s) against BASE: ALWAYS,MUST,NEVER`. Verified isolated: my `fleet/roles/reviewer.md` and `fleet/run-engine.mjs` diffs add none of those words (run-engine.mjs:4 carries NEVER at BASE, unchanged), and moving the exam file aside makes test_run_engine_exam_fix_edit.mjs print ALL TESTS PASSED. The fix lies inside the exam file, which is my grading and not mine to edit \u2014 the collision is between the peer's exam and an existing repo-wide sim, and settling it is the plan's call (either the exam spells the words indirectly, or leg (g) exempts a file whose subject is the shouting rule).; concern: plan-defect: the task's Context specifies the exam pass's guard as `proofTests.length && examTestCmd`, the pair that dispatches the examiner. Implemented as written, that guard also fires when the examiner returned BLOCKED or died: no `t1_test.sh` was ever written, so `bash t1_test.sh` exits 127, the task takes a spurious `fix:T1:0` round and lands at `proof-red`. That breaks `test_run_engine_examiner.mjs` leg (c) (its BLOCKED and null-examiner cases assert `status: 'done'` and a stub that throws on any `fix:` dispatch) \u2014 a sim the task's own Proof leg (e) and the GLOBAL CONSTRAINTS both require to keep passing. I added the conjunct the Proof forces: `examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)`, where `examBlobs` is non-null exactly when the examiner returned DONE and left tests behind. `command not found` is the absence of an exam, not a red one, and the task proceeds unexamined as it did at BASE. The fix is task-local, inside `fleet/run-engine.mjs`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-9/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1428 items]\n\n........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n............................................................             [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1428 passed, 5 warnings in 98.19s (0:01:38) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/roles/reviewer.md | grep -q \"EXAM EVIDENCE.*in this task's clone.*exit 0.*not a finding\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/roles/reviewer.md | grep -q \"EXAM EVIDENCE[^.]*fix loop's\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine_review_peer.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "role prose size: README.md = 288 words\nrole prose size: critic.md = 578 words\nrole prose size: examiner.md = 411 words\nrole prose size: fix.md = 264 words\nrole prose size: implementer.md = 436 words\nrole prose size: reconcile.md = 217 words\nrole prose size: resolver.md = 248 words\nrole prose size: reviewer.md = 934 words\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 342005,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n.............s.......................................................... [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n............................................................             [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1427 passed, 1 skipped, 5 warnings in 98.18s (0:01:38) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n...........................................................              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1427 passed, 5 warnings in 81.31s (0:01:21) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "74a4270b806a560bac03a6f1ed0653a6ee23f4ba",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-9/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-9/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.61,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: examiner: (b) [M2] \u2014 \"a review prompt with no `EXAM EVIDENCE` text anywhere in it\" for a task whose testCmd is null / proofTests empty \u2014 M4 requires fleet/roles/reviewer.md to carry a paragraph naming `EXAM EVIDENCE`, and every review prompt is built as `roles.reviewer + \u2026`, so the phrase is in the prompt of every task by construction. The literal \"anywhere\" is therefore unsatisfiable alongside M4. Encoded instead as the reading leg (b) leads with and that RUN EVIDENCE already uses in test_run_engine_proof_runs.mjs: the prompt carries no `EXAM EVIDENCE:` block header anywhere, and the driver-built tail (everything after the verbatim role text) carries no `EXAM EVIDENCE` in any form. Leg (d) additionally pins reviewer.md to the colon-free prose form, which is what keeps the block and the role text distinguishable.",
+    "task 1: exam: `fleet/tests/test_run_engine_exam_fix_edit.mjs` is red in this tree, and not because of my implementation. Its leg (g)/M7 scans every file changed since BASE d6efce4 for newly-gained all-caps NEV/ALW/MU words; the peer's exam file `fleet/tests/test_run_engine_exam_evidence.mjs` is new since that sha and its line 452 assertion `!/\\b(MUST|NEVER|ALWAYS)\\b/.test(text)` \u2014 the check that reviewer.md keeps its register \u2014 necessarily spells all three, so the leg reports `fleet/tests/test_run_engine_exam_evidence.mjs gained upper-case NEV/ALW/MU word(s) against BASE: ALWAYS,MUST,NEVER`. Verified isolated: my `fleet/roles/reviewer.md` and `fleet/run-engine.mjs` diffs add none of those words (run-engine.mjs:4 carries NEVER at BASE, unchanged), and moving the exam file aside makes test_run_engine_exam_fix_edit.mjs print ALL TESTS PASSED. The fix lies inside the exam file, which is my grading and not mine to edit \u2014 the collision is between the peer's exam and an existing repo-wide sim, and settling it is the plan's call (either the exam spells the words indirectly, or leg (g) exempts a file whose subject is the shouting rule).",
+    "task 1: plan-defect: the task's Context specifies the exam pass's guard as `proofTests.length && examTestCmd`, the pair that dispatches the examiner. Implemented as written, that guard also fires when the examiner returned BLOCKED or died: no `t1_test.sh` was ever written, so `bash t1_test.sh` exits 127, the task takes a spurious `fix:T1:0` round and lands at `proof-red`. That breaks `test_run_engine_examiner.mjs` leg (c) (its BLOCKED and null-examiner cases assert `status: 'done'` and a stub that throws on any `fix:` dispatch) \u2014 a sim the task's own Proof leg (e) and the GLOBAL CONSTRAINTS both require to keep passing. I added the conjunct the Proof forces: `examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)`, where `examBlobs` is non-null exactly when the examiner returned DONE and left tests behind. `command not found` is the absence of an exam, not a red one, and the task proceeds unexamined as it did at BASE. The fix is task-local, inside `fleet/run-engine.mjs`.",
+    "wave 1: candidate adopted after reconcile (c2c1f1972f3cc50be7a6198e91d0922c288cd299 + fixes \u2192 74a4270b806a560bac03a6f1ed0653a6ee23f4ba)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, M4 / reviewer role prose: `fleet/roles/reviewer.md:56-58` defines the new block as \"the driver's own execution of this task's exam \u2014 the `TEST COMMAND` its Proof `Test:` paths are graded by \u2014\", naming `TEST COMMAND` in backticks as though it were a labelled input the referee holds. It is not: `testCmdLine` (`fleet/run-engine.mjs:209-212`) is concatenated only into the implementer/examiner `commonInputs` (`fleet/run-engine.mjs:785`), the pre-review fix prompt (`fleet/run-engine.mjs:1005`), the review-round fix prompt (`fleet/run-engine.mjs:1220`) and the reconcile prompt (`fleet/run-engine.mjs:1518`). The `reviewPrompt` built at `fleet/run-engine.mjs:1062-1069` carries no `TEST COMMAND:` line, so a referee following the reference has nothing in its prompt to resolve it against. The paragraph's four load-bearing phrases (the clone, `exit 0`, `not a finding`, `fix loop's`) are all present and correct, so this is a cross-reference to a non-existent prompt block rather than a wrong rule; the fix is inside the task's own Files block (drop the backticked reference or name the Proof `Test:` paths directly)."
+    }
+  ],
+  "blockedWaves": []
+}
