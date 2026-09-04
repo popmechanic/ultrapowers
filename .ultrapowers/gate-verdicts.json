@@ -1,0 +1,34 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "6fa3158049a7c477988949b01cae7d83d8847dda3d59b91e72db042b3d7afaf0",
+   "verdict": "pass",
+   "reason": "round 2: M1-M3 behavioural legs on the boot sim (draft flag, terminal state, log line); M4 both CONTRACT disjuncts + RUNBOOK paragraph pinned with wraps joined + structural pytest"
+  },
+  "2": {
+   "hash": "da4da9670ec6b6df29116de2a7334a6fc019a7aab63a84c08358e26123f2361f",
+   "verdict": "pass",
+   "reason": "round 3: M1 materialize with/without --subject (%s and %b); M2 head subject for line-1 and not-line-1 H1; M3 no planPath and no-H1 plan; M4 both halves of the RUNBOOK sentence naming squash-merge and the H1"
+  },
+  "3": {
+   "hash": "b6ea2d373c4ec187171a22542cba93d568f40e3154310294a3d940fca7fa4241",
+   "verdict": "pass",
+   "reason": "round 3: M1 nested + top-level + .pytest_cache removed, .git survivor, removed==3, event before every integrated run; M2 exit 0 + no completeness finding; M3 untracked notes.txt and BASE-tracked check.sh survive"
+  },
+  "4": {
+   "hash": "e7292c7b912df003d8d2ffc18039c7465a2daa2290fc9d50f06d35d849e3ca47",
+   "verdict": "pass",
+   "reason": "round 2: M1 third deadline_budget count, clock-bounded while naming _probe_dirs(repo) within six lines of proc.wait, whole-body order pin; M2 the named command run twice under -n 4"
+  }
+ },
+ "tally": {
+  "tasks": 4,
+  "pass": 4,
+  "fail": 0,
+  "rounds": {
+   "1": 4,
+   "2": 4,
+   "3": 2
+  }
+ }
+}
