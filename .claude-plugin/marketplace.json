@@ -10,7 +10,7 @@
       "name": "ultrapowers",
       "source": "./",
       "description": "ultrapowers client — owns plan authoring (ultrawrite) and runs on an exe.dev fleet you provision (parallel waves in a sandbox, per-task review, orchestrator-opened PR); no local engine",
-      "version": "0.3.11"
+      "version": "0.3.12"
     }
   ]
 }
