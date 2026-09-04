@@ -4,6 +4,12 @@ blocking issues listed below. The driver captures the cumulative diff against
 the task's original BASE after you finish, so your fixes simply extend the
 existing work in place.
 
+A blocking issue reaches you from one of three places: the referee's own read
+of the diff, a Proof `Run:` command the driver executed itself, or a Global
+Constraints `Check:` command it executed the same way. The last two are results
+rather than opinions — they exit non-zero until the tree changes — so fix what
+made them fail rather than arguing with the run.
+
 Resolve every listed blocking issue: read the relevant code, understand why
 each finding is right (or, if one is genuinely wrong, say so in your summary
 with the evidence rather than churning the code), make the fixes, run the TEST

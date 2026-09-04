@@ -11,11 +11,9 @@
 // Everything below the agent seam is real (git, clones, capture, the fold
 // kernel, the blob shas, the red-at-BASE run); only the judgments are canned.
 import assert from 'node:assert/strict'
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { execSeam } from '../run-main.mjs'
 import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
@@ -23,7 +21,6 @@ import { runEngine } from '../run-engine.mjs'
 import { makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-pp-'))
-const here = fileURLToPath(new URL('.', import.meta.url))
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const REAL_ROLES = fileURLToPath(new URL('../roles/', import.meta.url))
 const SIX = ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'critic']
@@ -182,27 +179,13 @@ const verdictOf = (t) => ({ status: t.status, reviewVerdict: t.reviewVerdict })
   assert.ok(schema.includes('"proposedPatches"'), 'the schema block lists proposedPatches')
 }
 
-// ── (d)+(e) [M3] the four sims that already pin this route are untouched ────
-// The digests are what those files hashed to at BASE: a sim edited to keep
-// itself green fails here even while it prints its pass line.
-const FROZEN = [
-  ['test_run_engine.mjs', 'd58c3d41e0586d8b538118d530a5ecea04a7a7ac377364d3da7abe749216731d'],
-  ['test_run_engine_fixloop.mjs', '4a5aa8af4c8250d476812aabeea83369c1a1ebbbc46042fdc3192f93ee998377'],
-  ['test_run_engine_cap_width.mjs', '77ba2474c8723de16af8f5d518b4bb2b919c6354cddb745123ed27746fac2c5a'],
-  ['test_run_engine_proposed_patch.mjs', '514f2b29c6f73e674aecd47932c9d19831b9eb632a133f0d139805622b1a7399'],
-]
-for (const [name, digest] of FROZEN) {
-  const bytes = fs.readFileSync(path.join(here, name))
-  assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), digest,
-    name + ' no longer hashes to the digest recorded at BASE')
-}
-for (const [name] of FROZEN) {
-  const r = spawnSync('node', [path.join(here, name)],
-    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 300000 })
-  assert.equal(r.status, 0, name + ' exited ' + r.status + ': ' + String(r.stderr).slice(-600))
-  assert.ok(String(r.stdout).includes('ALL TESTS PASSED'),
-    name + ' printed no pass line: ' + String(r.stdout).slice(-400))
-}
+// The two legs that used to sit here froze the digests of four sibling sims
+// and re-ran each of them. A frozen digest of a file this one does not own is
+// a pin that cannot fail for any reason a reader would want: it goes red for
+// every edit to those files, lawful or not, and it says nothing about this
+// route. Their own sims already run them; the suite runs the suite. Deleted
+// under #612 — the same call that took the verbatim-sentence legs out of
+// `test_roles_peer.mjs`.
 
 // ── (f) [M1] two blocking issues, one patch: the count is patches, not issues ─
 {

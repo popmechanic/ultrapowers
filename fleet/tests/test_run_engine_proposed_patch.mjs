@@ -53,11 +53,15 @@ const issueBlock = (prompt) => prompt.slice(prompt.indexOf('\n\nBlocking issues 
 const countOf = (haystack, needle) => haystack.split(needle).length - 1
 const fixRequired = (issues) => ({ verdict: 'FIX_REQUIRED', issues })
 
-// ── (a) [M1] the schema carries proposedPatch and still requires only two ───
+// ── (a) [M1] the schema carries proposedPatch and never requires it ─────────
+// `actor` joined `required` with the actor-routing change; `proposedPatch` is
+// what this file pins, and it stays optional.
 {
   const item = REVIEWER_SCHEMA.properties.issues.items
   assert.deepEqual(item.properties.proposedPatch, { type: 'string' })
-  assert.deepEqual(item.required, ['severity', 'detail'])
+  assert.equal(item.required.indexOf('proposedPatch'), -1,
+    'a proposed patch is help, never a requirement')
+  assert.deepEqual(item.required, ['severity', 'detail', 'actor'])
 }
 
 // ── (b) [M2] the patch lands under its own issue; the patchless one is bare ─

@@ -15,14 +15,17 @@ dispatch, one file per role:
 The register is scientific peer review (#556): a referee checks that a
 submission establishes its claim by the stated exam and helps it get there, the
 critic is the editor's completeness read, and what a diff cannot settle is a
-question for the editor rather than a finding against the author.
+`minor` finding prefixed `unverified:` rather than a channel of its own. Every
+issue the referee raises names its actor — `implementer` when a fix inside this
+task's FILES answers it, `plan` when only the task's own text can.
 
 There is no bake step: this directory is the single copy, so editing a file
 here changes what the next dispatch sends. Prompt sizes are reported, not
 gated — `fleet/tests/test_run_engine.mjs` prints each file's word count and
 gates nothing on it (#496). The same test rejects shouted imperatives, and
-`fleet/tests/test_roles_peer.mjs` pins the sentences that carry the register —
-a rule that needs shouting belongs in code.
+`fleet/tests/test_roles_peer.mjs` pins the register this directory keeps: the
+clause each rule turns on, not a sentence frozen verbatim against its own
+author (#612) — a rule that needs shouting belongs in code.
 
 Choreography stays out. Git operations and kernel invocations are driver code
 in `run-engine.mjs`; the prompts describe judgment only, and models never run
