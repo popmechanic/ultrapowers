@@ -98,7 +98,7 @@ hours, and that is the whole of the target's credential: the sandbox clones,
 pushes and opens the PR through it, and the PR is the gate. `fleet-runs` is
 the only GitHub integration on `tag:fleet`. Never two GitHub integrations
 naming one repository on a VM: the edge routes by repo path and documents no
-tie-break between them, so the sandbox refuses to boot into that (see §Facts).
+tie-break between them, so the sandbox refuses to boot into that (see §Traps).
 A target with no `gh-<owner>-<repo>` object is a launch refusal, public or
 not — a public repo would clone from github.com but could not publish.
 `--act-as-user` attributes pushes and PRs to you once your GitHub account is
@@ -270,36 +270,108 @@ ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet
 never `<vm>.exe.xyz`. The `failed` page's `error` names the step; a failure at
 any step, the clone included, commits and pushes that page before exiting.
 
-## Facts measured 2026-09-03
+## Traps (measured 2026-09-03/04)
 
-- exe.dev reserves a deleted VM's name for good. Never reuse one; the run
-  number is the identity, the VM name is one incarnation.
-- `systemd-run --wait` is refused with `--scope`. The engine is a transient
-  service, and `--wait` is what makes its exit code the service's.
-- An `http-proxy` integration whose `--target` is an exe.dev host is refused
-  by the gateway. Peer traffic is its own integration kind.
-- `gh auth status` and `gh api user` are meaningless through the edge: the
-  aggregate host proxies only `/repos/<owner>/<repo>/…`, and `/user` answers
-  403 from the edge itself. The credential is at the edge, by design. A read
-  of `https://github.int.exe.xyz/api/v3/repos/<owner>/<repo>` is the health
-  check.
-- The GitHub edge routes each request by repo path and serves a cached
-  installation token for 30–60 s after an integration is edited or attached:
-  a `gh pr create` twenty seconds after an `attach` produced a bot-authored
-  PR. The run's integration is attached at launch and never swapped.
+Each of these cost a run, a golden, or a credential. Shelley's shape for each
+is in `docs/superpowers/specs/2026-09-03-fleet-on-the-grain.md` §Counsel 2–5;
+on the next one, ask her before editing a script.
+
+**The Claude proxy.**
+
+- Editing `claude-max` is destructive by default. `integrations edit
+  --clear-header` removed the bearer on the live proxy (`config_summary` read
+  `(no-auth)`), and a bearer is shown as `***` and cannot be read back — it is
+  unrecoverable. Every edit of `claude-max` passes `--bearer=-` again in the
+  same command, with the token on stdin.
+- An edit's effect is read from `integrations list --json` (`config_summary`),
+  never from a request made seconds later: a throwaway proxy echoed its old
+  bearer as still injected after the same `--clear-header`, and that reading
+  was stale gateway cache.
+- The proxy forwards Claude Code's own headers, and an injected header of the
+  same name replaces the client's. Inject the bearer and nothing else; an
+  injected `anthropic-beta` list destroys the flags the CLI sends and rots on
+  Anthropic's schedule.
+- API-key-mode Claude Code sends `x-api-key` and a `context-1m` beta flag and
+  no oauth flag. A run whose requests look like that is billing somewhere
+  else; `claude auth status` before the engine has to say `oauth_token`.
+- An `http-proxy` integration whose `--target` is exe.dev itself is refused
+  by the gateway (403 "integration not found or not attached"). Peer traffic
+  is its own integration kind.
+
+**The GitHub edge.**
+
+- `integrations edit` or `attach` on a GitHub integration serves the cached
+  installation token for 30–60 s afterwards: a `gh pr create` twenty seconds
+  after an `attach` produced a bot-authored PR. Attach at launch, never
+  just-in-time, and wait a minute after any edit before a write.
+- The aggregate host proxies only `/repos/OWNER/REPO/...`; `/user` answers
+  403 from the edge itself, so `gh auth status`, `gh api user` and `gh repo
+  create` cannot work through it and are not health checks. The health check
+  is `GH_HOST=github.int.exe.xyz gh repo view <owner>/<repo> --json
+  nameWithOwner`, or a plain read of
+  `https://github.int.exe.xyz/api/v3/repos/<owner>/<repo>`.
 - Two GitHub integrations naming one repo attached to one VM have no
   documented tie-break. The sandbox refuses to boot into that; never build a
   read-only/writable pair for a repo.
-- `ls --json` is `{"shared_vms": [...], "vms": [...]}`. Read `.vms[]` only;
-  `shared_vms` are other people's. `vm_name`, `ssh_dest`, `ssh_host` and
-  `status` are documented; `comment`, `tags` and `created_at` are not, so a
-  tool reads them as optional and decides nothing from `created_at`.
-- `systemctl --user` and `journalctl --user` over plain ssh fail to find the
-  bus until `XDG_RUNTIME_DIR=/run/user/$(id -u)` is set. The launcher sets it;
-  so must you.
+- `integrations setup github --verify` is account-level, not per
+  integration. Ladder it: `--list`, then the one integration, then
+  `--verify` — and never with a run in flight.
+
+**Tags, keys and names.**
+
+- `tag -d <vm> fleet` detaches every tag-scoped integration on the VM at
+  once, your own tag-scoped ssh key included. Never mid-run.
+- A tag-scoped key cannot attach or detach integrations; `launch.mjs` needs
+  the account key.
+- exe.dev reserves a deleted VM's name for good. Never reuse one; the run
+  number is the identity, the VM name is one incarnation, and a golden is
+  built under a fresh name every time.
 - The VM comment holds 200 bytes. The assignment is one line of `key=value`
   pairs and nothing else lives there.
-- A tag-scoped key cannot attach or detach integrations.
+
+**Reading the lobby.**
+
+- `ls --json` is `{"shared_vms": [...], "vms": [...]}`. Read `.vms[]` only;
+  `shared_vms` are other people's, and a first-array parse hid every fleet VM
+  once. `vm_name`, `ssh_dest`, `ssh_host` and `status` are documented;
+  `comment`, `tags` and `created_at` are not, so a tool reads them as optional
+  and decides nothing from `created_at`. Use `ssh_dest` for ssh and scp.
+- Allocated vCPU is over-committable: `billing plan --json` said 16 vCPU
+  while `ls --json` summed 56 allocated across 16 running VMs, and nothing
+  was refused. Contention, not allocation, bounds concurrent runs — read the
+  load, never the sum (§Capacity).
+- A lobby verb's error comes back on stdout with exit 1 and no documented
+  envelope. Print all of it.
+
+**systemd on the VM.**
+
+- `systemctl --user` and `journalctl --user` over plain ssh fail to find the
+  bus until `XDG_RUNTIME_DIR=/run/user/$(id -u)` is set (exe.dev's sshd has no
+  PAM session, so nothing sets it for you). The launcher sets it; so must you.
+  `journalctl _SYSTEMD_USER_UNIT=<unit>` needs neither.
+- A oneshot's `start` blocks for the unit's whole life, has
+  `TimeoutStartUSec=infinity`, ignores `RuntimeMaxSec=`, and finished reads
+  `inactive/dead` — the same as never started. The run unit is `Type=exec`
+  for those reasons; `--no-block` would only hide the launch ack.
+- `systemd-run --wait` is refused with `--scope`. The engine is a transient
+  service, and `--wait` is what makes its exit code the service's.
+- A boot script that re-execs over its own path is a latent corruption bug:
+  bash reads by byte offset and kept the old inode. The bootstrap is immutable
+  at its own path and the engine directory is content-addressed.
+
+**Asking Shelley.**
+
+- Sol stalls on a turn that reads a file; use `--model=claude-opus-5
+  --reasoning=high` for anything with a file attached. The lobby link drops on
+  a long answer — read it back with `shelley client read -wait <id>` on the
+  VM. On a fresh VM `shelley.service` is inactive until a lobby `shelley
+  prompt` starts it; an on-VM `shelley client chat` against an inactive
+  service prints a conversation id and creates nothing.
+
+**The laptop.**
+
+- macOS has no `timeout`. A wait loop in a shell script gets its deadline
+  from a counter, or the script is a `.mjs`.
 
 ## Capacity
 
