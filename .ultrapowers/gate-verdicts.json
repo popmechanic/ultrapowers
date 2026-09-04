@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "2": {
+      "hash": "a8660ac2d91f3178879d45d50e3587e768013458ac33812a85f0538a7039ef52",
+      "verdict": "pass",
+      "reason": "round 1: M1 by (a) cannotVerify absent + actor paragraph; M2\u2013M6 by (b)\u2013(f) one paragraph-scoped awk each; M7 by (g) absent literals, exactly-once counts, seven-phrase INTEGRATED RUN EVIDENCE, four-reason list; M8/M9 by (h); M10 by (i) whole-word sweep; M11 by (j) executing the four sims and pytest"
+    },
+    "1": {
+      "hash": "586cbb858a945f97643595b34123c8b00b54b620a2203d7c450681f25565a554",
+      "verdict": "pass",
+      "reason": "round 1: M1 by (a)+(d); M2 by (b) all five branches incl. the Run:-only twin; M3 by (c); M4 by (d) fold-only red; M5 by (e) schema, routing, gate_check exit 2, ackDecision false; M6 by (f)+Run 1; M7 by (g) 30/200 ms pair with both-sided bounds; M8 by (h); M9 by (i)"
+    }
+  },
+  "tally": {
+    "tasks": 2,
+    "pass": 2,
+    "fail": 0,
+    "rounds": {
+      "2": 1,
+      "1": 1
+    }
+  }
+}
