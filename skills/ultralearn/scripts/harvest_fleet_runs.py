@@ -2,14 +2,13 @@
 """ultralearn fleet harvester — turn a One Driver fleet run's evidence
 directory into the same bundle the reading lenses already consume.
 
-SIBLING of harvest_runs.py, not an extension. That module detects runs by a
-`Workflow` tool_result and scans ~/.claude/projects; the Workflow tool was
-deleted in PR #434 and fleet runs execute in sandboxes, so it can never see
-them. It stays frozen — it still correctly harvests runs 21-23 and sequential
-drains. This module shares its readers (_records, slice_transcript,
-engine_epoch_at) and writes the SAME bundle shape into the SAME cache, because
-the bundle is the interface: merge_ledger.bundle_lookups and the five lenses
-then work untouched.
+The only harvester left. Its Workflow-era predecessor detected runs by a
+`Workflow` tool call and scanned ~/.claude/projects; the Workflow tool was
+deleted in PR #434 and fleet runs execute in sandboxes, so it could never see
+them, and it is gone. Its live readers survive it in `_readers` (records,
+block_text, iter_blocks_indexed, engine_epoch_at), and this module writes the
+SAME bundle shape into the SAME cache, because the bundle is the interface:
+merge_ledger.bundle_lookups and the five lenses then work untouched.
 
 Read-only, and loud about its inputs (#489). Evidence that cannot be read at
 all is a FAILED-LOOKUP naming the run — the harvest keeps going, so N runs with
@@ -35,7 +34,7 @@ from _outcome import (FailedLookup, report_failed_lookup,  # noqa: E402
                       report_looked_empty, swallow)
 import fleet_events            # noqa: E402
 import fleet_slice             # noqa: E402
-import harvest_runs            # noqa: E402
+import _readers                # noqa: E402
 
 SUITE_OUTPUT_TAIL = 2000       # chars of `tests.output` kept; the head is boilerplate
 AUDIT_UNIT_NOTE = ("outputTokens = the worker:end meter's output field, summed "
@@ -177,7 +176,7 @@ def discover_run_dirs(path, workdir):
     Accepts a bare run dir, any tree containing them, or a sandbox-logs
     tarball (unpacked under `workdir`). A run dir is exactly a directory
     holding an `events.jsonl` — pre-#421 runs (10-23) have none and are
-    correctly invisible here; harvest_runs.py still owns 21-23.
+    correctly invisible here; they are read the commissioned way.
 
     Raises `FailedLookup` when the path could not be read at all; returns an
     empty list when it read fine and simply holds no fleet runs. The caller
@@ -312,7 +311,7 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
     if engine_version:
         engine = {"epoch": engine_version, "asOf": as_of, "basis": "explicit"}
     else:
-        engine = harvest_runs.engine_epoch_at(as_of, origin)
+        engine = _readers.engine_epoch_at(as_of, origin)
 
     projects_root = run_dir / "claude" / "projects"
     bundle = {

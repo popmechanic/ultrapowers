@@ -11,26 +11,22 @@ runs inside Claude Code — no API key, no external calls.
 
 ## Verb 1 — `ultralearn` (sense)
 
-1. **Harvest.** Run the harvester to detect real runs and build local bundles:
-   `python3 skills/ultralearn/scripts/harvest_runs.py`
-   **Fleet runs (0.3.0 and later) come from their event log**, not from
-   `~/.claude/projects` — the driver makes no `Workflow` tool call and runs in
-   a sandbox, so the detector below cannot see them:
-   `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --remote fleet-orchestrator.exe.xyz`
-   pulls each evidence tarball, or pass an unpacked run directory as a
-   positional argument. It writes the same `bundle.json` + `slice.md` into the
-   same cache, keyed by the fleet `runId` (`run-30`), so step 2 and step 3 are
-   unchanged. `--run run-30` restricts the pull; `--force` rebuilds a cached
-   bundle. A fleet run directory is one holding an `events.jsonl`; runs 10–23
-   predate it and remain the Workflow-era harvester's (21–23) or the
-   commissioned read's.
-   The Workflow-era detector scans `~/.claude/projects`, detects runs by an
-   actual `Workflow` tool_result (not string mentions), and writes bundles to
-   the gitignored cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` +
-   `slice.md`).
-   Incremental: a watermark means re-runs only process new sessions.
-   Sequential-engine drains (subagent-driven, inline) make no `Workflow`
-   calls and are **invisible to this detector by design** — "0 new" there is
+1. **Harvest.** Run the harvester to detect real runs and build local bundles.
+   **Fleet runs (0.3.0 and later) come from their event log**, not from a
+   transcript on this machine — the driver runs in a sandbox, so nothing local
+   ever sees one:
+   `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --evidence <owner>/<repo> --run <N>`
+   reads each run's committed record off its `ultra/evidence-run-<N>` branch,
+   or pass an unpacked run directory as a positional argument. It writes
+   `bundle.json` + `slice.md` into the gitignored cache
+   `~/.claude/ultralearn/runs/<runId>/`, keyed by the fleet `runId` (`run-30`),
+   so step 2 and step 3 are unchanged. `--run` is repeatable and restricts the
+   pull; `--force` rebuilds a cached bundle. A fleet run directory is one
+   holding an `events.jsonl`; runs 10–23 predate it and are the commissioned
+   read's.
+   Incremental: a cached bundle is left alone, so a re-run only builds new runs.
+   Sequential-engine drains (subagent-driven, inline) write no `events.jsonl`
+   and are **invisible to this harvester by design** — "0 new" there is
    correct, not a bug. Drains are sensed by **commissioned transcript
    reads**: after a drain, dispatch readers at the drain session's
    transcript with the same five lenses, including the redirect-round count,
@@ -44,14 +40,14 @@ runs inside Claude Code — no API key, no external calls.
    **Runs 10–23 only — fleet evidence bundles read the commissioned way**
    (#292). Superseded for any run carrying an `events.jsonl` (24+), which
    `harvest_fleet_runs.py` above harvests mechanically. For the older runs the
-   drive layer is invisible to the detector too, so the evidence dir is
+   drive layer is invisible to every harvester, so the evidence dir is
    first-class sense input, read the commissioned way. Layout (per run, under the repo's
    `.claude/ultrapowers/fleet-runs-<date>/` or the orchestrator's
    `<dbDir>-evidence/`): `gate-read-<runId>.json` (the §W1d read, verbatim) +
    `gate-read-<runId>.detail.json` (triage detail), `stat-<runId>.json`
    (the raw control-plane payload), and `sandbox-logs/<vm>-<stamp>/sandbox-logs.tgz`
-   holding `shim.log`, `fleet-run.json`, the engine transcripts
-   (`.claude/projects`), and the in-repo `run-*/` dirs. Dispatch one reader per
+   holding `shim.log`, `fleet-run.json`, the engine transcripts under the
+   sandbox's Claude project dir, and the in-repo `run-*/` dirs. Dispatch one reader per
    fleet run with the bundle contents; readers set `evidenceAbstracted: true`,
    use the fleet `runId` as `runId`, and stamp `engineVersion` from the run's
    version stamp. Pilot corpus: `.claude/ultrapowers/fleet-runs-2026-08-26/`

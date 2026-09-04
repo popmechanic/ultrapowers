@@ -221,7 +221,7 @@ def test_healthy_paths_unchanged():
     """The regression pin: re-labelling silence did not redesign a flow."""
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-p", "no:xdist", "-q",
-         "tests/test_harvest_runs.py", "tests/test_fleet_slice.py",
+         "tests/test_readers.py", "tests/test_fleet_slice.py",
          "tests/test_merge_ledger.py"],
         cwd=REPO, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr

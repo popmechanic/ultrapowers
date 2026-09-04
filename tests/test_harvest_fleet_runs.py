@@ -180,7 +180,7 @@ def test_bundle_dates_itself_from_the_event_log_when_no_version_is_given(tmp_pat
     # single entry dated at checkout time, AFTER T0. The walk then breaks on its
     # first row and returns epoch None. Pin the timeline instead of asking the
     # clone what its history was.
-    monkeypatch.setattr(hfr.harvest_runs, "_release_timeline",
+    monkeypatch.setattr(hfr._readers, "release_timeline",
                         lambda: (("2026-08-28T10:52:30-07:00", "0.2.26"),
                                  ("2026-08-29T14:03:52-07:00", "0.3.0")))
     _, b = _bundle(tmp_path)
