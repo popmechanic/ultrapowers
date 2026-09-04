@@ -1,0 +1,91 @@
+## fleet run-4 — parked
+
+| | |
+|---|---|
+| verdict | `NEEDS_ACK` |
+| target | `popmechanic/ultrapowers` at `2cc873fb2d040fbe081f35ff0ababc408eaa6500` |
+| engine | `2cc873fb2d040fbe081f35ff0ababc408eaa6500` |
+| plan | `.ultrapowers/plan.md` at `13abbc0c03d830cdaacac3dac99b666c1b47ea33` |
+| branch | `ultra/integration-run-4` |
+| vm | `fleet-r4-2609040908-8fbf` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-4",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-4/report.json",
+  "branch": "ultra/integration-run-4",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": ".github/workflows/ci.yml \u2014 the new `Report collected test count` step (line 56-57) and `--durations=10` on `Run tests` (line 60) \u2014 Structure is verified statically (the count command sits 7 lines after the `Report skill prose sizes` step name, within M3's eight-line window; `--durations=10` present; exactly four `validate_skill.py skills/` lines; no `ultraplan`) and `tests/test_validate_skill.py` passes against it (driver evidence, 10 passed). But the Claim's operative clause \u2014 that the CI log actually carries the collected count, the suite wall and the ten slowest items \u2014 is only observable in a GitHub Actions run, which this sandbox cannot execute. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.uUk3Evjilg/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1430 items]\\n\\n........................................................................ [  5%]\\n........................................................................ [ 10%]\\n........................................................................ [ 15%]\\n........................................................................ [ 20%]\\n........................................................................ [ 25%]\\n........................................................................ [ 30%]\\n........................................................................ [ 35%]\\n........................................................................ [ 40%]\\n........................................................................ [ 45%]\\n........................................................................ [ 50%]\\n........................................................................ [ 55%]\\n........................................................................ [ 60%]\\n........................................................................ [ 65%]\\n........................................................................ [ 70%]\\n........................................................................ [ 75%]\\n........................................................................ [ 80%]\\n........................................................................ [ 85%]\\n........................................................................ [ 90%]\\n........................................................................ [ 95%]\\n..............................................................           [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1430 passed, 5 warnings in 115.87s (0:01:55) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence-run-4/.ultrapowers/runs/4/
+
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- receipt.json
+- report.json
+- status.json
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan-run-4/.ultrapowers/plan.md
