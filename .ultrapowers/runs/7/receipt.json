@@ -1,0 +1,339 @@
+{
+  "ok": true,
+  "stamp": "run-7",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-7"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "An approved run publishes ready",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The fold commit is titled from the plan",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/kernel/fold_wave.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The integration clone is swept of cache directories before the integrated proofs",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The SIGTERM probe-worktree test waits for the removal",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_ultra_run.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "An approved run publishes ready",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_approved.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_approved.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_approved.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+            "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'unless the verdict is PASS or .approve-receipt.json. is present'",
+            "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q \"ready on PASS or on the two-move rule's approval\"",
+            "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q \"ready on PASS or on the two-move rule's approval\"",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The fold commit is titled from the plan",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_fold_subject.mjs",
+            "skills/ultrapowers/kernel/fold_wave.py",
+            "tests/test_fold_wave_subject.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/kernel/fold_wave.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_fold_wave_subject.py",
+            "fleet/tests/test_run_engine_fold_subject.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_fold_subject.mjs && python3 -m pytest -q tests/test_fold_wave_subject.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_fold_wave_subject.py",
+            "node fleet/tests/test_run_engine_fold_subject.mjs | grep -q 'ALL TESTS PASSED'",
+            "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q \"squash-merge takes the plan's title as its subject\"",
+            "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q \"titled from the plan's H1\""
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The integration clone is swept of cache directories before the integrated proofs",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_integrated_clean.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_integrated_clean.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_integrated_clean.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_integrated_clean.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The SIGTERM probe-worktree test waits for the removal",
+          "files": [
+            "tests/test_ultra_run.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_ultra_run.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(sed -n '/^def test_validate_knobs_removes_its_probe_worktree_on_sigterm/,/^def /p' tests/test_ultra_run.py | grep -c 'deadline_budget')\" -ge 3",
+            "sed -n '/^def test_validate_knobs_removes_its_probe_worktree_on_sigterm/,/^def /p' tests/test_ultra_run.py | grep -A6 'proc.wait' | grep 'while time.time() < ' | grep -q '_probe_dirs(repo)'",
+            "sed -n '/^def test_validate_knobs_removes_its_probe_worktree_on_sigterm/,/^def /p' tests/test_ultra_run.py | tr '\\n' ' ' | grep -q 'proc.wait.*while time.time() < .*_probe_dirs(repo) == \\[\\].*\"worktree\", \"list\"'",
+            "python3 -m pytest -q -p no:cacheprovider -n 4 tests/test_ultra_run.py tests/test_deadline_slack.py && python3 -m pytest -q -p no:cacheprovider -n 4 tests/test_ultra_run.py tests/test_deadline_slack.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The vendored kernel is byte-identical to BASE: `skills/ultrapowers/kernel/vendor/manyana.py`\n  is sha-pinned on purpose and never patched.\n- The laptop side is untouched: `fleet/launch.mjs`, `fleet/doctor.mjs`,\n  `skills/ultrapowers/scripts/compile_plan.py` and `skills/ultrapowers/scripts/ultra_run.py`\n  are byte-identical to BASE.\n- The existing boot, engine and kernel exams keep passing in every clone.\n- The contract's literals stay what the documents teach: the unit name, the engine directory\n  and the VM name are unchanged, and the retired vocabulary of the pre-lift fleet\n  (orchestrator VM, golden image, grant step, tunnel) is reintroduced nowhere \u2014\n  `tests/test_docs_agree_with_code.py` is the pin.\n- No shouted imperative (an all-caps MUST, NEVER or ALWAYS as a whole word) is added to\n  `fleet/CONTRACT.md` or `fleet/RUNBOOK.md`.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = 4404cdb6717ca3108da07a42b528827850647c7e",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = ed54d9845f5f857a4ac24d80c78ef483239f6af3",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED'",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_fold_wave_materialize.py tests/test_fold_wave.py tests/test_docs_agree_with_code.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-7/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-7/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-7/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-7/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

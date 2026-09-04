@@ -1,0 +1,300 @@
+{
+  "integrationBranch": "ultra/integration-run-7",
+  "baseSha": "13c0e15721705018fb5ba2cba918af5c91811cc4",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a9321546a164582ff750ed449c3593cdde536e74",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-7/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Coverage gap in the new `approve_receipt_path()`: only its second location (`$(run_dir_path)/approve-receipt.json`) is ever exercised. The sim's engine stub writes the approval to `$run_dir/approve-receipt.json`, so the first branch \u2014 `$TARGET_DIR/fleet-receipts/$RUN_ID/approve-receipt.json`, the contract path the function mirrors from `gate_receipt_path()` \u2014 is never taken by any exam; a typo in that path would go unnoticed. The Machine clauses only name the run directory, so this blocks nothing, but a fourth leg in `fleet/tests/test_sandbox_boot_approved.mjs` (same NEEDS_ACK run, approval written to `$FLEET_HOME/target/fleet-receipts/run-7/approve-receipt.json` instead, asserting `gate-green`) would settle it and cost one stub branch.; Line-wrap regression in `fleet/RUNBOOK.md`: the edited publish paragraph leaves the line `receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so` at ~105 columns, where every surrounding line in the document wraps at ~72. Rewrapping the paragraph keeps the Proof's `tr '\\n' ' '` greps green (they see single spaces regardless of where the breaks fall).; Doc inconsistency left behind: `fleet/RUNBOOK.md`'s state table now reads `done` = \"PASS, or a verdict the two-move rule approved\", but `fleet/CONTRACT.md` still teaches the old equivalence one bullet below the sentence the patch did change \u2014 line ~141 at BASE, \"a non-2xx answer is `failed` with the body quoted \u2192 `done` (PASS) or `parked`.\" M4 does not require this line, so it is not blocking, but the CONTRACT is the document the RUNBOOK is supposed to agree with, and the patch already touched both of its neighbouring sentences. `fleet/CONTRACT.md` is in this task's FILES, so the fix is one word-level edit inside scope; `tests/test_docs_agree_with_code.py` passes either way (evidence: exit 0).; Cosmetic wrap regression in `fleet/RUNBOOK.md`: the rewritten publish paragraph leaves the line \"receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so\" at ~107 columns, where the rest of that paragraph (and the file) is hand-wrapped at ~72. Re-wrapping the paragraph keeps the `tr '\\n' ' '` Proof grep green \u2014 the phrase it pins, \"ready on PASS or on the two-move rule's approval\", already sits entirely on one line \u2014 so this is purely presentational.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "5fb15abdae216bfad4b719bb859c72b4b69e47f0",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-7/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim's last mile \u2014 \"a run's squash-merge keeps the plan's title\" \u2014 is not settled by this diff, and cannot be. M1\u2013M4 pin the *fold commit's* subject; the squash-merge subject is GitHub's, and it equals the branch's single commit subject only when the pushed `ultra/integration-run-<N>` branch has exactly one commit. Two ordinary shapes break that link in code this patch does not touch: (i) a multi-wave run leaves one fold commit per wave on the branch, so GitHub's squash default falls back to the PR title rather than any commit subject; (ii) the post-fold reconcile path in `fleet/run-engine.mjs:1447` commits `wave <N> reconcile (attempt <K>)` on top of the candidate, so the branch head after that wave is the reconcile subject, not the plan title \u2014 M2 says \"the integration branch's head after wave 1 has subject <title>\", which holds only on the clean-adoption path the exam exercises. The RUNBOOK sentence M4 mandates (\"A squash-merge takes the plan's title as its subject\") therefore reads as unconditional while the mechanism is conditional. Nothing inside this task's FILES can settle it, and the exams the Proof names are all green, so this blocks nothing. What would settle it: an end-to-end check that the pushed branch is single-commit (or that the PR title is itself the plan's H1) before the RUNBOOK states the squash-merge consequence flatly \u2014 plan-level work for the task that owns the PR-open path in `fleet/sandbox-boot.sh`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "8d4d35ca720e9e7717f75fb81978ce23353a1adb",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-7/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/run-engine.mjs \u2014 in `sweepCacheDirs`, a failed removal is swallowed silently (`try { fs.rmSync(...); removed++ } catch { /* leave it */ }`), so the `driver:integrated-clean` event's `removed` count silently understates the sweep and nothing records that a cache directory survived. The consequence is bounded (a surviving `__pycache__` will surface as a red integrated `Run:`), but the diagnosis then points at the task rather than at the sweep. Suggest emitting a log line (the engine's `log(...)` is in scope at the call site) or carrying a `failed` count on the event so a permission/ENOTEMPTY failure is legible in the run record. The `readdirSync` catch is fine as-is: an unreadable directory is genuinely nothing to sweep.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d6122409b962d43be53d1d0da9560e79d7d0ea80",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-7/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-7/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1378 items]\n\n........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 67%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1378 passed, 5 warnings in 91.95s (0:01:31) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'unless the verdict is PASS or .approve-receipt.json. is present'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q \"ready on PASS or on the two-move rule's approval\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q \"ready on PASS or on the two-move rule's approval\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_fold_wave_subject.py",
+      "exit": 0,
+      "stdout": "......                                                                   [100%]\n6 passed in 1.47s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_fold_subject.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q \"squash-merge takes the plan's title as its subject\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q \"titled from the plan's H1\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_integrated_clean.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "test \"$(sed -n '/^def test_validate_knobs_removes_its_probe_worktree_on_sigterm/,/^def /p' tests/test_ultra_run.py | grep -c 'deadline_budget')\" -ge 3",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^def test_validate_knobs_removes_its_probe_worktree_on_sigterm/,/^def /p' tests/test_ultra_run.py | grep -A6 'proc.wait' | grep 'while time.time() < ' | grep -q '_probe_dirs(repo)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^def test_validate_knobs_removes_its_probe_worktree_on_sigterm/,/^def /p' tests/test_ultra_run.py | tr '\\n' ' ' | grep -q 'proc.wait.*while time.time() < .*_probe_dirs(repo) == \\[\\].*\"worktree\", \"list\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider -n 4 tests/test_ultra_run.py tests/test_deadline_slack.py && python3 -m pytest -q -p no:cacheprovider -n 4 tests/test_ultra_run.py tests/test_deadline_slack.py",
+      "exit": 0,
+      "stdout": "bringing up nodes...\nbringing up nodes...\n\n...................................................................      [100%]\n67 passed in 2.00s\nbringing up nodes...\nbringing up nodes...\n\n...................................................................      [100%]\n67 passed in 1.97s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = 4404cdb6717ca3108da07a42b528827850647c7e",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = ed54d9845f5f857a4ac24d80c78ef483239f6af3",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "role prose size: README.md = 288 words\nrole prose size: critic.md = 578 words\nrole prose size: examiner.md = 411 words\nrole prose size: fix.md = 264 words\nrole prose size: implementer.md = 436 words\nrole prose size: reconcile.md = 217 words\nrole prose size: resolver.md = 248 words\nrole prose size: reviewer.md = 847 words\n",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_fold_wave_materialize.py tests/test_fold_wave.py tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 98%]\n.                                                                        [100%]\n73 passed in 22.60s\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 588294,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n...............................................................s........ [ 67%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1377 passed, 1 skipped, 5 warnings in 91.34s (0:01:31) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 36%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 84%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n.                                                                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1369 passed, 5 warnings in 88.24s (0:01:28) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "e810f4cad8533ff2d0b314ed3d0f5eff90b113c1",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-7/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-7/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 3.375,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 4,
+    "tasks_planned": 4,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 \u2014 `fleet/sandbox-boot.sh` publish path (Claim: \"A run the engine approved reaches me as a ready pull request\")",
+      "reason": "external",
+      "why": "The integrated tree is verified end-to-end up to the REST boundary: `fleet/tests/test_sandbox_boot_approved.mjs` (driver-run, exit 0) asserts the recorded POST payload carries `\"draft\":false`, `status.json` ends at `done` with the PR URL, and the log line is `outcome: gate-green (verdict=NEEDS_ACK, approved by the two-move rule)`. What no clone can execute is the far side of that POST \u2014 GitHub actually rendering a non-draft PR against `https://<host>/api/v3/repos/<owner>/<repo>/pulls`, which the sim reaches through a stub `curl`. Nothing in the tree is missing; only the live GitHub leg is unexercisable here."
+    },
+    {
+      "deliverable": "Task 2 \u2014 the fold commit's subject (Claim: \"A run's squash-merge keeps the plan's title\")",
+      "reason": "external",
+      "why": "The antecedent is fully verified in the tree: `tests/test_fold_wave_subject.py` (6 passed) pins `%s` = the `--subject` text and `%b` = `frontier fold wave <N>`, and `fleet/tests/test_run_engine_fold_subject.mjs` (exit 0) pins the integration branch head's `%s`/`%b` for the plan-with-H1, no-planPath, no-`# `-line and unreadable-plan cases. The last step of the Claim \u2014 GitHub's squash-merge adopting that commit subject as the merge commit's subject \u2014 happens on github.int.exe.xyz at merge time and cannot be executed in a clone."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
