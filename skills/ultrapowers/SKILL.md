@@ -118,7 +118,10 @@ approved plan, **is** the authorization to execute — no further approval pause
    pair travels in the launch, and each sandbox clones `repo` and branches from
    `baseSha`. That sha has to be one GitHub already has, so compare it against
    the upstream tip: when they differ, say the base is not on GitHub yet and ask
-   the operator to push it before the launch.
+   the operator to push it before the launch. When the plan is for a
+   repository other than this checkout, the launcher still needs a clone of
+   that target with it as `origin`: clone it somewhere disposable and add
+   `--repo <that clone>` to the launch line; `--target` alone is refused.
 
    Then run `node <plugin-root>/fleet/doctor.mjs --target <repo>` once. A
    verdict of `ready` goes straight to step 2. Any other verdict is repaired
