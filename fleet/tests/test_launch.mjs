@@ -26,8 +26,9 @@ import {
   LobbyError, isVmName, listVms, runOfVmName, statusUrlFor, vmNameFor, vmPatternFor
 } from '../lobby.mjs'
 import {
-  answer, cleanup, cmdRule, makeExec, makeFleetRuns, sshRule, tempDir, thrown, vmRow, vmRule, vmsPayload
+  answer, cleanup, cmdRule, makeExec, sshRule, tempDir, thrown, vmRow, vmRule, vmsPayload
 } from './_lobby_helpers.mjs'
+import { makeFleetRuns } from './_fleet_runs_helpers.mjs'
 
 const BASE = 'a'.repeat(40)
 const ENGINE = 'b'.repeat(40)

@@ -9,11 +9,12 @@
 # the unit's result. It starts and stops the engine unit `fleet-engine-<N>` and
 # never its own.
 # From here: refuse to boot when two GitHub integrations name one repository,
-# clone fleet-runs and the target through exe.dev's edge-injected GitHub
-# integrations, run the engine as a transient user SERVICE with the Anthropic
-# pair in the ENGINE'S CHILD ENV ONLY, serve the status page from a service of
-# its own, commit receipts to `fleet-runs` at every transition, and — only when
-# the branch has something to publish — push and open the PR over GitHub's REST
+# clone the target through exe.dev's edge-injected GitHub integrations, take the
+# plan off the target's own `ultra/plan-run-<N>`, run the engine as a transient
+# user SERVICE with the Anthropic pair in the ENGINE'S CHILD ENV ONLY, serve the
+# status page from a service of its own, commit the receipts to the target's
+# `ultra/evidence-run-<N>` at every transition, and — only when the branch has
+# something to publish — push and open the PR over GitHub's REST
 # API through the edge. The PR is the human gate; there is no write grant to
 # wait for, because the target's one integration is attached for the run's
 # whole life (measured 2026-09-03: the edge routes by repo path and caches an
@@ -26,11 +27,21 @@
 # GitHub call below is this script's, never a model's, and the push happens
 # only after systemd says the engine service is inactive.
 #
+# THREE BRANCHES, all on the TARGET repository and none of them anywhere else
+# (#598): `ultra/plan-run-<N>` carries `.ultrapowers/plan.md` in — the launcher
+# pushed it before this VM existed, so the plan this box runs is the one the
+# assignment's `plan=` signed; `ultra/integration-run-<N>` is the engine's own,
+# and the PR head; `ultra/evidence-run-<N>` is this script's — one commit per
+# transition, parented on the plan commit, never merged, linked from the PR
+# body. Nothing under `.claude/` is ever committed: that directory is the
+# engine's scratch, and the evidence is a copy of it under `.ultrapowers/`.
+#
 # IDEMPOTENCE IS A REQUIREMENT, not a nicety: this script can be started again
 # on the same box, and re-entering must not re-clone a clone that exists and
 # must never re-run an engine that finished — the engine spends real
-# subscription money and leaves a branch. The markers are the clones
-# themselves, `$FLEET_HOME/.fleet-engine-done`, and the status page.
+# subscription money and leaves a branch. The markers are the clone and the
+# evidence worktree themselves, `$FLEET_HOME/.fleet-engine-done`, and the
+# status page.
 #
 # SEAMS. Every external program goes through a `fleet_*` wrapper and `PATH` is
 # prefixed with `$FLEET_BIN_DIR`, so `fleet/tests/test_sandbox_boot.mjs` drives
@@ -63,8 +74,13 @@ BOOT_LOG="$FLEET_HOME/fleet-boot.log"
 # own words are the first thing anyone wants and the one thing that was thrown
 # away, so they go where the status page already reaches: /engine.log.
 ENGINE_LOG="$WWW_DIR/engine.log"
-FLEET_RUNS_DIR="$FLEET_HOME/fleet-runs"
 TARGET_DIR="$FLEET_HOME/target"
+# The evidence branch's checkout: a detached worktree OF THE TARGET CLONE, so
+# the receipts commit onto the target repository and nowhere else.
+EVIDENCE_DIR="$FLEET_HOME/evidence"
+# Where the plan blob lands after it is read off the plan branch. This path is
+# what the engine's argv carries.
+PLANS_DIR="$FLEET_HOME/plans"
 ENGINE_DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
 # Set once the assignment is parsed: the bootstrap's content-addressed clone.
 ENGINE_REPO_DIR=""
@@ -74,9 +90,10 @@ ENGINE_REPO_DIR=""
 REFLECTION_URL="https://reflection.int.exe.xyz"
 NOTIFY_URL="https://notify.int.exe.xyz/"
 GITHUB_INT_HOST="github.int.exe.xyz"
-FLEET_RUNS_REPO="popmechanic/fleet-runs"
 ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
-FLEET_RUNS_BRANCH="${FLEET_RUNS_BRANCH:-main}"
+# The plan's path inside the plan commit's tree, and the run's directory inside
+# the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
+PLAN_BLOB_PATH=".ultrapowers/plan.md"
 
 # Poll cadences. The defaults are the contract's; the tests set them to 0 so the
 # whole state machine runs in a second.
@@ -97,6 +114,11 @@ ENGINE_SHA=""
 OVERLAP=""
 TIER=""
 BRANCH=""
+# The other two of #598's three branches, and the paths that hang off them.
+PLAN_BRANCH=""
+EVIDENCE_BRANCH=""
+EVIDENCE_PATH=""
+PLAN_FILE=""
 VM_NAME=""
 VM_EMAIL=""
 STARTED_AT=""
@@ -193,10 +215,12 @@ notify() { # $1 = title, $2 = message
 fail() { # $1 = error text
   ERROR="$1"
   write_status failed
-  # Every failure path leaves its account in `fleet-runs`, not only on a status
-  # page the janitor is about to delete with the VM. `FAILING` is what keeps
-  # `push_evidence`'s own failure from recursing back in here.
-  if [ -z "${FAILING:-}" ] && [ -n "$RUN_N" ] && is_clone "$FLEET_RUNS_DIR"; then
+  # Every failure path after the clone leaves its account on the evidence
+  # branch, not only on a status page the janitor is about to delete with the
+  # VM. A failure BEFORE the clone has no branch to write to — its record is
+  # this page and the notify below. `FAILING` is what keeps `push_evidence`'s
+  # own failure from recursing back in here.
+  if [ -z "${FAILING:-}" ] && [ -n "$RUN_N" ] && is_clone "$EVIDENCE_DIR"; then
     FAILING=1
     collect_evidence || true
     push_evidence "$RUN_ID: failed — $1" || true
@@ -218,7 +242,7 @@ start_status_server() {
   case "$(fleet_systemctl --user is-active fleet-status.service 2>/dev/null || true)" in
     active*) log "status server: fleet-status.service already active"; return 0 ;;
   esac
-  # Not fatal: the record of a run is its fleet-runs commits, and a box whose
+  # Not fatal: the record of a run is its evidence commits, and a box whose
   # page cannot be served still owes those.
   if fleet_systemd_run --user --unit=fleet-status -p Restart=on-failure -- \
       busybox httpd -f -p 8000 -h "$WWW_DIR" >>"$BOOT_LOG" 2>&1; then
@@ -289,6 +313,10 @@ parse_assignment() { # $1 = the comment line
 
   RUN_ID="run-$RUN_N"
   BRANCH="ultra/integration-$RUN_ID"
+  PLAN_BRANCH="ultra/plan-$RUN_ID"
+  EVIDENCE_BRANCH="ultra/evidence-$RUN_ID"
+  EVIDENCE_PATH=".ultrapowers/runs/$RUN_N"
+  PLAN_FILE="$PLANS_DIR/$RUN_ID.md"
   ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
   log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>}"
 }
@@ -296,41 +324,6 @@ parse_assignment() { # $1 = the comment line
 # --- clones ------------------------------------------------------------------
 
 is_clone() { [ -e "$1/.git" ]; }
-
-# FIRST, and before anything else can fail: this clone is where a failure gets
-# RECORDED. run-65 died at the engine's deps with `runs/65/` never created, so
-# the only account of it was a status page on a VM the janitor was about to
-# delete.
-prepare_fleet_runs() {
-  if is_clone "$FLEET_RUNS_DIR"; then
-    log "fleet-runs: clone already present"
-  else
-    fleet_git clone "https://$GITHUB_INT_HOST/$FLEET_RUNS_REPO.git" "$FLEET_RUNS_DIR" \
-      || fail "clone: fleet-runs"
-  fi
-  fleet_git -C "$FLEET_RUNS_DIR" fetch origin || fail "fetch: fleet-runs"
-
-  # RE-ENTRY. A previous attempt committed `runs/<N>/` on top of the plan commit
-  # and pushed it, so HEAD has moved and the tree may be dirty; checking the plan
-  # sha out over that is how run-66's restart died. HEAD only has to CONTAIN the
-  # plan commit — the plan file itself is pinned by the path-scoped checkout
-  # below, and that file is the only thing this clone is READ for.
-  if fleet_git -C "$FLEET_RUNS_DIR" merge-base --is-ancestor "$PLAN_SHA" HEAD; then
-    log "fleet-runs: HEAD already contains $PLAN_SHA"
-  elif fleet_git -C "$FLEET_RUNS_DIR" checkout --detach "$PLAN_SHA"; then
-    log "fleet-runs: detached at $PLAN_SHA"
-  else
-    fleet_git -C "$FLEET_RUNS_DIR" checkout --force --detach "$PLAN_SHA" \
-      || fail "checkout: fleet-runs at $PLAN_SHA"
-  fi
-
-  # `--force` for the PLANS PATH ONLY: the engine runs the plan that was signed
-  # at `plan=`, whatever else this clone carries. Nothing ever checks out over
-  # `runs/<N>/` — those files are rewritten from the target clone on every pass,
-  # so a re-entry can never lose an attempt's evidence to a checkout.
-  fleet_git -C "$FLEET_RUNS_DIR" checkout --force "$PLAN_SHA" -- plans \
-    || fail "checkout: fleet-runs plans at $PLAN_SHA"
-}
 
 clone_target() {
   if is_clone "$TARGET_DIR"; then
@@ -361,6 +354,52 @@ clone_target() {
   fi
   # Left AT BASE. `ultra/integration-<runId>` is the engine's to create.
   fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
+}
+
+# --- the plan ----------------------------------------------------------------
+#
+# The plan travels on the TARGET, on a branch the launcher pushed before this VM
+# existed. What is fetched is checked against the assignment's `plan=` BEFORE a
+# model can read a word of it: a plan branch someone else moved is a different
+# plan, and running it would be running unsigned instructions. The blob is
+# written out whole — `git show` into the file, not through a command
+# substitution, because a plan is bytes and `$(…)` eats its last newline.
+prepare_plan() {
+  local landed
+  fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$PLAN_BRANCH" \
+    || fail "plan: cannot fetch $PLAN_BRANCH from $TARGET_REPO"
+  landed="$(fleet_git -C "$TARGET_DIR" rev-parse FETCH_HEAD 2>/dev/null || true)"
+  if [ "$landed" != "$PLAN_SHA" ]; then
+    fail "plan: $PLAN_BRANCH is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
+  fi
+  mkdir -p "$PLANS_DIR"
+  fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$PLAN_BLOB_PATH" >"$PLAN_FILE" \
+    || fail "plan: $PLAN_SHA carries no $PLAN_BLOB_PATH"
+  log "plan: $PLAN_BRANCH at $PLAN_SHA -> $PLAN_FILE"
+}
+
+# --- the evidence worktree ---------------------------------------------------
+#
+# One worktree of the target clone, detached, built once. A first attempt
+# parents the evidence branch on the PLAN COMMIT — so the branch that carries
+# the receipts out is rooted in the plan that came in. A re-entry finds the
+# branch already on the remote and continues it at FETCH_HEAD instead, which is
+# what keeps an earlier attempt's commits.
+prepare_evidence() {
+  local at
+  if is_clone "$EVIDENCE_DIR"; then
+    log "evidence: worktree already present at $EVIDENCE_DIR"
+    return 0
+  fi
+  if fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$EVIDENCE_BRANCH" 2>/dev/null; then
+    at=FETCH_HEAD
+    log "evidence: $EVIDENCE_BRANCH is already on the remote — continuing it"
+  else
+    at="$PLAN_SHA"
+    log "evidence: no $EVIDENCE_BRANCH yet — parenting it on the plan commit"
+  fi
+  fleet_git -C "$TARGET_DIR" worktree add --detach "$EVIDENCE_DIR" "$at" \
+    || fail "evidence: worktree add $EVIDENCE_DIR at $at"
 }
 
 # The engine is the bootstrap's clone at `engine=` — this script is running
@@ -476,7 +515,6 @@ run_engine() {
   [ -n "$TIER" ] && knobs+=(--tier "$TIER")
   [ -n "$OVERLAP" ] && knobs+=(--overlap "$OVERLAP")
   :
-  write_status running "engine starting"
   log_auth_status
 
   set +e
@@ -492,7 +530,7 @@ run_engine() {
       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
       node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
-      "$FLEET_RUNS_DIR/plans/$RUN_ID.md" "$RUN_ID" --repo "$TARGET_DIR" \
+      "$PLAN_FILE" "$RUN_ID" --repo "$TARGET_DIR" \
       ${knobs[@]+"${knobs[@]}"} \
     2>&1 | tee -a "$ENGINE_LOG" >>"$BOOT_LOG"
   # The ENGINE's status, not `tee`'s — a pipeline's exit code is its last
@@ -540,7 +578,7 @@ await_engine_inactive() {
 
 collect_evidence() {
   local dest receipt run_dir f
-  dest="$FLEET_RUNS_DIR/runs/$RUN_N"
+  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   receipt="$(gate_receipt_path)"
   [ -n "$receipt" ] && cp "$receipt" "$dest/gate-receipt.json"
@@ -557,23 +595,31 @@ collect_evidence() {
   log "evidence: $(ls "$dest" | tr '\n' ' ')"
 }
 
+# ONE COMMIT PER TRANSITION, and every one of them made and pushed from the
+# worktree — the run directory is the only path ever staged, so nothing the
+# engine left under `.claude/` can ride along by accident.
 push_evidence() { # $1 = commit subject
   local n=0
-  mkdir -p "$FLEET_RUNS_DIR/runs/$RUN_N"
-  fleet_git -C "$FLEET_RUNS_DIR" add -- "runs/$RUN_N" || fail "fleet-runs: add"
+  mkdir -p "$EVIDENCE_DIR/$EVIDENCE_PATH"
+  fleet_git -C "$EVIDENCE_DIR" add -- "$EVIDENCE_PATH" || fail "evidence: add $EVIDENCE_PATH"
   ensure_git_identity
-  if ! fleet_git -C "$FLEET_RUNS_DIR" commit -m "$1"; then
-    log "fleet-runs: nothing to commit"
+  if ! fleet_git -C "$EVIDENCE_DIR" commit -m "$1"; then
+    log "evidence: nothing to commit"
   fi
   while :; do
-    if fleet_git -C "$FLEET_RUNS_DIR" push origin "HEAD:$FLEET_RUNS_BRANCH"; then
-      log "fleet-runs: pushed"
+    if fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:refs/heads/$EVIDENCE_BRANCH"; then
+      log "evidence: pushed to $EVIDENCE_BRANCH"
       return 0
     fi
     n=$(( n + 1 ))
-    if [ "$n" -ge 5 ]; then fail "fleet-runs: push rejected 5 times"; fi
-    log "fleet-runs: push rejected — rebasing (attempt $n)"
-    fleet_git -C "$FLEET_RUNS_DIR" pull --rebase origin "$FLEET_RUNS_BRANCH" || true
+    if [ "$n" -ge 5 ]; then
+      # `FAILING` here and not only in `fail`: this IS the failing push, and a
+      # `fail` that tried to push its own account would spend five more.
+      FAILING=1
+      fail "evidence: push to $EVIDENCE_BRANCH rejected 5 times"
+    fi
+    log "evidence: push rejected — rebasing (attempt $n)"
+    fleet_git -C "$EVIDENCE_DIR" pull --rebase origin "$EVIDENCE_BRANCH" || true
   done
 }
 
@@ -581,9 +627,9 @@ ensure_git_identity() {
   # The golden bakes an identity. A golden that did not still commits — the
   # author line is cosmetic here, since the PUSH is attributed by the integration
   # (`--act-as-user`), not by the commit.
-  if [ -z "$(fleet_git -C "$FLEET_RUNS_DIR" config user.email 2>/dev/null || true)" ]; then
-    fleet_git -C "$FLEET_RUNS_DIR" config user.email "${VM_EMAIL:-fleet@exe.dev}" || true
-    fleet_git -C "$FLEET_RUNS_DIR" config user.name "${VM_NAME:-fleet-$RUN_ID}" || true
+  if [ -z "$(fleet_git -C "$EVIDENCE_DIR" config user.email 2>/dev/null || true)" ]; then
+    fleet_git -C "$EVIDENCE_DIR" config user.email "${VM_EMAIL:-fleet@exe.dev}" || true
+    fleet_git -C "$EVIDENCE_DIR" config user.name "${VM_NAME:-fleet-$RUN_ID}" || true
   fi
 }
 
@@ -597,15 +643,13 @@ gate_verdict() {
 # --- publish -----------------------------------------------------------------
 
 plan_title() {
-  local plan
-  plan="$FLEET_RUNS_DIR/plans/$RUN_ID.md"
-  [ -f "$plan" ] || return 0
-  sed -n 's/^# \(.*\)$/\1/p' "$plan" | head -n 1
+  [ -f "$PLAN_FILE" ] || return 0
+  sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1
 }
 
 render_card() { # $1 = outcome; prints the body file's path
   local body dest verdict receipt
-  dest="$FLEET_RUNS_DIR/runs/$RUN_N"
+  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   body="$dest/pr-body.md"
   verdict="$(gate_verdict)"
@@ -616,7 +660,7 @@ render_card() { # $1 = outcome; prints the body file's path
     printf '| verdict | `%s` |\n' "${verdict:-<no gate receipt>}"
     printf '| target | `%s` at `%s` |\n' "$TARGET_REPO" "$BASE_SHA"
     printf '| engine | `%s` |\n' "$ENGINE_SHA"
-    printf '| plan | `%s` at `%s` |\n' "plans/$RUN_ID.md" "$PLAN_SHA"
+    printf '| plan | `%s` at `%s` |\n' "$PLAN_BLOB_PATH" "$PLAN_SHA"
     printf '| branch | `%s` |\n' "$BRANCH"
     printf '| vm | `%s` |\n\n' "${VM_NAME:-<unknown>}"
     printf '### Checks\n\n'
@@ -627,9 +671,13 @@ render_card() { # $1 = outcome; prints the body file's path
     else
       printf 'No gate receipt was produced.\n\n'
     fi
+    # Both branches, on the target, spelled as a browser can follow them: the
+    # receipts this run wrote, and the plan it was given.
     printf '### Evidence\n\n'
-    printf 'https://github.com/%s/tree/%s/runs/%s/\n\n' "$FLEET_RUNS_REPO" "$FLEET_RUNS_BRANCH" "$RUN_N"
-    printf '%s\n' "$(ls "$dest" | sed 's/^/- /')"
+    printf 'https://github.com/%s/tree/%s/%s/\n\n' "$TARGET_REPO" "$EVIDENCE_BRANCH" "$EVIDENCE_PATH"
+    printf '%s\n\n' "$(ls "$dest" | sed 's/^/- /')"
+    printf '### Plan\n\n'
+    printf 'https://github.com/%s/blob/%s/%s\n' "$TARGET_REPO" "$PLAN_BRANCH" "$PLAN_BLOB_PATH"
   } >"$body"
   printf '%s\n' "$body"
 }
@@ -757,16 +805,25 @@ do_boot() {
   # no defined credential for the push, and nothing later can repair that.
   preflight_integrations
 
-  # FIRST of the clones, and deliberately: from here on, `fail` can record what
-  # happened in `fleet-runs` instead of only on a status page that dies with
-  # the VM.
-  prepare_fleet_runs
+  # The target is the only clone. The plan comes off its own plan branch and is
+  # checked against `plan=` before anything reads it; the evidence worktree is
+  # built next, and deliberately — from here on, `fail` can record what happened
+  # on the evidence branch instead of only on a status page that dies with the
+  # VM.
   clone_target
+  prepare_plan
+  prepare_evidence
   check_engine
 
   if engine_already_ran; then
     log "engine: already finished (marker or gate receipt present) — not re-running"
   else
+    # The `running` page is a commit of its own, made and pushed BEFORE the
+    # engine unit exists: a run whose box dies mid-model still has a branch
+    # saying it started, and when it started.
+    write_status running "engine starting"
+    collect_evidence
+    push_evidence "$RUN_ID: running"
     run_engine
   fi
 
@@ -783,7 +840,7 @@ do_boot() {
 
   if [ "$code" != "0" ]; then
     # The page goes to `failed` BEFORE the push, because the copy of it that
-    # lands in `fleet-runs/runs/<N>/status.json` is what the janitor and the
+    # lands in the evidence branch's `.ultrapowers/runs/<N>/status.json` is what the janitor and the
     # operator read — a pushed page still saying `running` would be a lie with
     # a reader.
     # The engine's own last words, in the cell a reader actually opens. Without
@@ -806,7 +863,9 @@ $(engine_tail)"
   # BASE, and GitHub refuses a PR with no commits. Nothing to publish is a
   # parked outcome with its evidence committed — no push, no PR. A branch git
   # cannot count is likewise nothing to push.
-  ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "$BASE_SHA..$BRANCH" 2>/dev/null || echo 0)"
+  # `^base branch` rather than `base..branch`: the branch stays its own argv
+  # word, so a reader of the git log can see which ref was counted.
+  ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "^$BASE_SHA" "$BRANCH" 2>/dev/null || echo 0)"
   if [ "$ahead" = "0" ]; then
     ERROR="parked: $BRANCH has no commits ahead of base (verdict ${verdict:-none})"
     write_status parked "nothing to publish"
@@ -817,7 +876,7 @@ $(engine_tail)"
   fi
 
   # The receipts are committed BEFORE the push, so a publish that dies leaves
-  # its verdict in fleet-runs and not only on this box.
+  # its verdict on the evidence branch and not only on this box.
   write_status publishing "$outcome — pushing $BRANCH"
   collect_evidence
   push_evidence "$RUN_ID: $outcome receipts"
@@ -846,7 +905,7 @@ $(engine_tail)"
 # By hand, for a run that is neither finished nor progressing: park the page
 # and stop the engine's service. Nothing on the golden arms this — the
 # `claude-max` attachment expires with its `--for`, and the janitor reads
-# fleet-runs — so it is a tool for an operator on the box, not a timer.
+# the evidence branch — so it is a tool for an operator on the box, not a timer.
 do_deadman() {
   RUN_N="$(read_status_field run)"
   [ -n "$RUN_N" ] && RUN_ID="run-$RUN_N" && BRANCH="ultra/integration-$RUN_ID"

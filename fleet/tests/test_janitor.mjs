@@ -17,8 +17,9 @@ import assert from 'node:assert/strict'
 
 import { janitor, renderJanitor } from '../janitor.mjs'
 import {
-  answer, cleanup, makeExec, makeFleetRuns, sshRule, tempDir, thrown, vmRow, vmsPayload, writeStatus
+  answer, cleanup, makeExec, sshRule, tempDir, thrown, vmRow, vmsPayload, writeStatus
 } from './_lobby_helpers.mjs'
+import { makeFleetRuns } from './_fleet_runs_helpers.mjs'
 
 const NOW = new Date('2026-09-03T12:00:00.000Z')
 const hoursAgo = (h) => new Date(NOW.getTime() - h * 3600 * 1000).toISOString()

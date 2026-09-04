@@ -47,10 +47,8 @@ import {
   LobbyError,
   buildComment,
   defaultExec,
-  ensureFleetRuns,
   git,
   githubIntegrationFor,
-  highestPlanRun,
   isFullSha,
   isRunNumber,
   isSafeTarget,
@@ -64,6 +62,7 @@ import {
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
+import { ensureFleetRuns, highestPlanRun } from './fleet-runs.mjs'
 
 /** One string, so a docs check that reads the first `usage` literal sees every
  *  flag the launch line may carry. */
@@ -80,6 +79,11 @@ export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
 
 /** How long each attachment the launcher makes lives. Wall clock; it lapses. */
 export const ATTACH_FOR = '6h'
+
+/** The image every run is copied from, when neither `--golden` nor the config
+ *  names one. The RUNBOOK's default, spelled here because the shared config
+ *  reader carries the two sizing keys and nothing else. */
+export const DEFAULT_GOLDEN = 'fleet-golden'
 
 /** The start command for run N, run over ssh on the VM once it answers. The
  *  user manager needs XDG_RUNTIME_DIR set for a non-login ssh session. No
@@ -191,7 +195,7 @@ export async function launch ({
   }
 
   const settings = config ?? await loadFleetConfig({ path: opts.config })
-  const golden = opts.golden ?? settings.golden
+  const golden = opts.golden ?? settings.golden ?? DEFAULT_GOLDEN
 
   // ── Reads. Still nothing mutated. The run number is one past the highest
   //    plan in fleet-runs: a plan is committed before any VM exists, so the

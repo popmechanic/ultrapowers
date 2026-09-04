@@ -25,9 +25,7 @@ import { fileURLToPath } from 'node:url'
 import {
   Refusal,
   defaultExec,
-  ensureFleetRuns,
   git,
-  listCommittedStatuses,
   listVms,
   loadFleetConfig,
   lobby,
@@ -37,6 +35,7 @@ import {
   runOfVmName,
   vmPatternFor
 } from './lobby.mjs'
+import { ensureFleetRuns, listCommittedStatuses } from './fleet-runs.mjs'
 
 export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--config <path>] [--json]'
 

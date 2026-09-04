@@ -3,17 +3,18 @@
  *
  * Two pieces:
  *
- *   `makeExec` — a recording `exec(cmd, argv)` seam. Every call is appended to
- *   `exec.calls`; a matching rule answers it; anything unmatched runs for real
- *   when its command is in `passthrough` (`git`, so a plan commit in a test is
- *   a real commit in a real repository) and otherwise answers empty and green.
- *   No rule ever runs `ssh`, `gh` or `curl`: the exams touch no network. Two
- *   kinds of ssh are told apart by their first argument: `ssh exe.dev …` is a
- *   lobby verb, `ssh <ssh_dest> …` is a command on a VM.
+ *   `makeExec` — a recording `exec(cmd, argv, options)` seam. Every call is
+ *   appended to `exec.calls`, options included, so a leg can read the stdin a
+ *   lobby verb was given; a matching rule answers it; anything unmatched runs
+ *   for real when its command is in `passthrough` (`git`, so a plan commit in a
+ *   test is a real commit in a real repository) and otherwise answers empty and
+ *   green. No rule ever runs `ssh`, `gh` or `curl`: the exams touch no network.
+ *   Two kinds of ssh are told apart by their first argument: `ssh exe.dev …` is
+ *   a lobby verb, `ssh <ssh_dest> …` is a command on a VM.
  *
- *   `makeFleetRuns` — a temporary `fleet-runs` checkout with a real bare origin
- *   behind it, so `git pull --rebase`, `git commit` and `git push` are the real
- *   commands and `plan=` is a sha git actually made.
+ *   `makeTargetRepo` — a temporary *target* repository with a real bare origin
+ *   behind it, so a launch's plan push is a real push, `base` is a sha git
+ *   actually made, and `branches()` reads the origin's own refs.
  */
 
 import fs from 'node:fs'
@@ -81,14 +82,14 @@ const vmCall = (argv) => {
  */
 export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
   const calls = []
-  const exec = async (cmd, argv = []) => {
-    calls.push({ cmd, argv: [...argv], line: `${cmd} ${argv.join(' ')}` })
+  const exec = async (cmd, argv = [], options = undefined) => {
+    calls.push({ cmd, argv: [...argv], options, line: `${cmd} ${argv.join(' ')}` })
     for (const rule of rules) {
-      if (rule.when(cmd, argv)) {
-        return typeof rule.answer === 'function' ? rule.answer(cmd, argv) : rule.answer
+      if (rule.when(cmd, argv, options)) {
+        return typeof rule.answer === 'function' ? rule.answer(cmd, argv, options) : rule.answer
       }
     }
-    if (passthrough.includes(cmd)) return defaultExec(cmd, argv)
+    if (passthrough.includes(cmd)) return defaultExec(cmd, argv, options ?? {})
     return { code: 0, stdout: '', stderr: '' }
   }
   exec.calls = calls
@@ -119,49 +120,54 @@ export function tempDir (prefix = 'fleet-lobby-') {
 }
 
 /**
- * A real `fleet-runs` checkout: a bare origin, one seed commit, and a clone
- * with `plans/` already present. `seed` may add files before the seed commit
- * (`{ 'plans/run-9.md': '…' }`).
+ * A real *target* repository: a bare origin with one seed commit on `main`, and
+ * a clone of it. `files` is the seed commit's content (default one README);
+ * `base` is the sha git made for it, which is what a run's `base=` names.
+ *
+ *   `origin`     the bare repository's path — the clone's `origin` remote
+ *   `dir`        the clone, with `user.name`/`user.email` already set
+ *   `git(argv)`  a git command in the clone, answering its trimmed stdout
+ *   `branches()` the origin's `refs/heads/*` as `{ '<name>': '<sha>' }`
+ *
+ * Everything is local git against a path, so a push in an exam is a real push
+ * and no socket is opened.
  */
-export function makeFleetRuns ({ root, seed = {} } = {}) {
-  const base = root ?? tempDir()
-  const origin = path.join(base, 'origin.git')
-  run(base, ['init', '--bare', '--initial-branch=main', origin])
-  const seedDir = path.join(base, 'seed')
-  run(base, ['clone', origin, seedDir])
-  fs.mkdirSync(path.join(seedDir, 'plans'), { recursive: true })
-  fs.writeFileSync(path.join(seedDir, 'plans', '.gitkeep'), '')
-  for (const [rel, body] of Object.entries(seed)) {
-    fs.mkdirSync(path.dirname(path.join(seedDir, rel)), { recursive: true })
-    fs.writeFileSync(path.join(seedDir, rel), body)
-  }
-  run(seedDir, ['config', 'user.email', 'fleet@example.invalid'])
-  run(seedDir, ['config', 'user.name', 'fleet tests'])
-  run(seedDir, ['add', '-A'])
-  run(seedDir, ['commit', '-m', 'seed'])
-  run(seedDir, ['push', 'origin', 'main'])
+export function makeTargetRepo ({ root, files } = {}) {
+  const root_ = root ?? tempDir('fleet-target-')
+  const origin = path.join(root_, 'origin.git')
+  run(root_, ['init', '--bare', '--initial-branch=main', origin])
 
-  const dir = path.join(base, 'fleet-runs')
-  run(base, ['clone', origin, dir])
+  const dir = path.join(root_, 'target')
+  run(root_, ['clone', origin, dir])
   run(dir, ['config', 'user.email', 'fleet@example.invalid'])
   run(dir, ['config', 'user.name', 'fleet tests'])
+  for (const [rel, body] of Object.entries(files ?? { 'README.md': '# target\n' })) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+    fs.writeFileSync(path.join(dir, rel), body)
+  }
+  run(dir, ['add', '-A'])
+  run(dir, ['commit', '-m', 'seed'])
+  run(dir, ['push', 'origin', 'main'])
+  const base = run(dir, ['rev-parse', 'HEAD']).trim()
+
   return {
     base,
     origin,
     dir,
     git: (argv) => run(dir, argv).trim(),
-    /** Commit `plans/run-<N>.md` dated `at` — the launch's own timestamp. */
-    commitPlan: (run_, at) => {
-      fs.writeFileSync(path.join(dir, 'plans', `run-${run_}.md`), `# run ${run_}\n`)
-      run(dir, ['add', `plans/run-${run_}.md`])
-      run(dir, ['commit', '-m', `plan run-${run_}`], {
-        ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at
-      })
+    branches: () => {
+      const out = {}
+      for (const line of run(dir, ['ls-remote', '--heads', 'origin']).split('\n')) {
+        const [sha, ref] = line.split('\t')
+        if (!ref) continue
+        out[ref.trim().replace(/^refs\/heads\//, '')] = sha.trim()
+      }
+      return out
     }
   }
 }
 
-/** Write `runs/<N>/status.json` into a fleet-runs checkout (no commit needed). */
+/** Write `runs/<N>/status.json` into a checkout (no commit needed). */
 export function writeStatus (dir, run_, status) {
   const target = path.join(dir, 'runs', String(run_))
   fs.mkdirSync(target, { recursive: true })
