@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "2": {
+      "hash": "5db65201f1e526369c062389e66e3dfd0b5b6cefccd5fc52fbf82935d5e228fd",
+      "verdict": "pass",
+      "reason": "round 1: M1 by (a) four CLI behaviours + --help greps; M2 by (a) six exact api paths and decoded terminus, (b) absence rule bracketed both sides; M3 by (c) both failure modes and the healthy-positional counter-case; M4 by the first Run; M5 by (e) differential against the BASE blob"
+    },
+    "1": {
+      "hash": "f0832ea33153eb5b38ef47d56e0a9bba454e970a7118dbd5f97f8756b219c7ee",
+      "verdict": "pass",
+      "reason": "round 1: M1 by the public-name equality Run + test_readers legs; M2 by (b) test ! -e and recursive import sweep; M3 by the nine reader tests; M4/M5 by (c) four negative + three positive literals and the suites; M6 by (d) exact 1364"
+    }
+  },
+  "tally": {
+    "tasks": 2,
+    "pass": 2,
+    "fail": 0,
+    "rounds": {
+      "2": 1,
+      "1": 1
+    }
+  }
+}
