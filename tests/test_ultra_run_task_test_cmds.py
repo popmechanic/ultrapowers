@@ -149,8 +149,11 @@ def test_an_unrecognised_runner_fails_the_line(tmp_path):
     assert r.returncode == 1, r.stdout + r.stderr
     v = json.loads(r.stdout)
     assert v["ok"] is False
+    # #644 named the runner of a command the table does not know — it is the
+    # first word, probed for resolution on PATH. `weird-runner` resolves
+    # nowhere, so this leg's verdict is the red it always was.
     assert v["perTaskTestCmds"] == [
-        {"cmd": "weird-runner tests/x", "runner": None, "ok": False},
+        {"cmd": "weird-runner tests/x", "runner": "weird-runner", "ok": False},
     ]
     assert_no_probe_left(repo)
 

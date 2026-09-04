@@ -35,6 +35,11 @@
  * push its branch or open its PR, and a run that cannot publish is a run nobody
  * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
  *
+ * A target whose toolchain the sandbox lacks is a refusal for the same reason,
+ * and on the laptop rather than on the box: the setup script installs node, bun
+ * and pytest only, so a Go, Rust or make target is named here instead of dying
+ * in the VM's preflight.
+ *
  * A refusal (exit 2) happens before anything is created, so the account and the
  * target are exactly as they were. A failure after that (exit 1) prints the
  * lobby's own words: exe.dev documents no error envelope, so a refused name or
@@ -130,6 +135,43 @@ const ORIGIN_SPELLINGS = Object.freeze([
   /^git@github\.com:(.+?)(?:\.git)?\/?$/,
   /^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?\/?$/
 ])
+
+/**
+ * The preflight's `detect_test_cmd` ladder (`skills/ultrapowers/scripts/
+ * ultra_run.py`), in its order, as manifests on a working tree. The first rung
+ * that matches decides, so a `package.json` beside a `go.mod` is a Node target.
+ *
+ * `toolchain` is null for the three rungs the sandbox has and names the missing
+ * toolchain for the three it does not: `fleet/setup-script.mjs` installs node,
+ * bun and `python3-pytest`, and nothing else.
+ */
+const TOOLCHAIN_LADDER = Object.freeze([
+  { manifest: 'pytest.ini', toolchain: null },
+  { manifest: 'pyproject.toml', toolchain: null, holds: (text) => text.includes('[tool.pytest') },
+  { manifest: 'package.json', toolchain: null },
+  { manifest: 'Makefile', toolchain: 'make', holds: (text) => /^test\s*:/m.test(text) },
+  { manifest: 'go.mod', toolchain: 'go' },
+  { manifest: 'Cargo.toml', toolchain: 'cargo' }
+])
+
+/**
+ * The ladder's first matching rung on `repoDir`'s working tree, or null when no
+ * manifest matched. An unreadable path is a rung that did not match: the ladder
+ * is about what a preflight would find, not about what this checkout permits.
+ */
+async function detectToolchainRung (repoDir) {
+  for (const rung of TOOLCHAIN_LADDER) {
+    let text
+    try {
+      text = await fsp.readFile(path.join(repoDir, rung.manifest), 'utf8')
+    } catch {
+      continue
+    }
+    if (rung.holds && !rung.holds(text)) continue
+    return rung
+  }
+  return null
+}
 
 export function targetOfOriginUrl (url) {
   const text = String(url ?? '').trim()
@@ -260,6 +302,14 @@ export async function launch ({
       `launch: ${repoDir} has origin ${JSON.stringify(originUrl)}, which does not name ${target}`
     )
   }
+  // Say it up front (#645): the run would clone fine and then find no compiler.
+  const rung = await detectToolchainRung(repoDir)
+  if (rung?.toolchain) {
+    throw new Refusal(
+      `launch: the target needs toolchain ${rung.toolchain} (${rung.manifest} at the checkout root) and the sandbox installs node, bun and pytest only — the fleet builds Python, Node and Bun targets today (#645)`
+    )
+  }
+
   const baseCheck = await git(exec, repoDir, ['rev-parse', '--verify', `${opts.base}^{commit}`])
   if (baseCheck.code !== 0) {
     throw new Refusal(
@@ -290,6 +340,9 @@ export async function launch ({
   }
 
   const run = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
+  // Where the sha came from, so the launch line can say whether the operator
+  // chose this engine or the launcher read whatever `main` happened to be at.
+  const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
   const engine = opts.engine ?? await defaultEngineSha(exec)
 
   const cred = refreshCredential()
@@ -360,6 +413,7 @@ export async function launch ({
     target,
     base: opts.base,
     engine,
+    engineSource,
     github: githubName,
     cpu,
     memory,
@@ -428,13 +482,34 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText })
   }
 }
 
-/** The four lines a launched run prints: its id, its VM, where to watch, what it was told. */
+/**
+ * An unpinned engine, named as the tip it is. Only the unpinned case is
+ * annotated: a pinned sha is one the operator typed, and the assignment comment
+ * already prints `engine=<sha>` either way, so there is nothing a `(pinned)`
+ * line would tell them. #636 asks for exactly this — that the tip stop passing
+ * for a choice — and `fleet/tests/test_launch.mjs` pins a pinned launch's
+ * rendering at its four lines, so an annotation there would break it.
+ *
+ * The annotation is a rendered line, never part of the comment: the comment's
+ * text is pinned byte-for-byte, and a run reading it must not have to strip
+ * prose off the sha.
+ */
+const engineLine = (result) =>
+  result.engineSource === 'main-tip'
+    ? `engine=${result.engine} (main tip; pass --engine <40-hex> to pin)`
+    : null
+
+/**
+ * The lines a launched run prints: its id, its VM, where to watch, what it was
+ * told — and, when nobody pinned one, which engine it happens to have caught.
+ */
 export const renderLaunch = (result) => [
   result.runId,
   result.vm,
   result.statusUrl,
-  result.comment
-].join('\n')
+  result.comment,
+  engineLine(result)
+].filter((line) => line !== null).join('\n')
 
 async function main (argv) {
   const { opts } = parseArgs(argv, { flags: ['json'] })

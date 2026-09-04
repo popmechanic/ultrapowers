@@ -21,6 +21,7 @@ import functools
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -245,12 +246,22 @@ def task_test_cmds(knobs):
 
 
 def runner_for(cmd):
-    """(runner, probe argv) for a per-task command, or (None, None) when it
-    matches no known runner — which is itself a red verdict, not a skip."""
+    """(runner, probe argv) for a per-task command, or (None, None) for an
+    empty one.
+
+    A command the table knows answers its own runner label and `--version`
+    probe. Anything else is a plan-declared exam command (#644) — `npx vitest
+    run …`, `go test …` — whose runner is its first whitespace-delimited word,
+    probed for resolution on PATH rather than for a version, because the table
+    does not know which flag that tool prints one under. Fail-closed either
+    way: a word that does not resolve is red, never an unknown."""
     for prefix, runner, probe in TASK_RUNNERS:
         if cmd.startswith(prefix):
             return runner, probe
-    return None, None
+    words = cmd.split()
+    if not words:
+        return None, None
+    return words[0], ["/bin/sh", "-c", "command -v " + shlex.quote(words[0])]
 
 
 def probe_task_test_cmds(cmds, cwd):
