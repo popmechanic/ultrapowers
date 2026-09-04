@@ -61,6 +61,11 @@ function harness ({ hasIntegration = true, record = null, clipboard = 'CODE-123#
 let legs = 0
 const leg = (name, fn) => Promise.resolve().then(fn).then(() => { legs += 1; console.log(`ok - ${name}`) })
 
+await leg('defaultDeps carries the sleep seam the clipboard poll needs (run-73 review advisory)', async () => {
+  const { defaultDeps } = await import('../claude-token.mjs')
+  assert.equal(typeof defaultDeps().sleep, 'function')
+})
+
 await leg('pkce: the challenge is the S256 of the verifier, url-safe, and state is 64 hex', () => {
   const p = pkce((len) => Buffer.alloc(len, 7))
   assert.match(p.verifier, /^[A-Za-z0-9_-]{43}$/)

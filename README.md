@@ -187,7 +187,7 @@ re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches wha
 
 Three browser consents are yours to give, because only you can give them. You sign up at exe.dev and
 add your ssh key; you approve the GitHub app on your account; you approve ultrapowers on claude.ai,
-which hands back a single code, copied into the answer the agent asks you for. Everything else setup
+which hands back a single code, copied to your clipboard, where the agent picks it up. Everything else setup
 does itself.
 
 **What a run costs.** A run bills your Claude Max subscription through an edge proxy, plus one
