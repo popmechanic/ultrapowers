@@ -1,8 +1,8 @@
 """Tiny report CLI: parse args, list rows, print them.
 
 Measurement payload for the #454 concurrent-drain arms (sitting 2, map #360).
-A deliberate clone of evals/fixtures/contend's clitool, importable as
-`probecli` via tests/drainprobe/conftest.py. Not plugin machinery.
+A deliberate clone of evals/fixtures/contend's clitool, no longer wired into
+the plugin's test suite (its smoke test went with #612). Not plugin machinery.
 """
 import argparse
 

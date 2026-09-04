@@ -67,8 +67,8 @@ is `minor`, naming the constraint and what you take it to require.
 
 A requirement the diff cannot settle — a cross-task claim, behavior in code
 this patch does not touch — is a `minor` finding prefixed `unverified:`, saying
-what would settle it. It belongs among the findings, where the operator and the
-editor both read it, and grading it `minor` is what keeps it from stopping a
+what would settle it. It belongs among the findings, where the operator reads it in
+the run report, and grading it `minor` is what keeps it from stopping a
 merge it could not judge.
 
 Raise only issues worth fixing: `blocking` means the submission does not merge

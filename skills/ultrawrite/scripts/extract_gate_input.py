@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 # scripts -> ultrawrite -> skills; the compiler owns the grammar and this script
-# never re-implements it (identical idiom to ultralearn/scripts/harvest_runs.py).
+# never re-implements it (the idiom ultralearn/scripts/_readers.py uses for _outcome).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
 
 from compile_plan import (  # noqa: E402

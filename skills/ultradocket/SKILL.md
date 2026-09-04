@@ -48,9 +48,9 @@ Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
 **Plan:** docs/superpowers/plans/2026-06-14-stripe-webhook-retry.md
 ```
 
-`docket_lib` still parses a `**Seal:**` field and `compile_docket` still
-validates it, because the disposition vocabulary is frozen — but **do not write
-one.** The sealing subsystem was cut in One Driver Phase 0; a `sealed` plan
+`docket_lib` still parses a `**Seal:**` field, because the disposition
+vocabulary is frozen — `compile_docket` no longer validates it (#612) — but **do
+not write one.** The sealing subsystem was cut in One Driver Phase 0; a `sealed` plan
 parses and is then `BLOCKED` at the gate. `suite` is the default and the right
 choice for this repo's own work. Deleting the residual machinery is #386.
 

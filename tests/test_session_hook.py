@@ -6,7 +6,6 @@ These tests pin the hook config shape, the script's output, and the sharpened
 trigger description so none of the three legs regresses silently."""
 import json
 import pathlib
-import re
 import subprocess
 import tempfile
 
@@ -58,7 +57,7 @@ def _path():
     return os.environ.get("PATH", "/usr/bin:/bin:/usr/local/bin")
 
 
-def test_ultrawrite_description_triggers_on_every_plan():
+def test_ultrawrite_description_names_no_writing_plans():
     frontmatter = (ROOT / "skills/ultrawrite/SKILL.md").read_text().split("---")[1]
     # The external dependency is named as RETIRED, never as a co-invocation.
     assert "superpowers:writing-plans" not in frontmatter
