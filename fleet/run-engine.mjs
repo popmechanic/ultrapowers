@@ -237,6 +237,24 @@ export const runEvidenceBlock = (runs) => {
     'stdout and stderr combined, last 4,000 characters.' +
     runs.map((r) => '\n\n$ ' + r.cmd + '\nexit ' + r.exit + '\n' + r.stdout).join('')
 }
+// #604 (b)+(c) — the INTEGRATED `Run:` proofs. The per-task execution above
+// answers "does this command pass on the patch its author wrote"; it cannot
+// answer "does it still pass on the tree the wave actually adopted", and the
+// difference is the whole reason a wave is folded rather than trusted. So the
+// driver runs every merged task's commands a second time in the integration
+// clone and hands the critic the bytes — the same move #458 made for the
+// driver-run suite. Naming it authoritative is what closes the cannot-verify
+// item that would otherwise ask for exactly this re-execution.
+// Empty evidence renders nothing at all (the run-51 rule), so a run with no
+// `Run:` proofs keeps the critic prompt it had before this existed, byte for
+// byte. Exported for the unit pin, as suiteLine and runEvidenceBlock are.
+export const integratedRunEvidenceBlock = (runs) => {
+  if (!Array.isArray(runs) || runs.length === 0) return ''
+  return '\n\nINTEGRATED RUN EVIDENCE: the driver executed each merged task\'s Proof ' +
+    '`Run:` commands itself, on the adopted integration tree — this is the authoritative ' +
+    'result; a cannot-verify item asking for their re-execution is settled by it.' +
+    runs.map((r) => '\n\n$ ' + r.cmd + '\nexit ' + r.exit + '\n' + r.stdout).join('')
+}
 export const priorAdvisoriesBlock = (minors) => {
   if (!Array.isArray(minors) || minors.length === 0) return ''
   return '\nPRIOR-ROUND ADVISORIES (minor findings from the previous review round, already ' +
@@ -518,6 +536,10 @@ export async function runEngine({
   const unfinished = []
   const cannotVerifyItems = []
   const frontier = []
+  // #604 — one record per merged task's `Run:` command, executed on the tree
+  // its wave adopted, and the blocking findings a non-zero exit mints.
+  const integratedRuns = []
+  const integratedFindings = []
 
   // Edge sanity (ported): an unbound / inverted / same-wave edge weakens
   // dependency blocking — surfaced, never thrown.
@@ -1388,6 +1410,35 @@ export async function runEngine({
     if (merge.status === 'MERGED') {
       waveBaseSha = merge.headSha
       lastSuite = merge.suite
+      // ── the integrated `Run:` proofs (#604 (b)+(c)) ────────────────────────
+      // Here and nowhere else: the candidate's suite is green, the branch has
+      // moved, and the working tree IS the adopted tree. Same `sh` seam as the
+      // per-task pass and the suite (`bash -lc`, SHELL_TIMEOUT_MS), same
+      // tail-truncation, cwd = the integration clone. Only merged tasks
+      // contribute — `waveTasks` is already WAVES[w] narrowed to the mergeable
+      // rows, in Proof order within each task.
+      for (const t of waveTasks) {
+        const cmds = Array.isArray(t.proofRuns)
+          ? t.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
+          : []
+        for (const cmd of cmds) {
+          const r = await sh(cmd, integ)
+          integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
+          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1 })
+          if (r.code === 0) continue
+          // A red integrated run is never a deferral: the driver has the
+          // answer and it is a defect in the INTEGRATED tree, which is the
+          // completeness critic's subject. So it is minted as a typed #474
+          // finding and joins review.findings before the report is built —
+          // the existing brake then refuses the run with no second code path.
+          const detail = 'integrated Run: ' + cmd + ' (task ' + t.id + ') exited ' + r.code +
+            ' on the adopted tree'
+          integratedFindings.push({ severity: 'blocking', detail })
+          judgmentCalls.push(detail + ' — it passed in the task\'s own clone; the fold changed ' +
+            'the answer, so the run is BLOCKED whatever the critic returns')
+          log('wave ' + (w + 1) + ': ' + detail)
+        }
+      }
       continue
     }
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
@@ -1510,7 +1561,8 @@ export async function runEngine({
           suiteLine(lastSuite, testCmd) +
           (baseline.passed === false
             ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
-            : ''),
+            : '') +
+          integratedRunEvidenceBlock(integratedRuns),
         { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA })
     } catch (e) {
       const msg = String((e && e.message) || e)
@@ -1525,6 +1577,13 @@ export async function runEngine({
                              detail: 'integration review did not run — completeness unverified; check the tree before merging' }],
                  deferredVerification: [] }
     }
+  }
+
+  // A red integrated `Run:` proof outranks whatever the critic returned, and it
+  // is folded into the SAME list the #474 brake already reads — appended after
+  // the critic so it survives a critic that died and was replaced above.
+  if (integratedFindings.length) {
+    review.findings = (Array.isArray(review.findings) ? review.findings : []).concat(integratedFindings)
   }
 
   // Driver detach: releases the integration branch in the clone. Nothing on
@@ -1621,6 +1680,9 @@ export async function runEngine({
     dependencyEdges,
     tasks: taskResults,
     tests,
+    // #604: the driver's own re-execution of every merged task's `Run:` proofs
+    // on the tree each wave adopted — [] when no merged task carried one.
+    integratedRuns,
     shallowSuite,
     acceptance,
     baseline,

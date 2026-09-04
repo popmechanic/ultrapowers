@@ -123,10 +123,17 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
   // [M1] after the implementer returned, before the reviewer was called.
   // (the wave's own critic dispatch, `integration`, is not part of the task's
   // own order and is dropped.)
+  // The trailing `proof-run` is the DRIVER's own second execution on the
+  // adopted tree (#604 (b)+(c), test_run_engine_integrated_runs.mjs owns it):
+  // T1 merges, so the same command runs once more in the integration clone
+  // after the whole task pipeline. It is pinned here because this file's order
+  // log cannot tell the two executions apart, and dropping it would let the
+  // integrated pass move without any pin noticing.
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
     .filter(Boolean).filter((l) => l !== 'integration')
-  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
-    'the Run: command executes between the implementer and the first review')
+  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
+    'the Run: command executes between the implementer and the first review, ' +
+    'and again on the adopted tree after it')
 
   // [M1, M5] exactly one recorded execution, exit 0, the command verbatim.
   assert.equal(events.length, 1, 'exactly one execution recorded: ' + JSON.stringify(events))
