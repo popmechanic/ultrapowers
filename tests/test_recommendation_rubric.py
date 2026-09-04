@@ -17,7 +17,7 @@ SHARED_TOKENS = [
     "Inline",
     "parallel width",
     "risk override",
-    "T≥4",
+    "T≥3",
     # #231 (fired watch): algorithmic risk joins the high-stakes surfaces in
     # BOTH legs' risk lists — a bounded cursor walk on lean review was the
     # one task to fail in vibes.diy @0.2.13.
@@ -41,8 +41,8 @@ def test_neither_leg_reflex_recommends():
 
 # The execution-fit decision tree, as ordered branch clauses. SHARED_TOKENS above
 # pins token PRESENCE, which is not enough: a future edit could set one leg's bar
-# to "T≥3" while the other keeps "T≥4" and both files would still contain the
-# token "T≥4" somewhere in prose, so the lockstep would stay green over a real
+# to "T≥2" while the other keeps "T≥3" and both files would still contain the
+# token "T≥3" somewhere in prose, so the lockstep would stay green over a real
 # semantic divergence. These clauses pin the bar, the lane each condition maps to,
 # AND the branch order — so a divergent bar, a reassigned lane, or a reordered
 # tree fails red. (Intentionally changing the rubric means updating this list too,
@@ -55,7 +55,7 @@ BRANCH_CLAUSES = [
     # tree in each — so it participates in the canonical-order pin too.
     "after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge)",
     "risk → Ultrapowers",
-    "parallel width and T≥4 → Ultrapowers",
+    "parallel width and T≥3 → Ultrapowers",
     "T≤2 → Inline",
     "else → Subagent-Driven",
 ]

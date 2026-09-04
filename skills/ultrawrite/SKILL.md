@@ -269,7 +269,7 @@ three signals off the plan:
   reading.
 
 First match wins: risk → Ultrapowers (the **risk override** — independent per-task review
-is the value, not speed); parallel width and T≥4 → Ultrapowers; T≤2 → Inline;
+is the value, not speed); parallel width and T≥3 → Ultrapowers; T≤2 → Inline;
 else → Subagent-Driven. Show a one-line analysis, then the three options, tagging the
 winner **(recommended)**:
 

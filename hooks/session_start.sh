@@ -30,7 +30,7 @@ The ultrapowers plugin is installed. Two standing rules:
    ≥2 independent tasks, after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge); risk =
    a high-stakes surface (auth, payments, migrations, data
    integrity, public API, loops/cursors/pagination/budgets/termination logic), or hard-to-verify behavior. Decide, first match wins:
-   risk → Ultrapowers (the risk override); parallel width and T≥4 → Ultrapowers;
+   risk → Ultrapowers (the risk override); parallel width and T≥3 → Ultrapowers;
    T≤2 → Inline; else → Subagent-Driven. Show a one-line analysis, then:
    1. Ultrapowers — /ultrapowers <plan-path>: commits the plan and drives it on the
       exe.dev fleet (parallel waves in a sandbox, per-task review, the orchestrator
