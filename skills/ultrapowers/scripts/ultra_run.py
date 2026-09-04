@@ -223,6 +223,10 @@ def write_dirty_baseline(root):
 TASK_RUNNERS = (
     ("python3 -m pytest", "python3 -m pytest", ["python3", "-m", "pytest", "--version"]),
     ("node ", "node", ["node", "--version"]),
+    # The greenfield stack's exam runner (#642 taught the compiler the shape;
+    # this table is its second consumer — run-2 on ultrapowers-walk, 2026-09-04,
+    # died at preflight with `"runner": null` for every `bun test` command).
+    ("bun test", "bun test", ["bun", "--version"]),
 )
 
 
