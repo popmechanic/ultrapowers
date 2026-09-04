@@ -307,34 +307,46 @@ def plan_grammar(md_text):
 PLAN_CLAIM_ELICITED_RE = re.compile(r"\(elicited\)\s*$", re.I)
 
 
-def _plan_claim_raw(md_text):
-    """The header `**Claim:**` sentence with its tag still attached, or None.
+def _plan_header_value(md_text, read_label):
+    """The value of one bold header line, or None when the header carries none.
 
     The header is everything before the first task heading (the same fence-aware
-    scan `plan_grammar` runs), so a `**Claim:**` in a task body is not a
-    plan-level Claim and neither is one inside a fence. The sentence may wrap:
+    scan `plan_grammar` runs), so a matching line in a task body is not a
+    plan-level declaration and neither is one inside a fence. The value may wrap:
     it runs to the next blank line, the next bold marker, or the end of the
-    header, and the wrapped lines join on a single space."""
-    claim_lines = None
+    header, and the wrapped lines join on a single space. `read_label` is given
+    each stripped header line and returns the value that follows its label, or
+    None when the line is not the one being read."""
+    value_lines = None
     for line, fenced in _fence_aware_lines(md_text):
         if fenced:
-            if claim_lines is not None:
+            if value_lines is not None:
                 break
             continue
         if match_head(line):
             break  # the header ends at the first task heading
         stripped = line.strip()
-        if claim_lines is None:
-            m = SLOT_LABEL_RE.match(stripped)
-            if m and _claims_slot_name(m.group(1)) == "Claim":
-                claim_lines = [m.group(2).strip()]
+        if value_lines is None:
+            value = read_label(stripped)
+            if value is not None:
+                value_lines = [value.strip()]
             continue
         if not stripped or stripped.startswith("**"):
             break
-        claim_lines.append(stripped)
-    if claim_lines is None:
+        value_lines.append(stripped)
+    if value_lines is None:
         return None
-    return re.sub(r"\s+", " ", " ".join(claim_lines)).strip()
+    return re.sub(r"\s+", " ", " ".join(value_lines)).strip()
+
+
+def _claim_label(stripped):
+    m = SLOT_LABEL_RE.match(stripped)
+    return m.group(2) if m and _claims_slot_name(m.group(1)) == "Claim" else None
+
+
+def _plan_claim_raw(md_text):
+    """The header `**Claim:**` sentence with its tag still attached, or None."""
+    return _plan_header_value(md_text, _claim_label)
 
 
 def parse_plan_claim(md_text):
@@ -362,6 +374,42 @@ def plan_claim_violations(md_text):
     if not parse_plan_claim(md_text):
         return ["grammar: plan-level Claim carries no operator sentence — the "
                 "header Claim is nothing but its `(elicited)` tag"]
+    return []
+
+
+# The plan-declared exam command (#644): a project whose exams the built-in
+# shape table cannot name still has a runner, and the plan is where its
+# operator says so — one header line beside `**Tech Stack:**`, a template whose
+# `{paths}` stands for a task's own Proof `Test:` paths. The template is the
+# operator's own text (`npx vitest run {paths}`, `go test {paths}`); the
+# compiler pins the token count and nothing else about it.
+EXAM_COMMAND_LABEL_RE = re.compile(
+    r"^\*\*\s*exam[-\s]?command\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$", re.I)
+EXAM_PATHS_TOKEN = "{paths}"
+
+
+def _exam_command_label(stripped):
+    m = EXAM_COMMAND_LABEL_RE.match(stripped)
+    return m.group(1) if m else None
+
+
+def parse_exam_command(md_text):
+    """The plan's `**Exam command:**` template, or None when the header carries
+    no such line — in which case every task's command derives from the built-in
+    shape table exactly as it did before #644."""
+    return _plan_header_value(md_text, _exam_command_label)
+
+
+def exam_command_violations(md_text):
+    """The declared template's own refusals. `{paths}` is the whole contract:
+    zero occurrences and the template runs the same files for every task (or
+    none at all), two and the substitution is ambiguous."""
+    template = parse_exam_command(md_text)
+    if template is None:
+        return []
+    if template.count(EXAM_PATHS_TOKEN) != 1:
+        return ["exam-command: the template must carry %s exactly once"
+                % EXAM_PATHS_TOKEN]
     return []
 
 
@@ -908,8 +956,19 @@ PY_PROOF_TEST_RE = re.compile(r"^tests/(?:[^/]+/)*[^/]+\.py$")
 BUN_PROOF_TEST_RE = re.compile(r"^tests/(?:[^/]+/)*[^/]+\.test\.ts$")
 
 
-def derive_task_test_cmd(proof_tests):
+def _known_proof_shape(path):
+    """Whether the built-in table can name a runner for one `Test:` path."""
+    return bool(MJS_PROOF_TEST_RE.match(path) or PY_PROOF_TEST_RE.match(path)
+                or BUN_PROOF_TEST_RE.match(path))
+
+
+def derive_task_test_cmd(proof_tests, exam_command=None):
     """The task-scoped test command a Proof's `Test:` paths derive, or None.
+
+    `exam_command` is the plan's declared template (#644) when it carries one:
+    it wins over the built-in table for every task naming at least one path,
+    and its `{paths}` becomes those paths space-joined in Proof order. A task
+    naming none has nothing to substitute and keeps its None either way.
 
     `proof_tests` is the task's Proof `Test:` paths in PROOF ORDER. Every path
     must match one of the three runnable shapes or the whole command is None —
@@ -922,6 +981,8 @@ def derive_task_test_cmd(proof_tests):
     """
     if not proof_tests:
         return None
+    if exam_command:
+        return exam_command.replace(EXAM_PATHS_TOKEN, " ".join(proof_tests))
     node_paths, py_paths, bun_paths = [], [], []
     for path in proof_tests:
         if MJS_PROOF_TEST_RE.match(path):
@@ -938,6 +999,32 @@ def derive_task_test_cmd(proof_tests):
     if bun_paths:
         parts.append("bun test " + " ".join(bun_paths))
     return " && ".join(parts)
+
+
+def exam_shape_violations(md_text, tasks):
+    """Peer review the fleet cannot examine, refused before launch (#644).
+
+    A `**Review:** peer` task promises a second reader AND an examiner, and the
+    examiner is dispatched only when the task has a command to run. When the
+    plan declares no `**Exam command:**` line and a task's Proof names a
+    `Test:` path in none of the three built-in shapes, that promise is silently
+    half-kept — so it is a refusal instead. A peer task whose Proof names no
+    `Test:` path at all never had an exam to lose and is left alone."""
+    if parse_exam_command(md_text) is not None:
+        return []  # the plan named its own runner; every shape is runnable
+    violations = []
+    for t in tasks:
+        if (t.get("review") or "lean") != "peer":
+            continue
+        proof_tests = (t.get("claims") or {}).get("proof_tests_ordered", [])
+        unknown = [p for p in proof_tests if not _known_proof_shape(p)]
+        if not unknown:
+            continue
+        violations.append(
+            "exam-shape: task %s — Review: peer, but no exam command derives "
+            "from %s; name an **Exam command:** line in the plan header or use "
+            "a shape the table knows" % (t["id"], ", ".join(unknown)))
+    return violations
 
 
 def _apply_claims_grammar(t, plan_claim=None):
@@ -1745,6 +1832,10 @@ def collect_violations(plan_path):
     # ... and the Global-Constraints `- Check:` commands, which belong to no
     # task and so are checked once for the whole plan, in either grammar.
     violations.extend(constraint_check_violations(plan_text))
+    # ... and the declared exam command (#644), plan-level for the same reason:
+    # the shell that would run it does not care which grammar the plan declares.
+    violations.extend(exam_command_violations(plan_text))
+    violations.extend(exam_shape_violations(plan_text, tasks))
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
     # A **Commutes:** after the header block is discarded by the runtime
@@ -1891,6 +1982,13 @@ def claims_grammar_advisories(tasks, tree_root=None):
     for a, b, shared in pairs:
         if tree_root is None:
             lines.append(
+                # This sentence is byte-frozen, not free prose: leg (e) of
+                # tests/test_compile_plan_proof_runs.py pins every `--check`
+                # byte for the Run-less fixture corpus against the compiler at
+                # sha 0a3559a, and two of those fixtures print this line. #637
+                # asked it to say `--base <checkout-dir>`; that edit fails the
+                # frozen comparison, so the checkout-dir wording lives in the
+                # `--base` help entry and the renders skip note instead.
                 "ADVISORY grammar: same-file pair not classifiable without "
                 "a tree — tasks %s and %s both name %s; pass --base so the "
                 "compiler can tell a mergeable text file from a non-text "
@@ -2457,7 +2555,9 @@ def render_advisories(plan_path, base, exclude=()):
     not trust is not one to render over. A `base` that is not a git checkout
     yields the single skip note instead of guessing. A render that raises
     degrades to one `render failed` line — advisory output never changes the
-    check's exit code, so nothing here may propagate."""
+    check's exit code, so nothing here may propagate. A `base` that is a 40-hex
+    sha naming no directory says so in its own words: the flag wants a checkout
+    directory, not a commit."""
     plan_text = Path(plan_path).read_text()
     if _malformed_task_headings(plan_text):
         return []
@@ -2468,6 +2568,12 @@ def render_advisories(plan_path, base, exclude=()):
     if base is None:
         return ["ADVISORY renders skipped: no git checkout found for %s (pass --base)"
                 % Path(plan_path).resolve().parent]
+    # A 40-hex `--base` that names no directory is a commit sha someone reached
+    # for where the flag wants a checkout: say so, rather than reporting the sha
+    # as a directory that failed to be a checkout (#637).
+    if not Path(base).is_dir() and re.fullmatch(r"[0-9a-f]{40}", str(base)):
+        return ["ADVISORY renders skipped: --base wants a checkout directory, "
+                "got a commit sha %s" % base]
     if not _git(base, "rev-parse", "--show-toplevel").strip():
         return ["ADVISORY renders skipped: %s is not a git checkout" % base]
     # Grammar-aware, like the compile and `--check` call sites: a claims-v1
@@ -2818,6 +2924,28 @@ DURATION_RE = re.compile(
 CLOCK_RE = re.compile(
     r"(elapsed|wall|Date\.now|time\.|perf_counter|monotonic|clock)", re.I)
 NO_CLOCK_DETAIL = "a duration bound with no wall-clock leg"
+# The two integration-hostile shapes (#631). Since #604 the driver re-runs every
+# merged task's `Run:` on the ADOPTED tree, where every sibling's changes have
+# folded in — so both of these pass in the task's own clone and fail there,
+# through no fault of the task.
+#
+# `test "$(pytest --collect-only -q | tail -1 | cut -d' ' -f1)" = 1461`: a suite
+# total is wrong by construction once any sibling adds a test. The pin is only
+# hostile when it counts the WHOLE suite — a collect-only naming a path counts
+# that path, which siblings do not move, so the segment before the first `|` is
+# read for a token that looks like one.
+COLLECT_ONLY_RE = re.compile(r"--collect-only\b")
+INTEGER_COMPARE_RE = re.compile(r"(?:(?<=\s)|^)(?:==?|-eq)\s+\d+(?!\S)")
+SUITE_TOTAL_ADVICE = ("the driver re-runs this on the adopted tree, where "
+                      "every sibling's tests have folded in — count a named "
+                      "path, or assert a delta")
+# `test ! -e tests/drainprobe`: a bare directory survives as a `__pycache__`
+# long after the thing it held is gone. A last segment carrying a `.` is a file
+# name, which does not come back on its own.
+ABSENCE_RE = re.compile(r"(?:(?<=[;&|])|^)\s*test\s+!\s+-[ed]\s+(\S+)")
+DIRECTORY_ABSENCE_ADVICE = ("a bare directory survives as a `__pycache__` on "
+                            "the adopted tree — name the file whose absence "
+                            "is the claim")
 
 
 def _clip_run(command, n=RUN_CLIP):
@@ -2917,6 +3045,41 @@ def _species_duration_without_clock(task_id, clauses, legs, runs):
     return lines
 
 
+def _pins_suite_total(command):
+    """True when `command` compares a whole-suite `--collect-only` count against
+    a bare integer.
+
+    The segment before the first `|` is the collect-only invocation itself; a
+    token there containing `/` or ending in `.py` names a path, which scopes the
+    count to something a sibling does not move."""
+    if not COLLECT_ONLY_RE.search(command):
+        return False
+    if not INTEGER_COMPARE_RE.search(command):
+        return False
+    head = command.split("|", 1)[0]
+    return not any("/" in tok or tok.endswith(".py") for tok in head.split())
+
+
+def _bare_directory_absence(command):
+    """The `test ! -e <path>` / `test ! -d <path>` paths whose last segment
+    carries no `.` — a directory name, not a file name."""
+    return [m.group(1) for m in ABSENCE_RE.finditer(command)
+            if "." not in m.group(1).rstrip("/").rsplit("/", 1)[-1]]
+
+
+def _species_suite_total_pin(task_id, clauses, legs, runs):
+    return [_species_line("suite-total-pin", task_id,
+                          "%s — %s" % (_clip_run(cmd), SUITE_TOTAL_ADVICE))
+            for cmd in runs if _pins_suite_total(cmd)]
+
+
+def _species_directory_absence_pin(task_id, clauses, legs, runs):
+    return [_species_line("directory-absence-pin", task_id,
+                          "%s — %s" % (_clip_run(cmd),
+                                       DIRECTORY_ABSENCE_ADVICE))
+            for cmd in runs if _bare_directory_absence(cmd)]
+
+
 # Species order inside a task; print order overall is task-major, so every line
 # for a task prints before any line for the next.
 PROOF_SPECIES = (
@@ -2925,6 +3088,8 @@ PROOF_SPECIES = (
     _species_default_unpinned,
     _species_universal_as_count_floor,
     _species_duration_without_clock,
+    _species_suite_total_pin,
+    _species_directory_absence_pin,
 )
 
 
@@ -2984,7 +3149,9 @@ def main(argv=None):
                          "referent-existence). Advisory: never changes the exit "
                          "code; prints nothing when there is nothing to say.")
     ap.add_argument("--base", type=Path, default=None,
-                    help="the tree file-level questions resolve against. It "
+                    help="the tree file-level questions resolve against, given "
+                         "as <checkout-dir> — a checkout directory, never a "
+                         "commit sha. It "
                          "is the tree the claims-v1 non-text same-file "
                          "classifier reads — on a plain compile, where it "
                          "orders the pair, and under --check, where the "
@@ -3128,7 +3295,10 @@ def main(argv=None):
     # Plan-level and grammar-independent: a `- Check:` command belongs to no
     # task, and the shell that would run it does not care which grammar the
     # plan declares.
-    grammar_violations = grammar_violations + constraint_check_violations(plan_text)
+    grammar_violations = (grammar_violations
+                          + constraint_check_violations(plan_text)
+                          + exam_command_violations(plan_text)
+                          + exam_shape_violations(plan_text, tasks))
     if grammar_violations:
         print("compile_plan: claims-v1 grammar violation(s) — refusing to "
               "compile:\n" + "\n".join(grammar_violations), file=sys.stderr)
@@ -3143,6 +3313,11 @@ def main(argv=None):
               "overlap coverage):\n" + "\n".join(files_violations),
               file=sys.stderr)
         raise SystemExit(1)
+
+    # The declared exam command (#644), read once for the whole plan. The
+    # refusal above has already run, so this template carries `{paths}` exactly
+    # once; None here means every task's command derives from the shape table.
+    exam_command = parse_exam_command(plan_text)
 
     out_tasks = []
     for t in tasks:
@@ -3263,7 +3438,8 @@ def main(argv=None):
           "proofTests": list(
               (by_id[tid].get("claims") or {}).get("proof_tests_ordered", [])),
           "testCmd": derive_task_test_cmd(
-              (by_id[tid].get("claims") or {}).get("proof_tests_ordered", [])),
+              (by_id[tid].get("claims") or {}).get("proof_tests_ordered", []),
+              exam_command),
           # The Proof `Run:` commands (#589), in Proof order, [] for a task
           # that names none (and for every legacy-grammar body). The driver
           # executes these in the task's clone; no model ever runs one, and

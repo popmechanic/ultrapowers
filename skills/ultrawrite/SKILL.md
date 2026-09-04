@@ -23,6 +23,13 @@ own do:/see: sentence about what they will see after the run, elicited and close
 `(elicited)` — then `**Goal:**`, `**Tech Stack:**`, the spec path, `## Global Constraints`,
 and one `**Acceptance:**` line.
 
+Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
+tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
+Proof `Test:` paths (`npx vitest run {paths}`). Without it the compiler derives each task's
+command from the paths alone, and it knows only pytest, `node fleet/tests/test_*.mjs` and
+`bun test`; a `**Review:** peer` task whose Proof names some other shape is refused at
+`--check` until one of the two is true.
+
 ## Task shape — pinned to what the parser actually reads
 
 `### Task N: <title>`, then the header block, then the Files block, then exactly six body
@@ -185,7 +192,8 @@ all three pass.
 
 The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the
 rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose`,
-`default-unpinned`, `universal-as-count-floor`, `duration-without-clock`. Read each one
+`default-unpinned`, `universal-as-count-floor`, `duration-without-clock`,
+`suite-total-pin`, `directory-absence-pin`. Read each one
 and repair the slot it points at *before* a reader is dispatched at that task: a reader
 spending its one question on a species the compiler already named is a reader wasted.
 
