@@ -83,6 +83,7 @@ FLEET_RUNS_BRANCH="${FLEET_RUNS_BRANCH:-main}"
 POLL_SECONDS="${FLEET_POLL_SECONDS:-2}"
 STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
 ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
+PUBLISH_BRANCH_WAIT="${PUBLISH_BRANCH_WAIT:-60}"             # for the pushed branch to show at the edge
 
 # Run identity, filled by `parse_assignment`. `RUN_N` is the bare number (the
 # `runs/<N>/` path); `RUN_ID` is `run-<N>` (the engine's runId, its run dir and
@@ -646,6 +647,37 @@ default_branch() {
   esac
 }
 
+# GitHub opens a PR the instant it is asked, but the `pull_request` workflow
+# run is triggered off the branch as GitHub's own index sees it — and a PR
+# opened within a second of its push (2026-09-03, #595) got no CI run at all
+# and needed a close/reopen. So between the push and the POST, ask the branches
+# endpoint for the pushed head and go on once the edge answers 200 with that
+# sha. A timeout is logged and the POST is made anyway: a PR without CI is one
+# the operator can re-trigger by hand; no PR is nothing to re-trigger.
+await_branch_visible() {
+  local head attempts n=0 t0 answer code sha
+  head="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
+  attempts="$(poll_attempts "$PUBLISH_BRANCH_WAIT")"
+  t0="$(date +%s)"
+  while [ "$n" -lt "$attempts" ]; do
+    # No `-f`: a 404 is an answer (not indexed yet), told from a 200 by the
+    # status code riding as the last line. First match wins in `json_field`,
+    # and the branch document's own `commit.sha` comes before the nested ones.
+    answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/branches/$BRANCH" \
+      -w '\n%{http_code}' 2>/dev/null || true)"
+    code="$(printf '%s' "$answer" | tail -n 1)"
+    sha="$(printf '%s' "$answer" | sed '$d' | json_field sha)"
+    if [ "$code" = 200 ] && [ -n "$head" ] && [ "$sha" = "$head" ]; then
+      log "publish: branch $BRANCH visible at the edge as $head after $(( $(date +%s) - t0 ))s"
+      return 0
+    fi
+    n=$(( n + 1 ))
+    sleep "$POLL_SECONDS"
+  done
+  log "publish: branch $BRANCH not yet visible at the edge as ${head:-<unknown>} after ${PUBLISH_BRANCH_WAIT}s — opening the PR anyway; its CI run may need a re-trigger"
+  return 0
+}
+
 # The PR is opened over GitHub's REST API through the edge, not with `gh`. `gh`
 # decides for itself which token to present, and the aggregate host proxies
 # only `/repos/<owner>/<repo>/…` — `/user`, which `gh` likes to ask first,
@@ -653,6 +685,7 @@ default_branch() {
 publish() { # $1 = outcome (gate-green|parked)
   local body title heading base draft payload answer code reply
   fleet_git -C "$TARGET_DIR" push origin "$BRANCH" || fail "publish: push $BRANCH"
+  await_branch_visible
   body="$(render_card "$1")"
   heading="$(plan_title)"
   [ -n "$heading" ] || heading="$RUN_ID"

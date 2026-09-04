@@ -31,6 +31,9 @@ const SCRIPT = path.join(HERE, '..', 'sandbox-boot.sh')
 const PLAN_SHA = 'a1'.repeat(20)
 const BASE_SHA = 'b2'.repeat(20)
 const ENGINE_SHA = 'c3'.repeat(20)
+/** The pushed head of the integration branch — what `git rev-parse` answers
+ *  and what the edge's branches endpoint has to report before the PR POST. */
+const HEAD_SHA = 'd4'.repeat(20)
 const TARGET = 'popmechanic/smoke'
 const VM_NAME = 'fleet-r7-2609032215-a1b2'
 const PR_URL = 'https://github.com/popmechanic/smoke/pull/1'
@@ -92,6 +95,16 @@ case "$url" in
     dupe=""
     [ -n "\${STUB_DUPE:-}" ] && dupe=',{"type":"github","name":"t-popmechanic-smoke-rw","help":"git clone https://github.int.exe.xyz/popmechanic/smoke.git"}'
     printf '{"integrations":[{"type":"http-proxy","name":"claude-max","help":"ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz"},{"type":"github","name":"fleet-runs","help":"git clone https://github.int.exe.xyz/popmechanic/fleet-runs.git or push to https://github.int.exe.xyz/popmechanic/fleet-runs.git"},{"type":"github","name":"gh-popmechanic-smoke","help":"git clone https://github.int.exe.xyz/popmechanic/smoke.git"}%s]}\\n' "$dupe" ;;
+  *github.int.exe.xyz/api/v3/repos/*/branches/*)
+    # GitHub's index catching up with the push: 404 for the first
+    # STUB_BRANCH_404 reads (forever under STUB_BRANCH_NEVER), then the branch
+    # document — its own \`commit.sha\` first, the nested tree sha after it.
+    n=$(bump branches); say "curl branches $n"
+    if [ -n "\${STUB_BRANCH_NEVER:-}" ] || [ "$n" -le "\${STUB_BRANCH_404:-0}" ]; then
+      printf '{"message":"Branch not found"}\\n404\\n'
+    else
+      printf '{"name":"ultra/integration-run-7","commit":{"sha":"%s","commit":{"tree":{"sha":"%s"}}}}\\n200\\n' "$STUB_HEAD_SHA" "\${STUB_TREE_SHA:-tree}"
+    fi ;;
   *github.int.exe.xyz/api/v3/repos/*/pulls)
     say "curl pr create"; printf '%s\\n' "$payload" >>"$FLEET_HOME/pr.log"
     printf '%s\\n%s\\n' "$STUB_PR_BODY" "\${STUB_PR_CODE:-201}" ;;
@@ -129,6 +142,8 @@ case "$1" in
     esac
     case "$3" in
       rev-list) if [ -n "\${STUB_NO_COMMITS:-}" ]; then echo 0; else echo 3; fi; exit 0 ;;
+      # The pushed head — what the branches endpoint has to echo back.
+      rev-parse) printf '%s\\n' "$STUB_HEAD_SHA"; exit 0 ;;
       # What the remote advertised as HEAD at clone time; \`none\` is a remote
       # that advertised nothing.
       symbolic-ref) [ "\${STUB_HEAD_REF:-}" = none ] && exit 1
@@ -252,6 +267,7 @@ function boot(ctx, args = ['boot'], env = {}) {
       STUB_VERDICT: 'PASS',
       STUB_PR_BODY: PR_JSON,
       STUB_PLAN_H1: PLAN_H1,
+      STUB_HEAD_SHA: HEAD_SHA,
       ...env,
     },
     timeout: 60000,
@@ -418,8 +434,8 @@ test('the clones are fleet-runs first, then the target at base — the engine is
   assert.equal(git.filter((a) => a.includes('switch')).length, 0)
   assert.deepEqual(
     git.filter((a) => a.join(' ').includes('ultra/integration-run-7')).map((a) => a[3]),
-    ['rev-list', 'push'],
-    'the run branch is only counted against base and pushed — never created or switched to')
+    ['rev-list', 'push', 'rev-parse'],
+    'the run branch is only counted against base, pushed, and read back for its head — never created or switched to')
 })
 
 test('the engine is a transient service with the contract argv; only its child env carries the Anthropic pair', () => {
@@ -536,6 +552,55 @@ test('the branch is pushed after the engine is inactive, and the PR is one REST 
   // off the box.
   assert.ok(stream(ctx).some((l) => l === `publish: ${PR_URL} (base main, draft false)`))
   assert.ok(stream(ctx).some((l) => l === `publish: author ${PR_AUTHOR}`))
+})
+
+test('the PR is opened only after the edge reports the pushed head on the branch', () => {
+  // GitHub's index lags the push, and a PR opened before the branch is indexed
+  // gets no `pull_request` CI run (#595). The edge answers 404 twice, then the
+  // branch document with the pushed sha — and only then is /pulls asked.
+  const ctx = makeHome()
+  assert.equal(boot(ctx, ['boot'], { STUB_BRANCH_404: '2' }).status, 0)
+  const s = stream(ctx)
+  const push = indexOf(ctx, `${ctx.home}/target push origin ultra/integration-run-7`)
+  const reads = s.map((l, i) => (l.startsWith('CALL curl branches') ? i : -1)).filter((i) => i >= 0)
+  const pr = indexOf(ctx, 'CALL curl pr create')
+  assert.equal(reads.length, 3, 'two 404s and one 200 — polling stops at the first match')
+  assert.ok(reads[0] > push, 'the branch is asked for only after it is pushed')
+  assert.ok(reads[2] < pr, 'the POST follows the 200')
+
+  // In the curl argv log the three branch reads sit between the push and the
+  // POST, and the POST is the very next curl after the last of them.
+  const curls = argvLines(ctx, 'curl')
+  const branchUrl = `https://github.int.exe.xyz/api/v3/repos/${TARGET}/branches/ultra/integration-run-7`
+  const branchIdx = curls.map((a, i) => (a.includes(branchUrl) ? i : -1)).filter((i) => i >= 0)
+  const prIdx = curls.findIndex((a) => a.some((u) => u.endsWith('/pulls')))
+  assert.equal(branchIdx.length, 3)
+  assert.equal(prIdx, branchIdx[2] + 1, 'the PR POST is the next curl after the branch became visible')
+  assert.ok(!curls[branchIdx[0]].includes('-f'), 'a 404 is an answer, not a curl failure')
+  assert.ok(!curls[branchIdx[0]].includes('-X'), 'the branch read is a GET')
+  assert.ok(s.some((l) => /^publish: branch ultra\/integration-run-7 visible at the edge as d4d4.* after \d+s$/.test(l)),
+    'one line says when the branch became visible: ' + s.filter((l) => l.startsWith('publish:')).join(' | '))
+  assert.ok(!s.some((l) => l.includes('not yet visible')), 'no timeout was logged')
+  assert.equal(prPosts(ctx).length, 1)
+  assert.equal(statusOf(ctx).state, 'done')
+})
+
+test('a branch the edge never shows within the wait still gets its PR, and the timeout is logged', () => {
+  // A PR without a CI run is one the operator can re-trigger by hand; no PR
+  // is nothing to re-trigger. Three seconds of wait at a zero poll step is
+  // four reads, then the POST anyway.
+  const ctx = makeHome()
+  assert.equal(boot(ctx, ['boot'], { STUB_BRANCH_NEVER: '1', PUBLISH_BRANCH_WAIT: '3' }).status, 0)
+  const s = stream(ctx)
+  const reads = s.filter((l) => l.startsWith('CALL curl branches')).length
+  assert.equal(reads, 4, 'polled for the whole wait, then gave up')
+  assert.ok(lastIndexOf(ctx, 'CALL curl branches') < indexOf(ctx, 'CALL curl pr create'), 'the POST follows the last read')
+  assert.ok(s.some((l) => l === `publish: branch ultra/integration-run-7 not yet visible at the edge as ${HEAD_SHA} after 3s — opening the PR anyway; its CI run may need a re-trigger`),
+    'the timeout is one log line: ' + s.filter((l) => l.startsWith('publish:')).join(' | '))
+  assert.ok(!s.some((l) => l.includes(' visible at the edge as ') && !l.includes('not yet')), 'no "became visible" line')
+  assert.equal(prPosts(ctx).length, 1, 'the PR is opened anyway')
+  assert.equal(statusOf(ctx).state, 'done')
+  assert.equal(statusOf(ctx).pr, PR_URL)
 })
 
 test('the base is the default branch the clone advertised, whatever it is called', () => {

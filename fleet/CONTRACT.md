@@ -105,8 +105,11 @@ step. The janitor reads fleet-runs, never a VM. No orchestrator, no control VM, 
   Append-only paths; `pull --rebase` and retry on non-fast-forward.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR. The human gate is the PR: ready on PASS, a draft
-  otherwise; the operator merges or closes it. NO GitHub integration is attached to `tag:fleet` except
-  `fleet-runs`.
+  otherwise; the operator merges or closes it. Between the push and the POST the script polls
+  `GET /repos/<owner>/<repo>/branches/<branch>` every 2 s until it reports the pushed head (at most
+  `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
+  `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
+  integration is attached to `tag:fleet` except `fleet-runs`.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created attached to nothing by `node fleet/target.mjs <owner>/<repo>`;
   the launcher attaches it per VM `--for 6h`. Never two GitHub integrations naming one repo on a VM —
