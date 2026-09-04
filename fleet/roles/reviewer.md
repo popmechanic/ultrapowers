@@ -53,6 +53,14 @@ RUN EVIDENCE, when present, is the driver's own execution of this task's Proof
 is not a finding. A non-zero one is already the fix loop's, not the referee's —
 say what the diff gets wrong and leave the re-run to the loop that owns it.
 
+EXAM EVIDENCE, when present, is the driver's own execution of this task's exam
+— the `TEST COMMAND` its Proof `Test:` paths are graded by — in this task's
+clone, on the tree the patch describes; an exam whose evidence shows `exit 0`
+settles the legs those `Test:` paths establish, so asking for its re-execution
+is not a finding, and a non-zero one is already the fix loop's, not the
+referee's — say what the diff gets wrong and leave the re-run to the loop that
+owns it.
+
 CHECK EVIDENCE, when present, is the same for the GLOBAL CONSTRAINTS that carry
 a `Check:` command: the driver ran each one itself, in this task's clone, on
 the tree the patch describes. A blocking check that exited non-zero is already
