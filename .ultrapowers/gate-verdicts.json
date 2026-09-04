@@ -1,0 +1,30 @@
+{
+  "tasks": {
+    "3": {
+      "hash": "bb5d75cd4f8bde27ce06c457ba2fb2348aa1ee3957474bb6dcf801acba0d564f",
+      "verdict": "pass",
+      "reason": "round 2: M1 by (a) constants and phrases absent; M2 by (b) six greps; M3 by (c) sentinel via pipe, shape mutation fails, MUST mutation fails"
+    },
+    "2": {
+      "hash": "bcef54090a5375e80ba05b6a50f723ee152ed83bc31d55bceb10432056b739d9",
+      "verdict": "pass",
+      "reason": "round 3: M1 by (a) nineteen exports, no local makeHome/boot by any keyword, throwing case prints FAILED and exits non-zero; M2 by (b) ten sections two-sided; M3 by (c) 49 ok lines + sentinels; M4 by timeout 60 per file"
+    },
+    "1": {
+      "hash": "4184baaa146071093cd81a6bdc161a031f77158c5392e2e05d80618bcfebc4a9",
+      "verdict": "pass",
+      "reason": "round 4: M1 by (a) re-exec literals absent in both sims, three no-exam rows, eight headers, sentinel under timeout; M2 by (b) six row literals in the new file; M3 by (c)+(d); M4 by timeout 60"
+    }
+  },
+  "tally": {
+    "tasks": 3,
+    "pass": 3,
+    "fail": 0,
+    "rounds": {
+      "1": 4,
+      "2": 3,
+      "3": 2
+    },
+    "dispatched": 9
+  }
+}
