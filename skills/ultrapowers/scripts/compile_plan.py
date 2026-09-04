@@ -405,6 +405,28 @@ def _claims_run_command(value):
     return m.group(1).strip() if m else command
 
 
+# A backtick SURVIVING that unwrap is not decoration: the driver runs these
+# strings through a shell, which reads `...` as a command substitution and
+# executes it (#616's comment of 2026-09-04, run-74). The plan cannot mean
+# that, so both the Proof `Run:` bullet and the Global-Constraints `- Check:`
+# bullet REFUSE it rather than advise about it — one wording, two callers, so
+# an author who learns to read one has learned to read the other.
+BACKTICK_COMMAND_NOTE = ("; the driver's shell reads it as a command "
+                         "substitution (run-74)")
+
+
+def _backtick_command_violation(kind, command, task_id=None):
+    """The `grammar:` line a `Run:`/`Check:` command carrying a backtick draws.
+
+    `kind` is the bullet's own label (`Run` or `Check`); `task_id` is the task
+    a `Run:` belongs to, and None for a `Check:`, which is plan-level and
+    belongs to no task. The command is quoted to its first 80 characters — long
+    enough to name which bullet, short enough to keep the refusal one line."""
+    where = "" if task_id is None else "task %s: " % task_id
+    return ("grammar: %s: command carries a backtick — %s%s%s"
+            % (kind, where, command[:80], BACKTICK_COMMAND_NOTE))
+
+
 # --- Clause-to-leg citation (#554) -------------------------------------------
 # run-51's proof gate rejected 11 of 24 pairs, every one for a gap a parser can
 # see: a Machine clause no leg examined, a universal or negation no leg could
@@ -834,7 +856,11 @@ def parse_claims_body(body, task_id, plan_claim=None):
                     proof_tests_ordered.append(path)
                 proof_tests.add(path)
         elif r:
-            proof_runs.append(_claims_run_command(r.group(1)))
+            command = _claims_run_command(r.group(1))
+            proof_runs.append(command)
+            if "`" in command:
+                violations.append(
+                    _backtick_command_violation("Run", command, task_id))
     for path in sorted(proof_tests & impl_paths):
         violations.append(
             "grammar: Proof test paths must be disjoint from implementation "
@@ -1377,8 +1403,25 @@ def parse_acceptance(text):
 GLOBAL_CONSTRAINTS_HEAD = re.compile(r"^##\s+Global\s+Constraints\s*$", re.I)
 SECTION_BREAK = re.compile(r"^#{1,2}\s+\S")  # next `#`/`##` heading ends the section
 
+# Constraints come in two kinds (2026-09-04 grilling, decision 1). Most are
+# sentences a reviewer reads; a `- Check: <command>` bullet is a COMMAND the
+# driver runs. Same bullet shape as a Proof `Run:`, read the same way, and
+# lifted out of the prose body so no referee is ever handed a shell line to
+# argue about.
+CHECK_LINE = re.compile(r"^-\s*Check:\s*(.+)$")
 
-def parse_global_constraints(text):
+# A trailing `(minor)` marks a check whose failure does not sink the run.
+# Case-insensitive, with optional whitespace inside and around the parens, and
+# stripped from the command — the driver runs the command, not the annotation.
+MINOR_SUFFIX = re.compile(r"\s*\(\s*minor\s*\)\s*$", re.I)
+
+
+def _global_constraints_section(text):
+    """The section body's `(line, in_fence)` pairs, untrimmed.
+
+    The single scan `parse_global_constraints` and `parse_constraint_checks`
+    share, so the two can never disagree about which lines the section holds —
+    and so every line one of them claims is a line the other drops."""
     lines = list(_fence_aware_lines(text))
     start = None
     for i, (line, in_fence) in enumerate(lines):
@@ -1386,7 +1429,7 @@ def parse_global_constraints(text):
             start = i + 1
             break
     if start is None:
-        return ""
+        return []
     body = []
     for line, in_fence in lines[start:]:
         # The section ends at the next #/## heading OR the first task heading —
@@ -1394,12 +1437,55 @@ def parse_global_constraints(text):
         # and without this stop the section swallows every task body.
         if not in_fence and (SECTION_BREAK.match(line.strip()) or match_head(line)):
             break
-        body.append(line)
+        body.append((line, in_fence))
+    return body
+
+
+def _claimed_by_check(line, in_fence):
+    """True for a line `parse_constraint_checks` turns into an entry. A fenced
+    one is an EXAMPLE of the grammar, not an instance of it: claimed by
+    nothing, so it stays in the verbatim prose body."""
+    return not in_fence and bool(CHECK_LINE.match(line.strip()))
+
+
+def parse_global_constraints(text):
+    body = [line for line, in_fence in _global_constraints_section(text)
+            if not _claimed_by_check(line, in_fence)]
     while body and not body[0].strip():
         body.pop(0)
     while body and (not body[-1].strip() or body[-1].strip() in ("---", "***", "___")):
         body.pop()
     return "\n".join(body)
+
+
+def parse_constraint_checks(text):
+    """The section's `- Check:` commands, in section order.
+
+    One `{"cmd": <command>, "minor": <bool>}` per bullet. `cmd` is the value
+    stripped and unwrapped by `_claims_run_command`'s whole-value backtick
+    rule — the same string handling a Proof `Run:` gets, because it is the same
+    kind of thing. `minor` is true exactly when the value ended in `(minor)`,
+    which is stripped from `cmd`. `[]` when the plan carries no section, or a
+    section that names no check."""
+    checks = []
+    for line, in_fence in _global_constraints_section(text):
+        if not _claimed_by_check(line, in_fence):
+            continue
+        value = CHECK_LINE.match(line.strip()).group(1).strip()
+        minor = bool(MINOR_SUFFIX.search(value))
+        if minor:
+            value = MINOR_SUFFIX.sub("", value)
+        checks.append({"cmd": _claims_run_command(value), "minor": minor})
+    return checks
+
+
+def constraint_check_violations(text):
+    """The `grammar:` refusals the section's `- Check:` commands draw.
+
+    Plan-level, so the line names no task. Both channels close on these — the
+    same footing as a claims-v1 body violation."""
+    return [_backtick_command_violation("Check", check["cmd"])
+            for check in parse_constraint_checks(text) if "`" in check["cmd"]]
 
 
 # Placeholder interface values — 'Consumes: nothing (…)' is authoring prose
@@ -1645,6 +1731,9 @@ def collect_violations(plan_path):
     if grammar == CLAIMS_GRAMMAR:
         violations.extend(plan_claim_violations(plan_text))
         violations.extend(gate_verdict_violations(plan_path, tasks))
+    # ... and the Global-Constraints `- Check:` commands, which belong to no
+    # task and so are checked once for the whole plan, in either grammar.
+    violations.extend(constraint_check_violations(plan_text))
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
     # A **Commutes:** after the header block is discarded by the runtime
@@ -2678,6 +2767,173 @@ def _render_process_rules(tasks, ctx):
 ADVISORY_RENDERS.append(("process-rule", _render_process_rules))
 
 
+# P5 — the recurring rejection species (#616). The 2026-09-04 rejections kept
+# turning on the same handful of shapes: a `;`-chained `Run:`, a `leg (e)`
+# written in prose, a default the Machine pins and no leg asserts, an `every`
+# checked as a count floor, a duration bound with no clock in sight. Each is a
+# TEXT property of a claims-v1 task's own slots, so the compiler can name it
+# before a reader is dispatched — and, like every render here, it only names it
+# (#492/#496: advisories report, never refuse).
+#
+# Each species reads a `Run:` command, a Proof leg, or a Machine clause against
+# the legs that CITE it. A task whose Machine line numbers no clause has no
+# clauses to read against, so it is silent exactly as a legacy task is — the
+# same empty-`machine_clauses` guard the citation grammar itself uses.
+RUN_JOIN_ADVICE = ("the exit status is the last command's — join with && "
+                   "or || exit 1")
+RUN_CLIP = 80
+# A back-reference by label: `parse_proof_legs` splits only at the NEXT expected
+# label, so `leg (b)` inside leg (d) reads as prose — and the reader who renames
+# a leg silently invalidates the sentence.
+PROSE_LEG_RE = re.compile(r"\blegs?\s*\(([a-z])\)")
+PROSE_LEG_ADVICE = ('the parser splits at the next expected label — write '
+                    '"the previous leg"')
+# `defaults to 4` with no citing leg naming `4`: the default is a number the
+# Proof never reads back.
+DEFAULT_LITERAL_RE = re.compile(r"\bdefaults?\s+to\s+`?([^\s,;.`]+)`?", re.I)
+UNPINNED_DEFAULT_DETAIL = "no citing leg pins it"
+# `every row` cited only by `at least 3 rows`: a floor is satisfied by a proper
+# subset, so nothing in the Proof falsifies the universal. A leg that says
+# `exactly`, or re-states the quantifier, or excludes the rest, does.
+COUNT_UNIVERSAL_RE = re.compile(r"\b(every|each|all)\b", re.I)
+COUNT_FLOOR_RE = re.compile(r"\bat least\b", re.I)
+COUNT_CLOSED_RE = re.compile(r"\b(exactly|every|each|all|no other|none)\b", re.I)
+COUNT_FLOOR_DETAIL = "a universal cited only by a count floor"
+# `waits <= 90 s` cited by a leg that counts iterations: the bound is a wall
+# time and no leg reads a wall clock.
+DURATION_RE = re.compile(
+    r"(≤|<=|within|under|at most|no more than)\s*\d+\s*"
+    r"(ms|s|sec|seconds?|min|minutes?)\b", re.I)
+CLOCK_RE = re.compile(
+    r"(elapsed|wall|Date\.now|time\.|perf_counter|monotonic|clock)", re.I)
+NO_CLOCK_DETAIL = "a duration bound with no wall-clock leg"
+
+
+def _clip_run(command, n=RUN_CLIP):
+    """A command's first `n` characters, whitespace collapsed — the command,
+    not its marker, so nothing is stripped off the front."""
+    s = " ".join(command.split())
+    return s if len(s) <= n else s[:n - 1].rstrip() + "…"
+
+
+def _species_line(species, task_id, detail, leg=None):
+    return ("ADVISORY proof-species: %s — task %s%s: %s"
+            % (species, task_id, ", leg %s" % leg if leg else "", detail))
+
+
+def _chains_on_semicolon(command):
+    """True when `command` carries a `;` outside single and double quotes.
+
+    A quoted `;` (`echo 'a; b'`, `python3 -c "print(1); print(2)"`) is an
+    argument, not a chain, so the walk toggles on the unescaped quotes and only
+    flags a `;` seen outside both. A backslash escapes the next character
+    everywhere but inside single quotes, where shell treats it literally."""
+    single = double = False
+    i = 0
+    while i < len(command):
+        c = command[i]
+        if c == "\\" and not single:
+            i += 2
+            continue
+        if c == "'" and not double:
+            single = not single
+        elif c == '"' and not single:
+            double = not double
+        elif c == ";" and not single and not double:
+            return True
+        i += 1
+    return False
+
+
+def _citing_legs(legs, clause_id):
+    return [leg for leg in legs if clause_id in leg["cites"]]
+
+
+def _species_run_chained_semicolon(task_id, clauses, legs, runs):
+    return [_species_line("run-chained-semicolon", task_id,
+                          "%s — %s" % (_clip_run(cmd), RUN_JOIN_ADVICE))
+            for cmd in runs if _chains_on_semicolon(cmd)]
+
+
+def _species_leg_named_in_prose(task_id, clauses, legs, runs):
+    lines = []
+    for leg in legs:
+        m = PROSE_LEG_RE.search(leg["text"])
+        if m:
+            lines.append(_species_line(
+                "leg-named-in-prose", task_id,
+                "`(%s)` — %s" % (m.group(1), PROSE_LEG_ADVICE),
+                leg=leg["label"]))
+    return lines
+
+
+def _species_default_unpinned(task_id, clauses, legs, runs):
+    lines = []
+    for clause in clauses:
+        m = DEFAULT_LITERAL_RE.search(clause["text"])
+        cited = _citing_legs(legs, clause["id"])
+        # An UNCITED clause is already a citation-grammar refusal; this species
+        # is about a clause the Proof does argue, whose legs skip the literal.
+        if m and cited and not any(m.group(1) in leg["text"] for leg in cited):
+            lines.append(_species_line(
+                "default-unpinned", task_id,
+                "`%s` — %s" % (m.group(1), UNPINNED_DEFAULT_DETAIL)))
+    return lines
+
+
+def _species_universal_as_count_floor(task_id, clauses, legs, runs):
+    lines = []
+    for clause in clauses:
+        cited = _citing_legs(legs, clause["id"])
+        if not COUNT_UNIVERSAL_RE.search(clause["text"]) or not cited:
+            continue
+        if all(COUNT_FLOOR_RE.search(leg["text"])
+               and not COUNT_CLOSED_RE.search(leg["text"]) for leg in cited):
+            lines.append(_species_line("universal-as-count-floor", task_id,
+                                       COUNT_FLOOR_DETAIL))
+    return lines
+
+
+def _species_duration_without_clock(task_id, clauses, legs, runs):
+    lines = []
+    for clause in clauses:
+        cited = _citing_legs(legs, clause["id"])
+        if not DURATION_RE.search(clause["text"]) or not cited:
+            continue
+        if not any(CLOCK_RE.search(leg["text"]) for leg in cited):
+            lines.append(_species_line("duration-without-clock", task_id,
+                                       NO_CLOCK_DETAIL))
+    return lines
+
+
+# Species order inside a task; print order overall is task-major, so every line
+# for a task prints before any line for the next.
+PROOF_SPECIES = (
+    _species_run_chained_semicolon,
+    _species_leg_named_in_prose,
+    _species_default_unpinned,
+    _species_universal_as_count_floor,
+    _species_duration_without_clock,
+)
+
+
+def _render_proof_species(tasks, ctx):
+    lines = []
+    for t in tasks:
+        claims = t.get("claims") or {}
+        clauses = claims.get("machine_clauses") or []
+        if not clauses:
+            continue
+        legs = claims.get("proof_legs") or []
+        runs = claims.get("proof_runs") or []
+        for species in PROOF_SPECIES:
+            lines.extend(species(t["id"], clauses, legs, runs))
+    return lines
+
+
+ADVISORY_RENDERS.append(("proof-species", _render_proof_species))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
@@ -2858,6 +3114,10 @@ def main(argv=None):
         grammar_violations = (plan_claim_violations(plan_text)
                               + grammar_violations
                               + gate_verdict_violations(args.plan, tasks))
+    # Plan-level and grammar-independent: a `- Check:` command belongs to no
+    # task, and the shell that would run it does not care which grammar the
+    # plan declares.
+    grammar_violations = grammar_violations + constraint_check_violations(plan_text)
     if grammar_violations:
         print("compile_plan: claims-v1 grammar violation(s) — refusing to "
               "compile:\n" + "\n".join(grammar_violations), file=sys.stderr)
@@ -2898,6 +3158,11 @@ def main(argv=None):
 
     acceptance = parse_acceptance(plan_text)
     global_constraints = parse_global_constraints(plan_text)
+    # The other kind of constraint: commands, not sentences. They ride beside
+    # `globalConstraints` in all three payloads — the driver runs them, and
+    # `fleet/run-main.mjs` spreads the args file into the engine's `args`, so
+    # nothing else upstream has to learn the key.
+    constraint_checks = parse_constraint_checks(plan_text)
     marked = any(not t.get("heuristic") for t in out_tasks)
     if acceptance["mode"] == "missing" and marked:
         sys.exit("error: " + ACCEPTANCE_MISSING_ERROR)
@@ -3017,6 +3282,7 @@ def main(argv=None):
         "allHeuristic": not marked,
         "acceptance": acceptance,
         "globalConstraints": global_constraints,
+        "constraintChecks": constraint_checks,
     }
 
     if emit_launch is not None:
@@ -3043,6 +3309,7 @@ def main(argv=None):
             "edges": [[e["from"], e["to"]] for e in edges],
             "acceptance": acceptance,
             "globalConstraints": global_constraints,
+            "constraintChecks": constraint_checks,
         }
         emit_launch.parent.mkdir(parents=True, exist_ok=True)
         emit_launch.write_text(json.dumps(launch_payload, indent=2))
@@ -3061,6 +3328,7 @@ def main(argv=None):
             "acceptance": acceptance,
             "waveLabels": wave_labels,
             "globalConstraints": global_constraints,
+            "constraintChecks": constraint_checks,
             "planPath": str(args.plan.resolve()),
             # The plan's ONE operator sentence (#552), or null when the header
             # carries none — every other key is unchanged.

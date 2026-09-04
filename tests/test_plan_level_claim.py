@@ -336,7 +336,7 @@ def test_extract_gate_input_task_is_unchanged(tmp_path):
 # ---------------------------------------------------------------------------
 
 ARGS_KEYS = ["waves", "wavesPath", "edges", "dependencyEdges", "acceptance",
-             "waveLabels", "globalConstraints", "planPath"]
+             "waveLabels", "globalConstraints", "constraintChecks", "planPath"]
 
 
 def _emit_args(tmp_path, plan_text, name):

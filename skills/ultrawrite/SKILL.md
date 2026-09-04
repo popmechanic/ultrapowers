@@ -159,6 +159,14 @@ a memory: the compiler refuses a plan whose record is missing or whose hashes ar
 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
 wave author never chooses which proof a task satisfies.
 
+Dispatch is **per task**, not per round. A task whose verdict lands first gets its next
+reader the moment its Claim or Proof is edited: re-extract that one task with
+`extract_gate_input.py`, dispatch one reader for it, and do not wait for the round's
+other verdicts to arrive — the verdict is still keyed on the hash, so the edit is what
+re-dispatches, and a round boundary buys nothing. Measured 2026-09-04: the four wide
+rounds took 13 of the 22 minutes; rounds five through nine were one or two tasks apiece,
+each of them idle behind a barrier it did not need.
+
 Then resolve provenance and compile:
 
     python3 $UW/check_provenance.py <plan.md>
@@ -168,6 +176,12 @@ Then resolve provenance and compile:
 `quoted from #NNN` claim against its issue body at signing time. `compile_plan.py --check`
 must print `PLAN OK`; read its `ADVISORY` lines before handoff. A plan is not done until
 all three pass.
+
+The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the
+rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose`,
+`default-unpinned`, `universal-as-count-floor`, `duration-without-clock`. Read each one
+and repair the slot it points at *before* a reader is dispatched at that task: a reader
+spending its one question on a species the compiler already named is a reader wasted.
 
 ## The worktree-pure contract
 
@@ -235,6 +249,13 @@ platform requirements. State what must be true **of the result**. Process rules 
 ordering, commit cadence, "write the failing test first" — are never Global Constraints:
 no diff evidences the order work was done in, so as a lens they yield only unverifiable
 findings, one per task.
+
+The section holds two kinds of bullet, and they are read by different machinery. A
+`- Check:` bullet is a command the driver executes in every task's clone before review
+and once on the adopted tree — blocking, unless it ends `(minor)`, which is recorded and
+never dispatched. A prose bullet is only the referee's attention lens: it is what decides
+whether a finding is minor, and nothing runs it. So a constraint a command can decide is
+written as a Check:, never as prose — prose is where the undecidable half goes.
 
 ## Execution handoff — analyze, then recommend
 
