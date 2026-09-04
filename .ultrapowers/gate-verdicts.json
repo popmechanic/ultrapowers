@@ -1,0 +1,29 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "e5358f927a2df82942f50b38f9cc257fb0d2bece9753bd97b5d83059ec82cbf6",
+      "verdict": "pass",
+      "reason": "round 1: M1 by (a) three-channel deep-equal incl. (MINOR) stripping, fenced bullet absent, [] cases; M2 by (b) exact string + BASE-compiler comparison over fixtures; M3 by (c) both channels refused with channel-specific prefix, wholly-wrapped forms not refused; M4 by (d) corpus exit 0 + imported byte-identity assertion"
+    },
+    "2": {
+      "hash": "c02ae4881fa5ccf73b24db267ce16c6b6ec6ff8d26c90ba29c4ecccca6779a4d",
+      "verdict": "pass",
+      "reason": "round 1: M1 by (a) five lines, species/task/leg named, legacy plan silent; M2 by (b) one discriminating row per species with repaired twin; M3 by (b)+(c) PLAN OK exit 0; M4 by (c) no line without --renders and (d) byte-identity re-run"
+    },
+    "3": {
+      "hash": "6e21ba41668522effef11a5739fc78cd4f9446c52a8d72034e611133aad63afe",
+      "verdict": "pass",
+      "reason": "round 1: M1 by (a) section-scoped nine-literal paragraph incl. not per round / do not wait; M2 by (b); M3 by (c) ten literals incl. never as prose; M4 by (d) word-boundary sweep + validator + three pytest files"
+    }
+  },
+  "tally": {
+    "tasks": 3,
+    "pass": 3,
+    "fail": 0,
+    "rounds": {
+      "1": 1,
+      "2": 1,
+      "3": 1
+    }
+  }
+}
