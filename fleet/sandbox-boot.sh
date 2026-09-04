@@ -94,6 +94,11 @@ ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
 # The plan's path inside the plan commit's tree, and the run's directory inside
 # the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
 PLAN_BLOB_PATH=".ultrapowers/plan.md"
+# The gate's verdict record, when the launcher had one to push. The compiler
+# refuses a claims-v1 plan without its record beside it (spec §4.5), under the
+# name `<plan-stem>.gate-verdicts.json` — so it lands next to the plan under
+# that name, and a plan branch without one is a legacy-grammar plan, not a fault.
+VERDICTS_BLOB_PATH=".ultrapowers/gate-verdicts.json"
 
 # Poll cadences. The defaults are the contract's; the tests set them to 0 so the
 # whole state machine runs in a second.
@@ -376,6 +381,17 @@ prepare_plan() {
   fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$PLAN_BLOB_PATH" >"$PLAN_FILE" \
     || fail "plan: $PLAN_SHA carries no $PLAN_BLOB_PATH"
   log "plan: $PLAN_BRANCH at $PLAN_SHA -> $PLAN_FILE"
+  # Measured on the first live launch of this shape (smoke run-72, 2026-09-04):
+  # the launcher pushed the record and the engine refused the plan for lacking
+  # it, because only plan.md was written out. The record is optional on the
+  # branch and mandatory beside the plan when it exists.
+  if fleet_git -C "$TARGET_DIR" cat-file -e "$PLAN_SHA:$VERDICTS_BLOB_PATH" 2>/dev/null; then
+    fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$VERDICTS_BLOB_PATH" >"${PLAN_FILE%.md}.gate-verdicts.json" \
+      || fail "plan: $PLAN_SHA carries $VERDICTS_BLOB_PATH but it could not be read"
+    log "plan: verdicts -> ${PLAN_FILE%.md}.gate-verdicts.json"
+  else
+    log "plan: $PLAN_SHA carries no $VERDICTS_BLOB_PATH (a legacy-grammar plan)"
+  fi
 }
 
 # --- the evidence worktree ---------------------------------------------------
