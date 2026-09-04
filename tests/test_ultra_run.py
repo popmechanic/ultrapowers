@@ -708,6 +708,12 @@ def test_validate_knobs_removes_its_probe_worktree_on_sigterm(tmp_path):
         assert _probe_dirs(repo), "probe worktree never appeared"
         proc.terminate()
         proc.wait(timeout=deadline_budget(15))
+        # The handler's `git worktree remove` races this process's teardown
+        # under xdist, so the removal is waited on the same way the appearance
+        # is (#603) rather than asserted the instant the signal lands.
+        gone_by = time.time() + deadline_budget(15)
+        while time.time() < gone_by and _probe_dirs(repo):
+            time.sleep(0.1)
     finally:
         if proc.poll() is None:
             proc.kill()

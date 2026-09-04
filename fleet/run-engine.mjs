@@ -438,6 +438,38 @@ export function parseCliJson(stdout) {
 
 const tail = (s, n = 4000) => String(s || '').slice(-n)
 
+// ── the integration clone's cache sweep (#631 option (d)) ────────────────────
+// The driver runs the suite in the integration clone — baseline, then each
+// wave's candidate — so a python suite leaves `__pycache__` and `.pytest_cache`
+// behind there before the integrated `Run:` pass reads the tree. That litter is
+// the driver's own: a task whose proof asserts a cache directory is ABSENT
+// would be parked by the suite run rather than by anything in the adopted tree.
+//
+// `git clean` is not the tool — it would take `node_modules` and every other
+// ignored file with it. This is one walk that removes directories of exactly
+// two names and nothing else: never a file, never a directory of another name,
+// and never anything under `.git` (a match by name in there is git's business).
+// Symlinks are not followed — Dirent.isDirectory() is false for a symlink, so a
+// link pointing at a cache directory is left alone rather than dereferenced.
+const CACHE_DIR_NAMES = new Set(['__pycache__', '.pytest_cache'])
+
+export const sweepCacheDirs = (root) => {
+  let removed = 0
+  const walk = (dir) => {
+    let entries
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name === '.git') continue
+      const p = path.join(dir, e.name)
+      if (!CACHE_DIR_NAMES.has(e.name)) { walk(p); continue }
+      // A removed directory is not descended into: its contents went with it.
+      try { fs.rmSync(p, { recursive: true, force: true }); removed++ } catch { /* leave it */ }
+    }
+  }
+  walk(root)
+  return removed
+}
+
 // Second wall on the reply patch (spec §3.3, waves.js PATCH_PREFIX parity):
 // withPatchCapture is the first wall (it overwrites the model-typed patch),
 // but a reply reaching here with a patch outside the driver-owned prefix is
@@ -551,6 +583,25 @@ export async function runEngine({
     .filter((c) => c && typeof c === 'object' && typeof c.cmd === 'string' && c.cmd.trim() !== '')
     .map((c) => ({ cmd: c.cmd, minor: Boolean(c.minor) }))
   const planPath = (typeof args.planPath === 'string' && args.planPath.trim()) || undefined
+  // The plan's H1, read ONCE here and carried to every wave's materialize as
+  // `--subject` (#633): the fold commit — and so the squash-merge the PR
+  // lands — is titled from the plan rather than from the wave counter. The
+  // title is the text after `# ` on the first line that begins that way,
+  // trimmed; a missing or unreadable plan, or one with no such line, leaves
+  // it undefined and the kernel writes BASE's message unchanged.
+  const planTitle = (() => {
+    if (!planPath) return undefined
+    let text
+    try {
+      text = fs.readFileSync(planPath, 'utf8')
+    } catch {
+      return undefined
+    }
+    for (const line of text.split('\n')) {
+      if (line.startsWith('# ')) return line.slice(2).trim() || undefined
+    }
+    return undefined
+  })()
   const wavesPath = (typeof args.wavesPath === 'string' && args.wavesPath.trim()) || undefined
   // Patch input is the ONLY input shape here (Amendment 9): the value is the
   // driver-owned patches directory, the trust anchor for reply patches.
@@ -1386,7 +1437,9 @@ export async function runEngine({
     // route had no post-fold suite repair at all): it edits files only, the
     // driver commits and re-runs the suite; cap 2; still red restores prevHead
     // and the wave is TEST_FAILED.
-    const mat = await runCli(['materialize', ...common, '--prev-head', prevHead, ...taskArgs])
+    const subjectArgs = planTitle ? ['--subject', planTitle] : []
+    const mat = await runCli(['materialize', ...common, '--prev-head', prevHead,
+      ...taskArgs, ...subjectArgs])
     const m = mat.parsed
     if (!m || !m.candidateSha) {
       return blocked('materialize refused: ' + ((m && (m.park || m.fallback)) || tail(mat.stderr, 300)))
@@ -1627,6 +1680,11 @@ export async function runEngine({
     if (merge.status === 'MERGED') {
       waveBaseSha = merge.headSha
       lastSuite = merge.suite
+      // The suite just ran in this clone; sweep its cache litter before any
+      // integrated `Run:` reads the tree. Once per wave that reaches here, and
+      // ahead of the loop — so every proof below sees the same swept tree.
+      const swept = sweepCacheDirs(integ)
+      appendEvent({ kind: 'driver:integrated-clean', wave: w + 1, removed: swept })
       // ── the integrated `Run:` proofs (#604 (b)+(c)) ────────────────────────
       // Here and nowhere else: the candidate's suite is green, the branch has
       // moved, and the working tree IS the adopted tree. Same `sh` seam as the

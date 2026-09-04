@@ -1312,7 +1312,8 @@ def _observe_modes(repo, prev_head, task_heads, paths):
     return modes, None, None
 
 
-def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes):
+def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes,
+                     subject=None):
     """The temporary-index route: seed from `prev_head`, apply the touched set,
     write the tree, commit it. Nothing here names a worktree path or a ref, so
     the checkout cannot move; the blobs land in the object store unreferenced
@@ -1322,6 +1323,12 @@ def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes):
     `--task-head` shas. A `--patch` task has no commit, so it contributes no
     parent: under patch input the candidate is a plain commit on the
     integration line, and the task's provenance is the fold log, not the DAG.
+
+    `subject`, when given, titles the commit and demotes `frontier fold wave
+    <N>` to the body: `commit-tree` joins its several `-m` values as
+    paragraphs, so the two `-m` values ARE the two-paragraph message (#633).
+    Absent, the wave line is the whole message, exactly as before — the flag
+    is an addition to the message, never a replacement for it.
     """
     with tempfile.TemporaryDirectory(prefix="fold-index-") as tmp:
         env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
@@ -1343,8 +1350,11 @@ def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes):
         parent_args = []
         for sha in [prev_head] + list(parents):
             parent_args += ["-p", sha]
+        wave_line = "frontier fold wave %d" % wave
+        message_args = ["-m", wave_line] if subject is None else \
+            ["-m", subject, "-m", wave_line]
         return _git_env(repo, env, "commit-tree", tree, *parent_args,
-                        "-m", "frontier fold wave %d" % wave).decode().strip()
+                        *message_args).decode().strip()
 
 
 def _unresolved_paths(wave_dir, recorded):
@@ -1428,7 +1438,8 @@ def cmd_materialize(args):
 
     candidate = _build_candidate(repo, args.prev_head,
                                  [t.ref for t in tasks if t.patch is None],
-                                 args.wave, touched, manifest, modes)
+                                 args.wave, touched, manifest, modes,
+                                 subject=args.subject)
     print(json.dumps({"candidateSha": candidate}))
     return 0
 
@@ -1601,6 +1612,11 @@ def main(argv=None):
                        type=_patch_arg, default=[],
                        help="the patch-input form of --task-head: the same "
                             "patch files the fold was given")
+    p_mat.add_argument("--subject", default=None,
+                       help="title the candidate with this text and body it "
+                            "with `frontier fold wave <N>` (#633 — the plan's "
+                            "H1). Omitted, the wave line is the whole message. "
+                            "The text is used verbatim.")
     p_mat.add_argument("--allow-unresolved", action="store_true",
                        help="build the candidate even though conflicts.json "
                             "carries unresolved entries (forensics only — the "

@@ -486,6 +486,17 @@ gate_receipt_path() {
   if [ -f "$a" ]; then printf '%s\n' "$a"; elif [ -f "$b" ]; then printf '%s\n' "$b"; fi
 }
 
+approve_receipt_path() {
+  # The two-move rule's second move, written by `run-main.mjs` beside the gate
+  # receipt once `ultra_gate.py --approve` has succeeded. The run dir is per run,
+  # so an approve receipt found here is this run's; the stamp inside it is the
+  # engine's business, not this script's.
+  local a b
+  a="$TARGET_DIR/fleet-receipts/$RUN_ID/approve-receipt.json"
+  b="$(run_dir_path)/approve-receipt.json"
+  if [ -f "$a" ]; then printf '%s\n' "$a"; elif [ -f "$b" ]; then printf '%s\n' "$b"; fi
+}
+
 last_phase() {
   local f
   f="$(run_dir_path)/events.jsonl"
@@ -843,7 +854,7 @@ do_boot() {
     run_engine
   fi
 
-  local code outcome verdict ahead
+  local code outcome verdict approval ahead
   code="$(engine_exit_code)"
   collect_evidence
 
@@ -870,9 +881,21 @@ $(engine_tail)"
     exit 1
   fi
 
+  # PASS greens the run on its own. A verdict short of PASS still greens it when
+  # the engine's gate approved the run anyway — the two-move rule — and the
+  # approve receipt beside the gate receipt is that approval. Throwing it away
+  # here would publish a draft the gate had already signed off.
   verdict="$(gate_verdict)"
-  if [ "$verdict" = "PASS" ]; then outcome="gate-green"; else outcome="parked"; fi
-  log "outcome: $outcome (verdict=${verdict:-none})"
+  approval=""
+  if [ "$verdict" = "PASS" ]; then
+    outcome="gate-green"
+  elif [ -n "$(approve_receipt_path)" ]; then
+    outcome="gate-green"
+    approval=", approved by the two-move rule"
+  else
+    outcome="parked"
+  fi
+  log "outcome: $outcome (verdict=${verdict:-none}$approval)"
   await_engine_inactive || fail "engine: fleet-engine-$RUN_N.service still active after ${ENGINE_STOP_TIMEOUT}s"
 
   # run-69: a parked run whose every task was blocked has a branch equal to

@@ -163,11 +163,13 @@ run number; `--overlap` and `--tier` ride the comment to the engine.
 engine service is inactive and the branch is ahead of base, the sandbox pushes
 `ultra/integration-run-<N>` and opens the PR itself, over one REST call
 through the edge (`POST /api/v3/repos/<owner>/<repo>/pulls`, never `gh`):
-ready on PASS, a draft carrying the gate receipt otherwise, against the
-target's default branch. Its body links the plan blob and the evidence tree, so
+ready on PASS or on the two-move rule's approval, a draft carrying the gate
+receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so
 the PR is the whole index of the run. `pr` and `prAuthor` on the status page are
 the answer's `html_url` and `user.login`. The PR is the gate: merge it, or close
-it. A `prAuthor` that is the installation bot rather than you means
+it. A squash-merge takes the plan's title as its subject, because the fold
+commit is titled from the plan's H1 and `frontier fold wave <n>` rides its body.
+A `prAuthor` that is the installation bot rather than you means
 `--act-as-user` did not take — link your GitHub account on exe.dev's
 Integrations page, and check the account is not a team.
 
@@ -194,8 +196,8 @@ names.
 | `booting` | the setup script is provisioning, or the bootstrap is cloning the engine and the boot script the target |
 | `running` | `fleet-engine-<N>.service` is active; `phase` says which wave |
 | `publishing` | the engine service is inactive and the branch is ahead of base; evidence committed, pushing and opening the PR |
-| `done` | PASS; `pr` is the ready PR, `prAuthor` who GitHub says opened it |
-| `parked` | a gate verdict other than PASS; `pr` is a draft PR, or `null` when the branch had nothing to publish |
+| `done` | PASS, or a verdict the two-move rule approved; `pr` is the ready PR, `prAuthor` who GitHub says opened it |
+| `parked` | a gate verdict other than PASS that no `approve-receipt.json` approved; `pr` is a draft PR, or `null` when the branch had nothing to publish |
 | `failed` | a step other than the engine's verdict broke; `error` says which |
 
 An engine exit of 1 with a gate receipt is a verdict, not a failure. A branch

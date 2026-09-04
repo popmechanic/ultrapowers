@@ -134,7 +134,9 @@ any VM. Everything a run produced is three branches on the repository the run wa
     https://github.int.exe.xyz/api/v3/repos/<owner>/<repo>/pulls -H 'content-type: application/json'
     -d <json>` with `title` (`fleet run-N: <plan h1>`), `head` = `ultra/integration-run-N`, `base` = the
     target's default branch read from the clone (`git symbolic-ref refs/remotes/origin/HEAD`; unreadable
-    is `failed`, never a guess), `body` = the rendered card, `draft` = true unless the verdict is PASS.
+    is `failed`, never a guess), `body` = the rendered card,
+    `draft` = true unless the verdict is PASS or `approve-receipt.json` is present beside the gate
+    receipt (the two-move rule already approved this run).
     The body links the plan blob (`.ultrapowers/plan.md` at `ultra/plan-run-<N>`) and the evidence tree
     (`.ultrapowers/runs/<N>/` at `ultra/evidence-run-<N>`), so the PR is the whole index of the run.
     `.html_url` is recorded as `pr` and `.user.login` as `prAuthor`, both logged; a non-2xx answer is
@@ -149,8 +151,9 @@ any VM. Everything a run produced is three branches on the repository the run wa
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
-  operator step between the gate and the PR. The human gate is the PR: ready on PASS, a draft
-  otherwise; the operator merges or closes it. Between the push and the POST the script polls
+  operator step between the gate and the PR.
+  The human gate is the PR: ready on PASS or on the two-move rule's approval, a draft otherwise;
+  the operator merges or closes it. Between the push and the POST the script polls
   `GET /repos/<owner>/<repo>/branches/<branch>` every 2 s until it reports the pushed head (at most
   `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
   `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
