@@ -135,8 +135,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    comment. Read all four back to the user: the run is `run-<N>`, the VM is
    `fleet-r<N>-…`, and `https://<vm>.exe.xyz/status.json` is its status page.
    Nothing else needs staging — the launcher commits the plan to the target's
-   `ultra/plan-run-<N>` branch, attaches the run's integration to that VM,
-   writes the assignment comment, and starts the run over ssh.
+   `ultra/plan-run-<N>` branch, then creates the VM in one lobby call with
+   both integrations attached, the assignment as its comment, and a setup
+   script that starts the run's unit. No ssh, no second step.
 
 3. **Walk away.** The run outlives this session; there is nothing to tail. Its
    state is `status.json`, the same bytes on the VM's status page and on the
