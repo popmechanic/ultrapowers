@@ -36,7 +36,10 @@ The ultrapowers plugin is installed. Two standing rules:
       exe.dev fleet (parallel waves in a sandbox, per-task review, the orchestrator
       opens the PR). Selecting ultrapowers authorizes execution: the plan is committed
       and the fleet run launched immediately, with no approval pause.
-   2. Subagent-Driven — superpowers:subagent-driven-development (sequential).
-   3. Inline — superpowers:executing-plans (inline).
+   2. Subagent-Driven — sequential, fresh context and review between tasks
+      (superpowers:subagent-driven-development when superpowers is installed;
+      otherwise one subagent per task from this session).
+   3. Inline — continuous execution in this session (superpowers:executing-plans
+      when installed; otherwise task by task from contract plus proof).
 </ultrapowers-routing>
 EOF

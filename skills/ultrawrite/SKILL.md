@@ -154,7 +154,13 @@ Its diet is capped mechanically, not by the reader's restraint:
 
 Feed the subagent **only** that output — no plan body, no ledger, no sibling tasks. Write
 each verdict, keyed on the hash the extractor prints, into the sibling
-`<plan-stem>.gate-verdicts.json`, with the run's `tally`. The verdict is an artifact, not
+`<plan-stem>.gate-verdicts.json`, with the run's `tally`. The compiler reads exactly this
+shape: `{"tasks": {"<id>": {"hash": "<the extractor's hash>", "verdict": "pass" | "fail",
+"reason": "<one sentence>"}, …}, "tally": {…}}` — `tasks` keyed by task id with those three
+fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispatched`,
+`rejected`, per-round counts) that is kept for the record and not validated; any extra
+key, such as a `history` array of every round's verdicts, is tolerated. A missing task, a
+stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
 a memory: the compiler refuses a plan whose record is missing or whose hashes are stale,
 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
 wave author never chooses which proof a task satisfies.

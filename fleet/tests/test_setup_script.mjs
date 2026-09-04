@@ -265,6 +265,21 @@ function makeCase() {
     fs.writeFileSync(file, PRELUDE + body)
     fs.chmodSync(file, 0o755)
   }
+  // The render and the PRELUDE's argv() both read a millisecond clock with
+  // GNU date's `%3N`; BSD date (macOS) prints a literal `3N` and the deadline
+  // arithmetic dies. On darwin only, answer that one format from Node's clock
+  // and hand every other call to the real date — the Linux VM, and CI, never
+  // take this path, so the script under test is unchanged.
+  if (process.platform === 'darwin') {
+    const file = path.join(bin, 'date')
+    fs.writeFileSync(file, [
+      '#!/bin/sh',
+      `if [ "$1" = "+%s%3N" ]; then exec ${JSON.stringify(process.execPath)} -e 'process.stdout.write(String(Date.now()))'; fi`,
+      'PATH="$STUB_REAL_PATH"; export PATH; exec date "$@"',
+      '',
+    ].join('\n'))
+    fs.chmodSync(file, 0o755)
+  }
   return {
     root,
     home,
