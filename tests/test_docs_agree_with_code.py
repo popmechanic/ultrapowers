@@ -22,8 +22,9 @@ by rewording:
     directory the engine is cloned into, the shape of a VM name — are the ones
     ``fleet/CONTRACT.md`` declares, and the unit is a file in ``fleet/``;
   * no document creates a GitHub integration attached to anything or
-    read-only, the per-target one acts as the user, and only ``fleet-runs`` is
-    ever named with ``tag:fleet`` (the contract's one-integration rule);
+    read-only, the per-target one acts as the user, and no document binds any
+    integration to ``tag:fleet`` (the contract's one-integration rule: both of
+    a run's credentials ride the VM from creation, and nothing rides the tag);
   * the retired vocabulary of the pre-lift fleet appears in none of the four
     documents;
   * ``validate_skill.py`` still accepts ``skills/ultrapowers``.
@@ -253,20 +254,20 @@ def contract_literal(regex, what):
 def test_the_documents_start_the_unit_the_contract_names():
     template = contract_literal(START_UNIT_RE, "the unit the launcher starts")
     instance = f"{template}<N>.service"
-    for document in (RUNBOOK, FIRST_RUN, CONTRACT):
+    for document in (RUNBOOK, CONTRACT):
         assert instance in read(document), f"{document} does not name `{instance}`"
         assert not NO_BLOCK_START_RE.search(read(document)), (
             f"{document} still shows a `--no-block start` line"
         )
     assert (ROOT / "fleet" / f"{template}.service").is_file(), (
         f"the contract's template `{template}.service` is not a file in fleet/ — "
-        "the golden copies it from there"
+        "the setup script installs it from there"
     )
 
 
 def test_the_documents_name_the_engine_directory_the_contract_declares():
     engine_dir = contract_literal(ENGINE_DIR_RE, "the engine directory")
-    for document in (RUNBOOK, FIRST_RUN):
+    for document in (RUNBOOK, CONTRACT):
         assert engine_dir in read(document), f"{document} does not name `{engine_dir}`"
 
 
@@ -292,10 +293,11 @@ def test_vm_names_in_the_documents_follow_the_contract():
 # ── the one-integration rule ─────────────────────────────────────────────────
 #
 # One GitHub integration per target, `gh-<owner>-<repo>`, acting as the user,
-# created attached to nothing; the launcher attaches it per VM. Only
-# `fleet-runs` ever rides `tag:fleet`. Two integrations naming one repo on a
-# VM have no documented tie-break (measured 2026-09-03), so a document showing
-# a read-only twin, or an add that attaches, teaches the fault back in.
+# created attached to nothing; the launcher binds it to the run's VM at
+# creation. NOTHING rides `tag:fleet` any more — a tagged object is a standing
+# grant on every fleet VM for as long as it lives. Two integrations naming one
+# repo on a VM have no documented tie-break (measured 2026-09-03), so a document
+# showing a read-only twin, or an add that attaches, teaches the fault back in.
 
 # Backslash-continued shell lines are one command.
 CONTINUATION_RE = re.compile(r"\\\n\s*")
@@ -341,17 +343,14 @@ def test_the_documents_show_the_per_target_add():
     )
 
 
-def test_only_fleet_runs_is_named_with_the_tag():
-    tagged = []
+def test_no_document_binds_an_integration_to_the_shared_tag():
+    commands = []
     for document in DOCUMENTS:
         for command in INTEGRATION_VERB_RE.findall(CONTINUATION_RE.sub(" ", read(document))):
-            if "tag:fleet" in command:
-                tagged.append((document.name, command))
-    assert tagged, "no document attaches anything to tag:fleet"
-    for document, command in tagged:
-        assert "fleet-runs" in command, (
-            f"{document} names tag:fleet on something other than fleet-runs: {command}"
-        )
+            commands.append((document.name, command))
+    assert commands, "no document shows an `integrations add|attach` command at all"
+    bound = [f"{name}: {command}" for name, command in commands if "tag:fleet" in command]
+    assert not bound, f"a document names tag:fleet on an add/attach: {bound!r}"
 
 
 # ── retired vocabulary ───────────────────────────────────────────────────────
@@ -383,6 +382,18 @@ RETIRED = (
     "t-<owner>-<repo>",
     "-ro`",
     "-rw`",
+    # The move onto the target (#597/#598): the copied image and its build
+    # scripts, the copy verb's flag, the image stamp, the state repository's
+    # config keys, and the plan path in it. A run is three `ultra/*-run-<N>`
+    # branches on the target now; none of these names anything that exists.
+    "fleet/golden.sh",
+    "golden-setup.sh",
+    "golden-bootstrap.sh",
+    "--copy-tags",
+    ".fleet-golden",
+    "vmTokenPath",
+    "fleetRuns",
+    "plans/run-<N>.md",
 )
 
 

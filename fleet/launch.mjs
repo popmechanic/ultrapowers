@@ -2,39 +2,47 @@
 /**
  * fleet/launch.mjs — start one run. The whole client, on the laptop.
  *
- * A run is a number N. The launcher, in this order:
+ * A run is a number N. There is no image to keep warm and no side repository to
+ * keep in sync: the run is created with one plain `new` on exe.dev's default
+ * image, and our delta is installed on that box by a first-boot setup script
+ * handed to `new` on stdin. The launcher, in this order:
  *
- *   1. commits the plan and its verdicts to `popmechanic/fleet-runs` as
- *      `plans/run-N.md` and takes that commit's sha as `plan=`;
- *   2. `cp`s the golden to a fresh VM name (`fleet-r<N>-<yymmddHHMM>-<4 hex>`,
- *      `--copy-tags` so the `fleet` tag and `fleet-runs` come with it);
- *   3. attaches the run's per-VM, time-boxed integrations, each `--for 6h`:
- *      `claude-max`, then the target's one GitHub object `gh-<owner>-<repo>`
- *      — attached for the run's whole life, since the sandbox clones, pushes
- *      and opens the PR through it and the PR itself is the human gate;
- *   4. writes the assignment comment — the record the sandbox reads once;
- *   5. waits until `ssh <ssh_dest> true` answers, then starts the run:
- *      `systemctl --user start fleet-run@<N>.service`.
+ *   1. validates its own arguments — nothing has been executed yet;
+ *   2. reads: the `--repo` checkout's `origin` (it must name `--target`), that
+ *      `--base` is a commit the checkout has, `integrations list --json` (the
+ *      target's one GitHub object must exist), `billing plan --json` (one run
+ *      must fit the plan's pool), the target's `ultra/*` refs (the run number
+ *      is one past the highest N they carry) and the engine tip;
+ *   3. refreshes the Claude credential — a refresh failure is a failure before
+ *      any VM exists;
+ *   4. commits the plan against a temporary index and pushes it to the target
+ *      as `ultra/plan-run-N`; that commit's sha is `plan=` in the assignment;
+ *   5. issues exactly one mutating lobby verb:
  *
- * Start AFTER attach: the boot never races an attachment. Nothing on the VM
- * polls; the comment is not a signal, the ssh start is. The unit is Type=exec,
- * so `start` (no `--no-block`) returns once the bootstrap has execve'd and
- * non-zero when it could not — that exit status IS the launch ack, and a
- * non-zero one is a launch failure shown verbatim.
+ *        new --name <vm> --tag fleet --comment '<assignment>'
+ *            --integration claude-max,gh-<owner>-<repo>
+ *            --cpu <cpu> --memory <memory> --setup-script /dev/stdin --json
+ *
+ *      with the rendered setup script on that call's stdin.
+ *
+ * Nothing waits for ssh and nothing starts the unit: the setup script does
+ * both, on the VM. A `new` that answers non-zero is retried — three attempts in
+ * all, a freshly minted name each time, because exe.dev reserves a refused name
+ * forever — and the failure after the third carries every attempt's output.
  *
  * A target with no `gh-<owner>-<repo>` object is a refusal, before the plan is
- * committed: a public repo would still clone from github.com, but nothing
- * could push its branch or open its PR, and a run that cannot publish is a
- * run nobody asked for. `node fleet/target.mjs <owner>/<repo>` builds the
- * object once.
+ * pushed: a public repo would still clone from github.com, but nothing could
+ * push its branch or open its PR, and a run that cannot publish is a run nobody
+ * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
  *
- * A refusal (exit 2) happens before step 1, so the account and `fleet-runs`
- * are exactly as they were. A failure after that (exit 1) prints the lobby's own words: exe.dev
- * documents no error envelope, so a refused name or a full account is shown
- * verbatim rather than paraphrased.
+ * A refusal (exit 2) happens before anything is created, so the account and the
+ * target are exactly as they were. A failure after that (exit 1) prints the
+ * lobby's own words: exe.dev documents no error envelope, so a refused name or
+ * a full account is shown verbatim rather than paraphrased.
  */
 
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -43,33 +51,42 @@ import {
   CLAUDE_INTEGRATION,
   COMMENT_MAX_BYTES,
   ENGINE_URL,
-  Refusal,
+  FLEET_DEFAULTS,
+  FLEET_TAG,
   LobbyError,
+  Refusal,
   buildComment,
   defaultExec,
-  ensureFleetRuns,
+  evidenceBranchFor,
   git,
   githubIntegrationFor,
-  highestPlanRun,
+  highestRunOnTarget,
+  integrationBranchFor,
   isFullSha,
   isRunNumber,
+  isSafeSha,
   isSafeTarget,
+  isVmName,
   listIntegrations,
-  listVms,
   loadFleetConfig,
   lobby,
   output,
   parseArgs,
+  parseMemoryGb,
+  planBranchFor,
+  readPlanCapacity,
   runCli,
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
+import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 
 /** One string, so a docs check that reads the first `usage` literal sees every
  *  flag the launch line may carry. */
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
-                             [--engine <40-hex>] [--overlap fold|serialize]
-                             [--tier standard|mostCapable] [--golden <vm>]
+                             [--repo <dir>] [--engine <40-hex>]
+                             [--overlap fold|serialize] [--tier standard|mostCapable]
+                             [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--json]`
 
 export const usage = () => USAGE
@@ -78,25 +95,50 @@ export const usage = () => USAGE
 export const OVERLAP_VALUES = Object.freeze(['fold', 'serialize'])
 export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
 
-/** How long each attachment the launcher makes lives. Wall clock; it lapses. */
-export const ATTACH_FOR = '6h'
+/** Where the plan lands in the commit the launcher pushes. */
+export const PLAN_PATH = '.ultrapowers/plan.md'
+export const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
 
-/** The start command for run N, run over ssh on the VM once it answers. The
- *  user manager needs XDG_RUNTIME_DIR set for a non-login ssh session. No
- *  `--no-block`: with Type=exec the return is the execve ack (Counsel 3). */
-export const startCommandFor = (run) =>
-  `XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run@${run}.service`
-
-/** How long to wait for the fresh VM to answer ssh, and how often to ask. */
-export const SSH_WAIT_MS = 120_000
-export const SSH_RETRY_MS = 3_000
-const SSH_OPTS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5']
-
-/** `ssh_dest` is an argv element, never shell text — but it is still checked
- *  to be one host-ish token before it is handed to ssh. */
-const SSH_DEST = /^[A-Za-z0-9._@:-]+$/
+/**
+ * How many `new` lines a launch may issue, and the window it sleeps in between
+ * them. A name exe.dev refused stays reserved, so each attempt mints its own.
+ */
+export const NEW_ATTEMPTS = 3
+export const RETRY_MIN_MS = 1_000
+export const RETRY_MAX_MS = 3_000
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** A positive decimal integer — what `--cpu` and the config's `cpu` must be. */
+const isPositiveInt = (value) => isRunNumber(value)
+
+/**
+ * What `--memory` and the config's `memory` must be: `<int>GB`, the spelling
+ * the lobby's `--memory` takes verbatim. `parseMemoryGb` also reads `16 G`,
+ * which would put a space inside the `new` line, so the shape is pinned here
+ * before the number is taken off it.
+ */
+const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
+
+/**
+ * The four spellings a checkout's `origin` may carry for one GitHub target.
+ * Anything else answers null, and the refusal names what it saw rather than
+ * guessing a repository out of it.
+ */
+const ORIGIN_SPELLINGS = Object.freeze([
+  /^https:\/\/github\.com\/(.+?)(?:\.git)?\/?$/,
+  /^git@github\.com:(.+?)(?:\.git)?\/?$/,
+  /^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?\/?$/
+])
+
+export function targetOfOriginUrl (url) {
+  const text = String(url ?? '').trim()
+  for (const pattern of ORIGIN_SPELLINGS) {
+    const match = pattern.exec(text)
+    if (match && isSafeTarget(match[1])) return match[1]
+  }
+  return null
+}
 
 /**
  * The engine sha, when `--engine` was not given: the tip of the PUBLIC
@@ -118,10 +160,6 @@ async function defaultEngineSha (exec) {
   return sha
 }
 
-/**
- * Everything the launcher does, with the exec seam, the clock, the sleep and
- * the name's random half injected. Answers the launched run's record.
- */
 // The Claude Max access token lives at the edge and expires in hours; the
 // laptop holds the refresh token. Before a VM exists, rotate it if it is within
 // 30 minutes of expiry — a run that outlives its bearer dies in the gate.
@@ -134,6 +172,10 @@ export function defaultRefreshCredential () {
   return { ok: false, out }
 }
 
+/**
+ * Everything the launcher does, with the exec seam, the clock, the sleep and
+ * the name's random half injected. Answers the launched run's record.
+ */
 export async function launch ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
   refreshCredential = defaultRefreshCredential
@@ -163,6 +205,20 @@ export async function launch ({
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
   }
+
+  const settings = config ?? await loadFleetConfig({ path: opts.config })
+  const cpu = String(opts.cpu ?? settings.cpu ?? FLEET_DEFAULTS.cpu)
+  const memory = String(opts.memory ?? settings.memory ?? FLEET_DEFAULTS.memory)
+  if (!isPositiveInt(cpu)) {
+    throw new Refusal(`launch: cpu must be a positive integer, got ${JSON.stringify(cpu)}`)
+  }
+  const memoryGb = isMemorySize(memory) ? parseMemoryGb(memory) : null
+  if (memoryGb === null) {
+    throw new Refusal(`launch: memory must be a whole number of gigabytes spelled <int>GB, got ${JSON.stringify(memory)}`)
+  }
+
+  const repoDir = path.resolve(String(opts.repo ?? process.cwd()))
+
   let planText
   try {
     planText = await fsp.readFile(planPath, 'utf8')
@@ -170,6 +226,12 @@ export async function launch ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
+  let verdictsText = null
+  try {
+    verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
+  } catch {
+    verdictsText = null
+  }
 
   // The comment's length does not depend on which sha the plan commit gets —
   // every sha is 40 hex — so the ceiling is checked here, before the world is
@@ -190,142 +252,180 @@ export async function launch ({
     )
   }
 
-  const settings = config ?? await loadFleetConfig({ path: opts.config })
-  const golden = opts.golden ?? settings.golden
+  // ── Reads. Still nothing mutated, on exe.dev or on the target. ────────────
+  const originUrl = await readOriginUrl({ exec, repoDir })
+  const originTarget = targetOfOriginUrl(originUrl)
+  if (originTarget !== target) {
+    throw new Refusal(
+      `launch: ${repoDir} has origin ${JSON.stringify(originUrl)}, which does not name ${target}`
+    )
+  }
+  const baseCheck = await git(exec, repoDir, ['rev-parse', '--verify', `${opts.base}^{commit}`])
+  if (baseCheck.code !== 0) {
+    throw new Refusal(
+      `launch: ${repoDir} has no commit ${opts.base}:\n${output(baseCheck)}`
+    )
+  }
 
-  // ── Reads. Still nothing mutated. The run number is one past the highest
-  //    plan in fleet-runs: a plan is committed before any VM exists, so the
-  //    plans directory is the complete record of runs ever launched. ────────
-  const fleetRunsDir = await ensureFleetRuns(exec, settings.fleetRuns)
-  const run = opts.run ? Number(opts.run) : await highestPlanRun(fleetRunsDir) + 1
   const githubName = githubIntegrationFor(target)
   if (!(await listIntegrations(exec)).some((row) => row.name === githubName)) {
     throw new Refusal(
       `launch: no ${githubName} integration — the sandbox could still clone a public ${target} from github.com, but could not push its branch or open its PR. Build it once: node fleet/target.mjs ${target}`
     )
   }
+
+  // One run must fit the plan's pool. Allocation is over-committable and
+  // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
+  // contention bounds concurrency, and two plans at once is by design.
+  const capacity = await readPlanCapacity(exec)
+  if (capacity.maxCpus < Number(cpu)) {
+    throw new Refusal(
+      `launch: --cpu ${cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
+    )
+  }
+  if (capacity.maxMemoryGb < memoryGb) {
+    throw new Refusal(
+      `launch: --memory ${memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
+    )
+  }
+
+  const run = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
   const engine = opts.engine ?? await defaultEngineSha(exec)
 
-  // ── The plan commit. A local git failure is still a refusal: exe.dev has
-  //    seen nothing but reads. ────────────────────────────────────────────────
-  const planName = `run-${run}.md`
-  const verdictsName = `run-${run}.gate-verdicts.json`
-  const stem = planPath.replace(/\.md$/, '')
-  await fsp.mkdir(path.join(fleetRunsDir, 'plans'), { recursive: true })
-  await fsp.writeFile(path.join(fleetRunsDir, 'plans', planName), planText)
-  const added = [`plans/${planName}`]
-  let verdicts = null
-  try {
-    verdicts = await fsp.readFile(`${stem}.gate-verdicts.json`, 'utf8')
-  } catch {
-    verdicts = null
-  }
-  if (verdicts !== null) {
-    await fsp.writeFile(path.join(fleetRunsDir, 'plans', verdictsName), verdicts)
-    added.push(`plans/${verdictsName}`)
-  }
-  const planSha = await commitPlan({ exec, dir: fleetRunsDir, added, run })
-
-  // ── The lobby verbs, then the ssh start. ──────────────────────────────────
-  const vm = vmNameFor(run, now(), rand)
-  const commands = []
-  const verb = async (remote) => {
-    commands.push(remote)
-    return lobby(exec, remote)
-  }
-
   const cred = refreshCredential()
-  if (!cred.ok) throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
+  if (!cred.ok) {
+    throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
+  }
 
-  await verb(`cp ${golden} ${vm} --copy-tags --json`)
-  await verb(`integrations attach ${CLAUDE_INTEGRATION} vm:${vm} --for ${ATTACH_FOR}`)
-  await verb(`integrations attach ${githubName} vm:${vm} --for ${ATTACH_FOR}`)
-  const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
-  await verb(`comment ${vm} '${comment}'`)
-
-  const startCommand = startCommandFor(run)
-  const row = (await listVms(exec, vm)).find((entry) => entry.name === vm)
-  if (!row?.sshDest || !SSH_DEST.test(row.sshDest)) {
-    throw new LobbyError(
-      `launch: ls '${vm}' --json shows no usable ssh_dest for the VM cp just made (got ${JSON.stringify(row?.sshDest ?? null)}); start it by hand: ssh <ssh_dest> '${startCommand}'`
+  // ── The plan commit, pushed to the target before the VM exists. Plumbing
+  //    against a temporary index, so the operator's index and working tree are
+  //    never touched. ─────────────────────────────────────────────────────────
+  const planBranch = planBranchFor(run)
+  const planSha = await commitPlan({ exec, repoDir, base: opts.base, run, planText, verdictsText })
+  const commands = []
+  const pushArgv = ['-C', repoDir, 'push', 'origin', `${planSha}:refs/heads/${planBranch}`]
+  commands.push(`git ${pushArgv.join(' ')}`)
+  const push = await exec('git', pushArgv)
+  if (push.code !== 0) {
+    throw new Refusal(
+      `launch: git push origin ${planSha}:refs/heads/${planBranch} failed (exit ${push.code}):\n${output(push)}`
     )
   }
-  const sshDest = row.sshDest
-  await waitForSsh({ exec, sshDest, vm, now, sleep, startCommand })
-  // The ack. `systemctl start` on a Type=exec unit returns non-zero when the
-  // bootstrap could not be exec'd (missing, not executable, no manager), so
-  // this is the one place a dead-on-arrival run is caught before the operator
-  // goes looking for a status page that will never appear.
-  const start = await exec('ssh', [sshDest, startCommand])
-  if (start.code !== 0) {
-    throw new LobbyError(
-      `launch: run ${run} did not start — ssh ${sshDest} '${startCommand}' failed (exit ${start.code}):\n${output(start)}`
-    )
+
+  // ── The one mutating lobby verb. ──────────────────────────────────────────
+  const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
+  const script = renderSetupScript({ run: String(run), ...readFleetFiles() })
+  const remoteFor = (vm) =>
+    `new --name ${vm} --tag ${FLEET_TAG} --comment '${comment}'` +
+    ` --integration ${CLAUDE_INTEGRATION},${githubName}` +
+    ` --cpu ${cpu} --memory ${memory} --setup-script /dev/stdin --json`
+
+  const minted = new Set()
+  const failures = []
+  let vm = null
+  for (let attempt = 1; attempt <= NEW_ATTEMPTS; attempt += 1) {
+    let name = vmNameFor(run, now(), rand)
+    while (minted.has(name)) name = vmNameFor(run, now())
+    if (!isVmName(name)) {
+      throw new Refusal(`launch: minted VM name ${JSON.stringify(name)} is not fleet-r<N>-<yymmddHHMM>-<4 hex>`)
+    }
+    minted.add(name)
+    const remote = remoteFor(name)
+    commands.push(remote)
+    try {
+      await lobby(exec, remote, { input: script })
+      vm = name
+      break
+    } catch (error) {
+      failures.push(`attempt ${attempt} of ${NEW_ATTEMPTS} (${name}):\n${error?.message ?? error}`)
+      if (attempt === NEW_ATTEMPTS) {
+        throw new LobbyError(
+          `launch: exe.dev refused \`new\` on all ${NEW_ATTEMPTS} attempts; run ${run}'s plan is on ${planBranch}\n${failures.join('\n')}`
+        )
+      }
+      await sleep(retryDelay())
+    }
   }
 
   return {
     run,
     runId: `run-${run}`,
     vm,
-    sshDest,
-    golden,
     statusUrl: statusUrlFor(vm),
     comment,
     plan: planSha,
-    planPath: `plans/${planName}`,
-    verdicts: verdicts !== null,
+    planBranch,
+    evidenceBranch: evidenceBranchFor(run),
+    integrationBranch: integrationBranchFor(run),
     target,
     base: opts.base,
     engine,
     github: githubName,
-    fleetRuns: fleetRunsDir,
+    cpu,
+    memory,
     launchedAt: now().toISOString(),
     commands
   }
 }
 
-/**
- * A fresh `cp` answers `ls` before it answers ssh. Ask `ssh <dest> true` until
- * it does, for at most SSH_WAIT_MS; a VM that never answers is reported with
- * the last ssh output and the start command, since the attachments and the
- * comment are already in place and only the start is owed.
- */
-async function waitForSsh ({ exec, sshDest, vm, now, sleep, startCommand }) {
-  const deadline = now().getTime() + SSH_WAIT_MS
-  for (;;) {
-    const res = await exec('ssh', [...SSH_OPTS, sshDest, 'true'])
-    if (res.code === 0) return
-    if (now().getTime() >= deadline) {
-      throw new LobbyError(
-        `launch: ${vm} did not answer ssh ${sshDest} within ${SSH_WAIT_MS / 1000} s; last answer (exit ${res.code}):\n${output(res)}\nits attachments and comment are in place — start it by hand: ssh ${sshDest} '${startCommand}'`
-      )
-    }
-    await sleep(SSH_RETRY_MS)
+/** A whole number of milliseconds in [RETRY_MIN_MS, RETRY_MAX_MS]. */
+const retryDelay = () =>
+  RETRY_MIN_MS + Math.floor(Math.random() * (RETRY_MAX_MS - RETRY_MIN_MS + 1))
+
+/** The `origin` URL of the checkout a launch runs against, or a refusal. */
+async function readOriginUrl ({ exec, repoDir }) {
+  const res = await git(exec, repoDir, ['remote', 'get-url', 'origin'])
+  if (res.code !== 0) {
+    throw new Refusal(
+      `launch: --repo ${repoDir} is not a git checkout with an origin remote:\n${output(res)}`
+    )
   }
+  return String(res.stdout ?? '').trim()
 }
 
 /**
- * Commit the plan (and its verdicts) and answer the commit's sha. A push that
- * loses a race is retried once behind a rebase — `plans/` is append-only, so
- * the rebase can only be clean.
+ * The plan commit: `<base>`'s tree plus `.ultrapowers/plan.md` (and the gate
+ * verdicts when the plan has a sibling verdicts file), one commit on `<base>`,
+ * built entirely with plumbing against a temporary index file. The operator's
+ * own index and working tree are never read and never written, so a launch
+ * from a dirty checkout is as safe as one from a clean one.
+ *
+ * A local git failure here is still a refusal: exe.dev has seen nothing but
+ * reads, and the target has nothing new on it.
  */
-async function commitPlan ({ exec, dir, added, run }) {
-  const add = await git(exec, dir, ['add', '--', ...added])
-  if (add.code !== 0) throw new Refusal(`fleet-runs: git add failed:\n${output(add)}`)
-  const commit = await git(exec, dir, ['commit', '-m', `plan run-${run}`])
-  if (commit.code !== 0) throw new Refusal(`fleet-runs: git commit failed:\n${output(commit)}`)
-  let push = await git(exec, dir, ['push'])
-  if (push.code !== 0) {
-    await git(exec, dir, ['pull', '--rebase'])
-    push = await git(exec, dir, ['push'])
+async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText }) {
+  const indexDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-plan-'))
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(indexDir, 'index') }
+  const plumb = async (argv, options = {}) => {
+    const res = await exec('git', ['-C', repoDir, ...argv], { env, ...options })
+    if (res.code !== 0) {
+      throw new Refusal(`launch: git ${argv.join(' ')} failed (exit ${res.code}):\n${output(res)}`)
+    }
+    return String(res.stdout ?? '').trim()
   }
-  if (push.code !== 0) throw new Refusal(`fleet-runs: git push failed:\n${output(push)}`)
-  const head = await git(exec, dir, ['rev-parse', 'HEAD'])
-  const sha = String(head.stdout).trim()
-  if (!isFullSha(sha)) {
-    throw new Refusal(`fleet-runs: git rev-parse HEAD answered ${JSON.stringify(sha)}, not a 40-hex sha`)
+  try {
+    await plumb(['read-tree', base])
+    const entries = [[PLAN_PATH, planText]]
+    if (verdictsText !== null) entries.push([VERDICTS_PATH, verdictsText])
+    for (const [rel, text] of entries) {
+      const blob = await plumb(['hash-object', '-w', '--stdin'], { input: text })
+      if (!isSafeSha(blob)) {
+        throw new Refusal(`launch: git hash-object answered ${JSON.stringify(blob)}, not an object name`)
+      }
+      await plumb(['update-index', '--add', '--cacheinfo', `100644,${blob},${rel}`])
+    }
+    const tree = await plumb(['write-tree'])
+    if (!isSafeSha(tree)) {
+      throw new Refusal(`launch: git write-tree answered ${JSON.stringify(tree)}, not an object name`)
+    }
+    const sha = await plumb(['commit-tree', tree, '-p', base, '-m', `ultrapowers plan run-${run}`])
+    if (!isFullSha(sha)) {
+      throw new Refusal(`launch: git commit-tree answered ${JSON.stringify(sha)}, not a 40-hex sha`)
+    }
+    return sha
+  } finally {
+    await fsp.rm(indexDir, { recursive: true, force: true })
   }
-  return sha
 }
 
 /** The four lines a launched run prints: its id, its VM, where to watch, what it was told. */

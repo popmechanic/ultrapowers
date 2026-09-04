@@ -1,27 +1,32 @@
 /**
  * fleet/lobby.mjs — the laptop's half of the fleet, in one place.
  *
- * There is no orchestrator and no control VM. A run is a number N; its plan is
- * `plans/run-N.md` in `popmechanic/fleet-runs`; its VM is one incarnation
- * named `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by the pattern
- * `fleet-r<N>-*`. Everything the laptop does is either a git command against
- * `fleet-runs` or one exe.dev lobby verb issued as `ssh exe.dev "<verb …>"`.
+ * There is no orchestrator and no control VM. A run is a number N; it lives on
+ * the *target* repository as three branches — `ultra/plan-run-N`,
+ * `ultra/integration-run-N`, `ultra/evidence-run-N` — and its VM is one
+ * incarnation named `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by the
+ * pattern `fleet-r<N>-*`. Everything the laptop does is either a git command
+ * against the target's clone or one exe.dev lobby verb issued as
+ * `ssh exe.dev "<verb …>"`. There is no side repository: the run's durable
+ * record is the target's own refs.
  *
  * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
- * share: the exec seam, the config file, the name validators, and
- * the two lobby readers. It runs from the installed plugin cache, so — like
- * `doctor.mjs` — every specifier is `node:`-prefixed and there are no npm
+ * share: the exec seam, the config file, the name validators, the branch
+ * names, and the lobby readers. It runs from the installed plugin cache, so —
+ * like `doctor.mjs` — every specifier is `node:`-prefixed and there are no npm
  * dependencies.
  *
  * ## The exec seam
  *
- * One function, `exec(cmd, argv)`, resolving `{ code, stdout, stderr }` and
- * never rejecting. It is `execFile`, never a shell string: nothing this process
- * builds is ever parsed by a local shell. The exe.dev lobby still parses the
- * remote half (`ssh exe.dev "cp fleet-golden fleet-r7-… --json"` is one argv
- * element), so every value interpolated into that string is validated first —
- * `isSafeTarget`, `isFullSha`, `isRunNumber`, `isVmName` — and the only quoted
- * field (the assignment comment) is built exclusively from validated parts.
+ * One function, `exec(cmd, argv, options?)`, resolving `{ code, stdout, stderr }`
+ * and never rejecting. It is `execFile`, never a shell string: nothing this
+ * process builds is ever parsed by a local shell. `options.input` is the only
+ * way a secret reaches a child — written to its stdin, never to its argv. The
+ * exe.dev lobby still parses the remote half (`ssh exe.dev "new fleet-r7-… --json"`
+ * is one argv element), so every value interpolated into that string is
+ * validated first — `isSafeTarget`, `isFullSha`, `isRunNumber`, `isVmName` —
+ * and the only quoted field (the assignment comment) is built exclusively from
+ * validated parts.
  */
 
 import { execFile } from 'node:child_process'
@@ -29,9 +34,6 @@ import { randomBytes } from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { promisify } from 'node:util'
-
-const execFileAsync = promisify(execFile)
 
 // ── Names and shas ──────────────────────────────────────────────────────────
 
@@ -55,8 +57,8 @@ export const isRunNumber = (value) => /^[1-9][0-9]*$/.test(String(value))
 /**
  * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev keeps a
  * deleted name reserved, so a name is minted once per launch and never derived
- * from N alone — the run's durable identity is N, in the comment, the branch
- * and `fleet-runs`; the VM name is only where it is running this time.
+ * from N alone — the run's durable identity is N, in the comment and in the
+ * target's three branches; the VM name is only where it is running this time.
  */
 const VM_NAME = /^fleet-r([1-9][0-9]*)-[0-9]{10}-[0-9a-f]{4}$/
 
@@ -97,12 +99,38 @@ export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
 /** The run's status page, served by `busybox httpd` on the VM's port 8000. */
 export const statusUrlFor = (vmName) => `https://${vmName}.exe.xyz/status.json`
 
+// ── The three branches a run has on the target ──────────────────────────────
+
+/**
+ * A run's whole durable record is three branches on the target repository, all
+ * under one `ultra/` prefix so a single `ls-remote refs/heads/ultra/*` sees the
+ * fleet's entire history of that repo:
+ *
+ *   `ultra/plan-run-N`         the plan the launcher pushed before the VM booted
+ *   `ultra/integration-run-N`  the work the run integrated
+ *   `ultra/evidence-run-N`     what the run recorded about itself
+ */
+export const planBranchFor = (run) => `ultra/plan-run-${run}`
+export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
+export const evidenceBranchFor = (run) => `ultra/evidence-run-${run}`
+
+/** The three shapes, in one regex — with or without a `refs/heads/` head. */
+const RUN_BRANCH = /^(?:refs\/heads\/)?ultra\/(?:plan|integration|evidence)-run-([1-9][0-9]*)$/
+
+/**
+ * The run a branch carries, or null. `main` is null and so is a non-numeric
+ * tail like `ultra/plan-run-x` — a run number is never guessed, so anything
+ * that is not one of the three shapes answers null rather than a number.
+ */
+export const runOfBranch = (ref) => {
+  const match = RUN_BRANCH.exec(String(ref ?? ''))
+  return match ? Number(match[1]) : null
+}
+
 // ── Constants the whole laptop side agrees on ───────────────────────────────
 
 export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
-export const FLEET_RUNS_REPO = 'popmechanic/fleet-runs'
-export const FLEET_RUNS_URL = `https://github.com/${FLEET_RUNS_REPO}.git`
 export const ENGINE_REPO = 'popmechanic/ultrapowers'
 export const ENGINE_URL = `https://github.com/${ENGINE_REPO}.git`
 /** The http-proxy integration that injects the Claude OAuth token at the edge. */
@@ -112,12 +140,15 @@ export const COMMENT_MAX_BYTES = 200
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-/** The config file's three keys and their defaults — an operator who followed
- *  the RUNBOOK needs no `~/.ultrapowers/fleet.json` at all. */
+/**
+ * The config file's two keys and their defaults — the size a run asks of the
+ * plan's pool, and nothing else. An operator who followed the RUNBOOK needs no
+ * `~/.ultrapowers/fleet.json` at all. `doctor.mjs` pins the same literal by
+ * copy, because it imports nothing so that it runs when nothing else does.
+ */
 export const FLEET_DEFAULTS = Object.freeze({
-  golden: 'fleet-golden',
-  fleetRuns: '~/.ultrapowers/fleet-runs',
-  vmTokenPath: '~/.ultrapowers/vm-token'
+  cpu: '8',
+  memory: '16GB'
 })
 
 export const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
@@ -160,21 +191,37 @@ export async function loadFleetConfig ({ path: configPath } = {}) {
 
 // ── The exec seam ───────────────────────────────────────────────────────────
 
-/** The seam's real implementation: `execFile`, resolving, never a shell. */
-export async function defaultExec (cmd, argv = [], options = {}) {
-  try {
-    const { stdout, stderr } = await execFileAsync(cmd, argv, {
-      maxBuffer: 32 * 1024 * 1024,
-      ...options
-    })
-    return { code: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') }
-  } catch (error) {
-    return {
-      code: typeof error?.code === 'number' ? error.code : 1,
-      stdout: String(error?.stdout ?? ''),
-      stderr: String(error?.stderr ?? error?.message ?? error)
+/**
+ * The seam's real implementation: `execFile`, resolving, never a shell.
+ *
+ * `options.input` is written to the child's stdin and the stream is then
+ * ended — a child that reads stdin to EOF (`cat`, `gh pr create --body-file -`)
+ * must see one, or the promise never settles. Every other option is passed
+ * through to `execFile`. Without `input` the child's stdin is left exactly as
+ * `execFile` opened it.
+ */
+export function defaultExec (cmd, argv = [], options = {}) {
+  const { input, ...rest } = options ?? {}
+  return new Promise((resolve) => {
+    const child = execFile(
+      cmd, argv, { maxBuffer: 32 * 1024 * 1024, ...rest },
+      (error, stdout, stderr) => {
+        if (!error) {
+          resolve({ code: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+          return
+        }
+        resolve({
+          code: typeof error.code === 'number' ? error.code : 1,
+          stdout: String(stdout ?? ''),
+          stderr: String(stderr ?? '') || String(error.message ?? error)
+        })
+      }
+    )
+    if (input !== undefined && child.stdin) {
+      child.stdin.on('error', () => {})
+      child.stdin.end(input)
     }
-  }
+  })
 }
 
 /** Everything a command printed, in one string — what an error carries. */
@@ -185,9 +232,15 @@ export const output = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
  * element. A non-zero exit is a `LobbyError` carrying ALL of the output,
  * verbatim: exe.dev documents no error envelope, so nothing is parsed out and
  * nothing is dropped.
+ *
+ * `options.input` is handed to the seam as its third argument, so a verb that
+ * must be fed a secret gets it on stdin and never in an argv a `ps` could read.
+ * A verb with nothing to feed carries no third argument at all.
  */
-export async function lobby (exec, remote) {
-  const res = await exec('ssh', [EXE_HOST, remote])
+export async function lobby (exec, remote, { input } = {}) {
+  const res = input === undefined
+    ? await exec('ssh', [EXE_HOST, remote])
+    : await exec('ssh', [EXE_HOST, remote], { input })
   if (res.code !== 0) {
     const verb = remote.split(/\s+/)[0]
     throw new LobbyError(`exe.dev ${verb} failed (exit ${res.code}):\n${output(res)}`)
@@ -398,74 +451,68 @@ export function parseComment (text) {
   return fields
 }
 
-// ── The fleet-runs clone ────────────────────────────────────────────────────
+// ── Reading the target's runs ───────────────────────────────────────────────
 
 /**
- * Make sure the local `fleet-runs` clone exists and is current: clone it when
- * absent (the laptop's own git credential — the fleet holds no PAT anywhere),
- * and `pull --rebase` when it is there. Answers the resolved absolute path.
+ * The highest run number the target already carries, over all three branch
+ * shapes, or 0 when it carries none. One `ls-remote` against the clone's
+ * `origin` — the refs are the truth, so nothing here reads a local branch that
+ * a stale fetch might have left behind.
+ *
+ * A non-zero `ls-remote` is a *refusal*, not a zero: answering 0 for a
+ * repository we could not read would hand the next launch a run number that is
+ * already taken.
  */
-export async function ensureFleetRuns (exec, configuredPath) {
-  const dir = path.resolve(expandHome(configuredPath ?? FLEET_DEFAULTS.fleetRuns))
-  let present = false
-  try {
-    const stat = await fsp.stat(path.join(dir, '.git'))
-    present = stat.isDirectory() || stat.isFile()
-  } catch {
-    present = false
-  }
-  if (!present) {
-    await fsp.mkdir(path.dirname(dir), { recursive: true })
-    const res = await exec('git', ['clone', FLEET_RUNS_URL, dir])
-    if (res.code !== 0) refuse(`fleet-runs: git clone ${FLEET_RUNS_URL} failed:\n${output(res)}`)
-    return dir
-  }
-  const res = await git(exec, dir, ['pull', '--rebase'])
-  if (res.code !== 0) refuse(`fleet-runs: git pull --rebase in ${dir} failed:\n${output(res)}`)
-  return dir
-}
-
-/** The highest `run-<N>` a `plans/` directory holds, or 0. */
-export async function highestPlanRun (fleetRunsDir) {
-  let names
-  try {
-    names = await fsp.readdir(path.join(fleetRunsDir, 'plans'))
-  } catch {
-    return 0
+export async function highestRunOnTarget (exec, repoDir) {
+  const res = await git(exec, repoDir, ['ls-remote', 'origin', 'refs/heads/ultra/*'])
+  if (res.code !== 0) {
+    refuse(`git ls-remote origin 'refs/heads/ultra/*' in ${repoDir} failed (exit ${res.code}):\n${output(res)}`)
   }
   let best = 0
-  for (const name of names) {
-    const match = /^run-([1-9][0-9]*)\.md$/.exec(name)
-    if (match) best = Math.max(best, Number(match[1]))
+  // `<sha>\t<ref>` per line; only the ref half carries the run.
+  for (const line of String(res.stdout ?? '').split('\n')) {
+    const ref = line.split('\t')[1]
+    if (ref === undefined) continue
+    const run = runOfBranch(ref.trim())
+    if (run !== null && run > best) best = run
   }
   return best
 }
 
-/** Read `runs/<N>/status.json` out of the clone. Null when it is not there yet. */
-export async function readCommittedStatus (fleetRunsDir, run) {
-  try {
-    const text = await fsp.readFile(
-      path.join(fleetRunsDir, 'runs', String(run), 'status.json'), 'utf8'
-    )
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
+// ── The plan's capacity ─────────────────────────────────────────────────────
+
+const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+/**
+ * `16GB` and `16G` are 16. A bare `16` carries no unit and a fractional
+ * `1.5GB` is not a whole number of gigabytes — both answer null rather than a
+ * number a caller would then size a VM with.
+ */
+export const parseMemoryGb = (text) => {
+  const match = /^([1-9][0-9]*)\s*G(?:B)?$/i.exec(String(text ?? '').trim())
+  return match ? Number(match[1]) : null
 }
 
-/** Every `runs/<N>/status.json` in the clone, as `[{ run, status }]`, N ascending. */
-export async function listCommittedStatuses (fleetRunsDir) {
-  let names
-  try {
-    names = await fsp.readdir(path.join(fleetRunsDir, 'runs'))
-  } catch {
-    return []
+/**
+ * `ssh exe.dev "billing plan --json"` → the four fields a launch sizes a VM
+ * against. The payload (measured 2026-09-04) is one flat object with a dozen
+ * keys; these four are read and the rest ignored, so a new key upstream is not
+ * a failure here. A payload with no numeric `max_cpus` is a `LobbyError`
+ * carrying the whole output: the verb answered, but not with a plan.
+ */
+export async function readPlanCapacity (exec) {
+  const res = await lobby(exec, 'billing plan --json')
+  const payload = parseJson(res.stdout)
+  const maxCpus = num(payload?.max_cpus)
+  if (maxCpus === null) {
+    throw new LobbyError(
+      `exe.dev billing plan --json answered no numeric max_cpus:\n${output(res)}`
+    )
   }
-  const runs = names.filter(isRunNumber).map(Number).sort((a, b) => a - b)
-  const out = []
-  for (const run of runs) {
-    const status = await readCommittedStatus(fleetRunsDir, run)
-    if (status) out.push({ run, status })
+  return {
+    maxCpus,
+    maxMemoryGb: num(payload?.max_memory_gb) ?? 0,
+    tier: str(payload?.tier) ?? '',
+    plan: str(payload?.plan) ?? ''
   }
-  return out
 }

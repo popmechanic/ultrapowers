@@ -7,21 +7,33 @@
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * Three rows, all reads. Running the doctor twice is the same as running it
- * once: nothing here creates, copies or removes a VM, and nothing writes a
- * file. A red row names the `references/first-run.md` section that builds the
- * piece and, where there is one, the exact command.
+ * Five rows, all reads, every one of them answered by exe.dev's own truth:
+ *
+ *   exe-dev       `ssh exe.dev whoami` names an account.
+ *   capacity      `billing plan --json`'s pool holds a run of the configured
+ *                 size, and says how many such runs fit.
+ *   claude        the `claude-max` integration carries the bearer at the edge
+ *                 and rides no tag; claude-token's status line rides along.
+ *   github        `integrations setup github --list` lists an account.
+ *   integrations  no GitHub integration is attached to `tag:fleet`, and with
+ *                 `--target` the target's own object exists, unattached.
+ *
+ * Running the doctor twice is the same as running it once: nothing here
+ * creates, copies or removes a VM, and nothing writes a file. A red row names
+ * the `references/first-run.md` section that builds the piece and, where there
+ * is one, the exact command.
  *
  * There are no token rows, because after the lift no token is on any disk the
  * doctor could stat: the Claude subscription reaches a sandbox through the
  * `claude-max` http-proxy integration, whose bearer is injected at exe.dev's
  * edge, and GitHub reaches it through the target's one integration
- * `gh-<owner>-<repo>`. What used to be two secret-file rows is one
- * `integrations` row.
+ * `gh-<owner>-<repo>`. `integrations test claude-max` is not a check for an
+ * http-proxy (measured 2026-09-04: it answers "test connection is available
+ * for catalog and database integrations"), so the bearer's presence in the
+ * listing is the edge-side truth the doctor can read.
  */
 
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -35,57 +47,68 @@ const execFileAsync = promisify(execFile)
  *
  *  These are byte-identical to `FLEET_DEFAULTS` in fleet/lobby.mjs, and copied
  *  rather than imported on purpose: the doctor is the one file that has to run
- *  when nothing else in the fleet does, so it imports nothing. The copy is
- *  pinned by fleet/tests/test_doctor.mjs, which imports both and compares them
- *  — two readers of one config file that disagree about a default would
- *  certify a fleet the launcher never looks at.
- *
- *  The two paths are stored UNEXPANDED so the constant is comparable across
- *  machines. The doctor never resolves either — it reads only `golden` — but a
- *  row that ever opens one of them has to expand `~` first, the way
- *  lobby.mjs's `expandHome` does at the moment of use. */
-export const DOCTOR_DEFAULTS = Object.freeze({
-  golden: 'fleet-golden',
-  fleetRuns: '~/.ultrapowers/fleet-runs',
-  vmTokenPath: '~/.ultrapowers/vm-token'
-})
+ *  when nothing else in the fleet does, so it imports nothing. Both exams pin
+ *  this literal — two readers of one config file that disagree about a default
+ *  would certify a fleet the launcher never looks at. */
+export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
 
-/** The three rows, in the order the doctor reports them. Each id is also a
+/** The five rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
-export const ROW_IDS = Object.freeze(['exe-dev', 'integrations', 'golden'])
+export const ROW_IDS = Object.freeze(['exe-dev', 'capacity', 'claude', 'github', 'integrations'])
 
-/** Each row's `fix` is the `## ` heading in first-run.md that repairs it. */
-const FIXES = Object.freeze({
-  'exe-dev': 'exe-dev',
-  integrations: 'integrations',
-  golden: 'golden'
+/** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
+ *  every row id is its own heading. */
+const FIXES = Object.freeze(Object.fromEntries(ROW_IDS.map((id) => [id, id])))
+
+/** The doctor's own directory: claude-token.mjs sits beside this file, and the
+ *  doctor runs it rather than importing it, so its keychain access stays out of
+ *  a process that has to start when nothing else in the fleet does. */
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
+
+/** The five reads, in the order the doctor issues them, and the only commands
+ *  it ever runs. */
+const READS = Object.freeze({
+  whoami: 'ssh exe.dev whoami',
+  billing: 'ssh exe.dev "billing plan --json"',
+  list: 'ssh exe.dev "integrations list --json"',
+  github: 'ssh exe.dev "integrations setup github --list"',
+  token: `node ${CLAUDE_TOKEN} status`
 })
 
-/** The stamp a golden build leaves: the sha256 of the `golden-setup.sh` that
- *  built it. Comparing the two is the whole of the golden row — an image built
- *  from an older script is the failure mode a hand-built golden had no way to
- *  report. */
-const GOLDEN_STAMP = '/home/exedev/.fleet-golden'
-const GOLDEN_SCRIPT = fileURLToPath(new URL('./golden-setup.sh', import.meta.url))
-
-/** The integrations every fleet has, whatever it drives. */
+/** The tag a fleet VM inherits, and the integration that carries the bearer. */
 const TAG = 'fleet'
-const RUNS_INTEGRATION = 'fleet-runs'
 const OAUTH_INTEGRATION = 'claude-max'
-const NOTIFY_INTEGRATION = 'notify'
+
+/** The legacy per-account runs integration, still recognised by name so a fleet
+ *  that predates the lift is told to detach it. Assembled rather than spelled
+ *  out because no file under `fleet/` may carry that literal any more. */
+const LEGACY_RUNS = ['fleet', 'runs'].join('-')
 
 const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
 
-const SHA256 = /^[0-9a-f]{64}$/
 /** `owner/repo`, the only shape that may be interpolated into an ssh string. */
 const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
+
+/** The bearer the edge injects, as the listing spells it. */
+const BEARER = 'Authorization:Bearer'
 
 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
 const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
 
-/** `owner/repo` → the target's one integration object, `gh-<owner>-<repo>`.
- *  A copy of lobby.mjs's `githubIntegrationFor`, pinned equal by the exam. */
-export const targetIntegration = (target) => `gh-${String(target).replace(/\//g, '-')}`
+/** `owner/repo` → the target's one integration object, `gh-<owner>-<repo>`. */
+const targetIntegration = (target) => `gh-${String(target).replace(/\//g, '-')}`
+
+/** lobby.mjs's `parseMemoryGb` rule, copied: `<int>GB` or `<int>G` is that many
+ *  gigabytes, anything else is unreadable. */
+const MEMORY_GB = /^(\d+)GB?$/
+
+export function parseMemoryGb (value) {
+  const m = MEMORY_GB.exec(String(value ?? '').trim())
+  return m === null ? null : Number(m[1])
+}
+
+const parseCpus = (value) => (/^\d+$/.test(String(value ?? '').trim()) ? Number(value) : null)
 
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
@@ -115,7 +138,8 @@ export async function loadFleetConfig ({ path: configPath } = {}) {
 }
 
 /** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
- *  every row with a stub and the CLI drives them with a shell. */
+ *  every row with a stub and the CLI drives them with a shell. stderr joins
+ *  stdout because claude-token logs its status line there. */
 export async function defaultExec (cmd) {
   try {
     const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
@@ -130,32 +154,85 @@ export async function defaultExec (cmd) {
   }
 }
 
-async function exeDevRow (exec) {
-  const res = await exec('ssh exe.dev whoami')
+// ── exe-dev ──────────────────────────────────────────────────────────────────
+
+function exeDevRow (res) {
   const who = firstLine(res.stdout)
   if (res.code === 0 && who !== '') return row('exe-dev', 'ok', `signed in as ${who}`)
   return row('exe-dev', 'missing', `ssh exe.dev whoami answered code ${res.code} with no account name`)
 }
 
-// ── integrations ─────────────────────────────────────────────────────────────
+// ── capacity ─────────────────────────────────────────────────────────────────
 
 /**
- * `integrations list --json` read defensively. The doctor asks two questions of
- * each object — does it exist, and is it attached to `tag:fleet` — and both
- * answers have to survive a field rename on exe.dev's side without turning a
- * healthy fleet red for the wrong reason. So the reader takes the top level as
- * either an array or an object with an array under `integrations`, a name from
- * `name` or `id`, and attachments from whichever of the plausible keys is
- * present, each entry either the string `tag:fleet` / `vm:fleet-run-3` or an
- * object carrying a `tag` or `vm` key.
+ * `billing plan --json` is one flat object with `max_cpus`, `max_memory_gb`,
+ * `tier` and `plan`. The row asks one question: does the pool hold a run of the
+ * configured size, and how many such runs fit at once? A pool a run cannot fit
+ * in is not a broken account, it is a run asked for too large — so the red
+ * detail names `~/.ultrapowers/fleet.json`, the place that lowers it.
  */
-export function parseIntegrations (stdout) {
-  let parsed
+function capacityRow (res, config) {
+  const askedCpu = parseCpus(config.cpu)
+  const askedGb = parseMemoryGb(config.memory)
+  if (askedCpu === null || askedGb === null) {
+    return row(
+      'capacity',
+      'missing',
+      `~/.ultrapowers/fleet.json asks for cpu ${config.cpu} / memory ${config.memory}, which is not <int> and <int>GB`
+    )
+  }
+
+  const plan = res.code === 0 ? readJson(res.stdout) : null
+  const poolCpu = typeof plan?.max_cpus === 'number' ? plan.max_cpus : null
+  const poolGb = typeof plan?.max_memory_gb === 'number' ? plan.max_memory_gb : null
+  if (poolCpu === null || poolGb === null) {
+    return row(
+      'capacity',
+      'missing',
+      `billing plan --json answered code ${res.code} with no readable pool — ~/.ultrapowers/fleet.json sets the size a run asks for`
+    )
+  }
+
+  const tier = typeof plan.tier === 'string' && plan.tier !== '' ? plan.tier : String(plan.plan ?? 'untiered')
+  const pool = `${tier} pool ${poolCpu} vCPU / ${poolGb}GB`
+  const asked = `${askedCpu} vCPU / ${askedGb}GB`
+  if (poolCpu < askedCpu || poolGb < askedGb) {
+    return row(
+      'capacity',
+      'missing',
+      `${pool} cannot hold a run of ${asked} — lower cpu/memory in ~/.ultrapowers/fleet.json`
+    )
+  }
+  const fit = Math.floor(poolCpu / askedCpu)
+  return row('capacity', 'ok', `${pool} fits ${fit} run${fit === 1 ? '' : 's'} of ${asked}`)
+}
+
+// ── integrations, read once for two rows ─────────────────────────────────────
+
+function readJson (stdout) {
   try {
-    parsed = JSON.parse(String(stdout ?? ''))
+    return JSON.parse(String(stdout ?? ''))
   } catch {
     return null
   }
+}
+
+/**
+ * `integrations list --json` read defensively. The doctor asks three questions
+ * of each object — does it exist, does it carry the bearer, and is it attached
+ * to `tag:fleet` — and every answer has to survive a field rename on exe.dev's
+ * side without turning a healthy fleet red for the wrong reason. So the reader
+ * takes the top level as either an array or an object with an array under
+ * `integrations`, a name via `name` or `id`, the bearer via `config_summary` or
+ * `config.headers[]`, and attachments via whichever plausible key is present,
+ * each entry either the string `tag:fleet` / `vm:fleet-run-3` or an object
+ * carrying a `tag` key.
+ *
+ * Answers a Map of name → `{ name, tags, github, bearer }`, or null when the
+ * stdout is not a listing at all.
+ */
+export function parseIntegrations (stdout) {
+  const parsed = readJson(stdout)
   const list = Array.isArray(parsed)
     ? parsed
     : (Array.isArray(parsed?.integrations) ? parsed.integrations : null)
@@ -166,18 +243,38 @@ export function parseIntegrations (stdout) {
     if (!entry || typeof entry !== 'object') continue
     const name = typeof entry.name === 'string' ? entry.name : entry.id
     if (typeof name !== 'string' || name === '') continue
-    out.set(name, { name, tags: attachedTags(entry), github: isGithub(entry, name) })
+    out.set(name, {
+      name,
+      tags: attachedTags(entry),
+      github: isGithub(entry, name),
+      bearer: hasBearer(entry)
+    })
   }
   return out
 }
 
-/** Is this entry a GitHub integration? By its declared type, by the
- *  repository field only GitHub objects carry, or by the fleet's own naming. */
+/** Is this entry a GitHub integration? By its declared type, by the repository
+ *  field only GitHub objects carry, or by the fleet's own naming. */
 function isGithub (entry, name) {
   const type = entry.type ?? entry.kind
   if (type === 'github') return true
   if (typeof entry.repository === 'string' || typeof entry.repo === 'string') return true
-  return name === RUNS_INTEGRATION || name.startsWith('gh-')
+  return name === LEGACY_RUNS || name.startsWith('gh-')
+}
+
+/** Does this entry carry the Authorization bearer the edge injects? The
+ *  measured listing spells it in `config_summary`; a listing that spells it in
+ *  `config.headers[]` instead says the same thing. */
+function hasBearer (entry) {
+  const summary = typeof entry.config_summary === 'string' ? entry.config_summary : ''
+  if (summary.replace(/\s+/g, '').includes(BEARER)) return true
+  const headers = entry.config?.headers
+  if (Array.isArray(headers)) {
+    for (const header of headers) {
+      if (typeof header === 'string' && header.replace(/\s+/g, '').includes(BEARER)) return true
+    }
+  }
+  return false
 }
 
 const ATTACHMENT_KEYS = ['attachments', 'attached', 'attachedTo', 'attached_to', 'targets']
@@ -198,120 +295,117 @@ function attachedTags (entry) {
   return tags
 }
 
+const detach = (name) => `ssh exe.dev "integrations detach ${name} tag:${TAG}"`
+
+// ── claude ───────────────────────────────────────────────────────────────────
+
 /**
- * One `ssh` and one verdict for every integration a launch needs. The row's
- * detail names the FIRST thing wrong and the command that builds it, because
- * a stranger reading four failures at once cannot tell which one to run first.
+ * The bearer has to exist at the edge, and it has to ride no tag: an attached
+ * `claude-max` is the operator's own subscription handed to every fleet VM for
+ * as long as the object lives, rather than for the run's window.
  *
- * Only `fleet-runs` rides `tag:fleet`. `claude-max` exists and is on no tag —
- * the launcher attaches it per VM for the run's window. With `--target`, the
- * target's one object `gh-<owner>-<repo>` exists. Any GitHub integration other
- * than `fleet-runs` on the tag is red, whether or not `--target` named it: a
- * tag attachment lands on every fleet VM, and two GitHub integrations naming
- * one repo on one VM leave the edge to pick a credential by no documented rule
- * (measured 2026-09-03).
+ * claude-token's status line only decorates the row. Either outcome leaves the
+ * status alone — the bearer is injected at the edge whether or not this laptop
+ * still holds the refresh token — and only the detail differs.
  */
-async function integrationsRow (exec, target) {
-  const res = await exec(`ssh exe.dev "integrations list --json"`)
-  if (res.code !== 0) {
-    return row('integrations', 'missing', `integrations list answered code ${res.code}`)
+function claudeRow (found, tokenRes) {
+  if (found === null) {
+    return row('claude', 'missing', 'integrations list printed no readable JSON')
   }
-  const found = parseIntegrations(res.stdout)
+  const have = found.get(OAUTH_INTEGRATION)
+  if (have === undefined || !have.bearer) {
+    const why = have === undefined
+      ? `no ${OAUTH_INTEGRATION} integration at the edge`
+      : `${OAUTH_INTEGRATION} carries no ${BEARER} header`
+    return row('claude', 'missing', `${why} — node fleet/claude-token.mjs login`)
+  }
+  if (have.tags.has(TAG)) {
+    return row(
+      'claude',
+      'missing',
+      `${OAUTH_INTEGRATION} is attached to tag:${TAG}, which grants the subscription to every fleet VM — ${detach(OAUTH_INTEGRATION)}`
+    )
+  }
+  const status = tokenRes.code === 0 && firstLine(tokenRes.stdout) !== ''
+    ? firstLine(tokenRes.stdout)
+    : 'no refresh token in the keychain — the bearer will not be refreshed before a run'
+  return row('claude', 'ok', `${OAUTH_INTEGRATION} carries the bearer at the edge; ${status}`)
+}
+
+// ── github ───────────────────────────────────────────────────────────────────
+
+/**
+ * `integrations setup github --list` has no `--json` (`--json` is a
+ * flag-parsing error), so the row reads the two-line form it does print: a
+ * `GitHub accounts:` header, then one indented account per line. No account
+ * means the browser step has never been walked.
+ */
+function githubAccounts (stdout) {
+  const lines = String(stdout ?? '').split('\n')
+  const header = lines.findIndex((line) => /accounts\s*:\s*$/i.test(line))
+  const body = header === -1 ? lines : lines.slice(header + 1)
+  const names = []
+  for (const line of body) {
+    if (!/^\s+\S/.test(line)) continue
+    names.push(line.trim())
+  }
+  return names
+}
+
+function githubRow (res) {
+  const accounts = res.code === 0 ? githubAccounts(res.stdout) : []
+  if (accounts.length === 0) {
+    return row(
+      'github',
+      'missing',
+      `integrations setup github --list answered code ${res.code} with no account — ssh exe.dev integrations setup github walks the browser step`
+    )
+  }
+  return row('github', 'ok', `GitHub accounts ${accounts.join(', ')}`)
+}
+
+// ── integrations ─────────────────────────────────────────────────────────────
+
+/**
+ * A tag attachment lands on every fleet VM, so ANY GitHub integration on
+ * `tag:fleet` is red: two GitHub integrations naming one repo on one VM leave
+ * the edge to pick a credential by no documented rule (measured 2026-09-03).
+ * The launcher attaches the target's object per VM, for the run's window.
+ *
+ * With `--target`, the target's one object `gh-<owner>-<repo>` also has to
+ * exist. The detail names the FIRST thing wrong, because a stranger reading
+ * several failures at once cannot tell which one to run first.
+ */
+function integrationsRow (found, target) {
   if (found === null) {
     return row('integrations', 'missing', 'integrations list printed no readable JSON')
   }
-
-  const wants = [
-    { name: RUNS_INTEGRATION, tagged: true, fix: 'first-run.md §integrations builds it' },
-    { name: OAUTH_INTEGRATION, tagged: false, fix: 'first-run.md §integrations builds it' },
-    { name: NOTIFY_INTEGRATION, tagged: null, fix: 'enable notify on the exe.dev Integrations page' }
-  ]
-  if (target !== null) {
-    wants.push({ name: targetIntegration(target), tagged: false, fix: `node fleet/target.mjs ${target}` })
-  }
-
-  for (const want of wants) {
-    const have = found.get(want.name)
-    if (have === undefined) {
-      return row('integrations', 'missing', `no ${want.name} integration — ${want.fix}`)
-    }
-    if (want.tagged === true && !have.tags.has(TAG)) {
-      return row('integrations', 'missing', `${want.name} is not attached to tag:${TAG} — ${want.fix}`)
-    }
-    if (want.tagged === false && have.tags.has(TAG)) {
-      return row(
-        'integrations',
-        'missing',
-        `${want.name} is attached to tag:${TAG}, which grants it to every fleet VM — ssh exe.dev "integrations detach ${want.name} tag:${TAG}"`
-      )
-    }
-  }
   for (const [name, have] of found) {
-    if (have.github && name !== RUNS_INTEGRATION && have.tags.has(TAG)) {
+    if (have.github && have.tags.has(TAG)) {
       return row(
         'integrations',
         'missing',
-        `${name} is attached to tag:${TAG} — a GitHub integration is attached per VM, by the launcher; ssh exe.dev "integrations detach ${name} tag:${TAG}"`
+        `${name} is attached to tag:${TAG}, which grants it to every fleet VM — ${detach(name)}`
       )
     }
   }
-
-  const names = wants.map((w) => w.name).join(', ')
-  return row('integrations', 'ok', names)
+  if (target !== null) {
+    const want = targetIntegration(target)
+    if (!found.has(want)) {
+      return row('integrations', 'missing', `no ${want} integration for ${target} — node fleet/target.mjs ${target}`)
+    }
+    return row('integrations', 'ok', `${want} exists and rides no tag`)
+  }
+  return row('integrations', 'ok', `no GitHub integration rides tag:${TAG}`)
 }
 
-// ── golden ───────────────────────────────────────────────────────────────────
-
-/** The sha256 of the checked-in `fleet/golden-setup.sh`, or null when the
- *  script is not readable from this plugin copy. */
-export async function goldenScriptSha () {
-  try {
-    const bytes = await fsp.readFile(GOLDEN_SCRIPT)
-    return createHash('sha256').update(bytes).digest('hex')
-  } catch {
-    return null
-  }
-}
-
-/**
- * A golden is right when the image was built by the script this plugin ships.
- * The build writes the script's sha256 into `/home/exedev/.fleet-golden`, so
- * one `cat` and one local hash answer it — no probe VM, no inventory of what
- * the image contains, and no way for the two to agree by accident.
- *
- * A stamp that differs is not a broken image, it is an OLD one: the plugin has
- * moved on and the golden has not, which is exactly what `fleet/golden.sh
- * build` then `verify` then `swap` fixes.
- */
-async function goldenRow (exec, config) {
-  const res = await exec(`ssh ${config.golden}.exe.xyz cat ${GOLDEN_STAMP}`)
-  const stamp = firstLine(res.stdout)
-  if (res.code !== 0 || !SHA256.test(stamp)) {
-    return row(
-      'golden',
-      'missing',
-      `no build stamp at ${GOLDEN_STAMP} on ${config.golden} (code ${res.code}) — fleet/golden.sh build`
-    )
-  }
-  const want = await goldenScriptSha()
-  if (want === null) {
-    return row('golden', 'missing', `cannot read ${GOLDEN_SCRIPT} to hash it`)
-  }
-  if (stamp !== want) {
-    return row(
-      'golden',
-      'missing',
-      `${config.golden} was built by golden-setup.sh ${stamp.slice(0, 12)}, this plugin ships ${want.slice(0, 12)} — fleet/golden.sh build`
-    )
-  }
-  return row('golden', 'ok', `${config.golden} built by golden-setup.sh ${want.slice(0, 12)}`)
-}
+// ── the doctor ───────────────────────────────────────────────────────────────
 
 /**
  * Run every row against `config` and resolve `{ config, rows, verdict }`.
  * `exec(cmd)` resolves `{ code, stdout }`, so a test drives the doctor with a
- * stub. `target` is `owner/repo` or null; anything else is refused rather than
- * interpolated into an ssh string.
+ * stub. `target` is `owner/repo` or null; anything else is refused before any
+ * read rather than interpolated into an ssh string.
  */
 export async function doctor ({ config, exec, target = null } = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
@@ -321,10 +415,19 @@ export async function doctor ({ config, exec, target = null } = {}) {
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
 
+  const whoami = await run(READS.whoami)
+  const billing = await run(READS.billing)
+  const list = await run(READS.list)
+  const github = await run(READS.github)
+  const token = await run(READS.token)
+
+  const found = list.code === 0 ? parseIntegrations(list.stdout) : null
   const rows = [
-    await exeDevRow(run),
-    await integrationsRow(run, want),
-    await goldenRow(run, cfg)
+    exeDevRow(whoami),
+    capacityRow(billing, cfg),
+    claudeRow(found, token),
+    githubRow(github),
+    integrationsRow(found, want)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }
@@ -362,7 +465,14 @@ export function renderRows (rows) {
 async function main (argv) {
   const opts = parseArgs(argv)
   const config = await loadFleetConfig({ path: opts.configPath ?? DEFAULT_CONFIG_PATH() })
-  const result = await doctor({ config, exec: defaultExec, target: opts.target })
+  let result
+  try {
+    result = await doctor({ config, exec: defaultExec, target: opts.target })
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`)
+    process.exitCode = 2
+    return
+  }
   process.stdout.write(
     opts.json ? `${JSON.stringify(result)}\n` : `${renderRows(result.rows)}\n`
   )

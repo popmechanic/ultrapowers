@@ -1,24 +1,24 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with three rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with five rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
-A section says what the piece is, gives the commands that build it, and names
-the two or three things a newcomer would not know. The commands are the ones
-in `fleet/RUNBOOK.md`; `fleet/CONTRACT.md` is the authority for every literal.
-
-Commands a human runs interactively are offered as `! <command>`, so the human
-runs them and sees the output. After each one, re-run
-`! node <plugin-root>/fleet/doctor.mjs --json` and read the row back.
+A section says what the piece is, what the agent runs for you, what you do in a
+browser, and the two or three things a newcomer would not know. The commands are
+the ones in `fleet/RUNBOOK.md`; `fleet/CONTRACT.md` is the authority for every
+literal. Nothing here is a command a human has to type: the agent runs the
+commands and reads the answers back, and after each one it re-runs the doctor.
 
 ## exe-dev
 
 Every VM in the fleet lives on exe.dev, and the `exe.dev` SSH alias is how you
-create, copy and delete them. This row is `missing` when the alias does not
+create, list and delete them. This row is `missing` when the alias does not
 resolve or the account rejects the key — nothing below it can be checked until
 it answers.
 
-Build it by signing up at exe.dev, registering a public key on the account
-through the web UI, and pointing `~/.ssh/config` at that key:
+**In a browser:** sign up at exe.dev and register a public key on the account.
+
+**The agent runs** `ssh exe.dev whoami` — the command the doctor runs — and, if
+the alias is not in `~/.ssh/config` yet, adds it:
 
 ```
 Host *.exe.xyz exe.dev
@@ -26,9 +26,6 @@ Host *.exe.xyz exe.dev
   IdentitiesOnly yes
   IdentityFile ~/.ssh/id_ed25519
 ```
-
-Then `! ssh exe.dev whoami` — the command the doctor runs — should print your
-username.
 
 Three things a stranger will not know:
 
@@ -39,64 +36,74 @@ Three things a stranger will not know:
 - The `*.exe.xyz` pattern matters as much as `exe.dev` itself: a run VM is
   reached over ssh at the `ssh_dest` that `ls --json` reports, and its status
   page is `https://<vm>.exe.xyz/status.json`.
-- **This key launches.** `integrations attach` is refused to a tag-scoped key,
-  so the laptop keeps the account key. A second
-  key registered with `ssh-key add --tag=fleet` sees and reaps only
-  fleet-tagged VMs; that is the one to put behind the janitor's cron.
+- **This key launches.** A second key registered with `ssh-key add --tag=fleet`
+  sees and reaps only fleet-tagged VMs, and cannot bind a credential; that is
+  the one to put behind the janitor's cron, never the one that launches.
 
-Until this row is `ok`, expect the two rows below it to read `missing` too:
-both are `ssh` commands, and without a working account neither can land. Fix
-this row first and run the doctor again before touching the others.
+Until this row is `ok`, expect every row below it to read `missing` too: they
+are all `ssh` commands, and without a working account none of them can land.
+Fix this row first and run the doctor again before touching the others.
 
-## integrations
+## capacity
 
-An exe.dev integration is a credential injected at the network edge: the VM
-sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
-the secret on the way out. The VM never holds it, never sees it, and cannot
-read it back. Attachments are per VM or per tag, and time-boxed.
+Not a health check — arithmetic. `ssh exe.dev "billing plan --json"` reports
+the account's pool (`max_cpus`, `max_memory_gb`), and `~/.ultrapowers/fleet.json`
+says how large one run asks to be. The row is `ok` when the pool holds a run of
+that size, and its detail says how many such runs fit at once. The file has
+exactly two keys, both optional, and these are also the defaults:
 
-Three objects, and the doctor names whichever one is wrong first:
-
-| object | what it is | attached to |
-|---|---|---|
-| `claude-max` | the Claude subscription, as an http-proxy | per run, per VM, `--for 6h` |
-| `fleet-runs` | the private repo holding plans, receipts and status | `tag:fleet` |
-| `gh-<owner>-<repo>` | one target repository, read and write | per run, per VM, `--for 6h`, at launch |
-
-`claude-max` is built by hand, because its bearer is a token from a browser
-flow:
-
-```bash
-node fleet/claude-token.mjs login
+```json
+{
+  "cpu": "8",
+  "memory": "16GB"
+}
 ```
 
-Browser consent on claude.ai, copy the code it shows, press Enter: the tool
-exchanges it, keeps the refresh token in your keychain, and sets the bearer on
+**In a browser:** nothing, unless the answer is a bigger plan.
+
+**The agent runs** the doctor and, if the row is red, edits that file.
+
+Three things a newcomer would not know:
+
+- **A pool a run cannot fit in is a run asked too large, not a broken
+  account.** That is why the red detail names `~/.ultrapowers/fleet.json`: the
+  cheap fix is lowering `cpu`/`memory`, and the expensive one is a bigger plan.
+- **`memory` is `<int>GB` or `<int>G`.** A bare number, or a fractional
+  `1.5GB`, is unreadable and turns the row red before the pool is even
+  consulted. An unknown key in the file is ignored, and a missing file means
+  the defaults.
+- **The number in the green detail is the width of a wave of runs.** It is the
+  pool's vCPUs divided by one run's, so a plan whose pool fits three runs
+  cannot carry seven at once; the fourth `new` is refused when the pool is
+  already spent, and the pool is shared with anything else you have running.
+
+## claude
+
+The Claude subscription reaches a sandbox as an exe.dev integration named
+`claude-max`: an http-proxy whose bearer is injected at the network edge. The
+VM never holds the token, never sees it, and cannot read it back. This row is
+`ok` when the object carries the bearer header **and** rides no tag.
+
+**In a browser:** claude.ai shows a consent page and then a code. Approve, and
+copy the code.
+
+**The agent runs:**
+
+```bash
+node <plugin-root>/fleet/claude-token.mjs login --code-from-clipboard
+```
+
+`--code-from-clipboard` is why you only copy: the tool reads the code off the
+clipboard rather than asking you to paste it into a terminal. It exchanges the
+code, keeps the refresh token in your login keychain, and sets the bearer on
 `claude-max` on stdin. Nothing is printed. The launcher refreshes it before
 every run.
 
-The GitHub objects are one command per account and one per repository you
-will drive, and ultrapowers itself is one of them.
-`node <plugin-root>/fleet/target.mjs <owner>/<repo>` runs the last line for
-you and skips an object that exists:
-
-```bash
-ssh exe.dev "integrations add github --name fleet-runs \
-  --repository popmechanic/fleet-runs --act-as-user"
-ssh exe.dev "integrations attach fleet-runs tag:fleet"
-ssh exe.dev "integrations add github --name gh-<owner>-<repo> \
-  --repository <owner>/<repo> --act-as-user"
-```
-
-The doctor only asks about a target's object when you pass
-`--target <owner>/<repo>`, so a fleet with no targets yet is still `ready`.
-
-Three things these commands hide:
+Three things this command hides:
 
 - **`--bearer=-` reads the token from stdin.** That is why the value is piped
-  from the file rather than typed: it never appears in a shell history, in an
-  `--env`, in the golden image, or in this conversation. After the integration
-  exists the local file has no further use — delete it. Rotation is one
+  rather than typed: it never appears in a shell history, in an `--env`, in any
+  argv, or in this conversation. Rotation is one
   `integrations edit claude-max --bearer=-` with a fresh token on stdin.
 - **Inject the bearer and nothing else.** The proxy forwards Claude Code's own
   headers, and an injected header of the same name replaces the client's
@@ -105,64 +112,88 @@ Three things these commands hide:
   and any `integrations edit claude-max` should pass `--bearer=-` again in the
   same command; read the result from `integrations list --json`, never from a
   request made seconds after the edit.
-- **Only `fleet-runs` rides the tag.** `claude-max` and `gh-<owner>-<repo>`
-  are attached to one VM for the run's six hours, at launch. On the shared tag
-  either would be a standing credential on every VM on the account. And never
-  two GitHub integrations naming one repository on one VM: exe.dev's GitHub
-  edge routes by repo path and documents no tie-break between them, so the
-  sandbox refuses to boot into that, and the doctor turns the row red for any
-  GitHub object but `fleet-runs` on the tag. `gh auth status` on a VM is
-  meaningless — the credential is at the edge, and the edge proxies only the
-  repository's own paths.
+- **`claude-max` on `tag:fleet` is red.** A tag binding is a standing
+  credential on every fleet VM for as long as the object lives; the launcher
+  binds it to one VM, at creation, for the run's window. The doctor's detail
+  carries `claude-token`'s own status line too — a laptop with no refresh token
+  in its keychain is a warning inside a green row, because the bearer already
+  lives at the edge and only the next refresh needs the keychain.
 
-## golden
+## github
 
-The image every run VM is copied from: node, bun, npm, pytest with xdist,
-`busybox`, `gh`, the immutable bootstrap at `/home/exedev/fleet-bootstrap.sh`,
-and the user unit template `fleet-run@.service`, installed but never enabled.
-A `cp` of it takes seconds and inherits the `fleet` tag. The engine is not in
-the image: each run's bootstrap clones it at the sha the assignment names, into
-`/home/exedev/engines/<sha>`.
+`ssh exe.dev "integrations setup github --list"` prints the GitHub accounts
+this exe.dev account has linked. No account means the browser step has never
+been walked, and every GitHub object below it would be created against nothing.
 
-The launcher starts a run as `systemctl --user start fleet-run@<N>.service`
-over ssh, with no `--no-block`: the unit is `Type=exec`, so the command
-returns once the bootstrap is running and fails when it could not start, and
-the launcher prints that failure verbatim. When a run has left no status page,
-its unit's own log needs no environment variable:
+**In a browser:** approve the GitHub app install for your account, and pick the
+repositories it may see.
+
+**The agent runs:**
 
 ```bash
-ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'
+ssh exe.dev "integrations setup github"
 ```
 
-It is built by `fleet/golden-setup.sh`, and the build stamps that script's
-sha256 into `/home/exedev/.fleet-golden`, last. The doctor's row is that
-comparison and nothing else: an image whose stamp does not equal the script's
-hash is not broken, it is **old** — the plugin moved on and the golden did not.
-
-Three commands, in this order:
-
-```bash
-sh <plugin-root>/fleet/golden.sh build <fresh-name>
-sh <plugin-root>/fleet/golden.sh verify <fresh-name>
-sh <plugin-root>/fleet/golden.sh swap --from <fresh-name> --to fleet-golden
-```
+which opens the install — follow what it prints.
 
 Three things a newcomer would not know:
 
-- **Pick a name you have never used.** exe.dev keeps a deleted VM's name
-  reserved, so a rebuild under an old name is refused. `verify` is not optional
-  and `swap` is separate for a reason: the golden in use keeps serving runs
-  while the new one is built and checked, and the swap is the only step that
-  changes what a launch copies. Never delete the golden to make room for a
-  rebuild — a build that then fails leaves no image at all.
-- **Never `defaults write dev.exe new.setup-script`.** That setting is
-  account-wide: it would apply the fleet's first-boot script to every VM you
-  ever create. The script is passed to the one `new` that builds the golden
-  and nowhere else.
-- **The golden carries no `ANTHROPIC_*` anywhere.** Auth precedence puts an API
-  key ahead of the subscription, so a stray variable in the image bills a
-  gateway instead of the Max plan, silently, for every run. The base URL is
-  set on the engine service's environment only, per run.
+- **`--list` has no `--json`.** Passing it is a flag-parsing error, so the
+  doctor reads the two-line text form the command does print.
+- **This is the account link `--act-as-user` needs.** Until it exists, a run's
+  pushes and its PR are authored by the installation bot rather than by you;
+  the status page's `prAuthor` says which one you got.
+- **Keep it personal, not a team.** `--act-as-user` is unavailable on team
+  integrations, so on an exe.dev team account every PR is authored by
+  `exe-dev-github-integration[bot]` and nothing you do to the integration
+  changes that. It is walked once per exe.dev account, not once per
+  repository — the per-repository objects are the next row.
 
-Take the three commands in order and stop at the first one whose output
-surprises you.
+## integrations
+
+An exe.dev integration is a credential injected at the network edge: the VM
+sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
+the secret on the way out. Bindings are per VM or per tag, and time-boxed.
+This row is the GitHub half of that: one object per repository you drive,
+`gh-<owner>-<repo>`, created attached to nothing, and no GitHub integration
+riding the shared tag.
+
+**In a browser:** nothing.
+
+**The agent runs** this for each repository you drive, which skips an object
+that already exists:
+
+```bash
+node <plugin-root>/fleet/target.mjs <owner>/<repo>
+```
+
+and, when something is riding the shared tag, the detach the doctor names:
+
+```bash
+ssh exe.dev "integrations detach <name> tag:fleet"
+```
+
+`target.mjs` is one call underneath:
+
+```bash
+ssh exe.dev "integrations add github --name gh-<owner>-<repo> \
+  --repository <owner>/<repo> --act-as-user"
+```
+
+The doctor only asks about a target's object when you pass
+`--target <owner>/<repo>`, so a fleet with no targets yet is still `ready`.
+
+Three things this command hides:
+
+- **Nothing rides the tag.** A GitHub object on `tag:fleet` is granted to every
+  fleet VM, standing, for as long as the object lives — including the
+  account-wide object a pre-lift fleet was built with. The doctor turns this
+  row red for any of them. The launcher binds `gh-<owner>-<repo>` to one VM, at
+  creation, for the run's window.
+- **Never two GitHub integrations naming one repository on one VM.** exe.dev's
+  GitHub edge routes by repo path and documents no tie-break between them
+  (measured 2026-09-03), so the sandbox refuses to boot into that.
+- **`gh auth status` on a VM is meaningless.** The credential is at the edge,
+  not on the box, and the edge proxies only that repository's own paths. A
+  target with no object is a launch refusal, public repo or not: the clone
+  would work and the push would not.
