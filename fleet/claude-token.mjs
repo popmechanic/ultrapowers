@@ -19,6 +19,9 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import readline from 'node:readline'
 
 export const OAUTH = Object.freeze({
@@ -32,6 +35,8 @@ export const OAUTH = Object.freeze({
 export const INTEGRATION = 'claude-max'
 export const TARGET = 'https://api.anthropic.com'
 export const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: 'ultrapowers' })
+export const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
+export const LOCK_STALE_MS = 2 * 60 * 1000
 export const REFRESH_AHEAD_MS = 30 * 60 * 1000
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -89,7 +94,26 @@ export function defaultDeps () {
       const r = spawnSync('ssh', ['exe.dev', verb], { encoding: 'utf8', input })
       return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
     },
-    log: (line) => process.stderr.write(`${line}\n`)
+    log: (line) => process.stderr.write(`${line}\n`),
+    // Single-flight across processes: two launches inside the 30-minute window
+    // would both refresh, and the second would spend a refresh token the first
+    // had already rotated away. The lock is a directory (mkdir is atomic on every
+    // filesystem); a lock older than LOCK_STALE_MS belongs to a dead process.
+    lock: () => {
+      fs.mkdirSync(path.dirname(LOCK_PATH), { recursive: true })
+      const deadline = Date.now() + LOCK_STALE_MS
+      for (;;) {
+        try { fs.mkdirSync(LOCK_PATH); break } catch (err) {
+          if (err.code !== 'EEXIST') throw err
+          let age = 0
+          try { age = Date.now() - fs.statSync(LOCK_PATH).mtimeMs } catch { continue }
+          if (age > LOCK_STALE_MS) { try { fs.rmdirSync(LOCK_PATH) } catch {} ; continue }
+          if (Date.now() > deadline) throw new Error(`claude-token: lock ${LOCK_PATH} held for over ${LOCK_STALE_MS / 1000}s`)
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+        }
+      }
+      return () => { try { fs.rmdirSync(LOCK_PATH) } catch {} }
+    }
   }
 }
 
@@ -194,21 +218,28 @@ export async function login (deps) {
 }
 
 export async function refresh (deps, { force = false } = {}) {
-  const rec = readRecord(deps)
-  if (!rec) throw new Error('no refresh token in the keychain — run `node fleet/claude-token.mjs login` first')
-  const remaining = rec.expiresAt - deps.now()
-  if (!force && remaining > REFRESH_AHEAD_MS) {
-    deps.log(`${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
-    return { refreshed: false, expiresAt: rec.expiresAt }
+  // The record is read AFTER the lock is held: a launch that queued behind a
+  // sibling's refresh sees the rotated pair and finds nothing to do.
+  const release = deps.lock ? deps.lock() : () => {}
+  try {
+    const rec = readRecord(deps)
+    if (!rec) throw new Error('no refresh token in the keychain — run `node fleet/claude-token.mjs login` first')
+    const remaining = rec.expiresAt - deps.now()
+    if (!force && remaining > REFRESH_AHEAD_MS) {
+      deps.log(`${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
+      return { refreshed: false, expiresAt: rec.expiresAt }
+    }
+    const tokens = await refreshGrant(deps, rec.refreshToken)
+    // The rotated pair replaces the old one BEFORE the edge is touched: a consumed
+    // refresh token is dead, so a crash between the two steps must not leave the
+    // keychain holding it.
+    writeRecord(deps, tokens)
+    installBearer(deps, tokens.accessToken)
+    deps.log(`${INTEGRATION}: refreshed; fresh until ${iso(tokens.expiresAt)}`)
+    return { refreshed: true, expiresAt: tokens.expiresAt }
+  } finally {
+    release()
   }
-  const tokens = await refreshGrant(deps, rec.refreshToken)
-  // The rotated pair replaces the old one BEFORE the edge is touched: a consumed
-  // refresh token is dead, so a crash between the two steps must not leave the
-  // keychain holding it.
-  writeRecord(deps, tokens)
-  installBearer(deps, tokens.accessToken)
-  deps.log(`${INTEGRATION}: refreshed; fresh until ${iso(tokens.expiresAt)}`)
-  return { refreshed: true, expiresAt: tokens.expiresAt }
 }
 
 export function status (deps) {

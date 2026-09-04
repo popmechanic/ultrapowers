@@ -164,5 +164,61 @@ await leg('installBearer: a failing lobby verb surfaces the lobby\'s own words w
   assert.throws(() => installBearer(h.deps, 'access-9'), (e) => /quota exceeded/.test(e.message) && !/access-9/.test(e.message))
 })
 
+await leg('refresh is single-flight: the record is read under the lock, so a queued sibling finds the rotated pair and does nothing', async () => {
+  const h = harness({ record: { refreshToken: 'r0', expiresAt: T0 + 60_000 } })
+  let held = 0; const trace = []
+  h.deps.lock = () => { held += 1; trace.push('lock'); return () => { held -= 1; trace.push('unlock') } }
+  const origRead = h.deps.keychainRead
+  h.deps.keychainRead = () => { assert.equal(held, 1, 'the record is read only while the lock is held'); return origRead() }
+  const first = await refresh(h.deps)
+  const second = await refresh(h.deps)
+  assert.equal(first.refreshed, true)
+  assert.equal(second.refreshed, false, 'the sibling sees the rotated pair (fresh for 60 min) and does nothing')
+  assert.equal(h.calls.fetch.length, 1, 'one refresh grant, not two')
+  assert.deepEqual(trace, ['lock', 'unlock', 'lock', 'unlock'])
+  assert.equal(held, 0)
+})
+
+await leg('the lock is released when the refresh throws', async () => {
+  const h = harness({ record: { refreshToken: 'r0', expiresAt: T0 + 60_000 }, tokenStatus: 500 })
+  let held = 0
+  h.deps.lock = () => { held += 1; return () => { held -= 1 } }
+  await assert.rejects(() => refresh(h.deps), /token endpoint answered 500/)
+  assert.equal(held, 0)
+})
+
+await leg('the real lock: two processes, one refresh grant', async () => {
+  // The default lock is a directory under $HOME; point HOME at a temp dir and
+  // race two `refresh` processes with a stubbed keychain and token endpoint.
+  const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path')
+  const { spawn } = await import('node:child_process')
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-'))
+  const rec = path.join(home, 'rec.json'); const grants = path.join(home, 'grants.log')
+  fs.writeFileSync(rec, JSON.stringify({ refreshToken: 'r0', expiresAt: Date.now() + 60_000 }))
+  const script = `
+    import { refresh, defaultDeps } from ${JSON.stringify(new URL('../claude-token.mjs', import.meta.url).href)}
+    import fs from 'node:fs'
+    const deps = defaultDeps()
+    deps.keychainRead = () => fs.readFileSync(${JSON.stringify(rec)}, 'utf8')
+    deps.keychainWrite = (v) => { fs.writeFileSync(${JSON.stringify(rec)}, v); return true }
+    deps.lobby = (verb) => ({ code: 0, out: verb.startsWith('integrations list') ? JSON.stringify({ integrations: [{ name: 'claude-max' }] }) : 'ok' })
+    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 3600 }) } }
+    deps.log = () => {}
+    const r = await refresh(deps); process.stdout.write(JSON.stringify(r))
+  `
+  const run = () => new Promise((resolve) => {
+    const p = spawn(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = '', err = ''; p.stdout.on('data', (d) => { out += d }); p.stderr.on('data', (d) => { err += d })
+    p.on('close', (code) => resolve({ code, out, err }))
+  })
+  const [a, b] = await Promise.all([run(), run()])
+  assert.equal(a.code, 0, a.err); assert.equal(b.code, 0, b.err)
+  const results = [JSON.parse(a.out).refreshed, JSON.parse(b.out).refreshed].sort()
+  assert.deepEqual(results, [false, true], 'exactly one process refreshed')
+  assert.equal(fs.readFileSync(grants, 'utf8').trim().split('\n').length, 1, 'one grant hit the token endpoint')
+  assert.ok(!fs.existsSync(path.join(home, '.ultrapowers', 'claude-token.lock')), 'the lock is released')
+  fs.rmSync(home, { recursive: true, force: true })
+})
+
 console.log(`${legs} legs`)
 console.log('ALL TESTS PASSED')
