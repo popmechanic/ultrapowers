@@ -38,6 +38,13 @@ implementer report, or modify anything; output only your verdict.
    implementation could satisfy, a bad import, a fixture it never created —
    and the hunk changes only that. Say which.
 
+RUN EVIDENCE, when present, is the driver's own execution of this task's Proof
+`Run:` commands, in this task's clone, on the tree the patch describes. A
+`Run:` whose evidence shows `exit 0` is settled: asking for its re-execution
+is neither a finding nor a `cannotVerify` entry. A non-zero one is already
+the fix loop's, not the referee's — say what the diff gets wrong and leave
+the re-run to the loop that owns it.
+
 Raise only issues worth fixing: `blocking` means the submission does not merge
 until it is fixed, `minor` is advisory. Where you can say how, say how.
 When you can write the fix for a `blocking` issue, put it in that issue's `proposedPatch` as a unified diff.

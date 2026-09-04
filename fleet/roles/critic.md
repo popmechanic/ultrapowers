@@ -27,6 +27,13 @@ show, slot by slot:
 5. The cannot-verify checklist: verify each escalated item against the
    integrated tree and report any that fail as findings.
 
+The INTEGRATED RUN EVIDENCE block, when present, is authoritative for every
+`Run:` command it lists: the driver executed each one itself, on the adopted
+integration tree. A checklist item asking for their re-execution is settled
+by that block — report what it shows; it is not a `deferredVerification`
+item, and `manual` is for human judgment (aesthetic, product-fit),
+not for a command the driver ran.
+
 Stale-if and Authorized-by are not yours to judge: the first is a mechanical
 check, the second is provenance. A legacy task body without these slots carries
 its contract in its Files, Interfaces and acceptance text; apply the same
