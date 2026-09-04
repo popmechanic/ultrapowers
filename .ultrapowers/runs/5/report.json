@@ -1,0 +1,203 @@
+{
+  "integrationBranch": "ultra/integration-run-5",
+  "baseSha": "2cc873fb2d040fbe081f35ff0ababc408eaa6500",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": {
+        "from": "2cc873fbd2d040fbe081f35ff0ababc408eaa6500",
+        "to": "2cc873fb2d040fbe081f35ff0ababc408eaa6500"
+      },
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "ed43bf5e9628855ae045aa754610b30b0133aa74",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-5/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Out-of-footprint edit: the diff also modifies `fleet/tests/test_exam_edited_patches.mjs` (FROZEN list line for `test_run_engine_proposed_patch.mjs` re-frozen to `bbc83d1a\u2026`, plus a two-line explanatory comment). FILES declares only the three run-engine sims. The edit is not gratuitous \u2014 that file sha256-pins `test_run_engine_proposed_patch.mjs` at BASE and this task legitimately rewrites it, so without the re-freeze global constraint 2 (`every fleet/tests/test_*.mjs prints ALL TESTS PASSED`) fails \u2014 and the divergence is disclosed in the file itself. It is not a SIBLING FILES path and nothing is deleted, so it is advisory only. Flagging it because the task's own Context assigns `test_exam_edited_patches.mjs` to the concurrent judging-waste plan (\"its digest legs go there\"): if that plan also rewrites the FROZEN array, the integrator should expect a conflict on exactly this hunk and keep the newer digest.; concern: out-of-FILES: `fleet/tests/test_exam_edited_patches.mjs` \u2014 its leg (d)+(e) `FROZEN` table pins a sha256 of `test_run_engine_proposed_patch.mjs` recorded at BASE, and this task requires editing that file, so the suite went red on that digest alone (`514f2b29\u2026` \u2192 `bbc83d1a\u2026`). I re-froze that one entry to the edited file's digest and added a two-line comment naming #612 as the authorization; the other three FROZEN entries and every other leg in that file are untouched. Without this the GLOBAL CONSTRAINT that `python3 -m pytest -q tests/test_fleet_suite.py` passes could not hold. Note the task Context flags this file as the concurrent judging-waste plan's, so that plan may re-touch the same line \u2014 it is not in SIBLING FILES for this run and it does exist at BASE.; concern: Leg (e)'s header comment in the examiner file said `no proofTests, no exam \u2014 and every other engine sim unchanged [M5]`; the second clause described only the deleted re-exec block, so I trimmed it to `no proofTests, no exam [M5]`. The `(e)` label, its three no-exam cases and the `[M5]` tag are unchanged, so Proof Runs 1 and 3 are unaffected.; concern: The new file omits `gitSync` from its `_engine_helpers.mjs` import list even though the task Context names it among the imports \u2014 legs (d), (f) and (g) never call it, and the original examiner file did not import it either. Importing it would be dead code; no Proof leg checks the import list.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "7446b30f6d7d21504ae90cabad8acf1742d12dd5",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-5/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "`_sandbox_boot_helpers.mjs` creates its temp root as a top-level side effect (`const tmpRoot = fs.mkdtempSync(...)` at the module's harness section), but only `runTests` removes it. Any process that imports the module without running a suite leaks an empty `/tmp/sandbox-boot-*` directory \u2014 and the exam does exactly that on every run: Proof leg (a)'s `node -e \"import('./fleet/tests/_sandbox_boot_helpers.mjs')...\"` export-check imports and exits, leaving one behind each time. The inline original had no such path (module load was the run), so this is a small regression introduced by turning the rig into an importable module. Creating the root lazily on first `makeHome` fixes it and keeps the runner's failure path (which may never call `makeHome`) correct.; `_sandbox_boot_helpers.mjs:302` creates `tmpRoot` eagerly at module load (`const tmpRoot = fs.mkdtempSync(...)`) but only `runTests` removes it (line 481). In the original single-file exam, importing the module *was* running the exam, so the pairing was total; after the extraction any consumer that imports the helper without calling `runTests` leaks an empty temp directory \u2014 including the task's own first Proof command, whose `node -e \"import('./fleet/tests/_sandbox_boot_helpers.mjs')...\"` export check imports and exits. Advisory only: nothing in the Claim or the exam depends on it, and both test files do call `runTests`. If you want it tightened, make the root lazy so it is only created by the first `makeHome`:\n\n  let tmpRoot = null\n  const root = () => (tmpRoot ??= fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-boot-')))\n\nwith `makeHome` using `root()` and `runTests` doing `if (tmpRoot) fs.rmSync(tmpRoot, ...)`.; concern: plan-defect: Proof leg (b) requires the string `the evidence branch` to be absent from fleet/tests/test_sandbox_boot_edges.mjs, but a pre-existing prose comment inside section 7 (originally line 1188, 'and it rides to the evidence branch, which is the only artifact...') carries that exact string. The grep is a crude section-placement check and collides with the original's own prose. I reworded that comment to 'and it rides out on `ultra/evidence-run-7`' \u2014 comment text only, no assertion or behaviour changed. Same class of collision was avoided in the two new file headers, which deliberately do not spell the eight edge-section names in test_sandbox_boot.mjs nor 'the whole green path'/'the evidence branch' in the edges file.; concern: case-scope: the M4 case 'the script names the retired repository nowhere' originally self-checked `fileURLToPath(import.meta.url)` \u2014 after the split that would only cover the edges file, silently narrowing the prohibition. I broadened it to read all three of the exam's files by name (helpers, test_sandbox_boot.mjs, edges). The case name and its assertion against fleet/sandbox-boot.sh are unchanged; it lives in exactly one file, as M2 requires.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "1fda87266750afc6188cae41d79a9374377f01c1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-5/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-5/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1474 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 19%]\n........................................................................ [ 24%]\n........................................................................ [ 29%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1474 passed, 5 warnings in 83.82s (0:01:23) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "! grep -q 'execFileSync' fleet/tests/test_run_engine_examiner.mjs && ! grep -q 'readdirSync' fleet/tests/test_run_engine_examiner.mjs && ! grep -q 'printed no pass line' fleet/tests/test_run_engine_examiner.mjs && grep -q 'empty proofTests' fleet/tests/test_run_engine_examiner.mjs && grep -q 'no proofTests key' fleet/tests/test_run_engine_examiner.mjs && grep -q 'null testCmd' fleet/tests/test_run_engine_examiner.mjs && ! grep -q 'execFileSync' fleet/tests/test_run_engine_proposed_patch.mjs && ! grep -q 'test_run_engine_fixloop' fleet/tests/test_run_engine_proposed_patch.mjs && ! grep -q 'existing fix-round sim is untouched' fleet/tests/test_run_engine_proposed_patch.mjs && test \"$(grep -c '^// \u2500\u2500 ' fleet/tests/test_run_engine_proposed_patch.mjs)\" = 8 && grep -q 'PROPOSED PATCH' fleet/tests/test_run_engine_proposed_patch.mjs && timeout 60 node fleet/tests/test_run_engine_proposed_patch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test -e fleet/tests/test_run_engine_exam_edits.mjs && grep -q 'examEdited' fleet/tests/test_run_engine_exam_edits.mjs && ! grep -q 'examEdited' fleet/tests/test_run_engine_examiner.mjs && grep -q 'rolesDir' fleet/tests/test_run_engine_exam_edits.mjs && grep -q 'EXAM EDITED: t1_test.sh' fleet/tests/test_run_engine_exam_edits.mjs && grep -q 'fix-loop-exhausted' fleet/tests/test_run_engine_exam_edits.mjs && grep -q 'fix:T1:1' fleet/tests/test_run_engine_exam_edits.mjs && grep -q 'green-at-base' fleet/tests/test_run_engine_exam_edits.mjs && grep -q 'absent recorded as null' fleet/tests/test_run_engine_exam_edits.mjs && grep -q '^// \u2500\u2500 (g)' fleet/tests/test_run_engine_exam_edits.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(cat fleet/tests/test_run_engine_examiner.mjs fleet/tests/test_run_engine_exam_edits.mjs | grep -oE '^// \u2500\u2500 \\([a-g]\\)' | sort | uniq -c | awk '$1!=1' | wc -l)\" = 0 && test \"$(cat fleet/tests/test_run_engine_examiner.mjs fleet/tests/test_run_engine_exam_edits.mjs | grep -oE '^// \u2500\u2500 \\([a-g]\\)' | sort -u | wc -l)\" = 7",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "timeout 60 node fleet/tests/test_run_engine_examiner.mjs > /tmp/ex1.out && grep -q 'ALL TESTS PASSED' /tmp/ex1.out && timeout 60 node fleet/tests/test_run_engine_exam_edits.mjs > /tmp/ex2.out && grep -q 'ALL TESTS PASSED' /tmp/ex2.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "test -e fleet/tests/_sandbox_boot_helpers.mjs && test -e fleet/tests/test_sandbox_boot_edges.mjs && node -e \"import('./fleet/tests/_sandbox_boot_helpers.mjs').then(m=>{for(const k of ['PLAN_SHA','BASE_SHA','ENGINE_SHA','HEAD_SHA','OTHER_SHA','TARGET','VM_NAME','PR_URL','PR_AUTHOR','PLAN_BRANCH','EVIDENCE_BRANCH','INTEGRATION_BRANCH','RUN_PATH','PLAN_PATH','STUBS','PRELUDE','makeHome','boot','runTests']) if(!(k in m)){console.error('missing export '+k);process.exit(1)}})\" && ! grep -qE '(function|const|let|var)[[:space:]]+(makeHome|boot)[^A-Za-z0-9_]' fleet/tests/test_sandbox_boot.mjs && ! grep -qE '(function|const|let|var)[[:space:]]+(makeHome|boot)[^A-Za-z0-9_]' fleet/tests/test_sandbox_boot_edges.mjs && ! node -e \"import('./fleet/tests/_sandbox_boot_helpers.mjs').then(m=>m.runTests([['boom',()=>{throw new Error('x')}]]))\" > /tmp/sbh.out 2>&1 && grep -q 'FAILED' /tmp/sbh.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q 'the whole green path' fleet/tests/test_sandbox_boot.mjs && grep -q 'the evidence branch' fleet/tests/test_sandbox_boot.mjs && ! grep -q 'the whole green path' fleet/tests/test_sandbox_boot_edges.mjs && ! grep -q 'the evidence branch' fleet/tests/test_sandbox_boot_edges.mjs && for s in 'the retired repository' 'parked runs' 'refusals' 'the public-target fallback' \"the engine's own words\" 'failing before the clone' 're-entry' 'the deadman'; do grep -q \"$s\" fleet/tests/test_sandbox_boot_edges.mjs || exit 1; ! grep -q \"$s\" fleet/tests/test_sandbox_boot.mjs || exit 1; done",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "timeout 60 node fleet/tests/test_sandbox_boot.mjs > /tmp/sb1.out && timeout 60 node fleet/tests/test_sandbox_boot_edges.mjs > /tmp/sb2.out && grep -q 'ALL TESTS PASSED' /tmp/sb1.out && grep -q 'ALL TESTS PASSED' /tmp/sb2.out && test \"$(cat /tmp/sb1.out /tmp/sb2.out | grep -c '^ok (')\" = 49",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q 'not its implementation' fleet/tests/test_roles_examiner.mjs && ! grep -q 'exactly one reason' fleet/tests/test_roles_examiner.mjs && ! grep -qE '^const M[12] ' fleet/tests/test_roles_examiner.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "grep -q 'unsatisfiable: \\[{leg, why}\\]' fleet/tests/test_roles_examiner.mjs && grep -q 'startHead|rev-parse' fleet/tests/test_roles_examiner.mjs && grep -q 'NEVER|ALWAYS|MUST' fleet/tests/test_roles_examiner.mjs && grep -qi 'adversarial' fleet/tests/test_roles_examiner.mjs && grep -q 'Implement the minimum' fleet/tests/test_roles_examiner.mjs && grep -q 'role prose size:' fleet/tests/test_roles_examiner.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_roles_examiner.mjs | grep -q 'ALL TESTS PASSED' && d=$(mktemp -d) && cp -R fleet \"$d/\" && sed -i.bak 's/unsatisfiable: \\[{leg, why}\\]/unsatisfiable: []/' \"$d/fleet/roles/examiner.md\" && ! node \"$d/fleet/tests/test_roles_examiner.mjs\" >/dev/null 2>&1 && e=$(mktemp -d) && cp -R fleet \"$e/\" && printf '\\nYou MUST write the exam.\\n' >> \"$e/fleet/roles/examiner.md\" && ! node \"$e/fleet/tests/test_roles_examiner.mjs\" >/dev/null 2>&1",
+      "exit": 0,
+      "stdout": "role prose size: examiner.md = 411 words\n"
+    }
+  ],
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n..s..................................................................... [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1473 passed, 1 skipped, 5 warnings in 84.28s (0:01:24) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1472 passed, 5 warnings in 114.12s (0:01:54) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "d2688610e3a89d0a1f283704a0fa2615b98113c0",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-5/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-5/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.986,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Global Constraint 1 \u2014 every file under `fleet/` other than `fleet/tests/`, and every file under `skills/` and `tests/`, is byte-identical to BASE.",
+      "reason": "runtime",
+      "why": "This is a diff against BASE and needs a git command; no shell is available in this read-only critic environment, so I could not execute it. What I could check is consistent with it holding: all three tasks' declared Files sit under `fleet/tests/`, no referee escalated it, `tests/test_fleet_suite.py` is unmodified in shape (its glob at line 5 is the original `test_*.mjs`), and `fleet/roles/examiner.md` is read-only to Task 3 and still satisfies its sim (driver reported 411 words). Routing to the gate for an explicit `git diff --stat BASE..HEAD -- fleet skills tests ':!fleet/tests'` acknowledgement rather than passing it silently."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: plan-defect: Proof leg (b) requires the string `the evidence branch` to be absent from fleet/tests/test_sandbox_boot_edges.mjs, but a pre-existing prose comment inside section 7 (originally line 1188, 'and it rides to the evidence branch, which is the only artifact...') carries that exact string. The grep is a crude section-placement check and collides with the original's own prose. I reworded that comment to 'and it rides out on `ultra/evidence-run-7`' \u2014 comment text only, no assertion or behaviour changed. Same class of collision was avoided in the two new file headers, which deliberately do not spell the eight edge-section names in test_sandbox_boot.mjs nor 'the whole green path'/'the evidence branch' in the edges file.",
+    "task 2: case-scope: the M4 case 'the script names the retired repository nowhere' originally self-checked `fileURLToPath(import.meta.url)` \u2014 after the split that would only cover the edges file, silently narrowing the prohibition. I broadened it to read all three of the exam's files by name (helpers, test_sandbox_boot.mjs, edges). The case name and its assertion against fleet/sandbox-boot.sh are unchanged; it lives in exactly one file, as M2 requires.",
+    "task 1: out-of-FILES: `fleet/tests/test_exam_edited_patches.mjs` \u2014 its leg (d)+(e) `FROZEN` table pins a sha256 of `test_run_engine_proposed_patch.mjs` recorded at BASE, and this task requires editing that file, so the suite went red on that digest alone (`514f2b29\u2026` \u2192 `bbc83d1a\u2026`). I re-froze that one entry to the edited file's digest and added a two-line comment naming #612 as the authorization; the other three FROZEN entries and every other leg in that file are untouched. Without this the GLOBAL CONSTRAINT that `python3 -m pytest -q tests/test_fleet_suite.py` passes could not hold. Note the task Context flags this file as the concurrent judging-waste plan's, so that plan may re-touch the same line \u2014 it is not in SIBLING FILES for this run and it does exist at BASE.",
+    "task 1: Leg (e)'s header comment in the examiner file said `no proofTests, no exam \u2014 and every other engine sim unchanged [M5]`; the second clause described only the deleted re-exec block, so I trimmed it to `no proofTests, no exam [M5]`. The `(e)` label, its three no-exam cases and the `[M5]` tag are unchanged, so Proof Runs 1 and 3 are unaffected.",
+    "task 1: The new file omits `gitSync` from its `_engine_helpers.mjs` import list even though the task Context names it among the imports \u2014 legs (d), (f) and (g) never call it, and the original examiner file did not import it either. Importing it would be dead code; no Proof leg checks the import list.",
+    "task 1: tree reported at 2cc873fbd2d040fbe081f35ff0ababc408eaa6500, not BASE 2cc873fb2d040fbe081f35ff0ababc408eaa6500 (#314 guard \u2014 should be inexpressible under cloneAtBase)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Plan-level Claim and Global Constraint 3 (\"No sim under `fleet/tests/` spawns `node` on another `test_*.mjs`: the strings `execFileSync('node'` and `spawnSync(process.execPath` occur in no `fleet/tests/test_*.mjs` whose argument names a sibling `test_` file\") fail against the integrated tree. `fleet/tests/test_deadline_slack.mjs:66` binds `const WORKER_SPEC = path.join(HERE, 'test_run_worker.mjs')` and `fleet/tests/test_deadline_slack.mjs:98` runs `spawnSync(process.execPath, [WORKER_SPEC], { cwd: ROOT, env, encoding: 'utf8' })` \u2014 the constraint's exact literal string, with a sibling `test_` file as its argument. The loop at lines 101-108 executes it twice (slack unset and `FLEET_TEST_SLACK=1`), each time asserting `test_run_worker.mjs` exits 0 and prints `ALL TESTS PASSED`. That is the duplicated bridge item the plan's Goal targets: `tests/test_fleet_suite.py:5` already collects `test_run_worker.mjs` as its own parametrized item, so its wall-clock is paid three times per suite run. This is not covered by any task's Files (tasks 1-3 own `test_run_engine_examiner.mjs`, `test_run_engine_proposed_patch.mjs`, `test_run_engine_exam_edits.mjs`, `test_sandbox_boot*.mjs`, `_sandbox_boot_helpers.mjs`, `test_roles_examiner.mjs`) and is named nowhere in the plan \u2014 the Goal and Task 1 Context enumerate only three re-running sims (`test_run_engine_examiner.mjs`, `test_run_engine_proposed_patch.mjs`, `test_exam_edited_patches.mjs`). It is a survey gap in the plan, not a regression introduced by this run \u2014 the file is untouched and at BASE \u2014 but the plan's headline Claim (\"After this run no fleet sim re-runs another sim as a subprocess\") is false of the delivered tree, and no per-task referee could have seen it from a single diff. A full sweep of `execSync|spawn\\(|fork\\(|execFile\\(|execFileSync\\(|spawnSync\\(` across every `fleet/tests/test_*.mjs` confirms this and `test_exam_edited_patches.mjs` are the only two remaining; all other call sites spawn `bash`, `git`, `python3`, `doctor.mjs`, the confine hook, or `node -e` inline scripts."
+    },
+    {
+      "severity": "minor",
+      "detail": "Plan-level Claim (\"After this run no fleet sim re-runs another sim as a subprocess\") is also unmet by `fleet/tests/test_exam_edited_patches.mjs:201-207`, which loops over the four `FROZEN` entries (`test_run_engine.mjs`, `test_run_engine_fixloop.mjs`, `test_run_engine_cap_width.mjs`, `test_run_engine_proposed_patch.mjs`) and runs each with `spawnSync('node', [path.join(here, name)], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 300000 })`, asserting exit 0 and the sentinel. Unlike the `test_deadline_slack.mjs` case this is explicitly and deliberately scoped out: Task 1's Context states \"The third sim that re-runs siblings, `test_exam_edited_patches.mjs`, is the concurrent judging-waste plan's file (its digest legs go there), so after both plans merge no sim under `fleet/tests/` re-runs another.\" The mechanical form of Global Constraint 3 is also not tripped \u2014 the literal here is `spawnSync('node'`, neither of the two strings the constraint names. Worth an issue only to record that the plan's Claim is contingent on the concurrent plan landing, not satisfied by this run alone; the coordination this run did owe it was done correctly (the re-frozen digest for the modified `test_run_engine_proposed_patch.mjs` is in place at `fleet/tests/test_exam_edited_patches.mjs:194` and the driver's full-suite run is green)."
+    }
+  ],
+  "blockedWaves": []
+}
