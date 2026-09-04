@@ -1,0 +1,232 @@
+{
+  "ok": true,
+  "stamp": "run-1",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-1"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "`- Check:` compiles to `constraintChecks`; a backticked command is refused",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`parse_constraint_checks(text: str) -> list[dict]`",
+            "`constraintChecks`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The recurring rejection species print as `ADVISORY proof-species:` lines",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`_render_proof_species(tasks, ctx) -> list[str]`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The skill re-dispatches per task and teaches the two constraint kinds",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "`- Check:` compiles to `constraintChecks`; a backticked command is refused",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_check_constraints.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`parse_constraint_checks(text: str) -> list[dict]`",
+              "`constraintChecks`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_check_constraints.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_check_constraints.py",
+          "proofRuns": []
+        },
+        {
+          "id": "2",
+          "title": "The recurring rejection species print as `ADVISORY proof-species:` lines",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_proof_species.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`_render_proof_species(tasks, ctx) -> list[str]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_proof_species.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_proof_species.py",
+          "proofRuns": []
+        },
+        {
+          "id": "3",
+          "title": "The skill re-dispatches per task and teaches the two constraint kinds",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "awk '/^## The proof gate/,/^## The worktree-pure/' skills/ultrawrite/SKILL.md | awk 'BEGIN{RS=\"\"} /per task/ && /not per round/ && /the moment/ && /Claim or Proof/ && /re-extract/ && /extract_gate_input.py/ && /one reader/ && /do not wait/ && /keyed on the hash/ {f=1} END{exit !f}'",
+            "awk '/^## The proof gate/,/^## The worktree-pure/' skills/ultrawrite/SKILL.md | awk 'BEGIN{RS=\"\"} /ADVISORY proof-species:/ && /--check --renders/ && /repair/ && /before/ && /reader/ {f=1} END{exit !f}'",
+            "awk '/^## Global Constraints discipline/,/^## Execution handoff/' skills/ultrawrite/SKILL.md | awk 'BEGIN{RS=\"\"} /- Check:/ && /driver/ && /every task.s clone/ && /adopted tree/ && /blocking/ && /\\(minor\\)/ && /prose/ && /lens/ && /minor/ && /never as prose/ {f=1} END{exit !f}'",
+            "! grep -nE '\\b(NEVER|ALWAYS|MUST)\\b' skills/ultrawrite/SKILL.md && python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite && python3 -m pytest -q tests/test_ultrawrite_skill.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- `compile_plan.py --check` on a plan carrying no `- Check:` bullet and no `Run:` bullet prints\n  output byte-identical to BASE's compiler (`tests/test_compile_plan_proof_runs.py`'s leg (e)\n  against its frozen sha) \u2014 the new render rides behind `--renders`, and the `constraintChecks`\n  key rides in the compile result, not in the `--check` channel.\n- Every advisory line begins `ADVISORY ` and changes no exit code; every refusal is a `grammar:`\n  line refused by both channels (`--check` exits 2, the full compile exits 1).\n- The frozen periphery is untouched: `gate_check.py`, `ultra_gate.py`, `run_acceptance.sh` are\n  byte-identical to BASE.\n- `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite` prints `skill ok`;\n  `skills/ultrawrite/SKILL.md` carries no `NEVER`/`ALWAYS`/`MUST`.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-1/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-1/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-1/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-1/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

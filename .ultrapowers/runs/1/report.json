@@ -1,0 +1,171 @@
+{
+  "integrationBranch": "ultra/integration-run-1",
+  "baseSha": "2cc873fb2d040fbe081f35ff0ababc408eaa6500",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e5543cfec834ed98b7c10a8ec2f883078b19ae01",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-1/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Out-of-footprint edit: `tests/test_plan_level_claim.py` is modified (its `ARGS_KEYS` list gains `\"constraintChecks\"`) but is not in this task's FILES (`skills/ultrapowers/scripts/compile_plan.py`, `tests/test_compile_plan_check_constraints.py`). The edit is necessary and correct \u2014 that file's lines 355/362 pin `sorted(k for k in payload if k != \"planClaim\") == sorted(ARGS_KEYS)`, an exact key-set assertion the new `--emit-args` key would otherwise break \u2014 and it is the only such pin in the suite (no other test or doc fixes the args/launch key set). It is not a SIBLING FILES path and deletes nothing, so this is advisory only: naming the path for the record.; Misleading refusal header for a legacy-grammar plan. `constraint_check_violations(plan_text)` is folded into `grammar_violations` unconditionally in `main()` (correct \u2014 a `- Check:` belongs to no task and no grammar), but the message printed for that list is the pre-existing `\"compile_plan: claims-v1 grammar violation(s) \u2014 refusing to compile:\"`. A legacy plan (no `**Grammar:** claims-v1` line) whose only fault is a backticked `- Check:` is therefore told it broke claims-v1 grammar. M3 and the global constraint still hold exactly \u2014 the `grammar:` line is byte-exact and both channels close (`--check` exits 2, the full compile exits 1) \u2014 so this is wording, not behaviour. Consider a grammar-neutral header, e.g. `\"compile_plan: grammar violation(s) \u2014 refusing to compile:\"`, or printing the plan-level Check refusals under their own line.; Footprint: the diff also edits `tests/test_plan_level_claim.py` (its `ARGS_KEYS` pin gains `\"constraintChecks\"` between `globalConstraints` and `planPath`), which is outside FILES (`skills/ultrapowers/scripts/compile_plan.py`, `tests/test_compile_plan_check_constraints.py`). It is not a SIBLING FILES path and the edit is forced \u2014 that pin enumerates the `--emit-args` top-level keys, so it would go red the moment M1's new key rides there, and the ordering matches `args_payload`'s insertion point at compile_plan.py:3163-3165. Minor, naming the path; no fix needed beyond the disclosure.; Refusal banner wording: `constraint_check_violations(plan_text)` is added to `main()` at compile_plan.py:2953 OUTSIDE the `if grammar == CLAIMS_GRAMMAR:` block (deliberate, and correct per the comment \u2014 a shell does not care which grammar the plan declares), but the printer two lines down still says `compile_plan: claims-v1 grammar violation(s) \u2014 refusing to compile:`. A legacy-grammar plan carrying `- Check: echo `date`` now dies under a claims-v1 banner. Cosmetic only: the spec'd `grammar: Check: \u2026` line itself is exact, and both channels' assertions (`_refuses_with_line`) match on that line, not the banner.; Exam robustness in `tests/test_compile_plan_check_constraints.py:test_every_corpus_plan_still_compiles`: task-carrying CORPUS plans are asserted `rc == 0` unconditionally, while the task-LESS documents two blocks below are compared BASE-relatively (`assert mine == theirs != 0`). M4's wording (\"every fixture plan \u2026 still compiles\") does license the absolute form, so this is advisory \u2014 but any corpus plan that already failed a full compile at BASE (the corpus is only pinned for `--check`, not for compile) would surface as this task's failure. Comparing to `base_compiler`'s rc, as the task-less branch already does, costs nothing and removes the trap.; concern: out-of-FILES: tests/test_plan_level_claim.py \u2014 one line. Its ARGS_KEYS constant pins the exact `--emit-args` top-level key set, so adding `constraintChecks` (the task's own Machine clause M1, and what my exam's test_the_args_payload_gains_exactly_one_key demands) made it fail. Added \"constraintChecks\" to that list; no other change to the file, and its two assertions still pin the key set exactly.; concern: coordination: SIBLING FILES lists task 2 as also modifying skills/ultrapowers/scripts/compile_plan.py. My edits touch _claims_run_command's neighborhood (a new _backtick_command_violation helper), the `Run:` branch of parse_claims_body's Proof loop, the parse_global_constraints block, collect_violations, and main()'s grammar_violations plus the three payload dicts \u2014 textual conflict with task 2's proof-species work is plausible at the parse_claims_body and collect_violations seams.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "27886b679a21343dd4e92a4879a26814a506b26a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-1/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Duplicated clip helper: `_clip_run` (skills/ultrapowers/scripts/compile_plan.py, new block ~line 2698) reimplements the compiler's existing `_short(s, n=80)` (same file, line 537) exactly \u2014 collapse whitespace, return as-is under the cap, else `s[:n-1] + \"\u2026\"`. The docstring's justification (\"the command, not its marker, so nothing is stripped off the front\") is true of the advisory-section `_clip` (line 2651, which strips a bullet marker) but not of `_short`, which strips nothing off the front. `RUN_CLIP = 80` plus `_short(command, RUN_CLIP)` would give byte-identical output for both the short and the clipped case that the exam pins (`test_run_chained_semicolon_detail_names_the_command_and_the_join`, `..._clips_a_long_command`) with one fewer helper. Not blocking: the behaviour is correct and matches M2's \"first 80 characters\" in the repo's own `_short` idiom.; Undisclosed narrowing of M2 for two species: `_species_universal_as_count_floor` and `_species_duration_without_clock` both `continue` when a clause has no citing legs (`if not ... or not cited`), while M2 reads \"all of whose citing legs contain `at least`\" / \"none of whose citing legs contains `elapsed`\u2026\", which are vacuously true for zero legs. `_species_default_unpinned` carries a comment explaining exactly this guard (\"An UNCITED clause is already a citation-grammar refusal\"); the other two carry the guard with no comment. The divergence is inert \u2014 `clause_citation_violations` (compile_plan.py:564-567) already refuses `grammar: Machine clause M<n> has no citing Proof leg`, so no plan reaching the render can hold an uncited clause \u2014 so this is a comment fix, not a behaviour fix: extend the existing rationale comment to cover all three species.; Three species narrow M2 by an undisclosed-in-the-exam guard: `_species_default_unpinned` (compile_plan.py, `if m and cited and not any(...)`), `_species_universal_as_count_floor` and `_species_duration_without_clock` all `continue` when a clause has NO citing leg. M2 as written is vacuously true there \u2014 \"whose citing legs' text nowhere contains that literal\", \"all of whose citing legs contain `at least`\", \"none of whose citing legs contains `elapsed`\u2026\" all hold over an empty set, so the letter of the spec fires and the code stays silent. The code comment discloses the reasoning (an uncited clause is already a `grammar:` refusal from `clause_citation_violations`, compile_plan.py:564-567), and on a plan that compiles the case is unreachable \u2014 but `render_advisories` still runs over a plan the check REFUSED (only malformed headings / duplicate ids abort it early), which is exactly when an author is repairing. The divergence is defensible and I would keep it; what is missing is a leg pinning it. Add one leg to `tests/test_compile_plan_proof_species.py` \u2014 a clause with no citing leg (the plan exits 2) drawing no `default-unpinned`/`universal-as-count-floor`/`duration-without-clock` line \u2014 so the narrowing is graded rather than incidental.; `_clip_run` (compile_plan.py, new) re-implements `_short` (compile_plan.py:537) \u2014 same whitespace collapse, same `n-1` + `\u2026` clip \u2014 differing only by an `.rstrip()` before the ellipsis, and it is now the third clipper in the file beside `_short` and `_clip`. `_short(command, RUN_CLIP)` would do the job; if the trailing-space trim matters, add `.rstrip()` to `_short` (it changes no existing output, since `_short` already collapses runs of whitespace to single spaces) and drop `_clip_run` and `RUN_CLIP`'s private twin. The exam's `test_run_chained_semicolon_detail_clips_a_long_command` grades the observable clip either way.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "04803097e34c60ac4b47fe9bf404ef79d736f633",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-1/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-1/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1512 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 28%]\n........................................................................ [ 33%]\n........................................................................ [ 38%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1512 passed, 5 warnings in 153.10s (0:02:33) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "3",
+      "cmd": "awk '/^## The proof gate/,/^## The worktree-pure/' skills/ultrawrite/SKILL.md | awk 'BEGIN{RS=\"\"} /per task/ && /not per round/ && /the moment/ && /Claim or Proof/ && /re-extract/ && /extract_gate_input.py/ && /one reader/ && /do not wait/ && /keyed on the hash/ {f=1} END{exit !f}'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "awk '/^## The proof gate/,/^## The worktree-pure/' skills/ultrawrite/SKILL.md | awk 'BEGIN{RS=\"\"} /ADVISORY proof-species:/ && /--check --renders/ && /repair/ && /before/ && /reader/ {f=1} END{exit !f}'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "awk '/^## Global Constraints discipline/,/^## Execution handoff/' skills/ultrawrite/SKILL.md | awk 'BEGIN{RS=\"\"} /- Check:/ && /driver/ && /every task.s clone/ && /adopted tree/ && /blocking/ && /\\(minor\\)/ && /prose/ && /lens/ && /minor/ && /never as prose/ {f=1} END{exit !f}'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -nE '\\b(NEVER|ALWAYS|MUST)\\b' skills/ultrawrite/SKILL.md && python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite && python3 -m pytest -q tests/test_ultrawrite_skill.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py",
+      "exit": 0,
+      "stdout": "skill ok\n............................................................             [100%]\n60 passed in 0.14s\n"
+    }
+  ],
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 38%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n......................................................................s. [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1511 passed, 1 skipped, 5 warnings in 152.14s (0:02:32) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1472 passed, 5 warnings in 114.51s (0:01:54) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "3a50d6e429a208eb5c36c64b16395c38c6e3c2b2",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-1/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-1/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.665,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Driver-side execution of the `constraintChecks` entries compile_plan.py now emits (task 1), and the `(minor)` recorded-never-dispatched behavior SKILL.md documents (task 3, M3).",
+      "reason": "external",
+      "why": "The executor is scoped to the concurrent engine plan `2026-09-04-judging-waste.md`; no code in this tree reads the key, so the run-in-every-clone / once-on-the-adopted-tree / minor-not-dispatched behavior cannot be exercised here. Everything on this run's side of that seam is verified: the parse, the three payloads, and the refusal are covered by `tests/test_compile_plan_check_constraints.py`, which the driver's `python3 -m pytest -n auto` ran green."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: examiner: (d) \u2014 \"every plan in CORPUS compiles with exit 0 under the current compiler\" \u2014 CORPUS (imported from test_compile_plan_proof_runs.py) globs tests/fixtures/plans/*.md, which includes README.md and docket.md \u2014 documents carrying no `### Task` heading that exit 1 under both the BASE and current compiler. Encoded as: exit 0 for every corpus file carrying a task heading, and for the two task-less ones an explicit assertion that both compilers refuse them identically, so the exclusion hides nothing.",
+    "task 1: out-of-FILES: tests/test_plan_level_claim.py \u2014 one line. Its ARGS_KEYS constant pins the exact `--emit-args` top-level key set, so adding `constraintChecks` (the task's own Machine clause M1, and what my exam's test_the_args_payload_gains_exactly_one_key demands) made it fail. Added \"constraintChecks\" to that list; no other change to the file, and its two assertions still pin the key set exactly.",
+    "task 1: coordination: SIBLING FILES lists task 2 as also modifying skills/ultrapowers/scripts/compile_plan.py. My edits touch _claims_run_command's neighborhood (a new _backtick_command_violation helper), the `Run:` branch of parse_claims_body's Proof loop, the parse_global_constraints block, collect_violations, and main()'s grammar_violations plus the three payload dicts \u2014 textual conflict with task 2's proof-species work is plausible at the parse_claims_body and collect_violations seams."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, Claim/Interfaces \u2014 the produced `constraintChecks` key has no consumer anywhere in the integrated tree. `skills/ultrapowers/scripts/compile_plan.py:3285` (compile result), `:3312` (`--emit-launch`) and `:3331` (`--emit-args`) all write it, and a repo-wide search finds the identifier only in the compiler and in `tests/test_compile_plan_check_constraints.py` / `tests/test_plan_level_claim.py` \u2014 `fleet/run-engine.mjs` and `fleet/run-main.mjs` still read only `globalConstraints`. So the second half of task 1's Claim (\"a command the driver runs\") is not exercised by this tree; the first half is (`parse_global_constraints`, compile_plan.py:1451-1458, lifts every `- Check:` line out of the referee's lens). The plan authorizes this split explicitly (Goal, /home/exedev/plans/run-1.md:16-19: \"the engine half is the concurrent plan `2026-09-04-judging-waste.md`\"), so it is not a shortfall of this run \u2014 but in the interim a `- Check:` bullet is enforced by nothing and is also no longer visible to the reviewer as prose."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 3, Claim/Context \u2014 `skills/ultrawrite/SKILL.md:253-258` tells the authoring agent that a `- Check:` bullet \"is a command the driver executes in every task's clone before review and once on the adopted tree \u2014 blocking, unless it ends `(minor)`, which is recorded and never dispatched.\" That is accurate about the compiler half only: `MINOR_SUFFIX` (compile_plan.py:1416) and `parse_constraint_checks` (compile_plan.py:1461-1479) record `{\"cmd\", \"minor\"}`, but no driver in this tree dispatches or skips anything. This settles cannot-verify item [3]: the M2 paragraph (`ADVISORY proof-species:` lines, SKILL.md:180-184) is factually accurate against the integrated tree \u2014 task 2's render is registered at compile_plan.py:2934 and names exactly those five species \u2014 while the M3 paragraph documents behavior that lands with the concurrent engine plan."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 1, Files \u2014 `tests/test_plan_level_claim.py:339` was modified by the integrated fold (`ARGS_KEYS` gains `\"constraintChecks\"`), but that path is named in no task's Files slot; task 1 declares only `Modify: skills/ultrapowers/scripts/compile_plan.py` and `Test: tests/test_compile_plan_check_constraints.py` (/home/exedev/plans/run-1.md:55-57). The edit itself is correct and unavoidable \u2014 that file pins the exact `--emit-args` top-level key list, and task 1's Context enumerates those nine keys without noting the existing pin \u2014 but it is an undeclared write in the integrated tree."
+    },
+    {
+      "severity": "minor",
+      "detail": "Tasks 2 and 3, Context \u2014 the five species names are a literal shared across two tasks and they agree today (compile_plan.py:2853/2864/2879/2892/2904 vs skills/ultrawrite/SKILL.md:181-182), but nothing pins the agreement. Task 3's Proof leg (b) only requires the paragraph to carry `ADVISORY proof-species:`, `--check --renders`, `repair`, `before` and `reader`; `tests/test_docs_agree_with_code.py` covers `skills/ultrapowers/SKILL.md` launcher flags, not `skills/ultrawrite/SKILL.md` species names. A rename inside `PROOF_SPECIES` would leave the skill's list silently stale. This is a cross-task path no test reaches, not a present defect."
+    }
+  ],
+  "blockedWaves": []
+}
