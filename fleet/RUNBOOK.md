@@ -58,16 +58,21 @@ name replaces the client's (measured 2026-09-03), so an injected `anthropic-beta
 list would destroy the flags the CLI sends.
 
 ```bash
-claude setup-token > ~/.fleet-oauth-token
-chmod 600 ~/.fleet-oauth-token
-ssh exe.dev "integrations add http-proxy --name claude-max \
-  --target https://api.anthropic.com --bearer=-" \
-  < ~/.fleet-oauth-token
-rm ~/.fleet-oauth-token
+node fleet/claude-token.mjs login
 ```
 
-Re-capture the beta list when the Claude CLI version changes (`integrations
-edit claude-max --header=…`). Rotate the token with
+That opens claude.ai for consent (the same OAuth flow Claude Code uses, with
+PKCE), reads the code you copy from the callback page off the clipboard,
+exchanges it, keeps the refresh token in your login keychain, and puts the
+access token on `claude-max` on stdin. Nothing is printed. The launcher runs
+`node fleet/claude-token.mjs refresh` before every `cp`, so the bearer at the
+edge is never within 30 minutes of expiry when a run starts; `status` shows the
+expiry. Alternative for a laptop with no keychain: `claude setup-token` mints a
+one-year token — pipe it into
+`ssh exe.dev "integrations add http-proxy --name claude-max --target https://api.anthropic.com --bearer=-"`
+and never write it to a file you keep.
+
+Rotate the token with
 `integrations edit claude-max --bearer=-` and a fresh token on stdin.
 `claude-max` is attached per run, per VM, `--for 6h`, never to a tag.
 

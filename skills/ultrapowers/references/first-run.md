@@ -67,13 +67,13 @@ Three objects, and the doctor names whichever one is wrong first:
 flow:
 
 ```bash
-claude setup-token > ~/.fleet-oauth-token
-chmod 600 ~/.fleet-oauth-token
-ssh exe.dev "integrations add http-proxy --name claude-max \
-  --target https://api.anthropic.com --bearer=-" \
-  < ~/.fleet-oauth-token
-rm ~/.fleet-oauth-token
+node fleet/claude-token.mjs login
 ```
+
+Browser consent on claude.ai, copy the code it shows, press Enter: the tool
+exchanges it, keeps the refresh token in your keychain, and sets the bearer on
+`claude-max` on stdin. Nothing is printed. The launcher refreshes it before
+every run.
 
 The GitHub objects are one command per account and one per repository you
 will drive, and ultrapowers itself is one of them.
