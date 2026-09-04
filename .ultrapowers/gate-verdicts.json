@@ -1,0 +1,41 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "030943b56a2c6eacf86d0907ca3613692c47618ad1c63a9695b41fb0b3e1bb58",
+   "verdict": "pass",
+   "reason": "round 3: M1 exit 2 + exam-shape line; M2 both negative arms; M3 template substitution incl. all three built-in shapes with the header absent; M4 zero and >1 token; M5 PATH resolves/does not + runner_for's three (label, --version argv) pairs; M6 section-scoped greps"
+  },
+  "2": {
+   "hash": "493c4f0b2b6a7cc4e3101fef35ccddbb5587488b4df16806f5a7b758e0f759d8",
+   "verdict": "pass",
+   "reason": "round 1: M1-M3 one Refusal leg per manifest; M4 no push/new argv and no credential refresh; M5 two negative cases reach the push; M6 the usage/SKILL.md lockstep pin"
+  },
+  "3": {
+   "hash": "57b7ea38fd7d3367e1e0a5c1c70749163489ab24833bef8689cfaa02e6e99a2a",
+   "verdict": "pass",
+   "reason": "round 5: M1 three comparison forms, exactly-one-line, verbatim command in the detail, .py negative; M2 -e and -d, dotted negative; M3 PLAN OK/exit 0 on every plan; M4 section-scoped joined grep after the species-sentence opener"
+  },
+  "4": {
+   "hash": "0e2e729d2306e45a38546eeac76f33135b048d4608db6ec1e0f5a348377b2815",
+   "verdict": "pass",
+   "reason": "round 1: M1 engineSource main-tip + rendered line with the seam's sha; M2 pinned line; M3 comment carries engine=<sha> with no annotation + the existing launch sim as regression witness"
+  },
+  "5": {
+   "hash": "1b8b9a8f63ccb6ccce00b004f9fc5e410f8df3e5f4d246b11bfc1ccc48e5d317",
+   "verdict": "pass",
+   "reason": "round 4: M1 help text; M2 whole-sentence tail on the same-file advisory; M3 two 40-hex values (zeros and mixed) each with the new line, no BASE line, exit 0, and a non-checkout directory keeping BASE's line"
+  }
+ },
+ "tally": {
+  "tasks": 5,
+  "pass": 5,
+  "fail": 0,
+  "rounds": {
+   "1": 5,
+   "2": 3,
+   "3": 3,
+   "4": 2,
+   "5": 1
+  }
+ }
+}
