@@ -18,7 +18,9 @@
  * attached (a `gh pr create` twenty seconds after the swap produced a
  * bot-authored PR), and two integrations naming one repo on one VM have no
  * documented tie-break. One object per repo makes both faults inexpressible.
- * Nothing GitHub rides `tag:fleet` except `fleet-runs`.
+ * No GitHub integration rides `tag:fleet`: the tag is how the fleet's VMs are
+ * found, never how an integration is granted, and the doctor reports any
+ * GitHub object attached to it as missing.
  *
  * Creating is idempotent: an object that exists is left exactly as it is and
  * reported as `skipped`. `gc` reports and never deletes — it names integration

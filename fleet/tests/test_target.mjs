@@ -35,7 +35,7 @@ const rules = (integrations = [], { gh = answer('{"name":"smoke"}'), add = answe
     `integrations add github --name ${GH} --repository ${TARGET} --act-as-user`,
     '(1) act-as-user, no --attach'
   )
-  assert.ok(!/--attach|tag:|--readonly/.test(addCommand(TARGET)), '(1) nothing GitHub rides the tag, and nothing is read-only')
+  assert.ok(!/--attach|tag:|--readonly/.test(addCommand(TARGET)), '(1) no GitHub integration rides `tag:fleet`, and nothing is read-only')
 
   const exec = makeExec({ rules: rules() })
   const result = await target({ argv: [TARGET], exec })
@@ -77,12 +77,12 @@ const rules = (integrations = [], { gh = answer('{"name":"smoke"}'), add = answe
       { name: GH, repository: TARGET, attachments: ['vm:fleet-r7-2609032215-a1b2'] },
       { name: 'gh-popmechanic-other', repository: 'popmechanic/other', attachments: [] },
       { name: 'claude-max', attachments: [] },
-      { name: 'fleet-runs', attachments: ['tag:fleet'] },
+      { name: 'ops-alerts', attachments: ['tag:fleet'] },
       { name: 'notify', attachments: [] }
     ])
   })
   const result = await target({ argv: ['list'], exec })
-  assert.deepEqual(result.results.map((r) => r.name), [GH, 'gh-popmechanic-other'], '(4) claude-max, fleet-runs and notify are not target objects')
+  assert.deepEqual(result.results.map((r) => r.name), [GH, 'gh-popmechanic-other'], '(4) claude-max, notify and the non-GitHub ops-alerts on `tag:fleet` are not target objects')
   const printed = renderTarget(result)
   assert.match(printed, new RegExp(`${GH} {2}popmechanic/smoke {2}vm:fleet-r7-2609032215-a1b2`), '(4) a per-VM attachment is shown')
   assert.match(printed, /gh-popmechanic-other {2}popmechanic\/other {2}unattached/, '(4) and an idle object says so')
