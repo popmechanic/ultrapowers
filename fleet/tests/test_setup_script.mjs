@@ -629,6 +629,17 @@ test('(f) [M4] the status server comes up first, over a page already written', a
   const page = readJson(ctx.snapshot)
   assert.equal(page.state, 'booting', 'the page is booting when httpd starts')
   assert.equal(page.run, RUN, 'and it names this run')
+
+  // The server is the first --user call and it precedes every install: the
+  // installs run after the bus is proven up, never before.
+  const iServer = indexOfEntry(es, (e) => e.tool === 'systemd-run')
+  const iInstall = indexOfEntry(es, (e) => ['curl', 'tar', 'unzip', 'apt-get', 'sudo', 'sha256sum'].includes(e.tool))
+  assert.ok(iInstall > iServer, `an install ran before the status server (server at ${iServer}, first install at ${iInstall})`)
+  const sudos = es.filter((e) => e.tool === 'sudo').map((e) => e.argv.join(' '))
+  assert.ok(
+    sudos.includes('-n apt-get install -y --no-install-recommends python3-pytest python3-pytest-xdist'),
+    `pytest is installed through sudo -n apt-get: ${JSON.stringify(sudos)}`,
+  )
 })
 
 test('(f) [M4] daemon-reload then the unit start, and the start is the last command but the self-delete', async () => {
@@ -686,18 +697,17 @@ test('(g) [M4] a bus that never appears fails the run on the deadline, with no s
 
   const es = entries(ctx)
   assert.equal(es.filter((e) => e.tool === 'systemctl').length, 0, 'no systemctl call is made')
-  assert.ok(
-    es.some((e) => e.tool === 'systemd-run' && e.argv.includes('--unit=fleet-status')),
-    'the status page still came up before the wait',
+  assert.equal(
+    es.filter((e) => e.tool === 'systemd-run').length, 0,
+    'no --user call is made without a bus — the page server waits for it too',
   )
   assert.equal(readJson(path.join(ctx.home, 'www', 'status.json')).state, 'failed')
 
-  // The deadline is in seconds, measured from where the wait began — the last
-  // stub before it, since the wait's own sleeps and the self-delete are all
-  // that can follow.
+  // The deadline is in seconds, measured from launch: nothing but the exports
+  // and one page write precede the wait now, so launch is the wait's start.
   const preWait = es.filter((e) => e.tool !== 'sleep' && !isSelfDelete(e))
-  assert.ok(preWait.length > 0, 'the installs run before the wait')
-  const elapsed = result.endedAt - preWait[preWait.length - 1].ms
+  assert.equal(preWait.length, 0, `nothing runs before the wait: ${JSON.stringify(preWait.map((e) => e.tool))}`)
+  const elapsed = result.endedAt - result.startedAt
   assert.ok(
     elapsed >= 2000 && elapsed <= 4000,
     `the wait must honour FLEET_BUS_WAIT_SECONDS=2 as a deadline; it took ${elapsed} ms`,
@@ -732,11 +742,17 @@ test('(g) [M4] a bus that appears 3 s in is polled for and then used', async () 
     start.ms - t0 >= 3000,
     `the start must wait for the bus; it came ${start.ms - t0} ms after launch`,
   )
+  const server = es.find((e) => e.tool === 'systemd-run')
+  assert.ok(server && server.ms - t0 >= 3000,
+    `the page server must wait for the bus too; it came ${server ? server.ms - t0 : 'never'} ms after launch`)
 
-  // The wait is a loop with a sub-second sleep, so the polling is observable.
-  let firstSleep = iReload
+  // The wait is a loop with a sub-second sleep, so the polling is observable —
+  // it sits just before the first --user call, the page server.
+  const iServer = indexOfEntry(es, (e) => e.tool === 'systemd-run')
+  assert.ok(iServer >= 0, 'the page server starts once the bus is there')
+  let firstSleep = iServer
   while (firstSleep > 0 && es[firstSleep - 1].tool === 'sleep') firstSleep -= 1
-  const polls = es.slice(firstSleep, iReload)
+  const polls = es.slice(firstSleep, iServer)
   assert.ok(polls.length >= 2, `the wait must poll, not sleep once: ${polls.length} sleeps`)
   for (const p of polls) {
     assert.ok(

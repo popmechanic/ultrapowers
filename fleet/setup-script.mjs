@@ -91,13 +91,24 @@ status_page() {
   systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h "$HOME/www"
 }
 
-# The page answers before anything slow, so a watcher sees the box at all. This
-# is the first --user call, and the platform's setup unit can beat the user
-# manager to the bus by a tenth of a second, so it is best effort: unguarded it
-# would hand the whole run to errexit over the very race the wait below closes.
-# It is tried again once the bus is proven up.
+
+# The platform's setup unit starts ahead of user@.service, so the user bus may
+# not exist yet and a --user call would fail with "Failed to connect to bus".
+# The deadline is in seconds of wall clock, not a count of tries.
+status booting "setup: user bus"
+deadline=$(( $(date +%s%3N) + BUS_WAIT * 1000 ))
+while [ ! -S "$BUS" ]; do
+  if [ "$(date +%s%3N)" -ge "$deadline" ]; then
+    status failed "setup: no user bus at $BUS"
+    exit 1
+  fi
+  sleep 0.2
+done
+
+# The page answers before anything slow, so a watcher sees the box at all —
+# and it is the first --user call, made only once the bus is proven up.
 status booting "setup: start"
-status_page || true
+status_page
 
 # node: nodejs.org only, and only once the release's own sums agree.
 status booting "setup: node"
@@ -131,23 +142,8 @@ printf '%s\\n' '{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions
 git config --global user.name fleet
 git config --global user.email fleet@exe.dev
 
-# The platform's setup unit starts ahead of user@.service, so the user bus may
-# not exist yet and a --user call would fail with "Failed to connect to bus".
-# The deadline is in seconds of wall clock, not a count of tries.
-status booting "setup: user bus"
-deadline=$(( $(date +%s%3N) + BUS_WAIT * 1000 ))
-while [ ! -S "$BUS" ]; do
-  if [ "$(date +%s%3N)" -ge "$deadline" ]; then
-    status failed "setup: no user bus at $BUS"
-    exit 1
-  fi
-  sleep 0.2
-done
 
 systemctl --user daemon-reload
-# The reload proves the bus: if the page lost the race up there, this is where
-# it comes up, and it is a no-op when the first attempt took.
-status_page || true
 status booting "setup: starting the run"
 systemctl --user start "fleet-run@$RUN.service"
 sudo -n rm -f -- "$0"

@@ -2,9 +2,9 @@
 Description=ultrapowers run %i
 After=network-online.target
 
-# A TEMPLATE, instanced per run: the launcher starts `fleet-run@<N>.service`
-# over ssh once the assignment is written and the integrations are attached —
-# never at boot, so there is no [Install] section and nothing to enable.
+# A TEMPLATE, instanced per run: the run's setup script starts `fleet-run@<N>.service`
+# as its last act, once the bus is up and the tools are installed — the
+# integrations rode the `new` that created the VM; never at boot, so there is no [Install] section and nothing to enable.
 #
 # Type=exec, not oneshot (Counsel 3, measured on exeuntu, systemd 255): a
 # oneshot has TimeoutStartUSec=infinity, ignores RuntimeMaxSec=, and once it
