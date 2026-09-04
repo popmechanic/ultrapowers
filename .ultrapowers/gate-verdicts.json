@@ -1,0 +1,10 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "3160eaec3883a13ea897b9a95288aa11706c7bd664e8514da6803b5cd8741237",
+   "verdict": "pass",
+   "reason": "round 2: M1 iter 0/1/2 ordering, placement, fields, stderr in the record, 4,000-char cap; M2 block position and the null-testCmd sibling with no event and no text; M3 all three branches (proof-red, repaired, review-round red over a canned PASS); M4 wraps-joined greps ordering definition, settled case, fix-loop sentence; M5 the examiner and exam-edit sims"
+  }
+ },
+ "tally": {"tasks": 1, "pass": 1, "fail": 0, "rounds": {"1": 1, "2": 1}}
+}
