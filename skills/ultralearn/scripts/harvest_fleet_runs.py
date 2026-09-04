@@ -21,7 +21,9 @@ different facts; spelled as one silent skip they read identically downstream.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -30,15 +32,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _outcome import (FailedLookup, report_failed_lookup,  # noqa: E402
-                      report_looked_empty)
+                      report_looked_empty, swallow)
 import fleet_events            # noqa: E402
-import fleet_fetch             # noqa: E402
 import fleet_slice             # noqa: E402
 import harvest_runs            # noqa: E402
 
 SUITE_OUTPUT_TAIL = 2000       # chars of `tests.output` kept; the head is boilerplate
 AUDIT_UNIT_NOTE = ("outputTokens = the worker:end meter's output field, summed "
                    "over workers (the engine's own accounting, not a transcript sum)")
+
+# The six files `fleet/CONTRACT.md` puts under `.ultrapowers/runs/<N>/` on the
+# evidence branch. `fleet/janitor.mjs` reads the same paths through the same
+# API; this is that read, in Python.
+EVIDENCE_FILES = ("status.json", "receipt.json", "gate-receipt.json",
+                  "report.json", "events.jsonl", "engine.log")
+GH_TIMEOUT = 120               # seconds; one contents read is a few KB
 
 
 def _warn(msg):
@@ -77,6 +85,92 @@ def _read_jsonl(path):
     return out
 
 
+def _run_number(run):
+    """`7`, `run-7` and ` run-7 ` all name run 7. The evidence branch and the
+    contents path both spell the run as a bare number, so normalise once here
+    rather than at each of the two spellings."""
+    text = str(run).strip()
+    return text[len("run-"):] if text.startswith("run-") else text
+
+
+def evidence_branch(run):
+    """The branch `fleet/janitor.mjs` publishes a run's record on."""
+    return f"ultra/evidence-run-{_run_number(run)}"
+
+
+def _evidence_api_path(target, run, name):
+    return (f"repos/{target}/contents/.ultrapowers/runs/{_run_number(run)}/{name}"
+            f"?ref={evidence_branch(run)}")
+
+
+def _gh_api(api_path):
+    """`gh api <path>` decoded to the file's bytes, or None when gh answered
+    non-zero — an `HTTP 404` is an *answer*: that path is not on the branch,
+    which the janitor also treats as an absence rather than a failure.
+
+    Raises `OSError` (no `gh` on PATH) or `subprocess.SubprocessError` (a
+    timeout) when the read could not be made at all — that is not an absence,
+    and the caller turns it into a `FailedLookup`.
+    """
+    proc = subprocess.run(["gh", "api", api_path], capture_output=True,
+                          text=True, timeout=GH_TIMEOUT)
+    if proc.returncode != 0:
+        return None
+    try:
+        envelope = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        # A contents read that answered 0 with a non-envelope body is not a
+        # file we can decode. Same standing as a 404: absent, not fatal.
+        swallow("gh api answered a non-JSON body; treating the file as absent",
+                exc)
+        return None
+    content = envelope.get("content")
+    if not isinstance(content, str):
+        return None
+    # `content` is base64 with the API's newline wrapping; b64decode drops
+    # characters outside the alphabet, so the wrapping needs no stripping.
+    return base64.b64decode(content)
+
+
+def fetch_evidence(target: str, run: str, dest: Path) -> Path:
+    """Pull one run's committed record off `ultra/evidence-run-<N>` into
+    `dest`, and return `dest` — a directory holding an `events.jsonl`, which is
+    exactly what `discover_run_dirs` already accepts.
+
+    Per file, absence is advisory: `gh` exiting non-zero means that file is not
+    on the branch, which is marked and skipped so the run still bundles.
+    `events.jsonl` is the exception — without a timeline there is no bundle —
+    and so is a target that could not be read at all. Both raise `FailedLookup`
+    naming the target, the run and the branch.
+    """
+    branch = evidence_branch(run)
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    landed = []
+    for name in EVIDENCE_FILES:
+        try:
+            body = _gh_api(_evidence_api_path(target, run, name))
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise FailedLookup(
+                f"{target} run {_run_number(run)}: cannot read {branch} "
+                f"with gh ({exc})") from exc
+        if body is None:
+            _warn(f"{target} run {_run_number(run)}: no {name} on {branch}; "
+                  f"skipping that file")
+            continue
+        (dest / name).write_bytes(body)
+        landed.append(name)
+    if not landed:
+        raise FailedLookup(
+            f"{target} run {_run_number(run)}: nothing readable on {branch} "
+            f"— gh answered non-zero for all {len(EVIDENCE_FILES)} files")
+    if "events.jsonl" not in landed:
+        raise FailedLookup(
+            f"{target} run {_run_number(run)}: no events.jsonl on {branch} "
+            f"— a run with no timeline cannot bundle")
+    return dest
+
+
 def discover_run_dirs(path, workdir):
     """Resolve a user-supplied path to fleet run directories.
 
@@ -95,7 +189,7 @@ def discover_run_dirs(path, workdir):
     if path.is_file():
         if not tarfile.is_tarfile(path):
             raise FailedLookup(f"not a fleet run directory or tarball: {path}")
-        # NOT `path.stem`: fetch_bundles names every bundle's tarball
+        # NOT `path.stem`: a sandbox-logs pull names every bundle's tarball
         # `sandbox-logs.tgz`, so a stem-keyed destination is the SAME directory
         # for all of them — each unpack then re-reports every run extracted so
         # far (8 tarballs -> 36 run dirs), and same-named run dirs overwrite
@@ -261,27 +355,35 @@ def main(argv=None):
     ap.add_argument("paths", nargs="*",
                     help="fleet run dir, a tree containing them, or a sandbox-logs tarball")
     ap.add_argument("--cache", default="~/.claude/ultralearn")
-    ap.add_argument("--remote", metavar="HOST",
-                    help="pull evidence bundles from an orchestrator over ssh")
-    ap.add_argument("--remote-root", default=fleet_fetch.DEFAULT_REMOTE_ROOT)
-    ap.add_argument("--run", action="append", dest="run_ids", metavar="run-30",
-                    help="restrict --remote to these run ids (repeatable)")
+    ap.add_argument("--evidence", metavar="OWNER/REPO",
+                    help="pull each --run's committed record from this target's "
+                         "ultra/evidence-run-<N> branch")
+    ap.add_argument("--run", action="append", dest="run_ids", metavar="N",
+                    help="run number to fetch with --evidence (repeatable); "
+                         "`run-N` is accepted and normalised")
     ap.add_argument("--origin", default="home", choices=("home", "foreign"))
     ap.add_argument("--engine-version", default=None)
     ap.add_argument("--slice-budget", type=int, default=fleet_slice.WORKER_BUDGET)
     ap.add_argument("--force", action="store_true",
                     help="rebuild bundles that are already cached")
     args = ap.parse_args(argv)
+    # A target with no run is not a harvest of everything: the contents API is
+    # read per path, so there is no branch to enumerate. Refuse it here, in the
+    # parser that knows --evidence, rather than looking at an empty corpus.
+    if args.evidence and not args.run_ids:
+        ap.error("--evidence needs at least one --run N")
 
     cache = Path(args.cache).expanduser()
     built = skipped = failed = 0
     with tempfile.TemporaryDirectory(prefix="ultralearn-fleet-") as tmp:
         paths = [Path(p) for p in args.paths]
-        if args.remote:
+        for run in (args.run_ids or []) if args.evidence else []:
+            # One unfetchable run costs exactly itself, the same as one
+            # unreadable local input below.
             try:
-                paths += fleet_fetch.fetch_bundles(
-                    args.remote, Path(tmp) / "remote",
-                    remote_root=args.remote_root, run_ids=args.run_ids)
+                paths.append(fetch_evidence(
+                    args.evidence, run,
+                    Path(tmp) / "evidence" / _run_number(run)))
             except FailedLookup as exc:
                 report_failed_lookup(str(exc))
                 failed += 1

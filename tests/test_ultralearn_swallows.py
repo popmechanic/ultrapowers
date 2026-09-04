@@ -10,8 +10,8 @@ raises (a bare re-raise or a typed error — both fail loud) or calls
 failure naming file and line.
 
 The walk globs the whole directory so a new script cannot escape by not being
-enumerated. Two scripts are owned by concurrent sibling tasks and so are not
-swept yet; they are audited all the same and their handlers quarantined into
+enumerated. One script is owned by a concurrent sibling task and so is not
+swept yet; it is audited all the same and its handlers quarantined into
 `NOT_YET_SWEPT`, which is pinned as an upper bound rather than a blind skip.
 """
 import ast
@@ -78,15 +78,14 @@ def audit(source, label):
     return violations, marked
 
 
-# Two of the seven scripts in this directory are owned by concurrent sibling
-# tasks under #489 — `fleet_fetch.py` and `harvest_fleet_runs.py` — and those
-# tasks rewrite the very handlers a sweep would mark. Marking them from here
-# would be a lost update on their work, so their eight handlers are not swept
-# yet. They are not *excluded from the walk*: the glob still parses and audits
-# them, and their violations are quarantined into this named set, asserted
-# below to be an upper bound. Once those tasks mark their own handlers the set
-# costs nothing and can be deleted outright.
-NOT_YET_SWEPT = frozenset({"fleet_fetch.py", "harvest_fleet_runs.py"})
+# One script in this directory is owned by a concurrent sibling task under
+# #489 — `harvest_fleet_runs.py` — and that task rewrites the very handlers a
+# sweep would mark. Marking it from here would be a lost update on its work, so
+# its handlers are not swept yet. It is not *excluded from the walk*: the glob
+# still parses and audits it, and its violations are quarantined into this
+# named set, asserted below to be an upper bound. Once that task marks its own
+# handlers the set costs nothing and can be deleted outright.
+NOT_YET_SWEPT = frozenset({"harvest_fleet_runs.py"})
 
 
 def audit_scripts():

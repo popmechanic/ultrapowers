@@ -26,7 +26,6 @@ def test_every_flag_the_skill_advertises_exists():
         [sys.executable, str(HARVEST), "--help"],
         capture_output=True, text=True, check=True).stdout
     advertised = set(re.findall(r"`?(--[a-z][a-z-]+)", SKILL.read_text()))
-    for flag in advertised & {"--remote", "--run", "--cache", "--force",
-                              "--origin", "--engine-version", "--slice-budget",
-                              "--remote-root"}:
+    for flag in advertised & {"--evidence", "--run", "--cache", "--force",
+                              "--origin", "--engine-version", "--slice-budget"}:
         assert flag in help_text, f"SKILL.md advertises {flag}, the CLI has no such flag"
