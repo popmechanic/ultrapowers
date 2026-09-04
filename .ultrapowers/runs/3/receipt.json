@@ -1,0 +1,230 @@
+{
+  "ok": true,
+  "stamp": "run-3",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-3"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The driver runs every check before review, routes findings by actor, and reports what a reviewer-minute bought",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`checkEvidenceBlock(checks: Array<{cmd, exit, stdout, minor}>) -> string`",
+            "`integratedCheckEvidenceBlock(checks: Array<{cmd, exit, stdout, minor}>) -> string`",
+            "`report.reviewEconomy`",
+            "`report.integratedChecks`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The roles say what the driver settles, what an actor is, and what the editor reads",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/README.md",
+          "fleet/roles/critic.md",
+          "fleet/roles/fix.md",
+          "fleet/roles/reviewer.md",
+          "fleet/tests/test_exam_edited_patches.mjs",
+          "fleet/tests/test_roles_peer.mjs",
+          "fleet/tests/test_run_engine.mjs",
+          "fleet/tests/test_run_engine_critic_inputs.mjs",
+          "tests/test_roles_run_evidence.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The driver runs every check before review, routes findings by actor, and reports what a reviewer-minute bought",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_actor_routing.mjs",
+            "fleet/tests/test_run_engine_pre_review.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`checkEvidenceBlock(checks: Array<{cmd, exit, stdout, minor}>) -> string`",
+              "`integratedCheckEvidenceBlock(checks: Array<{cmd, exit, stdout, minor}>) -> string`",
+              "`report.reviewEconomy`",
+              "`report.integratedChecks`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_pre_review.mjs",
+            "fleet/tests/test_run_engine_actor_routing.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_pre_review.mjs && node fleet/tests/test_run_engine_actor_routing.mjs && node fleet/tests/test_run_engine_review_economy.mjs",
+          "proofRuns": [
+            "! grep -q cannotVerify fleet/run-engine.mjs",
+            "python3 -m pytest -q tests/test_report_runbook.py tests/test_roles_run_evidence.py",
+            "grep -q 'proofFixes' skills/ultrapowers/references/report-format.md && grep -q 'proof-red' skills/ultrapowers/references/report-format.md && grep -q 'integratedChecks' skills/ultrapowers/references/report-format.md && grep -q 'reviewEconomy' skills/ultrapowers/references/report-format.md && grep -q 'plan-defect' skills/ultrapowers/references/report-format.md && ! grep -q 'cannotVerify' skills/ultrapowers/references/report-format.md && ! grep -qi 'CANNOT-VERIFY checklist' skills/ultrapowers/references/report-format.md"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The roles say what the driver settles, what an actor is, and what the editor reads",
+          "files": [
+            "fleet/roles/README.md",
+            "fleet/roles/critic.md",
+            "fleet/roles/fix.md",
+            "fleet/roles/reviewer.md",
+            "fleet/tests/test_exam_edited_patches.mjs",
+            "fleet/tests/test_roles_peer.mjs",
+            "fleet/tests/test_run_engine.mjs",
+            "fleet/tests/test_run_engine_critic_inputs.mjs",
+            "tests/test_roles_run_evidence.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/roles/README.md",
+            "fleet/roles/critic.md",
+            "fleet/roles/fix.md",
+            "fleet/roles/reviewer.md",
+            "fleet/tests/test_exam_edited_patches.mjs",
+            "fleet/tests/test_roles_peer.mjs",
+            "fleet/tests/test_run_engine.mjs",
+            "fleet/tests/test_run_engine_critic_inputs.mjs",
+            "tests/test_roles_run_evidence.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'cannotVerify' fleet/roles/reviewer.md && awk 'BEGIN{RS=\"\"} /actor/ && /implementer/ && /plan/ && /never sent to a fix round/ && /parks/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+            "awk 'BEGIN{RS=\"\"} /cannot settle/ && /minor/ && /unverified:/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+            "awk 'BEGIN{RS=\"\"} /prose/ && /GLOBAL CONSTRAINT/ && /minor/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+            "awk 'BEGIN{RS=\"\"} /how the work was produced/ && /is not a finding/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+            "awk 'BEGIN{RS=\"\"} /RUN EVIDENCE/ && /re-execution/ && /is not a finding/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+            "awk 'BEGIN{RS=\"\"} /CHECK EVIDENCE/ && /fix loop/ && /\\(minor\\)/ && /blocks nothing/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+            "! grep -qi 'cannot-verify' fleet/roles/critic.md && ! grep -qi 'checklist' fleet/roles/critic.md && ! grep -q 'Interfaces:' fleet/roles/critic.md && test \"$(grep -c '^1\\. Claim' fleet/roles/critic.md)\" -eq 1 && test \"$(grep -c '^2\\. Context' fleet/roles/critic.md)\" -eq 1 && ! grep -qE '^(3|4|5)\\. ' fleet/roles/critic.md && awk 'BEGIN{RS=\"\"} /INTEGRATED RUN EVIDENCE/ && /authoritative/ && /re-execution/ && /settled/ && /not a .deferredVerification/ && /human judgment/ && /not for a command the driver ran/ {f=1} END{exit !f}' fleet/roles/critic.md && grep -q 'INTEGRATED CHECK EVIDENCE' fleet/roles/critic.md && grep -q 'browser, runtime, external, manual' fleet/roles/critic.md",
+            "awk 'BEGIN{RS=\"\"} /referee/ && /Run:/ && /Check:/ && /exit non-zero/ {f=1} END{exit !f}' fleet/roles/fix.md && ! grep -q 'question for the editor' fleet/roles/README.md && grep -q 'unverified:' fleet/roles/README.md",
+            "! grep -nE '\\b(NEVER|ALWAYS|MUST)\\b' fleet/roles/reviewer.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/README.md && ! grep -qi 'adversarial' fleet/roles/reviewer.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/README.md",
+            "! grep -q 'REFEREE_SENTENCES' fleet/tests/test_roles_peer.mjs && ! grep -q 'FIX_SENTENCE' fleet/tests/test_roles_peer.mjs && ! grep -q 'IMPLEMENTER_SENTENCE' fleet/tests/test_roles_peer.mjs && grep -q 'unverified:' fleet/tests/test_roles_peer.mjs && ! grep -q 'cannotVerify' fleet/tests/test_run_engine.mjs && ! grep -q 'sha256' fleet/tests/test_exam_edited_patches.mjs && node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_run_engine_critic_inputs.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED' && python3 -m pytest -q tests/test_roles_run_evidence.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Drivers"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The frozen periphery is untouched: `skills/ultrapowers/scripts/gate_check.py`,\n  `ultra_gate.py` and `run_acceptance.sh` are byte-identical to BASE, and so is\n  `fleet/run-main.mjs` \u2014 its `ackDecision` still pre-authorizes exactly `deferred:runtime` and\n  `deferred:external`, which is what makes a `deferred:plan-defect` ack park.\n- No role's tool posture changes: `fleet/run-worker.mjs` is byte-identical to BASE.\n- A run whose tasks carry no `Run:`, whose `args.constraintChecks` is absent and whose reviewers\n  return no issues leaves every prompt the engine builds byte-identical to BASE's (the run-51\n  rule: empty evidence renders nothing).\n- The role files keep the register the directory keeps: no `NEVER`/`ALWAYS`/`MUST`, no\n  `adversarial`.\n- The word `cannotVerify` appears in none of `fleet/run-engine.mjs`, `fleet/roles/*.md`,\n  `skills/ultrapowers/references/report-format.md`.\n- Every engine sim prints `ALL TESTS PASSED` under 120 s with no network.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-3/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-3/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-3/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-3/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

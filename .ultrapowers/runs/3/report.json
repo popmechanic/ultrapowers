@@ -1,0 +1,190 @@
+{
+  "integrationBranch": "ultra/integration-run-3",
+  "baseSha": "2cc873fb2d040fbe081f35ff0ababc408eaa6500",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "c4f31b22d2512301e936e70b0ddfefbf8816fcdb",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-3/patches/task-1.patch",
+      "reviewVerdict": "fixed",
+      "notes": "Three paths outside FILES are modified: `fleet/tests/test_run_engine_proof_runs.mjs`, `fleet/tests/test_run_engine_integrated_runs.mjs`, and `fleet/tests/test_run_engine_proposed_patch.mjs`. Each edit is forced by the engine change and none is sibling-owned \u2014 the pre-review pass doubles the `driver:proof-run` count and moves red-`Run:` handling out of the review fix loop (proof_runs, integrated_runs), and `actor` joining `REVIEWER_SCHEMA.required` breaks proposed_patch's whole-array `deepEqual`. The adaptations are disclosed in comments and each keeps the assertion the file exists to make (proposed_patch now pins `required.indexOf('proposedPatch') === -1` alongside the new array). Recording the footprint overrun, not asking for a change.; `skills/ultrapowers/references/report-format.md`'s new `integratedChecks` row says \"`[]` when the run declared no checks and when no tree was adopted\", but the engine's loop sits inside the per-wave `if (merge.status === 'MERGED')` block (fleet/run-engine.mjs, after the integrated-`Run:` loop), so a multi-wave run appends every command once per adopted wave. Unlike the `driver:integrated-check` event, the record shape the plan fixes (`{ cmd, exit, stdout, minor }`) carries no `wave`, so a reader sees repeated `cmd` values with no way to attribute them. Faithful to M4 \u2014 worth one clause in the row, e.g. \"one item per command per adopted wave, in wave order; the matching `driver:integrated-check` event carries the wave number\". The `integratedRuns` row above has the same silence, so this is a consistency gap rather than a regression.; Three paths modified outside FILES (none sibling-owned, and each a direct consequence of the change rather than scope creep \u2014 named per the footprint rule): `fleet/tests/test_run_engine_proof_runs.mjs` (dispatch order, event counts and iters shift because the pre-review pass runs `Run:` commands at iter 0, and two legs now assert `fix:T1:0` / `reviewVerdict: 'proof-red'` / `proofFixes: 1`), `fleet/tests/test_run_engine_integrated_runs.mjs` (a `driver:proof-run` count 2 \u2192 4 plus an `iter === 1` count), and `fleet/tests/test_run_engine_proposed_patch.mjs` (`deepEqual(item.required, ['severity','detail','actor'])` after the schema change, plus a retained assertion that `proposedPatch` is never required). No action needed beyond recording the wider footprint.; Doubled prefix in task notes: the actor-routing block builds `planNotes = planDefects.filter(\u2026).map((p) => 'plan-defect: ' + p.detail)`, but a reviewer-supplied detail routed by the textual path already begins with `plan-defect:` (that prefix is what the router matches on), so the note reads `plan-defect: plan-defect: M2 cannot hold as written`. The spec literal `plan-defect: <detail>` is still satisfied and nothing downstream parses it, so this is cosmetic; strip an existing prefix before prepending, e.g. `'plan-defect: ' + p.detail.replace(/^plan-defect:\\s*/, '')`.; report-format.md's `tasks[].reviewVerdict` row still glosses `blocked-after-fix` as \"implementer blocked during the fix round\", but the pre-review pass adds a second producer of that verdict: fleet/run-engine.mjs returns `reviewVerdict: 'blocked-after-fix'` with `fixIterations: 0, proofFixes: 1` when the `fix:<id>:0` agent comes back BLOCKED/NEEDS_CONTEXT. Before this change `blocked-after-fix` implied `fixIterations: 1`, so a consumer reading the pair now sees a combination the reference does not describe. M9 only requires the `proof-red` addition, so this is advisory \u2014 one clause in the same row, e.g. \"...blocked during a fix round, including the driver's pre-review repair round (`fixIterations: 0` with `proofFixes: 1`)\". Same row, no rewrite of the pinned `proposedPatches` or `deferredVerification` text.; `checkEvidenceBlock` and `integratedCheckEvidenceBlock` (fleet/run-engine.mjs, the two new exports) differ only in their opening sentence; the per-command renderer `checks.map((c) => '\\n\\n$ ' + c.cmd + '\\nexit ' + c.exit + (c.minor ? ' (minor)' : '') + '\\n' + c.stdout).join('')` is copy-pasted verbatim between them. The new sim does loop both functions over the same `sample` with the same expectations, so a divergence would be caught \u2014 which is why this is advisory and not blocking. Lifting the map into one `const checkLines = (checks) => ...` used by both would leave the opener as the only difference, matching how the pair is described in M3/M4 (\"the same per-command lines\"). Noted as house-keeping: the file's existing `runEvidenceBlock`/`integratedRunEvidenceBlock` pair duplicates the same way, so this follows the surrounding idiom rather than departing from it.; concern: out-of-FILES: fleet/tests/test_run_engine_proof_runs.mjs \u2014 M1 changes WHEN the Run: commands execute, so this pre-existing file's pins went red for the right reason (a green task now records two executions before review 1, and an always-red command ends at proof-red without a reviewer instead of looping to fix-loop-exhausted). Updated each affected leg to the new ordering with its intent preserved \u2014 the stderr leg now reads the fix:T1:0 prompt (same recorded tail, same exit 1), and the canned-PASS leg still asserts a red command cannot merge, one repair round earlier and two reviewer calls cheaper. Nothing was deleted.; concern: out-of-FILES: fleet/tests/test_run_engine_integrated_runs.mjs \u2014 one sim precondition counted driver:proof-run events (2, now 4 with the iter-0 pass). Raised to 4 and added an iter===1 count so the ordering claim is still pinned. The file's own M-clauses are untouched.; concern: out-of-FILES: fleet/tests/test_run_engine_proposed_patch.mjs \u2014 it pinned REVIEWER_SCHEMA issue `required` as a whole-array deepEqual against ['severity','detail'], which M5 directly contradicts. Updated to ['severity','detail','actor'] and added an explicit assertion that proposedPatch is never in `required`, which is what that leg exists to pin.; concern: out-of-FILES (and SIBLING-owned by task 2): fleet/tests/test_exam_edited_patches.mjs \u2014 it freezes a sha256 of test_run_engine_proposed_patch.mjs, so the change above required re-recording that one digest constant. The edit is one hex string plus a comment saying why it moved; task 2 also owns this file, so expect a fold-time overlap there.; concern: plan-defect: `actor` is now a REQUIRED field on every reviewer issue, but the role text that tells a reviewer what to put there lives in fleet/roles/reviewer.md, which task 2 owns and no machine clause in this task covers. Implemented as written (schema only). Until task 2 lands the guidance, a live reviewer is required by schema to emit a field it was never told about; the engine defaults a missing/other value to `implementer`, so the failure mode is a schema trip rather than a mis-route.; concern: Expected and pre-disclosed by the referee: `node fleet/tests/test_exam_edited_patches.mjs` is now red in this clone, at exactly one assertion (line 196) \u2014 `test_run_engine_proposed_patch.mjs no longer hashes to the digest recorded at BASE`, actual `dc761abc\u2026` vs expected `514f2b29\u2026`. That file is on this task's legitimate edit path (actor routing moved `required` from `['severity','detail']` to `['severity','detail','actor']`, and that sim pinned the array by whole-value equality). The other three FROZEN digests still match. The referee's instruction was explicit that this is task 2's to resolve \u2014 its M11 removes the digest apparatus from that file \u2014 and that the acceptance here is the suite on the integrated tree, not this clone.; concern: out-of-FILES (unchanged from the prior round, not flagged as blocking): the diff still touches `fleet/tests/test_run_engine_proposed_patch.mjs`, `fleet/tests/test_run_engine_proof_runs.mjs` and `fleet/tests/test_run_engine_integrated_runs.mjs`. None is on any sibling's list, and the referee named the first as one this task \"legitimately edits\". They were adjusted for the two contract changes this task makes \u2014 `actor` joining the reviewer schema's `required`, and the pre-review Run:/Check: pass adding `iter: 0` events before the round-1 review. All three pass.; concern: `fleet/roles/reviewer.md` still contains the string `cannotVerify`, so the global constraint that the word appears in no `fleet/roles/*.md` is not yet satisfied on this clone. That file is sibling-owned (task 2), so removing it is not mine to do; the constraint is an integrated-tree property and depends on task 2 landing.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 2,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "901619aa10143c5f3595080a5b6f986e4bdd90d3",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-3/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/roles/reviewer.md \u2014 the new `unverified:` paragraph says the finding \"belongs among the findings, where the operator and the editor both read it\", but the editor (critic) does not read it. At BASE the only reviewer\u2192critic channel is the CANNOT-VERIFY checklist built at fleet/run-engine.mjs:1544-1557, and sibling task 1's M6 deletes that channel entirely; the critic prompt (fleet/run-engine.mjs:1554-1566) carries roles.critic, the plan path, the global constraints, the task list, the contracts block, blocked waves, the suite line and the integrated run evidence \u2014 no per-task minor findings. Minors reach the operator only, via the task row's `notes` (fleet/run-engine.mjs:891). Suggest dropping the editor from that clause, e.g. \"It belongs among the findings, where the operator reads it, and grading it `minor` is what keeps it from stopping a merge it could not judge.\" M2 is satisfied either way (`cannot settle`, `minor`, `unverified:` all stay in the paragraph), so this is prose accuracy only.; fleet/roles/reviewer.md \u2014 rule 1 still ends \"A requirement with no evidence is blocking\", which now sits next to the new paragraph telling the referee that a requirement the diff cannot settle is a `minor` finding. Before this change the two were kept apart by the separate `cannotVerify` channel; now both land in `issues` and are distinguished only by severity, so a referee can read rule 1 as blocking exactly the case the new paragraph calls minor. Worth one clause in rule 1 naming the split \u2014 e.g. \"A requirement the diff should carry and does not is blocking; a requirement the diff cannot settle at all is the `unverified:` case below.\" The file is inside FILES and no Proof `Run:` constrains rule 1's wording.; fleet/tests/test_roles_peer.mjs \u2014 deleting leg (e) (`IMPLEMENTER_SENTENCE`) leaves fleet/roles/implementer.md:30 with no pin anywhere in the tree; the only other mention of that rule is prose in CLAUDE.md:154, which pins nothing. M11 forbids the constant, not the coverage: a loose pin in the same spirit as the surviving REVIEWER_RULE_PATTERNS regexes \u2014 e.g. `assert.ok(/prefixed `exam:`/.test(read('implementer.md')), 'implementer.md no longer tells the implementer what a peer-written exam is')` \u2014 would keep #553 item 4 held while staying on the right side of the #612 call (register sweeps and clause pins stay, verbatim sentence legs go). Legs (b) and (d) lose nothing similarly: their subjects are still pinned by the surviving regexes and by fleet/tests/test_run_engine_proposed_patch.mjs.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-3/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1475 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 19%]\n........................................................................ [ 24%]\n........................................................................ [ 29%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1475 passed, 5 warnings in 139.47s (0:02:19) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "! grep -q cannotVerify fleet/run-engine.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_report_runbook.py tests/test_roles_run_evidence.py",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 0.15s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'proofFixes' skills/ultrapowers/references/report-format.md && grep -q 'proof-red' skills/ultrapowers/references/report-format.md && grep -q 'integratedChecks' skills/ultrapowers/references/report-format.md && grep -q 'reviewEconomy' skills/ultrapowers/references/report-format.md && grep -q 'plan-defect' skills/ultrapowers/references/report-format.md && ! grep -q 'cannotVerify' skills/ultrapowers/references/report-format.md && ! grep -qi 'CANNOT-VERIFY checklist' skills/ultrapowers/references/report-format.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'cannotVerify' fleet/roles/reviewer.md && awk 'BEGIN{RS=\"\"} /actor/ && /implementer/ && /plan/ && /never sent to a fix round/ && /parks/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk 'BEGIN{RS=\"\"} /cannot settle/ && /minor/ && /unverified:/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk 'BEGIN{RS=\"\"} /prose/ && /GLOBAL CONSTRAINT/ && /minor/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk 'BEGIN{RS=\"\"} /how the work was produced/ && /is not a finding/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk 'BEGIN{RS=\"\"} /RUN EVIDENCE/ && /re-execution/ && /is not a finding/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk 'BEGIN{RS=\"\"} /CHECK EVIDENCE/ && /fix loop/ && /\\(minor\\)/ && /blocks nothing/ {f=1} END{exit !f}' fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -qi 'cannot-verify' fleet/roles/critic.md && ! grep -qi 'checklist' fleet/roles/critic.md && ! grep -q 'Interfaces:' fleet/roles/critic.md && test \"$(grep -c '^1\\. Claim' fleet/roles/critic.md)\" -eq 1 && test \"$(grep -c '^2\\. Context' fleet/roles/critic.md)\" -eq 1 && ! grep -qE '^(3|4|5)\\. ' fleet/roles/critic.md && awk 'BEGIN{RS=\"\"} /INTEGRATED RUN EVIDENCE/ && /authoritative/ && /re-execution/ && /settled/ && /not a .deferredVerification/ && /human judgment/ && /not for a command the driver ran/ {f=1} END{exit !f}' fleet/roles/critic.md && grep -q 'INTEGRATED CHECK EVIDENCE' fleet/roles/critic.md && grep -q 'browser, runtime, external, manual' fleet/roles/critic.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk 'BEGIN{RS=\"\"} /referee/ && /Run:/ && /Check:/ && /exit non-zero/ {f=1} END{exit !f}' fleet/roles/fix.md && ! grep -q 'question for the editor' fleet/roles/README.md && grep -q 'unverified:' fleet/roles/README.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -nE '\\b(NEVER|ALWAYS|MUST)\\b' fleet/roles/reviewer.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/README.md && ! grep -qi 'adversarial' fleet/roles/reviewer.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/README.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'REFEREE_SENTENCES' fleet/tests/test_roles_peer.mjs && ! grep -q 'FIX_SENTENCE' fleet/tests/test_roles_peer.mjs && ! grep -q 'IMPLEMENTER_SENTENCE' fleet/tests/test_roles_peer.mjs && grep -q 'unverified:' fleet/tests/test_roles_peer.mjs && ! grep -q 'cannotVerify' fleet/tests/test_run_engine.mjs && ! grep -q 'sha256' fleet/tests/test_exam_edited_patches.mjs && node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_run_engine_critic_inputs.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED' && python3 -m pytest -q tests/test_roles_run_evidence.py",
+      "exit": 0,
+      "stdout": ".........                                                                [100%]\n9 passed in 0.13s\nrole prose size: README.md = 288 words\nrole prose size: critic.md = 578 words\nrole prose size: examiner.md = 411 words\nrole prose size: fix.md = 264 words\nrole prose size: implementer.md = 436 words\nrole prose size: reconcile.md = 217 words\nrole prose size: resolver.md = 248 words\nrole prose size: reviewer.md = 847 words\n"
+    }
+  ],
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\ns....................................................................... [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1474 passed, 1 skipped, 5 warnings in 132.22s (0:02:12) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1472 passed, 5 warnings in 109.85s (0:01:49) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "94b47494e7ad5d0f339b4dd2ea2576514e489bb3",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-3/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-3/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.433,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: fleet/tests/test_run_engine_proof_runs.mjs \u2014 M1 changes WHEN the Run: commands execute, so this pre-existing file's pins went red for the right reason (a green task now records two executions before review 1, and an always-red command ends at proof-red without a reviewer instead of looping to fix-loop-exhausted). Updated each affected leg to the new ordering with its intent preserved \u2014 the stderr leg now reads the fix:T1:0 prompt (same recorded tail, same exit 1), and the canned-PASS leg still asserts a red command cannot merge, one repair round earlier and two reviewer calls cheaper. Nothing was deleted.",
+    "task 1: out-of-FILES: fleet/tests/test_run_engine_integrated_runs.mjs \u2014 one sim precondition counted driver:proof-run events (2, now 4 with the iter-0 pass). Raised to 4 and added an iter===1 count so the ordering claim is still pinned. The file's own M-clauses are untouched.",
+    "task 1: out-of-FILES: fleet/tests/test_run_engine_proposed_patch.mjs \u2014 it pinned REVIEWER_SCHEMA issue `required` as a whole-array deepEqual against ['severity','detail'], which M5 directly contradicts. Updated to ['severity','detail','actor'] and added an explicit assertion that proposedPatch is never in `required`, which is what that leg exists to pin.",
+    "task 1: out-of-FILES (and SIBLING-owned by task 2): fleet/tests/test_exam_edited_patches.mjs \u2014 it freezes a sha256 of test_run_engine_proposed_patch.mjs, so the change above required re-recording that one digest constant. The edit is one hex string plus a comment saying why it moved; task 2 also owns this file, so expect a fold-time overlap there.",
+    "task 1: plan-defect: `actor` is now a REQUIRED field on every reviewer issue, but the role text that tells a reviewer what to put there lives in fleet/roles/reviewer.md, which task 2 owns and no machine clause in this task covers. Implemented as written (schema only). Until task 2 lands the guidance, a live reviewer is required by schema to emit a field it was never told about; the engine defaults a missing/other value to `implementer`, so the failure mode is a schema trip rather than a mis-route.",
+    "task 1: Expected and pre-disclosed by the referee: `node fleet/tests/test_exam_edited_patches.mjs` is now red in this clone, at exactly one assertion (line 196) \u2014 `test_run_engine_proposed_patch.mjs no longer hashes to the digest recorded at BASE`, actual `dc761abc\u2026` vs expected `514f2b29\u2026`. That file is on this task's legitimate edit path (actor routing moved `required` from `['severity','detail']` to `['severity','detail','actor']`, and that sim pinned the array by whole-value equality). The other three FROZEN digests still match. The referee's instruction was explicit that this is task 2's to resolve \u2014 its M11 removes the digest apparatus from that file \u2014 and that the acceptance here is the suite on the integrated tree, not this clone.",
+    "task 1: out-of-FILES (unchanged from the prior round, not flagged as blocking): the diff still touches `fleet/tests/test_run_engine_proposed_patch.mjs`, `fleet/tests/test_run_engine_proof_runs.mjs` and `fleet/tests/test_run_engine_integrated_runs.mjs`. None is on any sibling's list, and the referee named the first as one this task \"legitimately edits\". They were adjusted for the two contract changes this task makes \u2014 `actor` joining the reviewer schema's `required`, and the pre-review Run:/Check: pass adding `iter: 0` events before the round-1 review. All three pass.",
+    "task 1: `fleet/roles/reviewer.md` still contains the string `cannotVerify`, so the global constraint that the word appears in no `fleet/roles/*.md` is not yet satisfied on this clone. That file is sibling-owned (task 2), so removing it is not mine to do; the constraint is an integrated-tree property and depends on task 2 landing.",
+    "wave 1: candidate adopted after reconcile (a1beddf87bafaa0b097e48051f732499f283c7a2 + fixes \u2192 94b47494e7ad5d0f339b4dd2ea2576514e489bb3)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
