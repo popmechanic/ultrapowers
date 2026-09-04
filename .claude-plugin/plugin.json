@@ -1,6 +1,6 @@
 {
   "name": "ultrapowers",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "The client for ultrapowers: /ultrapowers <plan-path> commits an approved plan and runs on an exe.dev fleet you provision \u2014 parallel waves in a disposable sandbox, independent per-task review, the orchestrator opens the PR. No local engine.",
   "author": {
     "name": "Marcus Estes",
