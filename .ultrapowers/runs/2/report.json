@@ -1,0 +1,155 @@
+{
+  "integrationBranch": "ultra/integration-run-2",
+  "baseSha": "2cc873fb2d040fbe081f35ff0ababc408eaa6500",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "plan-defect: the GLOBAL CONSTRAINT `python3 -m pytest tests/ -n auto` passes is violated by this diff. M2/M3 delete `tests/test_harvest_runs.py`, but `tests/test_ultralearn_swallows.py:225` (unchanged at BASE, untouched by this diff) passes that literal path to a pytest subprocess in `test_healthy_paths_unchanged`, and asserts `proc.returncode == 0`; pytest exits 4 on a nonexistent path argument, so that test now fails deterministically. This is a regression against the previous review round, which found the compelled one-line re-point present in the diff, ruled it lawful, and said explicitly not to revert it \u2014 the fix round reverted it, turning a recorded minor footprint note into a broken constraint. It is not fixed downstream either: `clones/task-2/tests/test_ultralearn_swallows.py:224` still names `tests/test_harvest_runs.py` (Task 2 only rewrites `NOT_YET_SWEPT` at line 88), so the integrated tree fails the constraint too. The underlying defect is the plan's file allocation \u2014 `tests/test_ultralearn_swallows.py` is in this task's SIBLING FILES, so no implementation confined to Task 1's declared FILES can satisfy both M3 and this constraint \u2014 but the repair is a single argument on one line, 130+ lines away from Task 2's only hunk in the file, so the two fold cleanly. Restore the hunk: re-point the argument to `tests/test_readers.py`, the file that now carries the reader coverage that path used to pin. Nothing else in `tests/test_ultralearn_swallows.py` should change from Task 1.; GLOBAL CONSTRAINT `python3 -m pytest tests/ -n auto` passes \u2014 it does not, in this task's own tree. `tests/test_ultralearn_swallows.py:221 test_healthy_paths_unchanged` shells `[sys.executable, \"-m\", \"pytest\", \"-p\", \"no:xdist\", \"-q\", \"tests/test_harvest_runs.py\", \"tests/test_fleet_slice.py\", \"tests/test_merge_ledger.py\"]` and asserts `proc.returncode == 0`. M3 deletes `tests/test_harvest_runs.py` (Run-2 evidence: `test ! -e tests/test_harvest_runs.py` exit 0), so that inner pytest exits 4 (file or directory not found) and the assertion fails. The file is untouched by this patch, so it carries BASE content \u2014 verified at line 225 of the tree: it still names `tests/test_harvest_runs.py`. The task's four Proof `Run:` commands never invoke this test (Run 4 runs only docs/fleet_slice/harvest_fleet_runs/readers), which is why the run evidence is green while the suite constraint is red; `--collect-only` also stays green because the failure is at runtime, not collection.\n\nThis is `plan-defect:` \u2014 the file is in Task 2's SIBLING FILES, and Task 2 has no reason to touch line 225 (in its clone `tests/test_harvest_runs.py` still exists, and its M4 only rewrites `NOT_YET_SWEPT` at line 89), so nobody fixes it unless this task does. The plan's file allocation is what is wrong: `tests/test_ultralearn_swallows.py` belongs in Task 1's FILES. The previous review round already recorded this hunk as a compelled, minor footprint overrun and said explicitly not to revert it; the fix round reverted it, which is what turns it blocking \u2014 no implementation confined to this task's declared FILES can satisfy both M3 and the suite constraint. Restore the one-line re-point. The two tasks' hunks are 130+ lines apart in the same file and merge cleanly; the fold must keep both. `tests/test_readers.py` is the right replacement argument: it is this task's transcription of the reader tests and passes (63 passed in Run 4).",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 2,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "c3eb9cb6c76b6425c7d1d2b9d10a0bcb9168631e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-2/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Unvalidated run id reaches both a filesystem path and the API path. `_run_number` (skills/ultralearn/scripts/harvest_fleet_runs.py) strips an optional `run-` prefix and returns the rest verbatim; `main` then interpolates it into `Path(tmp) / \"evidence\" / _run_number(run)` and `fetch_evidence` into `repos/{target}/contents/.ultrapowers/runs/{N}/...`. `--run ../../../x` therefore escapes the temp directory and `dest.mkdir(parents=True, exist_ok=True)` + `write_bytes` land gh-returned bytes outside it. No shell is involved (subprocess takes a list), so this is not the injection channel the deleted module worried about, and M1 does not require rejecting a non-number \u2014 hence minor. But `fleet_fetch.py`'s tight `_BUNDLE` alphabet and `test_bundle_names_with_shell_metacharacters_are_not_listed` existed for exactly this class of input (#464) and both go away here with nothing in their place. One regex restores it, and because the call sits inside `main`'s `try`, a bad id becomes a counted `FAILED-LOOKUP` like any other unfetchable run rather than a traceback.; `_gh_api` assumes the decoded envelope is a dict. `envelope = json.loads(proc.stdout)` then `envelope.get(\"content\")` raises `AttributeError` if the contents API answers an array (which it does for a directory) or any non-object. `main` catches only `FailedLookup`, so that one odd answer aborts the whole harvest with a traceback and every remaining `--run` goes unfetched \u2014 the opposite of the per-file advisory design the surrounding docstring states, and of the `json.JSONDecodeError` branch two lines up which already treats an undecodable body as an absence. One isinstance guard gives it the same standing as a 404.; `_gh_api` (skills/ultralearn/scripts/harvest_fleet_runs.py) decodes `envelope[\"content\"]` without checking `envelope[\"encoding\"]`. GitHub's contents API answers blobs over ~1 MB with `encoding: \"none\"` and `content: \"\"` \u2014 a real run's `events.jsonl` or `engine.log` is plausibly that size. `base64.b64decode(\"\")` yields `b\"\"`, so that file is written empty and appended to `landed`; for `events.jsonl` the run then bundles off a zero-event timeline (refused later by `build_fleet_bundle` with a diagnostic that names the run dir, not the oversize blob) instead of failing at the read. M2 only requires decoding the base64 `content`, so this is advisory, but treating a non-`base64` encoding as an absence turns a silent empty file into the branch M2 already spells (a marked skip, or `FAILED-LOOKUP:` for `events.jsonl`). Same guard covers the currently untested `content` non-str path.; The task's Context fences the import block of `skills/ultralearn/scripts/harvest_fleet_runs.py` \u2014 \"touch only the `fleet_fetch` line\" \u2014 because sibling Task 1 also owns this file. The diff additionally widens the `from _outcome import (...)` line to pull in `swallow`, for one marking inside `_gh_api`. The marking is justified in itself (and harmless to the swallows sweep, which keeps `harvest_fleet_runs.py` in `NOT_YET_SWEPT`), but it moves a shared line the task said not to move, so the fold with Task 1 carries a textual-conflict risk this task did not have to take.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-2/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1469 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 19%]\n........................................................................ [ 24%]\n........................................................................ [ 29%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n.............................                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1469 passed, 5 warnings in 104.49s (0:01:44) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "2",
+      "cmd": "test ! -e skills/ultralearn/scripts/fleet_fetch.py && test ! -e tests/test_fleet_fetch.py && ! grep -q 'fleet_fetch' skills/ultralearn/scripts/harvest_fleet_runs.py && ! grep -q 'fleet_fetch' tests/test_ultralearn_swallows.py && ! grep -q 'test_remote_harvest_of_an_unreachable_host_fails_loud' tests/test_harvest_fleet_runs.py && grep -q -- '--evidence' tests/test_ultralearn_docs.py && ! grep -q -- '--remote' tests/test_ultralearn_docs.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultralearn/scripts/harvest_fleet_runs.py --help | grep -q -- '--evidence' && ! python3 skills/ultralearn/scripts/harvest_fleet_runs.py --help | grep -q -- '--remote'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_harvest_evidence.py tests/test_harvest_fleet_runs.py tests/test_ultralearn_swallows.py tests/test_ultralearn_docs.py",
+      "exit": 0,
+      "stdout": "..........................................................               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n58 passed, 5 warnings in 4.05s\n"
+    }
+  ],
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n.......................................................s................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n.............................                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1468 passed, 1 skipped, 5 warnings in 103.77s (0:01:43) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 63%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1472 passed, 5 warnings in 114.96s (0:01:54) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "108a2c752daa6d1ad351e884538fe7d668a0b172",
+      "branches": [
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-2/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-2/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.611,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "skills/ultralearn/SKILL.md",
+        "skills/ultralearn/scripts/_readers.py",
+        "skills/ultralearn/scripts/fleet_slice.py",
+        "skills/ultralearn/scripts/harvest_fleet_runs.py",
+        "skills/ultralearn/scripts/harvest_runs.py",
+        "tests/test_harvest_fleet_runs.py",
+        "tests/test_harvest_runs.py"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: tests/test_ultralearn_swallows.py \u2014 one line changed. Its `test_healthy_paths_unchanged` regression pin shells out to `pytest tests/test_harvest_runs.py tests/test_fleet_slice.py tests/test_merge_ledger.py`; deleting `tests/test_harvest_runs.py` makes that subprocess exit 4, so the global constraint `pytest tests/ -n auto` passes would have been violated. I swapped the dead path for `tests/test_readers.py`, its successor. The file is also declared in SIBLING FILES (Task 2 owns it), so this single line is a merge-conflict candidate \u2014 if Task 2 also edits that list, take its version and re-apply the same substitution.",
+    "task 1: out-of-FILES: skills/ultralearn/scripts/harvest_fleet_runs.py is in my FILES but also in SIBLING FILES (Task 2). Beyond the two changes M2 requires (the import line and the `engine_epoch_at` call) I reworded the module docstring and the `discover_run_dirs` docstring, which both described `harvest_runs.py` as a still-live frozen sibling that owns runs 21-23 \u2014 false once the module is deleted. Same conflict caveat: both edits are prose-only and safe to drop in favour of Task 2's version, provided the import and the call site keep reading `_readers`.",
+    "task 1: SKILL.md now advertises `--evidence <owner>/<repo> --run <N>`, the flag Task 2 implements. In this clone the CLI has no `--evidence` yet; `tests/test_ultralearn_docs.py` stays green only because its allowlist does not name that flag (as the task's Context anticipated). If Task 2 does not land, the skill documents a flag that does not exist \u2014 and if a later change adds `--evidence` to that allowlist before Task 2 lands, the docs pin goes red.",
+    "task 1: plan-defect: missing dependency edge between Task 1 and Task 2. M3 deletes tests/test_harvest_runs.py, but tests/test_ultralearn_swallows.py:225 pins that exact path in test_healthy_paths_unchanged's pytest argv, and that file is in Task 2's FILES, not Task 1's. The one-line argv fix is unavoidable and correct, but no change inside this task's FILES can produce it, so it is handed to Task 2 rather than written from two concurrent tasks. Resolution needed at fold time: Task 2 changes 'tests/test_harvest_runs.py' to 'tests/test_readers.py' in that argv, alongside its own NOT_YET_SWEPT edit at line 89 (the two hunks are ~136 lines apart, so a 3-way fold is textually clean). Settling check after the fold: `python3 -m pytest -q tests/test_ultralearn_swallows.py` green with both changes present.",
+    "task 1: global-constraint not satisfiable in this clone alone: `python3 -m pytest tests/ -n auto` passes currently fails with exactly one failure, tests/test_ultralearn_swallows.py::test_healthy_paths_unchanged, which errors with 'file or directory not found: tests/test_harvest_runs.py'. This is the direct consequence of returning the sibling-owned file to BASE and is expected to clear as soon as Task 2's copy of the argv line lands. Every other test in the suite passes (1363 passed).",
+    "task 1: out-of-FILES: tests/test_readers.py is created by this task but is not listed in its declared FILES (which names the deleted tests/test_harvest_runs.py instead). It is mandated by the task body's M3 and named as the task's Proof test, and it is not owned by any sibling task, so it is written here; flagging the declaration gap for the record."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Task 1 (\"The five live readers move to `_readers.py`; the Workflow-era harvester goes\") is absent from the integrated tree \u2014 no part of it landed. Claim/M1: `skills/ultralearn/scripts/_readers.py` does not exist (glob over `skills/ultralearn/**` returns no such file). M2: `skills/ultralearn/scripts/harvest_runs.py` still exists at its BASE size with the whole Workflow-era half intact (`_is_workflow_tool_result` :106, `is_real_run` :80, `slice_transcript` :248, `build_bundle` :1107, `harvest` :1227). M3: `tests/test_harvest_runs.py` still exists and still does `import harvest_runs as h` (:8). This also leaves the plan-level Claim half unmet: \"the Workflow-era harvester ... and their tests are gone, and only the readers the fleet harvester actually imports remain\" is false in the adopted tree (the ssh-fetcher half, Task 2, did land)."
+    },
+    {
+      "severity": "blocking",
+      "detail": "Task 1, Interfaces slot: all six `Produces` are missing from the tree \u2014 `records(session_path)`, `block_text(block)`, `iter_blocks_indexed(records)`, `engine_epoch_at(ts, origin, timeline=None, cache_version=None)`, `release_timeline()` and `collapse_timeline(rows)` are not exported by any `_readers` module because that module does not exist. The live consumers named in Task 1's Context still bind to the old module: `skills/ultralearn/scripts/fleet_slice.py:13` `import harvest_runs  # noqa: E402  (provides _records()/_iter_blocks_indexed())`, and `skills/ultralearn/scripts/harvest_fleet_runs.py:38` `import harvest_runs` with the call at `:315` `engine = harvest_runs.engine_epoch_at(as_of, origin)`. M2's requirement that `fleet_slice.py` read the five names from `_readers` and `harvest_fleet_runs.py` read `engine_epoch_at` from `_readers` fails on both sides."
+    },
+    {
+      "severity": "blocking",
+      "detail": "Task 1, Proof slot: the enumerated Test and Run legs have no coverage in the tree. `tests/test_readers.py` (the Proof's `Test:`) does not exist, so leg (a) \u2014 the eight-public-name assertion plus the six re-pointed reader tests and the three new direct tests for `records`/`block_text`/`iter_blocks_indexed` [M1, M3] \u2014 is untested; leg (b)'s deletion/import check [M2] fails (both files survive, both importers remain); leg (c)'s SKILL.md check [M5] fails; leg (d)'s `1364 tests collected` count [M6] cannot hold with `tests/test_harvest_runs.py`'s 117 tests still collected and `test_readers.py`'s 9 absent. M4 also fails: `tests/test_harvest_fleet_runs.py:183` still reads `monkeypatch.setattr(hfr.harvest_runs, \"_release_timeline\", ...)` rather than `_readers.release_timeline`. The driver's green suite is consistent with this \u2014 these legs have no tests to fail."
+    },
+    {
+      "severity": "blocking",
+      "detail": "Cross-task divergence the green suite cannot see (Task 1 slot M5, against Task 2's landed CLI): `skills/ultralearn/SKILL.md` is unmodified. Line 19 still advertises `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --remote fleet-orchestrator.exe.xyz`, but Task 2 removed `--remote` from `main()` (`skills/ultralearn/scripts/harvest_fleet_runs.py:353-369` defines only `--cache/--evidence/--run/--origin/--engine-version/--slice-budget/--force`), so the skill's documented invocation now exits 2 with `unrecognized arguments: --remote` \u2014 asserted as the new behaviour by `tests/test_harvest_evidence.py:326-340`. The skill also still contains `harvest_runs.py` (:15), `tool_result` (:28), `.claude/projects` (:17, :27, :54) and never names the `--evidence <owner>/<repo> --run <N>` usage. This is exactly the escalated checklist item [2]/M4: `tests/test_ultralearn_docs.py:29-30`'s allowlist is now `{--evidence, --run, --cache, --force, --origin, --engine-version, --slice-budget}`, whose intersection with the flags SKILL.md advertises excludes `--remote`, so `test_every_flag_the_skill_advertises_exists` passes over a flag that no longer exists. Verified: the pin is green and the documentation is wrong."
+    }
+  ],
+  "blockedWaves": []
+}

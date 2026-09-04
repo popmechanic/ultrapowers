@@ -1,0 +1,232 @@
+{
+  "ok": true,
+  "stamp": "run-2",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-2"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The five live readers move to `_readers.py`; the Workflow-era harvester goes",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/SKILL.md",
+          "skills/ultralearn/scripts/_readers.py",
+          "skills/ultralearn/scripts/fleet_slice.py",
+          "skills/ultralearn/scripts/harvest_fleet_runs.py",
+          "skills/ultralearn/scripts/harvest_runs.py",
+          "tests/test_harvest_fleet_runs.py",
+          "tests/test_harvest_runs.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`records(session_path) -> list[dict]`",
+            "`block_text(block) -> str`",
+            "`iter_blocks_indexed(records) -> Iterator[tuple[int, dict, dict]]`",
+            "`engine_epoch_at(ts, origin, timeline=None, cache_version=None) -> dict`",
+            "`release_timeline() -> tuple`",
+            "`collapse_timeline(rows) -> tuple`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "`--evidence owner/repo --run N` replaces `--remote`; the ssh fetcher goes",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/scripts/fleet_fetch.py",
+          "skills/ultralearn/scripts/harvest_fleet_runs.py",
+          "tests/test_fleet_fetch.py",
+          "tests/test_harvest_fleet_runs.py",
+          "tests/test_ultralearn_docs.py",
+          "tests/test_ultralearn_swallows.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`fetch_evidence(target: str, run: str, dest: Path) -> Path`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The five live readers move to `_readers.py`; the Workflow-era harvester goes",
+          "files": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/_readers.py",
+            "skills/ultralearn/scripts/fleet_slice.py",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "skills/ultralearn/scripts/harvest_runs.py",
+            "tests/test_harvest_fleet_runs.py",
+            "tests/test_harvest_runs.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`records(session_path) -> list[dict]`",
+              "`block_text(block) -> str`",
+              "`iter_blocks_indexed(records) -> Iterator[tuple[int, dict, dict]]`",
+              "`engine_epoch_at(ts, origin, timeline=None, cache_version=None) -> dict`",
+              "`release_timeline() -> tuple`",
+              "`collapse_timeline(rows) -> tuple`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/_readers.py",
+            "skills/ultralearn/scripts/fleet_slice.py",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "skills/ultralearn/scripts/harvest_runs.py",
+            "tests/test_harvest_fleet_runs.py",
+            "tests/test_harvest_runs.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_readers.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_readers.py",
+          "proofRuns": [
+            "test \"$(python3 -m pytest tests/ --collect-only -q 2>/dev/null | tail -n 1 | cut -d' ' -f1)\" = 1364",
+            "test ! -e skills/ultralearn/scripts/harvest_runs.py && test ! -e tests/test_harvest_runs.py && ! grep -rqE 'import harvest_runs|from harvest_runs' skills tests && grep -q 'from _readers import\\|import _readers' skills/ultralearn/scripts/fleet_slice.py && grep -q '_readers' skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "python3 -c \"import sys; sys.path.insert(0,'skills/ultralearn/scripts'); import _readers as r; names=sorted(n for n in dir(r) if not n.startswith('_') and (n.isupper() or getattr(getattr(r,n),'__module__',None)=='_readers')); assert names==['SLICE_KEYWORDS','SLICE_TURN_MAX','block_text','collapse_timeline','engine_epoch_at','iter_blocks_indexed','records','release_timeline'], names\"",
+            "! grep -q 'harvest_runs.py' skills/ultralearn/SKILL.md && ! grep -q 'tool_result' skills/ultralearn/SKILL.md && ! grep -q '\\.claude/projects' skills/ultralearn/SKILL.md && ! grep -q -- '--remote' skills/ultralearn/SKILL.md && grep -q 'harvest_fleet_runs.py' skills/ultralearn/SKILL.md && grep -q 'events.jsonl' skills/ultralearn/SKILL.md && grep -q -- '--evidence <owner>/<repo> --run <N>' skills/ultralearn/SKILL.md && grep -q 'lru_cache' skills/ultralearn/scripts/_readers.py && python3 -m pytest -q tests/test_ultralearn_docs.py tests/test_fleet_slice.py tests/test_harvest_fleet_runs.py tests/test_readers.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "`--evidence owner/repo --run N` replaces `--remote`; the ssh fetcher goes",
+          "files": [
+            "skills/ultralearn/scripts/fleet_fetch.py",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "tests/test_fleet_fetch.py",
+            "tests/test_harvest_evidence.py",
+            "tests/test_harvest_fleet_runs.py",
+            "tests/test_ultralearn_docs.py",
+            "tests/test_ultralearn_swallows.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`fetch_evidence(target: str, run: str, dest: Path) -> Path`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/scripts/fleet_fetch.py",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "tests/test_fleet_fetch.py",
+            "tests/test_harvest_fleet_runs.py",
+            "tests/test_ultralearn_docs.py",
+            "tests/test_ultralearn_swallows.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_harvest_evidence.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_harvest_evidence.py",
+          "proofRuns": [
+            "test ! -e skills/ultralearn/scripts/fleet_fetch.py && test ! -e tests/test_fleet_fetch.py && ! grep -q 'fleet_fetch' skills/ultralearn/scripts/harvest_fleet_runs.py && ! grep -q 'fleet_fetch' tests/test_ultralearn_swallows.py && ! grep -q 'test_remote_harvest_of_an_unreachable_host_fails_loud' tests/test_harvest_fleet_runs.py && grep -q -- '--evidence' tests/test_ultralearn_docs.py && ! grep -q -- '--remote' tests/test_ultralearn_docs.py",
+            "python3 skills/ultralearn/scripts/harvest_fleet_runs.py --help | grep -q -- '--evidence' && ! python3 skills/ultralearn/scripts/harvest_fleet_runs.py --help | grep -q -- '--remote'",
+            "python3 -m pytest -q tests/test_harvest_evidence.py tests/test_harvest_fleet_runs.py tests/test_ultralearn_swallows.py tests/test_ultralearn_docs.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Goes"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The bundle the ledger reads keeps its shape: `merge_ledger.py` is byte-identical to BASE, and\n  a run directory harvested at BASE and after this run yields `bundle.json` files that differ\n  in no key.\n- No network in any test: `gh`, `git` and `ssh` reach a test only as stub executables on `PATH`.\n- `python3 -m pytest tests/ -n auto` passes; `python3 skills/ultrapowers/scripts/validate_skill.py\n  skills/ultralearn` prints `skill ok`.\n- Nothing under `fleet/` changes.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-2/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-2/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-2/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-2/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
