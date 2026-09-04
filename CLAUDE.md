@@ -147,8 +147,9 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
 - **Open maps:** #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
   operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
   #553 examiner / #554 clause-to-leg / #555 BASE-facts Context / #556 collaborative review all
-  shipped; live tickets #232 #526 #572 #582 + #599, the grilling on whether exams should be
-  sealed again. Its rules: the exam is written by a peer, never the submitter or the editor;
+  shipped; live tickets #232 #526 #572 #582; #599 (should exams be sealed again?) closed
+  2026-09-04 — exams stay recorded-and-reviewed, sealing returns only on a run that shows a
+  gaming shape. Its rules: the exam is written by a peer, never the submitter or the editor;
   the plan names nothing it does not Produce/Consume outside a tool-generated BASE-facts block;
   one signature per plan; review is collaborative and independence is authorship, not secrecy —
   the implementer runs the peer's exam; an edit to it is recorded as `examEdited`, named to the
