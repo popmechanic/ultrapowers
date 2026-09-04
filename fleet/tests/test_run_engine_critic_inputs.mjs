@@ -315,7 +315,11 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
   const role = fs.readFileSync(new URL('../roles/critic.md', import.meta.url), 'utf8')
   assert.match(role, /Stale-if and Authorized-by are not yours to judge/,
     'critic.md no longer scopes the two slots the contracts block excludes')
-  for (const slot of ['Claim', 'Interfaces', 'Context', 'Proof']) {
+  // The block carries every slot; the critic's own duties are the two the
+  // integrated view alone can settle. Interfaces is settled by the compiler's
+  // derived edges and the integrated run evidence, Proof by the wave-0
+  // examiner and the proof gate — so the role file names Claim and Context.
+  for (const slot of ['Claim', 'Context']) {
     assert.ok(role.includes(slot + ':'), 'critic.md carries no per-slot check for ' + slot)
   }
 }

@@ -26,7 +26,7 @@ REPORT_FORMAT = ROOT / "skills/ultrapowers/references/report-format.md"
 # ── leg (a) [M1]: one paragraph of reviewer.md carries all seven phrases ─────
 REVIEWER_PARAGRAPH = (
     r"""awk 'BEGIN{RS=""} /RUN EVIDENCE/ && /exit 0/ && /settled/ """
-    r"""&& /neither a finding nor a .cannotVerify/ && /re-execution/ """
+    r"""&& /not a finding/ && /re-execution/ """
     r"""&& /non-zero/ && /fix loop.s, not the referee/ {f=1} END{exit !f}' """
 )
 
@@ -47,9 +47,9 @@ def sh(command):
 
 
 def test_reviewer_states_that_an_exit_0_run_is_settled():
-    """(a) [M1] — RUN EVIDENCE, `exit 0`, settled, the
-    neither-finding-nor-cannotVerify rule, re-execution, non-zero, and the fix
-    loop's ownership, all inside one paragraph of reviewer.md."""
+    """(a) [M1] — RUN EVIDENCE, `exit 0`, settled, the not-a-finding rule,
+    re-execution, non-zero, and the fix loop's ownership, all inside one
+    paragraph of reviewer.md."""
     p = sh(REVIEWER_PARAGRAPH + "fleet/roles/reviewer.md")
     assert p.returncode == 0, (
         "no single paragraph of fleet/roles/reviewer.md carries all seven "

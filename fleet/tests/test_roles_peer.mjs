@@ -2,15 +2,14 @@
 // decision 2026-09-02). The register is scientific peer review: the reviewer is
 // a referee who checks that a submission establishes its claim by the stated
 // exam and helps it get there, the critic is the editor's completeness read,
-// and what the diff cannot settle is a question for the editor rather than a
-// finding against the author.
+// and a requirement the diff cannot settle is a `minor` finding prefixed
+// `unverified:` rather than a separate channel to the editor.
 //
-// These are prose pins. The role files are data — `fleet/run-engine.mjs` reads
-// them verbatim at dispatch — so the only way to hold a stance is to hold the
-// sentences that carry it. Each pinned sentence is asserted as an exact
-// substring, not a loose match: a paraphrase that drops "help it get there" or
-// turns `cannotVerify` back into a finding is the regression this file exists
-// to catch.
+// These are prose pins, and #612 settled how far they reach: a sweep over the
+// directory's register (no `adversarial`, no shouting, every role listed) is
+// worth holding, but freezing a whole sentence verbatim only pins the sentence
+// against its own author. So the rule pins below are expressions — the clause
+// each rule turns on — and the verbatim-sentence legs are gone.
 import assert from 'node:assert'
 import fs from 'node:fs'
 
@@ -34,28 +33,17 @@ for (const f of roleFiles) {
     'role file ' + f + ' still calls the review adversarial (#556)')
 }
 
-// ── (b) M2: the referee's three sentences, verbatim ──────────────────────────
-const reviewer = read('reviewer.md')
-const REFEREE_SENTENCES = [
-  'You are a referee: your job is to check that this submission establishes its claim by the stated exam, and to help it get there.',
-  'When you can write the fix for a `blocking` issue, put it in that issue\'s `proposedPatch` as a unified diff.',
-  'A requirement the diff cannot settle is a question for the editor: put it under `cannotVerify` with why, never among the findings.',
-]
-for (const sentence of REFEREE_SENTENCES) {
-  assert.ok(reviewer.includes(sentence),
-    'reviewer.md no longer carries, verbatim: ' + sentence)
-}
-
-// ── (c) M3: the two rules the run-32 evidence bought, still in the file ──────
-// Same three expressions `fleet/tests/test_run_engine.mjs:144-158` pins (#344,
-// #441). Re-checked here because this run rewrites the stance of the file they
-// live in, and a stance rewrite is exactly the edit that takes them with it.
-// Each is also run against fix.md, which never made either promise: a pin that
+// ── (c) M3: the three rules the run-32 evidence bought, still in the file ────
+// The first two are the expressions `fleet/tests/test_run_engine.mjs` pins
+// (#344, #441); the third is what replaced the editor's separate channel —
+// what a diff cannot settle is now a finding the referee grades `minor`.
+// Each is also run against fix.md, which never made any of them: a pin that
 // matches any role file is not pinning reviewer.md.
+const reviewer = read('reviewer.md')
 const REVIEWER_RULE_PATTERNS = [
   /`plan-defect:`[\s\S]{0,80}blocking[\s\S]{0,80}FILES/,
   /red-then-green/,
-  /neither a finding nor a `cannotVerify` entry/,
+  /unverified:/,
 ]
 const fix = read('fix.md')
 for (const pattern of REVIEWER_RULE_PATTERNS) {
@@ -63,30 +51,25 @@ for (const pattern of REVIEWER_RULE_PATTERNS) {
   assert.ok(!pattern.test(fix), 'pin ' + pattern + ' matches fix.md too, so it pins nothing')
 }
 
-// ── (d) M4: the fix role knows what a `PROPOSED PATCH` block is ──────────────
-// The block header and the `proposedPatch` field are a sibling engine task's
-// route; this file writes the prose that names them. Exactly once: two copies
-// of an instruction are two chances to follow half of it.
-const FIX_SENTENCE =
-  'An issue may carry a `PROPOSED PATCH` from the referee: apply it when it is right; when it is not, say why in your summary.'
-assert.equal(occurrences(fix, FIX_SENTENCE), 1,
-  'fix.md must carry the PROPOSED PATCH sentence verbatim, exactly once')
-
-// ── (e) M5: the implementer receives the exam (#553 item 4) ──────────────────
-const IMPLEMENTER_SENTENCE =
-  'A Proof `Test:` file already in your tree when you start is a peer\'s exam and your grading: run it, do not edit it, and if it is red for a reason other than the missing implementation, report that as a `concerns` entry prefixed `exam:`.'
-assert.ok(read('implementer.md').includes(IMPLEMENTER_SENTENCE),
-  'implementer.md no longer tells the implementer what a peer-written exam is')
-
-// ── (f) M6: the critic is the editor, and keeps every slot-by-slot check ─────
+// ── (f) M6: the critic is the editor, and keeps the two checks only the ──────
+//    integrated view can make
+// Interfaces is settled by the compiler's derived edges, Proof by the wave-0
+// examiner and the proof gate, and the escalated cannot-verify channel is gone
+// with the reviewer's: two duties, not five.
 const critic = read('critic.md')
 assert.ok(critic.includes('You are the editor\'s completeness read of the whole submission.'),
   'critic.md no longer opens in the editor register')
 assert.ok(critic.includes('deferredVerification'),
   'critic.md lost the deferredVerification route to the gate acknowledgement')
-for (const check of ['1. Claim', '2. Interfaces', '3. Context', '4. Proof', '5. The cannot-verify checklist']) {
+for (const check of ['1. Claim', '2. Context']) {
   assert.equal(occurrences(critic, check), 1,
     'critic.md must carry the numbered check "' + check + '" exactly once')
+}
+assert.ok(!/^[345]\. /m.test(critic),
+  'critic.md carries a numbered duty beyond the two the integrated view can settle')
+for (const gone of ['cannot-verify', 'checklist']) {
+  assert.ok(!critic.toLowerCase().includes(gone),
+    'critic.md still routes work through the deleted ' + gone + ' channel')
 }
 
 // ── (g) M7: no role file shouts ──────────────────────────────────────────────
@@ -98,8 +81,7 @@ for (const f of roleFiles) {
 }
 
 // ── (h) M8: the README lists all seven roles and gates no size ───────────────
-// Sizes are reported, not gated (#496). The two literals `tests/test_roles_readme.py`
-// pins stay.
+// Sizes are reported, not gated (#496).
 const readme = read('README.md')
 for (const name of ['implementer.md', 'reviewer.md', 'fix.md', 'resolver.md',
                     'reconcile.md', 'critic.md', 'examiner.md']) {
@@ -108,6 +90,6 @@ for (const name of ['implementer.md', 'reviewer.md', 'fix.md', 'resolver.md',
 assert.ok(!readme.includes('350 words'),
   'fleet/roles/README.md still advertises the deleted 350-word ceiling (#496)')
 assert.ok(readme.includes('run-engine.mjs') && readme.includes('Amendment 10'),
-  'fleet/roles/README.md dropped a literal tests/test_roles_readme.py pins')
+  'fleet/roles/README.md dropped a literal the readme pins rely on')
 
 console.log('ALL TESTS PASSED')

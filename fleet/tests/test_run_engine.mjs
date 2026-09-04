@@ -154,10 +154,11 @@ assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
   assert.ok(/`plan-defect:`[\s\S]{0,80}blocking[\s\S]{0,80}FILES/.test(reviewer),
     'reviewer.md rule 6 no longer makes a task-local plan-defect fix blocking (#344)')
   // #441 — a diff is a result, not a history. Asking six reviewers to evidence
-  // red-then-green ordering produced 25 cannotVerify entries and the single
-  // deferred:manual ack that parked run-32; ordering has no answer here.
+  // red-then-green ordering produced 25 unanswerable entries and the single
+  // deferred:manual ack that parked run-32; ordering has no answer here, so
+  // the rule says so outright rather than routing it to a second channel.
   assert.ok(/red-then-green/.test(reviewer) &&
-    /neither a finding nor a `cannotVerify` entry/.test(reviewer),
+    /is not a finding/.test(reviewer),
     'reviewer.md rule 7 no longer excuses the reviewer from unobservable ordering (#441)')
 }
 

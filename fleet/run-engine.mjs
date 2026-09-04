@@ -112,17 +112,22 @@ export const REVIEWER_SCHEMA = {
   properties: {
     verdict: { enum: ['PASS', 'FIX_REQUIRED'] },
     issues: { type: 'array', items: { type: 'object',
-      required: ['severity', 'detail'], properties: {
+      required: ['severity', 'detail', 'actor'], properties: {
         severity: { enum: SEVERITY },
         detail: { type: 'string' },
+        // WHO can act on this. A defect in the patch is the implementer's and
+        // drives the fix round; a defect in the PLAN — a machine clause that
+        // cannot hold, an interface the task was never given — is nobody the
+        // fix round can reach, and looping an implementer against it burns two
+        // rounds to arrive where it started. A plan-actor issue merges the
+        // task as reviewed and hands the defect to the gate as a deferral,
+        // which is the one reader with the standing to change the plan.
+        actor: { enum: ['implementer', 'plan'] },
         // A referee's output is help (#551): when the reviewer can write the
         // fix, it comes back here as a unified diff and the fix round is
         // handed it under the issue it belongs to. Optional by construction —
-        // an issue still needs nothing but a severity and a detail.
+        // an issue still needs nothing but a severity, a detail and an actor.
         proposedPatch: { type: 'string' } } } },
-    cannotVerify: { type: 'array', items: { type: 'object',
-      required: ['requirement', 'why'], properties: {
-        requirement: { type: 'string' }, why: { type: 'string' } } } },
   },
 }
 // RESOLVER: content OUT through the schema — the driver writes the kernel's
@@ -254,6 +259,35 @@ export const integratedRunEvidenceBlock = (runs) => {
     '`Run:` commands itself, on the adopted integration tree — this is the authoritative ' +
     'result; a cannot-verify item asking for their re-execution is settled by it.' +
     runs.map((r) => '\n\n$ ' + r.cmd + '\nexit ' + r.exit + '\n' + r.stdout).join('')
+}
+// The Global Constraints `Check:` commands, rendered for the per-task referee.
+// A constraint the run declares once for every task is exactly the thing no
+// single implementer is watching, so the driver runs it in each task's own
+// clone and hands the referee the bytes — the `Run:` move (#589), widened from
+// the task's own Proof to the run's standing constraints. A `minor` check is
+// carried here for attention and blocks nothing, which is why the exit line
+// says so: the referee must not spend a blocking finding on it.
+// Empty checks render nothing at all (the run-51 rule), so a run without them
+// keeps the reviewer prompt it had before this existed, byte for byte.
+export const checkEvidenceBlock = (checks) => {
+  if (!Array.isArray(checks) || checks.length === 0) return ''
+  return '\n\nCHECK EVIDENCE: the driver executed each Global Constraints `Check:` command ' +
+    'itself, in this task\'s own clone, on the tree the patch above describes — stdout and stderr ' +
+    'combined, last 4,000 characters. A blocking check that exited non-zero is already the ' +
+    'fix loop\'s; a check marked (minor) is recorded here for the referee\'s attention and ' +
+    'blocks nothing.' +
+    checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
+      '\n' + c.stdout).join('')
+}
+// The same commands on the tree the wave ADOPTED. A constraint can be green in
+// every clone and red on the fold — that is the whole reason a wave is folded
+// rather than trusted — and only the driver can tell the critic which it was.
+export const integratedCheckEvidenceBlock = (checks) => {
+  if (!Array.isArray(checks) || checks.length === 0) return ''
+  return '\n\nINTEGRATED CHECK EVIDENCE: the driver executed each Global Constraints `Check:` command ' +
+    'itself, on the adopted integration tree — this is the authoritative result.' +
+    checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
+      '\n' + c.stdout).join('')
 }
 export const priorAdvisoriesBlock = (minors) => {
   if (!Array.isArray(minors) || minors.length === 0) return ''
@@ -508,6 +542,14 @@ export async function runEngine({
   const ACCEPTANCE = (args.acceptance && typeof args.acceptance === 'object') ? args.acceptance : null
   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
+  // The executable half of the Global Constraints: `{ cmd, minor }` entries the
+  // driver runs itself, in every task's clone and once more on the adopted
+  // tree. Malformed input reads as no checks rather than throwing — a plan that
+  // typed the key wrong must not take the run down; the absence shows up as an
+  // empty `integratedChecks` in the report.
+  const constraintChecks = (Array.isArray(args.constraintChecks) ? args.constraintChecks : [])
+    .filter((c) => c && typeof c === 'object' && typeof c.cmd === 'string' && c.cmd.trim() !== '')
+    .map((c) => ({ cmd: c.cmd, minor: Boolean(c.minor) }))
   const planPath = (typeof args.planPath === 'string' && args.planPath.trim()) || undefined
   const wavesPath = (typeof args.wavesPath === 'string' && args.wavesPath.trim()) || undefined
   // Patch input is the ONLY input shape here (Amendment 9): the value is the
@@ -534,12 +576,32 @@ export async function runEngine({
   const waveMerges = []
   const judgmentCalls = []
   const unfinished = []
-  const cannotVerifyItems = []
   const frontier = []
   // #604 — one record per merged task's `Run:` command, executed on the tree
   // its wave adopted, and the blocking findings a non-zero exit mints.
   const integratedRuns = []
+  const integratedChecks = []
   const integratedFindings = []
+  // Plan-actor blocking findings: `{ task, detail }`, distinct, in the order
+  // the reviews raised them. They drive no fix round — they become gate
+  // deferrals once the run knows which tasks finished `done`.
+  const planDefects = []
+  // ── what a reviewer-minute bought ──────────────────────────────────────────
+  // The run spends most of its wall clock in referees, and until now the report
+  // said how many rounds ran but never what they returned per minute spent —
+  // so a pair that never finds a second thing looks exactly like one that does.
+  // Every `review:` call is timed INDIVIDUALLY (a concurrent pair contributes
+  // both durations, because both were paid for), and the numerator counts only
+  // what a REVIEWER returned: the driver's own Run:/Check: reds are the
+  // driver's finding, and charging them to the referee flatters the ratio.
+  let reviewerMs = 0
+  let pairRounds = 0
+  let r2MarginalBlocking = 0
+  const reviewerBlockingKeys = new Set()
+  const timedReview = async (prompt, opts) => {
+    const t0 = Date.now()
+    try { return await agent(prompt, opts) } finally { reviewerMs += Date.now() - t0 }
+  }
 
   // Edge sanity (ported): an unbound / inverted / same-wave edge weakens
   // dependency blocking — surfaced, never thrown.
@@ -775,11 +837,14 @@ export async function runEngine({
     // with a patch attached (#551) — reported per task, and not reset by the
     // clean re-review that follows the fix. Zero when no round ever ran.
     let proposedPatches = 0
+    // How many pre-review repair rounds this task took (0 or 1): the driver's
+    // own Run:/Check: pass either was green the first time or it was not.
+    let proofFixes = 0
     await noteDrift('the implementer')
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'not-reviewed', notes: impl.summary,
-               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches,
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
                ...examEditedField() }
     }
     if (!hasCoordinates(impl)) {
@@ -790,8 +855,107 @@ export async function runEngine({
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'lost-coordinates',
                notes: 'no driver-captured patch/headSha — downgraded to failed before review',
-               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches,
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
                ...examEditedField() }
+    }
+
+    // ── the driver's own Run:/Check: pass ────────────────────────────────────
+    // A referee's minutes are the scarcest thing the run spends, and a red
+    // command is not a judgment — the driver already has the answer. So every
+    // `Run:` and every `Check:` is executed here, on the implementer's tree,
+    // BEFORE any referee is dispatched: a red one buys one repair round at
+    // `iter: 0` and the pass repeats. Still red and the task is over — a
+    // proof-red task never reaches a reviewer at all, because asking a referee
+    // to read a patch whose own proof fails is asking it to grade the wrong
+    // thing. Same `sh` seam, cwd and tail-truncation as the review-round pass.
+    const runCommands = async (iter) => {
+      const runs = []
+      for (const cmd of proofRuns) {
+        const r = await sh(cmd, cloneDir)
+        runs.push({ cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
+        appendEvent({ kind: 'driver:proof-run', task: task.id, cmd, exit: r.code, iter })
+      }
+      return runs
+    }
+    const runChecks = async (iter) => {
+      const checks = []
+      for (const c of constraintChecks) {
+        const r = await sh(c.cmd, cloneDir)
+        checks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr), minor: c.minor })
+        appendEvent({ kind: 'driver:check-run', task: task.id, cmd: c.cmd, exit: r.code,
+                      minor: c.minor, iter })
+      }
+      return checks
+    }
+    // The same red minor check is re-executed on every pass; it is worth ONE
+    // line in the report, not one per execution.
+    const minorNoted = new Set()
+    const reroutedTokens = new Set()
+    const noteMinorCheck = (c) => {
+      if (minorNoted.has(c.cmd)) return
+      minorNoted.add(c.cmd)
+      judgmentCalls.push('task ' + task.id + ': minor Check: `' + c.cmd + '` exited ' + c.exit +
+        ' — recorded for the referee, blocking nothing')
+    }
+    const RUN_FAIL = (r) => 'the Proof\'s Run: command failed: ' + r.cmd + ' — exit ' + r.exit
+    const CHECK_FAIL = (c) => 'the Global Constraints Check: command failed: ' + c.cmd +
+      ' — exit ' + c.exit
+    if (proofRuns.length || constraintChecks.length) {
+      const prePass = async () => {
+        const reds = []
+        for (const r of await runCommands(0)) {
+          if (r.exit !== 0) reds.push({ line: RUN_FAIL(r), stdout: r.stdout })
+        }
+        for (const c of await runChecks(0)) {
+          if (c.exit === 0) continue
+          if (c.minor) { noteMinorCheck(c); continue }
+          reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
+        }
+        return reds
+      }
+      let reds = await prePass()
+      if (reds.length) {
+        proofFixes = 1
+        judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
+          reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
+        impl = await agent(
+          roles.fix + taskBodyBlock(task, wavesPath) + testCmdLine(task, workerTestCmd) +
+            filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
+            '\n\nBlocking issues to resolve:\n' +
+            reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
+          { label: 'fix:' + task.id + ':0', isolation: 'worktree',
+            model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
+        if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
+        stripUntrustedPatch(impl, patchPrefix)
+        noteConcerns(impl)
+        await noteDrift('the fix round')
+        if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
+          judgmentCalls.push('task ' + task.id + ': pre-review fix round lost driver-captured coordinates (' +
+            (impl.captureError || 'capture absent') + ') — failed before review')
+          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                   reviewVerdict: 'lost-coordinates',
+                   notes: 'pre-review fix round produced no driver-captured patch/headSha',
+                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                   ...examEditedField() }
+        }
+        if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
+          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                   reviewVerdict: 'blocked-after-fix', notes: impl.summary,
+                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                   ...examEditedField() }
+        }
+        reds = await prePass()
+        if (reds.length) {
+          const notes = reds.map((r) => r.line).join('; ')
+          judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
+            notes + ') — no referee was dispatched')
+          log('task ' + task.id + ' proof-red after the pre-review repair round')
+          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                   reviewVerdict: 'proof-red', notes,
+                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                   ...examEditedField() }
+        }
+      }
     }
 
     // Round-1 advisories, carried into round 2 (2026-09-01, run-47 read): the
@@ -807,19 +971,15 @@ export async function runEngine({
       // re-quoting a run that predates the repair. Same `sh` seam as the
       // run-wide suite (`bash -lc`, SHELL_TIMEOUT_MS), same cwd the implementer
       // just wrote to, same tail-truncation the rest of the evidence uses.
-      const runEvidence = []
-      for (const cmd of proofRuns) {
-        const r = await sh(cmd, cloneDir)
-        runEvidence.push({ cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
-        appendEvent({ kind: 'driver:proof-run', task: task.id, cmd, exit: r.code, iter })
-      }
+      const runEvidence = await runCommands(iter)
+      const checkEvidence = await runChecks(iter)
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
         globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
-        runEvidenceBlock(runEvidence)
+        runEvidenceBlock(runEvidence) + checkEvidenceBlock(checkEvidence)
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -832,20 +992,32 @@ export async function runEngine({
         // pre-0.3.0 rule that a task pipeline stays single-agent (so peak
         // concurrency equals wave width) is retired here: the bound it
         // protected was the Workflow tool's, not the API's (#454 measured it).
-        const [r1, r2] = await Promise.all([agent(reviewPrompt, reviewOpts(1)), agent(reviewPrompt, reviewOpts(2))])
+        const [r1, r2] = await Promise.all([timedReview(reviewPrompt, reviewOpts(1)),
+                                            timedReview(reviewPrompt, reviewOpts(2))])
         if (r1 === null || r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = (r1.issues || []).concat(r2.issues || [])
         verdicts = [r1.verdict, r2.verdict]
-        for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
-          cannotVerifyItems.push({ task: task.id, requirement: cv.requirement, why: cv.why })
+        // What the SECOND referee added that the first did not: the whole
+        // question a pair profile has to answer to justify its second bill.
+        pairRounds += 1
+        const firstKeys = new Set((r1.issues || []).filter((i) => i && i.severity === 'blocking')
+          .map((i) => (i.severity || '') + '|' + (i.detail || '')))
+        for (const i of (r2.issues || [])) {
+          if (!i || i.severity !== 'blocking') continue
+          if (!firstKeys.has((i.severity || '') + '|' + (i.detail || ''))) r2MarginalBlocking += 1
         }
       } else {
-        const review = await agent(reviewPrompt, reviewOpts())
+        const review = await timedReview(reviewPrompt, reviewOpts())
         if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = review.issues || []
         verdicts = [review.verdict]
-        for (const cv of (review.cannotVerify || [])) {
-          cannotVerifyItems.push({ task: task.id, requirement: cv.requirement, why: cv.why })
+      }
+      // Counted here, before the driver mints anything of its own: a Run: or
+      // Check: red is the DRIVER's finding, and charging it to the referee
+      // would inflate the very ratio this measures.
+      for (const i of issues) {
+        if (i && i.severity === 'blocking') {
+          reviewerBlockingKeys.add((i.severity || '') + '|' + (i.detail || ''))
         }
       }
       const seenIssue = {}
@@ -873,7 +1045,51 @@ export async function runEngine({
         judgmentCalls.push('task ' + task.id + ': Run: proof `' + r.cmd + '` exited ' + r.exit +
           ' in review round ' + iter + ' — blocking, whatever the reviewer returned')
       }
-      const blocking = issues.filter((i) => i.severity === 'blocking')
+      // A red non-minor `Check:` is read exactly as a red `Run:` is: the run
+      // declared the constraint, the driver ran it, and the referee's verdict
+      // does not get to overrule the exit code. A minor one is a note.
+      for (const c of checkEvidence) {
+        if (c.exit === 0) continue
+        if (c.minor) { noteMinorCheck(c); continue }
+        issues = issues.concat([{ severity: 'blocking', detail: CHECK_FAIL(c) }])
+        judgmentCalls.push('task ' + task.id + ': Check: `' + c.cmd + '` exited ' + c.exit +
+          ' in review round ' + iter + ' — blocking, whatever the reviewer returned')
+      }
+      // ── who can act on it (actor routing) ────────────────────────────────
+      // An issue the implementer cannot fix must not be handed to a fix round:
+      // the loop burns two rounds and lands where it started, and the run
+      // reports `fix-loop-exhausted` for a defect that was never the patch's.
+      // A reviewer names the actor; a reviewer that says `implementer` while
+      // its own detail names a plan defect in a file the task was never given
+      // is corrected here, because FILES is the driver's fact, not a judgment.
+      const taskFiles = Array.isArray(task.files) ? task.files : []
+      const routeToPlan = (i) => {
+        if (i.actor === 'plan') return true
+        const detail = String(i.detail || '')
+        if (!detail.startsWith('plan-defect:')) return false
+        for (const m of detail.matchAll(/`([^`]+)`/g)) {
+          const token = m[1]
+          if (token.indexOf('/') === -1 && token.indexOf('.') === -1) continue
+          if (taskFiles.indexOf(token) !== -1) continue
+          if (!reroutedTokens.has(token)) {
+            reroutedTokens.add(token)
+            judgmentCalls.push('task ' + task.id + ': plan-defect names `' + token +
+              '` outside FILES — routed to the plan')
+          }
+          return true
+        }
+        return false
+      }
+      const blocking = []
+      for (const i of issues.filter((i) => i.severity === 'blocking')) {
+        if (!routeToPlan(i)) { blocking.push(i); continue }
+        const detail = String(i.detail || '')
+        if (!planDefects.some((p) => p.task === task.id && p.detail === detail)) {
+          planDefects.push({ task: task.id, detail })
+        }
+      }
+      const planNotes = planDefects.filter((p) => p.task === task.id)
+        .map((p) => 'plan-defect: ' + p.detail)
       const minors = issues.filter((i) => i.severity === 'minor')
       const patchOf = (i) => (typeof i.proposedPatch === 'string' ? i.proposedPatch : '')
       if (blocking.length > 0) proposedPatches = blocking.filter((b) => patchOf(b) !== '').length
@@ -881,7 +1097,7 @@ export async function runEngine({
         if (!priorMinors.some((p) => p.detail === m.detail)) priorMinors.push(m)
       }
       if (blocking.length === 0) {
-        if (verdicts.indexOf('FIX_REQUIRED') !== -1) {
+        if (verdicts.indexOf('FIX_REQUIRED') !== -1 && planNotes.length === 0) {
           judgmentCalls.push('task ' + task.id +
             ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
         }
@@ -889,14 +1105,15 @@ export async function runEngine({
                  headSha: impl.headSha, patch: impl.patch,
                  reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                  notes: priorMinors.map((m) => m.detail)
+                   .concat(planNotes)
                    .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: iter - 1, proposedPatches,
+                 tier: economics.tier, review: economics.review, fixIterations: iter - 1, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
       if (iter === 2) {
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches,
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
       // Fix round: same tree (isolation routes fix:<id> to the task's clone),
@@ -924,13 +1141,13 @@ export async function runEngine({
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'lost-coordinates',
                  notes: 'fix round produced no driver-captured patch/headSha',
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches,
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
       if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'blocked-after-fix', notes: impl.summary,
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches,
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
     }
@@ -947,7 +1164,7 @@ export async function runEngine({
         log('task ' + task.id + ' infra-death — parked for barrier retry')
         return { task: task.id, status: 'parked-infra', reviewVerdict: 'agent-error',
                  notes: msg, tier: resolvedModel(task.tier || 'standard'),
-                 review: taskReviewProfile(task), fixIterations: 0 }
+                 review: taskReviewProfile(task), fixIterations: 0, proofFixes: 0 }
       }
       const capabilityFixable = isSchemaTrip(msg)
       const retryTier = capabilityFixable ? escalateTier(task.tier) : (task.tier || 'standard')
@@ -972,7 +1189,7 @@ export async function runEngine({
         log('task ' + task.id + ' FAILED after retry: ' + msg2)
         return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
                  notes: msg2, tier: resolvedModel(retryTier),
-                 review: taskReviewProfile(task), fixIterations: 0 }
+                 review: taskReviewProfile(task), fixIterations: 0, proofFixes: 0 }
       }
     }
   }
@@ -1311,7 +1528,7 @@ export async function runEngine({
       const r = { task: id, status: 'failed', reviewVerdict: 'reanchor-failed',
                   notes: 'clone could not be re-anchored at the wave base — never dispatched',
                   tier: resolvedModel((WAVES[w].find((t) => t.id === id) || {}).tier || 'standard'),
-                  review: 'lean', fixIterations: 0 }
+                  review: 'lean', fixIterations: 0, proofFixes: 0 }
       results.push(r); taskResults.push(r)
     }
     for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
@@ -1357,7 +1574,7 @@ export async function runEngine({
           const msg2 = String((e2 && e2.message) || e2)
           judgmentCalls.push('task ' + task.id + ': barrier retry after infra-death failed — ' + msg2)
           return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
-                   notes: msg2, tier: p.tier, review: p.review, fixIterations: 0 }
+                   notes: msg2, tier: p.tier, review: p.review, fixIterations: 0, proofFixes: 0 }
         }
       })()))
       for (let k = 0; k < pchunk.length; k++) {
@@ -1438,6 +1655,28 @@ export async function runEngine({
             'the answer, so the run is BLOCKED whatever the critic returns')
           log('wave ' + (w + 1) + ': ' + detail)
         }
+      }
+      // The run's standing `Check:` commands on the same adopted tree. A
+      // constraint that holds in every clone separately and fails on the fold
+      // is invisible to every per-task referee by construction — each one was
+      // right about the tree it read — so it can only be caught here.
+      for (const c of constraintChecks) {
+        const r = await sh(c.cmd, integ)
+        integratedChecks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
+                                minor: c.minor })
+        appendEvent({ kind: 'driver:integrated-check', cmd: c.cmd, exit: r.code,
+                      minor: c.minor, wave: w + 1 })
+        if (r.code === 0) continue
+        if (c.minor) {
+          judgmentCalls.push('wave ' + (w + 1) + ': the minor Check: `' + c.cmd + '` exited ' +
+            r.code + ' on the adopted tree — recorded for the critic, blocking nothing')
+          continue
+        }
+        const detail = 'integrated Check: ' + c.cmd + ' exited ' + r.code + ' on the adopted tree'
+        integratedFindings.push({ severity: 'blocking', detail })
+        judgmentCalls.push(detail + ' — a Global Constraint the fold broke; the run is BLOCKED ' +
+          'whatever the critic returns')
+        log('wave ' + (w + 1) + ': ' + detail)
       }
       continue
     }
@@ -1535,26 +1774,10 @@ export async function runEngine({
                deferredVerification: [] }
   } else {
     try {
-      // Checklist hygiene (review finding 8): dedupe (iter-1 and iter-2
-      // reviews repeat items) and drop items from tasks that never merged —
-      // those are already accounted under missingDeliverables, and handing
-      // them to the critic manufactures findings about absent-by-record work.
-      const doneTasks = new Set(taskResults.filter((r) => r.status === 'done').map((r) => r.task))
-      const seenCv = new Set()
-      const checklistItems = cannotVerifyItems.filter((c) => {
-        const key = c.task + '|' + c.requirement
-        if (seenCv.has(key) || !doneTasks.has(c.task)) return false
-        seenCv.add(key)
-        return true
-      })
-      const cannotVerifyChecklist = checklistItems.length
-        ? ('\nCANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree):\n' +
-           checklistItems.map((c) => '- [' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('\n'))
-        : ''
       review = await agent(
         roles.critic +
           (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
-          globalConstraintsBlock + cannotVerifyChecklist +
+          globalConstraintsBlock +
           '\n\nTasks:\n' + taskList +
           contractsBlock(WAVES, EDGES, wavesPath) +
           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
@@ -1562,7 +1785,8 @@ export async function runEngine({
           (baseline.passed === false
             ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
             : '') +
-          integratedRunEvidenceBlock(integratedRuns),
+          integratedRunEvidenceBlock(integratedRuns) +
+          integratedCheckEvidenceBlock(integratedChecks),
         { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA })
     } catch (e) {
       const msg = String((e && e.message) || e)
@@ -1630,16 +1854,24 @@ export async function runEngine({
   // gitVerified = receipts intact AND the completeness review actually ran
   // (spec §3.1's redefinition, plus review finding 2's fail-closed condition).
   const gitVerified = anyWaveMerged && tipMatches && ancestryMisses.length === 0 && criticRan
+  // A plan defect is verification the RUN cannot do: no fix round can close it
+  // and no referee can wave it through, so it travels to the one reader with
+  // the standing to change the plan. Only tasks that finished `done` carry one
+  // — a failed task is already accounted under missingDeliverables, and a
+  // deferral for work that never merged asks the gate to acknowledge nothing.
+  // `gate_check.py` types these `deferred:plan-defect`, which `ackDecision`
+  // does not pre-authorize: the operator reads it or the run does not merge.
+  const doneTaskIds = new Set(taskResults.filter((r) => r && r.status === 'done').map((r) => r.task))
+  const planDeferred = []
+  for (const p of planDefects) {
+    if (!doneTaskIds.has(p.task)) continue
+    planDeferred.push({ deliverable: p.task, reason: 'plan-defect', why: p.detail })
+    judgmentCalls.push('task ' + p.task + ': plan-defect deferred to the gate — ' + p.detail)
+  }
   const deferredVerification = (Array.isArray(review.deferredVerification)
     ? review.deferredVerification : [])
     .concat(shallowDeferred ? [shallowDeferred] : [])
-
-  if (cannotVerifyItems.length && !anyWaveMerged) {
-    for (const c of cannotVerifyItems) {
-      judgmentCalls.push('cannot-verify (task ' + c.task + '): ' + c.requirement +
-        ' — no wave merged, so the critic had no integrated tree; verify manually before the gate')
-    }
-  }
+    .concat(planDeferred)
 
   // tests: the DRIVER's own suite run on the adopted tree (was: the critic's).
   const tests = lastSuite
@@ -1683,6 +1915,20 @@ export async function runEngine({
     // #604: the driver's own re-execution of every merged task's `Run:` proofs
     // on the tree each wave adopted — [] when no merged task carried one.
     integratedRuns,
+    // The Global Constraints `Check:` commands on the same adopted tree —
+    // `{ cmd, exit, stdout, minor }`, [] when the run declared none.
+    integratedChecks,
+    // What a reviewer-minute bought (#623 follow-on): the wall clock every
+    // `review:` call cost, individually, against the blocking findings the
+    // referees actually returned.
+    reviewEconomy: {
+      reviewerMs,
+      blockingFindings: reviewerBlockingKeys.size,
+      blockingPerReviewerMinute: reviewerMs > 0
+        ? reviewerBlockingKeys.size / (reviewerMs / 60000) : 0,
+      pairRounds,
+      r2MarginalBlocking,
+    },
     shallowSuite,
     acceptance,
     baseline,
