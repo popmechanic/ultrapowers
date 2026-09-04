@@ -737,7 +737,7 @@ def test_unset_fleet_run_refuses_before_any_other_stage(tmp_path, value):
     assert receipt["stages"][0]["ok"] is False
     detail = receipt["stages"][0]["detail"]
     assert "`/ultrapowers` runs only inside a fleet sandbox" in detail
-    assert "launch `drive-one` on the orchestrator" in detail
+    assert "the launcher sets it on the VM" in detail
     assert not (repo / ".claude/ultrapowers/run-t1").exists()
 
 

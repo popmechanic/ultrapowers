@@ -37,10 +37,12 @@ FIXTURE_COUNTS = {1: 5, 2: 0, 3: 1, 4: 0, 5: 1, "binary": 1}
 
 
 @pytest.fixture(scope="module")
-def replayed(tmp_path_factory):
-    """One build + one replay of the fixture corpus, shared read-only."""
-    dest = tmp_path_factory.mktemp("replay-corpus")
-    repo, corpus = corpuslib.make_fixture_corpus(dest)
+def replayed(fixture_corpus):
+    """One replay of the session corpus (`conftest.fixture_corpus`), read-only.
+
+    The replay is the expensive half; the build is the session's, paid once.
+    """
+    repo, corpus = fixture_corpus
     return repo, corpus, replay_corpus.replay(repo, corpus)
 
 

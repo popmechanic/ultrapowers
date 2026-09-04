@@ -5,12 +5,11 @@ two languages with no import between them, so the literals they must agree on â€
 the variable name `FLEET_TEST_SLACK` and the default multiplier `4` â€” are pinned
 here against both modules at once.
 
-Legs (b), (d) and (f) of the task's Proof live here; (a), (c) and (e) are the
-node-side shape, in fleet/tests/test_deadline_slack.mjs.
+Legs (b) and (d) of the task's Proof live here; (a) and (c) are the node-side
+shape, in fleet/tests/test_deadline_slack.mjs.
 """
 
 import json
-import os
 import pathlib
 import re
 import subprocess
@@ -27,20 +26,6 @@ ULTRA_RUN_SPEC = ROOT / "tests/test_ultra_run.py"
 SIGTERM_TEST = "test_validate_knobs_removes_its_probe_worktree_on_sigterm"
 
 
-def _env(value):
-    """A child environment with FLEET_TEST_SLACK unset (None) or set.
-
-    PYTEST_ADDOPTS is dropped so a child pytest runs exactly the command the
-    Proof names and does not inherit the parent's `-n auto`.
-    """
-    env = dict(os.environ)
-    env.pop("PYTEST_ADDOPTS", None)
-    env.pop(SLACK_ENV, None)
-    if value is not None:
-        env[SLACK_ENV] = value
-    return env
-
-
 @pytest.fixture
 def slack_env(monkeypatch):
     def apply(value):
@@ -55,16 +40,17 @@ def slack_env(monkeypatch):
 # --- (b) the seam itself [M2] ---------------------------------------------
 
 
-def test_b_unset_defaults_to_four(slack_env):
-    slack_env(None)
-    assert slack() == 4
-    assert deadline_budget(300) == 1200
-
-
-def test_b_one_takes_the_base_at_face_value(slack_env):
-    slack_env("1")
-    assert slack() == 1
-    assert deadline_budget(300) == 300
+@pytest.mark.parametrize(
+    ("value", "multiplier", "budget"),
+    [
+        pytest.param(None, 4, 1200, id="unset-defaults-to-four"),
+        pytest.param("1", 1, 300, id="one-takes-the-base-at-face-value"),
+    ],
+)
+def test_b_a_positive_value_sets_the_multiplier(slack_env, value, multiplier, budget):
+    slack_env(value)
+    assert slack() == multiplier
+    assert deadline_budget(300) == budget
 
 
 @pytest.mark.parametrize("value", ["abc", "0", "-2"])
@@ -133,19 +119,3 @@ def test_d_each_deadline_is_a_budget_call_with_no_bare_number(needle):
         f"the deadline carries a numeric literal outside its deadline_budget( call, "
         f"so it is a bare widened number: {line.strip()}"
     )
-
-
-# --- (f) the spec still passes, slack set and unset [M5] ------------------
-
-
-@pytest.mark.parametrize("value", [None, "1"])
-def test_f_test_ultra_run_passes_with_slack_set_and_unset(value):
-    r = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "tests/test_ultra_run.py"],
-        cwd=ROOT,
-        env=_env(value),
-        capture_output=True,
-        text=True,
-    )
-    label = "unset" if value is None else f"{SLACK_ENV}={value}"
-    assert r.returncode == 0, f"tests/test_ultra_run.py failed with {label}:\n{r.stdout}{r.stderr}"

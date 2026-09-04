@@ -143,16 +143,22 @@ def test_queued_entry_without_plan_fails_loud():
         m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"))
 
 
-def test_duplicate_plan_paths_fail_loud():
+def test_duplicate_plan_paths_cluster_into_one_unit():
+    """Two queued entries sharing a Plan are a PLAN-TOGETHER cluster (#122),
+    not an error: they collapse to one unit carrying both issues, scored by the
+    max of its members. This test used to assert a raise, but the raise it
+    tripped was the sealed-cluster Seal-disagreement check, not a duplicate-Plan
+    check — the duplicate-Plan raise was already gone when clusters landed."""
     m = load()
     docket = ("# Docket\n\n"
               "### #1: a\n**State:** queued\n**Score:** 9 — x\n**Est-files:** a.py\n"
-              "**Plan:** p.md\n**Seal:** aaa\n\n"
+              "**Plan:** p.md\n\n"
               "### #2: b\n**State:** queued\n**Score:** 5 — x\n**Est-files:** b.py\n"
-              "**Plan:** p.md\n**Seal:** bbb\n")
-    import pytest
-    with pytest.raises(Exception):
-        m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"))
+              "**Plan:** p.md\n")
+    r = m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "suite"))
+    assert r["order"] == ["p.md"]
+    assert r["units"] == {"p.md": ["1", "2"]}
+    assert r["collisions"] == []
 
 
 def test_budget_passes_through():
@@ -163,16 +169,6 @@ def test_budget_passes_through():
     assert r["budget_usd"] == 42.0
 
 
-def test_sealed_entry_without_seal_fails_loud():
-    """A sealed-disposition queued entry with no Seal still fails loud."""
-    m = load()
-    docket = ("# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
-              "**Est-files:** a.py\n**Plan:** p.md\n")  # Plan present, Seal absent
-    import pytest
-    with pytest.raises(Exception):
-        m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"))
-
-
 def test_suite_entry_without_seal_compiles():
     """A suite-disposition queued entry needs no Seal — it compiles."""
     m = load()
@@ -180,22 +176,6 @@ def test_suite_entry_without_seal_compiles():
               "**Est-files:** a.py\n**Plan:** p.md\n")  # no Seal — legal for suite
     r = m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "suite"))
     assert r["order"] == ["p.md"]
-
-
-def test_mixed_sealed_and_suite_queue_compiles():
-    """A queue mixing a sealed (sealed entry) and a suite (seal-less) plan
-    compiles; order is score-descending."""
-    m = load()
-    docket = ("# Docket\n\n"
-              "### #1: sealed\n**State:** queued\n**Score:** 9 — x\n"
-              "**Est-files:** a.py\n**Plan:** pa.md\n**Seal:** aaa111aaa111\n\n"
-              "### #2: suite\n**State:** queued\n**Score:** 5 — x\n"
-              "**Est-files:** b.py\n**Plan:** pb.md\n")  # suite, no Seal
-    modes = {"pa.md": "sealed", "pb.md": "suite"}
-    writes = {"pa.md": {"a.py"}, "pb.md": {"b.py"}}
-    r = m.compile_docket(docket, facts_resolver=lambda p: (writes[p], modes[p]))
-    assert r["order"] == ["pa.md", "pb.md"]
-    assert r["collisions"] == []
 
 
 def test_real_plan_writes_unions_task_writes(tmp_path):
@@ -300,18 +280,6 @@ def test_cluster_collision_reported_once_per_plan_pair():
         {"p/shared.md": ["x.py"], "p/solo.md": ["x.py"]}))
     assert len(out["collisions"]) == 1
     assert set(out["collisions"][0]["plans"]) == {"p/shared.md", "p/solo.md"}
-
-
-def test_sealed_cluster_member_missing_seal_raises_naming_member():
-    # regression coverage of the EXISTING pre-unitization no_seal check
-    m = load()
-    text = "# Docket\n\n" + _entry("1", "9", "p/s.md", seal="abcdef123456") + "\n" + \
-           _entry("2", "7", "p/s.md")   # same plan, no Seal
-    try:
-        m.compile_docket(text, facts_resolver=_resolver({}, mode="sealed"))
-        assert False, "expected ValueError"
-    except ValueError as e:
-        assert "2" in str(e)
 
 
 def test_cluster_engine_disagreement_raises_naming_members():

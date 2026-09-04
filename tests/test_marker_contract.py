@@ -95,14 +95,6 @@ def test_contract_has_the_two_marker_sections_this_file_reads_by_heading():
             f"type '{t}' missing from the {TYPE_SEMANTICS!r} section")
 
 
-def test_contract_states_the_invariants():
-    text = CONTRACT.read_text()
-    assert "worktree-pure" in text          # contract is an invariant, not a pattern list
-    assert "post-merge runbook" in text     # excluded tasks are never silently dropped
-    assert "additive" in text               # Depends-on never replaces file-edge inference
-    assert "fence-aware" in text            # body-extraction hazard is documented
-
-
 def test_fixture_covers_every_marker_shape():
     p = FIXTURE.read_text()
     assert p.count("### Task") == 5

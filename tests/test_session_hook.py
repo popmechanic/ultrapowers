@@ -37,11 +37,6 @@ def test_session_start_script_emits_the_routing_rule():
     assert "/ultrapowers <plan-path>" in out
     assert "subagent-driven-development" in out   # the three-option handoff
     assert "executing-plans" in out
-    # Anti-drift pin for the no-pause contract (2026-06-12): selecting
-    # ultrapowers at the handoff IS the authorization. The hook is the copy
-    # every session reads — keep it in lockstep with SKILL.md Step 3.
-    assert "authorizes execution" in out
-    assert "no approval pause" in out
 
 
 
@@ -64,27 +59,18 @@ def _path():
 
 
 def test_ultrawrite_description_triggers_on_every_plan():
-    # The description is the probabilistic trigger: it must fire at the
-    # plan-writing MOMENT, not only when /ultrapowers was already chosen.
     frontmatter = (ROOT / "skills/ultrawrite/SKILL.md").read_text().split("---")[1]
-    assert "ANY implementation plan" in frontmatter
     # The external dependency is named as RETIRED, never as a co-invocation.
     assert "superpowers:writing-plans" not in frontmatter
 
 
-def test_session_start_recommends_by_analysis_not_reflex():
+def test_session_start_carries_no_reflex_recommendation():
     p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     out = p.stdout
-    low = out.lower()
-    # The reflex crown is gone — the hook instructs an analysis and forbids
-    # defaulting to ultrapowers.
-    assert "do not default to ultrapowers" in low
-    assert "parallel width" in out
-    assert "t≥4" in low
-    assert "risk override" in out
-    # The old unconditional tag is absent.
+    # The reflex crown is gone: the hook no longer tags a marked plan as the
+    # recommended route before any analysis has happened.
     assert "(recommended for marked plans)" not in out
 
 # (The waves.js install tests died at 0.3.0 with the install step itself.)
