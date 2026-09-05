@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-29.md run-29 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/janitor.mjs — the tag-first page read and the plan-tag age against the real GitHub API — Every leg exercises `gh` through the exec seam with canned answers; the contract's premises about the live API — that the contents API resolves `?ref=` to a tag as it does a branch, that `git/ref/tags/<name>` 404s on a name with no exact match while `git/refs/` answers an array, and that `commits/<sha>` puts the committer date at `.commit.committer.date` — cannot be executed in this sandbox, which reaches no network. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/janitor.mjs — #607's two `gh api -X PUT` writes of a death to `ultra/evidence-run-<N>` — The sims answer every PUT with a canned 200; that the contents API accepts the journal write with no `sha=` and the status write with the read envelope's `sha=` on the live evidence branch is not executable here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "ok": true,
+  "stamp": "run-29",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-29"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The janitor reads a finished run by its tag",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/janitor.mjs",
+          "fleet/tests/test_janitor_reap_only.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`janitor({ argv, exec, config, now }) -> Promise<{ dryRun, age, actions, stale, unknown, deaths }>`",
+            "`renderJanitor(result) -> string`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The janitor reads a finished run by its tag",
+          "files": [
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor.mjs",
+            "fleet/tests/test_janitor_reap_only.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`janitor({ argv, exec, config, now }) -> Promise<{ dryRun, age, actions, stale, unknown, deaths }>`",
+              "`renderJanitor(result) -> string`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor_reap_only.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_janitor.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_janitor.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_janitor.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(git hash-object fleet/tests/test_janitor_liveness.mjs)\" = dce86660d81281523f3ee2cba4f30279589c416c",
+            "node fleet/tests/test_janitor_liveness.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q evidenceTagFor fleet/tests/test_janitor_reap_only.mjs && ! grep -q evidenceBranchFor fleet/tests/test_janitor_reap_only.mjs",
+            "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(git hash-object fleet/tests/test_launch_reaps.mjs)\" = 1031e90dae32b3ec0d47663a22de5b75e5c41bbc",
+            "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(git hash-object fleet/tests/_lobby_helpers.mjs)\" = 86c4674085d8fefc940938ef80553e4b945ebb34",
+            "test \"$(git hash-object fleet/tests/test_launch.mjs)\" = 9faf40b1e3ed606b2283c829c0115a74057be9be",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The janitor reads a finished run by its tag"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The janitor's only mutation of the fleet is `rm <vm> --json`, and its only writes of the\n  target are #607's two `gh api -X PUT` calls on the contents API; it runs no `git`, opens\n  nothing under `~/.ultrapowers/` but `fleet.json`, and clones nothing.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 62d348b5982a879df341fdf77e0115ae1d639719",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 50a1c28c8739e8c395241a4c4dec7c832be0ab4b",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = def913a048a5a4271a14ddd4c75d44e5c6b697dd",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-29/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-29/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-29/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-29/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
