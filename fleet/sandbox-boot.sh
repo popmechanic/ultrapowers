@@ -118,6 +118,7 @@ BASE_SHA=""
 ENGINE_SHA=""
 OVERLAP=""
 TIER=""
+EFFORT=""
 BRANCH=""
 # The other two of #598's three branches, and the paths that hang off them.
 PLAN_BRANCH=""
@@ -305,6 +306,7 @@ parse_assignment() { # $1 = the comment line
       engine)  ENGINE_SHA="$val" ;;
       overlap) OVERLAP="$val" ;;
       tier)    TIER="$val" ;;
+      effort)  EFFORT="$val" ;;
       *) fail "assignment: unknown key '$key' in comment" ;;
     esac
   done
@@ -315,6 +317,7 @@ parse_assignment() { # $1 = the comment line
   is_sha "$ENGINE_SHA"  || fail "assignment: engine is not a 40-hex sha ('$ENGINE_SHA')"
   case "$OVERLAP" in ''|fold|serialize) : ;; *) fail "assignment: bad overlap '$OVERLAP'" ;; esac
   case "$TIER" in ''|standard|mostCapable) : ;; *) fail "assignment: bad tier '$TIER'" ;; esac
+  case "$EFFORT" in ''|low|medium|high) : ;; *) fail "assignment: bad effort '$EFFORT'" ;; esac
 
   RUN_ID="run-$RUN_N"
   BRANCH="ultra/integration-$RUN_ID"
@@ -323,7 +326,7 @@ parse_assignment() { # $1 = the comment line
   EVIDENCE_PATH=".ultrapowers/runs/$RUN_N"
   PLAN_FILE="$PLANS_DIR/$RUN_ID.md"
   ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
-  log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>}"
+  log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>} effort=${EFFORT:-<default>}"
 }
 
 # --- clones ------------------------------------------------------------------
@@ -536,11 +539,12 @@ log_auth_status() {
 # the cwd is a property and the child's variables ride in its own argv.
 run_engine() {
   local code=0 refresher="" knobs=()
-  # The two optional knobs as ARRAY elements: `${VAR:+--flag "$VAR"}` splits on
-  # whitespace, and an argv this script builds must never depend on a value's
-  # shape to stay one word.
+  # The three optional knobs as ARRAY elements: `${VAR:+--flag "$VAR"}` splits
+  # on whitespace, and an argv this script builds must never depend on a
+  # value's shape to stay one word.
   [ -n "$TIER" ] && knobs+=(--tier "$TIER")
   [ -n "$OVERLAP" ] && knobs+=(--overlap "$OVERLAP")
+  [ -n "$EFFORT" ] && knobs+=(--implementer-effort "$EFFORT")
   :
   log_auth_status
 
@@ -604,14 +608,21 @@ await_engine_inactive() {
 # --- evidence ----------------------------------------------------------------
 
 collect_evidence() {
-  local dest receipt run_dir f
+  local dest receipt approve run_dir f
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   receipt="$(gate_receipt_path)"
   [ -n "$receipt" ] && cp "$receipt" "$dest/gate-receipt.json"
-  :
+  # The two-move rule's second move rides beside the verdict it overrode:
+  # without it the branch shows a greened NEEDS_ACK run and no sign of what
+  # greened it.
+  approve="$(approve_receipt_path)"
+  [ -n "$approve" ] && cp "$approve" "$dest/approve-receipt.json"
   run_dir="$(run_dir_path)"
-  for f in report.json events.jsonl receipt.json; do
+  # `standing-approval.json` is the pre-authorization record the engine writes
+  # beside the receipts. Every name here is copied WHEN THE ENGINE WROTE IT — a
+  # run that needed no approval commits none.
+  for f in report.json events.jsonl receipt.json standing-approval.json; do
     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
   done
   # The engine's combined output rides along: it is the only evidence a run that
@@ -854,7 +865,7 @@ do_boot() {
     run_engine
   fi
 
-  local code outcome verdict approval ahead
+  local code outcome verdict approval approved_how ahead
   code="$(engine_exit_code)"
   collect_evidence
 
@@ -885,13 +896,18 @@ $(engine_tail)"
   # the engine's gate approved the run anyway — the two-move rule — and the
   # approve receipt beside the gate receipt is that approval. Throwing it away
   # here would publish a draft the gate had already signed off.
+  # `approved_how` is the same account in the cell an operator opens: the log
+  # line dies with the box, the status page rides the evidence branch.
   verdict="$(gate_verdict)"
   approval=""
+  approved_how=""
   if [ "$verdict" = "PASS" ]; then
     outcome="gate-green"
+    approved_how="verdict=PASS"
   elif [ -n "$(approve_receipt_path)" ]; then
     outcome="gate-green"
-    approval=", approved by the two-move rule"
+    approved_how="approved by the two-move rule"
+    approval=", $approved_how"
   else
     outcome="parked"
   fi
@@ -931,7 +947,10 @@ $(engine_tail)"
   fi
 
   if [ "$outcome" = "gate-green" ]; then
-    write_status done "$PR_URL"
+    # The PR first, then WHAT greened it — a reader of the branch can tell a
+    # PASS from a NEEDS_ACK the two-move rule signed off without opening the
+    # gate receipt.
+    write_status done "$PR_URL — $approved_how"
   else
     ERROR="parked: gate verdict ${verdict:-none}"
     write_status parked "$PR_URL"
