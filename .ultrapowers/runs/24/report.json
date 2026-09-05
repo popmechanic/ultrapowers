@@ -1,0 +1,193 @@
+{
+  "integrationBranch": "ultra/integration-run-24",
+  "baseSha": "e04154b702407ac1efabaa22db6e21eab706a5f1",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3b6329554d691a1d36cacac09f0a628215964b71",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-24/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/janitor.mjs: `writeDeath` checks the exit code of the status.json PUT but not the journal PUT. `ghPut(exec, contentsPath(target, run, 'janitor-journal.txt'), \u2026)` is awaited and its result discarded, so a failed journal write still yields a death entry with `applied: true` \u2014 the entry claims the record the Claim describes (\"the unit's result and the journal tail beside it\") was written when only half of it was. Concrete case: a prior pass wrote `janitor-journal.txt` and then died before the status PUT; the next pass re-probes the still-live page, PUTs the journal with no `sha=` (correct for a new file, a 422 for an existing one), the journal silently stays stale, the status PUT succeeds, and the run's record is marked `applied: true` against a journal from the earlier probe. M3 does not pin this and leg (c) only exercises the success path, so it is advisory rather than blocking.; fleet/janitor.mjs, header docblock: the surviving BASE sentence \"`--dry-run` issues every read and no `rm`.\" is no longer accurate \u2014 under `--dry-run` `writeDeath` returns before `onVm(exec, row.sshDest, journalCommand(run))`, so the journal read is one read a dry pass does not issue (deliberately, and permitted by the task: \"the journal read may be skipped under `--dry-run`\"). The new prose added above it documents the unit read and the writes but not this exception, so the file's own contract paragraph now overstates what a dry pass does. Suggested wording: \"`--dry-run` issues every read but the journal \u2014 a death it would write is reported, not written \u2014 and no `rm`.\"; Test-quality nit in `fleet/tests/test_janitor.mjs`: `LIVE_DESTS` is a module-level `Set` mutated by `evidenceFor` and accumulated across every leg, but the leg-(c) loop checks each exec's `exec.vm()` entries against that single global set. A destination that belonged to a live row in one leg is therefore accepted as a live destination in every later leg, so the pin \"every ssh <ssh_dest> goes to the ssh_dest of a row whose page said booting|running|publishing\" is weaker than it reads \u2014 it only fails if a dest was never live in *any* leg. It happens to hold today because each leg uses distinct run numbers, so the exam is not vacuous (LEG_A carries live runs 6, 10 and 11 and does produce `exec.vm()` entries), and `test_janitor_liveness.mjs` leg (a) pins the exact per-leg set with a `deepEqual`, so no criterion is left unverified. Fix, if you want the cross-leg pin to be exact: have `newExec` (or each leg) record its own live-dest set alongside the exec \u2014 e.g. `const newExec = (rules, live = new Set()) => { const exec = makeExec({ rules, passthrough: [] }); exec.liveDests = live; EXECS.push(exec); return exec }` with `evidenceFor` returning the live dests it collected \u2014 and assert `exec.liveDests.has(call.dest)` in the leg-(c) loop.; concern: Footprint is exactly fleet/janitor.mjs and fleet/tests/test_janitor.mjs; the Proof's test path fleet/tests/test_janitor_liveness.mjs was left for the peer's exam, so it does not exist in this tree and the suite here does not yet exercise it. All six machine clauses were checked against a scratch replica of that exam, written outside the working tree and deleted before the commit.; concern: judgment-call: a unit is parsed to the properties `systemctl show` actually printed, as strings \u2014 so the row whose canned answer carries no SubState yields `unit` with three keys, not four with a null. This is the literal reading of \"as read\"; if the peer's exam cans an empty `SubState=` line the parse still matches (SubState: ''), but a peer expecting numeric ExecMainStatus would not.; concern: doc-lag: fleet/RUNBOOK.md:194 still says the janitor \"never sshes into a VM\", and fleet/CONTRACT.md's janitor bullet still describes reads only. GLOBAL CONSTRAINTS pin the runbook and the contract byte-identical to BASE, so I left both untouched; CLAUDE.md:86 has the same lag and is outside this task's scope.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-24/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1619 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1619 passed, 5 warnings in 126.64s (0:02:06) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_janitor_liveness.mjs > /tmp/janitor-liveness.out && grep -q 'ALL TESTS PASSED' /tmp/janitor-liveness.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_janitor.mjs > /tmp/janitor.out && grep -q 'ALL TESTS PASSED' /tmp/janitor.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_janitor_reap_only.mjs > /tmp/janitor-reap-only.out && grep -q 'ALL TESTS PASSED' /tmp/janitor-reap-only.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_launch_reaps.mjs > /tmp/launch-reaps.out && grep -q 'ALL TESTS PASSED' /tmp/launch-reaps.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_launch.mjs > /tmp/launch.out && grep -q 'ALL TESTS PASSED' /tmp/launch.out",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(git hash-object fleet/tests/test_janitor_reap_only.mjs)\" = adc4ac2fd3206cc958485aa9bfc8d9e7ddb02166",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(git hash-object fleet/tests/_lobby_helpers.mjs)\" = 86c4674085d8fefc940938ef80553e4b945ebb34",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = a2bcd0491f5af05f77606c747c8f4f6bc3659138",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 7cf62ab22f21a5664e26f9ba0c0130f4c05da01f",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = a91fa2bb3bde04fa34396f6580a11f56e6e4bd8d",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = 7a45c72253c10632d1c914230df166b7d0934d70",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --input-type=module -e \"const m = await import('./fleet/janitor.mjs'); if (typeof m.janitor !== 'function' || typeof m.renderJanitor !== 'function') process.exit(1)\"",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 266848,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n..................................................................s..... [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1618 passed, 1 skipped, 5 warnings in 129.00s (0:02:09) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 141.43s (0:02:21) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "563e7e5a50d1d4ddb37166460e79871588c75b8b",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-24/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-24/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.46299999999999997,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/janitor.mjs \u2014 the on-VM reads: `ssh -o BatchMode=yes -o ConnectTimeout=15 <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show fleet-run@<N>.service -p ActiveState -p SubState -p Result -p ExecMainStatus'` (fleet/janitor.mjs:187-202) and `journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200` (fleet/janitor.mjs:192)",
+      "reason": "external",
+      "why": "Both command strings are byte-identical to the frozen contract's and runbook's own literals (fleet/CONTRACT.md:97 and :204, fleet/RUNBOOK.md:221 and :259), and the unit name matches what fleet/setup-script.mjs:148 starts. The exams exercise them only through the stubbed `exec` seam (`makeExec({ passthrough: [] })`), so that these commands actually return the four `key=value` lines against a live sandbox's systemd \u2014 including that `$(id -u)` expands on the VM and that `Result=timeout` appears at the 6 h `RuntimeMaxSec` budget \u2014 is not executable in this sandbox."
+    },
+    {
+      "deliverable": "fleet/janitor.mjs \u2014 the two contents-API writes: `gh api -X PUT repos/<target>/contents/.ultrapowers/runs/<N>/janitor-journal.txt` (no `sha=`, new file) and `.../status.json` (with the read envelope's `sha=`), fleet/janitor.mjs:135-146, 247-272",
+      "reason": "external",
+      "why": "The exams stub `gh` entirely and assert on the recorded argv, so the assertions confirm the flag shape (`-X PUT`, path first among `repos/\u2026`, one `-f key=value` per field) but not that GitHub's contents API accepts it \u2014 in particular that the `sha`-bearing PUT lands on `ultra/evidence-run-<N>` and that a concurrent sandbox push yields the 409/422 the `applied: false` path is written for. No network call is made in this environment."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: Footprint is exactly fleet/janitor.mjs and fleet/tests/test_janitor.mjs; the Proof's test path fleet/tests/test_janitor_liveness.mjs was left for the peer's exam, so it does not exist in this tree and the suite here does not yet exercise it. All six machine clauses were checked against a scratch replica of that exam, written outside the working tree and deleted before the commit.",
+    "task 1: judgment-call: a unit is parsed to the properties `systemctl show` actually printed, as strings \u2014 so the row whose canned answer carries no SubState yields `unit` with three keys, not four with a null. This is the literal reading of \"as read\"; if the peer's exam cans an empty `SubState=` line the parse still matches (SubState: ''), but a peer expecting numeric ExecMainStatus would not.",
+    "task 1: doc-lag: fleet/RUNBOOK.md:194 still says the janitor \"never sshes into a VM\", and fleet/CONTRACT.md's janitor bullet still describes reads only. GLOBAL CONSTRAINTS pin the runbook and the contract byte-identical to BASE, so I left both untouched; CLAUDE.md:86 has the same lag and is outside this task's scope."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1 (Claim / Context) \u2014 `fleet/janitor.mjs:257-261`: `writeDeath` awaits the journal `ghPut` to `.ultrapowers/runs/<N>/janitor-journal.txt` but discards its result, so a non-zero exit on that PUT is silently swallowed. The `deaths` entry's `applied` flag (and the `error` cell on it) reflects only the status.json PUT at `fleet/janitor.mjs:264-271`. If the journal write fails \u2014 most concretely on a second death pass for the same run, where the file already exists and the deliberately `sha`-less PUT is a 422 (the omission is correct per the Context's contents-API rule and pinned by Proof leg (c)/M3) \u2014 the record transitions to `failed` and `renderJanitor` prints `death <vm> ... ultra/evidence-run-<N>` with no journal beside it and no signal to the operator. This is narrower than it sounds (on a retry the first pass's journal is already on the branch, so the Claim's \"journal tail beside it\" still holds in the realistic case), and the Machine restatement M3 requires only that the PUT be issued, which it is \u2014 hence minor, not blocking. The Context's sentence \"A non-zero exit from a PUT ... is recorded on the `deaths` entry as `applied: false` with the output under `error`\" is honoured for the status PUT only."
+    }
+  ],
+  "blockedWaves": []
+}

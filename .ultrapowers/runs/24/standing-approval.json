@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-24.md run-24 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/janitor.mjs — the on-VM reads: `ssh -o BatchMode=yes -o ConnectTimeout=15 <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show fleet-run@<N>.service -p ActiveState -p SubState -p Result -p ExecMainStatus'` (fleet/janitor.mjs:187-202) and `journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200` (fleet/janitor.mjs:192) — Both command strings are byte-identical to the frozen contract's and runbook's own literals (fleet/CONTRACT.md:97 and :204, fleet/RUNBOOK.md:221 and :259), and the unit name matches what fleet/setup-script.mjs:148 starts. The exams exercise them only through the stubbed `exec` seam (`makeExec({ passthrough: [] })`), so that these commands actually return the four `key=value` lines against a live sandbox's systemd — including that `$(id -u)` expands on the VM and that `Result=timeout` appears at the 6 h `RuntimeMaxSec` budget — is not executable in this sandbox. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/janitor.mjs — the two contents-API writes: `gh api -X PUT repos/<target>/contents/.ultrapowers/runs/<N>/janitor-journal.txt` (no `sha=`, new file) and `.../status.json` (with the read envelope's `sha=`), fleet/janitor.mjs:135-146, 247-272 — The exams stub `gh` entirely and assert on the recorded argv, so the assertions confirm the flag shape (`-X PUT`, path first among `repos/…`, one `-f key=value` per field) but not that GitHub's contents API accepts it — in particular that the `sha`-bearing PUT lands on `ultra/evidence-run-<N>` and that a concurrent sandbox push yields the 409/422 the `applied: false` path is written for. No network call is made in this environment. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
