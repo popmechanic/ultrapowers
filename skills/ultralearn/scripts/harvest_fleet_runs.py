@@ -97,9 +97,18 @@ def evidence_branch(run):
     return f"ultra/evidence-run-{_run_number(run)}"
 
 
-def _evidence_api_path(target, run, name):
+def evidence_tag(run):
+    """The tag a run's record is kept under once it is published (#624). The
+    evidence branch is deleted at publish, so a swept run answers here and
+    nowhere else; a run the sweep has not reached yet answers on the branch."""
+    return f"ultra/evidence/run-{_run_number(run)}"
+
+
+def _evidence_api_path(target, run, name, ref=None):
+    """The contents read for one evidence file at one ref. GitHub resolves
+    `?ref=` to a branch or a tag alike, so branch and tag differ only here."""
     return (f"repos/{target}/contents/.ultrapowers/runs/{_run_number(run)}/{name}"
-            f"?ref={evidence_branch(run)}")
+            f"?ref={ref or evidence_branch(run)}")
 
 
 def _gh_api(api_path):
@@ -132,40 +141,62 @@ def _gh_api(api_path):
 
 
 def fetch_evidence(target: str, run: str, dest: Path) -> Path:
-    """Pull one run's committed record off `ultra/evidence-run-<N>` into
-    `dest`, and return `dest` — a directory holding an `events.jsonl`, which is
-    exactly what `discover_run_dirs` already accepts.
+    """Pull one run's committed record off `ultra/evidence-run-<N>`, or off
+    `ultra/evidence/run-<N>` once that branch is gone, into `dest`, and return
+    `dest` — a directory holding an `events.jsonl`, which is exactly what
+    `discover_run_dirs` already accepts.
+
+    The branch is probed first and the tag second, exactly once: the tag is
+    tried only for the first file that answers absent *before anything at all
+    has landed*, and if that read lands, every later file is read at the tag.
+    A run still on the branch therefore costs the same six reads it did at
+    BASE, and a swept run costs one extra 404 — never one per missing file,
+    which would turn a run with two absences on the branch into eight reads.
+    Either way the result set is the same: the branch while the sweep to tags
+    is pending, the tag after it.
 
     Per file, absence is advisory: `gh` exiting non-zero means that file is not
-    on the branch, which is marked and skipped so the run still bundles.
+    on the ref, which is marked and skipped so the run still bundles.
     `events.jsonl` is the exception — without a timeline there is no bundle —
     and so is a target that could not be read at all. Both raise `FailedLookup`
-    naming the target, the run and the branch.
+    naming the target, the run and the ref; a run on neither ref names both.
     """
-    branch = evidence_branch(run)
+    branch, tag = evidence_branch(run), evidence_tag(run)
+    number = _run_number(run)
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
-    landed = []
-    for name in EVIDENCE_FILES:
+
+    def read(name, ref):
         try:
-            body = _gh_api(_evidence_api_path(target, run, name))
+            return _gh_api(_evidence_api_path(target, run, name, ref))
         except (OSError, subprocess.SubprocessError) as exc:
             raise FailedLookup(
-                f"{target} run {_run_number(run)}: cannot read {branch} "
+                f"{target} run {number}: cannot read {ref} "
                 f"with gh ({exc})") from exc
+
+    ref = branch
+    tag_tried = False
+    landed = []
+    for name in EVIDENCE_FILES:
+        body = read(name, ref)
+        if body is None and not landed and not tag_tried:
+            tag_tried = True
+            body = read(name, tag)
+            if body is not None:
+                ref = tag
         if body is None:
-            _warn(f"{target} run {_run_number(run)}: no {name} on {branch}; "
+            _warn(f"{target} run {number}: no {name} on {ref}; "
                   f"skipping that file")
             continue
         (dest / name).write_bytes(body)
         landed.append(name)
     if not landed:
         raise FailedLookup(
-            f"{target} run {_run_number(run)}: nothing readable on {branch} "
+            f"{target} run {number}: nothing readable on {branch} or {tag} "
             f"— gh answered non-zero for all {len(EVIDENCE_FILES)} files")
     if "events.jsonl" not in landed:
         raise FailedLookup(
-            f"{target} run {_run_number(run)}: no events.jsonl on {branch} "
+            f"{target} run {number}: no events.jsonl on {ref} "
             f"— a run with no timeline cannot bundle")
     return dest
 
@@ -356,7 +387,8 @@ def main(argv=None):
     ap.add_argument("--cache", default="~/.claude/ultralearn")
     ap.add_argument("--evidence", metavar="OWNER/REPO",
                     help="pull each --run's committed record from this target's "
-                         "ultra/evidence-run-<N> branch")
+                         "ultra/evidence-run-<N> branch, or its "
+                         "ultra/evidence/run-<N> tag once that branch is gone")
     ap.add_argument("--run", action="append", dest="run_ids", metavar="N",
                     help="run number to fetch with --evidence (repeatable); "
                          "`run-N` is accepted and normalised")

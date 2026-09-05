@@ -360,6 +360,155 @@ test('the PR body links the evidence branch and the plan branch, and names the p
   }
 })
 
+// ── the PR closes what the plan names, and links the tags ────────────────────
+// Task 2 of run-25 (#679, #624). `render_card` reads ONE line out of
+// `$PLAN_FILE` — the first `**Closes:**` line after `**Goal:**` and before the
+// first `### ` heading — and turns its `#<digits>` tokens into the body's last
+// lines, so the self-merge closes exactly those issues; and the two card links
+// name the two tags rather than the two branches.
+
+/** The body's `Closes` lines, in the order the card wrote them. */
+const closesLines = (body) => body.split('\n').filter((l) => /^Closes\b/.test(l))
+
+/**
+ * A run whose plan carries `**Goal:** … #653 #655`, a plain prose line naming
+ * #888, and `**Closes:** #660 #668`. Memoized: legs (a) and (c) both read it.
+ */
+let CLOSES_RUN = null
+const CLOSES_EXTRA = '**Goal:** ship the two tickets #653 #655\n' +
+  'see #888 for the decision\n' +
+  '**Closes:** #660 #668'
+const closesRun = () => {
+  if (!CLOSES_RUN) {
+    CLOSES_RUN = makeHome()
+    const r = boot(CLOSES_RUN, ['boot'], { STUB_PLAN_EXTRA: CLOSES_EXTRA })
+    assert.equal(r.status, 0, r.stdout + r.stderr)
+  }
+  return CLOSES_RUN
+}
+
+test('the plan\'s `**Closes:**` line becomes the body\'s last lines, one per issue  [M1 / leg (a)]', () => {
+  const ctx = closesRun()
+
+  // The only carrier: `STUB_PLAN_EXTRA` rides the `git show
+  // <plan>:.ultrapowers/plan.md` answer, which `prepare_plan` writes to
+  // `$PLAN_FILE` — so a `render_card` reading any other source sees no
+  // `**Closes:**` line at all.  [leg (a)]
+  const plan = path.join(ctx.home, 'plans', 'run-7.md')
+  assert.equal(fs.readFileSync(plan, 'utf8'), `${PLAN_BYTES}${CLOSES_EXTRA}\n`,
+    `${plan} must be the git show answer byte for byte, extra and all`)
+
+  const body = prPosts(ctx)[0].body
+  const bodyLines = body.split('\n')
+  assert.deepEqual(bodyLines.slice(-2), ['Closes #660', 'Closes #668'],
+    'the body\'s last two lines are the two Closes lines, in the plan\'s order:\n---\n' + body)
+  assert.deepEqual(closesLines(body), ['Closes #660', 'Closes #668'],
+    'and they are the ONLY Closes lines anywhere in the body:\n---\n' + body)
+
+  assert.equal(statusOf(ctx).state, 'done', 'the run still ends done')
+})
+
+test('a plan with no `**Closes:**` line closes nothing  [M2 / leg (b)]', () => {
+  // The memoized green run's plan is `# <H1>`, a blank line and `body`.
+  const ctx = green()
+  const body = prPosts(ctx)[0].body
+  assert.deepEqual(body.split('\n').filter((l) => /^Closes #/.test(l)), [],
+    'no line may begin `Closes #` when the plan named no issues:\n---\n' + body)
+})
+
+test('a `#<digits>` anywhere but that one line closes nothing  [M1, M3 / leg (c)]', () => {
+  // (c.1) The Goal line's own numbers, and a prose line's, are not tickets to
+  // close — a reader that scrapes every `#\d+` after `**Goal:**` fails here.
+  const body = prPosts(closesRun())[0].body
+  for (const n of ['#653', '#655', '#888']) {
+    assert.ok(!body.includes(`Closes ${n}`),
+      `\`Closes ${n}\` must not appear — ${n} is on the Goal line or in prose:\n---\n${body}`)
+  }
+
+  // (c.2) A `**Closes:**` line after the first `### ` heading is out of the
+  // header block, so it closes nothing at all.
+  const after = makeHome()
+  assert.equal(boot(after, ['boot'], {
+    STUB_PLAN_EXTRA: '**Goal:** x\n\n### Task 1: x\n\n**Closes:** #999',
+  }).status, 0)
+  const afterBody = prPosts(after)[0].body
+  assert.ok(!afterBody.includes('Closes #999'),
+    'a `**Closes:**` line below the first `### ` heading closes nothing:\n---\n' + afterBody)
+  assert.deepEqual(afterBody.split('\n').filter((l) => /^Closes #/.test(l)), [],
+    'and no `Closes #` line at all is produced:\n---\n' + afterBody)
+  assert.equal(statusOf(after).state, 'done')
+
+  // (c.3) The line read is the first one AFTER `**Goal:**`, not the first one
+  // in the file — a `**Closes:**` above the Goal line is not it.
+  const before = makeHome()
+  assert.equal(boot(before, ['boot'], {
+    STUB_PLAN_EXTRA: '**Closes:** #777\n**Goal:** x\n**Closes:** #660',
+  }).status, 0)
+  const beforeBody = prPosts(before)[0].body
+  assert.deepEqual(closesLines(beforeBody), ['Closes #660'],
+    'exactly one Closes line, the one below `**Goal:**`:\n---\n' + beforeBody)
+  assert.ok(!beforeBody.includes('Closes #777'),
+    'the `**Closes:**` line above `**Goal:**` is not the line:\n---\n' + beforeBody)
+  assert.equal(statusOf(before).state, 'done')
+
+  // (c.4) Exactly the FIRST such line, not every such line.
+  const twice = makeHome()
+  assert.equal(boot(twice, ['boot'], {
+    STUB_PLAN_EXTRA: '**Goal:** x\n**Closes:** #660\n**Closes:** #661',
+  }).status, 0)
+  const twiceBody = prPosts(twice)[0].body
+  assert.deepEqual(twiceBody.split('\n').filter((l) => /^Closes #/.test(l)), ['Closes #660'],
+    'the second `**Closes:**` line is not read:\n---\n' + twiceBody)
+  assert.ok(!twiceBody.includes('Closes #661'),
+    '`Closes #661` must not appear anywhere in the body:\n---\n' + twiceBody)
+  assert.equal(statusOf(twice).state, 'done')
+})
+
+test('the card links the two tags, each under its own heading  [M4 / leg (d)]', () => {
+  // #624 decision c: the plan link is the TAG path, so it keeps resolving after
+  // the branches are gone. The tags are `ultra/plan/run-<N>` and
+  // `ultra/evidence/run-<N>`; the branches keep their own spellings.
+  const PLAN_TAG_LINK = `https://github.com/${TARGET}/blob/ultra/plan/run-7/${PLAN_PATH}`
+  const EVIDENCE_TAG_LINK = `https://github.com/${TARGET}/tree/ultra/evidence/run-7/${RUN_PATH}/`
+  assert.equal(PLAN_TAG_LINK, 'https://github.com/popmechanic/smoke/blob/ultra/plan/run-7/.ultrapowers/plan.md')
+  assert.equal(EVIDENCE_TAG_LINK, 'https://github.com/popmechanic/smoke/tree/ultra/evidence/run-7/.ultrapowers/runs/7/')
+
+  // The shared literals move with the card: the constants the BASE "PR body
+  // links" test pins are these two strings.
+  assert.equal(PLAN_LINK, PLAN_TAG_LINK, 'PLAN_LINK is the plan tag path')
+  assert.equal(EVIDENCE_LINK, EVIDENCE_TAG_LINK, 'EVIDENCE_LINK is the evidence tag path')
+
+  const body = prPosts(green())[0].body
+
+  // Each link under its OWN heading — the section running from its `### `
+  // heading to the next one.
+  const section = (heading) => {
+    const at = body.indexOf(heading)
+    assert.ok(at >= 0, `the card must carry a ${heading} heading:\n---\n${body}`)
+    const rest = body.slice(at + heading.length)
+    const next = rest.indexOf('\n### ')
+    return next < 0 ? rest : rest.slice(0, next)
+  }
+  const evidenceSection = section('### Evidence')
+  const planSection = section('### Plan')
+  assert.ok(evidenceSection.includes(EVIDENCE_TAG_LINK),
+    `### Evidence must link ${EVIDENCE_TAG_LINK}\n---\n${body}`)
+  assert.ok(planSection.includes(PLAN_TAG_LINK),
+    `### Plan must link ${PLAN_TAG_LINK}\n---\n${body}`)
+  assert.ok(!evidenceSection.includes(PLAN_TAG_LINK), 'the plan link is not under ### Evidence')
+  assert.ok(!planSection.includes(EVIDENCE_TAG_LINK), 'the evidence link is not under ### Plan')
+
+  // Neither branch path survives anywhere in the card.
+  assert.ok(!body.includes('blob/ultra/plan-run-7'),
+    'the card must not link the plan BRANCH path:\n---\n' + body)
+  assert.ok(!body.includes('tree/ultra/evidence-run-7'),
+    'the card must not link the evidence BRANCH path:\n---\n' + body)
+
+  // The table row is untouched: the plan blob at the plan sha.
+  assert.ok(body.includes(PLAN_ROW),
+    `the plan row must still read exactly: ${PLAN_ROW}\n---\n${body}`)
+})
+
 test('the PR is opened only after the edge reports the pushed head on the branch  [M5/(g)]', () => {
   // GitHub's index lags the push, and a PR opened before the branch is indexed
   // gets no `pull_request` CI run (#595). The edge answers 404 twice, then the

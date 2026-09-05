@@ -27,13 +27,21 @@
 # GitHub call below is this script's, never a model's, and the push happens
 # only after systemd says the engine service is inactive.
 #
-# THREE BRANCHES, all on the TARGET repository and none of them anywhere else
-# (#598): `ultra/plan-run-<N>` carries `.ultrapowers/plan.md` in — the launcher
-# pushed it before this VM existed, so the plan this box runs is the one the
+# THREE TRANSIENT BRANCHES AND TWO TAGS, all on the TARGET repository and none
+# of them anywhere else (#598). What a run leaves behind is the two tags:
+# `ultra/plan/run-<N>` on the plan commit and `ultra/evidence/run-<N>` on the
+# evidence head. The branches are only where the run works.
+# `ultra/plan-run-<N>` carries `.ultrapowers/plan.md` in — the launcher pushed
+# it before this VM existed, so the plan this box runs is the one the
 # assignment's `plan=` signed; `ultra/integration-run-<N>` is the engine's own,
 # and the PR head; `ultra/evidence-run-<N>` is this script's — one commit per
-# transition, parented on the plan commit, never merged, linked from the PR
-# body. Nothing under `.claude/` is ever committed: that directory is the
+# transition, parented on the plan commit. After the last evidence push of a
+# `done` or `parked` run, `record_tags` writes both tags, and then
+# `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted at publish, in
+# one push, once `git ls-remote --tags` verifies both tags against the remote;
+# a run that ends `failed`, or whose tags do not verify, keeps both branches
+# for the one-time sweep. The PR body links the plan blob and the evidence tree
+# by tag. Nothing under `.claude/` is ever committed: that directory is the
 # engine's scratch, and the evidence is a copy of it under `.ultrapowers/`.
 #
 # IDEMPOTENCE IS A REQUIREMENT, not a nicety: this script can be started again
@@ -82,6 +90,10 @@ EVIDENCE_DIR="$FLEET_HOME/evidence"
 # what the engine's argv carries.
 PLANS_DIR="$FLEET_HOME/plans"
 ENGINE_DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
+# `claude --version`, written by `log_auth_status` before the engine unit is
+# started and copied into the evidence by `collect_evidence` at every later
+# transition — so the branch says which engine binary the run actually ran on.
+CLAUDE_VERSION_FILE="$FLEET_HOME/claude-version.txt"
 # Set once the assignment is parsed: the bootstrap's content-addressed clone.
 ENGINE_REPO_DIR=""
 
@@ -506,23 +518,25 @@ preflight_integrations() {
 run_dir_path() { printf '%s/.claude/ultrapowers/run-%s' "$TARGET_DIR" "$RUN_ID"; }
 
 gate_receipt_path() {
-  # The contract's path first. The engine's own gate writes the receipt into its
-  # run dir; the copy under `fleet-receipts/` is what survives as a git object.
-  local a b
-  a="$TARGET_DIR/fleet-receipts/$RUN_ID/gate-receipt.json"
-  b="$(run_dir_path)/gate-receipt.json"
-  if [ -f "$a" ]; then printf '%s\n' "$a"; elif [ -f "$b" ]; then printf '%s\n' "$b"; fi
+  # The run directory is the only receipt. The engine's own gate writes it there,
+  # and `collect_evidence` copies it onto the evidence branch — that copy is what
+  # survives as a git object. A receipt anywhere else in the target tree is a
+  # fossil of some older run, and reading one parks this run on a stale verdict.
+  local p
+  p="$(run_dir_path)/gate-receipt.json"
+  [ -f "$p" ] && printf '%s\n' "$p"
+  return 0
 }
 
 approve_receipt_path() {
   # The two-move rule's second move, written by `run-main.mjs` beside the gate
-  # receipt once `ultra_gate.py --approve` has succeeded. The run dir is per run,
-  # so an approve receipt found here is this run's; the stamp inside it is the
-  # engine's business, not this script's.
-  local a b
-  a="$TARGET_DIR/fleet-receipts/$RUN_ID/approve-receipt.json"
-  b="$(run_dir_path)/approve-receipt.json"
-  if [ -f "$a" ]; then printf '%s\n' "$a"; elif [ -f "$b" ]; then printf '%s\n' "$b"; fi
+  # receipt in the run directory once `ultra_gate.py --approve` has succeeded.
+  # The run dir is per run, so an approve receipt found here is this run's; the
+  # stamp inside it is the engine's business, not this script's.
+  local p
+  p="$(run_dir_path)/approve-receipt.json"
+  [ -f "$p" ] && printf '%s\n' "$p"
+  return 0
 }
 
 last_phase() {
@@ -542,8 +556,18 @@ phase_refresher() {
   done
 }
 
+# The subscription check, and the receipt of what ran. Both reads happen here,
+# from `run_engine`, AFTER the `running` page is committed and pushed and
+# BEFORE the engine unit is started — so a box that is not on the subscription
+# ends the run `failed` with its account on the evidence branch, and no engine
+# ever spends a credit against the wrong account. NO oauth_token IS A FAILURE,
+# not a warning: a `claude` that cannot answer, or answers with something else,
+# is a box that would bill somewhere other than the subscription this fleet
+# rides. The version is read beside it, once, and written where
+# `collect_evidence` picks it up, so every later transition carries the receipt
+# of the engine binary this run actually ran on.
 log_auth_status() {
-  local out
+  local out version
   out="$(env ANTHROPIC_BASE_URL="$ANTHROPIC_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
     claude auth status 2>&1 || true)"
   log "claude auth status: $(printf '%s' "$out" | tr '\n' ' ')"
@@ -552,8 +576,12 @@ log_auth_status() {
   esac
   case "$out" in
     *oauth_token*) : ;;
-    *) log "claude auth status: no oauth_token line (claude may not be installed) — continuing" ;;
+    *) fail "claude auth status shows no oauth_token — this box is not on the claude-max subscription, refusing to run" ;;
   esac
+  version="$(env ANTHROPIC_BASE_URL="$ANTHROPIC_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
+    claude --version 2>&1 || true)"
+  log "claude version: $(printf '%s' "$version" | tr '\n' ' ')"
+  printf '%s\n' "$version" >"$CLAUDE_VERSION_FILE"
 }
 
 # A transient SERVICE, not a scope: `--wait` hands back the engine's exit code
@@ -653,7 +681,9 @@ collect_evidence() {
   # The engine's combined output rides along: it is the only evidence a run that
   # died before writing a receipt produces at all.
   [ -f "$ENGINE_LOG" ] && cp "$ENGINE_LOG" "$dest/engine.log"
-  :
+  # The receipt of the engine binary: written once, before the engine started,
+  # so every transition from there on carries it.
+  [ -f "$CLAUDE_VERSION_FILE" ] && cp "$CLAUDE_VERSION_FILE" "$dest/claude-version.txt"
   cp "$STATUS_FILE" "$dest/status.json" 2>/dev/null || true
   log "evidence: $(ls "$dest" | tr '\n' ' ')"
 }
@@ -710,6 +740,31 @@ plan_title() {
   sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1
 }
 
+# The issues this run's PR closes, one `Closes #<digits>` line each, in the
+# order the plan names them.
+#
+# Exactly one line of the plan is read: the first line beginning `**Closes:**`
+# that follows the `**Goal:**` line and precedes the first `### ` heading —
+# the header block ultrawrite writes, and nothing else. Never a regex over the
+# whole body: the Goal line cites decisions as well as tickets (run-18's Goal
+# named #653 and #655 beside its two tickets), a prose line may cite an issue
+# in passing, and a task body under a `### ` heading may name any number at
+# all. A plan with no such line closes nothing.
+plan_closes() {
+  [ -f "$PLAN_FILE" ] || return 0
+  awk '
+    /^### / { exit }
+    goal && /^\*\*Closes:\*\*/ { line = $0; exit }
+    /^\*\*Goal:\*\*/ { goal = 1 }
+    END {
+      while (match(line, /#[0-9]+/)) {
+        printf "Closes %s\n", substr(line, RSTART, RLENGTH)
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "$PLAN_FILE"
+}
+
 render_card() { # $1 = outcome; prints the body file's path
   local body dest verdict receipt
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
@@ -734,13 +789,16 @@ render_card() { # $1 = outcome; prints the body file's path
     else
       printf 'No gate receipt was produced.\n\n'
     fi
-    # Both branches, on the target, spelled as a browser can follow them: the
-    # receipts this run wrote, and the plan it was given.
+    # Both records, on the target, spelled as a browser can follow them: the
+    # receipts this run wrote, and the plan it was given. The tags, not the
+    # branches — a branch moves on, a tag is where this run's reader lands.
     printf '### Evidence\n\n'
-    printf 'https://github.com/%s/tree/%s/%s/\n\n' "$TARGET_REPO" "$EVIDENCE_BRANCH" "$EVIDENCE_PATH"
+    printf 'https://github.com/%s/tree/ultra/evidence/%s/%s/\n\n' "$TARGET_REPO" "$RUN_ID" "$EVIDENCE_PATH"
     printf '%s\n\n' "$(ls "$dest" | sed 's/^/- /')"
     printf '### Plan\n\n'
-    printf 'https://github.com/%s/blob/%s/%s\n' "$TARGET_REPO" "$PLAN_BRANCH" "$PLAN_BLOB_PATH"
+    printf 'https://github.com/%s/blob/ultra/plan/%s/%s\n' "$TARGET_REPO" "$RUN_ID" "$PLAN_BLOB_PATH"
+    # Last of all, so the self-merge closes what the plan named.
+    plan_closes
   } >"$body"
   printf '%s\n' "$body"
 }
@@ -968,6 +1026,64 @@ merge_pr() {
   MERGE_NOTE="merged ${MERGED_SHA:-<no sha>}"
 }
 
+# --- the record ---------------------------------------------------------------
+#
+# THE RUN'S DURABLE RECORD IS TWO TAGS, and the two branches under them are
+# transient (#624, decided 2026-09-05). `ultra/plan/run-<N>` marks the plan
+# commit the assignment signed, `ultra/evidence/run-<N>` marks the evidence
+# worktree's HEAD — which is the commit carrying the run's `done`/`parked`
+# page, so this runs AFTER the last `push_evidence` and never before it. The
+# launcher reads the tags for N and the harvester reads by tag; nothing needs
+# the branches once the tags are on the remote, so both are deleted here in one
+# push. `ultra/integration-run-<N>` is not this function's business: it goes
+# with the merge (delete-on-merge), and a held or draft PR keeps its head.
+#
+# A LIGHTWEIGHT TAG NEEDS NO LOCAL TAG OBJECT: `<sha>:refs/tags/<name>` creates
+# it on the remote, and the evidence worktree shares the clone's object store,
+# so `HEAD:refs/tags/…` from there works the same way. The proof that a tag
+# EXISTS is the remote's own listing and nothing else — `cat-file -e` and
+# `fetch <sha>` are both satisfied locally without the server ever being asked.
+#
+# A tag that does not verify is not a failed run. The record still exists on
+# the branches, which is exactly why they are only deleted after the listing
+# agrees; the sweep will retry it. So every unhappy path logs one `record:` line
+# saying what was kept and returns 0, leaving the run's state and exit code
+# alone.
+record_tags() {
+  local plan_tag evidence_tag head listing listed_plan listed_evidence
+  plan_tag="refs/tags/ultra/plan/$RUN_ID"
+  evidence_tag="refs/tags/ultra/evidence/$RUN_ID"
+  head="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
+  if [ -z "$head" ]; then
+    log "record: the evidence worktree has no HEAD to tag — both branches kept for the sweep"
+    return 0
+  fi
+  if ! fleet_git -C "$TARGET_DIR" push origin "$PLAN_SHA:$plan_tag"; then
+    log "record: pushing $plan_tag at $PLAN_SHA was rejected — both branches kept for the sweep"
+    return 0
+  fi
+  if ! fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$evidence_tag"; then
+    log "record: pushing $evidence_tag at $head was rejected — both branches kept for the sweep"
+    return 0
+  fi
+  # One listing, naming both tags, from the clone that owns `origin`.
+  listing="$(fleet_git -C "$TARGET_DIR" ls-remote --tags origin "$plan_tag" "$evidence_tag" 2>/dev/null || true)"
+  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"
+  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"
+  # BOTH tags, each at its OWN sha. A listing missing one of them, or showing
+  # one at a commit this run did not put there, is not the record it claims.
+  if [ "$listed_plan" != "$PLAN_SHA" ] || [ "$listed_evidence" != "$head" ]; then
+    log "record: origin lists $plan_tag at '${listed_plan:-<nothing>}' and $evidence_tag at '${listed_evidence:-<nothing>}', not $PLAN_SHA and $head — $PLAN_BRANCH and $EVIDENCE_BRANCH kept for the sweep"
+    return 0
+  fi
+  if ! fleet_git -C "$TARGET_DIR" push origin --delete \
+      "refs/heads/$PLAN_BRANCH" "refs/heads/$EVIDENCE_BRANCH"; then
+    log "record: the tags are on origin but deleting $PLAN_BRANCH and $EVIDENCE_BRANCH was rejected — both kept for the sweep"
+    return 0
+  fi
+  log "record: $plan_tag at $PLAN_SHA and $evidence_tag at $head — $PLAN_BRANCH and $EVIDENCE_BRANCH deleted"
+}
+
 # --- the two entry points ----------------------------------------------------
 
 do_boot() {
@@ -1093,6 +1209,9 @@ $(engine_tail)"
     write_status parked "nothing to publish"
     collect_evidence
     push_evidence "$RUN_ID: parked — nothing ahead of base"
+    # A parked run's record is worth as much as a green one's: the evidence
+    # branch just took its last commit, so the tags go on it here too.
+    record_tags
     notify "run-$RUN_N parked" "$TARGET_REPO — nothing ahead of base"
     exit 0
   fi
@@ -1131,6 +1250,9 @@ $(engine_tail)"
   fi
   collect_evidence
   push_evidence "$RUN_ID: $outcome — $PR_URL"
+  # The last evidence commit is on the remote: the two tags mark it and the
+  # plan commit, and the two branches under them go.
+  record_tags
   notify "run-$RUN_N $STATE" "$TARGET_REPO — $PR_URL"
 }
 

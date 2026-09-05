@@ -20,8 +20,8 @@ import {
   RETIRED_NAMES, ASSIGNMENT,
   makeHome, boot, green,
   readLog, argvLines, stream, statusOf, states, notifies, committed, commitStates,
-  engineRuns, prPosts,
-  verbOf, gitLog, evidenceDir, isEvidencePush, addArguments,
+  engineRuns, prPosts, indexOf,
+  verbOf, dirOf, gitLog, evidenceDir, isEvidencePush, addArguments,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
 
@@ -147,6 +147,117 @@ test('an api_key auth status stops the run before the engine spends a credit', (
   assert.equal(engineRuns(ctx), 0, 'the engine never starts on an api_key')
 })
 
+// No subscription, no run: a `claude auth status` that shows neither
+// `oauth_token` nor `api_key` is not a box to log about and continue on — it is
+// a box that would bill somewhere else, so the run ends `failed` before the
+// engine unit exists, and the version the run did ride on is a receipt on the
+// evidence branch.
+
+/** The last element of `list` satisfying `pred`, as an index, or -1. */
+const lastWhere = (list, pred) => {
+  for (let i = list.length - 1; i >= 0; i -= 1) if (pred(list[i])) return i
+  return -1
+}
+const lastEvidence = (ctx, verb) =>
+  lastWhere(gitLog(ctx), (a) => dirOf(a) === evidenceDir(ctx) && verbOf(a) === verb)
+
+/**
+ * The `failed` page was committed and THEN pushed: a script that fails without
+ * pushing (no push at all), or that pushes before the `failed` commit, does not
+ * leave the account on the branch.
+ */
+const assertFailedPageCommittedThenPushed = (ctx) => {
+  const commit = lastEvidence(ctx, 'commit')
+  const push = lastWhere(gitLog(ctx), isEvidencePush)
+  assert.ok(commit >= 0, 'the failed page is committed in the evidence worktree')
+  assert.ok(push > commit,
+    `the failed page is pushed AFTER it is committed (last commit ${commit}, last push ${push})`)
+}
+
+test('an auth status showing no oauth_token fails the run before the engine starts  [M1 / leg (a)]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_AUTH: 'none' })
+  assert.notEqual(r.status, 0, 'a box without the subscription token must exit non-zero')
+
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'failed')
+  assert.match(status.error, /oauth_token/,
+    `the error names what is missing, not something else: ${status.error}`)
+  assert.equal(engineRuns(ctx), 0, 'no --unit=fleet-engine-7 is ever issued')
+  assert.equal(commitStates(ctx)[commitStates(ctx).length - 1], 'failed',
+    `the last committed page is the failed one: ${JSON.stringify(commitStates(ctx))}`)
+  assertFailedPageCommittedThenPushed(ctx)
+})
+
+test('an empty auth status fails the same way — no oauth_token is no oauth_token  [M1 / leg (a)]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_AUTH: '' })
+  assert.notEqual(r.status, 0, 'an auth status that says nothing at all is not a green light')
+
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'failed')
+  assert.match(status.error, /oauth_token/, status.error)
+  assert.equal(engineRuns(ctx), 0,
+    'a script that logs and continues on a missing oauth_token starts the engine here')
+  assert.equal(commitStates(ctx)[commitStates(ctx).length - 1], 'failed')
+  assertFailedPageCommittedThenPushed(ctx)
+})
+
+test('an api_key auth status still fails, with its failed page on the branch  [M2 / leg (b)]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_AUTH: 'api_key' })
+  assert.notEqual(r.status, 0)
+  assert.equal(statusOf(ctx).state, 'failed')
+  assert.match(statusOf(ctx).error, /api_key/, statusOf(ctx).error)
+  assert.equal(engineRuns(ctx), 0, 'the engine never starts on an api_key, as at BASE')
+  assert.equal(commitStates(ctx)[commitStates(ctx).length - 1], 'failed')
+})
+
+test('the version the run rides on is read once, before the engine, and collected  [M3 / leg (c)]', () => {
+  const ctx = green()
+
+  const versionCalls = argvLines(ctx, 'claude').filter((a) => a.includes('--version'))
+  assert.equal(versionCalls.length, 1,
+    `claude --version runs exactly once: ${JSON.stringify(argvLines(ctx, 'claude'))}`)
+  const atVersion = indexOf(ctx, 'CALL claude --version')
+  const atEngine = indexOf(ctx, 'CALL systemd-run engine')
+  assert.ok(atVersion >= 0, 'the boot stream carries a CALL claude --version line')
+  assert.ok(atEngine >= 0, 'the boot stream carries a CALL systemd-run engine line')
+  assert.ok(atVersion < atEngine,
+    `the version is read BEFORE the engine unit starts (version ${atVersion}, engine ${atEngine})`)
+
+  // The receipt itself, in the evidence worktree's run directory.
+  const file = path.join(evidenceDir(ctx), RUN_PATH, 'claude-version.txt')
+  assert.ok(fs.existsSync(file), `${RUN_PATH}/claude-version.txt is collected into the evidence`)
+  assert.match(fs.readFileSync(file, 'utf8'), /^2\.1\.250/,
+    'the file holds what `claude --version` printed')
+
+  // …and it is STAGED, by an add whose path scope covers it, before the run's
+  // last evidence commit, which is before the push that carries it off the box.
+  const git = gitLog(ctx)
+  const atAdd = lastEvidence(ctx, 'add')
+  assert.ok(atAdd >= 0, 'the run stages its evidence in the evidence worktree')
+  const staged = addArguments([git[atAdd]])
+  assert.ok(
+    staged.includes(RUN_PATH) || staged.some((s) => s.endsWith(`${RUN_PATH}/claude-version.txt`)),
+    `the last evidence add covers the file, not a narrower path: ${JSON.stringify(staged)}`)
+  const atCommit = lastEvidence(ctx, 'commit')
+  const atPush = lastWhere(git, isEvidencePush)
+  assert.ok(atAdd < atCommit,
+    `the add precedes the last evidence commit (add ${atAdd}, commit ${atCommit})`)
+  assert.ok(atCommit < atPush,
+    `and that commit precedes the last evidence push (commit ${atCommit}, push ${atPush})`)
+})
+
+test('the boot log carries the auth method and the version it read  [M4 / leg (d)]', () => {
+  const ctx = green()
+  const log = stream(ctx)
+  assert.ok(log.some((l) => l.includes('claude auth status: authMethod: oauth_token')),
+    'the green path logs the auth method it accepted')
+  assert.ok(log.some((l) => /^claude version: 2\.1\.250/.test(l)),
+    `a line begins 'claude version: ' with what claude printed: ${JSON.stringify(log.filter((l) => l.startsWith('claude ')))}`)
+})
+
 // ── 6. the public-target fallback ────────────────────────────────────────────
 
 test('a target the exe.dev edge cannot find is cloned from github.com and re-pointed', () => {
@@ -267,6 +378,82 @@ test('re-entering a run that already reached done does nothing at all  [M5/(g)]'
   assert.equal(again.status, 0)
   assert.equal(gitLog(ctx).length, before, 'a done run issues no further git')
   assert.equal(engineRuns(ctx), 1)
+})
+
+// The run directory is the only receipt (#673). The re-entry guard, the
+// evidence copy and the verdict all read `<target>/.claude/ultrapowers/run-<runId>/`
+// and nothing else; a tracked `fleet-receipts/` in the target tree is a fossil
+// of the stamped-run era and must not be able to park or green a run.
+
+test('a fleet-receipts fossil in the target tree is not read  [M2 / leg (a)]', () => {
+  // The 2026-09-05 fault, reproduced: the tree carries a stale NEEDS_ACK
+  // receipt under the old path, and this run's engine writes PASS into the run
+  // directory. A script that still searches `fleet-receipts/` first sees the
+  // fossil before the engine has run, skips the engine and parks on it.
+  const ctx = makeHome()
+  const fossil = path.join(ctx.home, 'target', 'fleet-receipts', 'run-7', 'gate-receipt.json')
+  fs.mkdirSync(path.dirname(fossil), { recursive: true })
+  fs.writeFileSync(fossil, '{"verdict":"NEEDS_ACK"}\n')
+
+  const r = boot(ctx, ['boot'])
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+
+  assert.deepEqual(states(ctx), ['booting', 'running', 'publishing', 'done'],
+    'the fossil neither parks the run nor stands in for the engine')
+  assert.equal(statusOf(ctx).state, 'done')
+  assert.equal(engineRuns(ctx), 1, 'the engine runs exactly once — the fossil is not its receipt')
+
+  const body = prPosts(ctx)[0].body
+  assert.ok(body.includes('| verdict | `PASS` |'),
+    `the card carries this run's verdict, not the fossil's:\n${body}`)
+  assert.ok(!body.includes('NEEDS_ACK'), `the fossil's verdict reached the card:\n${body}`)
+  assert.equal(prPosts(ctx)[0].draft, false, 'a PASS run publishes a ready PR, not a draft')
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(evidenceDir(ctx), RUN_PATH, 'gate-receipt.json'), 'utf8')).verdict,
+    'PASS', 'the evidence carries the run directory receipt')
+
+  // And the fossil is still there, byte for byte: it is ignored, not deleted.
+  assert.equal(fs.readFileSync(fossil, 'utf8'), '{"verdict":"NEEDS_ACK"}\n',
+    'nothing may pass this leg by removing the fossil instead of not reading it')
+})
+
+test('a gate receipt in the run directory finishes the run without the engine  [M3 / leg (b)]', () => {
+  const ctx = makeHome()
+  const receipt = path.join(ctx.home, 'target', '.claude', 'ultrapowers', 'run-run-7', 'gate-receipt.json')
+  fs.mkdirSync(path.dirname(receipt), { recursive: true })
+  fs.writeFileSync(receipt, '{"verdict":"PASS"}\n')
+  assert.ok(!fs.existsSync(path.join(ctx.home, '.fleet-engine-done')),
+    'no engine marker: the run directory receipt is the whole of the guard here')
+
+  const r = boot(ctx, ['boot'])
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.equal(engineRuns(ctx), 0, 'the engine is not started a second time')
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('not re-running'),
+    'the boot log says why the engine was skipped')
+  assert.deepEqual(states(ctx), ['booting', 'publishing', 'done'],
+    'the run is finished from the receipt it found')
+  assert.equal(statusOf(ctx).state, 'done')
+  assert.ok(prPosts(ctx)[0].body.includes('| verdict | `PASS` |'),
+    'and finished FROM that receipt — its verdict is the one on the card')
+})
+
+test('the green run\'s receipt travels from the run directory, and fleet-receipts is never made  [M4 / leg (c)]', () => {
+  const ctx = green()
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(evidenceDir(ctx), RUN_PATH, 'gate-receipt.json'), 'utf8')).verdict,
+    'PASS', 'the memoized green run committed its gate receipt')
+  assert.equal(fs.existsSync(path.join(ctx.home, 'target', 'fleet-receipts')), false,
+    'no stub and no code path creates the old receipts directory')
+})
+
+test('neither the script nor the rig names fleet-receipts at all  [M1]', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const needle = 'fleet-receipts'
+  for (const file of [SCRIPT, path.join(here, '_sandbox_boot_helpers.mjs')]) {
+    const source = fs.readFileSync(file, 'utf8')
+    assert.equal(source.split(needle).length - 1, 0,
+      `${path.basename(file)} still names '${needle}' — no path under it can be read or written`)
+  }
 })
 
 // ── 10. the deadman ──────────────────────────────────────────────────────────

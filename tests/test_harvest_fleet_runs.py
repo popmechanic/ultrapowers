@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -479,3 +480,321 @@ def test_a_run_that_carries_findings_is_never_reported_looked_empty(tmp_path, ca
 
     assert rc == 0
     assert _lines(capsys.readouterr().err, "LOOKED-EMPTY:") == []
+
+
+# ---------- Task 6 (#624 decision c): the harvester reads the tag ----------
+#
+# A run's record is the tag `ultra/evidence/run-<N>`; while the one-time sweep
+# of already-published runs is pending it is still the branch
+# `ultra/evidence-run-<N>`. Each test below names the Machine clause and the
+# Proof leg it encodes:
+#
+#   M1 / leg (a)  `evidence_tag(7)` and `evidence_tag("run-7")` are exactly
+#                 `ultra/evidence/run-7`, and `evidence_branch(7)` is still
+#                 `ultra/evidence-run-7`.
+#   M2 / legs (b)(c)(d)(e)
+#                 the six files are read at the branch ref; when a read answers
+#                 absent before any file has landed and the tag has not yet been
+#                 tried, that same file is read once at the tag ref, and if that
+#                 read lands, every later file is read at the tag ref.
+#   M3 / leg (b)  a swept run — branch gone, tag holding all six — lands and
+#                 bundles in exactly seven `gh api` calls: one at the branch
+#                 ref, then six at the tag ref.
+#   M4 / leg (c)  a run present on the branch is read exactly as at BASE: six
+#                 calls, all at the branch ref, none at the tag ref.
+#   M5 / leg (d)  a run on neither ref is one `FAILED-LOOKUP:` line naming the
+#                 target, the run and both refs; and (the `Run:` leg) `--help`
+#                 names the tag.
+#
+# Hermetic the way `tests/test_harvest_evidence.py` is: `gh` reaches the
+# harvester only as a stub executable on a `PATH` set to its directory alone,
+# and every harvest passes `--engine-version` so nothing shells out to `git`
+# for a release timeline. The stub is restated here rather than imported, so
+# this exam does not depend on the other one's fixtures.
+
+T6_HARVEST = (Path(__file__).resolve().parents[1]
+              / "skills/ultralearn/scripts/harvest_fleet_runs.py")
+T6_TARGET = "popmechanic/smoke"
+T6_RUN = "7"
+# The two ref spellings, written out rather than asked of the module under
+# test: the branch keeps its BASE spelling, the tag is the new one [M1].
+T6_BRANCH_REF = "ultra/evidence-run-7"
+T6_TAG_REF = "ultra/evidence/run-7"
+# fleet/CONTRACT.md's six files under `.ultrapowers/runs/<N>/`, in the order
+# the legs mean by "EVIDENCE_FILES order".
+T6_EVIDENCE_FILES = ("status.json", "receipt.json", "gate-receipt.json",
+                     "report.json", "events.jsonl", "engine.log")
+
+
+def _t6_path(name, ref):
+    """One contents read, spelled in full — the BASE path with the ref as the
+    only thing that varies between branch and tag [M2]."""
+    return (f"repos/{T6_TARGET}/contents/.ultrapowers/runs/{T6_RUN}/{name}"
+            f"?ref={ref}")
+
+
+def _t6_events_text(run_id="run-7"):
+    events = [
+        _ev(1, 0, kind="run:open", runId=run_id, base="", source="fleet/run-main.mjs"),
+        _ev(2, 1000, kind="engine:phase", phase="Wave 1"),
+        _ev(3, 1000, kind="worker:start", label="impl:1", role="implementer",
+            sessionId="sess-1", cwd="/clones/task-1", model="opus"),
+        _ev(4, 61000, kind="worker:end", label="impl:1", role="implementer",
+            sessionId="sess-1", exitCode=0, timedOut=False, outcome="ok",
+            status=None,
+            meter={"input": 30, "output": 6463, "cacheRead": 452825,
+                   "cacheCreation": 20113, "costUsd": 0.5913,
+                   "models": ["claude-opus-5"]}),
+        _ev(5, 62000, kind="driver:fail", verdict="needs-ack", detail="deferred:manual"),
+    ]
+    events[3]["class"] = "success"
+    return "\n".join(json.dumps(e) for e in events) + "\n"
+
+
+def _t6_gate_text(run_id="run-7"):
+    return json.dumps({
+        "mode": "gate", "stamp": run_id,
+        "branch": "ultra/integration-" + run_id,
+        "gateCheck": {"verdict": "NEEDS_ACK", "checks": [], "acks": [
+            {"type": "deferred:manual", "detail": "RUNBOOK claims"}]},
+        "verdict": "NEEDS_ACK"})
+
+
+def _t6_bodies(run_id="run-7"):
+    return {
+        "status.json": json.dumps({"run": T6_RUN, "state": "closed"}),
+        "receipt.json": json.dumps({"run": T6_RUN, "verdict": "NEEDS_ACK"}),
+        "gate-receipt.json": _t6_gate_text(run_id),
+        "report.json": json.dumps({
+            "integrationBranch": "ultra/integration-" + run_id,
+            "baseSha": "3fa4936",
+            "tests": {"command": "python3 -m pytest -n auto", "passed": True,
+                      "output": "z" * 9000},
+            "judgmentCalls": [{"task": "1", "detail": "chose the additive union"}],
+            "deferredVerification": []}),
+        "events.jsonl": _t6_events_text(run_id),
+        "engine.log": "engine: wave 1 dispatched\n",
+    }
+
+
+def _t6_answers(ref, names=T6_EVIDENCE_FILES, run_id="run-7"):
+    """What the stub `gh` serves at one ref: `names` of the six files, keyed by
+    the full `repos/…?ref=<ref>` argument."""
+    bodies = _t6_bodies(run_id)
+    return {_t6_path(n, ref): bodies[n] for n in names}
+
+
+# The `gh` stub: a Python executable named `gh`, answering from a JSON map
+# keyed by the `repos/…` argv (a missing key is `gh: HTTP 404` on stderr and
+# exit 1) and appending each argv as a JSON line to a log file.
+_T6_GH_STUB = '''
+import base64
+import json
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+answers = json.loads((HERE / "gh-stub.json").read_text())
+argv = sys.argv[1:]
+with (HERE / "gh-argv.log").open("a") as fh:
+    fh.write(json.dumps(argv) + "\\n")
+
+if not argv or argv[0] != "api":
+    sys.stderr.write("gh: HTTP 404: Not Found\\n")
+    sys.exit(1)
+
+path = None
+for arg in argv[1:]:
+    if arg.startswith("repos/"):
+        path = arg
+        break
+body = answers.get(path) if path else None
+if body is None:
+    sys.stderr.write("gh: HTTP 404: Not Found (https://api.github.com/%s)\\n" % path)
+    sys.exit(1)
+
+raw = body.encode()
+sys.stdout.write(json.dumps({
+    "name": path.rsplit("/", 1)[-1].split("?")[0],
+    "path": path.split("?")[0],
+    "sha": "0" * 40,
+    "size": len(raw),
+    "type": "file",
+    "encoding": "base64",
+    "content": base64.encodebytes(raw).decode(),
+}) + "\\n")
+'''
+
+
+def _t6_install_gh(tmp_path, monkeypatch, answers):
+    """Put the stub `gh` on an otherwise empty `PATH`; return its argv log."""
+    bin_dir = tmp_path / "t6bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh-stub.json").write_text(json.dumps(answers))
+    stub = bin_dir / "gh"
+    stub.write_text(f"#!{sys.executable}\n" + _T6_GH_STUB)
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    return bin_dir / "gh-argv.log"
+
+
+def _t6_calls(log):
+    """The stub's argv log: one list per `gh` invocation, in order."""
+    if not log.exists():
+        return []
+    return [json.loads(ln) for ln in log.read_text().splitlines() if ln.strip()]
+
+
+def _t6_refs(log):
+    """The `repos/…?ref=…` argument of each `gh api` call, in order."""
+    return [c[-1] for c in _t6_calls(log)]
+
+
+def _t6_main(argv):
+    """`hfr.main`, with an argparse `SystemExit` reported as its exit code."""
+    try:
+        return hfr.main(list(argv))
+    except SystemExit as exc:
+        if exc.code is None:
+            return 0
+        return exc.code if isinstance(exc.code, int) else 1
+
+
+def _t6_harvest(cache):
+    return ["--evidence", T6_TARGET, "--run", T6_RUN, "--cache", str(cache),
+            "--engine-version", "0.3.0"]
+
+
+def test_t6_evidence_tag_is_the_run_tag_and_the_branch_keeps_its_base_spelling():
+    """M1, leg (a): `evidence_tag(7)` and `evidence_tag("run-7")` are exactly
+    `ultra/evidence/run-7` — the tag spelling, not the branch one — and
+    `evidence_branch(7)` is still `ultra/evidence-run-7`."""
+    assert hfr.evidence_tag(7) == "ultra/evidence/run-7"
+    assert hfr.evidence_tag("run-7") == "ultra/evidence/run-7"
+    assert hfr.evidence_branch(7) == "ultra/evidence-run-7"
+    assert hfr.evidence_branch("run-7") == "ultra/evidence-run-7"
+
+
+def test_t6_a_swept_run_lands_from_the_tag_in_exactly_seven_calls(
+        tmp_path, monkeypatch, capsys):
+    """M2/M3, leg (b): the branch is gone and the tag holds all six files. The
+    harvest exits 0, writes `<cache>/runs/run-7/bundle.json` with `terminus`
+    from the fetched gate receipt, and makes exactly seven `gh api` calls: the
+    first at `…/status.json?ref=ultra/evidence-run-7`, the other six at
+    `?ref=ultra/evidence/run-7`, one per evidence file. A harvester that tries
+    the tag per missing file, or never, fails this leg."""
+    log = _t6_install_gh(tmp_path, monkeypatch, _t6_answers(T6_TAG_REF))
+    cache = tmp_path / "cache"
+
+    rc = _t6_main(_t6_harvest(cache))
+    cap = capsys.readouterr()
+
+    assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
+    assert _t6_refs(log) == (
+        [_t6_path("status.json", T6_BRANCH_REF)]
+        + [_t6_path(n, T6_TAG_REF) for n in T6_EVIDENCE_FILES]), _t6_refs(log)
+    # M2 spells the command exactly: `gh api <path>`, nothing else.
+    assert [c for c in _t6_calls(log) if c != ["api", c[-1]]] == [], _t6_calls(log)
+
+    out = cache / "runs" / "run-7"
+    assert (out / "bundle.json").exists(), f"no bundle at {out}; stderr:\n{cap.err}"
+    b = json.loads((out / "bundle.json").read_text())
+    assert b["runId"] == "run-7"
+    assert b["terminus"] == "NEEDS_ACK"
+    assert b["gateReport"]["gateCheck"]["verdict"] == "NEEDS_ACK"
+    assert b["report"]["baseSha"] == "3fa4936"
+    assert b["audit"]["totals"]["outputTokens"] == 6463
+    assert (out / "slice.md").exists()
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
+
+
+def test_t6_a_run_on_the_branch_is_read_exactly_as_at_base(
+        tmp_path, monkeypatch, capsys):
+    """M2/M4, leg (c): the branch answers all six, so the tag is never probed —
+    exactly six `gh api` calls, all at `?ref=ultra/evidence-run-7`, none
+    containing `ultra/evidence/run-7`. A harvester that probes the tag when the
+    branch already answered fails this leg."""
+    log = _t6_install_gh(tmp_path, monkeypatch, _t6_answers(T6_BRANCH_REF))
+    cache = tmp_path / "cache"
+
+    rc = _t6_main(_t6_harvest(cache))
+    cap = capsys.readouterr()
+
+    assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
+    assert _t6_refs(log) == [_t6_path(n, T6_BRANCH_REF)
+                             for n in T6_EVIDENCE_FILES], _t6_refs(log)
+    assert [p for p in _t6_refs(log) if T6_TAG_REF in p] == [], _t6_refs(log)
+    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
+
+
+def test_t6_a_run_on_neither_ref_names_both_refs_and_probes_the_tag_once(
+        tmp_path, monkeypatch, capsys):
+    """M2/M5, leg (d): nothing answers anywhere. Exit 2, exactly one
+    `FAILED-LOOKUP:` line naming the target, the run and both refs, no cache,
+    and exactly seven `gh api` calls of which exactly one is at the tag ref —
+    the `status.json` read, issued second, directly after the `status.json`
+    read at the branch ref — the other six being the six files at the branch
+    ref in `EVIDENCE_FILES` order. A harvester that re-probes the tag for every
+    remaining file after the one tag miss, or that never tries it, fails."""
+    assert hfr.EVIDENCE_FILES == T6_EVIDENCE_FILES, hfr.EVIDENCE_FILES
+    log = _t6_install_gh(tmp_path, monkeypatch, {})
+    cache = tmp_path / "cache"
+
+    rc = _t6_main(_t6_harvest(cache))
+    cap = capsys.readouterr()
+
+    assert rc == 2, f"expected exit 2, got {rc}\nstderr:\n{cap.err}"
+    failed = _lines(cap.err, "FAILED-LOOKUP:")
+    assert len(failed) == 1, f"expected one FAILED-LOOKUP line, got: {cap.err}"
+    for token in (T6_TARGET, T6_RUN, T6_BRANCH_REF, T6_TAG_REF):
+        assert token in failed[0], f"{token!r} missing from: {failed[0]}"
+    assert not (cache / "runs").exists()
+
+    refs = _t6_refs(log)
+    assert len(refs) == 7, f"expected seven gh api calls, got {refs}"
+    assert refs[0] == _t6_path("status.json", T6_BRANCH_REF), refs
+    assert refs[1] == _t6_path("status.json", T6_TAG_REF), refs
+    assert [p for p in refs if T6_TAG_REF in p] == [
+        _t6_path("status.json", T6_TAG_REF)], refs
+    assert [p for p in refs if T6_TAG_REF not in p] == [
+        _t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES], refs
+
+
+def test_t6_an_absence_after_a_file_has_landed_never_falls_back_to_the_tag(
+        tmp_path, monkeypatch, capsys):
+    """M2, leg (e): the branch answers `status.json`, `gate-receipt.json`,
+    `report.json` and `events.jsonl` — so the first read lands and
+    `receipt.json` and `engine.log` are absent on the branch — while the tag
+    holds all six. The harvest exits 0, writes the bundle, and makes exactly
+    six `gh api` calls, all at the branch ref and none containing
+    `ultra/evidence/run-7`: a harvester that falls back to the tag on an absent
+    read after a file has already landed fails this leg, because the tag would
+    have answered."""
+    answers = dict(
+        _t6_answers(T6_BRANCH_REF, ("status.json", "gate-receipt.json",
+                                    "report.json", "events.jsonl")),
+        **_t6_answers(T6_TAG_REF))
+    log = _t6_install_gh(tmp_path, monkeypatch, answers)
+    cache = tmp_path / "cache"
+
+    rc = _t6_main(_t6_harvest(cache))
+    cap = capsys.readouterr()
+
+    assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
+    assert _t6_refs(log) == [_t6_path(n, T6_BRANCH_REF)
+                             for n in T6_EVIDENCE_FILES], _t6_refs(log)
+    assert [p for p in _t6_refs(log) if T6_TAG_REF in p] == [], _t6_refs(log)
+    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
+
+
+def test_t6_help_names_the_tag_as_well_as_the_branch():
+    """M5, the first `Run:` leg: `--help` names `ultra/evidence/run-<N>`. The
+    branch is still named too — reading by tag adds a ref, it does not retire
+    the branch while the sweep is pending."""
+    proc = subprocess.run([sys.executable, str(T6_HARVEST), "--help"],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "ultra/evidence/run-" in proc.stdout, proc.stdout
+    assert "ultra/evidence-run-" in proc.stdout, proc.stdout

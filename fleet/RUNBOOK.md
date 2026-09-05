@@ -8,7 +8,8 @@ disagree, the contract wins. Every command below names a real file in `fleet/`.
 ## The shape
 
 A run is a number N per target. The launcher validates its arguments, reads the
-account pool, computes N from the target's own `ultra/*-run-*` branches,
+account pool, computes N from the target's own `ultra/*-run-*` branches and its
+`ultra/{plan,evidence}/run-<N>` tags,
 refreshes the Claude bearer, and pushes the plan as one commit on `base` to
 `ultra/plan-run-<N>` — that commit's tree is base plus `.ultrapowers/plan.md`.
 Then it issues one lobby verb, `new`, which creates a fresh VM named
@@ -28,8 +29,14 @@ there is something to publish — pushes `ultra/integration-run-<N>` and opens t
 PR over GitHub's REST API through the edge. The PR is the human gate; there is
 no approval step before it.
 
-Everything a run produced is three branches on the repository the run was
-about. There is no image to keep fresh, no state repository, no orchestrator, no
+The three branches are where a run works, not what it leaves. At publish the
+sandbox tags the plan commit `ultra/plan/run-<N>` and the final evidence commit
+`ultra/evidence/run-<N>`, verifies both against the remote, and deletes
+`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step;
+`ultra/integration-run-<N>` goes with the merge, and stays only while a `--hold`
+PR is open. What a run leaves on the repository it was about is those two tags.
+
+There is no image to keep fresh, no state repository, no orchestrator, no
 control VM, and no token on any VM. The Claude subscription and the GitHub
 credential are injected at exe.dev's edge, per VM, for the run's window.
 
@@ -69,8 +76,11 @@ The file is optional, has exactly two keys, and an unknown key is ignored:
 ```
 
 Those are also the defaults. `memory` is `<int>GB` or `<int>G`; a bare number or
-a fractional `1.5GB` is unreadable. A pool that cannot hold a run of this size
-is a run asked too large, and the launcher refuses before it touches anything.
+a fractional `1.5GB` is unreadable. The `capacity` doctor row is a report of
+those two facts and of nothing else: the pool the account has, beside the `cpu`
+and `memory` one run asks for. It divides one by the other nowhere, because
+allocated vCPU is over-committable (§Capacity) and a quotient there would be a
+number nothing stands behind.
 
 **3. `claude` — the subscription, as an `http-proxy` integration.** The token
 goes in on stdin and never touches a VM or an argv. Inject the bearer and
@@ -139,8 +149,9 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
 The launcher, in this order: validates the plan, the target and the base;
-reads the pool; computes N from the target's `ultra/*-run-*` branches; refuses
-when `gh-<owner>-<repo>` does not exist; refreshes the Claude bearer; pushes the
+reads the pool; computes N from the target's `ultra/*-run-*` branches and its
+`ultra/{plan,evidence}/run-<N>` tags; refuses when `gh-<owner>-<repo>` does not
+exist; refreshes the Claude bearer; pushes the
 plan as one commit on `<sha>` to `ultra/plan-run-<N>`; then issues one `new`
 with the run's name, `--tag fleet`, the assignment as `--comment`, both
 integrations, `--cpu`/`--memory` from the config, and the generated setup script
@@ -157,10 +168,17 @@ and does not merge it (a measurement run).
 
 - `https://<vm>.exe.xyz/status.json` — the VM's own page, port 8000 behind
   exe.dev's proxy; a browser logged in to exe.dev reads it.
-- `.ultrapowers/runs/<N>/status.json` on the target's `ultra/evidence-run-<N>`
-  branch — committed at every transition, next to `receipt.json`,
-  `gate-receipt.json`, `report.json`, `events.jsonl` and `engine.log`. Fetch the
-  branch and read, or read it on GitHub.
+- `.ultrapowers/runs/<N>/status.json` on the target — committed at every
+  transition, next to `receipt.json`, `gate-receipt.json`, `report.json`,
+  `events.jsonl`, `engine.log` and `claude-version.txt`. Read it by tag, which
+  is the one spelling that keeps working after the run's branches are gone:
+
+  ```bash
+  gh api 'repos/<owner>/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d
+  ```
+
+  While the run is still in flight the tag is not written yet, and the same
+  bytes are on its evidence branch; the VM's own page above is the live read.
 
 **The PR.** There is no approval step between the gate and the PR. Once the
 engine service is inactive and the branch is ahead of base, the sandbox pushes
@@ -187,9 +205,15 @@ node fleet/janitor.mjs
 ```
 
 It lists the fleet, reads each VM's comment for its run and its target, reads
-that run's status page off the target's evidence branch with `gh api`, and `rm`s
-every VM whose run has been `done`, `parked` or `failed` for over an hour. It
-merges nothing: an approved run merges its own pull request from the sandbox.
+that run's status page off the target with `gh api`, and `rm`s every VM whose
+run has been `done`, `parked` or `failed` for over an hour. It reaps VMs and
+nothing else: no branch and no tag on the target is its business. It reads the
+page at the evidence tag `ultra/evidence/run-<N>` first, and at the branch
+`ultra/evidence-run-<N>` only while the run is in flight or its sweep is
+pending; a run with no page is aged from the plan tag `ultra/plan/run-<N>` and
+then the plan branch `ultra/plan-run-<N>`, and the stale line names the ref it
+read. It merges nothing: an approved run merges its own pull request from the
+sandbox.
 For any fleet VM whose run has had no status update in six hours it prints a
 line, once. It never sshes into a VM. A VM that has to go now:
 `ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
@@ -389,8 +413,11 @@ against `billing plan --json`. The plan meters `avg_cpu_cores` and
 while the summed allocations looked oversubscribed. RAM is the binding shared
 pool — about 3 GB per busy implementer — and `MemoryMax=40G` on the engine
 service turns an overrun into a killed run rather than a frozen VM. The
-`capacity` doctor row divides the pool by one run's `cpu` and says how many runs
-fit at once; that number is the width of a wave of runs.
+`capacity` doctor row reports rather than divides: the pool `billing plan
+--json` answered, beside the `cpu` one run asks for in
+`~/.ultrapowers/fleet.json`. Neither number is a width, and the row derives no
+third one from them — contention bounds a wave of runs, and the doctor stands
+behind only what it read.
 
 ## Trust
 
@@ -412,5 +439,9 @@ The move onto the target is one release. If it does not hold:
 
 0.3.7 is the last release of the previous shape, and rolling the plugin back is
 the whole of the rollback: nothing in the new path writes anywhere the old path
-read. Branches a new-path run left on a target are `ultra/*-run-<N>` and are
-deleted by hand, `git push origin --delete`, once you are done reading them.
+read. A new-path run leaves no branch behind to clean up: its record is the two
+tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, and those are kept —
+deleting them is deleting the run. Runs from before the tags, and runs that
+ended `failed`, still have `ultra/*-run-<N>` branches on their target; the
+one-time retire sweep is what clears those, never a `git push origin --delete`
+by hand. `fleet/CONTRACT.md` names the script it runs from.
