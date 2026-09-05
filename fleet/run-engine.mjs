@@ -22,6 +22,16 @@
 // field: the frozen periphery (finalize_report.py, ultra_gate.py) runs
 // unchanged against it. Producers that moved from agents to the driver are
 // noted at the assembly at the bottom.
+//
+// ULTRA_BASE (#632 part 2): a Proof `Run:` and a Global Constraints `Check:`
+// are the only shell commands here that get an extra environment variable.
+// Each runs with ULTRA_BASE set to the base its tree was cut at — the task's
+// own BASE in the per-task and review-round passes (wave 1's run base, a later
+// wave's adopted head after the re-anchor), and the RUN base in the integrated
+// pass, never the adopted head a diff against would be a tautology. That is
+// what makes `- Check: git diff --quiet $ULTRA_BASE -- fleet/` writable: the
+// command cannot name a sha it has no way to know. The suite, the bootstrap
+// and the exam runs keep the seam's default environment.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -461,6 +471,12 @@ export const contractsBlock = (waves, edges, wavesPath) => {
 export const SHELL_TIMEOUT_MS = 30 * 60 * 1000
 const shOf = (exec) => (cmd, cwd, env) =>
   exec('bash', ['-lc', cmd], { cwd, env, timeoutMs: SHELL_TIMEOUT_MS })
+// The env for a `Run:`/`Check:` command (#632 part 2). `execSeam` spawns with
+// `env: env || process.env`, so a passed env REPLACES the environment whole —
+// omit the spread and the command loses PATH, HOME and the git config that
+// `git diff` needs. So the variable is added TO the inherited environment,
+// never handed over as the whole of it.
+const baseEnv = (sha) => ({ ...process.env, ULTRA_BASE: sha })
 const gitOf = (exec) => async (argv, cwd) => {
   const r = await exec('git', argv, { cwd })
   if (r.code !== 0) {
@@ -1101,7 +1117,7 @@ export async function runEngine({
     const runCommands = async (iter) => {
       const runs = []
       for (const cmd of proofRuns) {
-        const r = await sh(cmd, cloneDir)
+        const r = await sh(cmd, cloneDir, baseEnv(baseShaForTask))
         runs.push({ cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
         appendEvent({ kind: 'driver:proof-run', task: task.id, cmd, exit: r.code, iter })
       }
@@ -1122,7 +1138,7 @@ export async function runEngine({
     const runChecks = async (iter) => {
       const checks = []
       for (const c of constraintChecks) {
-        const r = await sh(c.cmd, cloneDir)
+        const r = await sh(c.cmd, cloneDir, baseEnv(baseShaForTask))
         checks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr), minor: c.minor })
         appendEvent({ kind: 'driver:check-run', task: task.id, cmd: c.cmd, exit: r.code,
                       minor: c.minor, iter })
@@ -1914,7 +1930,12 @@ export async function runEngine({
           ? t.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
           : []
         for (const cmd of cmds) {
-          const r = await sh(cmd, integ)
+          // ULTRA_BASE here is `baseSha`, the sha the integration clone was
+          // provisioned at — NOT `waveBaseSha`, which the adopt above has
+          // already advanced to this wave's head. A diff against the adopted
+          // head is a tautology; the question the integrated pass asks is what
+          // the run as a whole changed.
+          const r = await sh(cmd, integ, baseEnv(baseSha))
           integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
           appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1 })
           if (r.code === 0) continue
@@ -1936,7 +1957,7 @@ export async function runEngine({
       // is invisible to every per-task referee by construction — each one was
       // right about the tree it read — so it can only be caught here.
       for (const c of constraintChecks) {
-        const r = await sh(c.cmd, integ)
+        const r = await sh(c.cmd, integ, baseEnv(baseSha))
         integratedChecks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
                                 minor: c.minor })
         appendEvent({ kind: 'driver:integrated-check', cmd: c.cmd, exit: r.code,

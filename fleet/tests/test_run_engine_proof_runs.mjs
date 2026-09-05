@@ -40,7 +40,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execSeam } from '../run-main.mjs'
 import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 import { runEngine } from '../run-engine.mjs'
-import { rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { rig, makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-proof-runs-'))
 // Removed on exit, red or green (rmSync unlinks the fleet-copy's `skills`
@@ -433,4 +433,170 @@ async function pinPrompt(engine, task) {
   assert.equal(row.status, 'done')
 }
 
+// ── Task 1 (#632 part 2): the driver hands its `Run:` commands the base sha ──
+// The Claim: `ULTRA_BASE` is set by the engine from the wave's base — the task
+// clone's BASE for the per-task pass, the run base for the integrated pass —
+// so a Global Constraint like `git diff --quiet $ULTRA_BASE -- fleet/` is
+// writable at all. This file owns the `Run:` half (legs (a), (b), (e)); the
+// `Check:` half is test_run_engine_pre_review.mjs's legs (c), (d), (g).
+//
+// One command's evidence, read out of a rendered block: everything from
+// `\n\n$ <cmd>\n` up to the next `\n\n$ ` (or the block's end) is that
+// command's `exit <n>` line and its recorded output, and nothing else's.
+const segmentOf = (block, cmd) => {
+  const marker = '\n\n$ ' + cmd + '\n'
+  const i = String(block || '').indexOf(marker)
+  if (i === -1) return null
+  const rest = block.slice(i + marker.length)
+  const j = rest.indexOf('\n\n$ ')
+  return j === -1 ? rest : rest.slice(0, j)
+}
+
+// ── leg (a): the value in the environment IS the task clone's BASE [M1] ──────
+// `printenv ULTRA_BASE` carries no `$` anywhere in its text, so a value that
+// appears in the evidence cannot have been substituted into the command by the
+// shell or quoted back by the driver — only the process environment can have
+// supplied it. The second command is the same fact as an exit code, at every
+// `iter`.
+{
+  const PRINTENV = 'printenv ULTRA_BASE'
+  const repo = makeRepo(path.join(tmp, 'repo-ub1'))
+  const runDir = path.join(tmp, 'run-ub1')
+  const base = gitSync(['rev-parse', 'HEAD'], repo)
+  assert.match(base, /^[0-9a-f]{40}$/,
+    'sim precondition: the repo\'s BASE is forty lowercase hex characters')
+  const TEST_EQ = 'test "$ULTRA_BASE" = ' + base
+  assert.equal(PRINTENV.includes('$'), false,
+    'the printenv command text holds no `$`: the sha it prints can only have come from ' +
+    'the process environment')
+
+  const prompts = {}
+  const stub = (prompt, opts, cwd) => {
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl' || kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, base: rigBase } = rig({
+    repo, runDir, stub, stamp: 'ub1', extraArgs: { shallowLeg: false },
+    waves: [[entry({ proofRuns: [PRINTENV, TEST_EQ] })]],
+  })
+  assert.equal(rigBase, base, 'sim precondition: every clone was provisioned at that sha')
+  const report = await run()
+  const row = report.tasks[0]
+  const events = proofRunEvents(runDir)
+
+  // [M1] both commands are green on the driver's own pass (`iter: 0`) and on
+  // the review round (`iter: 1`) — `test "$ULTRA_BASE" = <BASE>` exits 0 at
+  // every iter only if the engine put that sha in the environment.
+  assert.deepEqual(events.map((e) => e.exit), [0, 0, 0, 0],
+    'each Proof `Run:` executes with ULTRA_BASE set to the task clone\'s BASE — an unset ' +
+    'variable makes `printenv ULTRA_BASE` and `test "$ULTRA_BASE" = <BASE>` both red: ' +
+    JSON.stringify(events.map((e) => ({ cmd: e.cmd, exit: e.exit, iter: e.iter }))))
+  assert.deepEqual(events.map((e) => e.cmd), [PRINTENV, TEST_EQ, PRINTENV, TEST_EQ],
+    'both commands, in Proof order, on both passes')
+  assert.deepEqual(events.map((e) => e.iter), [0, 0, 1, 1],
+    'the driver\'s own pass is iter 0; the first review round is iter 1')
+  assert.equal(row.status, 'done', 'the task merges: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'clean', JSON.stringify(row))
+
+  // [M1] and the recorded evidence carries the sha itself, on a line of its own.
+  const ev = evidenceOf(prompts['review:T1:1'])
+  assert.ok(ev.includes('RUN EVIDENCE:'), 'sim precondition: the RUN EVIDENCE block is rendered')
+  const seg = segmentOf(ev, PRINTENV)
+  assert.ok(seg !== null,
+    'the block quotes `' + PRINTENV + '` verbatim: ' + JSON.stringify(ev.slice(0, 600)))
+  const lines = seg.split('\n')
+  assert.equal(lines[0], 'exit 0', 'printenv found the variable: ' + JSON.stringify(seg))
+  assert.ok(lines.slice(1).includes(base),
+    'an output line under `' + PRINTENV + '` is exactly the rig\'s base ' + base + ': ' +
+    JSON.stringify(seg))
+  assert.ok(lines.slice(1).some((l) => /^[0-9a-f]{40}$/.test(l)),
+    'and that value is forty lowercase hex characters: ' + JSON.stringify(seg))
+}
+
+// ── leg (b): wave 2 gets wave 1's adopted head; the integrated pass gets the
+// run base [M1] [M3]
+// The two shas differ only from wave 2 onward, which is why this leg is
+// two-wave: in wave 1 `waveBaseSha` and `baseSha` coincide and any confusion
+// between them is invisible.
+{
+  const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
+  const repo = makeRepo(path.join(tmp, 'repo-ub2'))
+  const runDir = path.join(tmp, 'run-ub2')
+  const waves = [
+    [entry({ id: 'T1', files: ['one.txt'], writes: ['one.txt'] })],
+    [entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] })],
+  ]
+  const prompts = {}
+  const stub = (prompt, opts, cwd) => {
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    const id = opts.label.split(':')[1]
+    if (kind === 'impl' || kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, id === 'T1' ? 'one.txt' : 'two.txt'), 'from ' + id + '\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2',
+                              extraArgs: { shallowLeg: false } })
+  const report = await run()
+
+  assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
+  assert.equal(report.waveMerges.length, 2, 'sim precondition: two folded waves')
+  const w1 = report.waveMerges[0].headSha
+  const w2 = report.waveMerges[1].headSha
+  assert.match(String(w1), /^[0-9a-f]{40}$/, 'sim precondition: wave 1 adopted a head')
+  assert.notEqual(w1, base,
+    'sim precondition: wave 1\'s adopted head is not the run base — the two shas the leg ' +
+    'distinguishes actually differ here')
+
+  // [M1] the per-task pass in wave 2 sees the task's OWN base: wave 1's head.
+  const ev2 = evidenceOf(prompts['review:T2:1'])
+  assert.ok(ev2.includes('base=' + w1),
+    'wave 2\'s `Run:` ran with ULTRA_BASE = waveMerges[0].headSha (' + w1 + '): ' +
+    JSON.stringify(ev2.slice(0, 600)))
+  assert.ok(!ev2.includes('base=' + base),
+    'and NOT the run base — a wave-2 task re-anchored onto the adopted head must be handed ' +
+    'that head: ' + JSON.stringify(ev2.slice(0, 600)))
+
+  // [M3] the integrated pass sees the RUN base, in wave 2 as in wave 1 — never
+  // the adopted head, against which any diff is a tautology.
+  const integrated = report.integratedRuns.filter((r) => r.task === 'T2')
+  assert.equal(integrated.length, 1,
+    'one integrated run for T2: ' + JSON.stringify(report.integratedRuns))
+  assert.ok(String(integrated[0].stdout).includes('base=' + base),
+    'the integrated pass runs with ULTRA_BASE = the run base ' + base + ': ' +
+    JSON.stringify(integrated[0]))
+  assert.ok(!String(integrated[0].stdout).includes(String(w2)),
+    'never wave 2\'s own adopted head ' + w2 + ': ' + JSON.stringify(integrated[0]))
+  assert.ok(!String(integrated[0].stdout).includes(String(w1)),
+    'and never wave 1\'s: ' + JSON.stringify(integrated[0]))
+}
+
+// ── leg (e): the header comment names the variable [M4] ──────────────────────
+// Read only above the first line beginning `import `, so a mention anywhere in
+// the body of the module does not satisfy it.
+{
+  const src = fs.readFileSync(fileURLToPath(new URL('../run-engine.mjs', import.meta.url)), 'utf8')
+  const srcLines = src.split('\n')
+  const firstImport = srcLines.findIndex((l) => l.startsWith('import '))
+  assert.ok(firstImport > 0, 'sim precondition: run-engine.mjs has a first `import ` line')
+  const header = srcLines.slice(0, firstImport).join('\n')
+  assert.ok(header.includes('ULTRA_BASE'),
+    'the header comment of fleet/run-engine.mjs, above its first import, must name ' +
+    'ULTRA_BASE — the seam a reader arriving at the file needs told:\n' +
+    JSON.stringify(header.slice(-400)))
+}
+
+// [M5] leg (f): the sentinel below is this sim's — its existing legs and the
+// new ones. It is printed only if every assertion above held.
 console.log('ALL TESTS PASSED')

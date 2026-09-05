@@ -681,4 +681,200 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     JSON.stringify(cp.slice(-300)))
 }
 
+// ── Task 1 (#632 part 2): the driver hands its `Check:` commands the base sha ─
+// The Claim: `ULTRA_BASE` is set by the engine from the wave's base, so a
+// Global Constraint written as `git diff --quiet $ULTRA_BASE -- <path>` is
+// writable at all. This file owns the `Check:` half (legs (c), (d), (g)); the
+// `Run:` half is test_run_engine_proof_runs.mjs's legs (a), (b), (e).
+//
+// One command's evidence, read out of a rendered block: everything from
+// `\n\n$ <cmd>\n` up to the next `\n\n$ ` (or the block's end).
+const segmentOf = (block, cmd) => {
+  const marker = '\n\n$ ' + cmd + '\n'
+  const i = String(block || '').indexOf(marker)
+  if (i === -1) return null
+  const rest = block.slice(i + marker.length)
+  const j = rest.indexOf('\n\n$ ')
+  return j === -1 ? rest : rest.slice(0, j)
+}
+
+// ── legs (c) + (d): the diff a Global Constraint can now express [M2] [M3] ───
+// `makeRepo`, not `bareRepo`: `git diff <sha> -- <path>` compares the commit
+// with the WORKING TREE, and an untracked file shows up only once staged — so
+// the edited path has to be one tracked at BASE. makeRepo leaves both `a.txt`
+// and `check.sh` tracked, the implementer rewrites the first and leaves the
+// second alone, and the two checks read that difference.
+//
+// The edited path's check is `minor: true` on purpose: a red non-minor check
+// buys one `fix:<id>:0` round and then ends the task `proof-red` before any
+// referee, and leg (c) is about what the REVIEW PROMPT carries. The untouched
+// path's check stays non-minor, and stays green.
+{
+  const CHECK_UNTOUCHED = 'git diff --quiet $ULTRA_BASE -- check.sh'
+  const CHECK_EDITED = 'git diff --quiet $ULTRA_BASE -- a.txt'
+  const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
+  const repo = makeRepo(path.join(tmp, 'repo-ub1'))
+  const runDir = path.join(tmp, 'run-ub1')
+  const waves = [[mkTask('T1', ['a.txt'], { proofRuns: [ECHO] })]]
+  const CHECKS = [{ cmd: CHECK_UNTOUCHED, minor: false }, { cmd: CHECK_EDITED, minor: true }]
+  const calls = []
+  const prompts = {}
+  const stub = (prompt, opts, cwd) => {
+    calls.push(opts.label)
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') { write(cwd, 'a.txt', 'rewritten by the implementer\n'); return doneImpl(cwd) }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, base } = rig({ repo, runDir, waves, stub, stamp: 'ub1',
+                              extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
+  const report = await run()
+  assert.match(base, /^[0-9a-f]{40}$/, 'sim precondition: the rig\'s base is a 40-hex sha')
+
+  // [M2] the per-task pass: green for the path the implementer left alone, red
+  // for the one it edited. With ULTRA_BASE unset, `git diff --quiet -- <path>`
+  // is a working-tree-vs-index diff — and the capture already staged the edit —
+  // so both would read 0 and the second assertion is the discriminator.
+  const zero = ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0)
+  const untouched = zero.filter((e) => e.cmd === CHECK_UNTOUCHED)
+  const edited = zero.filter((e) => e.cmd === CHECK_EDITED)
+  assert.deepEqual(untouched.map(checkShape), [
+    { kind: 'driver:check-run', task: 'T1', cmd: CHECK_UNTOUCHED, exit: 0, minor: false, iter: 0 },
+  ], 'a tracked path the implementer left alone diffs clean against ULTRA_BASE: ' +
+     JSON.stringify(zero.map(checkShape)))
+  assert.equal(edited.length, 1,
+    'the edited path\'s check ran once on the driver\'s own pass: ' +
+    JSON.stringify(zero.map(checkShape)))
+  assert.notEqual(edited[0].exit, 0,
+    'and a tracked path it DID edit diffs non-zero against ULTRA_BASE — with the variable ' +
+    'unset the command degenerates to a working-tree-vs-index diff and reads 0: ' +
+    JSON.stringify(checkShape(edited[0])))
+  assert.equal(edited[0].minor, true, JSON.stringify(checkShape(edited[0])))
+
+  // [M2] no fix round: the only red check is minor.
+  assert.deepEqual(calls.filter((l) => l.startsWith('fix:')), [],
+    'a red MINOR check dispatches no fix round: ' + calls.join(','))
+  const row = report.tasks.find((r) => r.task === 'T1')
+  assert.equal(row.status, 'done', 'the task merges: ' + JSON.stringify(row))
+
+  // [M2] and the referee reads the same two exits out of the CHECK EVIDENCE block.
+  const rp = prompts['review:T1:1']
+  const iCheck = rp.indexOf(OPENER)
+  assert.ok(iCheck > 0,
+    'sim precondition: the CHECK EVIDENCE block is rendered: ' + JSON.stringify(rp.slice(-600)))
+  const block = rp.slice(iCheck)
+  const segU = segmentOf(block, CHECK_UNTOUCHED)
+  const segE = segmentOf(block, CHECK_EDITED)
+  assert.ok(segU !== null && segE !== null,
+    'the block quotes both commands verbatim: ' + JSON.stringify(block))
+  assert.equal(segU.split('\n')[0], 'exit 0',
+    'the untouched path renders `exit 0`: ' + JSON.stringify(segU))
+  assert.match(segE.split('\n')[0], /^exit [1-9][0-9]* \(minor\)$/,
+    'the edited path renders a non-zero `exit <n> (minor)`: ' + JSON.stringify(segE))
+
+  // [M3] leg (d): the integrated pass, on the adopted tree, against the RUN base.
+  assert.deepEqual(report.integratedChecks.map((c) => c.cmd), [CHECK_UNTOUCHED, CHECK_EDITED],
+    'both checks run once on the adopted tree, in check order: ' +
+    JSON.stringify(report.integratedChecks))
+  assert.equal(report.integratedChecks[0].exit, 0,
+    'the untouched path is clean on the fold too: ' + JSON.stringify(report.integratedChecks[0]))
+  assert.notEqual(report.integratedChecks[1].exit, 0,
+    'and the path the wave edited diffs non-zero against ULTRA_BASE on the adopted tree — ' +
+    'with the variable unset the adopted tree is clean and this reads 0: ' +
+    JSON.stringify(report.integratedChecks[1]))
+  const iev = ofKind(runDir, 'driver:integrated-check')
+  assert.deepEqual(iev.map((e) => e.cmd), [CHECK_UNTOUCHED, CHECK_EDITED],
+    'one event per command: ' + JSON.stringify(iev))
+  assert.equal(iev[0].exit, 0, JSON.stringify(iev[0]))
+  assert.notEqual(iev[1].exit, 0,
+    'the events agree with the report: ' + JSON.stringify(iev[1]))
+
+  // [M3] and the value itself, printed by a `Run:` on the same adopted tree.
+  const integrated = report.integratedRuns.filter((r) => r.task === 'T1')
+  assert.equal(integrated.length, 1,
+    'one integrated run for T1: ' + JSON.stringify(report.integratedRuns))
+  assert.ok(String(integrated[0].stdout).includes('base=' + base),
+    'the integrated `Run:` ran with ULTRA_BASE = the run base ' + base + ': ' +
+    JSON.stringify(integrated[0]))
+}
+
+// ── leg (g): the same two shas, told apart across two waves [M2] [M3] ────────
+// A `Check:` that simply prints the variable, so the leg reads the value rather
+// than a diff's exit code: wave 1's check sees the run base, wave 2's sees
+// wave 1's adopted head, and BOTH integrated executions see the run base.
+{
+  const CBASE = "sh -c 'echo cbase=$ULTRA_BASE'"
+  const repo = makeRepo(path.join(tmp, 'repo-ub2'))
+  const runDir = path.join(tmp, 'run-ub2')
+  const waves = [[mkTask('T1', ['one.txt'])], [mkTask('T2', ['two.txt'])]]
+  const prompts = {}
+  const stub = (prompt, opts, cwd) => {
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    const id = opts.label.split(':')[1]
+    if (kind === 'impl') {
+      write(cwd, id === 'T1' ? 'one.txt' : 'two.txt', 'from ' + id + '\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2',
+                              extraArgs: { shallowLeg: false,
+                                           constraintChecks: [{ cmd: CBASE, minor: false }] } })
+  const report = await run()
+
+  assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
+  assert.equal(report.waveMerges.length, 2, 'sim precondition: two folded waves')
+  const w1 = report.waveMerges[0].headSha
+  const w2 = report.waveMerges[1].headSha
+  assert.match(String(w1), /^[0-9a-f]{40}$/, 'sim precondition: wave 1 adopted a head')
+  assert.notEqual(w1, base,
+    'sim precondition: wave 1\'s adopted head differs from the run base, so the two shas ' +
+    'this leg distinguishes are actually distinguishable')
+
+  const segFor = (label) => {
+    const p = prompts[label]
+    const i = String(p || '').indexOf(OPENER)
+    assert.ok(i > 0, 'sim precondition: ' + label + ' carries a CHECK EVIDENCE block: ' +
+      JSON.stringify(String(p || '').slice(-600)))
+    const s = segmentOf(p.slice(i), CBASE)
+    assert.ok(s !== null, label + ': the block quotes `' + CBASE + '` verbatim')
+    return s
+  }
+
+  // [M2] wave 1's per-task check reads the run base; wave 2's reads the head
+  // its clone was re-anchored onto.
+  const seg1 = segFor('review:T1:1')
+  assert.ok(seg1.includes('cbase=' + base),
+    'the wave-1 `Check:` ran with ULTRA_BASE = the run base ' + base + ': ' +
+    JSON.stringify(seg1))
+  const seg2 = segFor('review:T2:1')
+  assert.ok(seg2.includes('cbase=' + w1),
+    'the wave-2 `Check:` ran with ULTRA_BASE = waveMerges[0].headSha (' + w1 + '): ' +
+    JSON.stringify(seg2))
+  assert.ok(!seg2.includes('cbase=' + base),
+    'and NOT the run base: ' + JSON.stringify(seg2))
+
+  // [M3] both integrated executions read the run base — never an adopted head.
+  const ics = report.integratedChecks.filter((c) => c.cmd === CBASE)
+  assert.equal(ics.length, 2,
+    'one integrated execution per adopted wave: ' + JSON.stringify(report.integratedChecks))
+  for (const c of ics) {
+    assert.ok(String(c.stdout).includes('cbase=' + base),
+      'every integrated `Check:` runs with ULTRA_BASE = the run base ' + base + ', in wave 2 ' +
+      'as in wave 1: ' + JSON.stringify(c))
+    assert.ok(!String(c.stdout).includes(String(w1)),
+      'never wave 1\'s adopted head ' + w1 + ' — a diff against the adopted head is a ' +
+      'tautology: ' + JSON.stringify(c))
+    assert.ok(!String(c.stdout).includes(String(w2)),
+      'and never wave 2\'s ' + w2 + ': ' + JSON.stringify(c))
+  }
+}
+
+// [M5] leg (f): the sentinel below is this sim's — its existing legs and the
+// new ones. It is printed only if every assertion above held.
 console.log('ALL TESTS PASSED')
