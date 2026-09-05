@@ -1,0 +1,64 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "bfe4641f4f6e4251cb35dd22a4034f28e6de421091b5e4318ac330503166a5c1",
+   "verdict": "pass",
+   "reason": "round 2: M1 byte-equal receipts in both shapes + neither-present negative; M2 done phase text per verdict; M3 sed-scoped evidence-bullet grep"
+  },
+  "2": {
+   "hash": "4046927f43eab9940347cf5b23f4ecb196cb84540f915d02b68b4921a246cf19",
+   "verdict": "pass",
+   "reason": "round 2: M1 exact view/merge argv + deep-equal action + dry-run; M2 three no-merge views, three no-view states; M3 clean-status retry vs HTTP 502; M4 age pair + no-git/no-ssh; M5 RUNBOOK grep"
+  },
+  "3": {
+   "hash": "6c7a7fdffc2d611e3a19e5741e528ec6ae81d5f588d45197fb27b696c51e6fe7",
+   "verdict": "pass",
+   "reason": "round 2: M1 sim green as-is and with probes under fleet/tests/ and tests/; M2 negative control under fleet/ turns the sim red"
+  },
+  "4": {
+   "hash": "5f42e91ba1ae24c06afdf3fbdf47c9296e8826183260ea6e5fd8770027e495c1",
+   "verdict": "pass",
+   "reason": "round 2: M1-M3 per value low/medium/high at launcher, boot and worker, refusal for xhigh/max, no-flag byte-identical pins; M4 Comment-bullet-scoped grep"
+  }
+ },
+ "tally": {
+  "dispatched": 8,
+  "rejected": 4,
+  "rounds": {
+   "1": {
+    "dispatched": 4,
+    "rejected": 4
+   },
+   "2": {
+    "dispatched": 4,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "M3 whole-file grep did not localize the evidence bullet"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "fail",
+   "reason": "M1 action/view shape and M3 error/reap words unpinned"
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "tests/ row of M1 had no probe"
+  },
+  {
+   "round": 1,
+   "task": "4",
+   "verdict": "fail",
+   "reason": "medium/high rows unexercised; M4 whole-file grep"
+  }
+ ]
+}
