@@ -1,0 +1,124 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "bb7cd2d0e85c8010d0870132a2d67c8fc4f0a9be1357fce2d61d4aa5ccc1e65b",
+   "verdict": "pass",
+   "reason": "round 5: M1/M2 pinned by curl-argv counts, exact URLs, parsed PUT payload and page cells across green, mixed, empty-with-grace, three non-green conclusions (allowlist), wait-timeout and 405; M3 parked/hold=1/hold=yes/hold=0; M4 merged key on every page state plus exact commitStates and notifies; M5-M7 section-scoped greps and the docs pytest"
+  },
+  "2": {
+   "hash": "8bf3f3847d09cd5a9f16af69d6033d2587b0da916b02df34bd6d0ef206dd28b0",
+   "verdict": "pass",
+   "reason": "round 2: M1 three key placements, no-flag literal, nine-key deep-equal, usage string; M2 ordering forced by a nonexistent plan path plus an empty exec seam; M3 scoped greps per document; M4 sims green with quoted names grepped"
+  },
+  "3": {
+   "hash": "0742fda9244f4cb0dc51c0e97d5cc9162d132ecf08e0b7db656b913df416c1c1",
+   "verdict": "pass",
+   "reason": "round 3: M1 exec-call shape (no gh pr, two-word gh api reads, all actions rm, young VM untouched, dry-run, no PR_VIEW_JSON) plus source grep; M2 existence; M3 rm index between billing plan, ls-remote and new, reaped/reapError, render shape, listing-failure path; M4 scoped greps and negative cron/arms auto-merge greps"
+  },
+  "4": {
+   "hash": "9504eabdcbc01759748bba3c677ec5fa0ca9ec7513eefe51ff2268b051a4cc2b",
+   "verdict": "pass",
+   "reason": "round 2: M1/M2 direct doctor()/fleetConfigKeys assertions incl. the mixed cpu+memory+stale file; M3 CLI exit codes and printed row; M4 section-scoped greps; M5 test_doctor.mjs and the structural pytest"
+  }
+ },
+ "tally": {
+  "dispatched": 12,
+  "rejected": 8,
+  "rounds": {
+   "1": {
+    "dispatched": 4,
+    "rejected": 4
+   },
+   "2": {
+    "dispatched": 4,
+    "rejected": 2
+   },
+   "3": {
+    "dispatched": 2,
+    "rejected": 1
+   },
+   "4": {
+    "dispatched": 1,
+    "rejected": 1
+   },
+   "5": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "M1 universal not falsified: no mixed body (success beside failure or in_progress) pinned no PUT"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "fail",
+   "reason": "M2 'before any read' looser than leg (d); M4 'pin nine keys/thirteen flags' rested on prose"
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "M4 self-contradictory: 'there is no cron' contains the word the negative grep bans; M3 'after the pool read' had no leg"
+  },
+  {
+   "round": 1,
+   "task": "4",
+   "verdict": "fail",
+   "reason": "M1 universal tested only with a purely stale file; a mixed cpu+memory+stale file could stay ok"
+  },
+  {
+   "round": 2,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "leg (f) timeout page did not pin pr still the PR URL"
+  },
+  {
+   "round": 2,
+   "task": "2",
+   "verdict": "pass",
+   "reason": "round 2: M1 three key placements, no-flag literal, nine-key deep-equal, usage string; M2 ordering forced by a nonexistent plan path plus an empty exec seam; M3 scoped greps per document; M4 sims green with quoted names grepped"
+  },
+  {
+   "round": 2,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "'only gh api reads' not entailed: a gh api -X PUT merge would pass; leg needs the two-word argv shape"
+  },
+  {
+   "round": 2,
+   "task": "4",
+   "verdict": "pass",
+   "reason": "round 2: M1/M2 direct doctor()/fleetConfigKeys assertions incl. the mixed cpu+memory+stale file; M3 CLI exit codes and printed row; M4 section-scoped greps; M5 test_doctor.mjs and the structural pytest"
+  },
+  {
+   "round": 3,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "M4 universal: the failed page's merged cell was never read"
+  },
+  {
+   "round": 3,
+   "task": "3",
+   "verdict": "pass",
+   "reason": "round 3: M1 exec-call shape (no gh pr, two-word gh api reads, all actions rm, young VM untouched, dry-run, no PR_VIEW_JSON) plus source grep; M2 existence; M3 rm index between billing plan, ls-remote and new, reaped/reapError, render shape, listing-failure path; M4 scoped greps and negative cron/arms auto-merge greps"
+  },
+  {
+   "round": 4,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "non-green conclusion sampled only by failure (denylist would pass); hold= other value sampled only by hold=yes"
+  },
+  {
+   "round": 5,
+   "task": "1",
+   "verdict": "pass",
+   "reason": "round 5: M1/M2 pinned by curl-argv counts, exact URLs, parsed PUT payload and page cells across green, mixed, empty-with-grace, three non-green conclusions (allowlist), wait-timeout and 405; M3 parked/hold=1/hold=yes/hold=0; M4 merged key on every page state plus exact commitStates and notifies; M5-M7 section-scoped greps and the docs pytest"
+  }
+ ]
+}
