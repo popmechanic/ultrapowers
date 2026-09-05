@@ -48,11 +48,14 @@ Fix this row first and run the doctor again before touching the others.
 
 Not a health check — arithmetic. `ssh exe.dev "billing plan --json"` reports
 the account's pool (`max_cpus`, `max_memory_gb`), and `~/.ultrapowers/fleet.json`
-says how large one run asks to be. The row is `ok` when the pool holds a run of
-that size, and its detail says how many such runs fit at once. The agent writes
-the file with both keys explicitly — these are also the defaults, and a key the
-doctor does not read (one left by a fleet from before the lift) turns the row
-red until it is removed:
+says how large one run asks to be. The row reports both and limits neither: its
+green detail is the pool and the size one run asks for, in the shape
+`XLarge pool 16 vCPU / 64GB; a run asks 4 vCPU / 8GB`. It is `missing` only for
+an unreadable pool (`billing plan --json` failing or answering no numbers) or an
+unparseable config (`cpu` not an integer, `memory` not `<int>GB`). The agent
+writes the file with both keys explicitly — these are also the defaults, and a
+key the doctor does not read (one left by a fleet from before the lift) turns
+the row red until it is removed:
 
 ```json
 {
@@ -65,20 +68,18 @@ red until it is removed:
 
 **The agent runs** the doctor and, if the row is red, edits that file.
 
-Three things a newcomer would not know:
+Two things a newcomer would not know:
 
-- **A pool a run cannot fit in is a run asked too large, not a broken
-  account.** That is why the red detail names `~/.ultrapowers/fleet.json`: the
-  cheap fix is lowering `cpu`/`memory`, and the expensive one is a bigger plan.
+- **Allocation on exe.dev is over-committable, and contention is the bound.**
+  56 vCPU were allocated on the 16-vCPU plan and no `new` was refused, and on
+  2026-09-05 six runs asking 24 vCPU ran concurrently — the pool is not a
+  ceiling on how many runs are live at once. What bites is contention on the
+  shared machine, and #667 is measuring where.
 - **`memory` is `<int>GB` or `<int>G`.** A bare number, or a fractional
   `1.5GB`, is unreadable and turns the row red before the pool is even
   consulted. A missing file means the defaults;
   a key the doctor does not read is named in the red detail, and the agent
   rewrites the file with cpu and memory only.
-- **The number in the green detail is the width of a wave of runs.** It is the
-  pool's vCPUs divided by one run's, so a plan whose pool fits three runs
-  cannot carry seven at once; the fourth `new` is refused when the pool is
-  already spent, and the pool is shared with anything else you have running.
 
 ## claude
 
