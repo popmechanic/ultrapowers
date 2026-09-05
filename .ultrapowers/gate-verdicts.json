@@ -1,0 +1,40 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2994119c30bacbc81094ddec0598f615d7da01a6127020e288795cc4e98e3ba5",
+      "verdict": "pass",
+      "reason": "Each machine clause M1–M5 has a leg that would fail on its negation at the deps-stubbed layer (account-named keychain calls and the three-key record, the exact edit/add verbs with the token only on stdin and --no-install issuing none, accounts' fresh/expired/empty/json/no-token shape, usage's per-entry no-refresh/one-refresh/500/429 rows with GET+Bearer and the rendered header, and main's routing plus pre-read rejection of a missing or malformed --account), leaving only sub-clause formatting details (the `(<n> min)` suffix, the 5h-column placement) and the keychain service literal, which sits beneath the deps seam, unfalsified."
+    },
+    "2": {
+      "hash": "c2a44024448a412e835a9cc9c18e0d7b0b12e4a29b64bad4c6228bf0dcfeba5a",
+      "verdict": "pass",
+      "reason": "Every clause of the sentence has a falsifying leg at the right layer — the accounts row's listing, edge-account, and red-on-unheld-name behavior (b, i), the verb-drift row's re-fetch per record verb with appeared/vanished findings and never a refusal even on unreadable help (a, d, e, g), the record literal (f), and the two first-run.md sections plus heading order via the structural pytest (h) — the only slack being that the `## accounts` heading trivially satisfies its own `accounts` grep and leg (d)'s injection-key guard is stricter than the claim rather than contradicting it for the real record."
+    },
+    "3": {
+      "hash": "c25ef08a2c5be2760aa312688c776d1ef9cab04915d3a20bbfab6b944c2b46e5",
+      "verdict": "pass",
+      "reason": "Every machine clause has a falsifying leg at the launch/exec-spy layer — M1's precedence chain, regex and pre-command Refusal (exec.calls empty), M2's once-only call ordered between the integrations read and the push plus the seam's three answers and the no-push/no-new LobbyError, M3's exact rendered line order in three exams and the byte-equal comment, and M4's help-read placement, unchanged single `new`, and all three degraded shapes including the unreadable record naming fleet/exe-verbs.json — with only the untestable `spawnSync` default left to the seam's signature."
+    }
+  },
+  "tally": {
+    "dispatched": 8,
+    "rejected": 4,
+    "rounds": {
+      "1": { "dispatched": 3, "rejected": 2 },
+      "2": { "dispatched": 2, "rejected": 2 },
+      "3": { "dispatched": 2, "rejected": 1 },
+      "4": { "dispatched": 1, "rejected": 0 }
+    },
+    "per_task": { "1": "pass on round 1", "2": "pass on round 3", "3": "pass on round 4" }
+  },
+  "history": [
+    { "round": 1, "task": "1", "hash": "2994119c30bacbc81094ddec0598f615d7da01a6127020e288795cc4e98e3ba5", "verdict": "pass" },
+    { "round": 1, "task": "2", "hash": "ae5a9fe4975d227dedc7e07d7ff4950f558c10a68543eb4dc3a48311841762d1", "verdict": "fail", "reason": "Two stated sub-clauses have no falsifying leg: M5's 'ok ... help unreadable or not' is exercised only at the verbDrift layer (leg d), while every doctor-level leg (e, g) drives drift only, so a row that maps an unreadable help to `missing` passes the exam; and M2's 'stdout is not a JSON array' is probed only with `not json` and `[]`, never a parseable non-array such as `{}`, so an `Array.isArray`-less implementation also passes." },
+    { "round": 1, "task": "3", "hash": "2f7c5c8f9cd70d5a99d76de3c88dee35eee3dc0cbac038d5891aa8474787afad", "verdict": "fail", "reason": "M2's clause that `defaultRefreshCredential(account)` spawns `node fleet/claude-token.mjs refresh --account <name>` has no leg — every leg drives the injected spy seam, so the real default could omit `--account` (refreshing the wrong entry, the claim's whole point) and the exam still passes; M4's 'unreadable record changes nothing' is likewise untested (only unreadable `help` and a missing rule are exercised, never a missing or corrupt `exe-verbs.json`)." },
+    { "round": 2, "task": "2", "hash": "480583d86a1723741254577537b19755a884ccf1b250c71179ddfa4caccc7bb3", "verdict": "fail", "reason": "The clause 'turns red when ~/.ultrapowers/fleet.json names an account the keychain does not hold' has no leg at the doctor layer — leg (b) injects `account` directly into the row and leg (c) tests `fleetConfigAccount` in isolation, so an implementation that never wires `fleetConfigAccount` into `doctor()` passes every leg while a doctor run over a fleet.json naming an unheld account stays green." },
+    { "round": 2, "task": "3", "hash": "71325a040f195e511077760409a6bb1cadc7cb844ea90e806d0e46ae8077034c", "verdict": "fail", "reason": "M1's precedence clause (`--account` wins over the config's `account`) is never falsified: no leg launches with `--account b` while the injected config also carries an `account`, so an implementation that prefers the config's name over the flag passes every listed leg." },
+    { "round": 3, "task": "2", "hash": "c2a44024448a412e835a9cc9c18e0d7b0b12e4a29b64bad4c6228bf0dcfeba5a", "verdict": "pass" },
+    { "round": 3, "task": "3", "hash": "c291d930025f6026b153bee55b897473a61d4fe6d25df2478ee7414fe3bc7163", "verdict": "fail", "reason": "M1's validator clause names an exact regex but leg (a) falsifies it with only the single non-match `'bad name'` and no boundary samples (a leading `-` or `.` refused, `a.b-c_d` accepted), so a validator that merely rejects whitespace passes the exam while the clause is false." },
+    { "round": 4, "task": "3", "hash": "c25ef08a2c5be2760aa312688c776d1ef9cab04915d3a20bbfab6b944c2b46e5", "verdict": "pass" }
+  ]
+}
