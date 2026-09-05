@@ -40,11 +40,6 @@
  * push its branch or open its PR, and a run that cannot publish is a run nobody
  * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
  *
- * A target whose toolchain the sandbox lacks is a refusal for the same reason,
- * and on the laptop rather than on the box: the setup script installs node, bun
- * and pytest only, so a Go, Rust or make target is named here instead of dying
- * in the VM's preflight.
- *
  * A refusal (exit 2) happens before anything is created, so the account and the
  * target are exactly as they were. A failure after that (exit 1) prints the
  * lobby's own words: exe.dev documents no error envelope, so a refused name or
@@ -146,43 +141,6 @@ const ORIGIN_SPELLINGS = Object.freeze([
   /^git@github\.com:(.+?)(?:\.git)?\/?$/,
   /^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?\/?$/
 ])
-
-/**
- * The preflight's `detect_test_cmd` ladder (`skills/ultrapowers/scripts/
- * ultra_run.py`), in its order, as manifests on a working tree. The first rung
- * that matches decides, so a `package.json` beside a `go.mod` is a Node target.
- *
- * `toolchain` is null for the three rungs the sandbox has and names the missing
- * toolchain for the three it does not: `fleet/setup-script.mjs` installs node,
- * bun and `python3-pytest`, and nothing else.
- */
-const TOOLCHAIN_LADDER = Object.freeze([
-  { manifest: 'pytest.ini', toolchain: null },
-  { manifest: 'pyproject.toml', toolchain: null, holds: (text) => text.includes('[tool.pytest') },
-  { manifest: 'package.json', toolchain: null },
-  { manifest: 'Makefile', toolchain: 'make', holds: (text) => /^test\s*:/m.test(text) },
-  { manifest: 'go.mod', toolchain: 'go' },
-  { manifest: 'Cargo.toml', toolchain: 'cargo' }
-])
-
-/**
- * The ladder's first matching rung on `repoDir`'s working tree, or null when no
- * manifest matched. An unreadable path is a rung that did not match: the ladder
- * is about what a preflight would find, not about what this checkout permits.
- */
-async function detectToolchainRung (repoDir) {
-  for (const rung of TOOLCHAIN_LADDER) {
-    let text
-    try {
-      text = await fsp.readFile(path.join(repoDir, rung.manifest), 'utf8')
-    } catch {
-      continue
-    }
-    if (rung.holds && !rung.holds(text)) continue
-    return rung
-  }
-  return null
-}
 
 export function targetOfOriginUrl (url) {
   const text = String(url ?? '').trim()
@@ -325,13 +283,6 @@ export async function launch ({
   if (originTarget !== target) {
     throw new Refusal(
       `launch: ${repoDir} has origin ${JSON.stringify(originUrl)}, which does not name ${target}`
-    )
-  }
-  // Say it up front (#645): the run would clone fine and then find no compiler.
-  const rung = await detectToolchainRung(repoDir)
-  if (rung?.toolchain) {
-    throw new Refusal(
-      `launch: the target needs toolchain ${rung.toolchain} (${rung.manifest} at the checkout root) and the sandbox installs node, bun and pytest only — the fleet builds Python, Node and Bun targets today (#645)`
     )
   }
 
