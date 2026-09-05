@@ -3078,6 +3078,27 @@ WIDE_FILES_ADVICE = ("run-55's 19-file task hit the worker wall clock while "
                      "its 3–8-file siblings finished; split along a Produces "
                      "symbol")
 WIDE_CONTRACT_ADVICE = "one contract per task; split along a Produces symbol"
+# The NARROW knee (#666, proposal 1: the advisory reads the paths, not only
+# the count). Eight is the knee for app-path work; engine work knees lower.
+# A task that rewrites `fleet/run-engine.mjs`, or more than one
+# `fleet/tests/test_*.mjs` sim, is wide at FOUR — more than four draws the
+# line and four itself is silent, the same strictness as `WIDTH_THRESHOLD`.
+# A sim is a `startswith`/`endswith`, so a helpers module under the same
+# directory without the `test_` prefix is not one. Every other task keeps the
+# eight knee and its BASE line.
+NARROW_WIDTH_THRESHOLD = 4
+SIM_PATH_PREFIX = "fleet/tests/test_"
+SIM_PATH_SUFFIX = ".mjs"
+WIDE_FILES_ENGINE_ADVICE = ("wide at four because it writes "
+                            "fleet/run-engine.mjs — run-10's eight-file "
+                            "engine task took 24.7 min while its one- and "
+                            "two-file siblings took 2–4; split along a "
+                            "Produces symbol")
+WIDE_FILES_SIMS_ADVICE = ("wide at four because it writes %d "
+                          "fleet/tests/test_*.mjs sims — run-10's eight-file "
+                          "engine task took 24.7 min while its one- and "
+                          "two-file siblings took 2–4; split along a Produces "
+                          "symbol")
 
 
 # The ENGINE-SELF-CHANGE species (#461). Since 0.3.5 the engine a run executes
@@ -3107,9 +3128,17 @@ ENGINE_SELF_CHANGE_ADVICE = ("shapes the workers, and the run that builds it "
 # break blind — unless that test is in some task's Files, where it folds. So
 # the pinning file is named before a reader is dispatched.
 BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
-# Below three characters a span is grep noise: `4`, `ok`, `-v` match half the
-# tree as substrings, and this species greps for a substring, not a word.
-MIN_SPAN = 3
+# Below six characters a span is grep noise: `src/`, `'Ada'`, `M1.` match half
+# the tree as substrings, and this species greps for a substring, not a word.
+MIN_SPAN = 6
+# Above this many tracked test files a span is the tree's vocabulary, not one
+# sibling's strict-equality pin: measured on this repository, `runner: None`
+# sits in 1 tracked test file, `deferred:external` in 3, `examEdited` in 5 and
+# `fix-loop-exhausted` in 7 — each still named — while `PLAN OK` is in 25,
+# `claims-v1` in 29 and `ALL TESTS PASSED` in 64, none of which a clause could
+# replace without the implementer grepping anyway. Eight is the line the
+# compiler already draws elsewhere for width.
+PINNED_EVERYWHERE = 8
 PINNED_ELSEWHERE_DETAIL = "%s is asserted in %s, which is in no task's Files"
 # A test file by path or by basename: under a tests directory the repo keeps
 # suites in, or named the way a runner discovers one.
@@ -3125,14 +3154,19 @@ def _is_test_file(path):
 def _clause_spans(clauses):
     """The backticked spans of `MIN_SPAN`+ characters across a task's Machine
     clauses, document order, deduped — one line per (task, span, path) means a
-    span repeated across clauses is still one span."""
+    span repeated across clauses is still one span.
+
+    A span ending in `/` is dropped whatever its length: that is a directory
+    prefix (`fleet/tests/`, `src/`), which every import line under it contains
+    and no test pins."""
     spans, seen = [], set()
     for clause in clauses:
         for m in BACKTICK_SPAN_RE.finditer(clause["text"]):
             span = m.group(1)
-            if len(span) >= MIN_SPAN and span not in seen:
-                seen.add(span)
-                spans.append(span)
+            if len(span) < MIN_SPAN or span.endswith("/") or span in seen:
+                continue
+            seen.add(span)
+            spans.append(span)
     return spans
 
 
@@ -3148,8 +3182,14 @@ def _declared_files(tasks):
 def _species_pinned_elsewhere(task_id, clauses, base, declared, exclude):
     lines = []
     for span in _clause_spans(clauses):
-        for path in _git_substring_files(base, span, exclude):
-            if _is_test_file(path) and path not in declared:
+        pinning = [path for path in _git_substring_files(base, span, exclude)
+                   if _is_test_file(path)]
+        # Counted BEFORE the `declared` filter: a span the whole suite carries
+        # is vocabulary whether or not one of its files happens to be owned.
+        if len(pinning) > PINNED_EVERYWHERE:
+            continue
+        for path in pinning:
+            if path not in declared:
                 lines.append(_species_line(
                     "pinned-elsewhere", task_id,
                     PINNED_ELSEWHERE_DETAIL % (span, path)))
@@ -3349,10 +3389,31 @@ def _species_directory_absence_pin(task_id, clauses, legs, runs):
             for cmd in runs if _bare_directory_absence(cmd)]
 
 
+def _is_sim_path(path):
+    """A sim under the fleet's test directory — `fleet/tests/test_<name>.mjs`.
+    A helpers module beside it carries no `test_` prefix and is not one."""
+    return (path.startswith(SIM_PATH_PREFIX)
+            and path.endswith(SIM_PATH_SUFFIX))
+
+
 def _species_wide_files(task, clauses):
     """A task that writes more than `WIDTH_THRESHOLD` files — `Create:` plus
-    `Modify:`, never `Test:`."""
-    n = len(task["creates"]) + len(task["modifies"])
+    `Modify:`, never `Test:` — or more than `NARROW_WIDTH_THRESHOLD` when
+    what it writes is the engine or more than one sim. One line per task: the
+    engine reason wins when both hold."""
+    writes = list(task["creates"]) + list(task["modifies"])
+    n = len(writes)
+    if n > NARROW_WIDTH_THRESHOLD:
+        # `ENGINE_PATHS[0]` is `fleet/run-engine.mjs`; the other engine paths
+        # and the role prompts keep the eight knee.
+        if ENGINE_PATHS[0] in writes:
+            reason = WIDE_FILES_ENGINE_ADVICE
+        else:
+            sims = sum(1 for p in writes if _is_sim_path(p))
+            reason = WIDE_FILES_SIMS_ADVICE % sims if sims > 1 else None
+        if reason is not None:
+            return [_species_line("wide-files", task["id"],
+                                  "%d Create/Modify entries, %s" % (n, reason))]
     if n <= WIDTH_THRESHOLD:
         return []
     return [_species_line("wide-files", task["id"],

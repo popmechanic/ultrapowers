@@ -121,9 +121,11 @@ function greenExec () {
  *  the same pair of values either way. */
 const CONFIG = { cpu: '8', memory: '16GB' }
 
-/** The `capacity` detail BASE answers for this pool and this config. Every leg
- *  that says "what BASE answers" means this exact string. */
-const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB fits 2 runs of 8 vCPU / 16GB'
+/** The `capacity` detail the pool row answers for this pool and this config:
+ *  the pool, then what one run asks for. Every leg below that says "the pool
+ *  sentence" means this exact string, and the stale-key check has to leave it
+ *  intact inside whatever it says about the keys. */
+const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB; a run asks 8 vCPU / 16GB'
 
 const rowById = (result, id) => result.rows.find((r) => r.id === id)
 const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
@@ -225,11 +227,11 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
   )
   assert.equal(capacity.fix, 'capacity', '1 [M1 leg a] the red row\'s fix is capacity')
 
-  // The red detail still carries the pool sentence BASE would have produced —
-  // an operator learns the pool fits as well as which key is stale.
+  // The red detail still carries the pool sentence the row would have answered
+  // — an operator learns the pool and the ask as well as which key is stale.
   assert.ok(
     capacity.detail.includes(BASE_DETAIL),
-    `1 [M1] the red detail still carries BASE's pool sentence; got ${capacity.detail}`
+    `1 [M1] the red detail still carries the pool sentence; got ${capacity.detail}`
   )
 
   // The file's other keys never travel into `config`: the envelope is still
@@ -275,13 +277,13 @@ for (const [label, opts] of [
   ['the option not given', {}]
 ]) {
   // leg (a): naming only the two read keys, naming nothing, and not asking at
-  // all each leave the row exactly as BASE answers it for this pool and config.
+  // all each leave the row exactly the pool sentence for this pool and config.
   const capacity = rowById(await run(opts), 'capacity')
   assert.equal(capacity.status, 'ok', `1 [M1 leg a] configKeys ${label} leaves capacity ok; got ${capacity.detail}`)
   assert.equal(
     capacity.detail,
     BASE_DETAIL,
-    `1 [M1 leg a] configKeys ${label} answers BASE's detail; got ${capacity.detail}`
+    `1 [M1 leg a] configKeys ${label} answers the pool sentence alone; got ${capacity.detail}`
   )
 }
 
@@ -313,10 +315,10 @@ for (const [given, lacking, def] of [
     !capacity.detail.includes(`${given[0]} not in`),
     `2 [M2] the key the file carries is not named as taking a default; got ${capacity.detail}`
   )
-  // The row still says what BASE said about the pool.
+  // The row still says what the pool row said about the pool and the ask.
   assert.ok(
     capacity.detail.includes(BASE_DETAIL),
-    `2 [M2] the ok detail still carries BASE's pool sentence; got ${capacity.detail}`
+    `2 [M2] the ok detail still carries the pool sentence; got ${capacity.detail}`
   )
 }
 

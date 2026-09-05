@@ -37,7 +37,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { evidenceTagFor } from '../lobby.mjs'
+import { evidenceBranchFor } from '../lobby.mjs'
 import * as janitorModule from '../janitor.mjs'
 import { janitor, renderJanitor } from '../janitor.mjs'
 import {
@@ -79,7 +79,7 @@ const donePage = (run, updatedAt) => ({
 // ── The seam ────────────────────────────────────────────────────────────────
 
 const evidencePath = (run) =>
-  `repos/${TARGET}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceTagFor(run)}`
+  `repos/${TARGET}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
 
 /** What `gh api` prints for an absent file: exit 1, `HTTP 404` on stderr. */
 const NOT_FOUND = answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })
@@ -145,7 +145,7 @@ const legAExec = () => makeExec({
   assert.deepEqual(
     sortedJson(ghArgvs(exec)),
     sortedJson([['api', evidencePath(OLD)], ['api', evidencePath(YOUNG)]]),
-    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>: a page found on the tag issues no branch read'
+    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>'
   )
   for (const argv of ghArgvs(exec)) {
     assert.equal(argv.length, 2,
