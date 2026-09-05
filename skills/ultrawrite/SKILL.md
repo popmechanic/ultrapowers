@@ -193,7 +193,9 @@ all three pass.
 The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the
 rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose`,
 `default-unpinned`, `universal-as-count-floor`, `duration-without-clock`,
-`suite-total-pin`, `directory-absence-pin`. Read each one
+`suite-total-pin`, `directory-absence-pin`, `pinned-elsewhere`, `check-cost`,
+`prose-check`, `wide-files`, `wide-contract`, `threshold-one-sided`,
+`disjunct-without-leg`. Read each one
 and repair the slot it points at *before* a reader is dispatched at that task: a reader
 spending its one question on a species the compiler already named is a reader wasted.
 
@@ -269,8 +271,11 @@ The section holds two kinds of bullet, and they are read by different machinery.
 and once on the adopted tree — blocking, unless it ends `(minor)`, which is recorded and
 never dispatched. A prose bullet is only the referee's attention lens: it is what decides
 whether a finding is minor, and nothing runs it. So a constraint a command can decide is
-written as a Check:, never as prose — prose is where the undecidable half goes.
-
+written as a Check:, never as prose — prose is where the undecidable half goes. A prose
+bullet naming a byte-identical file or a script's output is one the driver could have run,
+so write it as a `Check:` beside the prose. And a `Check:` that runs a sim is paid by every
+task on every pass, where the same command in the owning task's `Run:` is paid once: put it
+there, and keep this section for what no single task owns.
 ## Execution handoff — analyze, then recommend
 
 Offer three options, parallel first, and do **not** default to the parallel lane. Read
