@@ -121,6 +121,35 @@ for (const conclusion of GREEN_CONCLUSIONS) {
   })
 }
 
+// ── 2b. the integration's pretty-printed answer  [M1 / leg (b)] ───────────────
+// github.int.exe.xyz answers the check-runs document pretty-printed (one field
+// per line, measured 2026-09-05 on runs 19 and 22); api.github.com answers it
+// compact. The reader has to see the same run in both spellings — the
+// pretty-printed one left every wave-1 PR of 2026-09-05 open as
+// "check <unnamed> concluded <none>".
+
+const prettyChecksBody = (runs) =>
+  JSON.stringify({
+    total_count: runs.length,
+    check_runs: runs.map(([name, status, conclusion]) => ({
+      name, status, conclusion, output: { title: null, summary: null }, check_suite: { id: 1 },
+    })),
+  }, null, 2)
+
+test('a pretty-printed check-runs answer with one successful run merges  [M1 / leg (b)]', () => {
+  const ctx = ran({ STUB_CHECKS: prettyChecksBody([completed('test', 'success')]) })
+  assert.equal(mergePuts(ctx).length, 1, 'the pretty-printed run is read as green: '
+    + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+  assert.equal(statusOf(ctx).merged, MERGE_SHA)
+})
+
+test('a pretty-printed answer with one failed run leaves the PR open, naming the run  [M1 / leg (b)]', () => {
+  const ctx = ran({ STUB_CHECKS: prettyChecksBody([completed('test', 'failure')]) })
+  assert.equal(mergePuts(ctx).length, 0)
+  assert.ok(stream(ctx).some((l) => l.includes('check test concluded failure')),
+    stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+})
+
 // ── 3. what the poll waits for  [M2] ─────────────────────────────────────────
 
 test('a run still going keeps the poll going, and the PUT follows the green read  [M2 / leg (c)]', () => {

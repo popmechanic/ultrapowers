@@ -841,37 +841,40 @@ publish() { # $1 = outcome (gate-green|parked)
 # ALLOWLIST, so a conclusion GitHub adds tomorrow leaves the PR open for a
 # reader instead of being merged as "not failure".
 #
-# Reading the document without jq: split it at `{`, which puts each check run's
-# flat fields on a line of their own. A run still going carries
-# `"conclusion": null` — not a quoted string, so `json_field` answers '' for it
-# and `status` is what decides.
+# The document is read by a JSON parser (python3 is on every sandbox). A run
+# still going carries `"conclusion": null`, and so does a run the index has
+# marked `completed` a beat before its conclusion lands — both are waited on.
 
 # The PR number is the tail of the URL GitHub answered the POST with (`…/pull/<n>`).
 pr_number() { printf '%s' "${PR_URL##*/}"; }
 
-check_runs_verdict() { # one check run per line on stdin
+check_runs_verdict() { # the check-runs document on stdin
   # -> `green` | `pending` | `none` | `red <name> <conclusion>`
-  local line status conclusion name runs=0
-  # `|| [ -n "$line" ]`: the document's last fragment has no newline after it,
-  # and a plain `read` would drop the only run of a one-run answer.
-  while IFS= read -r line || [ -n "$line" ]; do
-    status="$(printf '%s' "$line" | json_field status)"
-    [ -n "$status" ] || continue
-    runs=$(( runs + 1 ))
-    if [ "$status" != completed ]; then
-      printf 'pending\n'
-      return 0
-    fi
-    conclusion="$(printf '%s' "$line" | json_field conclusion)"
-    case "$conclusion" in
-      success|neutral|skipped) : ;;
-      *)
-        name="$(printf '%s' "$line" | json_field name)"
-        printf 'red %s %s\n' "${name:-<unnamed>}" "${conclusion:-<none>}"
-        return 0 ;;
-    esac
-  done
-  if [ "$runs" -gt 0 ]; then printf 'green\n'; else printf 'none\n'; fi
+  # A JSON parser, not a line reader: the integration answers the document
+  # pretty-printed where api.github.com answers it compact (measured
+  # 2026-09-05, runs 19 and 22 — a `{`-split reader saw `status` and
+  # `conclusion` on different lines and called a green run red), and Shelley's
+  # counsel the same night was that no byte-level property of an integration's
+  # answer is specified. A run `completed` with no conclusion is "unknown", so
+  # it is waited on, never merged and never called red.
+  python3 -c '
+import json, sys
+try:
+    doc = json.load(sys.stdin)
+except Exception:
+    print("pending"); sys.exit(0)
+runs = doc.get("check_runs") or []
+if not runs:
+    print("none"); sys.exit(0)
+for run in runs:
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    if status != "completed" or conclusion is None:
+        print("pending"); sys.exit(0)
+    if conclusion not in ("success", "neutral", "skipped"):
+        print("red %s %s" % (run.get("name") or "<unnamed>", conclusion)); sys.exit(0)
+print("green")
+'
 }
 
 merge_pr() {
@@ -911,7 +914,7 @@ merge_pr() {
     code="$(printf '%s' "$answer" | tail -n 1)"
     body="$(printf '%s' "$answer" | sed '$d')"
     case "$code" in
-      2[0-9][0-9]) verdict="$(printf '%s' "$body" | tr '{' '\n' | check_runs_verdict)" ;;
+      2[0-9][0-9]) verdict="$(printf '%s' "$body" | check_runs_verdict)" ;;
       *) verdict=pending ;;
     esac
     # An answer listing no run at all is GitHub's index catching up for as long
