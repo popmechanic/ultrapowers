@@ -1,0 +1,97 @@
+## fleet run-22 — gate-green
+
+| | |
+|---|---|
+| verdict | `NEEDS_ACK` |
+| target | `popmechanic/ultrapowers` at `e04154b702407ac1efabaa22db6e21eab706a5f1` |
+| engine | `e04154b702407ac1efabaa22db6e21eab706a5f1` |
+| plan | `.ultrapowers/plan.md` at `32b61378c183f0740a52e3b81ea536a88c55350f` |
+| branch | `ultra/integration-run-22` |
+| vm | `fleet-r22-2609051933-c96d` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-22",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-22/report.json",
+  "branch": "ultra/integration-run-22",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "Task 2 \u2014 the measured facts cited in first-run.md \u00a7capacity (56 vCPU allocated on the 16-vCPU plan with no `new` refused; six runs asking 24 vCPU concurrent on 2026-09-05) and the #667 measurement they point at \u2014 These are observations of the live exe.dev account. The section is structurally complete and its wording is pinned by the Proof greps, but nothing in this tree or environment can confirm the account behaves as described. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 1 \u2014 fleet/doctor.mjs capacity row against a real `ssh exe.dev \"billing plan --json\"` \u2014 Both sims drive the row through an injected `exec` with canned billing JSON (the doctor's five reads are PATH-shimmed, no network). The row's shape and all red/green branches are proven against that rig, but the real command's response shape on the live account is not exercised here. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.6CB8cGtAwl/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1618 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 31%]\\n........................................................................ [ 35%]\\n........................................................................ [ 40%]\\n........................................................................ [ 44%]\\n........................................................................ [ 48%]\\n........................................................................ [ 53%]\\n........................................................................ [ 57%]\\n........................................................................ [ 62%]\\n........................................................................ [ 66%]\\n........................................................................ [ 71%]\\n........................................................................ [ 75%]\\n........................................................................ [ 80%]\\n........................................................................ [ 84%]\\n........................................................................ [ 88%]\\n........................................................................ [ 93%]\\n........................................................................ [ 97%]\\n..................................                                       [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1618 passed, 5 warnings in 128.09s (0:02:08) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence-run-22/.ultrapowers/runs/22/
+
+- approve-receipt.json
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- receipt.json
+- report.json
+- standing-approval.json
+- status.json
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan-run-22/.ultrapowers/plan.md
