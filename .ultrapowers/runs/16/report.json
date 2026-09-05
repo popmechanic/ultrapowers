@@ -1,0 +1,430 @@
+{
+  "integrationBranch": "ultra/integration-run-16",
+  "baseSha": "c32c08f9129b3266de17168678fd539d0723bb76",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "afa11aa4f18fa1b7daca5b9b712c9f515f4ada8f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-16/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Footprint: the patch adds `tests/test_spec_review_brief_selfcheck.py`, a path outside this task's FILES block (`skills/ultralearn/references/distilling-proposals.md` only), and outside the Global Constraint \"No file outside a task's own Files block is edited\" \u2014 a prose constraint with no `Check:` behind it, so this is advisory. The file is not a sibling-owned path (SIBLING FILES is `skills/ultrawrite/SKILL.md`), deletes nothing present at BASE, and its content is a faithful, self-contained restatement of the task's own Proof `Run:` greps (M1\u2013M5), consistent with the `suite` acceptance mode that names the committed suite as the verification. Noting the path rather than asking for its removal; if the operator wants the footprint literal, the fix is to drop the file or to add it to the task's Files block.; Test-quality note (not blocking, no criterion left unverified): `test_skill_still_validates` in the new file shells out to `skills/ultrapowers/scripts/validate_skill.py`, duplicating the Global Constraints `Check:` the driver already runs (evidence: exit 0, `skill ok`), and `test_shouted_imperative_counts_are_unchanged` duplicates the three shouted-word `Check:` commands. Harmless, but it couples this test file to the ultrapowers script path, which this task does not own; if that script moves, a failure appears in an ultralearn-brief test.; concern: out-of-FILES: tests/test_spec_review_brief_selfcheck.py \u2014 my own red-green tests for M1\u2013M5 plus the shouted-imperative constraint. Added, not deleted; deliberately named so it cannot collide with the peer exam the driver lays over this task.; concern: plan-defect: none found \u2014 the task text was implementable as written.; concern: CLAUDE.md \u00a7How features are built here (line 232) still points at `skills/ultralearn/references/distilling-proposals.md` \u00a7Trim review, which this rename makes stale. CLAUDE.md is outside my Files block and no sibling task owns it, so I left it untouched per the global constraint; the new section's closing sentence ('Historical specs carry `## Trim review` sections under this brief's former name') is what keeps the old name resolving. Worth a follow-up edit to CLAUDE.md to say \u00a7Spec review.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "5063c869fc3b995dcce111ef97aca914bad6d0a7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-16/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Scope: the diff creates `tests/test_ultrawrite_surface_rules_implementer_check.py` (+112 lines), a path outside this task's Files block, which lists only `Modify: skills/ultrawrite/SKILL.md` and declares no `Test:` path at all. It trips the prose Global Constraint \"No file outside a task's own Files block is edited\" \u2014 a constraint with no `Check:` behind it, so this is minor, not blocking, and nothing about it endangers the Claim: every Machine clause is already settled by the driver's `Run:` evidence at exit 0.\n\nTwo things make it worth deleting rather than keeping. (a) It is a second exam file on the surface the peer's graded exam already covers \u2014 its own docstring says so (\"the implementer's copy of the same contract, kept under a different name so the two never collide\"), and its RUN_BULLETS list is the task's `Run:` commands transcribed verbatim. That is precisely the shape the sentence this same diff adds to \u00a7The six body slots forbids: \"Name one exam file per behaviour surface... a later task on that surface... extends that file instead of opening a second one.\" Committing it makes the repo contradict the rule the patch just wrote, and its name (`..._implementer_check`) is a task-noun name rather than a surface name. (b) `test_m5_the_tests_that_read_the_skill_still_pass` shells out to a nested `pytest` over eight test files that the committed suite (the stated acceptance mode) already runs, roughly doubling their cost on every suite run and re-reporting their failures under this file's name.\n\nFix: delete the file. The peer exam plus the `Run:` bullets already establish M1\u2013M5; nothing in the Claim loses evidence when it goes.; concern: out-of-FILES: added `tests/test_ultrawrite_surface_rules_implementer_check.py` \u2014 my own red/green check, deliberately named apart from the peer exam's path since the Proof declares no `Test:` file. It replays the nine `Run:` bullets verbatim through bash plus the M5 validator/shouted-word/existing-tests checks. Delete it if the peer exam is meant to be the only copy.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-16/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1545 items]\n\n......................................................................... [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 37%]\n........................................................................ [ 42%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1545 passed, 5 warnings in 95.32s (0:01:35) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "grep -q '^## The spec review (spec approval \u2014 every spec in this repo)$' skills/ultralearn/references/distilling-proposals.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -q '^## The trim review' skills/ultralearn/references/distilling-proposals.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -qiE 'under-specification.*(reconcile scope|scope reconciliation)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'ambiguous rule.*cannot build as written'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'missing refusal.*failure semantics'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'unstated migration behaviou\\?r'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'authority granted without an enforcement point'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'scope.*against the decision records.*every expansion'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'decision.*only in .*conversation'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'contradiction'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -qi 'trim proposals.*welcome.*not the mandate'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | grep -q 'Propose the trimmed version'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | grep -q 'for each design element'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'one.*fresh-context subagent'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -qi 'never the authoring conversation'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'Grade .netConceptDelta.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q '.## Spec review. section.*adopt-or-answer.*every finding'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'advisory to the operator, never a .*gate'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'Historical specs carry .## Trim review. sections'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one exam file per behaviou\\?r surface.*named for it.*later task.*extends.*under a comment naming the task'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one exam file per behaviou\\?r surface'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'later task.*extends'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'under a comment naming the task'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'byte-identical to BASE.*git show HEAD:.*tautology at the integration head.*frozen pre-edit literal.*40-hex sha.*git fetch --depth=1 origin.*depth'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | grep -qF -- 'git fetch --depth=1 origin <sha>'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Let same-file edits stand.*adjacent inserts at one location.*resolver.*own region or file.*registration is a new file.*never an appended line'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'run-12.*five tasks.*three resolver workers'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'exam file is named for its behaviou\\?r surface.*comment naming the task'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_proof_modes_documented.py",
+      "exit": 0,
+      "stdout": "..                                                                       [100%]\n2 passed in 0.03s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_skill.py tests/test_plan_level_claim.py tests/test_review_peer.py tests/test_compile_plan_check_cost.py tests/test_compile_plan_prose_check.py tests/test_compile_plan_integration_hostile.py tests/test_marker_contract.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 64%]\n........................................                                 [100%]\n112 passed in 10.64s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = 762be27108232d1625964d4f2c97e9f4bd7f06de",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/implementer.md)\" = 0a92a3d5a6c43ab88710d7c93322fcacda011152",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = fbe4d8dbc80d8a862f6dff86d2d946cee5eb580c",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = f47370d2badc0ef87b9d559f4e6a77f79d27d4b2",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = 2de1fc707f26a06373905a8425f2ef6b67571210",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/doctor.mjs)\" = 7e35dcd094d24a25da7c7e4277bb983f32ff84b0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 1bf320dd7498f40e99558c397bebe669345b1cf7",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = f630c6a17bfd931d702a3be675ec8a91be2aa497",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = 3df41c3fae22e7cf67534d9b2814aa644fb87b39",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/references/first-run.md)\" = a042dcd5485bbca9db37e0137144e9c3018b3a95",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 18ad6070d1e0c33142710ebc107f11fe8f6765fa",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object hooks/session_start.sh)\" = a70c87d7b8bdfd853954c4786645432ddd977097",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_session_hook.py",
+      "exit": 0,
+      "stdout": "........................................                                 [100%]\n40 passed in 0.12s\n",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(grep -ow MUST skills/ultralearn/references/distilling-proposals.md | wc -l | tr -d ' ')\" = 1",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -qw 'NEVER' skills/ultralearn/references/distilling-proposals.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -qw 'ALWAYS' skills/ultralearn/references/distilling-proposals.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 177318,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n..........................s............................................. [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.................................                                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1544 passed, 1 skipped, 5 warnings in 93.64s (0:01:33) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n......                                                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1518 passed, 5 warnings in 100.84s (0:01:40) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ee88a7a1483abec9007f3f34a37aea33ec86626f",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-16/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-16/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.45899999999999996,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: tests/test_spec_review_brief_selfcheck.py \u2014 my own red-green tests for M1\u2013M5 plus the shouted-imperative constraint. Added, not deleted; deliberately named so it cannot collide with the peer exam the driver lays over this task.",
+    "task 1: plan-defect: none found \u2014 the task text was implementable as written.",
+    "task 1: CLAUDE.md \u00a7How features are built here (line 232) still points at `skills/ultralearn/references/distilling-proposals.md` \u00a7Trim review, which this rename makes stale. CLAUDE.md is outside my Files block and no sibling task owns it, so I left it untouched per the global constraint; the new section's closing sentence ('Historical specs carry `## Trim review` sections under this brief's former name') is what keeps the old name resolving. Worth a follow-up edit to CLAUDE.md to say \u00a7Spec review.",
+    "task 2: out-of-FILES: added `tests/test_ultrawrite_surface_rules_implementer_check.py` \u2014 my own red/green check, deliberately named apart from the peer exam's path since the Proof declares no `Test:` file. It replays the nine `Run:` bullets verbatim through bash plus the M5 validator/shouted-word/existing-tests checks. Delete it if the peer exam is meant to be the only copy."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Global Constraint \"No file outside a task's own Files block is edited\" is unmet: the integrated tree carries two test files that no task's Files block names. Task 1's Files block is `Modify: skills/ultralearn/references/distilling-proposals.md` and nothing else; Task 2's is `Modify: skills/ultrawrite/SKILL.md` and nothing else, and the plan's Parallelization rationale states \"Neither task creates a test file: each deliverable is prose and proves itself with `Run:` commands.\" Present anyway: `tests/test_ultrawrite_surface_rules_implementer_check.py`, whose own docstring self-identifies it as \"Implementer's own red/green check for Task 2 (#609 items 1 and 3, #665 (a))\" and re-runs Task 2's nine `Run:` greps plus its M5 checks through `bash -c`; and `tests/test_spec_review_brief_selfcheck.py`, which regex-pins Task 1's rewritten \u00a7The spec review section (its `HEADING = \"## The spec review (spec approval \u2014 every spec in this repo)\"` and its assertion at line 123 that \"Historical specs carry `## Trim review` sections\" are Task 1's M1/M4 greps verbatim). Neither file can predate the run: the first names this run's Task 2, and the second asserts a heading that BASE (4bd0f5c) did not carry \u2014 at BASE the section was `## The trim review`, per Task 1's Context. Both are committed into the suite the driver ran, so they are durable, not scratch."
+    },
+    {
+      "severity": "minor",
+      "detail": "Doctrine and artifact disagree on the same literal rule, in one tree. Task 2's deliverable `skills/ultrawrite/SKILL.md` says at lines 92\u201393 \"A task whose deliverable is prose proves itself with `Run:` commands, never with a test that matches sentences of a document\" and repeats it in \u00a7Self-review at lines 340\u2013341 (\"No Proof pins a sentence of a document as its evidence; a prose task's Proof is a `Run:`\"); `CLAUDE.md` \u00a7How features are built here (lines 234\u2013238) records the same rule as settled, with the 224 prose-pin tests in 25 files deleted in the lift. The two files named in the previous finding are that species: `tests/test_spec_review_brief_selfcheck.py` matches sentences of `skills/ultralearn/references/distilling-proposals.md` by regex over the section text (lines 59\u2013123), and `tests/test_ultrawrite_surface_rules_implementer_check.py` does the same to `skills/ultrawrite/SKILL.md` through shelled-out greps. Both tasks' Context slots also grant that \"the phrases inside the greps are the contract, the wording around them is yours\" \u2014 a licence the committed pins now revoke for the next author, who will break the suite by rewording prose the plan said was theirs. Same two files as the blocking finding; the remedy is the same removal."
+    },
+    {
+      "severity": "minor",
+      "detail": "Cross-document literal now stale: `CLAUDE.md` line 232 points readers at \"(dispatch brief still in `skills/ultralearn/references/distilling-proposals.md` \u00a7Trim review)\", but Task 1's M1 deleted that heading \u2014 the file's section is now `## The spec review (spec approval \u2014 every spec in this repo)` (line 119) and no heading beginning `## The trim review` remains. Task 1's Context anticipated the CLAUDE.md relationship only for historical specs' own sections, and the brief keeps that sentence (line 158, \"Historical specs carry `## Trim review` sections under this brief's former name\"), so the retained half is correct; what is stale is CLAUDE.md's anchor to the brief's own section name. `CLAUDE.md` is outside Task 1's Files block and the Global Constraint forbids editing it, so the implementer was right not to touch it \u2014 this is a follow-up issue, not a defect in the task's diff. The path in the pointer still resolves; only the section anchor is wrong."
+    }
+  ],
+  "blockedWaves": []
+}

@@ -1,0 +1,283 @@
+{
+  "ok": true,
+  "stamp": "run-16",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-16"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The spec-review brief asks for thinness and scope first",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/references/distilling-proposals.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "Ultrawrite says it \u2014 exams per surface, frozen literals, registrations as files",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The spec-review brief asks for thinness and scope first",
+          "files": [
+            "skills/ultralearn/references/distilling-proposals.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultralearn/references/distilling-proposals.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "grep -q '^## The spec review (spec approval \u2014 every spec in this repo)$' skills/ultralearn/references/distilling-proposals.md",
+            "! grep -q '^## The trim review' skills/ultralearn/references/distilling-proposals.md",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -qiE 'under-specification.*(reconcile scope|scope reconciliation)'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'ambiguous rule.*cannot build as written'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'missing refusal.*failure semantics'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'unstated migration behaviou\\?r'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'authority granted without an enforcement point'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'scope.*against the decision records.*every expansion'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'decision.*only in .*conversation'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'contradiction'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -qi 'trim proposals.*welcome.*not the mandate'",
+            "! sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | grep -q 'Propose the trimmed version'",
+            "! sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | grep -q 'for each design element'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'one.*fresh-context subagent'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -qi 'never the authoring conversation'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'Grade .netConceptDelta.'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q '.## Spec review. section.*adopt-or-answer.*every finding'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'advisory to the operator, never a .*gate'",
+            "sed -n '/^## The spec review/,/^## The adopted-proposal retrospective/p' skills/ultralearn/references/distilling-proposals.md | tr -s '[:space:]' ' ' | grep -q 'Historical specs carry .## Trim review. sections'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "Ultrawrite says it \u2014 exams per surface, frozen literals, registrations as files",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one exam file per behaviou\\?r surface.*named for it.*later task.*extends.*under a comment naming the task'",
+            "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one exam file per behaviou\\?r surface'",
+            "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'later task.*extends'",
+            "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'under a comment naming the task'",
+            "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'byte-identical to BASE.*git show HEAD:.*tautology at the integration head.*frozen pre-edit literal.*40-hex sha.*git fetch --depth=1 origin.*depth'",
+            "sed -n '/^### The six body slots/,/^## Elicit the claim/p' skills/ultrawrite/SKILL.md | grep -qF -- 'git fetch --depth=1 origin <sha>'",
+            "sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Let same-file edits stand.*adjacent inserts at one location.*resolver.*own region or file.*registration is a new file.*never an appended line'",
+            "sed -n '/^## Decomposition judgment/,/^## Global Constraints discipline/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'run-12.*five tasks.*three resolver workers'",
+            "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'exam file is named for its behaviou\\?r surface.*comment naming the task'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_proof_modes_documented.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_skill.py tests/test_plan_level_claim.py tests/test_review_peer.py tests/test_compile_plan_check_cost.py tests/test_compile_plan_prose_check.py tests/test_compile_plan_integration_hostile.py tests/test_marker_contract.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "skills \u00b7 2 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The three sibling plans' files are byte-identical to BASE \u2014 the fleet, the operator skill,\n  the compiler and the session hook are theirs.\n- Both skills still validate.\n- No shouted imperative (an all-caps must, never or always as a whole word) is added to either\n  document: `skills/ultrawrite/SKILL.md` stays at zero of each, and\n  `skills/ultralearn/references/distilling-proposals.md` keeps exactly the one it has (line 5,\n  outside the section this plan rewrites) and gains none of the other two.\n- The execution-handoff rubric shared byte-for-byte between `hooks/session_start.sh` and\n  `skills/ultrawrite/SKILL.md` \u00a7Execution handoff is untouched (the rubric tests above are\n  the pin).\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = 762be27108232d1625964d4f2c97e9f4bd7f06de",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/implementer.md)\" = 0a92a3d5a6c43ab88710d7c93322fcacda011152",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = fbe4d8dbc80d8a862f6dff86d2d946cee5eb580c",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = f47370d2badc0ef87b9d559f4e6a77f79d27d4b2",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = 2de1fc707f26a06373905a8425f2ef6b67571210",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/doctor.mjs)\" = 7e35dcd094d24a25da7c7e4277bb983f32ff84b0",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 1bf320dd7498f40e99558c397bebe669345b1cf7",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = f630c6a17bfd931d702a3be675ec8a91be2aa497",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = 3df41c3fae22e7cf67534d9b2814aa644fb87b39",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/references/first-run.md)\" = a042dcd5485bbca9db37e0137144e9c3018b3a95",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 18ad6070d1e0c33142710ebc107f11fe8f6765fa",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object hooks/session_start.sh)\" = a70c87d7b8bdfd853954c4786645432ddd977097",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_session_hook.py",
+        "minor": false
+      },
+      {
+        "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+        "minor": false
+      },
+      {
+        "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(grep -ow MUST skills/ultralearn/references/distilling-proposals.md | wc -l | tr -d ' ')\" = 1",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -qw 'NEVER' skills/ultralearn/references/distilling-proposals.md",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -qw 'ALWAYS' skills/ultralearn/references/distilling-proposals.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-16/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-16/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-16/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-16/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
