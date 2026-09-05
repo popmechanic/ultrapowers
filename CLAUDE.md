@@ -235,7 +235,7 @@ structural dozen).
   release), patch bumps otherwise — the 0.3.5 lift stayed a patch on the operator's call ("we're
   still fixing the features that .3 was meant to deliver"). A release bumps **both** `plugin.json`
   **and** `marketplace.json` to the same value — `plugin.json` wins silently if they drift, and
-  they have. Release commit `chore(release): 0.0.x — …`, committed to `main`. **After pushing a
+  they have. Release commit `chore(release): 0.0.x — …`, landed through a PR with `gh pr merge --auto --squash` so the required check runs in front of it (#680, since 0.3.18), then `gh release create v0.x.y`. **After pushing a
   release, confirm CI on `main` is green (`gh run list --branch main --limit 1`)** — main sat red
   across two releases (0.2.12→0.2.13) and nothing surfaced it until PR #161.
 - **The verification periphery is FROZEN (0.1.0).** The gate scripts
