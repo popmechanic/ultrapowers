@@ -149,8 +149,9 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
 The launcher, in this order: validates the plan, the target and the base;
-reads the pool; computes N from the target's `ultra/*-run-*` branches; refuses
-when `gh-<owner>-<repo>` does not exist; refreshes the Claude bearer; pushes the
+reads the pool; computes N from the target's `ultra/*-run-*` branches and its
+`ultra/{plan,evidence}/run-<N>` tags; refuses when `gh-<owner>-<repo>` does not
+exist; refreshes the Claude bearer; pushes the
 plan as one commit on `<sha>` to `ultra/plan-run-<N>`; then issues one `new`
 with the run's name, `--tag fleet`, the assignment as `--comment`, both
 integrations, `--cpu`/`--memory` from the config, and the generated setup script
@@ -204,12 +205,15 @@ node fleet/janitor.mjs
 ```
 
 It lists the fleet, reads each VM's comment for its run and its target, reads
-that run's status page off the target's evidence branch with `gh api`, and `rm`s
-every VM whose run has been `done`, `parked` or `failed` for over an hour. It
-reaps VMs and nothing else: no branch and no tag on the target is its business,
-and a run whose evidence branch the sandbox has already replaced with its tag
-reads as absent to it — an absent page is reported as stale, never reaped. It
-merges nothing: an approved run merges its own pull request from the sandbox.
+that run's status page off the target with `gh api`, and `rm`s every VM whose
+run has been `done`, `parked` or `failed` for over an hour. It reaps VMs and
+nothing else: no branch and no tag on the target is its business. It reads the
+page at the evidence tag `ultra/evidence/run-<N>` first, and at the branch
+`ultra/evidence-run-<N>` only while the run is in flight or its sweep is
+pending; a run with no page is aged from the plan tag `ultra/plan/run-<N>` and
+then the plan branch `ultra/plan-run-<N>`, and the stale line names the ref it
+read. It merges nothing: an approved run merges its own pull request from the
+sandbox.
 For any fleet VM whose run has had no status update in six hours it prints a
 line, once. It never sshes into a VM. A VM that has to go now:
 `ssh exe.dev "rm <vm> --json"` — `rm` takes several names.

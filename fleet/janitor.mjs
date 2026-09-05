@@ -7,28 +7,39 @@
  * The janitor is the expiry. It reads the *target*, never a side repository and
  * never a VM: one `ls 'fleet-r*' --json` through the lobby gives the fleet, and
  * every row carries its own assignment comment, so `run=` and `target=` come
- * out of the row itself. The run's state comes from the target's evidence
- * branch, read on the laptop with the same `gh` everything else uses:
+ * out of the row itself. The run's state comes from the target's evidence, read
+ * on the laptop with the same `gh` everything else uses — at the evidence tag
+ * first, because a finished run's boot tags its evidence head and deletes the
+ * branch in the same push:
  *
+ *   gh api repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>
  *   gh api repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>
  *
- * — the contents envelope, whose base64 `content` is the status page. A row in
+ * — the contents envelope, whose base64 `content` is the status page; the
+ * contents API resolves `?ref=` to a tag or a branch alike, so the second path
+ * is the same read one ref over. The branch is tried only while the tag is
+ * missing: a run still in flight, a run that ended `failed`, and every run from
+ * before the tags keep their branches until the one-time sweep. A row in
  * `done|parked|failed` whose `updatedAt` is older than `--age` (1 h) is removed
- * with `rm <vm> --json`. The hour is for the operator to read a status page
- * before it goes; the rows are already one per VM, so every incarnation of a
- * finished run is reaped by its own row.
+ * with `rm <vm> --json`, whichever ref the page came from. The hour is for the
+ * operator to read a status page before it goes; the rows are already one per
+ * VM, so every incarnation of a finished run is reaped by its own row.
  *
  * Three things are never removed and reported instead:
  *
  *   unknown — a row with no comment, or a comment carrying no `target=`: there
  *             is nothing to read, so there is nothing to decide on.
  *   stale   — a live run silent for six hours, and a run with no evidence at
- *             all whose `ultra/plan-run-<N>` commit is over six hours old. A
- *             boot that never committed, an engine that stopped writing: a
- *             stuck VM is evidence, so it is printed, never removed.
+ *             all whose plan commit is over six hours old. A boot that never
+ *             committed, an engine that stopped writing: a stuck VM is
+ *             evidence, so it is printed, never removed.
  *
  * Age is the evidence page's `updatedAt`, else the plan commit's committer
- * date; `created_at` on the `ls` row is undocumented and never consulted.
+ * date — the commit `ultra/plan/run-<N>` points at, else, while that tag is
+ * missing, `ultra/plan-run-<N>`'s head. `created_at` on the `ls` row is
+ * undocumented and never consulted. Every `stale` row says which of the four
+ * refs it was read from, because a run reaped or held on a ref nobody named is
+ * a verdict nobody can check.
  *
  * The reap is the whole of it. The janitor merges nothing — an approved run
  * merges its own pull request from the sandbox — so its only `gh` commands are
@@ -49,6 +60,7 @@ import {
   Refusal,
   defaultExec,
   evidenceBranchFor,
+  evidenceTagFor,
   isRunNumber,
   isSafeTarget,
   isVmName,
@@ -60,6 +72,7 @@ import {
   parseDuration,
   parseJson,
   planBranchFor,
+  planTagFor,
   runCli,
   runOfVmName
 } from './lobby.mjs'
@@ -86,29 +99,53 @@ const ghApi = async (exec, apiPath) => {
 }
 
 /**
- * The run's status page off its evidence branch. The answer is the contents
- * envelope — base64 under `content` — and nothing else is accepted: a bare
- * status document would mean `gh` answered something other than the contents
- * API, and guessing there is how a janitor reaps on a payload it never read.
+ * The run's status page at one ref. The answer is the contents envelope —
+ * base64 under `content` — and nothing else is accepted: a bare status document
+ * would mean `gh` answered something other than the contents API, and guessing
+ * there is how a janitor reaps on a payload it never read.
  */
-async function readEvidence (exec, target, run) {
-  const apiPath =
-    `repos/${target}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
-  const payload = await ghApi(exec, apiPath)
+async function readStatusAt (exec, target, run, ref) {
+  const payload = await ghApi(
+    exec, `repos/${target}/contents/.ultrapowers/runs/${run}/status.json?ref=${ref}`)
   if (!payload || typeof payload.content !== 'string') return null
   const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
   return decoded && typeof decoded === 'object' ? decoded : null
 }
 
 /**
- * When `ultra/plan-run-<N>` was committed — the launch's own durable timestamp,
- * and the only age a run with no evidence has.
+ * The run's status page, and the ref it came off. The evidence tag is read
+ * first — a finished run has its page there and no branch — and the branch is
+ * read only while that tag answers no envelope, which is exactly while the
+ * sweep is pending. A page on the tag ends the row's reads.
+ */
+async function readEvidence (exec, target, run) {
+  for (const from of [evidenceTagFor(run), evidenceBranchFor(run)]) {
+    const status = await readStatusAt(exec, target, run, from)
+    if (status !== null) return { status, from }
+  }
+  return null
+}
+
+/**
+ * When the run's plan was committed — the launch's own durable timestamp, and
+ * the only age a run with no evidence has. The tag `ultra/plan/run-<N>` is the
+ * durable pointer: its ref document carries the sha, and the commit carries the
+ * date one level shallower than the branches endpoint does. Only while the tag
+ * is missing is `ultra/plan-run-<N>` read instead.
  */
 async function planCommittedAt (exec, target, run) {
+  const tag = planTagFor(run)
+  const ref = await ghApi(exec, `repos/${target}/git/ref/tags/${tag}`)
+  const sha = typeof ref?.object?.sha === 'string' ? ref.object.sha : null
+  if (sha !== null) {
+    const commit = await ghApi(exec, `repos/${target}/commits/${sha}`)
+    const at = Date.parse(String(commit?.commit?.committer?.date ?? ''))
+    return Number.isFinite(at) ? { at, from: tag } : null
+  }
   const branch = planBranchFor(run)
   const payload = await ghApi(exec, `repos/${target}/branches/${branch}`)
   const at = Date.parse(String(payload?.commit?.commit?.committer?.date ?? ''))
-  return Number.isFinite(at) ? at : null
+  return Number.isFinite(at) ? { at, from: branch } : null
 }
 
 /**
@@ -153,23 +190,24 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
       continue
     }
     const { run, target } = assignment
-    const status = await readEvidence(exec, target, run)
+    const evidence = await readEvidence(exec, target, run)
 
-    if (status === null) {
-      // No evidence was ever committed: the plan commit is the only age there is.
+    if (evidence === null) {
+      // No evidence on either ref: the plan commit is the only age there is.
       const planned = await planCommittedAt(exec, target, run)
-      if (planned !== null && nowMs - planned >= STALE_MS) {
+      if (planned !== null && nowMs - planned.at >= STALE_MS) {
         stale.push({
           vm: row.name,
           run,
           state: null,
-          lastUpdate: new Date(planned).toISOString(),
-          from: planBranchFor(run)
+          lastUpdate: new Date(planned.at).toISOString(),
+          from: planned.from
         })
       }
       continue
     }
 
+    const { status, from } = evidence
     const state = typeof status.state === 'string' ? status.state : null
 
     const updatedAt = typeof status.updatedAt === 'string' ? status.updatedAt : null
@@ -195,7 +233,7 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
         run,
         state,
         lastUpdate: new Date(updated).toISOString(),
-        from: evidenceBranchFor(run)
+        from
       })
     }
   }

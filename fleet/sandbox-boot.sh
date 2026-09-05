@@ -27,13 +27,21 @@
 # GitHub call below is this script's, never a model's, and the push happens
 # only after systemd says the engine service is inactive.
 #
-# THREE BRANCHES, all on the TARGET repository and none of them anywhere else
-# (#598): `ultra/plan-run-<N>` carries `.ultrapowers/plan.md` in — the launcher
-# pushed it before this VM existed, so the plan this box runs is the one the
+# THREE TRANSIENT BRANCHES AND TWO TAGS, all on the TARGET repository and none
+# of them anywhere else (#598). What a run leaves behind is the two tags:
+# `ultra/plan/run-<N>` on the plan commit and `ultra/evidence/run-<N>` on the
+# evidence head. The branches are only where the run works.
+# `ultra/plan-run-<N>` carries `.ultrapowers/plan.md` in — the launcher pushed
+# it before this VM existed, so the plan this box runs is the one the
 # assignment's `plan=` signed; `ultra/integration-run-<N>` is the engine's own,
 # and the PR head; `ultra/evidence-run-<N>` is this script's — one commit per
-# transition, parented on the plan commit, never merged, linked from the PR
-# body. Nothing under `.claude/` is ever committed: that directory is the
+# transition, parented on the plan commit. After the last evidence push of a
+# `done` or `parked` run, `record_tags` writes both tags, and then
+# `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted at publish, in
+# one push, once `git ls-remote --tags` verifies both tags against the remote;
+# a run that ends `failed`, or whose tags do not verify, keeps both branches
+# for the one-time sweep. The PR body links the plan blob and the evidence tree
+# by tag. Nothing under `.claude/` is ever committed: that directory is the
 # engine's scratch, and the evidence is a copy of it under `.ultrapowers/`.
 #
 # IDEMPOTENCE IS A REQUIREMENT, not a nicety: this script can be started again

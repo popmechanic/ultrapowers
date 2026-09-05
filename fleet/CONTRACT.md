@@ -155,8 +155,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     is `failed`, never a guess), `body` = the rendered card,
     `draft` = true unless the verdict is PASS or `approve-receipt.json` is present beside the gate
     receipt (the two-move rule already approved this run).
-    The body links the plan blob (`.ultrapowers/plan.md` at `ultra/plan-run-<N>`) and the evidence tree
-    (`.ultrapowers/runs/<N>/` at `ultra/evidence-run-<N>`), so the PR is the whole index of the run.
+    The body links the plan blob (`blob/ultra/plan/run-<N>/.ultrapowers/plan.md`) and the
+    evidence tree (`tree/ultra/evidence/run-<N>/.ultrapowers/runs/<N>/`), so the PR is the whole
+    index of the run.
     `.html_url` is recorded as `pr` and `.user.login` as `prAuthor`, both logged; a non-2xx answer is
     `failed` with the body quoted → `done` (PASS) or `parked`. `gh auth status` and `gh api user` are
     meaningless through the edge — the aggregate host proxies `/repos/<owner>/<repo>/…` only, and
@@ -204,11 +205,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`.
 - **Janitor (`fleet/janitor.mjs`):** `ls 'fleet-r*' --json` → for each row, parse the VM's `comment` for
-  `run=` and `target=` → read `.ultrapowers/runs/<N>/status.json` on that target's
-  `ultra/evidence-run-<N>` with `gh api` (`gh api repos/<owner>/<repo>/contents/…?ref=…`) → `rm <vm>
-  --json` for a run in `done|parked|failed` whose `updatedAt` is older than 1 h. It reads the branch,
-  not the tag, so a run whose branches the record step has already deleted reads as absent to it until
-  it follows the tag; an absent page is never a reap. A VM whose run has had
+  `run=` and `target=` → read `.ultrapowers/runs/<N>/status.json` on that target with `gh api`
+  (`gh api repos/<owner>/<repo>/contents/…?ref=…`) → `rm <vm> --json` for a run in
+  `done|parked|failed` whose `updatedAt` is older than 1 h. It reads the page at
+  the evidence tag `ultra/evidence/run-<N>` first, and at the branch `ultra/evidence-run-<N>`
+  only while the run is in flight or its sweep is pending; a run with no page at either ref is aged
+  from the plan tag `ultra/plan/run-<N>`'s commit and then the plan branch `ultra/plan-run-<N>`, and
+  the ref it read is named in the line it prints. A VM whose run has had
   no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone. Run by
   `fleet/launch.mjs` before every launch and by hand after a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
 - **Laptop config `~/.ultrapowers/fleet.json`** — exactly two keys, both optional, an unknown key
