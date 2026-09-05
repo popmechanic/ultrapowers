@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-23.md run-23 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 2 — the `**Closes:**` paragraph in skills/ultrawrite/SKILL.md:37–39 (\"The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one `Closes #N` per number to the pull request body\") — The reader it describes does not exist anywhere in this tree: no `Closes` handling appears under `fleet/` (only `fenceCloses` in fleet/fitness.mjs, unrelated), and the Global Constraints freeze fleet/sandbox-boot.sh at BASE. The plan states this deliberately — the sentence is the skill half of #679 whose mechanism another bundle builds — so the prose is authorized and structurally complete, but the end-to-end behavior (a plan's Closes line actually closing tickets on merge) cannot be exercised from this tree. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "Task 3 — the `$ULTRA_BASE` rule in skills/ultrawrite/SKILL.md:320–325 (\"the driver sets, in the environment of every `Check:` and `Run:` it executes, to the run's base sha\") — `ULTRA_BASE` appears nowhere under `fleet/` in this tree; the engine half is #632's open part, built by another bundle, and fleet/run-engine.mjs is frozen at BASE by the Global Constraints. The documented sentence is present and authorized, but that a `- Check: git diff --quiet $ULTRA_BASE -- fleet/` would actually resolve cannot be verified here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

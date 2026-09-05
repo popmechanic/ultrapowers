@@ -1,0 +1,590 @@
+{
+  "integrationBranch": "ultra/integration-run-23",
+  "baseSha": "e04154b702407ac1efabaa22db6e21eab706a5f1",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "942c8f5fdf9fafed14a41928f9459bb6e42e7545",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-23/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "ec58d8e13e4c129093abac102b1484f3da11f04f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-23/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: The new \u00a7The document paragraph states that \"The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one `Closes #N` per number to the pull request body\" (M2), but nothing in this tree implements that reader: `fleet/sandbox-boot.sh` is frozen at BASE by a blocking Global Constraint check (hash 7cf62ab\u2026), its `render_card()` (line 713) emits no `Closes` line, and `grep -R Closes fleet/` matches only `fenceCloses` in `fleet/fitness.mjs`. No task in this launch (all six are documentation edits to skills/CLAUDE.md/README.md) supplies the engine half. This is a doc-only task and its Proof greps settle the prose, so it is not blocking \u2014 but until the boot-side change ships, ultrawrite instructs authors to write a line the sandbox ignores. What would settle it: a `Closes #N`-appending branch in `render_card()` (or its sim, e.g. a `fleet/tests/test_*.mjs` asserting the PR body carries one `Closes #N` per number from the plan's `**Closes:**` line). Worth confirming the engine ticket for #679 is queued in a later plan.; Wording divergence from the task Context, harmless and non-blocking: the Context asks for \"each an issue of the TARGET repository\" with the target-only rule; the paragraph writes \"each an issue of the target repository (\u2026 never this plugin's)\", which carries the exclusivity by the parenthetical rather than the word \"only\". The Self-review bullet does say \"names only the target repository's issues\", and both `Closes:.*target repository` greps pass (RUN EVIDENCE, exit 0), so M1/M3 are satisfied as written. No change required.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "a16f0a401d5463c33af6ebc2d0ba6a383a7c896c",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-23/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "c7e304e7a1f2624334d21fb96cbfc60acf934313",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-23/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "428b2abbef8cda6c3d0973cde6fd8dbaf0272abc",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-23/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the rewritten first doctrine bullet points at `skills/ultrawrite/SKILL.md` \u00a7Authoring a queue, but no such section exists at BASE (ultrawrite's headings at BASE are The document / Task shape / Elicit the claim / The proof gate / The worktree-pure contract / Decomposition judgment / Global Constraints discipline / Execution handoff / Acceptance disposition / Self-review). The task's Context says a sibling task creates it in this same wave, and the exam deliberately checks only that the path is named on the one line \u2014 so this patch cannot settle that the pointer resolves. What would settle it: after the sibling bundles land, `grep -q '^## Authoring a queue' skills/ultrawrite/SKILL.md`. The companion pointer is already sound \u2014 `skills/ultrapowers/SKILL.md` \u00a7Client step 5 is the existing `5. **Reap.**` step at BASE (line 182). Not blocking: the referenced file is present at BASE, no sibling-owned file was touched, and every Proof `Run:` exited 0.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "a06ac39a574d9278beddd938d324b1c759a46254",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-23/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "Residual internal inconsistency the task's scope forbids fixing: \u00a73 still ends \"You read that plan and approve it. That is the first of your two checkpoints.\" (README.md:200-201, untouched at BASE), but the rewritten \u00a74 makes the second checkpoint conditional \u2014 it now exists only when the launch carried `--hold`. A reader who takes \u00a73 at face value is told to expect a second approval that a default run never presents. The diff is correct as specified: the task's Context says \"One paragraph, nothing else moves\" and \"'Your second checkpoint' may stay only as the held PR\", and no Machine clause (M1-M3) touches \u00a73, so the implementer could not have carried this fix without editing outside the paragraph the plan fenced. The fix path is README.md \u00a73 (\"the first of your two checkpoints\" \u2192 wording that makes the second checkpoint the held case, e.g. \"That is your checkpoint \u2014 with `--hold` there is a second, on the pull request\"), and it belongs to a follow-up task that owns that paragraph, not to this one.; unverified: the README now tells the reader to \"Launch with `--hold`\" but the diff cannot settle that `--hold` is spelled that way on the launch line, since the flag lives in fleet/launch.mjs, which this patch does not touch and which the Global Constraints pin byte-identical to BASE (hash check a2bcd04, exit 0). The task's Authorized-by cites #660/PR #677 as having shipped it, and tests/test_docs_agree_with_code.py passes (it checks named fleet scripts exist and retired vocabulary is absent, not flag spellings). What would settle it: a grep for the `--hold` option string in fleet/launch.mjs's argument parsing, or a docs-agree-with-code pin that asserts every README-named launch flag is accepted by the launcher.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-23/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1618 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n......................................................................... [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n......................................................................... [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n................................                                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 134.35s (0:02:14) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^## Authoring a queue' skills/ultrawrite/SKILL.md)\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "awk '/^## Elicit the claim/{a=NR} /^## Authoring a queue/{b=NR} /^## The proof gate/{c=NR} END{exit !(a && b && c && a < b && b < c)}' skills/ultrawrite/SKILL.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'partition.*by files.*disjoint bundles'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'one author subagent per bundle'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'desired-state sentence.*is the .*Claim'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'grill.*only.*wayfinder:grilling'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'one Claim confirmation and one execute choice per plan'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'launches stay serial.*#667'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_skill.py tests/test_ultrawrite_surface_rules_implementer_check.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py tests/test_plan_level_claim.py tests/test_compile_plan_check_cost.py tests/test_compile_plan_integration_hostile.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 72%]\n...........................                                              [100%]\n99 passed in 17.19s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Closes:.*directly under .\\*\\*Goal:\\*\\*.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Closes:.*one line'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qF -- 'Closes:** #660 #668'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'Closes:.*target repository'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'sandbox reads exactly that line'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one .Closes #N. per number'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'without the line closes nothing'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Closes:.*directly under .\\*\\*Goal:\\*\\*.*target repository'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_skill.py tests/test_plan_level_claim.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py",
+      "exit": 0,
+      "stdout": ".......................................................                  [100%]\n55 passed in 1.01s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qE '(Check:|Run:)[^.]*(Check:|Run:)[^.]*compares[^.]*against BASE[^.]*ULTRA_BASE[^.]*driver sets[^.]*base sha'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qE 'Check:[^.]*Run:[^.]*ULTRA_BASE|Run:[^.]*Check:[^.]*ULTRA_BASE'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | grep -qF -- 'git diff --quiet $ULTRA_BASE -- fleet/'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'paid by every task on every pass.*owning task.s .Run:.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_check_cost.py tests/test_compile_plan_prose_check.py tests/test_ultrawrite_skill.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py",
+      "exit": 0,
+      "stdout": "...........................................................              [100%]\n59 passed in 6.66s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qF 'The launcher runs it before every launch; nothing schedules it'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'by hand.*asleep'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qiE 'no (scheduled job|timer)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'none is to be added'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -q '#660'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "! grep -qi 'cron' skills/ultrapowers/SKILL.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py tests/test_skill_setup_section.py",
+      "exit": 0,
+      "stdout": ".......................................................                  [100%]\n55 passed in 0.13s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -q '^- \\*\\*Author plans concurrently from the issues\\*\\*.*skills/ultrawrite/SKILL.md' CLAUDE.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -A1 '^- \\*\\*Author plans concurrently from the issues\\*\\*' CLAUDE.md | sed -n 2p | grep -qE '^(- |$)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -q '^- \\*\\*No local scheduled process.*skills/ultrapowers/SKILL.md' CLAUDE.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -A1 '^- \\*\\*No local scheduled process' CLAUDE.md | sed -n 2p | grep -qE '^(- |$)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q '\u00a7Trim review' CLAUDE.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -q 'distilling-proposals.md. \u00a7The spec review' CLAUDE.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -q '^## The spec review' skills/ultralearn/references/distilling-proposals.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "grep -q 'Historical specs carry .## Trim review. sections' CLAUDE.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q 'Merge it or close it' README.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q 'Approve it, and the sandbox' README.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -q 'sandbox opens the pull request'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -qi 'checks are green.*merges it'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -q -- '--hold.*merge or close'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -q 'sandbox is gone'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = ab943eac2ddd6433ee01be94bda59b9725b84db8",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 7cf62ab22f21a5664e26f9ba0c0130f4c05da01f",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = a2bcd0491f5af05f77606c747c8f4f6bc3659138",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = 236dc2f0c4748f39326b8ba34cfc57d3ac477bf9",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object hooks/session_start.sh)\" = a70c87d7b8bdfd853954c4786645432ddd977097",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/references/first-run.md)\" = 61ea591f04d8465eae74eae93246bd4ef384c673",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object tests/test_docs_agree_with_code.py)\" = c9687c77eca8374f6caf78b5deb587f24244fe9a",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultradocket/SKILL.md)\" = f46f0c7cc2db4e4978c7461005c2dde949672794",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultralearn/references/distilling-proposals.md)\" = 14805df36848d5f776e64bc55cb4712b6b0982b1",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -qw 'MUST' skills/ultrawrite/SKILL.md skills/ultrapowers/SKILL.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -qw 'NEVER' skills/ultrawrite/SKILL.md skills/ultrapowers/SKILL.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -qw 'ALWAYS' skills/ultrawrite/SKILL.md skills/ultrapowers/SKILL.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 248323,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n.........s.............................................................. [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1617 passed, 1 skipped, 5 warnings in 128.81s (0:02:08) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 146.72s (0:02:26) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "fe54238865a3cc4d0a09ede5a2f8e0b1e6113e7f",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-23/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-23/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.482,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 6,
+    "tasks_planned": 6,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 2 \u2014 the `**Closes:**` paragraph in skills/ultrawrite/SKILL.md:37\u201339 (\"The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one `Closes #N` per number to the pull request body\")",
+      "reason": "external",
+      "why": "The reader it describes does not exist anywhere in this tree: no `Closes` handling appears under `fleet/` (only `fenceCloses` in fleet/fitness.mjs, unrelated), and the Global Constraints freeze fleet/sandbox-boot.sh at BASE. The plan states this deliberately \u2014 the sentence is the skill half of #679 whose mechanism another bundle builds \u2014 so the prose is authorized and structurally complete, but the end-to-end behavior (a plan's Closes line actually closing tickets on merge) cannot be exercised from this tree."
+    },
+    {
+      "deliverable": "Task 3 \u2014 the `$ULTRA_BASE` rule in skills/ultrawrite/SKILL.md:320\u2013325 (\"the driver sets, in the environment of every `Check:` and `Run:` it executes, to the run's base sha\")",
+      "reason": "external",
+      "why": "`ULTRA_BASE` appears nowhere under `fleet/` in this tree; the engine half is #632's open part, built by another bundle, and fleet/run-engine.mjs is frozen at BASE by the Global Constraints. The documented sentence is present and authorized, but that a `- Check: git diff --quiet $ULTRA_BASE -- fleet/` would actually resolve cannot be verified here."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 6 (README.md, Claim/M2): `### 4. Build` (README.md:209\u2013213) now says the sandbox opens the PR and the run merges it once checks are green, but three other passages in the same file still describe the pre-#660 approval gate and contradict it \u2014 README.md:98 (\"When you approve the finished result at the gate, the sandbox opens the pull request\"), README.md:47\u201349 (\"You make one approval at the end, on the finished result\") and README.md:72\u201373 (\"You approve the plan. It does the work. You approve the finished result.\"). Both statements are about the same fact (whether a human approval precedes the PR opening) and only the \u00a74 one is now true; the other three are true only under `--hold`. This is not a contract shortfall \u2014 the task's Context scoped the edit to one paragraph and its Machine clauses name only the two stale strings, both of which are gone \u2014 but the README as a whole now says two different things about the same mechanism. Worth an issue, not a merge stop."
+    }
+  ],
+  "blockedWaves": []
+}

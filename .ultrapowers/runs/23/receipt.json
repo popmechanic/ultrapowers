@@ -1,0 +1,469 @@
+{
+  "ok": true,
+  "stamp": "run-23",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-23"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "6 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Ultrawrite says how a queue is authored",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "Ultrawrite writes the Closes line",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "Ultrawrite gives a Check the run's base sha",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The client says the launcher reaps and nothing schedules the janitor",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "CLAUDE.md points at the skills",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The README says the run merges itself unless held",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "README.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "Ultrawrite says how a queue is authored",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c '^## Authoring a queue' skills/ultrawrite/SKILL.md)\" = 1",
+            "awk '/^## Elicit the claim/{a=NR} /^## Authoring a queue/{b=NR} /^## The proof gate/{c=NR} END{exit !(a && b && c && a < b && b < c)}' skills/ultrawrite/SKILL.md",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'partition.*by files.*disjoint bundles'",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'one author subagent per bundle'",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'desired-state sentence.*is the .*Claim'",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'grill.*only.*wayfinder:grilling'",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'one Claim confirmation and one execute choice per plan'",
+            "sed -n '/^## Authoring a queue/,/^## The proof gate/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'launches stay serial.*#667'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_skill.py tests/test_ultrawrite_surface_rules_implementer_check.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py tests/test_plan_level_claim.py tests/test_compile_plan_check_cost.py tests/test_compile_plan_integration_hostile.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "Ultrawrite writes the Closes line",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Closes:.*directly under .\\*\\*Goal:\\*\\*.'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Closes:.*one line'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qF -- 'Closes:** #660 #668'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'Closes:.*target repository'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'sandbox reads exactly that line'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one .Closes #N. per number'",
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'without the line closes nothing'",
+            "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Closes:.*directly under .\\*\\*Goal:\\*\\*.*target repository'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_skill.py tests/test_plan_level_claim.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "Ultrawrite gives a Check the run's base sha",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qE '(Check:|Run:)[^.]*(Check:|Run:)[^.]*compares[^.]*against BASE[^.]*ULTRA_BASE[^.]*driver sets[^.]*base sha'",
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -qE 'Check:[^.]*Run:[^.]*ULTRA_BASE|Run:[^.]*Check:[^.]*ULTRA_BASE'",
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | grep -qF -- 'git diff --quiet $ULTRA_BASE -- fleet/'",
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'paid by every task on every pass.*owning task.s .Run:.'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_check_cost.py tests/test_compile_plan_prose_check.py tests/test_ultrawrite_skill.py tests/test_recommendation_rubric.py tests/test_proof_modes_documented.py"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The client says the launcher reaps and nothing schedules the janitor",
+          "files": [
+            "skills/ultrapowers/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qF 'The launcher runs it before every launch; nothing schedules it'",
+            "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'by hand.*asleep'",
+            "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qiE 'no (scheduled job|timer)'",
+            "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -qi 'none is to be added'",
+            "sed -n '/^5\\. /,/^## Resources/p' skills/ultrapowers/SKILL.md | tr -s '[:space:]' ' ' | grep -q '#660'",
+            "! grep -qi 'cron' skills/ultrapowers/SKILL.md",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py tests/test_skill_setup_section.py",
+            "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "CLAUDE.md points at the skills",
+          "files": [
+            "CLAUDE.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "CLAUDE.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "grep -q '^- \\*\\*Author plans concurrently from the issues\\*\\*.*skills/ultrawrite/SKILL.md' CLAUDE.md",
+            "grep -A1 '^- \\*\\*Author plans concurrently from the issues\\*\\*' CLAUDE.md | sed -n 2p | grep -qE '^(- |$)'",
+            "grep -q '^- \\*\\*No local scheduled process.*skills/ultrapowers/SKILL.md' CLAUDE.md",
+            "grep -A1 '^- \\*\\*No local scheduled process' CLAUDE.md | sed -n 2p | grep -qE '^(- |$)'",
+            "! grep -q '\u00a7Trim review' CLAUDE.md",
+            "grep -q 'distilling-proposals.md. \u00a7The spec review' CLAUDE.md",
+            "grep -q '^## The spec review' skills/ultralearn/references/distilling-proposals.md",
+            "grep -q 'Historical specs carry .## Trim review. sections' CLAUDE.md"
+          ]
+        },
+        {
+          "id": "6",
+          "title": "The README says the run merges itself unless held",
+          "files": [
+            "README.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "README.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'Merge it or close it' README.md",
+            "! grep -q 'Approve it, and the sandbox' README.md",
+            "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -q 'sandbox opens the pull request'",
+            "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -qi 'checks are green.*merges it'",
+            "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -q -- '--hold.*merge or close'",
+            "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr -s '[:space:]' ' ' | grep -q 'sandbox is gone'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "6 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The sibling bundles' files are byte-identical to BASE \u2014 the fleet, the first-run walk, the\n  docs-agree-with-code test, the compiler, the session hook and the ultradocket skill are theirs.\n- Both skills still validate.\n- No shouted imperative (an all-caps must, never or always as a whole word) is added to either\n  skill: both stay at BASE's zero of each.\n- The execution-handoff rubric shared byte-for-byte between `hooks/session_start.sh` and\n  `skills/ultrawrite/SKILL.md` \u00a7Execution handoff is untouched: the rubric's tokens and branch\n  clauses stay in both legs in their canonical order (each ultrawrite task runs\n  `tests/test_recommendation_rubric.py` as its own `Run:`).\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = ab943eac2ddd6433ee01be94bda59b9725b84db8",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 7cf62ab22f21a5664e26f9ba0c0130f4c05da01f",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = a2bcd0491f5af05f77606c747c8f4f6bc3659138",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = 236dc2f0c4748f39326b8ba34cfc57d3ac477bf9",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object hooks/session_start.sh)\" = a70c87d7b8bdfd853954c4786645432ddd977097",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/references/first-run.md)\" = 61ea591f04d8465eae74eae93246bd4ef384c673",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object tests/test_docs_agree_with_code.py)\" = c9687c77eca8374f6caf78b5deb587f24244fe9a",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultradocket/SKILL.md)\" = f46f0c7cc2db4e4978c7461005c2dde949672794",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultralearn/references/distilling-proposals.md)\" = 14805df36848d5f776e64bc55cb4712b6b0982b1",
+        "minor": false
+      },
+      {
+        "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+        "minor": false
+      },
+      {
+        "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -qw 'MUST' skills/ultrawrite/SKILL.md skills/ultrapowers/SKILL.md",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -qw 'NEVER' skills/ultrawrite/SKILL.md skills/ultrapowers/SKILL.md",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -qw 'ALWAYS' skills/ultrawrite/SKILL.md skills/ultrapowers/SKILL.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-23/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-23/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-23/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-23/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
