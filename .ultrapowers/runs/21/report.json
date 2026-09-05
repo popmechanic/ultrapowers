@@ -1,0 +1,176 @@
+{
+  "integrationBranch": "ultra/integration-run-21",
+  "baseSha": "e04154b702407ac1efabaa22db6e21eab706a5f1",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "74a1b07e0ff461b3403b86a39f0cc909e0289783",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-21/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "The narrow knee identifies the engine positionally as `ENGINE_PATHS[0]` (skills/ultrapowers/scripts/compile_plan.py, in `_species_wide_files`). `ENGINE_PATHS` is a plain tuple owned by the engine-self-change species; reordering it \u2014 a change that species is indifferent to \u2014 would silently move this knee onto `fleet/run-worker.mjs` while every M1 row still passes for the wrong reason. The code comment records the coupling but does not enforce it. Naming the literal beside the other narrow-knee constants removes the ordering dependency without changing behaviour; `ENGINE_PATHS` keeps its own use in `_is_engine_path`.; Duplicate exam invocation: the new `test_666_the_species_vocabulary_and_five_species_exams_still_pass` (tests/test_compile_plan_wide_files.py) spawns a second pytest subprocess over `tests/test_compile_plan_proof_species.py`, which the BASE test `test_the_five_species_exam_still_passes` (same file, unchanged) already runs. Only `tests/test_compile_plan_check_cost.py` is new coverage, and the Proof's `Run:` bullet already executes both files (driver evidence: exit 0). Folding the check-cost path into the existing test \u2014 `[..., \"tests/test_compile_plan_proof_species.py\", \"tests/test_compile_plan_check_cost.py\"]` \u2014 removes a copy-pasted subprocess block and roughly halves the exam's nested-pytest cost (exam evidence: 17.36s for 28 tests). Nothing is unverified either way, so this is advisory.; Positional dependence on `ENGINE_PATHS`: `_species_wide_files` reads the engine path as `ENGINE_PATHS[0]` (skills/ultrapowers/scripts/compile_plan.py, new branch in `_species_wide_files`), while M1 names the literal `fleet/run-engine.mjs`. `ENGINE_PATHS` is owned by the engine-self-change species, whose semantics do not depend on element order, and no exam pins that order \u2014 so a future reorder of that tuple would silently move this knee onto `fleet/run-worker.mjs` with the whole `#666` section still green (every fixture would keep drawing a line, just for the wrong path). The in-code comment documents the coupling but nothing enforces it. Cheapest fix inside this task's FILES: name it beside the other narrow-knee constants, e.g. `ENGINE_KNEE_PATH = \"fleet/run-engine.mjs\"` (or add an assertion/test that `ENGINE_PATHS[0] == ENGINE_KNEE_PATH`), and test against that. The task's Context does point at `ENGINE_PATHS`' first entry, so the current form is a lawful reading of the plan \u2014 hence minor.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "8fa393a2ff5f9d8da5699177c4e363c33c271fa9",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-21/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Duplicated test: the added `test_a_the_literal_shape_the_species_was_built_for_is_kept` (tests/test_compile_plan_pinned_elsewhere.py, new leg-(a) section) is byte-for-byte the same experiment as the BASE test `test_a_literal_pinned_by_an_undeclared_test_file_prints_exactly_one_line` at tests/test_compile_plan_pinned_elsewhere.py:280 \u2014 same `repo` fixture, same `PLAN`, same `assert lines == [EXPECTED_ONE]`. Leg (a)'s first half is 'the existing single-line assertion holds', which the existing test already establishes; the copy adds no coverage and gives the exam two places to edit when the verbatim line changes. Deleting the new test (keeping the three-task loop test, which is the genuinely new leg-(a) half) leaves every leg still pinned.; Stale map in the module docstring: tests/test_compile_plan_pinned_elsewhere.py's top `M1 / leg (a)` bullet had only its span floor rewritten (three \u2192 six), so it still reads as if every span of six-plus characters found in a tracked, undeclared test file 'draws exactly one line per (task, span, path)'. Two of this task's three skips \u2014 a span ending in `/`, and a span in more than eight tracked test files \u2014 now make that sentence false as a description of the species. The new section comment at the foot of the file restates them, so nothing is unpinned, but the file's own map contradicts its tests. Add the two skips to that bullet, e.g. after 'containing that span as a SUBSTRING': '\u2026 \u2014 unless the span ends in `/` (a directory prefix) or more than eight tracked test files contain it (tree vocabulary), which draw nothing.'; Duplicated test, no new coverage: `tests/test_compile_plan_pinned_elsewhere.py::test_a_the_literal_shape_the_species_was_built_for_is_kept` is functionally identical to the pre-existing `test_a_literal_pinned_by_an_undeclared_test_file_prints_exactly_one_line` (same `repo` fixture, same `PLAN`, same `assert lines == [EXPECTED_ONE]`); only the docstring and the failure message differ. Proof leg (a)'s first half says \"the existing single-line assertion holds\", so the criterion is already carried by the test that was there at BASE. This costs a second compiler subprocess per run and creates two places that must be edited together if `EXPECTED_ONE` ever moves. Not blocking \u2014 M1's literal-shape leg is satisfied (twice), and the exam exits 0. Fix: drop the duplicate and cross-reference the existing test from the new section's banner comment.; concern: Footprint is one file: skills/ultrapowers/scripts/compile_plan.py (28 insertions, 9 deletions). tests/test_compile_plan_pinned_elsewhere.py is the Proof's Test: path, reserved for the peer's exam, so I left it untouched \u2014 including the two places its BASE text says \"three or more characters\" and \"the three-or-more bar\", which the task's Context asks to be rewritten to six. That rewrite belongs to the exam the driver lays over that path; the BASE file still passes unchanged (its short-span leg uses the two-character `ok`, still silent under MIN_SPAN = 6).; concern: PINNED_EVERYWHERE = 8 is defined independently rather than reusing WIDTH_THRESHOLD = 8, which sits in the width region a sibling task is editing in parallel; its comment cites the width line as the precedent without depending on the constant.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-21/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1643 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...........................................................              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1643 passed, 5 warnings in 136.02s (0:02:16) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_check_cost.py",
+      "exit": 0,
+      "stdout": "...................................                                      [100%]\n35 passed in 7.33s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_check_cost.py",
+      "exit": 0,
+      "stdout": "...................................                                      [100%]\n35 passed in 7.31s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/ultra_gate.py)\" = 949bf784a10c7414880887cddaf9132c1415de7e",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/gate_check.py)\" = fc6e5dcf7c507643e603b69f605d1fd7da82d5f3",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/run_acceptance.sh)\" = 8ef475ac74f0ced637201c3d801de90dd4652eea",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = ab943eac2ddd6433ee01be94bda59b9725b84db8",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrawrite/SKILL.md)\" = 6a11e64f25dc02540b3d1cbe954e8e585d202d61",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = f286d45f24924654c4f71795903d8277ba9e9035",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 584725,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 65%]\n......................................................s................. [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...........................................................              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1642 passed, 1 skipped, 5 warnings in 126.68s (0:02:06) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 143.61s (0:02:23) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "d29e5e371dc29782bd337386b01bfa365549a620",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-21/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-21/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.3359999999999999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: Footprint is one file: skills/ultrapowers/scripts/compile_plan.py (28 insertions, 9 deletions). tests/test_compile_plan_pinned_elsewhere.py is the Proof's Test: path, reserved for the peer's exam, so I left it untouched \u2014 including the two places its BASE text says \"three or more characters\" and \"the three-or-more bar\", which the task's Context asks to be rewritten to six. That rewrite belongs to the exam the driver lays over that path; the BASE file still passes unchanged (its short-span leg uses the two-character `ok`, still silent under MIN_SPAN = 6).",
+    "task 2: PINNED_EVERYWHERE = 8 is defined independently rather than reusing WIDTH_THRESHOLD = 8, which sits in the width region a sibling task is editing in parallel; its comment cites the width line as the precedent without depending on the constant."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2 (`Pinned-elsewhere skips the spans that pin nothing`) \u2014 style regression in its own Files-block file: `skills/ultrapowers/scripts/compile_plan.py:3196-3198` leaves only ONE blank line between the end of `_species_pinned_elsewhere` (`return lines`) and `def _clip_run(...)`, where every other top-level definition in the module is separated by two (compare `_clip_run`/`_species_line` at 3202-3205 and `_species_wide_files`/`_species_wide_contract` at 3421-3424). Nothing in the suite enforces PEP 8 here, so it does not fail the task's Machine clauses M1-M5 or the Proof legs \u2014 the species' behaviour, line text and `_species_line` shape are all correct. Worth a follow-up tidy, not a merge stop."
+    }
+  ],
+  "blockedWaves": []
+}
