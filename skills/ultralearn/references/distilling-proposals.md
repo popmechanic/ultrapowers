@@ -116,35 +116,47 @@ and what currently blocks it. Ranking it last is fine; omitting it is not.
 - `runIds` (string[]) — the run IDs whose findings motivate this proposal.
 - `lenses` (string[]) — which ledger lenses (friction | routing | operator | cost | frontier) the evidence comes from.
 
-## The trim review (spec approval — every spec in this repo)
+## The spec review (spec approval — every spec in this repo)
 
 Before any spec is presented for operator review, dispatch **one**
 fresh-context subagent — the seal-author independence model. Its inputs are
-ONLY: the spec text, the originating proposal/issue text, and this file.
+only: the spec text, the originating proposal/issue text, and this file.
 Never the authoring conversation.
 
-Its mandate, three parts:
+Its mandate, in this order:
 
-1. **Propose the trimmed version** — for each design element: could it be
-   deleted, narrowed, or merged with what exists, without losing the claimed
-   value? Where useful, also flag under-specification (an authority-granting
-   or periphery-touching spec can fail by being too thin).
-2. **Reconcile scope** — did the design grow beyond the originating
-   proposal's claimed `complexityEffect`/`netConceptDelta`? Name every
-   expansion.
-3. **Grade `netConceptDelta` itself** — the author never grades their own
-   design.
+1. **Hunt under-specification** — read the spec as the implementer who has
+   to build it, and name every place it is too thin to build from. Four
+   shapes recur: an ambiguous rule an implementation cannot build as written
+   (two readings, both defensible); missing refusal or failure semantics
+   (what the feature does when its input is bad or its precondition is
+   false); unstated migration behaviour for the artifacts that already
+   exist; and authority granted without an enforcement point (the spec says
+   who decides, and nothing ever asks).
+2. **Reconcile scope against the decision records** — the originating
+   proposal or issue, and the operator decisions recorded in `CLAUDE.md`.
+   Name every expansion past the proposal's claimed
+   `complexityEffect`/`netConceptDelta`. Flag any design decision that
+   exists only in the authoring conversation and in no record. Name any
+   contradiction between the spec and those records.
+3. **Grade `netConceptDelta`** — the author never grades their own design.
+
+Trim proposals are welcome but not the mandate: where a design element could
+be deleted, narrowed, or merged with what exists without losing its claimed
+value, say so, ranked below the findings above.
 
 Bounded: one dispatch, no loops, no fix authority. Give the reviewer the
 relevant code files when the spec changes code — the strongest catches come
 from reviewers grounded in what exists.
 
-The spec then carries a `## Trim review` section: the author's compact
+The spec then carries a `## Spec review` section: the author's compact
 Adds/Removes disclosure (input to the reviewer, not a verdict), the
-reviewer's verdicts and grade, and an **adopt-or-answer** entry for every
-trim — rejections visible with reasons; the operator adjudicates. A
+reviewer's findings and grade, and an **adopt-or-answer** entry for every
+finding — rejections visible with reasons; the operator adjudicates. A
 no-findings review is recorded as such and the spec proceeds: the check is
-advisory to the operator, never a false-red gate.
+advisory to the operator, never a false-red gate. Historical specs carry
+`## Trim review` sections under this brief's former name, and an old spec's
+section resolves against this one.
 
 ## The adopted-proposal retrospective (every distill — the cluster-died check)
 
