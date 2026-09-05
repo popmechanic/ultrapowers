@@ -1,0 +1,540 @@
+{
+  "ok": true,
+  "stamp": "run-25",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-25"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "8 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The run directory is the only receipt",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`gate_receipt_path()`",
+            "`approve_receipt_path()`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The PR closes what the plan names, and links the tags",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`plan_closes()`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "No subscription, no run",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`log_auth_status()`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The record is two tags",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`record_tags()`"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The lobby reads tags",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/lobby.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`planTagFor(run) -> string`",
+            "`evidenceTagFor(run) -> string`",
+            "`runOfBranch(ref) -> number | null`",
+            "`highestRunOnTarget(exec, repoDir) -> Promise<number>`"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The harvester reads the tag",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/scripts/harvest_fleet_runs.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`evidence_tag(run) -> str`",
+            "`fetch_evidence(target, run, dest) -> Path`"
+          ]
+        }
+      },
+      {
+        "id": "7",
+        "title": "`fleet/retire.mjs`, the one-time sweep",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "fleet/retire.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`retire({ argv, exec }) -> Promise<{ retired: number[], kept: number[], skipped: string[] }>`"
+          ]
+        }
+      },
+      {
+        "id": "8",
+        "title": "The contract and the runbook say the record is two tags",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "tests/test_docs_agree_with_code.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The run directory is the only receipt",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_edges.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`gate_receipt_path()`",
+              "`approve_receipt_path()`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_edges.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_edges.mjs",
+          "proofRuns": [
+            "! grep -n 'fleet-receipts' fleet/sandbox-boot.sh fleet/tests/_sandbox_boot_helpers.mjs",
+            "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The PR closes what the plan names, and links the tags",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`plan_closes()`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "No subscription, no run",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_edges.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`log_auth_status()`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_edges.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_edges.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The record is two tags",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_record.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`record_tags()`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_record.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_record.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_record.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "The lobby reads tags",
+          "files": [
+            "fleet/lobby.mjs",
+            "fleet/tests/test_lobby.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`planTagFor(run) -> string`",
+              "`evidenceTagFor(run) -> string`",
+              "`runOfBranch(ref) -> number | null`",
+              "`highestRunOnTarget(exec, repoDir) -> Promise<number>`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/lobby.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_lobby.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_lobby.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_lobby.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "6",
+          "title": "The harvester reads the tag",
+          "files": [
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "tests/test_harvest_fleet_runs.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`evidence_tag(run) -> str`",
+              "`fetch_evidence(target, run, dest) -> Path`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultralearn/scripts/harvest_fleet_runs.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_harvest_fleet_runs.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_harvest_fleet_runs.py",
+          "proofRuns": [
+            "python3 skills/ultralearn/scripts/harvest_fleet_runs.py --help | grep -q 'ultra/evidence/run-'",
+            "python3 -m pytest tests/test_harvest_fleet_runs.py tests/test_harvest_evidence.py -q"
+          ]
+        },
+        {
+          "id": "7",
+          "title": "`fleet/retire.mjs`, the one-time sweep",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "fleet/retire.mjs",
+            "fleet/tests/test_retire.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`retire({ argv, exec }) -> Promise<{ retired: number[], kept: number[], skipped: string[] }>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "fleet/retire.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_retire.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_retire.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_retire.mjs | grep -q 'ALL TESTS PASSED'",
+            "node --check fleet/retire.mjs && grep -q 'node fleet/retire.mjs --target' fleet/RUNBOOK.md"
+          ]
+        },
+        {
+          "id": "8",
+          "title": "The contract and the runbook say the record is two tags",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*The two tags/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ultra/plan/run-<N>.*ultra/evidence/run-<N>.*ultra/plan-run-<N>.*ultra/evidence-run-<N>.*deleted.*after.*verified'",
+            "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'branches.*tags' && grep -q 'ultra/{plan,evidence}/run-<N>' fleet/CONTRACT.md",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status.json/p' fleet/CONTRACT.md | grep '^  - merge:\\|^  - record:' | tr '\\n' ' ' | grep -q '^  - merge:.*  - record:.*ultra/plan/run-<N>.*ultra/evidence/run-<N>.*delet'",
+            "sed -n '/^\\*\\*Watch\\.\\*\\*/,/^\\*\\*The PR\\.\\*\\*/p' fleet/RUNBOOK.md | grep -q 'status.json?ref=ultra/evidence/run-<N>' && ! grep -q 'ref=ultra/evidence-run-' fleet/RUNBOOK.md fleet/CONTRACT.md",
+            "grep -q 'evidence-run-<N>. \u2014 the run' fleet/CONTRACT.md && grep -q 'present when the engine wrote them' fleet/CONTRACT.md && grep -q 'claude-version.txt' fleet/CONTRACT.md && grep -q 'unless the verdict is PASS or' fleet/CONTRACT.md",
+            "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q 'def test_.*two_tags' tests/test_docs_agree_with_code.py && grep -q 'def test_.*evidence_tag' tests/test_docs_agree_with_code.py && python3 -m pytest tests/test_docs_agree_with_code.py -q",
+            "bash -c 'cp fleet/CONTRACT.md /tmp/contract-$$.bak && trap \"mv /tmp/contract-$$.bak fleet/CONTRACT.md\" EXIT && sed -i.orig \"s#ultra/evidence/run-<N>#ultra/evidence-run-<N>#g\" fleet/CONTRACT.md && rm -f fleet/CONTRACT.md.orig && ! python3 -m pytest tests/test_docs_agree_with_code.py -q -k two_tags'",
+            "bash -c 'cp fleet/RUNBOOK.md /tmp/runbook-$$.bak && trap \"mv /tmp/runbook-$$.bak fleet/RUNBOOK.md\" EXIT && sed -i.orig \"s#status.json?ref=ultra/evidence/run-<N>#status.json?ref=ultra/evidence-run-<N>#\" fleet/RUNBOOK.md && rm -f fleet/RUNBOOK.md.orig && grep -q \"ref=ultra/evidence-run-<N>\" fleet/RUNBOOK.md && ! python3 -m pytest tests/test_docs_agree_with_code.py -q -k evidence_tag'",
+            "! grep -n 'cannot hold' fleet/RUNBOOK.md fleet/CONTRACT.md",
+            "! grep -n 'how many fit' fleet/RUNBOOK.md fleet/CONTRACT.md",
+            "! grep -n 'how many runs' fleet/RUNBOOK.md fleet/CONTRACT.md",
+            "sed -n '/^\\*\\*2\\. .capacity/,/^\\*\\*3\\. .claude/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'billing plan --json.*fleet.json.*report' && sed -n '/^## Capacity/,/^## Trust/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q '.capacity. doctor row.*report.*.cpu.' && grep '^  | .capacity. |' fleet/CONTRACT.md | grep -q 'report'",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "8 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The two tags are spelled `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`; the three branches\n  keep their BASE spellings `ultra/plan-run-<N>`, `ultra/integration-run-<N>`,\n  `ultra/evidence-run-<N>`. No other ref shape is introduced anywhere.\n- The status page keeps exactly its BASE cells (`run`, `state`, `phase`, `pr`, `prAuthor`,\n  `merged`, `branch`, `vm`, `startedAt`, `updatedAt`, `error`) and its BASE state vocabulary; no\n  task adds a cell or a state.\n- Amendment 10 holds: every `git` and every GitHub call is a script's, never a model's, and the\n  sandbox reaches GitHub only through `fleet_git`/`fleet_curl` against `github.int.exe.xyz`; the\n  laptop tools reach `git`/`gh` only through the `exec` seam so the sims stub them.\n- No file outside a task's own Files block is edited \u2014 in particular not `fleet/launch.mjs`,\n  `fleet/janitor.mjs`, `fleet/doctor.mjs`, `skills/ultrapowers/SKILL.md`, `README.md`,\n  `tests/test_harvest_evidence.py` or `fleet/tests/test_janitor*.mjs`; a pin in one of those\n  files is kept green by the shape of the change, not by editing the pin.\n- No sentence of a document is matched against itself: a documents claim proves itself by a\n  scoped `Run:` command over the operative words.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      },
+      {
+        "cmd": "node --check fleet/lobby.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-25/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-25/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-25/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-25/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

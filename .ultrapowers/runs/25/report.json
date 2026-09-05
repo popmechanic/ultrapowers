@@ -1,0 +1,459 @@
+{
+  "integrationBranch": "ultra/integration-run-25",
+  "baseSha": "e04154b702407ac1efabaa22db6e21eab706a5f1",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3c6e5e81e39f517cc95e5bbb5ccea1cf449e48b9",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: M4 claims \"the green path of every sandbox-boot sim is green with the run directory as the only receipt,\" but the Proof's `Run:` bullets exercise only `fleet/tests/test_sandbox_boot_edges.mjs` and `fleet/tests/test_sandbox_boot.mjs`. `fleet/tests/test_sandbox_boot_approved.mjs` and `fleet/tests/test_sandbox_boot_approval_evidence.mjs` splice their own snippets into the shared `systemd-run` stub this diff edits (`fleet/tests/_sandbox_boot_helpers.mjs:253-276`), and `test_sandbox_boot_approval_evidence.mjs:188` asserts the collected `<evidence>/\u2026/gate-receipt.json` exists \u2014 which now depends on `gate_receipt_path()` finding the stub's receipt in the run directory. Static reading says they hold: the splice anchor `exit ${STUB_ENGINE_CODE:-0}` and the `$run_dir` variable are both untouched, both sims already write their approve receipts into `target/.claude/ultrapowers/run-run-7/`, and no test file other than the two edited ones names `fleet-receipts`. What would settle it: `node fleet/tests/test_sandbox_boot_approved.mjs` and `node fleet/tests/test_sandbox_boot_approval_evidence.mjs` (and the remaining `fleet/tests/test_sandbox_boot_*.mjs` sims) exiting 0 \u2014 which the stated acceptance, \"suite \u2014 the committed suite is the verification,\" will cover at the merge gate.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b8e1a0457294699af0f03f7897312782f909d81c",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: cross-task dependency. The card now links `https://github.com/<owner>/<repo>/blob/ultra/plan/run-<N>/\u2026` and `\u2026/tree/ultra/evidence/run-<N>/\u2026` (fleet/sandbox-boot.sh render_card), but this task creates neither tag \u2014 task 4 (\"The record is two tags\") is the one that cuts `ultra/plan/run-<N>` and `ultra/evidence/run-<N>` at publish. Nothing in this diff can settle that the links resolve on a real run; M4 as written only pins the link strings, and the exam only checks the strings. What would settle it: task 4 landing on the same integration branch, plus a sim asserting the boot pushes both tags before the PR is posted. This is declared in the task's own Context, so it is not a defect in this submission \u2014 recorded so the operator does not merge task 2 without task 4.; Stale test name inside this task's own exam file. `fleet/tests/test_sandbox_boot.mjs:330` is still named \"the PR body links the evidence branch and the plan branch, and names the plan blob  [M3 / leg (e)]\", but after this diff `EVIDENCE_LINK`/`PLAN_LINK` are the two tag paths (`ultra/evidence/run-7`, `ultra/plan/run-7`), so the test now pins tag links, not branch links. The name misdescribes what it asserts and will mislead the next reader of the exam; the file's header docstring (lines 339-342) is still accurate, since the three branches do still exist. Suggested one-line fix, in this task's own FILES: rename to \"the PR body links the evidence tag and the plan tag, and names the plan blob  [M3 / leg (e)]\". Nothing in the task's Proof requires the old wording, and no other file matches that string.; unverified: cross-task claim. The card now emits `https://github.com/<repo>/tree/ultra/evidence/run-<N>/\u2026` and `\u2026/blob/ultra/plan/run-<N>/\u2026`, but nothing in this diff creates those two refs \u2014 the Context states they are \"the record another task of this plan creates at publish\" (task 4, \"The record is two tags\"). This task's M4 is only about the two link strings and the exam settles that, so it is not blocking and not a missing dependency edge (`fleet/sandbox-boot.sh` is present at BASE and the criterion is satisfiable from it). What would settle it: task 4 landing in the same merge, so `ultra/plan/run-<N>` and `ultra/evidence/run-<N>` exist when the PR body is read; until then a merged run's card links resolve to 404. Recorded for the operator, not for a fix round.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "157374ba6d2ff031781dc91bda874b46df667d40",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "bec6daa187dcca0c381d60bf309d1b1346d5e147",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: deleting `refs/heads/ultra/plan-run-<N>` and `refs/heads/ultra/evidence-run-<N>` at publish blinds `fleet/janitor.mjs`, and no task of this plan repairs it. The janitor reads a finished run's state at `repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=${evidenceBranchFor(run)}` (fleet/janitor.mjs:96) and, when that read answers nothing, falls back to `repos/<target>/branches/${planBranchFor(run)}` for the run's age (fleet/janitor.mjs:107-112). After this diff both refs are gone the moment the run reaches `done`/`parked`, so `readEvidence` returns null, `planCommittedAt` returns null, and the loop hits the bare `continue` at fleet/janitor.mjs:170 \u2014 the VM is neither reaped (`REAPABLE_STATES` is never reached) nor reported `stale`. Every green run's box leaks until an operator removes it by hand. The fix is in `fleet/janitor.mjs` (read `ultra/evidence/run-<N>` / `ultra/plan/run-<N>` the way tasks 5 and 6 teach the lobby and the harvester), which is outside this task's FILES and is named in the GLOBAL CONSTRAINTS as a file no task may edit \u2014 hence `plan`, and hence minor rather than blocking: nothing inside this tree answers it. The gate should decide whether the plan needs a janitor task before this lands on a target that the janitor actually sweeps.; Stale in-file documentation. `fleet/sandbox-boot.sh`'s header banner (BASE lines 30\u201337, untouched by this diff) still presents the three branches as the run's durable artifacts \u2014 \"`ultra/evidence-run-<N>` is this script's \u2014 one commit per transition, parented on the plan commit, never merged, linked from the PR body\" \u2014 with no hint that `record_tags` now deletes `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` at publish once the two tags verify. The new function carries an excellent comment of its own, but a reader of the top of the file gets a picture the file no longer implements. The fix is one clause in this task's own FILES; it changes no behavior and no pin, so it is advisory. (Not raised against `fleet/CONTRACT.md` / `fleet/RUNBOOK.md`, which sibling task 8 owns.); unverified: the stated acceptance is \"suite \u2014 the committed suite is the verification\", but the evidence in hand covers only the two Proof `Run:` commands (`fleet/tests/test_sandbox_boot_record.mjs`, `fleet/tests/test_sandbox_boot.mjs`, both exit 0) plus `bash -n`. `record_tags` adds two pushes, one `ls-remote` and one `--delete` push to the same green path that `test_sandbox_boot_merge.mjs`, `test_sandbox_boot_selfmerge.mjs`, `test_sandbox_boot_approved.mjs`, `test_sandbox_boot_approval_evidence.mjs`, `test_sandbox_boot_effort.mjs` and `test_sandbox_boot_edges.mjs` also drive through the shared rig. I read all six and found nothing that the new calls break: `isEvidencePush` (`_sandbox_boot_helpers.mjs:419`) pins the exact word `HEAD:refs/heads/ultra/evidence-run-7`, which neither the `HEAD:refs/tags/...` push nor the bare-ref deletion carries, so `evidenceDisciplineProblem` and the `no push to the evidence branch from any other directory` pin stay green; the `gitLog(ctx).length` comparisons in `test_sandbox_boot_edges.mjs:218/230/265` are before/after within the same patched tree; and `test_docs_agree_with_code.py`'s RETIRED list is documents-only. Running the remaining `fleet/tests/test_sandbox_boot*.mjs` sims on the patched tree would settle it \u2014 I could not, since this clone is at BASE and I may not modify it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "0da3e6a68ef54575a4afa1ffb35253c2a47ff31b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the two-pattern `ls-remote` is exercised in the exam only through a recording seam (`fleet/tests/test_lobby.mjs` task-5 (e)) and through `fleet/tests/test_launch_reaps.mjs`, which matches on `argv.includes('refs/heads/ultra/*')` and so is blind to the added element. The launch sims that run the launcher's own `ls-remote` against a real bare origin (`fleet/tests/test_launch.mjs` localRemote at fleet/tests/test_launch.mjs:90-100, and the same rule in test_launch_toolchain.mjs / test_launch_hold.mjs / test_launch_effort.mjs / test_launch_engine_source.mjs) are not among the Proof's `Run:` commands and carry no evidence here. Real `git ls-remote` accepts several patterns, so this is expected to hold; `node fleet/tests/test_launch.mjs` would settle it. Nothing in this task's own FILES can carry the check, so the actor is the plan.; Prose outside this task's FILES now under-describes the code: `fleet/RUNBOOK.md:11` and `:142`, `fleet/CONTRACT.md:11` and `:54`, and `CLAUDE.md:70` all say the launcher \"computes N from the target's own `ultra/*-run-*` branches\", which after this diff is the branches *and* the two tag shapes. The diff correctly leaves those files alone (Global Constraint: no file outside a task's own Files block is edited; `fleet/RUNBOOK.md` and `fleet/CONTRACT.md` are sibling task 8's, and `CLAUDE.md` is in no task's FILES), so the fix lies outside this task \u2014 recorded so the operator can route the sentence update. No `Check:` was run over these sentences.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "0c120030bcff7156a8b09208f601862add0aee0a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "Docstring staleness inside this task's own Files: `_gh_api` in skills/ultralearn/scripts/harvest_fleet_runs.py still reads \"an `HTTP 404` is an *answer*: that path is not on the branch\", but after this change the same helper is also used for tag reads (`?ref=ultra/evidence/run-<N>`), where a 404 means the path is not on the *tag*. `fetch_evidence`'s own prose was updated to say \"not on the ref\"; this one call site of the same idea was not. No behaviour or exam leg is affected \u2014 advisory only.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "7",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "EXAM EDITED \u2014 fleet/tests/test_retire.mjs. Exactly one hunk of the peer-written exam (patches/exam-7.patch) was changed by the submission: the `sweep()` helper. The peer wrote a doc comment ending \"so the legs grade the report, not the channel\" and the body `let printed = buffer.split('\\n')...` followed by `if (printed.length === 0 && Array.isArray(result?.lines)) printed = result.lines.map(String)`. The submission replaces that with `const printed = ...` plus `assert.ok(printed.length > 0, '[M7] retire prints its lines on stdout, as it decides them')` and rewrites the comment to say the lines are \"read off stdout, never off the returned `lines` array\". Nothing else in the 364-line file differs from the peer's 363 lines (the +1 is the extra comment line). Which exception applies: none. The peer's fallback was loose, not wrong \u2014 it is not a pin no correct implementation could satisfy, not a bad import, not a missing fixture; a `retire` that prints its lines (which this one does, via `say()`) passes the peer's version unchanged, and the exam's other 60-odd assertions are untouched. The edit runs against the implementer's own interest (it removes an escape hatch this implementation returns `lines` for and does not need), so it is not a grading tune-up \u2014 but rule 8 is about who owns the grading, not about intent, and the exam is the submission's grading. Restore the peer's helper verbatim; the exam stays green either way. If the operator judges the strengthening worth keeping, that is a plan-level call to make explicitly, not an implementer edit to the graded file.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "examEdited": [
+        "fleet/tests/test_retire.mjs"
+      ]
+    },
+    {
+      "task": "8",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "0a0e97e0e425214b57f262e1269ae4110146d31f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-25/patches/task-8.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: cross-task behavior. The contract's new `  - record:` sub-bullet and `**The two tags**` bullet, and the RUNBOOK's rewritten `## The shape` / `## Rollback`, assert runtime behavior implemented in sibling-owned files \u2014 the tag-and-delete step in `fleet/sandbox-boot.sh` (siblings 1\u20134), the `claude-version.txt` write before the engine starts (sibling 4, `fleet/tests/test_sandbox_boot_record.mjs`), the launcher reading tags for N (`fleet/launch.mjs`, out of scope), and `fleet/retire.mjs` (sibling 7). This diff is documentation plus doc-pins only, so nothing here establishes that the described behavior exists. The four sandbox-boot sims that exited 0 in Run evidence (`approval_evidence`, `approved`, `merge`, `selfmerge`) pin the surviving doc sentences, not the record step. What would settle it: sibling tasks 1\u20134 and 7 landing, and `node fleet/tests/test_sandbox_boot_record.mjs` plus `node fleet/tests/test_retire.mjs` passing on the integration tree. No action needed inside this task's FILES \u2014 recorded for the run report.; Line-wrapping drift in the two documents, which otherwise wrap prose and bullets at roughly 100 columns. `fleet/CONTRACT.md`'s new `  - record:` sub-bullet puts ~300 characters on one physical line (its continuation lines 2\u20133 do wrap), and the Launch-order bullet's rewritten `ultra/*-run-*` branches / `ultra/{plan,evidence}/run-*` tags line now runs to ~150. In the CONTRACT case the single long line is forced by this task's own Proof leg (`grep '^  - merge:\\|^  - record:'` selects only the `  - <word>:` lines, so a wrapped tag literal would be dropped), so it is a plan-shaped consequence rather than carelessness; the Launch-order line has no such excuse and can be re-wrapped. `fleet/RUNBOOK.md`'s `## The shape` paragraph is also raggedly wrapped (a 30-character line carrying only ``ultra/{plan,evidence}/run-<N>` tags,`). Cosmetic; nothing depends on it.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-25/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1627 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n......................................................................... [ 92%]\n........................................................................ [ 97%]\n..........................................                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1627 passed, 5 warnings in 149.30s (0:02:29) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "! grep -n 'fleet-receipts' fleet/sandbox-boot.sh fleet/tests/_sandbox_boot_helpers.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_record.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "node fleet/tests/test_lobby.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "python3 skills/ultralearn/scripts/harvest_fleet_runs.py --help | grep -q 'ultra/evidence/run-'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "python3 -m pytest tests/test_harvest_fleet_runs.py tests/test_harvest_evidence.py -q",
+      "exit": 0,
+      "stdout": ".....................................................                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n53 passed, 5 warnings in 3.41s\n"
+    },
+    {
+      "task": "8",
+      "cmd": "sed -n '/^- \\*\\*The two tags/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ultra/plan/run-<N>.*ultra/evidence/run-<N>.*ultra/plan-run-<N>.*ultra/evidence-run-<N>.*deleted.*after.*verified'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'branches.*tags' && grep -q 'ultra/{plan,evidence}/run-<N>' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status.json/p' fleet/CONTRACT.md | grep '^  - merge:\\|^  - record:' | tr '\\n' ' ' | grep -q '^  - merge:.*  - record:.*ultra/plan/run-<N>.*ultra/evidence/run-<N>.*delet'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "sed -n '/^\\*\\*Watch\\.\\*\\*/,/^\\*\\*The PR\\.\\*\\*/p' fleet/RUNBOOK.md | grep -q 'status.json?ref=ultra/evidence/run-<N>' && ! grep -q 'ref=ultra/evidence-run-' fleet/RUNBOOK.md fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "grep -q 'evidence-run-<N>. \u2014 the run' fleet/CONTRACT.md && grep -q 'present when the engine wrote them' fleet/CONTRACT.md && grep -q 'claude-version.txt' fleet/CONTRACT.md && grep -q 'unless the verdict is PASS or' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "grep -q 'def test_.*two_tags' tests/test_docs_agree_with_code.py && grep -q 'def test_.*evidence_tag' tests/test_docs_agree_with_code.py && python3 -m pytest tests/test_docs_agree_with_code.py -q",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    },
+    {
+      "task": "8",
+      "cmd": "bash -c 'cp fleet/CONTRACT.md /tmp/contract-$$.bak && trap \"mv /tmp/contract-$$.bak fleet/CONTRACT.md\" EXIT && sed -i.orig \"s#ultra/evidence/run-<N>#ultra/evidence-run-<N>#g\" fleet/CONTRACT.md && rm -f fleet/CONTRACT.md.orig && ! python3 -m pytest tests/test_docs_agree_with_code.py -q -k two_tags'",
+      "exit": 0,
+      "stdout": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_____________ test_the_contract_declares_the_two_tags_a_run_leaves _____________\n\n    def test_the_contract_declares_the_two_tags_a_run_leaves():\n        bullet = two_tags_bullet()\n        missing = [name for name in TAG_LITERALS if f\"`{name}`\" not in bullet]\n>       assert not missing, (\n            f\"{CONTRACT}'s `**The two tags` bullet does not declare \"\n            + \", \".join(missing)\n            + \" \u2014 a run's record is those two tags, and every document teaches them \"\n            \"from here\\nbullet:\\n\" + bullet\n        )\nE       AssertionError: /home/exedev/target/.claude/ultrapowers/run-run-25/clones/integration/fleet/CONTRACT.md's `**The two tags` bullet does not declare ultra/evidence/run-<N> \u2014 a run's record is those two tags, and every document teaches them from here\nE         bullet:\nE         - **The two tags** \u2014 a run's record, and the only refs that outlive it. At publish the sandbox tags\nE           the plan commit `ultra/plan/run-<N>` and the final evidence commit `ultra/evidence-run-<N>`, and the\nE           branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both\nE           tags are verified against the remote with `git ls-remote --tags`. A tag that does not verify keeps\nE           both branches; a run that ends `failed` keeps them for the one-time sweep\nE           (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The record is\nE           read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>` and\nE           `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.\nE         \nE       assert not ['ultra/evidence/run-<N>']\n\ntests/test_docs_agree_with_code.py:325: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_docs_agree_with_code.py::test_the_contract_declares_the_two_tags_a_run_leaves\n1 failed, 22 deselected in 0.01s\n"
+    },
+    {
+      "task": "8",
+      "cmd": "bash -c 'cp fleet/RUNBOOK.md /tmp/runbook-$$.bak && trap \"mv /tmp/runbook-$$.bak fleet/RUNBOOK.md\" EXIT && sed -i.orig \"s#status.json?ref=ultra/evidence/run-<N>#status.json?ref=ultra/evidence-run-<N>#\" fleet/RUNBOOK.md && rm -f fleet/RUNBOOK.md.orig && grep -q \"ref=ultra/evidence-run-<N>\" fleet/RUNBOOK.md && ! python3 -m pytest tests/test_docs_agree_with_code.py -q -k evidence_tag'",
+      "exit": 0,
+      "stdout": "F                                                                        [100%]\n=================================== FAILURES ===================================\n______ test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag _______\n\n    def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag():\n        refs = refs_named(RUNBOOK) + refs_named(CONTRACT)\n        branch = [f\"{name}: ?ref={ref}\" for name, ref in refs\n                  if ref.startswith(\"ultra/evidence-run-\")]\n>       assert not branch, (\n            \"a `?ref=` still reads a run's record off its evidence branch, which the \"\n            \"record step deletes once the tag verifies: \" + \", \".join(branch)\n        )\nE       AssertionError: a `?ref=` still reads a run's record off its evidence branch, which the record step deletes once the tag verifies: RUNBOOK.md: ?ref=ultra/evidence-run-<N>\nE       assert not ['RUNBOOK.md: ?ref=ultra/evidence-run-<N>']\n\ntests/test_docs_agree_with_code.py:351: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_docs_agree_with_code.py::test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag\n1 failed, 22 deselected in 0.01s\n"
+    },
+    {
+      "task": "8",
+      "cmd": "! grep -n 'cannot hold' fleet/RUNBOOK.md fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "! grep -n 'how many fit' fleet/RUNBOOK.md fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "! grep -n 'how many runs' fleet/RUNBOOK.md fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "sed -n '/^\\*\\*2\\. .capacity/,/^\\*\\*3\\. .claude/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'billing plan --json.*fleet.json.*report' && sed -n '/^## Capacity/,/^## Trust/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q '.capacity. doctor row.*report.*.cpu.' && grep '^  | .capacity. |' fleet/CONTRACT.md | grep -q 'report'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.07s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/lobby.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 2217522,
+    "blockingFindings": 2,
+    "blockingPerReviewerMinute": 0.05411445748903506,
+    "pairRounds": 6,
+    "r2MarginalBlocking": 1
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n.......................................s................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n...........................................                              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1626 passed, 1 skipped, 5 warnings in 148.79s (0:02:28) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 137.54s (0:02:17) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "f17b977587a0a55508d1caced58d3dc7a10d92a3",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "8"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-25/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-25/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.032,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 7,
+    "tasks_planned": 8,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "7",
+      "files": [
+        "fleet/RUNBOOK.md",
+        "fleet/retire.mjs",
+        "fleet/tests/test_retire.mjs"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 4 \u2014 `record_tags()` in `fleet/sandbox-boot.sh:1041-1074`: the two refspec tag pushes, the `ls-remote --tags` verification and the single two-ref branch deletion",
+      "reason": "external",
+      "why": "Every leg runs against the `git` stub in `fleet/tests/_sandbox_boot_helpers.mjs` (a canned `ls-remote --tags` arm and a `push` that always exits 0), so what is proven is the argv shape and the ordering, not that `<sha>:refs/tags/\u2026` from the target clone and `HEAD:refs/tags/\u2026` from the detached evidence worktree are accepted by the real GitHub edge at `github.int.exe.xyz`, nor that the deletion push succeeds under the run's `--act-as-user` integration. The plan itself schedules this as a post-merge smoke run ('a smoke run proves a fresh run leaves two tags and no branch')."
+    },
+    {
+      "deliverable": "Task 2 \u2014 the `Closes #N` lines `plan_closes()` appends to the PR body (`fleet/sandbox-boot.sh:745-758`, `render_card` line 793)",
+      "reason": "external",
+      "why": "The sims assert the posted body's last lines and their order against the stubbed PR POST. The Claim's operative clause \u2014 'so the self-merge closes them' \u2014 depends on GitHub resolving the body's closing keywords when the sandbox squash-merges the PR, which no test in this environment can exercise."
+    },
+    {
+      "deliverable": "Task 6 \u2014 the branch-then-tag fallback in `fetch_evidence` (`skills/ultralearn/scripts/harvest_fleet_runs.py:164-201`)",
+      "reason": "external",
+      "why": "Verified against a `gh` stub answering from a JSON map keyed by the `repos/\u2026` argv. That `?ref=` resolves a tag and a branch alike on the real contents API \u2014 the premise the whole fallback rests on \u2014 is assumed from GitHub's documented behavior, not executed here."
+    }
+  ],
+  "judgmentCalls": [
+    "task 7: examiner: (g) \u2014 the `would` check on the `run 5:` skip line \u2014 Leg (g) says every `run N:` line contains `would`, but M6/M7 scope per-run lines to candidates and the Context spells the half-pair line as `skip \u2014 lone <ref>` with no `would`. The exam asserts `would` on the two candidate lines (3, 12) and leaves the run-5 skip line unasserted, so it is green under either reading; the rest of leg (g) (listing and pulls reads happen, no gh call carries `-X`, ascending order) is encoded as written.",
+    "task 7: the fix round edited the exam \u2014 fleet/tests/test_retire.mjs no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Context literal implemented two ways \u2014 the PR card's plan and evidence links. `fleet/sandbox-boot.sh:787-791` (Task 2, Claim/M4) writes the card's links at the TAG paths: `https://github.com/<repo>/tree/ultra/evidence/run-<N>/.ultrapowers/runs/<N>/` and `https://github.com/<repo>/blob/ultra/plan/run-<N>/.ultrapowers/plan.md`, and `fleet/tests/_sandbox_boot_helpers.mjs:62-63` pins exactly those. But `fleet/CONTRACT.md:158-159` \u2014 Task 8's own Files entry, and the document Task 8's Claim promises 'say[s] a run's record is the two tags, that the plan and evidence branches are gone at publish' \u2014 still states: 'The body links the plan blob (`.ultrapowers/plan.md` at `ultra/plan-run-<N>`) and the evidence tree (`.ultrapowers/runs/<N>/` at `ultra/evidence-run-<N>`)'. That is the branch spelling for both links, and it is contradicted seven lines earlier by the same file's `**The two tags**` bullet (`fleet/CONTRACT.md:51-58`), which says those two branches are deleted at publish once the tags verify. The contract is the stated authority for every literal (`fleet/RUNBOOK.md:5-6`), so as written it tells a reader the PR body points at refs the same document says no longer exist. Neither Task 2's nor Task 8's Proof exercises this sentence: Task 2's legs read `prPosts(ctx)[0].body`, and Task 8's Run: greps scope to the `**The two tags`, `**Run id:**`, `**Boot script`/`  - record:` and `?ref=` slots, so this sentence is matched by nothing. Fix is one sentence in `fleet/CONTRACT.md:158-159`.",
+      "file": "fleet/CONTRACT.md",
+      "line": 158
+    },
+    {
+      "severity": "minor",
+      "detail": "`fleet/CONTRACT.md:55-56` names a script that is not on the tree: 'a run that ends `failed` keeps them for the one-time sweep (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target)', and `fleet/RUNBOOK.md:442-443` defers to it ('the one-time retire sweep is what clears those \u2026 `fleet/CONTRACT.md` names the script it runs from'). Task 7 (`Create: fleet/retire.mjs`, `Test: fleet/tests/test_retire.mjs`) did not land \u2014 neither file exists, and the INTEGRATED RUN EVIDENCE block carries neither of Task 7's Run commands. The missing deliverable itself is already accounted for; what is not is the residual: an operator following the contract types a command that cannot resolve, and every branch pair the record step declines to delete (a `failed` run, a tag that does not verify, and every pre-existing pair on a target) is now documented as belonging to a sweep that does not exist. The repo's own script-exists pin in `tests/test_docs_agree_with_code.py` reads `fleet/RUNBOOK.md` and not `fleet/CONTRACT.md` (Task 8's Context routed the name into the contract deliberately, expecting Task 7 to land), so the suite stays green over it.",
+      "file": "fleet/CONTRACT.md",
+      "line": 55
+    },
+    {
+      "severity": "minor",
+      "detail": "`fleet/RUNBOOK.md:152` still describes the launcher as computing 'N from the target's `ultra/*-run-*` branches' \u2014 branches only. Task 5 landed `highestRunOnTarget` reading both patterns (`fleet/lobby.mjs:487-503`, `['ls-remote', 'origin', 'refs/heads/ultra/*', 'refs/tags/ultra/*']`, M3), and the same runbook already says it correctly at `fleet/RUNBOOK.md:11-12` ('computes N from the target's `ultra/*-run-*` branches and its `ultra/{plan,evidence}/run-<N>` tags'), as does `fleet/CONTRACT.md:29-31`. So one sentence of Task 8's own file contradicts both its sibling paragraph and the code; on a target whose branches the record step has swept, that sentence describes a launcher that would reuse a run number \u2014 the precise failure Task 5's Context says the tag read exists to prevent. `fleet/RUNBOOK.md` is Task 8's Files entry; nothing in Task 8's Proof scopes over the `## Per run` paragraph.",
+      "file": "fleet/RUNBOOK.md",
+      "line": 152
+    }
+  ],
+  "blockedWaves": []
+}
