@@ -3080,6 +3080,28 @@ WIDE_FILES_ADVICE = ("run-55's 19-file task hit the worker wall clock while "
 WIDE_CONTRACT_ADVICE = "one contract per task; split along a Produces symbol"
 
 
+# The ENGINE-SELF-CHANGE species (#461). Since 0.3.5 the engine a run executes
+# is the `engine=` sha in the VM's assignment, cloned to
+# `/home/exedev/engines/<sha>` before the run starts — so a patch to one of
+# these files lands in the integration branch, never in the running process.
+# A task that writes one therefore cannot observe its own change from its own
+# run, and a Proof that claims a live-run behaviour for it is unfalsifiable
+# until the NEXT run. Like HAND_EXECUTED_RECORDS this is a short explicit list
+# plus one prefix, never a heuristic — `fleet/launch.mjs` and
+# `fleet/tests/test_run_engine.mjs` are under `fleet/` and are not the engine.
+ENGINE_PATHS = (
+    "fleet/run-engine.mjs",
+    "fleet/run-worker.mjs",
+    "fleet/run-waves.mjs",
+)
+# Every role prompt shapes the workers the same way the engine does.
+ENGINE_PATH_PREFIX = "fleet/roles/"
+ENGINE_SELF_CHANGE_ADVICE = ("shapes the workers, and the run that builds it "
+                             "runs the engine it started with — the behaviour "
+                             "is first observed by the next run; prove it with "
+                             "a sim, never a live-run claim")
+
+
 # The one TREE-reading species (#656). A clause that replaces a literal some
 # existing test already asserts is a strict-equality pin the implementer will
 # break blind — unless that test is in some task's Files, where it folds. So
@@ -3348,6 +3370,20 @@ def _species_wide_contract(task, clauses):
                           % (len(clauses), WIDE_CONTRACT_ADVICE))]
 
 
+def _is_engine_path(path):
+    return path in ENGINE_PATHS or path.startswith(ENGINE_PATH_PREFIX)
+
+
+def _species_engine_self_change(task, clauses):
+    """A task that writes an engine path or a role prompt — `Create:` plus
+    `Modify:`, never `Test:`, since reading the engine changes no worker."""
+    hits = sorted(p for p in set(task["creates"]) | set(task["modifies"])
+                  if _is_engine_path(p))
+    return [_species_line("engine-self-change", task["id"],
+                          "%s %s" % (path, ENGINE_SELF_CHANGE_ADVICE))
+            for path in hits]
+
+
 # Species order inside a task; print order overall is task-major, so every line
 # for a task prints before any line for the next.
 PROOF_SPECIES = (
@@ -3369,6 +3405,13 @@ PROOF_WIDTH_SPECIES = (
     _species_wide_contract,
 )
 
+# The FILES species read a task's declared paths rather than its width or its
+# text — same `(task, clauses)` signature, same line shape, walked from the
+# same loop, so registration here inherits the render's claims-v1 guard.
+PROOF_FILES_SPECIES = (
+    _species_engine_self_change,
+)
+
 
 def _render_proof_species(tasks, ctx):
     # `pinned-elsewhere` is the one species that reads the TREE rather than the
@@ -3388,7 +3431,7 @@ def _render_proof_species(tasks, ctx):
         runs = claims.get("proof_runs") or []
         for species in PROOF_SPECIES:
             lines.extend(species(t["id"], clauses, legs, runs))
-        for species in PROOF_WIDTH_SPECIES:
+        for species in PROOF_WIDTH_SPECIES + PROOF_FILES_SPECIES:
             lines.extend(species(t, clauses))
         lines.extend(_species_pinned_elsewhere(t["id"], clauses, base,
                                                declared, exclude))
@@ -3428,6 +3471,82 @@ def _render_check_cost(tasks, ctx):
 
 
 ADVISORY_RENDERS.append(("check-cost", _render_check_cost))
+
+
+# P7 — a leg that diffs or shows a BASE sha guards for the sha's absence, or it
+# is not a leg (#572 item 1). The driver hands a task a depth-1 clone, which
+# holds exactly one commit: `git diff d6efce4 -- fleet/x.mjs` there does not
+# report "no change", it dies "bad object". A leg written that way passes
+# nowhere and fails nowhere; it reads as verified and proves nothing. The fix
+# is in the same command — `git cat-file -e <sha>^{commit} && …` or
+# `git rev-parse --verify <sha> && …` — so the leg is skipped, not silently
+# lost, when BASE is out of reach.
+#
+# Its own render, not a `proof-species` line, for the same reason `check-cost`
+# is: a `Check:` belongs to no task and the species line shape names one. So a
+# `Check:` is read here under any grammar, exactly as a claims-v1 `Run:` is.
+SHA_UNGUARDED_ADVICE = ("%s reaches for BASE, which a depth-1 clone does not "
+                        "hold; guard it in the same command with git cat-file "
+                        "-e <sha>^{commit} or git rev-parse --verify, and skip "
+                        "the leg when the guard fails")
+
+# The verb, then any run of whitespace-separated flag tokens (`--name-only`,
+# `-1`, `--format=%H`, a bare `--`), then the operand. Only the four verbs that
+# resolve a revision are read: `git hash-object`'s sha is an OUTPUT, not a
+# lookup, so `test "$(git hash-object x)" = <40 hex>` is silent.
+SHA_VERB_OPERAND_RE = re.compile(
+    r"\bgit\s+(?:diff|show|log|cat-file)\b(?:\s+-\S*)*\s+(?!-)(\S+)")
+# The three operand shapes: a bare short-or-full sha, a `<sha>:<path>` reach
+# and a `HEAD:<path>` reach. 6 hex is not a sha and 41 hex is not one either,
+# so both bounds are closed.
+SHA_OPERAND_RES = (re.compile(r"[0-9a-f]{7,40}\Z"),
+                   re.compile(r"[0-9a-f]{7,40}:"),
+                   re.compile(r"HEAD:"))
+# Tested BEFORE the verb, because the guard itself carries the verb `cat-file`
+# and would otherwise flag itself.
+SHA_GUARDS = ("git cat-file -e", "git rev-parse --verify")
+
+
+def _unguarded_sha_operand(command):
+    """The first sha-shaped operand `command` reaches for unguarded, or None.
+
+    None when the command carries either guard anywhere in it — a
+    `git cat-file -e d6efce4^{commit} && git diff … d6efce4 …` command is one
+    command, and the guard covers the whole of it."""
+    if any(guard in command for guard in SHA_GUARDS):
+        return None
+    for m in SHA_VERB_OPERAND_RE.finditer(command):
+        operand = m.group(1)
+        if any(shape.match(operand) for shape in SHA_OPERAND_RES):
+            return operand
+    return None
+
+
+def _sha_unguarded_line(subject, command, operand):
+    return ("ADVISORY sha-unguarded: %s%s — %s"
+            % (subject, _clip_run(command), SHA_UNGUARDED_ADVICE % operand))
+
+
+def _render_sha_unguarded(tasks, ctx):
+    # Task order first, then section order — the Run: lines of every task
+    # before the first Check: line, as the two subjects are read in two passes.
+    lines = []
+    for t in tasks:
+        for cmd in (t.get("claims") or {}).get("proof_runs") or []:
+            operand = _unguarded_sha_operand(cmd)
+            if operand:
+                lines.append(_sha_unguarded_line(
+                    "task %s Run: " % t["id"], cmd, operand))
+    for check in parse_constraint_checks(ctx["plan_path"].read_text()):
+        if check["minor"]:
+            continue
+        operand = _unguarded_sha_operand(check["cmd"])
+        if operand:
+            lines.append(_sha_unguarded_line("Check: ", check["cmd"], operand))
+    return lines
+
+
+ADVISORY_RENDERS.append(("sha-unguarded", _render_sha_unguarded))
 
 
 def main(argv=None):

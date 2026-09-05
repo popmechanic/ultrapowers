@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import * as CT from '../claude-token.mjs'
 import {
-  OAUTH, INTEGRATION, REFRESH_AHEAD_MS, pkce, authorizeUrlFor, cleanCode,
+  OAUTH, INTEGRATION, REFRESH_AHEAD_MS, pkce, authorizeUrlFor, cleanCode, codeForState,
   login, refresh, status, installBearer, main
 } from '../claude-token.mjs'
 
@@ -376,5 +376,81 @@ await leg('[M4 leg (d)] main refresh/status behave as at BASE', async () => {
   await assert.rejects(() => main(['nonsense'], harness().deps), /usage: node fleet\/claude-token.mjs login/)
 })
 
+// ---- #618 item 1: the clipboard rule is pinned where it lives ---------------
+//
+// The decision recorded in #618's 2026-09-05 comment is to KEEP the difference
+// between the two splitters — `codeForState` splits on every `#` and rejects a
+// value with more than one, `cleanCode` splits on the first `#` and keeps the
+// head — and to pin that difference in a comment beside the stricter rule. So
+// M1–M3 read the two functions and M4 reads the comment; nothing here asks the
+// code to change.
+
+// The twelve lines directly above `export function codeForState`, keeping only
+// whole-line `//` comments (indentation allowed) and joining them with spaces —
+// the JS twin of the Proof's
+//   grep -B12 '^export function codeForState' fleet/claude-token.mjs
+//     | grep '^ *//' | tr '\n' ' '
+async function commentAboveCodeForState () {
+  const fs = await import('node:fs')
+  const src = fs.readFileSync(new URL('../claude-token.mjs', import.meta.url), 'utf8')
+  const lines = src.split('\n')
+  const at = lines.findIndex((l) => /^export function codeForState/.test(l))
+  assert.notEqual(at, -1, 'M4: fleet/claude-token.mjs declares `export function codeForState`')
+  return lines
+    .slice(Math.max(0, at - 12), at)
+    .filter((l) => /^ *\/\//.test(l))
+    .join(' ')
+}
+
+await leg('[clipboard-rule legs (a)(b)(c) / M1 M2 M3] codeForState rejects a value with more than one #, answers the code for code#state, and cleanCode keeps the looser first-# split', () => {
+  // leg (a) [M1]: `codeForState('code#state#extra', 'state')` returns null.
+  assert.equal(
+    codeForState('code#state#extra', 'state'), null,
+    'leg (a) [M1]: codeForState(\'code#state#extra\', \'state\') is null — more than one # is rejected, and skipping it is the safe failure'
+  )
+
+  // leg (b) [M2]: `codeForState('code#state', 'state')` returns `'code'`.
+  assert.equal(
+    codeForState('code#state', 'state'), 'code',
+    'leg (b) [M2]: codeForState(\'code#state\', \'state\') is \'code\' — this login\'s own code#state is the value the poll exchanges'
+  )
+
+  // leg (c) [M3]: `cleanCode('code#state#extra')` returns `'code'` — the looser
+  // first-`#` split the stricter rule departs from.
+  assert.equal(
+    cleanCode('code#state#extra'), 'code',
+    'leg (c) [M3]: cleanCode(\'code#state#extra\') is \'code\' — the first-# split cleanCode keeps, which is exactly what codeForState refuses'
+  )
+})
+
+await leg('[clipboard-rule M4] the whole-line // comment directly above `export function codeForState` says, in order: more than one # / rejected / safe failure', async () => {
+  const comment = await commentAboveCodeForState()
+  assert.ok(comment.length > 0, 'M4: the twelve lines above the function hold whole-line // comments')
+
+  // M4 names three phrases and their order. Each is pinned on its own first, so
+  // a miss reads as which phrase is absent, and then the order is pinned once.
+  assert.match(comment, /more than one #/, 'M4: the comment carries the phrase `more than one #` (the # bare, not backticked)')
+  assert.match(comment, /rejected/, 'M4: the comment carries the phrase `rejected`')
+  assert.match(comment, /safe failure/, 'M4: the comment carries the phrase `safe failure`')
+  assert.match(
+    comment, /more than one #.*rejected.*safe failure/,
+    'M4: the three phrases appear in this order — the value shape, that it is rejected, and the reason'
+  )
+})
+
+await leg('[global constraint] the credential tool\'s code is unchanged: with every whole-line // comment removed, fleet/claude-token.mjs hashes as it did at BASE', async () => {
+  const fs = await import('node:fs')
+  const { createHash } = await import('node:crypto')
+  const src = fs.readFileSync(new URL('../claude-token.mjs', import.meta.url), 'utf8')
+  const stripped = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')
+  assert.equal(
+    createHash('sha256').update(stripped).digest('hex'),
+    'f045d77ba90bc38229bed200dd69d4eea0e45bc42e69ac200a38a8c30b4f3a1c',
+    'the comment is added as whole lines beginning `//` and nothing else moves: any change to a code line, or a comment written as a trailing comment on one, breaks this'
+  )
+})
+
+// [M5] the file ends by printing the leg count and the sentinel; a leg that
+// threw never reaches here, so exit 0 and `ALL TESTS PASSED` travel together.
 console.log(`${legs} legs`)
 console.log('ALL TESTS PASSED')

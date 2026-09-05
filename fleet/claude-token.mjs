@@ -75,6 +75,11 @@ export const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
 // clipboard can carry a state minted milliseconds ago, and neither can a code
 // from someone else's flow — so the poll never exchanges a stray value. A value
 // with no `#`, or with a different state, answers null and is skipped.
+// A value with more than one # is rejected on the same ground: a code#state#extra
+// is not this login's code#state. Skipping it is the safe failure — the poll
+// waits on until a matching value appears or CLIPBOARD_WAIT_MS elapses, where
+// exchanging a value we cannot vouch for would spend the login on a stray code.
+// `cleanCode` keeps the looser first-`#` split, and that difference is deliberate.
 export function codeForState (pasted, state) {
   const [code, fragment, ...rest] = String(pasted).trim().split('#')
   if (rest.length || fragment === undefined) return null
