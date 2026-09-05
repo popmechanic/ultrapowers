@@ -1,0 +1,29 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "69f223304e03eb2ccafaf12e33a4d583860fc1df34f18bc27b899d6236fd08e8",
+   "verdict": "pass",
+   "reason": "Every clause of M1–M5 is falsified by a named leg at the command-issuance layer the claim speaks in (tag-first/branch-fallback ordering incl. never-on-tag-success and bare envelopes, plan-tag-then-branch aging with the six-hour boundary and no commits/ read on fallback, from/rendered line, both-ref death writes with branch-named PUTs, dry-run/unknown/argv/ssh/HOME constraints), and the four frozen-blob pins equal HEAD's blobs so the BASE sims are genuinely BASE's."
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 5,
+  "rounds": {
+   "1": {"dispatched": 1, "rejected": 1},
+   "2": {"dispatched": 1, "rejected": 1},
+   "3": {"dispatched": 1, "rejected": 1},
+   "4": {"dispatched": 1, "rejected": 1},
+   "5": {"dispatched": 1, "rejected": 1},
+   "6": {"dispatched": 1, "rejected": 0}
+  }
+ },
+ "history": [
+  {"round": 1, "task": "1", "hash": "10ec8686d8638d09a77ba2fd3dd1711261809b096ccecacddcb79a72a31c23c7", "verdict": "fail", "reason": "M2's enumeration of what counts as no tag sha had no row for an object without .object.sha, and the 7-to-64 length bound had no leg"},
+  {"round": 2, "task": "1", "hash": "76d13a4e7165dc95c05ed6948d72987c32f13ace1241acdd5c60aa5095267287", "verdict": "fail", "reason": "M4's unit read for a live page served from the tag had no leg — only branch-served live rows carried an ssh assertion"},
+  {"round": 3, "task": "1", "hash": "773894c9b1292003d494bd33eee91cb7bb9a690a932ca76a2a147b3d3af0ff3e", "verdict": "fail", "reason": "leg (d) said the only commits/ read was run 21's while run 24's three-hour age can only come from a commits/ read — the exam contradicted M2"},
+  {"round": 4, "task": "1", "hash": "e4fc55d1143d25f732aabdfca9db96f8e7ad917da4d492167250bfcd05ab4407", "verdict": "fail", "reason": "the death write was exercised only for a branch-served page, and the six-hour boundary was probed only at 7h/3h"},
+  {"round": 5, "task": "1", "hash": "7f163ccddeb452deb489def17262eededaada99699b2271c9672279ce7819133", "verdict": "fail", "reason": "M5's 'test_launch.mjs untouched' had no frozen-blob pin, and nothing pinned that test_janitor_reap_only.mjs was actually re-keyed to the tag path"},
+  {"round": 6, "task": "1", "hash": "69f223304e03eb2ccafaf12e33a4d583860fc1df34f18bc27b899d6236fd08e8", "verdict": "pass", "reason": "all clauses entailed"}
+ ]
+}
