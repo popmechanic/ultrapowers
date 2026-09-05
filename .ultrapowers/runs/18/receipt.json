@@ -1,0 +1,427 @@
+{
+  "ok": true,
+  "stamp": "run-18",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-18"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The sandbox merges its own pull request once its checks are green",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "skills/ultrapowers/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "--hold on the launch line rides the assignment as hold=1",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/launch.mjs",
+          "fleet/lobby.mjs",
+          "fleet/tests/test_launch_effort.mjs",
+          "fleet/tests/test_launch_toolchain.mjs",
+          "skills/ultrapowers/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The janitor keeps only the reap, and the launcher runs it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/janitor.mjs",
+          "fleet/launch.mjs",
+          "fleet/tests/test_janitor_automerge.mjs",
+          "skills/ultrapowers/SKILL.md",
+          "skills/ultrapowers/references/first-run.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The doctor names the keys in fleet.json that nothing reads",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/doctor.mjs",
+          "skills/ultrapowers/SKILL.md",
+          "skills/ultrapowers/references/first-run.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`fleetConfigKeys({ path }) -> string[] | null`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The sandbox merges its own pull request once its checks are green",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs",
+            "skills/ultrapowers/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "skills/ultrapowers/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_merge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -A2 '^- \\*\\*status.json:\\*\\*' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '\"prAuthor\":\"<GitHub login or null>\",\"merged\":\"<40-hex or null>\"'",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'commits/<head>/check-runs.*pulls/<n>/merge.*hold=1'",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'sandbox merges itself once its checks are green, unless the assignment carries.*hold=1'",
+            "sed -n '/^\\*\\*The PR\\.\\*\\*/,/^\\*\\*Reap\\.\\*\\*/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'A ready PR merges itself.*once every check is green, unless the launch said.*--hold'",
+            "grep '^| .done. |' fleet/RUNBOOK.md | grep -q 'merged is the squash commit'",
+            "sed -n '/^## Trust/,/^## Rollback/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'merge waits on the target.s own checks, and.*--hold.*to keep a human at the merge button'",
+            "! sed -n '/^## Trust/,/^## Rollback/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'a pull request rather than a merge'",
+            "sed -n '/^4\\. \\*\\*The PR is the gate/,/^5\\. \\*\\*Reap/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'A ready PR merges itself once its checks are green.*--hold.*on the launch line keeps it open'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "--hold on the launch line rides the assignment as hold=1",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/lobby.mjs",
+            "fleet/tests/test_launch_effort.mjs",
+            "fleet/tests/test_launch_hold.mjs",
+            "fleet/tests/test_launch_toolchain.mjs",
+            "skills/ultrapowers/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/lobby.mjs",
+            "fleet/tests/test_launch_effort.mjs",
+            "fleet/tests/test_launch_toolchain.mjs",
+            "skills/ultrapowers/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_hold.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_hold.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_hold.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_toolchain.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q \"'hold'\" fleet/tests/test_launch_effort.mjs",
+            "grep -q \"'--hold'\" fleet/tests/test_launch_toolchain.mjs",
+            "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_lobby.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -A3 '^- \\*\\*Comment\\*\\*' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'effort=low|medium|high., .hold=1'",
+            "sed -n '/^.--engine <sha>. pins the engine/,/^\\*\\*Watch/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q -- '--hold.\\{0,1\\} keeps the pull request open for a person'",
+            "sed -n '/^2\\. \\*\\*Launch/,/^3\\. \\*\\*Walk away/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'Add .\\{0,1\\}--hold.\\{0,1\\} to that line when the PR should stay open for a person'",
+            "test \"$(grep -c '^ *node .*fleet/launch.mjs' skills/ultrapowers/SKILL.md)\" = 1",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The janitor keeps only the reap, and the launcher runs it",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/janitor.mjs",
+            "fleet/launch.mjs",
+            "fleet/tests/test_janitor_automerge.mjs",
+            "fleet/tests/test_janitor_reap_only.mjs",
+            "fleet/tests/test_launch_reaps.mjs",
+            "skills/ultrapowers/SKILL.md",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/janitor.mjs",
+            "fleet/launch.mjs",
+            "fleet/tests/test_janitor_automerge.mjs",
+            "skills/ultrapowers/SKILL.md",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_janitor_reap_only.mjs",
+            "fleet/tests/test_launch_reaps.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_janitor_reap_only.mjs && node fleet/tests/test_launch_reaps.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+            "test ! -e fleet/tests/test_janitor_automerge.mjs",
+            "! grep -q 'auto-merge\\|PR_VIEW_JSON\\|gh pr' fleet/janitor.mjs",
+            "node fleet/tests/test_janitor.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^5\\. \\*\\*Reap/,/^## Resources/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'The launcher runs it before every launch; nothing schedules it'",
+            "sed -n '/^\\*\\*Reap\\.\\*\\*/,/^## States/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'The launcher runs it before every launch; nothing schedules it'",
+            "! grep -q 'arms auto-merge' fleet/RUNBOOK.md",
+            "grep -A5 '^- \\*\\*Janitor' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Run by.*fleet/launch.mjs.*before every launch.*the janitor merges nothing'",
+            "sed -n '/^- \\*\\*Launch order/,/^- \\*\\*Setup script/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'run the janitor.*fleet/janitor.mjs.*the reap.*ls-remote'",
+            "! grep -q -i 'cron' fleet/RUNBOOK.md skills/ultrapowers/SKILL.md skills/ultrapowers/references/first-run.md",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The doctor names the keys in fleet.json that nothing reads",
+          "files": [
+            "fleet/doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs",
+            "skills/ultrapowers/SKILL.md",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`fleetConfigKeys({ path }) -> string[] | null`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/doctor.mjs",
+            "skills/ultrapowers/SKILL.md",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_doctor_config_keys.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_doctor_config_keys.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_doctor_config_keys.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^## capacity/,/^## claude/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'The agent writes the file with both keys explicitly.*\"cpu\": \"8\",.*\"memory\": \"16GB\".*a key the doctor does not read is named in the red detail'",
+            "sed -n '/^.capacity. \u2014 the pool/,/^.claude. \u2014 the token/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'rewrites the file with .\\{0,1\\}cpu.\\{0,1\\} and .\\{0,1\\}memory.\\{0,1\\} only.*no question is asked'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The engine, its clone routing, its worker, its two role files, the authoring skill, the\n  distilling reference, the compiler and the vendored kernel are byte-identical to BASE \u2014 three\n  concurrent plans own them, and `manyana.py` is sha-pinned on purpose.\n- The four operator documents still agree with the code: every flag on the documented launch\n  line is in the launcher's usage, the doctor's row ids are `first-run.md`'s headings in order,\n  and the retired vocabulary of the pre-lift fleet appears nowhere.\n- The boot script still parses.\n- The janitor still issues no `git` and no `ssh <vm>` command, and reads nothing under\n  `~/.ultrapowers/` but `fleet.json`; the boot script still runs no `gh`.\n- No source under `fleet/` spells the retired state repository's name in any of its three\n  casings (the boot sims scan for them); a doctor detail that names a stale key echoes the\n  file's own key, never a literal of its own.\n- No shouted imperative (an all-caps must, never or always as a whole word) is added to any\n  document or script.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = 762be27108232d1625964d4f2c97e9f4bd7f06de",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-waves.mjs)\" = 350bb663dcdfa2d7cc90b85cd306e985fe359171",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-worker.mjs)\" = ae072613d281ad35529ee0865bb96bad6ef09c9c",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/implementer.md)\" = 0a92a3d5a6c43ab88710d7c93322fcacda011152",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrawrite/SKILL.md)\" = 366683a35618d97008c3004a96f16f812c49617c",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultralearn/references/distilling-proposals.md)\" = c3aabdbbfdc8390e929ebe5f562d013f40eb78c7",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 18ad6070d1e0c33142710ebc107f11fe8f6765fa",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+        "minor": false
+      },
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-18/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-18/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-18/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-18/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

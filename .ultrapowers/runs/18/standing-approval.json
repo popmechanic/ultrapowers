@@ -1,0 +1,18 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-18.md run-18 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/sandbox-boot.sh — merge_pr(): the check-runs GET and the squash-merge PUT against https://github.int.exe.xyz/api/v3 — Structurally complete and fully exercised by test_sandbox_boot_merge.mjs, but only against the stubbed `curl` in fleet/tests/_sandbox_boot_helpers.mjs. The real GitHub Enterprise edge is unreachable from this environment, so the actual response shapes (check-runs pagination, conclusion vocabulary, 405/409 merge refusals) and the real squash-merge have not been observed. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/launch.mjs — the pre-launch reap calling janitor({ argv: [], exec, config: settings, now }) — Ordering, reaped/reapError plumbing and renderLaunch output are pinned by test_launch_reaps.mjs over the exec seam, but the real `ssh exe.dev \"ls 'fleet-r*' --json\"` / `rm <vm> --json` and the real `gh api` status-page read cannot be issued here — exe.dev and the target's evidence branches are not reachable. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/doctor.mjs — fleetConfigKeys/capacityRow red row through the CLI — Covered end-to-end by test_doctor_config_keys.mjs, but only under the PATH shim that fakes `ssh exe.dev \"billing plan --json\"` and `integrations list --json`. The row against a real exe.dev account and a real ~/.ultrapowers/fleet.json has not been run here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

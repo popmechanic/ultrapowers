@@ -1,0 +1,523 @@
+{
+  "integrationBranch": "ultra/integration-run-18",
+  "baseSha": "c32c08f9129b3266de17168678fd539d0723bb76",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9143d6063616c32a4a55129d81524d74b8d00d75",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-18/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Scope: the patch adds a second, unrequested 330-line exam, `fleet/tests/test_sandbox_boot_selfmerge.mjs`, at a path outside FILES (FILES names only `fleet/tests/test_sandbox_boot_merge.mjs` as the Test). It is a near-verbatim duplicate of the graded exam \u2014 same rig imports, same legs (a)-(m), same M5-M7 document slices, same STUB_CHECKS/STUB_CHECKS_PENDING/STUB_MERGE_CODE cases, same three green and three red conclusions \u2014 and it also touches the global constraint 'No file outside a task's own Files block is edited' (a prose constraint with no Check: behind it, hence minor). Two consequences worth acting on: (1) `tests/test_fleet_suite.py:23` globs `fleet/tests/test_*.mjs`, so this file joins the committed suite that is this task's Acceptance, adding ~20 more boots (~40 forks of stub shell each) of runtime for zero new coverage; (2) the driver never ran it \u2014 the Proof names only `test_sandbox_boot_merge.mjs`, and node execution was denied in this referee sandbox, so whether the committed suite stays green with it is unverified. Any future change to the merge step now has to be transcribed into two exams, and a fix round told to update the named one will leave the unnamed one red. Remedy: delete `fleet/tests/test_sandbox_boot_selfmerge.mjs`; every leg it pins is already pinned by `fleet/tests/test_sandbox_boot_merge.mjs`, which the exam evidence shows at exit 0 with 30 ok lines.; `fleet/sandbox-boot.sh`, the red path of `merge_pr`: `check_runs_verdict` returns the refusal as the space-joined string `red <name> <conclusion>`, and `merge_pr` splits it with `set -- $verdict`, taking `$2` as the check name and `$3` as the conclusion. Any check run whose `name` contains a space \u2014 GitHub's ordinary matrix spelling, e.g. `build (3.12)` \u2014 shifts the fields: `$2` becomes `build`, `$3` becomes `(3.12)`, and the log line, `MERGE_NOTE`, and the `done` page's phase text then read `merge: check build concluded (3.12) \u2014 leaving <pr> open`. The one artifact that tells the operator why their PR was not merged names a conclusion GitHub never returned. The stub's check name is `test`, so the exam cannot see this. Fix inside this task's FILES: delimit the two fields rather than word-splitting them.; `fleet/sandbox-boot.sh`'s own header is now stale about the file it heads. Line 3 still calls the script 'the sandbox side of a run, from the assignment to the PR', and lines 18-19 still say 'The PR is the human gate; there is no write grant to wait for' \u2014 but as of this diff the script runs past the PR, polls the head's check runs and squash-merges a ready PR itself, and the human gate has moved to the ready/draft distinction plus `hold=1`. The three operator documents were all updated to say so (M5-M7); the script's own preamble, which is in this task's FILES, was not. Suggested wording: '... from the assignment to the merged PR' in line 3, and in line 18 'A ready PR is the script's own to finish: it merges once the target's checks are green, unless the assignment carries hold=1; a draft is the human gate.'; plan-defect: M4 reads 'Every status page carries a `merged` cell, null on every page before the merge', and this diff duly changed CONTRACT.md's status.json literal to declare `merged` between `prAuthor` and `branch`. But the boot script is not the only writer of a status page: `fleet/setup-script.mjs:86` prints `{\"run\":\u2026,\"state\":\u2026,\"phase\":\u2026,\"pr\":null,\"prAuthor\":null,\"branch\":\u2026,\"vm\":\"\",\"startedAt\":\u2026,\"updatedAt\":\u2026,\"error\":null}` for the provisioning/pre-boot page, with no `merged` cell \u2014 so after this diff the contract literal no longer describes that page. That file is in neither this task's FILES nor any sibling's, so no edit inside this tree answers it; the exam's leg (k) only reaches the boot script's own pages and passes. Nothing consumes the key today (the janitor reads the evidence-branch pages, which the boot script writes), so this blocks nothing \u2014 but the operator should decide whether the setup script's page gains the cell in a follow-up or whether CONTRACT.md should say the cell appears from `booting` onward.; Scope: the patch adds a second, near-identical exam at `fleet/tests/test_sandbox_boot_selfmerge.mjs`, a path outside this task's FILES (FILES names exactly one Test: `fleet/tests/test_sandbox_boot_merge.mjs`, and the global constraint says no file outside a task's own Files block is edited). It pins the same clauses M1\u2013M7 and the same legs (a)\u2013(m) as the graded exam, with the same STUB_CHECKS/STUB_CHECKS_PENDING/STUB_MERGE_CODE cases \u2014 copy-pasted coverage, two files that must now be kept in lockstep. It also matters for merging: `tests/test_fleet_suite.py:23` globs every `fleet/tests/test_*.mjs`, so the committed suite (this task's Acceptance) will run this file, and it appears in no RUN: or EXAM evidence \u2014 ~20 more full boots of stub shell under the suite's 120 s per-file timeout, never observed to pass here. `unverified:` running `node fleet/tests/test_sandbox_boot_selfmerge.mjs` would settle whether it is green; deleting it settles the scope question and the duplication at once. The graded exam `test_sandbox_boot_merge.mjs` covers every leg on its own (EXAM EVIDENCE, exit 0, 30 assertions), so nothing is lost by removing the duplicate.; `fleet/sandbox-boot.sh`, `merge_pr`'s `red*)` arm: `check_runs_verdict` packs the refusal into one space-joined line (`printf 'red %s %s\\n' \"$name\" \"$conclusion\"`) and the caller unpacks it with `set -- $verdict`, taking `$2` as the check name and `$3` as the conclusion. GitHub check-run names routinely carry spaces (`build (ubuntu-latest)`, `Docs / lint`), and then `$3` is a fragment of the name rather than the conclusion, so the one diagnostic line the operator gets for a refused merge \u2014 `merge: check <name> concluded <conclusion> \u2014 leaving <pr> open`, and the same text on the `done` page's MERGE_NOTE \u2014 names the wrong thing. The unquoted `$verdict` is also subject to pathname expansion, so a name containing `*` or `?` is globbed against the CWD before it is split. The sims only ever use single-word names (`test`, `one`, `two`), so the exam cannot see this. Fix with parameter expansion instead of word splitting, which needs no change to `check_runs_verdict`.; unverified: cross-task claim. `fleet/RUNBOOK.md` (\"The PR.\" paragraph and `## Trust`) and `skills/ultrapowers/SKILL.md` step 4 now tell the operator that `--hold` on the launch line keeps the PR open, but `--hold` is added to `fleet/launch.mjs`'s flag list and USAGE by sibling task 2, whose files this task may not touch. In this task's clone alone the documented flag does not exist, so a reader following the RUNBOOK today would get an unknown-flag refusal. This is the plan's deliberate split (task 2's M1 pins `[--hold]` in USAGE and `hold` in COMMENT_KEYS), and the structural pin the Proof runs \u2014 `tests/test_docs_agree_with_code.py`, exit 0 \u2014 passes because the sentence is prose rather than part of the documented launch line, so nothing here blocks. What would settle it is the merged tree: `node fleet/tests/test_launch_hold.mjs` and `python3 -m pytest -q tests/test_docs_agree_with_code.py` after both tasks fold.; concern: out-of-FILES: fleet/tests/test_sandbox_boot_selfmerge.mjs \u2014 my own exam. The Proof's Test: line names fleet/tests/test_sandbox_boot_merge.mjs, which the harness reserves for a peer's exam, so I wrote my tests to a path I own instead and left the reserved path absent.; concern: The declared TEST COMMAND `node fleet/tests/test_sandbox_boot_merge.mjs` cannot run in this tree \u2014 that file is deliberately not created, per the reserved-path rule. The equivalent command I ran clean is `node fleet/tests/test_sandbox_boot_selfmerge.mjs`.; concern: `--hold` (the launch-line flag that produces `hold=1` in the assignment) is sibling task 2's work in fleet/launch.mjs. I implemented and documented the sandbox side only; I mention the flag in SKILL.md prose but deliberately kept it off the documented `node .../fleet/launch.mjs` launch line so tests/test_docs_agree_with_code.py's launch-line/usage pin stays satisfied whether or not task 2 lands.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "56f05174ea01dd9a4fb55ca6749c004789f2d687",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-18/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim's second half \u2014 \"\u2192 the sandbox publishes and never merges (measurement runs, the walk A/B)\" \u2014 is not settled by this diff. This patch establishes only the laptop half: `--hold` \u2192 `hold=1` as the comment's ninth key (fleet/launch.mjs `flags: ['json','hold']`, the `opts.hold !== true` Refusal, `fields.hold`, `COMMENT_KEYS` in fleet/lobby.mjs) and the three document sentences. The prose this patch adds to fleet/CONTRACT.md (\"`hold=1` keeps the pull request open for a person \u2014 the sandbox publishes it and does not merge it\"), fleet/RUNBOOK.md and skills/ultrapowers/SKILL.md asserts behaviour that lives in `fleet/sandbox-boot.sh`, which is sibling task 1's file and which this patch does not touch. What would settle it: task 1's `fleet/tests/test_sandbox_boot_merge.mjs` leg (i) \u2014 the helper's assignment with ` hold=1` appended reaches `done` with zero check-runs reads, zero merge PUTs and `merge: hold=1 \u2014 leaving` in the log. Nothing to fix inside this task's FILES; recorded so the operator reads the cross-task edge in the run report.; unverified: the Claim's third arrow \u2014 \"the sandbox publishes and never merges\" \u2014 is not settled by this diff. Task 2's Machine clauses cover only the laptop half (M1 the comment key and usage, M2 the `--hold=<value>` refusal, M3 the three documents, M4 the two existing sims), all of which map to concrete lines: `COMMENT_KEYS` gains `hold` as the ninth key (fleet/lobby.mjs), `fields.hold = opts.hold === true ? '1' : undefined` flows into both the byte-ceiling probe and the real comment via the `{ ...fields }` spread at fleet/launch.mjs:379, `--hold` joins the `flags` list in `launch()` and `main()`, `USAGE` names `[--hold]`, the string-valued refusal sits after the effort validation and before the plan read at fleet/launch.mjs:273 (leg (d) proves it with an empty `exec.calls`), and CONTRACT/RUNBOOK/SKILL each carry the new sentence. What no line here can show is that the sandbox honours `hold=1` by publishing and not merging \u2014 `fleet/sandbox-boot.sh` is sibling task 1's file and is untouched at BASE in this clone. What would settle it: sibling task 1's boot-script sim asserting that a comment ending `hold=1` leaves the PR open. Recorded, not blocking: nothing inside this task's FILES could judge it.; fleet/tests/test_launch_hold.mjs duplicates roughly ninety lines of rig verbatim from fleet/tests/test_launch_effort.mjs \u2014 `NEW_OK`, `localRemote`, `OFFLINE`, `rulesFor`, `workspace`, `argvFor`, `launchIn`, `refusalIn`, `newLines`, and the TARGET/GH/ORIGIN_URL/ENGINE/NOW/PLAN_TEXT/CONFIG/BILLING_OK constants \u2014 which is itself a copy of test_launch.mjs's. This is the third copy, and each future change to the launch seam now has three edit sites. It is what the task's Context asked for (\"The rig for the new sim is `test_launch_effort.mjs`'s\"), and the natural home for the shared rig, fleet/tests/_lobby_helpers.mjs, is outside this task's FILES \u2014 so the diff could not carry the fix. Naming it for the operator, not for a fix round.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "ec6da9f6314ccb5778a0ba00c7a92a66f8b38576",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-18/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the launcher swallows the janitor's `stale` and `unknown` reports. `launch()` reads only `reap.actions` (filtering `kind === 'rm'`) and records `reaped`/`reapError`; `reap.stale` and `reap.unknown` are dropped on the floor. With nothing scheduling the janitor any more (M4, and the RUNBOOK/SKILL text this diff writes), the only remaining way the six-hour stale line and the unreadable-assignment line reach an operator is a hand-run `node fleet/janitor.mjs` \u2014 the RUNBOOK still says \"For any fleet VM whose run has had no status update in six hours it prints a line, once.\" This is not the implementer's to fix: M3 names exactly `reaped` and `reapError` on the result, and `test_launch.mjs`'s four-line `renderLaunch` pin (which the Proof requires to stay green) forbids adding stale lines to the launch output. What would settle it is a plan decision on whether a launch-time reap should surface stale/unknown at all; blocking nothing here.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "da0f942d327910de909cd7d08397c082dfbcb6ed",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-18/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/doctor.mjs: `fleetConfigKeys` duplicates `loadFleetConfig`'s read-and-parse body almost line for line (same `fsp.readFile(target,'utf8')` in a bare try/catch, same `JSON.parse` in a second bare try/catch, same `configPath ?? DEFAULT_CONFIG_PATH()` resolution) \u2014 the only differences are the array rejection and what each returns on failure. `main` then reads the same path twice, once per function, so a file rewritten between the two calls yields a `config` and a `configKeys` that describe different file contents. Both would collapse onto one private helper, e.g. `async function readConfigObject (target) { try { const parsed = JSON.parse(await fsp.readFile(target, 'utf8')); return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : null } catch { return null } }`, with `loadFleetConfig` folding its two keys over the defaults from it and `fleetConfigKeys` answering `Object.keys(...)`. Not blocking: the behaviour the exam grades is correct as written, and `loadFleetConfig`'s current array handling (line 133 accepts an array and finds no string keys on it) is BASE's, untouched by this diff.; skills/ultrapowers/SKILL.md and skills/ultrapowers/references/first-run.md are in this task's own Files block *and* in the Files blocks of concurrent siblings (SKILL.md in tasks 1, 2 and 3; first-run.md in task 3), so this is authorized, not a scope escape \u2014 the plan put four concurrent tasks in one wave over the same two documents. Recording it only so the operator knows the textual merge is expected: this diff's hunks are the `## Setup` capacity paragraph in SKILL.md (context lines `Then the agent asks, again with AskUserQuestion` / `AskUserQuestion: **Lower the run size, or upgrade the plan?**`) and the `## capacity` section of first-run.md, neither of which is the region tasks 1\u20133 rewrite (SKILL.md steps 2, 4 and 5; first-run.md's exe-dev bullet at line ~39). No action required unless the wave's merge reports a conflict there.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-18/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1523 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 28%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n...........                                                              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1523 passed, 5 warnings in 102.12s (0:01:42) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -A2 '^- \\*\\*status.json:\\*\\*' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '\"prAuthor\":\"<GitHub login or null>\",\"merged\":\"<40-hex or null>\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'commits/<head>/check-runs.*pulls/<n>/merge.*hold=1'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'sandbox merges itself once its checks are green, unless the assignment carries.*hold=1'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^\\*\\*The PR\\.\\*\\*/,/^\\*\\*Reap\\.\\*\\*/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'A ready PR merges itself.*once every check is green, unless the launch said.*--hold'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep '^| .done. |' fleet/RUNBOOK.md | grep -q 'merged is the squash commit'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Trust/,/^## Rollback/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'merge waits on the target.s own checks, and.*--hold.*to keep a human at the merge button'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! sed -n '/^## Trust/,/^## Rollback/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'a pull request rather than a merge'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^4\\. \\*\\*The PR is the gate/,/^5\\. \\*\\*Reap/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'A ready PR merges itself once its checks are green.*--hold.*on the launch line keeps it open'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.08s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_hold.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_toolchain.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q \"'hold'\" fleet/tests/test_launch_effort.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q \"'--hold'\" fleet/tests/test_launch_toolchain.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_lobby.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "grep -A3 '^- \\*\\*Comment\\*\\*' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'effort=low|medium|high., .hold=1'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^.--engine <sha>. pins the engine/,/^\\*\\*Watch/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q -- '--hold.\\{0,1\\} keeps the pull request open for a person'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^2\\. \\*\\*Launch/,/^3\\. \\*\\*Walk away/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'Add .\\{0,1\\}--hold.\\{0,1\\} to that line when the PR should stay open for a person'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(grep -c '^ *node .*fleet/launch.mjs' skills/ultrapowers/SKILL.md)\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test ! -e fleet/tests/test_janitor_automerge.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q 'auto-merge\\|PR_VIEW_JSON\\|gh pr' fleet/janitor.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_janitor.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^5\\. \\*\\*Reap/,/^## Resources/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'The launcher runs it before every launch; nothing schedules it'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^\\*\\*Reap\\.\\*\\*/,/^## States/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'The launcher runs it before every launch; nothing schedules it'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q 'arms auto-merge' fleet/RUNBOOK.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "grep -A5 '^- \\*\\*Janitor' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Run by.*fleet/launch.mjs.*before every launch.*the janitor merges nothing'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Launch order/,/^- \\*\\*Setup script/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'run the janitor.*fleet/janitor.mjs.*the reap.*ls-remote'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q -i 'cron' fleet/RUNBOOK.md skills/ultrapowers/SKILL.md skills/ultrapowers/references/first-run.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_doctor_config_keys.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^## capacity/,/^## claude/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'The agent writes the file with both keys explicitly.*\"cpu\": \"8\",.*\"memory\": \"16GB\".*a key the doctor does not read is named in the red detail'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^.capacity. \u2014 the pool/,/^.claude. \u2014 the token/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'rewrites the file with .\\{0,1\\}cpu.\\{0,1\\} and .\\{0,1\\}memory.\\{0,1\\} only.*no question is asked'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = 762be27108232d1625964d4f2c97e9f4bd7f06de",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-waves.mjs)\" = 350bb663dcdfa2d7cc90b85cd306e985fe359171",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-worker.mjs)\" = ae072613d281ad35529ee0865bb96bad6ef09c9c",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/implementer.md)\" = 0a92a3d5a6c43ab88710d7c93322fcacda011152",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrawrite/SKILL.md)\" = 366683a35618d97008c3004a96f16f812c49617c",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultralearn/references/distilling-proposals.md)\" = c3aabdbbfdc8390e929ebe5f562d013f40eb78c7",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 18ad6070d1e0c33142710ebc107f11fe8f6765fa",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.07s\n",
+      "minor": false
+    },
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1077326,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................s............................................... [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n...........                                                              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1522 passed, 1 skipped, 5 warnings in 104.15s (0:01:44) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n......                                                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1518 passed, 5 warnings in 96.75s (0:01:36) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "2539d65783415777a9835056fc0fda70ecdf479f",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-18/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-18/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 3.583,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 4,
+    "tasks_planned": 4,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 merge_pr(): the check-runs GET and the squash-merge PUT against https://github.int.exe.xyz/api/v3",
+      "reason": "external",
+      "why": "Structurally complete and fully exercised by test_sandbox_boot_merge.mjs, but only against the stubbed `curl` in fleet/tests/_sandbox_boot_helpers.mjs. The real GitHub Enterprise edge is unreachable from this environment, so the actual response shapes (check-runs pagination, conclusion vocabulary, 405/409 merge refusals) and the real squash-merge have not been observed."
+    },
+    {
+      "deliverable": "fleet/launch.mjs \u2014 the pre-launch reap calling janitor({ argv: [], exec, config: settings, now })",
+      "reason": "external",
+      "why": "Ordering, reaped/reapError plumbing and renderLaunch output are pinned by test_launch_reaps.mjs over the exec seam, but the real `ssh exe.dev \"ls 'fleet-r*' --json\"` / `rm <vm> --json` and the real `gh api` status-page read cannot be issued here \u2014 exe.dev and the target's evidence branches are not reachable."
+    },
+    {
+      "deliverable": "fleet/doctor.mjs \u2014 fleetConfigKeys/capacityRow red row through the CLI",
+      "reason": "external",
+      "why": "Covered end-to-end by test_doctor_config_keys.mjs, but only under the PATH shim that fakes `ssh exe.dev \"billing plan --json\"` and `integrations list --json`. The row against a real exe.dev account and a real ~/.ultrapowers/fleet.json has not been run here."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: fleet/tests/test_sandbox_boot_selfmerge.mjs \u2014 my own exam. The Proof's Test: line names fleet/tests/test_sandbox_boot_merge.mjs, which the harness reserves for a peer's exam, so I wrote my tests to a path I own instead and left the reserved path absent.",
+    "task 1: The declared TEST COMMAND `node fleet/tests/test_sandbox_boot_merge.mjs` cannot run in this tree \u2014 that file is deliberately not created, per the reserved-path rule. The equivalent command I ran clean is `node fleet/tests/test_sandbox_boot_selfmerge.mjs`.",
+    "task 1: `--hold` (the launch-line flag that produces `hold=1` in the assignment) is sibling task 2's work in fleet/launch.mjs. I implemented and documented the sandbox side only; I mention the flag in SKILL.md prose but deliberately kept it off the documented `node .../fleet/launch.mjs` launch line so tests/test_docs_agree_with_code.py's launch-line/usage pin stays satisfied whether or not task 2 lands."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "fleet/RUNBOOK.md:28 (Task 1, Claim/M6 \u2014 RUNBOOK.md is in Task 1's Files block): the document's opening overview still ends the run's story at \"opens the PR over GitHub's REST API through the edge. The PR is the human gate; there is no approval step before it.\" After Task 1 that is no longer true for a ready PR, and the same document now says the opposite twice \u2014 line 173 (\"A ready PR merges itself: the sandbox polls its head's check runs and squash-merges it once every check is green\") and line 400 (\"a pull request whose merge waits on the target's own checks, and --hold to keep a human at the merge button\"). Task 1's M6 named only the \"The PR.\" paragraph, the States table's done row and the Trust section, all three of which are correct; the overview paragraph was in scope (same file, same task) and was left stale, so an operator reading the RUNBOOK top-down is told the PR is a human gate and then, 145 lines later, that it merges itself."
+    },
+    {
+      "severity": "minor",
+      "detail": "fleet/CONTRACT.md:193-194 vs fleet/doctor.mjs:253-266 and skills/ultrapowers/references/first-run.md:75-77 (Task 4, Claim): the contract's \"Laptop config ~/.ultrapowers/fleet.json\" bullet still reads \"exactly two keys, both optional, an unknown key ignored and a missing file meaning the defaults\". After Task 4 an unknown key is not ignored \u2014 capacityRow returns a `missing` (red) capacity row naming it, and the CLI exits 1 \u2014 and first-run.md was updated to say exactly that (\"a key the doctor does not read is named in the red detail, and the agent rewrites the file with cpu and memory only\"). Two of the four operator documents now describe the same file format in contradictory terms. Note this was not fixable inside the run as planned: CONTRACT.md is not in Task 4's Files block, and the global constraint forbids editing a file outside it \u2014 the gap is in the plan's scoping, not in the delivered code, which is why this is minor rather than blocking."
+    }
+  ],
+  "blockedWaves": []
+}
