@@ -91,6 +91,18 @@ derivation.
   against the legs, and a non-zero exit sends the task to the fix loop. A task whose
   deliverable is prose proves itself with `Run:` commands, never with a test that
   matches sentences of a document.
+  Name **one exam file per behaviour surface**, named for it (`test_fold_wave.py`, not
+  `test_<task-noun>`): a later task on that surface — a later wave or a later plan —
+  extends that file instead of opening a second one, and its legs sit under a comment
+  naming the task. Five plans on 2026-09-03 each left one `fleet/tests/test_<task-noun>.mjs`
+  behind, which is the shape this replaces; two *same-wave* tasks appending to one file are
+  the adjacent-insert shape rule 4 names, not this one.
+  A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the
+  integration head**, where HEAD already carries the edit — so the exam carries the value
+  measured *before* it: a **frozen pre-edit literal**, such as a `git hash-object` sha
+  written into the exam, or a full **40-hex sha** fetched with
+  `git fetch --depth=1 origin <sha>`, because `actions/checkout` leaves the clone at
+  depth 1 and a short or unfetched sha is not in it.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
   is a refusal; an undecidable staleness test is inert prose.
@@ -250,7 +262,13 @@ Independence is a property of contracts, not of files.
    collide. Non-text (binary, symlink) same-file pairs are ordered automatically. Blast
    radius follows the contract, not the file: a task that changes a `Produces:` shape owns
    every strict-equality pin of it, in any sibling's file — list that file in its own
-   Files block.
+   Files block. One shape does not fold, though: N tasks that each add one line to one
+   list are N **adjacent inserts at one location**, which the fold sends to a resolver —
+   run-12 (2026-09-05, PR #662) had five tasks each append one
+   `ADVISORY_RENDERS.append((…))` line to `compile_plan.py`, and the fold spent three
+   resolver workers (3.4 worker-minutes, 6.6 of the 13-minute post-review tail) ordering
+   five lines any order would have satisfied. Give each such task its **own region or
+   file**: a registration is a new file discovered by glob, never an appended line.
 5. **Prefer several small concurrent plans** folding into one frontier over one large plan
    (N=3 drains measured 0.26× batch). Until that fold lands (Tier 2), an effort split
    across plans gives the **final** plan an integration-spanning acceptance — per-phase
@@ -321,6 +339,8 @@ task-by-task from contract plus proof.
   task's own writes; every fence sits in Proof.
 - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
   `Run:`.
+- Every exam file is named for its behaviour surface, and a task that extends one groups
+  its legs under a comment naming the task.
 - Every Machine clause is numbered and cited by a leg; every universal or negation clause
   has a leg that names what fails or is absent; every enumerated row has its own leg.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
