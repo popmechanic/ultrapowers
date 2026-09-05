@@ -1,0 +1,338 @@
+{
+  "integrationBranch": "ultra/integration-run-11",
+  "baseSha": "af1e7c70dedc3de5cbb4e9ca79af3bdb2756a701",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a1503c075d0c565579352c03237d25d629d9f37f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-11/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`fleet/RUNBOOK.md:159` describes the evidence branch's `status.json` as \"committed at every transition, next to `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl` and `engine.log`\". After this diff the boot also commits `approve-receipt.json` and `standing-approval.json`, so the operator document that an operator actually reads to know what is on the branch is now one name-list short of the code, while `fleet/CONTRACT.md` (M3) is current. The fix is one clause in `fleet/RUNBOOK.md`, which is not in this task's Files block (it is task 2's), so the implementer cannot carry it \u2014 hence actor `plan`. Nothing blocks: the global docs constraint's own `Check:` (`tests/test_docs_agree_with_code.py`) is structural and exited 0, and M3 names only `fleet/CONTRACT.md`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e2bda00a2c19537becd0717519d4ce62e050a131",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-11/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/RUNBOOK.md:194 \u2014 the rewrapped reap paragraph leaves one line at 86 columns (`by hand. A VM that has to go now: \\`ssh exe.dev \"rm <vm> --json\"\\` \u2014 \\`rm\\` takes several`) while every other line in the file, including the rest of this paragraph, wraps at ~79. Cosmetic only: M5 and the `tr '\\n' ' ' \u2026 grep -q 'arms auto-merge'` Run: are both settled by the evidence, and tests/test_docs_agree_with_code.py exits 0. Rewrap so `takes several names.` moves to the next line.; plan-defect: the `clean status` fallback in `armAutoMerge` (fleet/janitor.mjs, the plain `gh pr merge <url> --squash`) merges without any check of its own, and the Claim it serves is \"merges itself once CI is green\". The task's Context justifies this by asserting \"the branch protection's required check has already passed for the refusal to occur\" \u2014 true only where the target repository actually configures a required status check. On a target with no required check, GitHub reports a mergeable PR as `clean status` while CI is still in flight, and the fallback squashes a red-or-pending run. The implementation transcribes M3 faithfully and the exam pins the fallback, so no edit inside this task's FILES can answer it without turning the exam red; the fix, if wanted, is a narrowing of M3 in the task text (e.g. require `statusCheckRollupState` to be `SUCCESS` before the plain squash). Graded minor because it is contingent on target configuration this tree cannot observe.; unverified: leg (d)'s no-`git`/no-`ssh <vm>` sweep iterates `EXECS`, which the sim populates only from `buildExec`, so it covers the four legs this exam builds \u2014 it cannot speak for the janitor's other call sites (`test_janitor.mjs` carries its own equivalent sweep, and RUN EVIDENCE shows it exits 0). What would settle the global constraint across the whole tool is a single shared assertion over both sims' execs; as it stands the two sims each cover their own legs, which is sufficient for M4 as written.; unverified: M3's `clean status` fallback is pinned only against a canned stderr string (`fleet/tests/test_janitor_automerge.mjs:426`, `CLEAN = 'failed to enable auto-merge\\nPull request is in clean status\\n'`) matched by a case-sensitive substring test in `fleet/janitor.mjs` (`CLEAN_STATUS = 'clean status'`, used as `output.includes(CLEAN_STATUS)`). Nothing in this diff establishes that a real `gh pr merge --auto --squash` refusal on an already-mergeable PR actually carries that exact lower-case substring; GitHub's GraphQL wording is a third-party string that can change, and if it ever does the janitor silently degrades to `applied: false` with the message under `error` instead of squashing. That degradation is safe (no wrong merge), so this blocks nothing. What would settle it: one recorded real `gh pr merge --auto` refusal against a mergeable PR, or a widened match (e.g. also accepting `enablePullRequestAutoMerge` / a case-insensitive compare) with the widened form pinned in the exam.; `fleet/CONTRACT.md`'s Janitor bullet (lines 176-180) still describes the janitor as `ls` -> parse comment -> `gh api` status page -> `rm <vm> --json`, with the closing sentence `No ssh into any VM, no created_at, no clone.` Nothing there is now false, and `tests/test_docs_agree_with_code.py` passes, but the bullet no longer describes everything the tool does: after this diff the janitor also issues `gh pr view` and, on the `clean status` path, a real repository mutation `gh pr merge <url> --squash` against the target. An operator reading the contract's Janitor bullet would not learn the janitor can merge a pull request. The fix is one clause in `fleet/CONTRACT.md`, which is outside this task's FILES (it is task 1's and task 4's path), so the implementer cannot carry it here \u2014 hence actor `plan`: the contract clause belongs in whichever task owns `fleet/CONTRACT.md`, or in a follow-up.; Formatting only: the rewrapped reap paragraph in `fleet/RUNBOOK.md` leaves one line at 85 columns \u2014 `by hand. A VM that has to go now: `ssh exe.dev \"rm <vm> --json\"` \u2014 `rm` takes several` \u2014 while every other line in that file, including the seven lines the same hunk added above it, wraps at 78-80. Rewrap that last sentence to match.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d2bec4bd89f153d6a210dd4e6767b55bea6d3d0f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-11/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "The committed suite does not pin the behavior the task's Claim is about. The diff adds `skipsShoutScan` plus five assertions that exercise the predicate in isolation (fleet/tests/test_run_engine_exam_fix_edit.mjs, added after line 248), and one `if (skipsShoutScan(rel)) continue` as the first statement of leg (g)'s walk loop. Deleting that `continue` leaves every assertion in the committed file green \u2014 the only pins on the loop actually honoring the predicate are the plan's three `Run:` probes, which build a temporary full clone, plant a probe file, and re-run the sim. The driver executed all three and each exited 0 (fleet/tests/ green, tests/ green, fleet/ red with the expected `gained upper-case NEV/ALW/MU word(s)` assertion), so M1 and M2 are established for this submission; the gap is durability, and it matters because the stated Acceptance is `suite \u2014 the committed suite is the verification`. Fixing it means the exam design, not this diff: the Proof would have to fold a temp-clone probe into the sim itself (a `Test:` leg) rather than leaving it in `Run:` commands the plan carries. Recorded for the operator, not a merge blocker.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "76754da6e5082ceaf4815ef5351ad988e13f49f8",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-11/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "Ceiling arithmetic: the third optional comment key does not fit beside the other two for a realistic target. `fleet/lobby.mjs:139` pins `COMMENT_MAX_BYTES = 200`, and the required keys plus `overlap=fold tier=mostCapable` already cost `182 + digits(N) + len(target)` bytes (`run=` 4+d, ` plan=` 46, ` target=` 8+L, ` base=` 46, ` engine=` 48, ` overlap=fold` 13, ` tier=mostCapable` 17). Adding ` effort=low` (12 bytes) leaves room only for a target of 5 characters or fewer at run 1; ` effort=medium` costs 14. So `node fleet/launch.mjs \u2026 --overlap fold --tier mostCapable --implementer-effort low` against any real `<owner>/<repo>` hits the launcher's byte-ceiling `Refusal` at fleet/launch.mjs:291 rather than launching. The submission is not at fault \u2014 M1/M4 fix the `effort=` spelling and the ceiling lives in the contract this task may not raise \u2014 and the failure mode is safe and loud (the probe runs before anything is mutated, and the refusal names the byte count). The exam discloses this openly in its header and deliberately uses the 3-character target `o/r` so the leg it tests is reachable. Recorded so the operator knows the knob is in practice mutually exclusive with `--overlap` + `--tier`; settling it needs a plan decision (shorter key spellings, or a contract change to the 200-byte ceiling in `fleet/CONTRACT.md`), not an edit inside this task's FILES.; unverified: the new flag is discoverable only from `--help`. `fleet/launch.mjs`'s `USAGE` now names `[--implementer-effort low|medium|high]`, but none of the four operator documents mentions it \u2014 `skills/ultrapowers/SKILL.md`'s launch line (fleet/RUNBOOK.md:137 carries the same invocation) still shows the pre-effort flag set. `tests/test_docs_agree_with_code.py` checks one direction only (\"every `--flag` on SKILL.md's launch line exists in fleet/launch.mjs's usage string\", tests/test_docs_agree_with_code.py:16-18), so the check stays green and the CHECK EVIDENCE `exit 0` is genuine \u2014 it simply cannot see a usage-only flag. Both document paths are outside this task's FILES (`fleet/RUNBOOK.md` is sibling task 2's), so no edit here answers it. What would settle it: a follow-up task adding `--implementer-effort low|medium|high` to SKILL.md's launch line and the RUNBOOK's.; fleet/CONTRACT.md line 45 is now ~113 columns (`  optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`. `plan=` is the tip of`), while every other line in this document wraps at ~100. The key was appended in place instead of reflowing the bullet. Reflowing keeps both pins green: the Proof's `grep -A3 '^- \\*\\*Comment\\*\\*' | tr '\\n' ' '` and test_launch_effort.mjs's `slice(at, at + 4).join(' ')` both still see `tier=standard|mostCapable`, `effort=low|medium|high` adjacent on the third line if the break is taken after that clause \u2014 e.g. end line 45 at `` `effort=low|medium|high`. `` and start line 46 with `` `plan=` is the tip of `ultra/plan-run-<N>` on the target. Written once by `new --comment`; the ``, rewrapping the remainder of the bullet.; concern: plan-defect: `fleet/tests/test_launch_toolchain.mjs:280` pins `BASE_FLAGS` \u2014 the exact sorted flag list of `fleet/launch.mjs`'s `USAGE` as of 13c0e15 \u2014 with the message \"the usage string names the same flags it named at BASE \u2014 the refusal is unconditional, not a flag\". That is a whole-list snapshot from an earlier task (cc5e24e), and it fails by construction against this task's M1, which requires `--implementer-effort low|medium|high` in `USAGE` (the exam `test_launch_effort.mjs:265` asserts exactly that). The two requirements are in direct conflict and the plan did not account for it. I did NOT edit the file: it is outside my Files block, is not a SIBLING FILE, and the GLOBAL CONSTRAINT \"No file outside a task's own Files block is edited\" is explicit \u2014 so I implemented as written and report the defect. The fix is one line: add `'--implementer-effort'` to the `BASE_FLAGS` array (sorted position: between `'--engine'` and `'--json'`). Until then `node fleet/tests/test_launch_toolchain.mjs` and `tests/test_fleet_suite.py::test_fleet_mjs[test_launch_toolchain.mjs]` are red. This is the only failure in the repo: the other 51 fleet sims and 1430 Python tests pass.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-11/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1433 items]\n\n........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n.................................................................        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1433 passed, 5 warnings in 94.42s (0:01:34) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'approve-receipt.json. and .standing-approval.json., present when the engine wrote them'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.08s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor_automerge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q 'arms auto-merge'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "d=$(mktemp -d) && git clone -q . \"$d\" && cp fleet/tests/test_run_engine_exam_fix_edit.mjs \"$d/fleet/tests/\" && printf 'const re = /(MU%sST|NEV%sER|ALW%sAYS)/\\n' '' '' '' > \"$d/fleet/tests/zz_probe_shout.mjs\" && git -C \"$d\" add -A && (cd \"$d\" && node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED')",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "d=$(mktemp -d) && git clone -q . \"$d\" && cp fleet/tests/test_run_engine_exam_fix_edit.mjs \"$d/fleet/tests/\" && printf 'const re = /(MU%sST|NEV%sER|ALW%sAYS)/\\n' '' '' '' > \"$d/tests/zz_probe_shout.py\" && git -C \"$d\" add -A && (cd \"$d\" && node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED')",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "d=$(mktemp -d) && git clone -q . \"$d\" && cp fleet/tests/test_run_engine_exam_fix_edit.mjs \"$d/fleet/tests/\" && printf 'const re = /(MU%sST|NEV%sER|ALW%sAYS)/\\n' '' '' '' > \"$d/fleet/zz_probe_shout.mjs\" && git -C \"$d\" add -A && ! (cd \"$d\" && node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED')",
+      "exit": 0,
+      "stdout": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: (g)/M7: fleet/zz_probe_shout.mjs gained upper-case NEV/ALW/MU word(s) against BASE: ALWAYS,MUST,NEVER\n+ actual - expected\n\n+ [\n+   'ALWAYS',\n+   'MUST',\n+   'NEVER'\n+ ]\n- []\n\n    at file:///tmp/tmp.rSemKiY4yK/fleet/tests/test_run_engine_exam_fix_edit.mjs:301:12\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: [ 'ALWAYS', 'MUST', 'NEVER' ],\n  expected: [],\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.20.0\n"
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_run_main_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_run_main.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "fatal: couldn't find remote ref ultra/integration-run-90\nfatal: couldn't find remote ref ultra/integration-run-91\nfatal: couldn't find remote ref ultra/integration-run-92\nfatal: couldn't find remote ref ultra/integration-run-94\nfatal: couldn't find remote ref ultra/integration-run-95\nfatal: couldn't find remote ref ultra/integration-run-96\nfatal: couldn't find remote ref ultra/integration-run-boot-unset\nfatal: couldn't find remote ref ultra/integration-run-boot-empty\nfatal: couldn't find remote ref ultra/integration-run-boot-given\n"
+    },
+    {
+      "task": "4",
+      "cmd": "grep -A3 '^- \\*\\*Comment\\*\\*' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'tier=standard|mostCapable., .effort=low|medium|high'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = b90f2f30356dcad03049b4d2e050bfc1f9a78f14",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-waves.mjs)\" = 5283c073e830253bd70ce66f0faa9b689a512412",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-worker.mjs)\" = 5e4bff29dc74ed9f515c3e4f55d5990a35f8eb4c",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/implementer.md)\" = 788b530dc0075cc6bd1c463030bfadf70b2e0f8b",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 65ccf30820183187f373a82e7694e4b40842dc87",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.06s\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 819694,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n.............................................................s.......... [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n.................................................................        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1432 passed, 1 skipped, 5 warnings in 93.98s (0:01:33) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n............................................................             [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1428 passed, 5 warnings in 93.60s (0:01:33) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "541bfd224e03c785828fd48dd7349577847c2f6a",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-11/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-11/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.561,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 4,
+    "tasks_planned": 4,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 2 \u2014 the janitor's auto-merge arming against a real GitHub pull request (fleet/janitor.mjs:140-180)",
+      "reason": "external",
+      "why": "The `gh pr view --json state,isDraft,autoMergeRequest` payload shape and GitHub's `clean status` refusal on an already-mergeable PR are canned through the exec seam in fleet/tests/test_janitor_automerge.mjs (driver-run, green). No live PR was viewed, armed or merged here, so GitHub's actual refusal wording \u2014 the trigger for the fallback plain squash \u2014 is unexercised."
+    },
+    {
+      "deliverable": "Task 4 \u2014 the real `claude` CLI accepting `--effort low|medium|high` on implementer and fix dispatches (fleet/run-worker.mjs:273 via fleet/run-main.mjs:395-397)",
+      "reason": "runtime",
+      "why": "fleet/tests/test_run_main_effort.mjs (driver-run, green) proves the exact argv each dispatch would receive using a fake `claude` spawnFn; the real binary is never invoked, so that it honours `--effort` at the lower three values is asserted by the plan, not executed in this environment."
+    }
+  ],
+  "judgmentCalls": [
+    "task 4: plan-defect: `fleet/tests/test_launch_toolchain.mjs:280` pins `BASE_FLAGS` \u2014 the exact sorted flag list of `fleet/launch.mjs`'s `USAGE` as of 13c0e15 \u2014 with the message \"the usage string names the same flags it named at BASE \u2014 the refusal is unconditional, not a flag\". That is a whole-list snapshot from an earlier task (cc5e24e), and it fails by construction against this task's M1, which requires `--implementer-effort low|medium|high` in `USAGE` (the exam `test_launch_effort.mjs:265` asserts exactly that). The two requirements are in direct conflict and the plan did not account for it. I did NOT edit the file: it is outside my Files block, is not a SIBLING FILE, and the GLOBAL CONSTRAINT \"No file outside a task's own Files block is edited\" is explicit \u2014 so I implemented as written and report the defect. The fix is one line: add `'--implementer-effort'` to the `BASE_FLAGS` array (sorted position: between `'--engine'` and `'--json'`). Until then `node fleet/tests/test_launch_toolchain.mjs` and `tests/test_fleet_suite.py::test_fleet_mjs[test_launch_toolchain.mjs]` are red. This is the only failure in the repo: the other 51 fleet sims and 1430 Python tests pass.",
+    "wave 1: candidate adopted after reconcile (fd4e8d3d32172498638aaccdd3905ecbb3de6aba + fixes \u2192 541bfd224e03c785828fd48dd7349577847c2f6a)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2 (Claim: \"A run the engine approved merges itself once CI is green with nobody waiting on it\") is met in fleet/janitor.mjs and documented in fleet/RUNBOOK.md:185-190, but fleet/CONTRACT.md \u2014 one of the four operator documents the Global Constraints hold to agreement with the code \u2014 still describes the pre-run world in two places. fleet/CONTRACT.md:156 says \"The human gate is the PR: ready on PASS or on the two-move rule's approval, a draft otherwise; the operator merges or closes it\", while a done run's non-draft PR is now merged by the janitor with no operator step; and the Janitor bullet at fleet/CONTRACT.md:177-181 spells the tool's calls as an exhaustive arrow chain (ls -> comment -> gh api status.json -> rm) with no mention of the two new mutating calls `gh pr view <url> --json state,isDraft,autoMergeRequest` and `gh pr merge <url> --auto --squash`. The structural Check (tests/test_docs_agree_with_code.py) passes because it pins flags and retired vocabulary, not this prose. Minor rather than blocking: the Claim itself holds in the code, and fleet/CONTRACT.md is outside Task 2's Files block (fleet/janitor.mjs, fleet/RUNBOOK.md, fleet/tests/test_janitor_automerge.mjs), so the \"no file outside a task's own Files block is edited\" constraint forbade fixing it in-run. Worth a follow-up issue against fleet/CONTRACT.md."
+    }
+  ],
+  "blockedWaves": []
+}

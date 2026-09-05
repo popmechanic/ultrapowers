@@ -1,0 +1,352 @@
+{
+  "ok": true,
+  "stamp": "run-11",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-11"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The approval receipts ride the evidence branch",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The janitor arms auto-merge on a done run",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "fleet/janitor.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The shouted-word scanner leaves test files alone",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_run_engine_exam_fix_edit.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "A launch flag turns implementer effort down",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/launch.mjs",
+          "fleet/lobby.mjs",
+          "fleet/run-main.mjs",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The approval receipts ride the evidence branch",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'approve-receipt.json. and .standing-approval.json., present when the engine wrote them'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The janitor arms auto-merge on a done run",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor_automerge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "fleet/janitor.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_janitor_automerge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_janitor_automerge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_janitor_automerge.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_janitor.mjs | grep -q 'ALL TESTS PASSED'",
+            "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q 'arms auto-merge'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The shouted-word scanner leaves test files alone",
+          "files": [
+            "fleet/tests/test_run_engine_exam_fix_edit.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_run_engine_exam_fix_edit.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+            "d=$(mktemp -d) && git clone -q . \"$d\" && cp fleet/tests/test_run_engine_exam_fix_edit.mjs \"$d/fleet/tests/\" && printf 'const re = /(MU%sST|NEV%sER|ALW%sAYS)/\\n' '' '' '' > \"$d/fleet/tests/zz_probe_shout.mjs\" && git -C \"$d\" add -A && (cd \"$d\" && node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED')",
+            "d=$(mktemp -d) && git clone -q . \"$d\" && cp fleet/tests/test_run_engine_exam_fix_edit.mjs \"$d/fleet/tests/\" && printf 'const re = /(MU%sST|NEV%sER|ALW%sAYS)/\\n' '' '' '' > \"$d/tests/zz_probe_shout.py\" && git -C \"$d\" add -A && (cd \"$d\" && node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED')",
+            "d=$(mktemp -d) && git clone -q . \"$d\" && cp fleet/tests/test_run_engine_exam_fix_edit.mjs \"$d/fleet/tests/\" && printf 'const re = /(MU%sST|NEV%sER|ALW%sAYS)/\\n' '' '' '' > \"$d/fleet/zz_probe_shout.mjs\" && git -C \"$d\" add -A && ! (cd \"$d\" && node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED')"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "A launch flag turns implementer effort down",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/lobby.mjs",
+            "fleet/run-main.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_launch_effort.mjs",
+            "fleet/tests/test_run_main_effort.mjs",
+            "fleet/tests/test_sandbox_boot_effort.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/lobby.mjs",
+            "fleet/run-main.mjs",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_effort.mjs",
+            "fleet/tests/test_sandbox_boot_effort.mjs",
+            "fleet/tests/test_run_main_effort.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_effort.mjs && node fleet/tests/test_sandbox_boot_effort.mjs && node fleet/tests/test_run_main_effort.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_main_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_main.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -A3 '^- \\*\\*Comment\\*\\*' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'tier=standard|mostCapable., .effort=low|medium|high'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 4 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The vendored kernel is byte-identical to BASE: `skills/ultrapowers/kernel/vendor/manyana.py`\n  is sha-pinned on purpose and never patched.\n- The engine, its clone routing, its worker and its role files are byte-identical to BASE \u2014 a\n  concurrent run owns them.\n- The four operator documents still agree with the code: every flag on the documented launch\n  line is in the launcher's usage, and the retired vocabulary of the pre-lift fleet appears\n  nowhere.\n- The janitor still issues no `git` and no `ssh <vm>` command, and reads nothing under\n  `~/.ultrapowers/` but `fleet.json`.\n- No shouted imperative (an all-caps must, never or always as a whole word) is added to\n  `fleet/CONTRACT.md` or `fleet/RUNBOOK.md`.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = b90f2f30356dcad03049b4d2e050bfc1f9a78f14",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-waves.mjs)\" = 5283c073e830253bd70ce66f0faa9b689a512412",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-worker.mjs)\" = 5e4bff29dc74ed9f515c3e4f55d5990a35f8eb4c",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/implementer.md)\" = 788b530dc0075cc6bd1c463030bfadf70b2e0f8b",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 65ccf30820183187f373a82e7694e4b40842dc87",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-11/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-11/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-11/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-11/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

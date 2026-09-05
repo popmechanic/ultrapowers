@@ -1,0 +1,17 @@
+Running as unit: fleet-engine-11.service; invocation ID: 46972df466244276bdfd15e4116973ad
+run-main: preflight
+run-main: tiers — 4 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE af1e7c70dedc3de5cbb4e9ca79af3bdb2756a701; 4 task clone(s) + integration
+run-main: engine — waves 4, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: acks — 2 deferred runtime/external ack(s) — pre-authorized (#243)
+run-main: approve
+run-main: approved — ultra/integration-run-11
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 36min 4.205s
+CPU time consumed: 49min 20.343s
+Memory peak: 256.0K
+Memory swap peak: 0B

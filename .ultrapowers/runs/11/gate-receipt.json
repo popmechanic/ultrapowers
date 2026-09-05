@@ -1,0 +1,64 @@
+{
+  "mode": "gate",
+  "stamp": "run-11",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-11/report.json",
+  "branch": "ultra/integration-run-11",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "Task 2 \u2014 the janitor's auto-merge arming against a real GitHub pull request (fleet/janitor.mjs:140-180) \u2014 The `gh pr view --json state,isDraft,autoMergeRequest` payload shape and GitHub's `clean status` refusal on an already-mergeable PR are canned through the exec seam in fleet/tests/test_janitor_automerge.mjs (driver-run, green). No live PR was viewed, armed or merged here, so GitHub's actual refusal wording \u2014 the trigger for the fallback plain squash \u2014 is unexercised. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "Task 4 \u2014 the real `claude` CLI accepting `--effort low|medium|high` on implementer and fix dispatches (fleet/run-worker.mjs:273 via fleet/run-main.mjs:395-397) \u2014 fleet/tests/test_run_main_effort.mjs (driver-run, green) proves the exact argv each dispatch would receive using a fake `claude` spawnFn; the real binary is never invoked, so that it honours `--effort` at the lower three values is asserted by the plan, not executed in this environment. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.yiLDgkKbQv/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 8/8 workers\\n8 workers [1433 items]\\n\\n........................................................................ [  5%]\\n........................................................................ [ 10%]\\n......................................................................... [ 15%]\\n........................................................................ [ 20%]\\n........................................................................ [ 25%]\\n........................................................................ [ 30%]\\n........................................................................ [ 35%]\\n........................................................................ [ 40%]\\n........................................................................ [ 45%]\\n........................................................................ [ 50%]\\n........................................................................ [ 55%]\\n........................................................................ [ 60%]\\n........................................................................ [ 65%]\\n........................................................................ [ 70%]\\n........................................................................ [ 75%]\\n........................................................................ [ 80%]\\n........................................................................ [ 85%]\\n........................................................................ [ 90%]\\n........................................................................ [ 95%]\\n................................................................         [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1433 passed, 5 warnings in 96.13s (0:01:36) ==================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
