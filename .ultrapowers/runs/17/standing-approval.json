@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-17.md run-17 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Global constraint \"No file outside a task's own Files block is edited\" (whole-tree diff against BASE) — Shell access is denied in this read-only role, so I could not run a whole-tree `git diff --name-only` against BASE to enumerate every edited path myself. The 20 frozen-path `Check:` commands all exit 0 in the integrated check evidence, and structural reads of the five declared files (skills/ultrapowers/scripts/compile_plan.py, tests/test_compile_plan_engine_self_change.py, tests/test_compile_plan_sha_unguarded.py, fleet/claude-token.mjs, fleet/tests/test_claude_token.mjs) show only in-contract changes — but the negative claim over the rest of the tree rests on the per-task referees' diffs, not on anything I executed. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
