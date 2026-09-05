@@ -120,15 +120,23 @@ const examOk = (cwd, files = { 't1_test.sh': RED_AT_BASE }) => {
   assert.equal(exam.cwd, path.join(clonesDir, 'exam-T1'), 'in the examiner\'s own clone, not the graded one')
   assert.equal(impl.cwd, path.join(clonesDir, 'task-T1'), 'and the implementer in the task clone')
 
-  // The prompt: the examiner's role, then the implementer's own inputs.
+  // The prompt: the examiner's role, then the implementer's own inputs — with
+  // the one line #663 sets apart. This task's `testCmd` names its Proof `Test:`
+  // path, so the examiner keeps `bash t1_test.sh` and the implementer, whose
+  // tree will not hold that file until the driver's handoff, is handed the
+  // run-wide `bash check.sh`. Everything else is still byte for byte.
   assert.ok(exam.prompt.startsWith(EXAMINER_TEXT), 'the exam prompt opens with examiner.md verbatim')
   assert.ok(!exam.prompt.includes('You are an implementer'), 'and carries no implementer role')
   assert.ok(impl.prompt.startsWith(IMPLEMENTER_TEXT))
   const examTail = exam.prompt.slice(EXAMINER_TEXT.length)
   const implTail = impl.prompt.slice(IMPLEMENTER_TEXT.length)
-  assert.equal(examTail, implTail, 'the examiner gets the implementer\'s inputs byte for byte')
+  assert.equal(examTail.replace('\nTEST COMMAND: bash t1_test.sh', '\nTEST COMMAND: bash check.sh'),
+    implTail, 'the examiner gets the implementer\'s inputs byte for byte but the TEST COMMAND line')
+  assert.deepEqual(examTail.split('\n').filter((l) => l.startsWith('TEST COMMAND: ')),
+    ['TEST COMMAND: bash t1_test.sh'], 'the task\'s own TEST COMMAND, once')
+  assert.deepEqual(implTail.split('\n').filter((l) => l.startsWith('TEST COMMAND: ')),
+    ['TEST COMMAND: bash check.sh'], 'and the run-wide suite for the implementer, once')
   assert.ok(examTail.startsWith('\nBASE: ' + base), 'BASE block')
-  assert.ok(examTail.includes('\nTEST COMMAND: bash t1_test.sh'), 'the task\'s own TEST COMMAND')
   assert.ok(examTail.includes('\nFILES: one.txt'), 'FILES block')
   assert.ok(examTail.includes('\nINTERFACES:\nConsumes: `BASE_FACTS`\nProduces: `ONE`'), 'INTERFACES block')
   assert.ok(examTail.includes('\nTASK:\n' + BODY), 'the TASK block, Machine line and legs included')
