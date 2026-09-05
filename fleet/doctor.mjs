@@ -10,8 +10,8 @@
  * Five rows, all reads, every one of them answered by exe.dev's own truth:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
- *   capacity      `billing plan --json`'s pool holds a run of the configured
- *                 size, and says how many such runs fit.
+ *   capacity      `billing plan --json` names the pool, beside the size one
+ *                 run asks for. The row reports; it limits nothing.
  *   claude        the `claude-max` integration carries the bearer at the edge
  *                 and rides no tag; claude-token's status line rides along.
  *   github        `integrations setup github --list` lists an account.
@@ -194,10 +194,15 @@ function exeDevRow (res) {
 
 /**
  * `billing plan --json` is one flat object with `max_cpus`, `max_memory_gb`,
- * `tier` and `plan`. The row asks one question: does the pool hold a run of the
- * configured size, and how many such runs fit at once? A pool a run cannot fit
- * in is not a broken account, it is a run asked for too large — so the red
- * detail names `~/.ultrapowers/fleet.json`, the place that lowers it.
+ * `tier` and `plan`. The row reports two numbers side by side — the pool, and
+ * the size one run asks for — and draws no conclusion from them, because
+ * allocation on exe.dev is over-committable: 56 vCPU stood allocated against a
+ * 16-vCPU plan and no run was ever refused (measured 2026-09-05). A pool
+ * smaller than the ask is therefore a green row that says so, not a limit.
+ *
+ * Only a number the doctor could not read turns the row red: an unreadable
+ * `billing plan --json`, or a `cpu`/`memory` it cannot parse. Both details name
+ * `~/.ultrapowers/fleet.json`, the file that sets the size a run asks for.
  */
 function poolRow (res, config) {
   const askedCpu = parseCpus(config.cpu)
@@ -224,15 +229,7 @@ function poolRow (res, config) {
   const tier = typeof plan.tier === 'string' && plan.tier !== '' ? plan.tier : String(plan.plan ?? 'untiered')
   const pool = `${tier} pool ${poolCpu} vCPU / ${poolGb}GB`
   const asked = `${askedCpu} vCPU / ${askedGb}GB`
-  if (poolCpu < askedCpu || poolGb < askedGb) {
-    return row(
-      'capacity',
-      'missing',
-      `${pool} cannot hold a run of ${asked} — lower cpu/memory in ~/.ultrapowers/fleet.json`
-    )
-  }
-  const fit = Math.floor(poolCpu / askedCpu)
-  return row('capacity', 'ok', `${pool} fits ${fit} run${fit === 1 ? '' : 's'} of ${asked}`)
+  return row('capacity', 'ok', `${pool}; a run asks ${asked}`)
 }
 
 /** The two key names the doctor reads, as the row's detail spells them. */
