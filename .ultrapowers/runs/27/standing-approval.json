@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-27.md run-27 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/retire.mjs — the one-time sweep against a real target — Every leg of the evidence exercises the tool through stubbed `exec` seams (`fleet/tests/test_retire.mjs`) or PATH shims that only log their argv. The actual GitHub effects the Claim names — tag creation through the refs API, `git ls-remote --tags` verification against the live remote, branch deletion, and the PR-body PATCH — are never issued here. The plan's own Context sequences the real sweep (smoke run, then sweep popmechanic/ultrapowers' 18 pairs and -walk's 7, then confirm the next N is 19) as an operator step after this merge. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/janitor.mjs — tag-first read and reap against a real target and fleet — The tag-first contents read, the `git/ref/tags` + `commits/<sha>` age path and the `rm <vm> --json` reap are exercised only against canned `gh api` answers and a simulated `ls` fleet (`fleet/tests/test_janitor.mjs`, `test_janitor_reap_only.mjs`, `test_launch_reaps.mjs`). No call reaches GitHub or exe.dev in this environment, so that a finished run whose branches the boot already deleted is in fact reaped is confirmed by simulation, not by a live run. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

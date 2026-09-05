@@ -1,0 +1,329 @@
+{
+  "ok": true,
+  "stamp": "run-27",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-27"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "`fleet/retire.mjs`, the one-time sweep",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/retire.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`retire({ argv, exec }) -> Promise<{ retired: number[], kept: number[], skipped: string[], lines: string[] }>`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The janitor reads a finished run by its tag",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/janitor.mjs",
+          "fleet/tests/test_janitor_reap_only.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`janitor({ argv, exec, config, now }) -> Promise<{ dryRun, age, actions, stale, unknown }>`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The contract and the runbook say what the boot and the janitor now do",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The boot script's banner says the branches are transient",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "`fleet/retire.mjs`, the one-time sweep",
+          "files": [
+            "fleet/retire.mjs",
+            "fleet/tests/test_retire.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`retire({ argv, exec }) -> Promise<{ retired: number[], kept: number[], skipped: string[], lines: string[] }>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/retire.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_retire.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_retire.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_retire.mjs | grep -q 'ALL TESTS PASSED'",
+            "d=\"$(mktemp -d)\" && printf '#!/bin/sh\\ntouch %s/called\\nexit 1\\n' \"$d\" > \"$d/gh\" && cp \"$d/gh\" \"$d/git\" && chmod +x \"$d/gh\" \"$d/git\" && (PATH=\"$d:$PATH\" node fleet/retire.mjs >/dev/null 2>\"$d/err\" && exit 1 || test \"$?\" = 2) && grep -q -- '--target' \"$d/err\" && test ! -f \"$d/called\"",
+            "node --check fleet/retire.mjs && grep -c 'node fleet/retire.mjs --target' fleet/CONTRACT.md | grep -q '^1$'",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The janitor reads a finished run by its tag",
+          "files": [
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor.mjs",
+            "fleet/tests/test_janitor_reap_only.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`janitor({ argv, exec, config, now }) -> Promise<{ dryRun, age, actions, stale, unknown }>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor_reap_only.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_janitor.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_janitor.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_janitor.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The contract and the runbook say what the boot and the janitor now do",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status.json:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'body links the plan blob.*blob/ultra/plan/run-<N>/.ultrapowers/plan.md.*evidence tree.*tree/ultra/evidence/run-<N>/.ultrapowers/runs/<N>/'",
+            "! tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'plan blob.\\{0,120\\}ultra/plan-run-<N>' && ! tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'evidence tree.\\{0,120\\}ultra/evidence-run-<N>' && test \"$(tr '\\n' ' ' < fleet/CONTRACT.md | grep -o 'plan blob' | wc -l | tr -d ' ')\" = 1",
+            "sed -n '/^## Per run/,/^\\*\\*Watch\\.\\*\\*/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'computes N from the target.s .ultra/\\*-run-\\*. branches and its .ultra/{plan,evidence}/run-<N>. tags'",
+            "sed -n '/^\\*\\*Reap\\.\\*\\*/,/^## States/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'ultra/evidence/run-<N>.*first.*ultra/evidence-run-<N>.*only while.*sweep.*pending.*ultra/plan/run-<N>.*ultra/plan-run-<N>'",
+            "sed -n '/^- \\*\\*Janitor/,/^- \\*\\*Laptop config/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ultra/evidence/run-<N>.*first.*ultra/evidence-run-<N>.*only while.*sweep.*pending.*ultra/plan/run-<N>.*ultra/plan-run-<N>'",
+            "! grep -q 'reads the branch, not the tag' fleet/CONTRACT.md && ! grep -q 'reads the branch, not the tag' fleet/RUNBOOK.md && ! grep -q 'not the tag' fleet/CONTRACT.md && ! grep -q 'not the tag' fleet/RUNBOOK.md && ! grep -q 'reads as absent' fleet/CONTRACT.md && ! grep -q 'reads as absent' fleet/RUNBOOK.md",
+            "tr '\\n' ' ' < fleet/RUNBOOK.md | grep -q 'The launcher runs it before every launch; nothing schedules it' && ! grep -q 'arms auto-merge' fleet/RUNBOOK.md && ! grep -qi 'cron' fleet/RUNBOOK.md && ! grep -qi 'cron' fleet/CONTRACT.md",
+            "test \"$(grep -c '^  - record:' fleet/CONTRACT.md)\" = 1 && test \"$(grep '^  - record:' fleet/CONTRACT.md | git hash-object --stdin)\" = 725eed75fc32ede3a13ee54f4e8fd7f23361c9bd && test \"$(sed -n '/^- \\*\\*The two tags/,/^- \\*\\*Comment/p' fleet/CONTRACT.md | git hash-object --stdin)\" = 9e48fc537b1410ae1543608328466b69b96bab06 && test \"$(sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name:\\*\\*/p' fleet/CONTRACT.md | git hash-object --stdin)\" = 70f51efb8ddaeae10d80c4ccdd27954437e9e237",
+            "! grep -q '?ref=ultra/evidence-run-' fleet/RUNBOOK.md fleet/CONTRACT.md && test \"$(grep -c 'fleet/retire.mjs' fleet/CONTRACT.md)\" = 1 && ! grep -q 'retire.mjs' fleet/RUNBOOK.md",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+            "node fleet/tests/test_janitor_reap_only.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The boot script's banner says the branches are transient",
+          "files": [
+            "fleet/sandbox-boot.sh"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '1,/^set -euo pipefail/p' fleet/sandbox-boot.sh | tr '\\n' ' ' | grep -q 'ultra/plan/run-<N>.*ultra/evidence/run-<N>.*ultra/plan-run-<N>.*ultra/evidence-run-<N>.*deleted at publish.*verif'",
+            "! sed -n '1,/^set -euo pipefail/p' fleet/sandbox-boot.sh | tr '\\n' ' ' | grep -q 'never merged, linked from the PR'",
+            "test \"$(sed -n '2,/^set -euo pipefail/p' fleet/sandbox-boot.sh | sed '$d' | grep -vc '^#')\" = 0",
+            "test \"$(sed -n '/^set -euo pipefail/,$p' fleet/sandbox-boot.sh | git hash-object --stdin)\" = 2443a80de700904c5fe891b0853b8c5a87099af1",
+            "bash -n fleet/sandbox-boot.sh"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 4 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The two tags are spelled `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`; the three branches\n  keep their spellings `ultra/plan-run-<N>`, `ultra/integration-run-<N>`, `ultra/evidence-run-<N>`.\n  No other ref shape is introduced anywhere.\n- Amendment 10 holds: every `git` and every GitHub call is a script's, never a model's; the laptop\n  tools reach `git` and `gh` only through the `exec` seam so the sims stub them, and no sim opens a\n  socket.\n- `fleet/retire.mjs` is named by no document but `fleet/CONTRACT.md`, where BASE already names it:\n  `tests/test_docs_agree_with_code.py` checks that every `fleet/*.mjs` named in `fleet/RUNBOOK.md`,\n  `README.md` and the two skill documents exists on the tree under test.\n- No `?ref=` in `fleet/RUNBOOK.md` or `fleet/CONTRACT.md` names `ultra/evidence-run-` \u2014 the\n  docs-agree suite pins it; a branch fallback is described in prose, never as a `?ref=` recipe.\n- No file outside a task's own Files block is edited \u2014 in particular not `fleet/launch.mjs`,\n  `fleet/lobby.mjs`, `fleet/doctor.mjs`, `skills/ultrapowers/SKILL.md`, `README.md`, `CLAUDE.md`,\n  `tests/test_docs_agree_with_code.py` or `fleet/tests/test_launch_reaps.mjs`; a pin in one of\n  those files is kept green by the shape of the change, not by editing the pin.\n- No sentence of a document is matched against itself: a documents claim proves itself by a\n  scoped `Run:` command over the operative words.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 62d348b5982a879df341fdf77e0115ae1d639719",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = a2bcd0491f5af05f77606c747c8f4f6bc3659138",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultralearn/scripts/harvest_fleet_runs.py)\" = 5e20e6b5ac745a17fe19de01114fbbbef9bea1e9",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/doctor.mjs)\" = 5e0d5c9a9342fa35f6fb5e5dfb18ca5be7a05466",
+        "minor": false
+      },
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      },
+      {
+        "cmd": "node --check fleet/janitor.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-27/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-27/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-27/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-27/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
