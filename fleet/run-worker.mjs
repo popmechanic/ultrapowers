@@ -154,9 +154,9 @@ export const ROLES = {
     allowedTools: READ_ONLY_TOOLS,
     writableRoot: null,
   },
-  // #553: the wave-0 examiner writes the Proof `Test:` files in the task's own
-  // clone at BASE, so its writable root is the implementer's — the same tree,
-  // before the implementer sees it. It is a SEPARATE role rather than a second
+  // #553: the wave-0 examiner writes the Proof `Test:` files at BASE — since
+  // #653 in a clone of its own (`exam-<id>`), cut beside the implementer's and
+  // handed in by the driver once both return. It is a SEPARATE role rather than a second
   // label on `implementer` because `promptFileFor` resolves `roles/<role>.md`:
   // routing `exam:*` to the implementer role would hand the examiner the
   // implementer's preamble, and the one agent that must not be told to make
