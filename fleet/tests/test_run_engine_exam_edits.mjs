@@ -95,10 +95,18 @@ const writeOne = (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n
 // One rule since 2026-09-02 (after run-53): the driver never refuses the
 // edit. It lands on the row as `examEdited`, in one judgment call, and in the
 // review prompt as EXAM EDITED; the referee (reviewer.md rule 8) decides.
+//
+// Since #653 the only party that CAN edit the exam is a fix round: the
+// implementer works in a clone the exam never entered, and the peer's bytes
+// arrive over its Proof paths at the handoff. So the first case below is the
+// implementer's own file at a Proof path — an event with nothing to record —
+// and the enforcement cases move to the round that really holds the exam.
 const editExam = (cwd) =>
   fs.writeFileSync(path.join(cwd, 't1_test.sh'), '#!/bin/bash\nexit 0 # rewritten by the graded party\n')
 {
-  // The implementer rewrites the exam it was handed.
+  // The implementer writes its own file at the Proof path. It was never handed
+  // the exam, so this is not an edit of one: the peer's bytes overwrite it at
+  // the handoff, the row records no drift, and the referee is told nothing.
   const labels = []
   const prompts = {}
   const stub = (prompt, opts, cwd) => {
@@ -111,26 +119,31 @@ const editExam = (cwd) =>
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ waves: [[entry()]], stub })
+  const { run, clonesDir } = rig({ waves: [[entry()]], stub })
   const report = await run()
-  assert.equal(report.tasks[0].status, 'done', 'a clean review merges an edited exam: ' + report.tasks[0].notes)
+  assert.equal(report.tasks[0].status, 'done', 'the task merges: ' + report.tasks[0].notes)
   assert.equal(report.tasks[0].reviewVerdict, 'clean')
-  assert.equal(report.tasks[0].exam, 'red', 'the value recorded before the implementer ran')
-  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'], 'the edit is on the row')
+  assert.equal(report.tasks[0].exam, 'red', 'the value read in the examiner\'s clone at BASE')
+  assert.deepEqual(report.tasks[0].examEdited, [], 'nothing was edited — the peer\'s bytes won')
+  assert.equal(fs.readFileSync(path.join(clonesDir, 'task-T1', 't1_test.sh'), 'utf8'), RED_AT_BASE,
+    'the graded tree holds the exam, not the implementer\'s file')
   assert.ok(labels.includes('review:T1:1'), 'the review is dispatched: ' + labels.join(','))
-  assert.ok(prompts['review:T1:1'].includes('\nEXAM EDITED: t1_test.sh'),
-    'the referee is told which Proof path moved')
+  // reviewer.md's rule 8 mentions the line, so the pin is on the LINE the
+  // driver appends to the inputs, not on the two words.
+  assert.ok(!prompts['review:T1:1'].includes('\nEXAM EDITED: '),
+    'and the referee is handed no EXAM EDITED line')
   assert.equal(report.coverage.tasks_merged, 1)
-  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_test.sh')).length, 1)
+  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_test.sh')), [])
 }
 {
-  // The referee, told, may block it — and that is the whole enforcement.
+  // The referee, told, may block it — and that is the whole enforcement. The
+  // edit is the fix round's, which is the round that holds the exam.
   const stub = (prompt, opts, cwd) => {
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') return examOk(cwd)
-    if (kind === 'impl') { writeOne(cwd); editExam(cwd); return doneImpl(cwd) }
+    if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
     if (kind === 'review') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'the exam was weakened' }] }
-    if (kind === 'fix') return doneImpl(cwd)
+    if (kind === 'fix') { editExam(cwd); return doneImpl(cwd) }
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
@@ -172,7 +185,9 @@ const editExam = (cwd) =>
   assert.ok(report.judgmentCalls.some((j) => j.includes('t1_test.sh')))
 }
 {
-  // A green-at-BASE exam that is then edited keeps the value it recorded.
+  // A green-at-BASE exam keeps the value it recorded, and the implementer's own
+  // file at that path still records nothing: the verdict is read in the
+  // examiner's clone, the drift is read in the graded one after the handoff.
   const stub = (prompt, opts, cwd) => {
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') return examOk(cwd, { 't1_test.sh': GREEN_AT_BASE })
@@ -185,19 +200,26 @@ const editExam = (cwd) =>
   const report = await run()
   assert.equal(report.tasks[0].status, 'done')
   assert.equal(report.tasks[0].exam, 'green-at-base')
-  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'])
+  assert.deepEqual(report.tasks[0].examEdited, [])
 }
 
 // ── (f) one blob per proofTests path, absent recorded as null [M2, M4] ─────
-const twoPathScenario = async (implFn, paths = ['t1_test.sh', 't1_extra.sh'],
+// The mutations belong to the fix round: it is the round that works in a tree
+// the exam has been handed into, so it is the only one whose writes at a Proof
+// path are edits of an exam at all (#653). The first review blocks to buy it.
+const twoPathScenario = async (fixFn, paths = ['t1_test.sh', 't1_extra.sh'],
                                examFiles = { 't1_test.sh': RED_AT_BASE }) => {
   const labels = []
   const stub = (prompt, opts, cwd) => {
     labels.push(opts.label)
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') return examOk(cwd, examFiles)
-    if (kind === 'impl') { writeOne(cwd); implFn(cwd); return doneImpl(cwd) }
+    if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
+    if (opts.label === 'review:T1:1') {
+      return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'another look' }] }
+    }
     if (kind === 'review') return passReview()
+    if (kind === 'fix') { fixFn(cwd); return doneImpl(cwd) }
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }

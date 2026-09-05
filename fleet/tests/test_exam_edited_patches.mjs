@@ -140,16 +140,18 @@ const verdictOf = (t) => ({ status: t.status, reviewVerdict: t.reviewVerdict })
   assert.equal(byId.T1.proposedPatches, 1, 'the round that dispatched the fix carried one patch')
 }
 
-// ── (b) [M1] the first implementer edits the exam, before any review ────────
-// Since 2026-09-02 the same rule as the fix round: recorded, reviewed, and
-// the count is the review's, not a refusal's.
+// ── (b) [M1] the first implementer writes at the exam's path ────────────────
+// Since #653 that is not an edit of anything: the implementer works in a clone
+// the exam never entered, and the driver lays the peer's bytes over the Proof
+// path at the handoff. So the row records an empty `examEdited` — and the
+// count beside it is still the review's, not a refusal's.
 {
   const { byId, labels } = await sim({
     ids: ['T1'], review1: passReview(), editsExamIn: { T1: 'impl' },
   })
   assert.ok(labels.some((l) => l.startsWith('review:')), 'the review is dispatched: ' + labels.join(','))
   assert.deepEqual(verdictOf(byId.T1), { status: 'done', reviewVerdict: 'clean' })
-  assert.deepEqual(byId.T1.examEdited, ['T1_test.sh'])
+  assert.deepEqual(byId.T1.examEdited, [])
   assert.ok('proposedPatches' in byId.T1, 'the field is present, not absent')
   assert.equal(byId.T1.proposedPatches, 0, 'a clean review attached nothing')
 }

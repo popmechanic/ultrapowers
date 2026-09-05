@@ -108,11 +108,17 @@ const examOk = (cwd, files = { 't1_test.sh': RED_AT_BASE }) => {
   const { run, base, clonesDir } = rig({ waves: [[entry()]], stub })
   const report = await run()
 
+  // Every dispatch the task takes, in the order the stub saw them. The exam and
+  // the implementer go out together (#653) — this leg's stub replies to each in
+  // the same tick it is called, so the pair still arrives here in dispatch
+  // order; the leg that holds the examiner's reply back until the implementer
+  // is out is test_run_engine_exam_together.mjs's.
   assert.deepEqual(seen.map((d) => d.label), ['exam:T1', 'impl:T1', 'review:T1:1', 'integration'],
-    'the examiner is dispatched before the implementer')
+    'the examiner and the implementer are both dispatched, before any review')
   const exam = seen[0], impl = seen[1]
   assert.equal(exam.opts.isolation, 'worktree', 'the exam runs isolated')
-  assert.equal(exam.cwd, path.join(clonesDir, 'task-T1'), 'in the task\'s own clone')
+  assert.equal(exam.cwd, path.join(clonesDir, 'exam-T1'), 'in the examiner\'s own clone, not the graded one')
+  assert.equal(impl.cwd, path.join(clonesDir, 'task-T1'), 'and the implementer in the task clone')
 
   // The prompt: the examiner's role, then the implementer's own inputs.
   assert.ok(exam.prompt.startsWith(EXAMINER_TEXT), 'the exam prompt opens with examiner.md verbatim')
@@ -137,7 +143,7 @@ const examOk = (cwd, files = { 't1_test.sh': RED_AT_BASE }) => {
   // The role loader and the label→clone route.
   assert.equal(loadRoles(rolesDir).examiner, EXAMINER_TEXT, 'loadRoles reads examiner.md')
   for (const name of SIX) assert.equal(typeof loadRoles(rolesDir)[name], 'string')
-  assert.equal(defaultTaskIdOf('exam:T1'), 'T1', 'exam:<id> routes to the task clone')
+  assert.equal(defaultTaskIdOf('exam:T1'), 'T1', 'exam:<id> reads as task T1 — its clone is exam-T1')
 
   assert.equal(report.tasks[0].status, 'done')
   assert.equal(report.coverage.tasks_merged, 1, 'an unedited exam merges')

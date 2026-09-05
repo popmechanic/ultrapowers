@@ -162,8 +162,13 @@ assert.ok(fixCalls(runA.calls)[0].includes('t1_test.sh'),
     '(b)/M2: naming both moved paths: ' + fixCalls(calls)[0])
 }
 
-// ── (c) the first round is the same rule: recorded, reviewed, folded [M3] ──
+// ── (c) the first round is the same rule: reviewed and folded [M3] ─────────
 // (Until 2026-09-02 this leg pinned the opposite — a total stop before review.)
+// Since #653 there is nothing for it to record either: the implementer never
+// holds the exam, so its own file at the Proof path is overwritten by the
+// peer's bytes at the handoff and the row's `examEdited` stays empty. What the
+// leg still pins is the half that outlived both changes — the task is reviewed
+// and folded rather than stopped.
 {
   const labels = []
   const stub = (prompt, opts, cwd) => {
@@ -178,12 +183,12 @@ assert.ok(fixCalls(runA.calls)[0].includes('t1_test.sh'),
   const { run } = rig({ waves: [[entry()]], stub })
   const report = await run()
   const row = report.tasks[0]
-  assert.equal(row.status, 'done', '(c)/M3: an exam edited before review is reviewed, and a clean review merges it')
+  assert.equal(row.status, 'done', '(c)/M3: a first round that wrote at the Proof path is reviewed, and a clean review merges it')
   assert.equal(row.reviewVerdict, 'clean')
   assert.ok(labels.some((l) => l.startsWith('review:T1')),
     '(c)/M3: the review is dispatched: ' + labels.join(','))
   assert.equal(report.coverage.tasks_merged, 1, '(c)/M3: the patch is folded')
-  assert.deepEqual(row.examEdited, ['t1_test.sh'], '(c)/M3: the row records the moved path')
+  assert.deepEqual(row.examEdited, [], '(c)/M3: and no path moved — the handoff put the peer\'s bytes there')
 }
 
 // ── (d) an exam edited by the fix round does not bypass the referee [M4] ────

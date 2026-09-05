@@ -29,7 +29,10 @@ import { fileURLToPath } from 'node:url'
 // The run's event log lives in run-waves.mjs; the engine borrows its ULID
 // stamp so the driver's own records sort with the worker envelopes rather
 // than beside them (readers order by id, never by line — run-waves.mjs).
-import { ulid } from './run-waves.mjs'
+// `cloneAtBase` and `patchAgainstBase` come from there too: the examiner's
+// clone is cut at dispatch time (only the engine knows which tasks have an
+// exam), and the implementer's capture is retaken after the handoff.
+import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
 
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
@@ -758,6 +761,17 @@ export async function runEngine({
     await exec('git', ['clean', '-fdq'], { cwd: cdir })
   }
 
+  // Where a clone at `sha` can be cut from. The bare repo holds every wave-0
+  // base, but a later wave's base is a fold commit that exists only in the
+  // integration clone's object database until the run pushes — so the source
+  // is whichever tree can actually resolve the sha, checked rather than
+  // assumed. Same question the re-anchor loop answers when it fetches from
+  // `integ`.
+  const cloneSourceFor = async (sha) => {
+    const r = await exec('git', ['cat-file', '-e', sha + '^{commit}'], { cwd: repoDir })
+    return r.code === 0 ? repoDir : integ
+  }
+
   // ── per-task pipeline: implement → review → bounded fix loop (ported) ──────
   async function runTaskInner(task, baseShaForTask, siblingsStr, tierOverride) {
     const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
@@ -785,19 +799,29 @@ export async function runEngine({
     const commonInputs = testCmdLine(task, workerTestCmd) + filesLine(task) + siblingsStr +
       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
 
-    // ── the exam (#553) ──────────────────────────────────────────────────────
-    // A worker in the task's own clone at BASE, dispatched BEFORE the
-    // implementer, writes the tests the Proof names. It receives exactly the
-    // implementer's inputs — the same BASE, TEST COMMAND, FILES, SIBLING
-    // FILES, GLOBAL CONSTRAINTS, INTERFACES and TASK blocks — and NOT the
-    // implementer's role: the one agent that must not be told to make the
-    // suite green is the one writing the thing that measures it.
+    // ── the exam (#553, #653) ────────────────────────────────────────────────
+    // A worker writes the tests the Proof names, in a clone of its OWN at BASE,
+    // dispatched in the same breath as the implementer and awaited neither
+    // before nor after it. It receives exactly the implementer's inputs — the
+    // same BASE, TEST COMMAND, FILES, SIBLING FILES, GLOBAL CONSTRAINTS,
+    // INTERFACES and TASK blocks — and NOT the implementer's role: the one
+    // agent that may not be told to make the suite green is the one writing the
+    // thing that measures it.
     //
-    // What the driver then holds is the pair the exam is worth: the blob sha
-    // of every Proof path as the examiner left it, and whether the task's own
-    // testCmd is RED against those tests at BASE. Both are driver exec
+    // Two clones rather than one (#653) buys two things at once. The graded
+    // party never holds the exam in its tree while it works, so the peer rule
+    // (#551 — the exam is written by a peer, never the submitter) is a fact of
+    // the substrate rather than a sentence in a role file; and the exam's wall
+    // clock is no longer spent with the implementer idle. The bytes reach the
+    // graded tree by a DRIVER handoff once both have returned, below.
+    //
+    // What the driver holds after the pair is what the exam is worth: the blob
+    // sha of every Proof path as the examiner left it, and whether the task's
+    // own testCmd is RED against those tests at BASE — read in the examiner's
+    // clone, which is a tree at BASE by construction. Both are driver exec
     // (Amendment 10) — no prompt asks anyone to run git or report a sha.
     const cloneDir = path.join(clonesDir, 'task-' + task.id)
+    const examDir = path.join(clonesDir, 'exam-' + task.id)
     const proofTests = Array.isArray(task.proofTests)
       ? task.proofTests.filter((p) => typeof p === 'string' && p.trim() !== '')
       : []
@@ -810,43 +834,57 @@ export async function runEngine({
       : []
     const examTestCmd = (typeof task.testCmd === 'string' && task.testCmd.trim())
       ? task.testCmd : null
-    // `git hash-object` on the path as it stands in the clone; an absent path
-    // is recorded as null, which is itself a value the drift check compares
+    // `git hash-object` on the path as it stands in a clone; an absent path is
+    // recorded as null, which is itself a value the drift check compares
     // (creating a path the examiner declined to write IS an edit).
-    const blobShaOf = async (p) => {
-      const r = await exec('git', ['hash-object', path.resolve(cloneDir, p)], { cwd: cloneDir })
+    const blobShaIn = async (dir, p) => {
+      const r = await exec('git', ['hash-object', path.resolve(dir, p)], { cwd: dir })
       return r.code === 0 ? String(r.stdout || '').trim() : null
     }
+    const blobShaOf = (p) => blobShaIn(cloneDir, p)
     let exam = null
+    // The blobs the drift check compares against — recorded from the graded
+    // clone at the HANDOFF, never before it (see below).
     let examBlobs = null
-    if (proofTests.length && examTestCmd) {
-      const ex = await agent(roles.examiner + '\nBASE: ' + baseShaForTask + commonInputs,
-        { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
-          schema: EXAMINER_SCHEMA })
-      for (const u of ((ex && Array.isArray(ex.unsatisfiable)) ? ex.unsatisfiable : [])) {
-        judgmentCalls.push('task ' + task.id + ': examiner: ' + u.leg + ' — ' + u.why)
-      }
-      if (!ex || ex.status !== 'DONE') {
-        // A dead examiner is a transient process death and a BLOCKED one is a
-        // judgment about the Proof; neither is the implementer's fault, and
-        // neither is worth failing a task over. The task proceeds WITHOUT an
-        // exam, which the record says in as many words.
+    // What the examiner left in its own clone, path by path: the copy list, and
+    // the record that an exam exists at all.
+    let examinerBlobs = null
+    // The examiner's clone is cut here rather than by run-main's
+    // provisionRunTree, which cuts `integration` and `task-<id>` and knows
+    // nothing about Proofs: only the engine knows which tasks have an exam, and
+    // only at dispatch time does it know the wave base to cut at. Everything
+    // the examiner needs before it can be dispatched — the clone and the
+    // bootstrap its red-at-BASE run reads — is awaited HERE, so the dispatch
+    // itself is one unawaited call beside the implementer's.
+    const examReady = await (async () => {
+      if (!(proofTests.length && examTestCmd)) return false
+      try {
+        // A barrier retry re-enters runTaskInner; the clone is re-cut from
+        // scratch rather than reused, the same posture resetTaskClone takes.
+        fs.rmSync(examDir, { recursive: true, force: true })
+        cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
+                      base: baseShaForTask })
+      } catch (e) {
+        // No clone, no exam — and no reason to fail a task over it: the same
+        // standing a BLOCKED examiner has.
         exam = 'blocked'
-        judgmentCalls.push('task ' + task.id + ': examiner ' +
-          (ex ? (ex.status + ' (' + (ex.summary || 'no summary') + ')') : 'returned no reply') +
-          ' — no exam recorded; the implementer proceeds unexamined')
-      } else {
-        examBlobs = []
-        for (const p of proofTests) examBlobs.push([p, await blobShaOf(p)])
-        const atBase = await sh(examTestCmd, cloneDir)
-        if (atBase.code === 0) {
-          exam = 'green-at-base'
-          judgmentCalls.push('task ' + task.id + ': exam is green at BASE — it establishes nothing')
-        } else {
-          exam = 'red'
+        judgmentCalls.push('task ' + task.id + ': the examiner\'s clone could not be cut at ' +
+          baseShaForTask + ' (' + String((e && e.message) || e) +
+          ') — no exam recorded; the implementer proceeds unexamined')
+        return false
+      }
+      if (bootstrapCmd) {
+        // The setup loop bootstrapped every clone that existed then; this one
+        // did not, and its red-at-BASE run needs the same tree.
+        const b = await sh(bootstrapCmd, examDir)
+        if (b.code !== 0) {
+          judgmentCalls.push('bootstrap failed in ' + path.basename(examDir) + ' (exit ' + b.code +
+            ') — the suite may be unrunnable there: ' + tail(b.stderr || b.stdout, 300))
+          log('bootstrap failed in ' + path.basename(examDir))
         }
       }
-    }
+      return true
+    })()
     // The Proof paths whose blob no longer matches what the examiner left.
     const examDrift = async () => {
       if (!examBlobs) return []
@@ -881,9 +919,23 @@ export async function runEngine({
     }
 
     let baseCorrected = null
-    let impl = await agent(
+    // The pair (#653). Both dispatches are made here with nothing awaited
+    // between them: everything the examiner needed first — its clone, its
+    // bootstrap — is already done above, so `agent` is entered for `exam:<id>`
+    // and then for `impl:<id>` in the same tick, and `Promise.all` awaits
+    // neither before the other. Deliberately NOT the `parallel` seam: that one
+    // is bounded by the caller and this code already runs inside one of its
+    // slots, so nesting it could hand the wave a width it does not have.
+    const examCall = examReady
+      ? agent(roles.examiner + '\nBASE: ' + baseShaForTask + commonInputs,
+          { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
+            schema: EXAMINER_SCHEMA })
+      : null
+    const implCall = agent(
       roles.implementer + '\nBASE: ' + baseShaForTask + commonInputs,
       { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
+    const [ex, implReply] = await Promise.all([examCall, implCall])
+    let impl = implReply
     if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
     stripUntrustedPatch(impl, patchPrefix)
     noteConcerns(impl)
@@ -906,7 +958,78 @@ export async function runEngine({
     // How many pre-review repair rounds this task took (0 or 1): the driver's
     // own Run:/Check: pass either was green the first time or it was not.
     let proofFixes = 0
-    await noteDrift('the implementer')
+
+    // ── the examiner's verdict, read in the examiner's own clone ─────────────
+    // That clone is a tree at BASE by construction and no implementer ever
+    // touched it, so a green testCmd there is green at BASE and means what it
+    // has always meant: the exam establishes nothing.
+    if (examReady) {
+      for (const u of ((ex && Array.isArray(ex.unsatisfiable)) ? ex.unsatisfiable : [])) {
+        judgmentCalls.push('task ' + task.id + ': examiner: ' + u.leg + ' — ' + u.why)
+      }
+      if (!ex || ex.status !== 'DONE') {
+        // A dead examiner is a transient process death and a BLOCKED one is a
+        // judgment about the Proof; neither is the implementer's fault, and
+        // neither is worth failing a task over. The task proceeds WITHOUT an
+        // exam — nothing is handed over, nothing is run, and the implementer's
+        // own file at the Proof path is what gets reviewed — which the record
+        // says in as many words.
+        exam = 'blocked'
+        judgmentCalls.push('task ' + task.id + ': examiner ' +
+          (ex ? (ex.status + ' (' + (ex.summary || 'no summary') + ')') : 'returned no reply') +
+          ' — no exam recorded; the implementer proceeds unexamined')
+      } else {
+        examinerBlobs = []
+        for (const p of proofTests) examinerBlobs.push([p, await blobShaIn(examDir, p)])
+        const atBase = await sh(examTestCmd, examDir)
+        if (atBase.code === 0) {
+          exam = 'green-at-base'
+          judgmentCalls.push('task ' + task.id + ': exam is green at BASE — it establishes nothing')
+        } else {
+          exam = 'red'
+        }
+      }
+    }
+
+    // ── the handoff (#653) ───────────────────────────────────────────────────
+    // Both have returned, so the exam crosses from the examiner's clone into
+    // the graded one, driver-side: every Proof path the examiner actually
+    // wrote is copied over the same path in the implementer's tree. The peer's
+    // bytes win over whatever the implementer left there, which is what makes
+    // "an implementer that wrote the Proof path edited nothing" true of the
+    // substrate rather than true of a sentence in a role file. The capture is
+    // then retaken so the patch the reviewer reads and the fold applies
+    // carries the exam's hunks — the driver's own capture, against the same
+    // BASE, never a model-typed path.
+    //
+    // Only after all that are the blobs the drift check compares recorded:
+    // before this line the implementer held no exam, so nothing it did can be
+    // an edit of one.
+    if (examinerBlobs) {
+      const handed = []
+      for (const [p, sha] of examinerBlobs) {
+        if (!sha) continue
+        const dest = path.resolve(cloneDir, p)
+        fs.mkdirSync(path.dirname(dest), { recursive: true })
+        fs.copyFileSync(path.resolve(examDir, p), dest)
+        handed.push(p)
+      }
+      appendEvent({ kind: 'driver:exam-handoff', task: task.id, paths: handed })
+      if (hasCoordinates(impl)) {
+        try {
+          impl.patch = patchAgainstBase({ cwd: cloneDir, base: baseShaForTask,
+            out: patchPrefix + 'task-' + task.id + '.patch' })
+        } catch (e) {
+          impl.patch = ''
+          impl.headSha = ''
+          impl.captureError = 'exam handoff re-capture failed: ' + String((e && e.message) || e)
+        }
+      }
+      examBlobs = []
+      for (const p of proofTests) examBlobs.push([p, await blobShaOf(p)])
+      examEdited = []
+    }
+
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'not-reviewed', notes: impl.summary,
@@ -1543,8 +1666,15 @@ export async function runEngine({
         judgmentCalls.push('wave ' + waveNumber + ': reconcile reported FIXED but changed nothing — not committing')
         break
       }
-      await git(['commit', '-q', '-m',
-        'wave ' + waveNumber + ' reconcile (attempt ' + attempt + ')'], integ)
+      // Titled from the plan like the materialize candidate above (#651): when
+      // `planTitle` is set the reconcile commit takes the plan's H1 as its
+      // SUBJECT and the wave/attempt line moves down into the body, so a
+      // squash-merge of a reconciled wave's head reads the same as a green
+      // one's. `git commit -m <a> -m <b>` joins its values as paragraphs. With
+      // no title the single `-m` stays and the message is BASE's, unchanged.
+      const reconcileLine = 'wave ' + waveNumber + ' reconcile (attempt ' + attempt + ')'
+      await git(['commit', '-q',
+        ...(planTitle ? ['-m', planTitle] : []), '-m', reconcileLine], integ)
       suite = await sh(testCmd, integ)
     }
     if (suite.code === 0) {
@@ -1812,10 +1942,22 @@ export async function runEngine({
   // it is, is a human judgment — so it reaches the gate as the one ack type that
   // is NOT pre-authorized (run-main's ackDecision), and the run parks on real
   // evidence instead of surprising the operator after the merge.
+  //
+  // The leg runs BESIDE the completeness critic below (#654, re-shaped on the
+  // operator's call 2026-09-05), not ahead of it: neither reads the other's
+  // result — the critic's inputs are `lastSuite`, the plan, the contracts and
+  // the integrated Run:/Check: evidence, while `shallowSuite` and
+  // `shallowDeferred` are consumed further down, after both have settled — so
+  // serially the leg's ~90 s was wall clock nobody was waiting on. Its
+  // judgment calls land in a local array and are appended in BASE order once
+  // both sides are done, so a concurrent run's `judgmentCalls` stay
+  // deterministic (leg first, then critic) rather than racing.
   let shallowSuite = null
   let shallowDeferred = null
-  if (args.shallowLeg !== false && waveMerges.some((m) => m && m.status === 'MERGED') &&
-      lastSuite && lastSuite.passed) {
+  const shallowCalls = []
+  const runShallowLeg = async () => {
+    if (!(args.shallowLeg !== false && waveMerges.some((m) => m && m.status === 'MERGED') &&
+          lastSuite && lastSuite.passed)) return
     phase('Depth-1 Leg')
     // Under clonesDir on purpose: it is a full repo copy (plus whatever
     // bootstrapCmd installs), and drive.mjs's evidence pull excludes exactly
@@ -1831,13 +1973,13 @@ export async function runEngine({
     const cl = await exec('git', ['clone', '--quiet', '--depth', '1', '--branch',
       integrationBranch, 'file://' + path.resolve(integ), shallowDir], { cwd: runDir })
     if (cl.code !== 0) {
-      judgmentCalls.push('depth-1 leg: cloning ' + integrationBranch + ' at depth 1 failed (' +
+      shallowCalls.push('depth-1 leg: cloning ' + integrationBranch + ' at depth 1 failed (' +
         tail(cl.stderr || cl.stdout, 300) + ') — the shallow-clone class is unchecked this run')
     } else {
       if (bootstrapCmd) {
         const b = await sh(bootstrapCmd, shallowDir)
         if (b.code !== 0) {
-          judgmentCalls.push('depth-1 leg: bootstrap failed in the shallow clone (exit ' + b.code +
+          shallowCalls.push('depth-1 leg: bootstrap failed in the shallow clone (exit ' + b.code +
             ') — a red leg below may be a missing dependency rather than a history coupling')
         }
       }
@@ -1851,7 +1993,7 @@ export async function runEngine({
           'reproduce this run\'s green. Either a test is coupled to repository history (fix the ' +
           'test) or the degradation is correct for a shallow consumer (ack it): ' +
           tail(shallowSuite.output, 800)
-        judgmentCalls.push('depth-1 leg: ' + why)
+        shallowCalls.push('depth-1 leg: ' + why)
         shallowDeferred = { deliverable: 'depth-1 clone of ' + integrationBranch,
                             reason: 'manual', why }
       }
@@ -1860,7 +2002,6 @@ export async function runEngine({
 
   // ── completeness critic — read-only judgment; the driver already ran the
   // suite (per adopted wave) and derives gitVerified below from receipts. ────
-  phase('Integration Review')
   const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
   const waveMergedAny = waveMerges.some((m) => m && m.status === 'MERGED')
   // criticRan gates gitVerified below (review finding 2): waves.js's critic
@@ -1869,14 +2010,18 @@ export async function runEngine({
   // anyone reviewed its completeness.
   let criticRan = false
   let review
-  if (!waveMergedAny) {
-    // Nothing merged: the tree is at BASE, and a critic told it holds "the
-    // final integrated tree" would emit confident findings about the wrong
-    // tree (review finding 8). gitVerified is already false on this path.
-    review = { findings: [{ severity: 'blocking',
-                           detail: 'no wave merged — completeness review skipped (the tree is at BASE)' }],
-               deferredVerification: [] }
-  } else {
+  const criticCalls = []
+  const runCritic = async () => {
+    phase('Integration Review')
+    if (!waveMergedAny) {
+      // Nothing merged: the tree is at BASE, and a critic told it holds "the
+      // final integrated tree" would emit confident findings about the wrong
+      // tree (review finding 8). gitVerified is already false on this path.
+      review = { findings: [{ severity: 'blocking',
+                             detail: 'no wave merged — completeness review skipped (the tree is at BASE)' }],
+                 deferredVerification: [] }
+      return
+    }
     try {
       review = await agent(
         roles.critic +
@@ -1894,18 +2039,26 @@ export async function runEngine({
         { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA })
     } catch (e) {
       const msg = String((e && e.message) || e)
-      judgmentCalls.push('integration review failed to run: ' + msg)
+      criticCalls.push('integration review failed to run: ' + msg)
       review = null
     }
     if (review && typeof review === 'object') {
       criticRan = true
     } else {
-      judgmentCalls.push('integration review returned no result — the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)')
+      criticCalls.push('integration review returned no result — the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)')
       review = { findings: [{ severity: 'blocking',
                              detail: 'integration review did not run — completeness unverified; check the tree before merging' }],
                  deferredVerification: [] }
     }
   }
+
+  // Started together, both awaited here — every line below reads one side's
+  // result or the other's, so this is the barrier and there is no other. Plain
+  // `Promise.all`, not the `parallel` seam: run-main hands the engine
+  // `boundedParallel(WIDTH)`, and at WIDTH 1 that seam would quietly serialize
+  // these two again and put the leg back on the critical path.
+  await Promise.all([runShallowLeg(), runCritic()])
+  judgmentCalls.push(...shallowCalls, ...criticCalls)
 
   // A red integrated `Run:` proof outranks whatever the critic returned, and it
   // is folded into the SAME list the #474 brake already reads — appended after
