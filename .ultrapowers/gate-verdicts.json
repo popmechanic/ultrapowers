@@ -1,0 +1,25 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "193adacbf55f942502c3f89730ba6177d6f577c61e3974c1f5a78f6d8e701bc4",
+   "verdict": "pass",
+   "reason": "Every machine clause M1–M6 has a leg that would fail on its negation — exact-equality details for the pool/run-ask text (M1, M2 including the 7-vCPU, 15GB and 4-vCPU pools staying ok with verdict ready), asserted-false substring checks plus a negated source grep for the count/refusal absence (M3), four distinct missing cases each naming fleet.json (M4), the stale-key and default-cpu paths with the base detail preserved (M5), and exit-code-first sentinel runs of both sims (M6) — so a passing exam makes the sentence true at the doctor-row layer the claim names."
+  },
+  "2": {
+   "hash": "443be64115c2bf38ea2583e546486549be2e0d9d156b11db8e9b1321a1a9c066",
+   "verdict": "pass",
+   "reason": "Every machine clause M1–M5 has a leg that reads the actual file at the stated layer (the sed-bounded section, squeezed where the clause says squeezed, raw where it says literal; the six absences are negated greps; the heading list is a string equality; the pytest pin is executed), so a passing exam entails the claim's sentence."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": {
+   "1": { "dispatched": 2, "rejected": 0 }
+  }
+ },
+ "history": [
+  { "round": 1, "task": "1", "verdict": "pass", "reason": "all clauses entailed" },
+  { "round": 1, "task": "2", "verdict": "pass", "reason": "all clauses entailed" }
+ ]
+}
