@@ -1,0 +1,14 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "e5465a413677a074e7b06ef1fb4e2b6218d79915e5ef6d3cff3a4f2c17f1ce0d",
+   "verdict": "pass",
+   "reason": "Every clause of the sentence is falsified by an executable leg — the three in-flight states draw exactly one unit read each while done/parked/failed/404/no-comment rows draw none (M1), the three death shapes each yield one sha-guarded status PUT whose decoded page is checked field by field (M2) plus one journalctl read and one sha-less journal PUT byte-compared to canned stdout (M3), the death is reported but reaped only by a second pass past --age with the written page as input (M4), six live/unreadable unit answers yield no -X, no journal, no death, no rm and no git across all execs (M5), dry-run is pinned (M6), and the four sims plus the two frozen blob shas (which I confirmed match the tree at adc4ac2f/86c46740) hold M7 — the only slack is that leg (a) pins the destination as `exedev@<name>.ssh.exe.xyz`, which coincides with the BASE fixture's `ssh_dest`, so a name-derived destination would also pass, but that does not change the truth of the sentence."
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0,
+  "rounds": { "1": { "dispatched": 1, "rejected": 0 } }
+ }
+}
