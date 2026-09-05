@@ -38,7 +38,7 @@ Three things a stranger will not know:
   page is `https://<vm>.exe.xyz/status.json`.
 - **This key launches.** A second key registered with `ssh-key add --tag=fleet`
   sees and reaps only fleet-tagged VMs, and cannot bind a credential; that is
-  the one to put behind the janitor's cron, never the one that launches.
+  the one for a machine that only reaps by hand, never the one that launches.
 
 Until this row is `ok`, expect every row below it to read `missing` too: they
 are all `ssh` commands, and without a working account none of them can land.
@@ -49,8 +49,10 @@ Fix this row first and run the doctor again before touching the others.
 Not a health check — arithmetic. `ssh exe.dev "billing plan --json"` reports
 the account's pool (`max_cpus`, `max_memory_gb`), and `~/.ultrapowers/fleet.json`
 says how large one run asks to be. The row is `ok` when the pool holds a run of
-that size, and its detail says how many such runs fit at once. The file has
-exactly two keys, both optional, and these are also the defaults:
+that size, and its detail says how many such runs fit at once. The agent writes
+the file with both keys explicitly — these are also the defaults, and a key the
+doctor does not read (one left by a fleet from before the lift) turns the row
+red until it is removed:
 
 ```json
 {
@@ -70,8 +72,9 @@ Three things a newcomer would not know:
   cheap fix is lowering `cpu`/`memory`, and the expensive one is a bigger plan.
 - **`memory` is `<int>GB` or `<int>G`.** A bare number, or a fractional
   `1.5GB`, is unreadable and turns the row red before the pool is even
-  consulted. An unknown key in the file is ignored, and a missing file means
-  the defaults.
+  consulted. A missing file means the defaults;
+  a key the doctor does not read is named in the red detail, and the agent
+  rewrites the file with cpu and memory only.
 - **The number in the green detail is the width of a wave of runs.** It is the
   pool's vCPUs divided by one run's, so a plan whose pool fits three runs
   cannot carry seven at once; the fourth `new` is refused when the pool is

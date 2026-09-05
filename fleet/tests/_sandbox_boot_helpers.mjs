@@ -45,6 +45,8 @@ export const TARGET = 'popmechanic/smoke'
 export const VM_NAME = 'fleet-r7-2609032215-a1b2'
 export const PR_URL = 'https://github.com/popmechanic/smoke/pull/1'
 export const PR_AUTHOR = 'popmechanic'
+/** The squash commit GitHub answers a merge PUT with. */
+export const MERGE_SHA = 'f6'.repeat(20)
 
 // The three branches of #598, all on the target.
 export const PLAN_BRANCH = 'ultra/plan-run-7'
@@ -139,6 +141,23 @@ case "$url" in
   *github.int.exe.xyz/api/v3/repos/*/pulls)
     say "curl pr create"; printf '%s\\n' "$payload" >>"$FLEET_HOME/pr.log"
     printf '%s\\n%s\\n' "$STUB_PR_BODY" "\${STUB_PR_CODE:-201}" ;;
+  *github.int.exe.xyz/api/v3/repos/*/commits/*/check-runs)
+    # The PR head's check runs. The default is one completed, successful run —
+    # so the green path merges. STUB_CHECKS_PENDING answers that many reads with
+    # a run still going first (\`"conclusion": null\`, unquoted, the way GitHub
+    # writes it); STUB_CHECKS replaces the body wholesale, which is how a case
+    # answers a failure, several runs at once, or no run at all.
+    n=$(bump checks); say "curl check-runs $n"
+    body='{"total_count":1,"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}'
+    if [ "$n" -le "\${STUB_CHECKS_PENDING:-0}" ]; then
+      body='{"total_count":1,"check_runs":[{"name":"test","status":"in_progress","conclusion":null}]}'
+    fi
+    [ -n "\${STUB_CHECKS:-}" ] && body="$STUB_CHECKS"
+    printf '%s\\n%s\\n' "$body" "\${STUB_CHECKS_CODE:-200}" ;;
+  *github.int.exe.xyz/api/v3/repos/*/pulls/*/merge)
+    say "curl pr merge"; printf '%s\\n' "$payload" >>"$FLEET_HOME/merge.log"
+    printf '{"sha":"%s","merged":true,"message":"Pull Request successfully merged"}\\n%s\\n' \\
+      "$STUB_MERGE_SHA" "\${STUB_MERGE_CODE:-200}" ;;
   *notify.int.exe.xyz*)
     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
@@ -337,6 +356,7 @@ export function boot(ctx, args = ['boot'], env = {}) {
       STUB_PLAN_H1: PLAN_H1,
       STUB_PLAN_SHA: PLAN_SHA,
       STUB_HEAD_SHA: HEAD_SHA,
+      STUB_MERGE_SHA: MERGE_SHA,
       ...env,
     },
     timeout: 60000,
@@ -377,6 +397,12 @@ export const directCalls = (ctx) => stream(ctx).filter((l) => l.includes(' DIREC
 export const prPosts = (ctx) => lines(readLog(ctx, 'pr.log')).map((l) => JSON.parse(l))
 /** The curl argv of the PR POST, or undefined. */
 export const prArgv = (ctx) => argvLines(ctx, 'curl').find((a) => a.some((s) => s.endsWith('/pulls')))
+/** Every merge PUT the script made, as its parsed JSON payload. */
+export const mergePuts = (ctx) => lines(readLog(ctx, 'merge.log')).map((l) => JSON.parse(l))
+/** The curl argv of the merge PUT, or undefined. */
+export const mergeArgv = (ctx) => argvLines(ctx, 'curl').find((a) => a.some((s) => s.endsWith('/merge')))
+/** How many times the PR head's check runs were read. */
+export const checkReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl check-runs')).length
 /** How many times Reflection's /integrations was read. */
 export const integrationsReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length
 

@@ -137,6 +137,34 @@ export async function loadFleetConfig ({ path: configPath } = {}) {
   return config
 }
 
+/**
+ * The config file's own top-level key names, in file order — `loadFleetConfig`
+ * answers what the doctor reads, this answers what the operator wrote. Null
+ * when the file is absent, unreadable, not JSON, or not a JSON object, because
+ * none of those is a file carrying keys.
+ *
+ * The two travel separately on purpose: `result.config` is exactly the doctor's
+ * two keys, so a name the doctor does not read reaches the `capacity` row on
+ * `configKeys` and never through the config.
+ */
+export async function fleetConfigKeys ({ path: configPath } = {}) {
+  const target = configPath ?? DEFAULT_CONFIG_PATH()
+  let text
+  try {
+    text = await fsp.readFile(target, 'utf8')
+  } catch {
+    return null
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  return Object.keys(parsed)
+}
+
 /** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
  *  every row with a stub and the CLI drives them with a shell. stderr joins
  *  stdout because claude-token logs its status line there. */
@@ -171,7 +199,7 @@ function exeDevRow (res) {
  * in is not a broken account, it is a run asked for too large — so the red
  * detail names `~/.ultrapowers/fleet.json`, the place that lowers it.
  */
-function capacityRow (res, config) {
+function poolRow (res, config) {
   const askedCpu = parseCpus(config.cpu)
   const askedGb = parseMemoryGb(config.memory)
   if (askedCpu === null || askedGb === null) {
@@ -205,6 +233,44 @@ function capacityRow (res, config) {
   }
   const fit = Math.floor(poolCpu / askedCpu)
   return row('capacity', 'ok', `${pool} fits ${fit} run${fit === 1 ? '' : 's'} of ${asked}`)
+}
+
+/** The two key names the doctor reads, as the row's detail spells them. */
+const READ_KEYS = Object.keys(DOCTOR_DEFAULTS)
+
+/**
+ * The pool arithmetic, plus what the config file's own key names say about it.
+ *
+ * `configKeys` is `fleetConfigKeys`'s answer for the same file: null when there
+ * is no file to read keys off, and otherwise every top-level name in it. A name
+ * the doctor does not read is a key left by a fleet from before the lift — the
+ * operator wrote a setting nothing consults, so the row is red until the file is
+ * rewritten, and the detail names those keys by echoing the file rather than
+ * spelling any of them here. A file that omits one of the two the doctor does
+ * read is not wrong, only silent, so the green detail says which default it
+ * fell back to.
+ */
+function capacityRow (res, config, configKeys = null) {
+  const base = poolRow(res, config)
+  const keys = Array.isArray(configKeys) ? configKeys.filter((k) => typeof k === 'string') : null
+  if (keys === null) return base
+
+  const stale = keys.filter((key) => !READ_KEYS.includes(key))
+  if (stale.length > 0) {
+    return row(
+      'capacity',
+      'missing',
+      `~/.ultrapowers/fleet.json carries ${stale.join(', ')} — keys nothing reads; ` +
+        `it reads ${READ_KEYS.join(' and ')} only. ${base.detail}`
+    )
+  }
+  if (base.status !== 'ok') return base
+
+  const lacking = READ_KEYS.filter((key) => !keys.includes(key))
+  const notes = lacking.map(
+    (key) => ` (${key} not in ~/.ultrapowers/fleet.json — the default ${DOCTOR_DEFAULTS[key]})`
+  )
+  return notes.length === 0 ? base : row('capacity', 'ok', `${base.detail}${notes.join('')}`)
 }
 
 // ── integrations, read once for two rows ─────────────────────────────────────
@@ -406,8 +472,13 @@ function integrationsRow (found, target) {
  * `exec(cmd)` resolves `{ code, stdout }`, so a test drives the doctor with a
  * stub. `target` is `owner/repo` or null; anything else is refused before any
  * read rather than interpolated into an ssh string.
+ *
+ * `configKeys` is the config file's own top-level key names — `fleetConfigKeys`
+ * for the same path `config` was loaded from, or null when there is no file.
+ * It reaches the `capacity` row and nothing else: `result.config` stays exactly
+ * the two keys the doctor reads.
  */
-export async function doctor ({ config, exec, target = null } = {}) {
+export async function doctor ({ config, exec, target = null, configKeys = null } = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
   const want = target === null || target === undefined ? null : String(target)
@@ -424,7 +495,7 @@ export async function doctor ({ config, exec, target = null } = {}) {
   const found = list.code === 0 ? parseIntegrations(list.stdout) : null
   const rows = [
     exeDevRow(whoami),
-    capacityRow(billing, cfg),
+    capacityRow(billing, cfg, configKeys),
     claudeRow(found, token),
     githubRow(github),
     integrationsRow(found, want)
@@ -464,10 +535,12 @@ export function renderRows (rows) {
 
 async function main (argv) {
   const opts = parseArgs(argv)
-  const config = await loadFleetConfig({ path: opts.configPath ?? DEFAULT_CONFIG_PATH() })
+  const configPath = opts.configPath ?? DEFAULT_CONFIG_PATH()
+  const config = await loadFleetConfig({ path: configPath })
+  const configKeys = await fleetConfigKeys({ path: configPath })
   let result
   try {
-    result = await doctor({ config, exec: defaultExec, target: opts.target })
+    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys })
   } catch (error) {
     process.stderr.write(`${error.message}\n`)
     process.exitCode = 2

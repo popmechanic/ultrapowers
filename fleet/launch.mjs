@@ -25,6 +25,11 @@
  *
  *      with the rendered setup script on that call's stdin.
  *
+ * Nothing schedules the janitor, so the launcher runs it: one `janitor()` pass
+ * between the pool read and the run number, whose reaped VMs the result carries
+ * as `reaped`. A reap that fails says so in `reapError` and stops nothing — the
+ * run being launched is worth more than the ballast the janitor came for.
+ *
  * Nothing waits for ssh and nothing starts the unit: the setup script does
  * both, on the VM. A `new` that answers non-zero is retried — three attempts in
  * all, a freshly minted name each time, because exe.dev reserves a refused name
@@ -84,6 +89,7 @@ import {
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
+import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 
 /** One string, so a docs check that reads the first `usage` literal sees every
@@ -91,7 +97,7 @@ import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
                              [--repo <dir>] [--engine <40-hex>]
                              [--overlap fold|serialize] [--tier standard|mostCapable]
-                             [--implementer-effort low|medium|high]
+                             [--implementer-effort low|medium|high] [--hold]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--json]`
 
@@ -227,7 +233,7 @@ export async function launch ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
   refreshCredential = defaultRefreshCredential
 }) {
-  const { opts, positional } = parseArgs(argv, { flags: ['json'] })
+  const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold'] })
 
   // ── Local validation. Nothing has been executed at this point, and nothing
   //    will be until every one of these passes. ──────────────────────────────
@@ -252,6 +258,14 @@ export async function launch ({
   const implementerEffort = opts['implementer-effort']
   if (implementerEffort !== undefined && !EFFORT_VALUES.includes(implementerEffort)) {
     throw new Refusal(`launch: --implementer-effort must be one of ${EFFORT_VALUES.join('|')}, got ${JSON.stringify(implementerEffort)}`)
+  }
+  // `--hold` is a bare flag, so `parseArgs` answers `true` for it and a string
+  // for any `--hold=<value>` spelling. A string is a refusal here, before the
+  // plan is read and before anything is executed: `hold=1` is the only value
+  // the sandbox accepts, and a launch that meant to hold must not silently
+  // become one that merges.
+  if (opts.hold !== undefined && opts.hold !== true) {
+    throw new Refusal(`launch: --hold takes no value, got ${JSON.stringify(opts.hold)}`)
   }
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
@@ -295,7 +309,8 @@ export async function launch ({
     engine: opts.engine ?? '0'.repeat(40),
     overlap: opts.overlap,
     tier: opts.tier,
-    effort: implementerEffort
+    effort: implementerEffort,
+    hold: opts.hold === true ? '1' : undefined
   }
   const probeComment = buildComment(fields)
   if (Buffer.byteLength(probeComment, 'utf8') > COMMENT_MAX_BYTES) {
@@ -347,6 +362,23 @@ export async function launch ({
     throw new Refusal(
       `launch: --memory ${memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
     )
+  }
+
+  // ── The reap. Nothing schedules the janitor, so every launch is where it
+  //    runs — before the run number is read, so the fleet a launch joins is
+  //    already clear of the VMs of runs that finished over an hour ago.
+  //    `settings` is the config loaded above, so the file is read once. A reap
+  //    that fails is reported and not fatal: the run being launched is worth
+  //    more than the ballast the janitor came for.
+  const reaped = []
+  let reapError = null
+  try {
+    const reap = await janitor({ argv: [], exec, config: settings, now })
+    for (const action of reap.actions) {
+      if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
+    }
+  } catch (error) {
+    reapError = String(error?.message ?? error) || 'launch: the reap failed'
   }
 
   const run = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
@@ -428,7 +460,9 @@ export async function launch ({
     cpu,
     memory,
     launchedAt: now().toISOString(),
-    commands
+    commands,
+    reaped,
+    reapError
   }
 }
 
@@ -511,18 +545,21 @@ const engineLine = (result) =>
 
 /**
  * The lines a launched run prints: its id, its VM, where to watch, what it was
- * told — and, when nobody pinned one, which engine it happens to have caught.
+ * told, one line per VM this launch's reap removed — and, when nobody pinned
+ * one, which engine it happens to have caught. A launch that reaped nothing
+ * prints no reap line at all.
  */
 export const renderLaunch = (result) => [
   result.runId,
   result.vm,
   result.statusUrl,
   result.comment,
+  ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
   engineLine(result)
 ].filter((line) => line !== null).join('\n')
 
 async function main (argv) {
-  const { opts } = parseArgs(argv, { flags: ['json'] })
+  const { opts } = parseArgs(argv, { flags: ['json', 'hold'] })
   const result = await launch({ argv })
   process.stdout.write(opts.json ? `${JSON.stringify(result)}\n` : `${renderLaunch(result)}\n`)
 }

@@ -43,12 +43,14 @@ any VM. Everything a run produced is three branches on the repository the run wa
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
-  optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`. `plan=` is the tip of
-  `ultra/plan-run-<N>` on the target. Written once by `new --comment`; the sandbox reads it ONCE from
-  `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run if it is absent or
-  malformed. Nobody rewrites it.
+  optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`, `hold=1`.
+  `plan=` is the tip of `ultra/plan-run-<N>` on the target; `hold=1` keeps the pull request open for a
+  person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
+  reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
+  if it is absent or malformed. Nobody rewrites it.
 - **Launch order (launcher):** validate `--target`/`--base`/plan → read the pool
-  (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → `git ls-remote` the target's
+  (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
+  (`fleet/janitor.mjs`, the reap) → `git ls-remote` the target's
   `ultra/*-run-*` for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
   named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
@@ -148,13 +150,21 @@ any VM. Everything a run produced is three branches on the repository the run wa
     a recorded `pr` is never opened twice; clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
     never checked out over. A failure at ANY step commits and pushes a `failed` page before exiting
     (pre-clone included).
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
+  - merge: after a gate-green publish the script polls `GET /repos/<owner>/<repo>/commits/<head>/check-runs`
+    every 2 s and, when every listed run is completed with `success`, `neutral` or `skipped`, issues one
+    `PUT /repos/<owner>/<repo>/pulls/<n>/merge` (`merge_method` squash, `commit_title` the plan's H1, `sha`
+    the head) and records the answer's `sha` as `merged`; an answer with no runs waits
+    `MERGE_CHECKS_GRACE` (120 s) and is then merged as having nothing to wait for; a failed run, 30
+    minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null;
+    `hold=1` in the assignment skips all of it.
+- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR.
-  The human gate is the PR: ready on PASS or on the two-move rule's approval, a draft otherwise;
-  the operator merges or closes it. Between the push and the POST the script polls
+  The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; a ready PR the
+  sandbox merges itself once its checks are green, unless the assignment carries `hold=1`, and a
+  draft is the operator's to merge or close. Between the push and the POST the script polls
   `GET /repos/<owner>/<repo>/branches/<branch>` every 2 s until it reports the pushed head (at most
   `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
   `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
@@ -178,7 +188,8 @@ any VM. Everything a run produced is three branches on the repository the run wa
   `run=` and `target=` → read `.ultrapowers/runs/<N>/status.json` on that target's
   `ultra/evidence-run-<N>` with `gh api` (`gh api repos/<owner>/<repo>/contents/…?ref=…`) → `rm <vm>
   --json` for a run in `done|parked|failed` whose `updatedAt` is older than 1 h. A VM whose run has had
-  no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone.
+  no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone. Run by
+  `fleet/launch.mjs` before every launch and by hand after a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
 - **Laptop config `~/.ultrapowers/fleet.json`** — exactly two keys, both optional, an unknown key
   ignored and a missing file meaning the defaults:
 
