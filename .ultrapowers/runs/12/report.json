@@ -1,0 +1,355 @@
+{
+  "integrationBranch": "ultra/integration-run-12",
+  "baseSha": "af1e7c70dedc3de5cbb4e9ca79af3bdb2756a701",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "fcb7bf89dbef12fff57ee6ecaf0baa4d0d2efb82",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-12/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`_species_pinned_elsewhere` runs one `git grep` subprocess per (task, span) with no memoization across tasks, and `_git_substring_files` is not extension-scoped, so each call scans every tracked file. `_clause_spans` dedupes spans within a task but not across them, so a span two tasks share is grepped twice; a five-task plan with ~10 spans each costs ~50 full-tree greps on every `--check --renders`. This is advisory-only and matches `_render_blast_radius`'s per-symbol grep precedent, so nothing is wrong \u2014 but a dict cache keyed on the span, built once in `_render_proof_species` beside `declared` and `exclude` and passed down, is a three-line fix that makes the render's cost linear in distinct spans rather than in (task, span) pairs.; M1 says the compiler prints exactly one line per (task, span, path). The exam pins the `path` dimension of that triple well (`test_one_line_per_pinning_file_sorted_by_path` \u2014 four pinning files, four lines, sorted) but never the `span` or `task` dimensions: no fixture carries the same backticked span in two Machine clauses of one task (which `_clause_spans`'s `seen` set correctly collapses to one line, per its own docstring), and no fixture has two tasks whose clauses both carry the pinned span (which must yield two lines, one per task). Both behaviors are implemented correctly, but deleting the `seen` dedup from `_clause_spans` leaves the exam green. Adding a clause pair such as `M1. The probe header reports `runner: None`. M2. The footer repeats `runner: None`.` to a fixture, asserting one line, would close the first gap; giving task 2's clause the same LITERAL and asserting `[pin_line(\"1\", ...), pin_line(\"2\", ...)]` would close the second.; `test_the_four_line_shape_agrees_with_the_verbatim_single_line` asserts only that the exam's own `pin_line` helper reproduces the `EXPECTED_ONE` constant; it never invokes the compiler, so it passes with the entire `pinned-elsewhere` species deleted. It is a legitimate guard against the four-line expectation drifting away from the verbatim string leg (a) spells out, and the behavior it guards is independently covered by two real tests \u2014 but its name reads like a behavior assertion. Renaming it (or folding the identity into `test_one_line_per_pinning_file_sorted_by_path`) would keep the exam's test names honest about which ones exercise the compiler.; `_git_substring_files` (skills/ultrapowers/scripts/compile_plan.py, new helper) passes ONLY negative pathspecs when `--exclude` is used: `git grep -l -F -e <literal> -- :(exclude)<p>`. Git refuses a pathspec list made entirely of `:(exclude)` patterns (\"There is nothing to exclude from by :(exclude) patterns. Perhaps you forgot to add either ':/' or '.' ?\"), and `_git` swallows any non-zero exit as `\"\"` \u2014 so under `--renders --exclude <path>` the species goes silent for EVERY span rather than merely skipping the excluded paths. The two sibling helpers in this file avoid exactly this: `_git_tracked` (line ~2522) prepends `[\"--\", \".\"]` and `_code_pathspecs` (line ~2528) supplies `*ext` positives. No Machine clause names `--exclude` and the exam does not cover it, so this blocks nothing, but it is a silent wrong answer in code this diff introduced. Fix is inside this task's own FILES.; plan-defect: M1 makes every backticked span of three or more characters a grep key with no shape filter and no cap, so a path-shaped span emits one line per matching test file. This plan's own sibling task 2 carries the clause span `tests/` \u2014 compiled against this checkout under `--check --renders`, that one span would draw a `pinned-elsewhere` line for every tracked test file whose text contains `tests/` and that no task declares, burying the render's real hits. The file's existing renders deliberately bound this (`_BLAST_LIST_CAP = 8` at line ~2607; `_produces_symbols` drops single common words as \"grep noise\"), and the diff's own `MIN_SPAN = 3` comment shows the author saw the class of problem. The implementer transcribed M1 faithfully, and any cap or path-span filter would contradict M1's \"exactly one line per (task, span, path)\" \u2014 so the fix is in the task text (M1's definition of a span), not inside FILES.; Exam coverage note (advisory, no criterion left unverified): M1's per-task dimension is exercised with only one drawing task \u2014 in every fixture plan, task 2's span (`out/summary.json`) pins nothing in the checkout, so \"one line per (task, span, path)\" and the task-major print order the new call site's comment claims are never observed across two lines from two different tasks. Adding a fixture whose task 2 clause also carries the pinned literal, asserting both lines in task order, would settle it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a1b2791e150f6c405cd5051d91dab2c1dae277f0",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-12/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: M4 (and the task's Context, which names the sentence to edit verbatim) puts `check-cost` inside the sentence \"The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the rejection species found by hand \u2014 \u2026\" in skills/ultrawrite/SKILL.md:193-198, but this task's own Context also decides \u2014 correctly \u2014 that check-cost is its own render with the prefix `ADVISORY check-cost: `, not a `proof-species` line (compile_plan.py `_render_check_cost`, registered as (\"check-cost\", \u2026)). So the skill now tells an author that a `proof-species:` line names `check-cost`, and no such line is ever printed. The implementer transcribed the plan faithfully and both `Run:` greps and the exam's M4 assertions are green, so nothing here is unsatisfied; the inaccuracy is in the task text's choice of host sentence. A one-line lead-in reword inside this task's FILES fixes it without touching the pinned name sequence, e.g. \"The `ADVISORY proof-species:` and `ADVISORY check-cost:` lines of `compile_plan.py --check --renders` name the rejection species found by hand \u2014 \u2026\", which still satisfies the `tr '\\n' ' ' \u2026 grep -q 'directory-absence-pin., .pinned-elsewhere., .check-cost., \u2026'` pin (it matches only the name run) and the exam's regex (it anchors on `` `directory-absence-pin`, `pinned-elsewhere`, \u2026 `` alone). Graded minor: it is a documentation-phrasing inaccuracy with no exam, constraint or check behind it.; unverified: the species list this diff writes into skills/ultrawrite/SKILL.md:193-198 names seven species, of which only `check-cost` is implemented here \u2014 `pinned-elsewhere` (task 1), `prose-check` (task 3), `wide-files`/`wide-contract` (task 4) and `threshold-one-sided`/`disjunct-without-leg` (task 5) are sibling-owned renders absent from this patch. The task deliberately assigns the whole sentence to this task so no two tasks rewrite it, so this is not scope creep and not a defect in the diff; it simply cannot be settled here. What would settle it: on the integrated tree, `compile_plan.py --check --renders` over a plan exercising each species emits a line for all seven names \u2014 i.e. tasks 1, 3, 4 and 5 landing. If any of them is dropped, this sentence names a species the compiler never prints and should be trimmed at integration.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "7b79054ac43d515e7824d7abfcd1739ac344a086",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-12/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "M1 states the exclusion per path \u2014 \"when no `- Check:` command in the same section names that path\" \u2014 but `_render_prose_check` (skills/ultrapowers/scripts/compile_plan.py, the new render) silences the whole bullet as soon as ANY path it names appears in a section `Check:`: `if not paths or any(p in checked for p in paths): continue`. A bullet like \"`a.py`, `b.py` and `c.sh` are byte-identical to BASE\" with a `- Check:` covering only `a.py` draws nothing, so the two unchecked paths are never surfaced \u2014 exactly the false negative the render exists to prevent. This is the plan's own periphery bullet shape (three paths in one sentence), so it is not hypothetical. The exam pins only single-path bullets (SEVEN_BULLETS each name one path, WRAPPED names one), so neither reading is verified by the committed suite. `all(...)` \u2014 silence only when every named path is already checked \u2014 is the reading M1's wording supports; if `any(...)` is deliberate (it is the quieter of the two), a one-line comment saying so and a leg pinning the multi-path bullet would settle it. Advisory-only output, so nothing merges wrong on it.; unverified: `parse_global_constraints` deliberately keeps fenced `- Check:` lines in the prose body (`_claimed_by_check` returns False inside a fence \u2014 \"a fenced one is an EXAMPLE of the grammar, not an instance of it\"), and `_prose_bullets` does not track fences either, so a bullet inside a fenced example block under `## Global Constraints` that happens to carry a backticked path and one of the seven phrases would draw a `prose-check` line for text that is documentation, not a constraint. Neither M1 nor M2 speaks to fenced content and the exam carries no fenced fixture, so the diff cannot settle it. A fixture plan whose section holds a fenced example bullet, asserting zero lines (or asserting the line, if drawing it is intended), would settle it.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "c103a326bd36185ec4a4fed36548d8edcb33db06",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-12/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "`wide-files` inherits the clause guard it does not need. In `_render_proof_species` (skills/ultrapowers/scripts/compile_plan.py) the new `for species in PROOF_WIDTH_SPECIES` loop is placed after `if not clauses: continue`, so a claims-v1 task whose Machine line numbers no clause (or carries no `Machine:` lead-in \u2014 `parse_machine_clauses` returns `[]` and the compiler raises no violation for it, per the comment at line ~2898 and `clause_citation_violations`, which is inactive in that case) prints no `wide-files` line however wide its Files block is. M1 conditions the line only on \"a claims-v1 task whose `Create:` plus `Modify:` entries number more than eight\", not on the task having numbered clauses, and unlike every species in `PROOF_SPECIES` the width species read the Files block rather than clauses-against-legs, so the guard's own stated rationale (\"has no clauses to read against\") does not apply to them. `wide-contract` is unaffected (m > 8 implies clauses exist). Not blocking: the exam's four legs all use numbered fixtures and pass, and `skills/ultrawrite/SKILL.md` mandates numbered clauses for claims-v1 (line ~63, line ~319), so the silent shape is one the grammar already discourages. Fix is to gate on the task being claims-v1 instead, keeping the current print order (clause species first, then width) so the five-species fixture's line order is untouched.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "ac9c97daf36bcf3a7c1c0fab2dd055aeb9ebabe8",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-12/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "M1's literal wording is unsatisfiable together with M4's pin, and the Context's description of the fixture that forces the resolution is wrong. M1 says the species fires when the citing legs \"contain at least one number other than the bound itself but none on the far side\". `tests/test_compile_plan_proof_species.py:209-214`'s FIVE_SPECIES_PLAN task 1 carries clause `M4. The probe waits \u2264 90 s.` cited by leg (d) `the probe iterates 3 times` \u2014 `3` is a number other than `90`, and it is on the near side of an upper bound, so a literal M1 reading fires `threshold-one-sided` there and the fixture prints six lines, breaking M4. The task's Context asserts instead that the five-species fixture's M4 is \"cited by a leg reading `elapsed under 90 s` \u2014 the bound restated and no other number\"; that is task 2's leg (`:217-219`), not task 1's, and its stated rationale (\"a lower-bounded reading must not be applied to an upper-bounded shape\") does not in fact keep the fixture at five. The implementer resolved this by comparing only leg numbers carrying the bound's own unit (`skills/ultrapowers/scripts/compile_plan.py`, `_species_threshold_one_sided`: `probes = [v for v, u in _leg_numbers(cited) if u == unit and v != value]`), disclosed in the comment above that line and pinned by `tests/test_compile_plan_one_sided.py:605` (`test_the_duration_twin_still_draws_exactly_one_line`) and `:590` (five-species re-render). That is a correct, disclosed divergence and the only reading that satisfies M3+M4, so it is lawful \u2014 recorded here only so the operator knows M1's prose, not the code, is what needs amending if this species is restated later. Exam and Run evidence both exit 0.; The unit filter in `_species_threshold_one_sided` compares unit strings by raw lowercase equality, so a leg probing the same quantity in a synonymous unit is silently discarded and the species goes quiet. A clause `the probe waits at most 90 s` cited only by a leg reading `120 seconds is refused` yields `u == 'seconds' != 's'`, `probes == []`, and no line \u2014 even though that Proof does probe the far side; the mirror case (`90 seconds` bound, `120 s` leg) hides a genuinely one-sided Proof. Nothing in the Proof's legs pins unit synonymy either way, so this is a false-negative in a corner the exam does not reach rather than a broken criterion. If you want it tightened without disturbing the M4 pin, normalise through a small alias map (`s`/`sec`/`seconds`, `min`/`minutes`, `h`/`hr`/`hours`, `b`/`bytes`) before the equality test \u2014 `times` still fails to unify with `s`, so the five-species fixture and the duration twin stay silent.; Unit-equality narrows M1 more than M1 states, in both directions. `skills/ultrapowers/scripts/compile_plan.py` (new `_species_threshold_one_sided`, the `probes = [v for v, u in _leg_numbers(cited) if u == unit and v != value]` line, ~3113) only considers a leg number whose trailing word is byte-equal to the bound's trailing word. `LEG_NUMBER_RE` grabs whatever `[A-Za-z]+` follows the digits, unit or not, so (i) a unitless bound \u2014 `M1. The count is at least 3.` (unit \"\") cited by `the count reaches 4 rows` (unit \"rows\") \u2014 sees an empty `probes` and stays silent although M1's \"at least one number other than the bound itself \u2026 none strictly below it\" is satisfied; the task's own Context calls out that a bare number such as the `4` in `-n 4` is a number the legs carry, and that case only survives because it happens to have no trailing word. And (ii) a spelling difference suppresses a genuine bracket: `over 6 h` cited by `5 hours` and `7 h` counts only `7 h`, so the advisory fires on a clause that is in fact probed on both sides. Neither shape is exam-pinned, and the species is advisory-only (no refusal, no exit code), so this is not blocking. The narrowing is load-bearing for M4 \u2014 it is what keeps `threshold-one-sided` silent on `tests/test_compile_plan_proof_species.py`'s duration twin, where `iterates 3 times` is cited against `\u2264 90 s` \u2014 and that resolution of the tension between M1's literal wording and the Context is disclosed in the code comment, so the rule itself is lawful. A tighter version keeps the twin silent while closing both gaps: normalise the unit before comparing (fold `h`/`hr`/`hours`, `s`/`sec`/`seconds`, `b`/`bytes` onto one token \u2014 `times` still never folds onto `s`), and when the bound carries no unit, accept every leg number regardless of the word trailing it.; unverified: `test_the_existing_species_exam_still_passes` (tests/test_compile_plan_one_sided.py, last test) shells out to a second `pytest` process for the whole of `tests/test_compile_plan_proof_species.py`, which the driver already runs as this task's second `Run:` bullet. It is faithful to M4's \"that whole exam still passes\" and it does pass, but on the adopted tree it re-runs a sibling-shared exam from inside this exam, so a sibling's later change to that file surfaces here as a failure of this task's exam rather than of its own. Nothing to settle in this diff; noted so the operator reads a future red line in this file correctly. The two in-process checks above it (`test_the_five_species_fixture_still_prints_exactly_its_five_lines`, `test_the_duration_twin_still_draws_exactly_one_line`) already carry M4's substance.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-12/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1510 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 28%]\n........................................................................ [ 33%]\n........................................................................ [ 38%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 81%]\n........................................................................ [ 85%]\n......................................................................... [ 90%]\n........................................................................ [ 95%]\n.....................................................................    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1510 passed, 5 warnings in 111.46s (0:01:51) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_pinned_elsewhere.py",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 3.49s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py",
+      "exit": 0,
+      "stdout": "............................................                             [100%]\n44 passed in 7.35s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_check_cost.py",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 3.22s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py",
+      "exit": 0,
+      "stdout": "............................................                             [100%]\n44 passed in 7.16s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q \"paid by every task on every pass.*owning task's .Run:.\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "tr '\\n' ' ' < skills/ultrawrite/SKILL.md | grep -q 'directory-absence-pin., .pinned-elsewhere., .check-cost., .prose-check., .wide-files., .wide-contract., .threshold-one-sided., .disjunct-without-leg.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_prose_check.py",
+      "exit": 0,
+      "stdout": "..............                                                           [100%]\n14 passed in 3.87s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py tests/test_compile_plan_check_constraints.py",
+      "exit": 0,
+      "stdout": ".............................................................            [100%]\n61 passed in 12.49s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q \"byte-identical file or a script's output.*the driver could have run.*write it as a .Check:. beside the prose\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_wide_files.py",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 8.48s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py",
+      "exit": 0,
+      "stdout": "............................................                             [100%]\n44 passed in 7.40s\n"
+    },
+    {
+      "task": "5",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_one_sided.py",
+      "exit": 0,
+      "stdout": "................................                                         [100%]\n32 passed in 9.79s\n"
+    },
+    {
+      "task": "5",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py",
+      "exit": 0,
+      "stdout": "............................................                             [100%]\n44 passed in 7.30s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = b90f2f30356dcad03049b4d2e050bfc1f9a78f14",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = 61d0e7ae4ffaba2103fa2fd507438871785f17e0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 6be6ef327f12bc4244d6850b58b1f9bac4b21b84",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = e084e38b4247d028292e18bc7bb94a266c8e0fc3",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/ultra_gate.py)\" = 949bf784a10c7414880887cddaf9132c1415de7e",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/gate_check.py)\" = fc6e5dcf7c507643e603b69f605d1fd7da82d5f3",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/run_acceptance.sh)\" = 8ef475ac74f0ced637201c3d801de90dd4652eea",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1202355,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 38%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n.......................................................................s [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 81%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n......................................................................   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1509 passed, 1 skipped, 5 warnings in 110.49s (0:01:50) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": ".................................................... [ 35%]\n........................................................................ [ 40%]\n......................................................................... [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n..........................................................               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1428 passed, 5 warnings in 90.93s (0:01:30) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "925072cb5ce150fbe70db00f27d3b10c229e900c",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 6,
+      "foldCliWallTimeSec": 7.321,
+      "autoResolved": 0,
+      "resolverTranscripts": [
+        {
+          "conflict": 1,
+          "attempt": 1,
+          "path": "skills/ultrawrite/SKILL.md",
+          "epoch": 3,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/conflict-1.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/reply-1-1",
+          "status": "RESOLVED",
+          "notes": "Both sides share the same lead-in clause (\"written as a Check:, never as prose \u2014 prose is where the undecidable half goes.\") and each append a distinct, compatible follow-on sentence: task 3's rule that a prose bullet the driver could already run (byte-identical file/script output check) should become a Check beside the prose, and task 2's rule that a Check running a sim belongs in the owning task's Run: rather than paid per-task. Concatenated both sentences after the shared lead-in, preserving the trailing blank line (the \"both\" content) that separates this paragraph from the next heading. No conflict; both intents fully retained."
+        },
+        {
+          "conflict": 2,
+          "attempt": 1,
+          "path": "skills/ultrapowers/scripts/compile_plan.py",
+          "epoch": 5,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/conflict-2.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/reply-2-1",
+          "status": "RESOLVED",
+          "notes": "Both hunks combine cleanly \u2014 no true conflict, both sides add independent, additive content (task 4's WIDTH species constants/definitions and task 1's TREE-reading pinned-elsewhere species). For h1 I placed task 4's WIDTH_THRESHOLD/WIDE_*_ADVICE block before task 1's BACKTICK_SPAN_RE/pinned-elsewhere block, matching the call order fixed by h2 (PROOF_WIDTH_SPECIES loop runs before the pinned-elsewhere call, per the read-only comment above h2 stating pinned-elsewhere \"run[s] last within each task\"). Preserved the two blank lines from the 'both' section before the following _clip_run context. h2 reproduces both sides verbatim in the order already dictated by that same comment."
+        },
+        {
+          "conflict": 3,
+          "attempt": 1,
+          "path": "skills/ultrapowers/scripts/compile_plan.py",
+          "epoch": 7,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/conflict-3.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-12/frontier/wave-1/reply-3-1",
+          "status": "RESOLVED",
+          "notes": "Frontier already carries both task 4's WIDTH species block (WIDTH_THRESHOLD/WIDE_FILES_ADVICE/WIDE_CONTRACT_ADVICE) and task 1's TREE-reading pinned-elsewhere species block (BACKTICK_SPAN_RE.../_species_pinned_elsewhere), separated by the two blank lines already present in-frontier plus the two shared 'both' blank lines that follow before the read-only _clip_run context. The 'deleted 5' side is byte-identical to the WIDTH block already included in frontier, so keeping it would duplicate the block; it is dropped as redundant rather than silently discarded \u2014 frontier's fuller version already carries its content forward alongside task 1's addition."
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 5,
+    "tasks_planned": 5,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Global constraint: \"No file outside a task's own Files block is edited\" (plan /home/exedev/plans/run-12.md, Global Constraints \u2014 the one constraint in that section carrying no `Check:`)",
+      "reason": "runtime",
+      "why": "This read-only role has no shell in this environment, so I could not run `git diff --name-only` against BASE to confirm the integrated tree touches only the union of the five Files blocks (compile_plan.py, skills/ultrawrite/SKILL.md and the five new tests/test_compile_plan_*.py exams). Everything I could read is consistent with it \u2014 the five exams exist, both SKILL.md edits sit in their two named paragraphs, and every frozen-periphery hash Check: exits 0 \u2014 but the tree-wide scope assertion itself rests on the per-task referees' diffs, not on anything I executed."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Context/Claim mismatch between task 2's SKILL.md edit and the renders tasks 2 and 3 implement: `skills/ultrawrite/SKILL.md:193-198` frames the whole list as \"The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the rejection species\" and then names `check-cost` and `prose-check` inside it, but neither is a proof-species line \u2014 `_render_check_cost` (skills/ultrapowers/scripts/compile_plan.py:3423) prints the prefix `ADVISORY check-cost: ` and `_render_prose_check` (compile_plan.py:2954) prints `ADVISORY prose-check: `, both by deliberate design recorded in task 2's own Context (\"its own render `check-cost`, not a `proof-species` line, because the species line shape names a task and a `Check:` belongs to none\"). A plan author following the skill would grep for `ADVISORY proof-species: check-cost` and find nothing. Task 2's M4 mandates exactly this list placement, so the deliverable satisfies its own contract \u2014 the defect is that the sentence's framing was never widened to cover the two plan-level renders; worth an issue, not a merge stop."
+    },
+    {
+      "severity": "minor",
+      "detail": "Markdown fold artifact in the file tasks 2 and 3 share: `skills/ultrawrite/SKILL.md:278-279` runs the last sentence of \u00a7Global Constraints discipline (\"\u2026there, and keep this section for what no single task owns.\") directly into the next heading `## Execution handoff \u2014 analyze, then recommend` with no blank line between them. Every other heading in the file (lines 18, 33, 59, 131, 148, 202, 226, 260, 305, 313) is preceded by a blank line, so this is the one exception, and it sits precisely where tasks 2 and 3 each appended a sentence to the same closing paragraph. `validate_skill.py` still passes and task 2's `sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p'` Run: is unaffected, so nothing is broken \u2014 it is a cosmetic inconsistency only the integrated view sees."
+    }
+  ],
+  "blockedWaves": []
+}

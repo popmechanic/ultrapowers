@@ -1,0 +1,382 @@
+{
+  "ok": true,
+  "stamp": "run-12",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-12"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A clause that replaces a pinned literal is told which test pins it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A `Check:` that runs a sim is named as a per-task cost",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A prose constraint a command could decide is told to become a `Check:`",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "A wide task is named before a VM is spent on it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "A one-sided threshold and a one-legged either/or are named",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A clause that replaces a pinned literal is told which test pins it",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_pinned_elsewhere.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_pinned_elsewhere.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_pinned_elsewhere.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_pinned_elsewhere.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "A `Check:` that runs a sim is named as a per-task cost",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md",
+            "tests/test_compile_plan_check_cost.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_check_cost.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_check_cost.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_check_cost.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py",
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q \"paid by every task on every pass.*owning task's .Run:.\"",
+            "tr '\\n' ' ' < skills/ultrawrite/SKILL.md | grep -q 'directory-absence-pin., .pinned-elsewhere., .check-cost., .prose-check., .wide-files., .wide-contract., .threshold-one-sided., .disjunct-without-leg.'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "A prose constraint a command could decide is told to become a `Check:`",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md",
+            "tests/test_compile_plan_prose_check.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_prose_check.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_prose_check.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_prose_check.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py tests/test_compile_plan_check_constraints.py",
+            "sed -n '/^## Global Constraints discipline/,/^## Execution handoff/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q \"byte-identical file or a script's output.*the driver could have run.*write it as a .Check:. beside the prose\"",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "A wide task is named before a VM is spent on it",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_wide_files.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_wide_files.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_wide_files.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_wide_files.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "A one-sided threshold and a one-legged either/or are named",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_one_sided.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_one_sided.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_one_sided.py",
+          "proofRuns": [
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_one_sided.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_proof_species.py tests/test_compile_plan_proof_runs.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "5 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The fleet is byte-identical to BASE \u2014 runs 10 and 11 own it.\n- The frozen verification periphery is untouched: `skills/ultrapowers/scripts/gate_check.py`,\n  `ultra_gate.py` and `run_acceptance.sh` are byte-identical to BASE, and the compiler's\n  refusal vocabulary gains no word \u2014 every new line is an `ADVISORY`, printed only under\n  `--renders`.\n- `skills/ultrawrite/SKILL.md` still validates.\n- No shouted imperative (an all-caps must, never or always as a whole word) is added to\n  `skills/ultrawrite/SKILL.md`.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/run-engine.mjs)\" = b90f2f30356dcad03049b4d2e050bfc1f9a78f14",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = 61d0e7ae4ffaba2103fa2fd507438871785f17e0",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 6be6ef327f12bc4244d6850b58b1f9bac4b21b84",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = e084e38b4247d028292e18bc7bb94a266c8e0fc3",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/ultra_gate.py)\" = 949bf784a10c7414880887cddaf9132c1415de7e",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/gate_check.py)\" = fc6e5dcf7c507643e603b69f605d1fd7da82d5f3",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/run_acceptance.sh)\" = 8ef475ac74f0ced637201c3d801de90dd4652eea",
+        "minor": false
+      },
+      {
+        "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-12/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-12/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-12/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-12/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

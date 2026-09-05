@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-12.md run-12 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Global constraint: \"No file outside a task's own Files block is edited\" (plan /home/exedev/plans/run-12.md, Global Constraints — the one constraint in that section carrying no `Check:`) — This read-only role has no shell in this environment, so I could not run `git diff --name-only` against BASE to confirm the integrated tree touches only the union of the five Files blocks (compile_plan.py, skills/ultrawrite/SKILL.md and the five new tests/test_compile_plan_*.py exams). Everything I could read is consistent with it — the five exams exist, both SKILL.md edits sit in their two named paragraphs, and every frozen-periphery hash Check: exits 0 — but the tree-wide scope assertion itself rests on the per-task referees' diffs, not on anything I executed. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
