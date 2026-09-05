@@ -1,0 +1,58 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "869381a28cde326c1e8b9654073f99c1baadd9f5a1c3cc83dfb664a4d32a5b23",
+   "verdict": "pass",
+   "reason": "round 1: heading count and awk order pin M1; section-scoped greps between the two existing adjacent headings pin M2-M5 including the #667 citation; the validator plus the named test files pin M6"
+  },
+  "2": {
+   "hash": "7e24ce7ad7f466292f3edf042f5e3fb2d048079fc2cd672f8392165adefe1333",
+   "verdict": "pass",
+   "reason": "round 1: M1's placement, one-line shape, space-separated example and target-repository rule, M2's reader/PR-body/absent-line sentences and M3's self-review bullet are each pinned by section-scoped greps on the skill text; M4 is the validator plus the named tests"
+  },
+  "3": {
+   "hash": "0b8649e2a4c1aa8a87c97b26f22d4b37d478712dc2318538a7439b3a1666a394",
+   "verdict": "pass",
+   "reason": "round 2: the ordered single-sentence regex fails on the section as it stands at BASE (its Check:/Run: sentence has no ULTRA_BASE), the fixed-string grep pins the example, the ordered grep pins the kept cost sentence, the validator plus the five named tests cover the rest of M3"
+  },
+  "4": {
+   "hash": "681173ad53a4d7b2f433192e27a727729589bca9feeed9dcdbe639560d490d2a",
+   "verdict": "pass",
+   "reason": "round 1: the sed range isolates step 5; the verbatim launcher sentence (M1), the by-hand rule (M2), both halves of the no-scheduled-job rule plus #660 plus the file-wide absence of cron (M3), and the validator, the two doc-pin tests and the janitor sim with its sentinel (M4) each fail when their clause is false"
+  },
+  "5": {
+   "hash": "66ac0b9e9341a90673dd64ad3867bba92c45dcca6b575312f9cd11259fbfdc3b",
+   "verdict": "pass",
+   "reason": "round 1: M1/M2 by a same-line path grep plus a next-line bullet-or-blank check a wrapped continuation fails; M3 by the old anchor's absence, the new anchor's presence and the heading in the reference; M4 by the kept sentence"
+  },
+  "6": {
+   "hash": "97f5df4810fecc637aff8277b2f5c8a89e15dd7e5fb4276b0f5f4f76b8a43b1b",
+   "verdict": "pass",
+   "reason": "round 1: two negative greps kill M1's stale sentences file-wide; three section-scoped greps pin M2's sandbox-opens, checks-green-then-merges and --hold-merge-or-close; 'sandbox is gone' plus the pytest run cover M3"
+  }
+ },
+ "tally": {
+  "dispatched": 7,
+  "rejected": 1,
+  "rounds": 2,
+  "round1": {
+   "dispatched": 6,
+   "pass": 5,
+   "fail": 1
+  },
+  "round2": {
+   "dispatched": 1,
+   "pass": 1,
+   "fail": 0
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "3",
+   "hash": "c5a2af3a53d6559fd8cc215692e25a921d168b0987772c992d101cf7fda36bce",
+   "verdict": "fail",
+   "reason": "leg 2's (Check:|Run:).*(Check:|Run:).*ULTRA_BASE is satisfied by the pre-existing per-task-cost sentence followed anywhere later by ULTRA_BASE, and leg 1 never names the command kinds \u2014 anchor both kinds inside the same sentence as the rule"
+  }
+ ]
+}
