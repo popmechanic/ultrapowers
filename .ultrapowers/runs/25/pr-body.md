@@ -1,0 +1,103 @@
+## fleet run-25 — parked
+
+| | |
+|---|---|
+| verdict | `BLOCKED` |
+| target | `popmechanic/ultrapowers` at `e04154b702407ac1efabaa22db6e21eab706a5f1` |
+| engine | `e04154b702407ac1efabaa22db6e21eab706a5f1` |
+| plan | `.ultrapowers/plan.md` at `f4ae7ed7b62a650019c4e345e38d4fb32cd9bbc3` |
+| branch | `ultra/integration-run-25` |
+| vm | `fleet-r25-2609051933-185d` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-25",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-25/report.json",
+  "branch": "ultra/integration-run-25",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"7\", \"files\": [\"fleet/RUNBOOK.md\", \"fleet/retire.mjs\", \"fleet/tests/test_retire.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 7/8 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 4 \u2014 `record_tags()` in `fleet/sandbox-boot.sh:1041-1074`: the two refspec tag pushes, the `ls-remote --tags` verification and the single two-ref branch deletion \u2014 Every leg runs against the `git` stub in `fleet/tests/_sandbox_boot_helpers.mjs` (a canned `ls-remote --tags` arm and a `push` that always exits 0), so what is proven is the argv shape and the ordering, not that `<sha>:refs/tags/\u2026` from the target clone and `HEAD:refs/tags/\u2026` from the detached evidence worktree are accepted by the real GitHub edge at `github.int.exe.xyz`, nor that the deletion push succeeds under the run's `--act-as-user` integration. The plan itself schedules this as a post-merge smoke run ('a smoke run proves a fresh run leaves two tags and no branch'). [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 2 \u2014 the `Closes #N` lines `plan_closes()` appends to the PR body (`fleet/sandbox-boot.sh:745-758`, `render_card` line 793) \u2014 The sims assert the posted body's last lines and their order against the stubbed PR POST. The Claim's operative clause \u2014 'so the self-merge closes them' \u2014 depends on GitHub resolving the body's closing keywords when the sandbox squash-merges the PR, which no test in this environment can exercise. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 6 \u2014 the branch-then-tag fallback in `fetch_evidence` (`skills/ultralearn/scripts/harvest_fleet_runs.py:164-201`) \u2014 Verified against a `gh` stub answering from a JSON map keyed by the `repos/\u2026` argv. That `?ref=` resolves a tag and a branch alike on the real contents API \u2014 the premise the whole fallback rests on \u2014 is assumed from GitHub's documented behavior, not executed here. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.4LvcnCPAm2/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1627 items]\\n\\n........................................................................ [  4%]\\n......................................................................... [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 31%]\\n........................................................................ [ 35%]\\n......................................................................... [ 39%]\\n........................................................................ [ 44%]\\n........................................................................ [ 48%]\\n........................................................................ [ 53%]\\n........................................................................ [ 57%]\\n........................................................................ [ 62%]\\n........................................................................ [ 66%]\\n........................................................................ [ 70%]\\n........................................................................ [ 75%]\\n........................................................................ [ 79%]\\n........................................................................ [ 84%]\\n........................................................................ [ 88%]\\n........................................................................ [ 93%]\\n........................................................................ [ 97%]\\n.........................................                                [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1627 passed, 5 warnings in 151.09s (0:02:31) =================\"}\n"
+  },
+  "verdict": "BLOCKED"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence-run-25/.ultrapowers/runs/25/
+
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- receipt.json
+- report.json
+- status.json
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan-run-25/.ultrapowers/plan.md
