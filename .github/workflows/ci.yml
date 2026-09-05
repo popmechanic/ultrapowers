@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# A push sequence on one PR branch runs once, not once per commit; main's runs
+# are never cancelled, since each is the record of a landed commit (#641).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,27 +24,26 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          # The versions the fleet runs (#641): the sandbox installs the Node
+          # tarball fleet/setup-script.mjs pins (NODE_VERSION) and exeuntu's
+          # python3, so the sims are judged here under the same major lines.
+          python-version: "3.12"
 
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Install pytest
         run: python -m pip install --quiet pytest pytest-xdist
 
-      - name: Validate skill
-        run: python skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers
-
-      - name: Validate ultrawrite skill
-        run: python skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite
-
-      - name: Validate ultralearn skill
-        run: python skills/ultrapowers/scripts/validate_skill.py skills/ultralearn
-
-      - name: Validate ultradocket skill
-        run: python skills/ultrapowers/scripts/validate_skill.py skills/ultradocket
+      # Every shipped skill, derived from the tree rather than typed: a fifth
+      # skill directory is validated the day it appears (#641).
+      - name: Validate every skill
+        run: |
+          for s in skills/*/; do
+            python skills/ultrapowers/scripts/validate_skill.py "${s%/}" || exit 1
+          done
 
       # Reported, never gated (#492). The word CEILINGS these numbers used to
       # feed are deleted: a cap on a stored file measures storage, not

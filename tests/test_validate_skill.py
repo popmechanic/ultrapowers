@@ -27,9 +27,11 @@ def test_ci_validates_every_shipped_skill():
     shipped = sorted(d.name for d in (ROOT / "skills").iterdir()
                      if (d / "SKILL.md").is_file())
     assert shipped == ["ultradocket", "ultralearn", "ultrapowers", "ultrawrite"]
-    for name in shipped:
-        assert f"validate_skill.py skills/{name}\n" in ci, \
-            f".github/workflows/ci.yml does not validate skills/{name}"
+    # Since #641 CI validates `skills/*/` in one loop, so every directory the
+    # tree ships is covered without being named; the pin is on the loop.
+    assert "for s in skills/*/; do" in ci, \
+        ".github/workflows/ci.yml does not loop over skills/*/"
+    assert "validate_skill.py \"${s%/}\"" in ci
     assert "ultraplan" not in ci
 
 def test_missing_description_fails(tmp_path):
