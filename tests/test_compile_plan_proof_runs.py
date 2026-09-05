@@ -28,6 +28,7 @@ clauses of that grammar, leg by leg:
 function that fills a task's `claims`); `proofRuns` is read off the wave
 entries `--emit-args` writes, beside `proofTests` and `testCmd`.
 """
+import fcntl
 import json
 import pathlib
 import re
@@ -355,12 +356,31 @@ CORPUS = (sorted((ROOT / "evals/fixtures").glob("*/plan.md"))
 def base_compiler(tmp_path_factory):
     """The compiler as of the frozen BASE sha, written to a temp file. A
     depth-1 checkout (CI) does not hold BASE; fetch exactly that commit from
-    origin, which serves any reachable sha."""
-    probe = subprocess.run(["git", "cat-file", "-e", BASE_SHA + "^{commit}"],
-                           cwd=str(ROOT), capture_output=True)
-    if probe.returncode != 0:
-        subprocess.run(["git", "fetch", "-q", "--depth=1", "origin", BASE_SHA],
-                       cwd=str(ROOT), capture_output=True)
+    origin, which serves any reachable sha.
+
+    Five test modules share this fixture (two call it as a plain function), so
+    under xdist several workers reach the fetch at once — and concurrent
+    fetches into one repository lose on `.git/shallow.lock`: three of four exit
+    128 and the loser's `git show` then reports the sha as absent (CI run
+    33980815350 on 3e5ce33, 2026-09-05; reproduced 24/32 in fresh depth-1
+    clones). So the probe-and-fetch runs under one file lock shared by every
+    worker, each worker re-probes after taking it, and a fetch that fails is a
+    failure here, not a silent one."""
+    lock_path = tmp_path_factory.getbasetemp().parent / "ultra-base-sha.lock"
+    with open(lock_path, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            probe = subprocess.run(
+                ["git", "cat-file", "-e", BASE_SHA + "^{commit}"],
+                cwd=str(ROOT), capture_output=True)
+            if probe.returncode != 0:
+                fetch = subprocess.run(
+                    ["git", "fetch", "-q", "--depth=1", "origin", BASE_SHA],
+                    cwd=str(ROOT), capture_output=True)
+                assert fetch.returncode == 0, fetch.stderr.decode(
+                    "utf-8", "replace")
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
     blob = subprocess.run(["git", "show", "%s:%s" % (BASE_SHA, COMPILER_REL)],
                           cwd=str(ROOT), capture_output=True)
     assert blob.returncode == 0, blob.stderr.decode("utf-8", "replace")
