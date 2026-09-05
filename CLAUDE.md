@@ -205,6 +205,16 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
 - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
   2026-08-31, reversing #469's auto-discovery).
+- **Author plans concurrently from the issues** — a sitting's queue is partitioned by files into
+  disjoint bundles and each bundle's plan is authored by its own subagent, the issue's desired-state
+  sentence being the Claim; the operator's touches are one Claim confirmation and one execute choice
+  per plan; grilling only for `wayfinder:grilling` tickets. Reason (operator, 2026-09-05, "can we
+  author plans concurrently when you already have my word in the GitHub issue?"): the clock census
+  of runs 10–12 found authoring throughput, not the substrate, was the first bound on how many runs
+  could be live at once (memory `parallel-authoring-from-issues`). Launches stay serial (#667).
+- **No local scheduled process, ever** — the janitor gets no cron or launchd job; a run merges its own
+  PR from the sandbox and the launcher runs the reap (#660). Reason (operator, 2026-09-05): "a process
+  every five minutes locally is too fragile."
 - **Every choice is an AskUserQuestion** — 2–3 concrete options with their consequences and a
   `(Recommended)` tag, never a bare open question; the operator adjudicates, they do not author
   (memory `operator-elicitation-style`; since 2026-09-04 it binds the #598 setup agent too).
