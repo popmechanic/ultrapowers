@@ -1,0 +1,40 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "e733c030bf7e5bf4dfd5192c113c3bc203cca190fd4ff8f41476235db30d0a98",
+   "verdict": "pass",
+   "reason": "round 1: M1 exact anchored heading grep plus scoped negation; M2-M4 section-scoped greps on distinctive phrases, the two removed mandates checked by section-scoped negations, under-specification-before-scope order pinned by one ordered regex; M5 rides the validator's exit status"
+  },
+  "2": {
+   "hash": "cc34d578b8cce59a4c208feea536e4b3278951fdac0f6dbc268c05d890fbba70",
+   "verdict": "pass",
+   "reason": "round 1: M1/M2 ordered greps over the six-slot section plus a fixed-string match of the fetch command; M3 ordered grep inside rule 4's 'Let same-file edits stand' plus the run-12 numbers; M4 the Self-review tail; M5 the validator and the named tests"
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": 1,
+  "round1": {
+   "dispatched": 2,
+   "pass": 2,
+   "fail": 0
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "e733c030bf7e5bf4dfd5192c113c3bc203cca190fd4ff8f41476235db30d0a98",
+   "verdict": "pass",
+   "reason": "round 1: M1 exact anchored heading grep plus scoped negation; M2-M4 section-scoped greps on distinctive phrases, the two removed mandates checked by section-scoped negations, under-specification-before-scope order pinned by one ordered regex; M5 rides the validator's exit status"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "cc34d578b8cce59a4c208feea536e4b3278951fdac0f6dbc268c05d890fbba70",
+   "verdict": "pass",
+   "reason": "round 1: M1/M2 ordered greps over the six-slot section plus a fixed-string match of the fetch command; M3 ordered grep inside rule 4's 'Let same-file edits stand' plus the run-12 numbers; M4 the Self-review tail; M5 the validator and the named tests"
+  }
+ ]
+}
