@@ -1,0 +1,91 @@
+{
+  "capturedAt": "2026-09-05",
+  "verbs": {
+    "new": [
+      "--comment",
+      "--cpu",
+      "--disk",
+      "--env",
+      "--image",
+      "--integration",
+      "--json",
+      "--memory",
+      "--name",
+      "--no-email",
+      "--pool",
+      "--prompt",
+      "--registry-auth",
+      "--setup-script",
+      "--tag"
+    ],
+    "rm": [
+      "--json"
+    ],
+    "ls": [
+      "--group",
+      "--json",
+      "--l"
+    ],
+    "comment": [
+      "--json"
+    ],
+    "tag": [
+      "--d",
+      "--json"
+    ],
+    "integrations add": [
+      "--act-as-user",
+      "--attach",
+      "--bearer",
+      "--comment",
+      "--fields",
+      "--for",
+      "--header",
+      "--name",
+      "--no-auth",
+      "--peer",
+      "--readonly",
+      "--repository",
+      "--strip-prefix",
+      "--target",
+      "--team"
+    ],
+    "integrations attach": [
+      "--for",
+      "--team",
+      "--until"
+    ],
+    "integrations detach": [
+      "--team"
+    ],
+    "integrations list": [
+      "--json",
+      "--usage"
+    ],
+    "integrations edit": [
+      "--act-as-user",
+      "--bearer",
+      "--clear-header",
+      "--comment",
+      "--fields",
+      "--header",
+      "--no-auth",
+      "--readonly",
+      "--repository",
+      "--strip-prefix",
+      "--target",
+      "--team",
+      "--webhook-url"
+    ],
+    "ssh-key generate-api-key": [
+      "--cmds",
+      "--exp",
+      "--json",
+      "--label",
+      "--vm"
+    ],
+    "billing plan": [
+      "--json"
+    ]
+  }
+}
