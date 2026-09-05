@@ -1,0 +1,323 @@
+{
+  "ok": true,
+  "stamp": "run-28",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-28"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "One keychain entry per account, and one usage table",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/claude-token.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`main(argv: string[], deps?) -> Promise<object>`",
+            "`accounts(deps) -> Array<{ name: string, expiresAt: string, fresh: boolean }>`",
+            "`usage(deps) -> Promise<Array<{ name, fiveHour, sevenDay, unread, reason }>>`",
+            "`renderUsage(rows) -> string`",
+            "`installBearer(deps, accessToken: string, account: string) -> 'added' | 'edited'`",
+            "`DEFAULT_ACCOUNT`",
+            "`USAGE_URL`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The doctor's accounts row and verb-drift row, and the record they read",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/doctor.mjs",
+          "fleet/exe-verbs.json",
+          "skills/ultrapowers/references/first-run.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`ROW_IDS`",
+            "`verbDrift({ help, recordPath }) -> Promise<{ readable: boolean, capturedAt: string | null, findings: Array<{ verb, appeared, vanished, unreadable }>, detail: string }>`",
+            "`fleetConfigAccount({ path }) -> Promise<string | null>`",
+            "`doctor({ config, exec, target, configKeys, account, verbsPath }) -> Promise<{ config, rows, verdict }>`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A launch names its account and prints the verb-drift preflight",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`verbDrift`",
+            "`fleetConfigAccount`"
+          ],
+          "produces": [
+            "`launch({ argv, exec, config, now, sleep, rand, refreshCredential, verbsPath }) -> Promise<object>`",
+            "`USAGE`",
+            "`renderLaunch(result) -> string`",
+            "`defaultRefreshCredential(account: string, spawn?) -> { ok, skipped, out }`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "2",
+        "to": "3",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "One keychain entry per account, and one usage table",
+          "files": [
+            "fleet/claude-token.mjs",
+            "fleet/tests/test_claude_token.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`main(argv: string[], deps?) -> Promise<object>`",
+              "`accounts(deps) -> Array<{ name: string, expiresAt: string, fresh: boolean }>`",
+              "`usage(deps) -> Promise<Array<{ name, fiveHour, sevenDay, unread, reason }>>`",
+              "`renderUsage(rows) -> string`",
+              "`installBearer(deps, accessToken: string, account: string) -> 'added' | 'edited'`",
+              "`DEFAULT_ACCOUNT`",
+              "`USAGE_URL`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/claude-token.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_claude_token.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_claude_token.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_claude_token.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The doctor's accounts row and verb-drift row, and the record they read",
+          "files": [
+            "fleet/doctor.mjs",
+            "fleet/exe-verbs.json",
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`ROW_IDS`",
+              "`verbDrift({ help, recordPath }) -> Promise<{ readable: boolean, capturedAt: string | null, findings: Array<{ verb, appeared, vanished, unreadable }>, detail: string }>`",
+              "`fleetConfigAccount({ path }) -> Promise<string | null>`",
+              "`doctor({ config, exec, target, configKeys, account, verbsPath }) -> Promise<{ config, rows, verdict }>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/doctor.mjs",
+            "fleet/exe-verbs.json",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_doctor.mjs && node fleet/tests/test_doctor_config_keys.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_doctor_config_keys.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+            "sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q -- '--account' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q -- '--no-install' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'accounts' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'usage' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q '\"account\"'",
+            "sed -n '/^## verb-drift/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'fleet/exe-verbs.json' && sed -n '/^## verb-drift/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'help' && sed -n '/^## verb-drift/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'finding'",
+            "sed -n '1,/^## exe-dev/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'seven rows'"
+          ]
+        }
+      ],
+      [
+        {
+          "id": "3",
+          "title": "A launch names its account and prints the verb-drift preflight",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch.mjs",
+            "fleet/tests/test_launch_engine_source.mjs",
+            "fleet/tests/test_launch_reaps.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`verbDrift`",
+              "`fleetConfigAccount`"
+            ],
+            "produces": [
+              "`launch({ argv, exec, config, now, sleep, rand, refreshCredential, verbsPath }) -> Promise<object>`",
+              "`USAGE`",
+              "`renderLaunch(result) -> string`",
+              "`defaultRefreshCredential(account: string, spawn?) -> { ok, skipped, out }`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch.mjs",
+            "fleet/tests/test_launch_reaps.mjs",
+            "fleet/tests/test_launch_engine_source.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch.mjs && node fleet/tests/test_launch_reaps.mjs && node fleet/tests/test_launch_engine_source.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_hold.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks",
+      "A launch names its account and prints the verb-drift pr\u2026"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- No command this plan adds prints an access token, a refresh token or an authorization code:\n  every secret rides a `deps` seam, the keychain, or stdin.\n- The assignment comment's shape is BASE's: `run= plan= target= base= engine=` then the\n  optional `overlap= tier= effort= hold=`, and no other key.\n- `fleet/doctor.mjs` imports only `node:`-prefixed specifiers and no sibling fleet module; its\n  source carries neither the word fits nor the phrase cannot hold.\n- The keychain service stays `ultrapowers-claude-oauth`; the BASE item (account `ultrapowers`)\n  is read and written exactly as at BASE when no `--account` is given.\n- Under `fleet/`, no file carries the copy verb's tag-copying flag (banned by the sweep in\n  `fleet/tests/test_launch.mjs`), so the verb record does not include `cp`.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 0cdb604f808000016786b479e3c1a5af81e41131",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/tests/_lobby_helpers.mjs)\" = 86c4674085d8fefc940938ef80553e4b945ebb34",
+        "minor": false
+      },
+      {
+        "cmd": "node --check fleet/claude-token.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "node --check fleet/doctor.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "node --check fleet/launch.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -q claude-oauth-token skills/ultrapowers/references/first-run.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-28/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-28/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-28/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-28/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

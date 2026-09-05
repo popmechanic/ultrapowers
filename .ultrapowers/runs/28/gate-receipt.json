@@ -1,0 +1,72 @@
+{
+  "mode": "gate",
+  "stamp": "run-28",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-28/report.json",
+  "branch": "ultra/integration-run-28",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/claude-token.mjs \u2014 the keychain seams (`keychainRead`/`keychainWrite`/`keychainList`) and `parseKeychainDump` against the real macOS `security` binary \u2014 This sandbox is Linux and has no `security` command; every exam stubs the three seams with a Map, so `parseKeychainDump` (the only code that parses real `security dump-keychain` output, per the Context's 2026-09-05 laptop measurement) is exported but exercised by no leg. That one item per account is actually written and enumerated on a laptop is unverified here. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/claude-token.mjs `usage` \u2014 the `GET https://api.anthropic.com/api/oauth/usage` read and its `five_hour`/`seven_day` body \u2014 The exams answer the URL from a `fetch` stub. That the live endpoint still answers 200 with `utilization`/`resets_at` under those two keys, and 401/429 for the control cases, is not executed in this environment. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/claude-token.mjs `installBearer` \u2014 `integrations edit|add \u2026 --comment account=<name>` and the `comment` field the doctor reads back from `integrations list --json` \u2014 The lobby reaches the tool only through the `deps.lobby` stub, and the doctor's `edgeAccount` reads a stubbed listing. That exe.dev accepts `--comment` on both verbs and echoes it back on the `claude-max` entry is a 2026-09-05 measurement recorded in the Context, not something this run re-executed. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/exe-verbs.json \u2014 the recorded flag sets, and the `help <verb>` preflight in fleet/doctor.mjs and fleet/launch.mjs \u2014 No `ssh exe.dev` is reachable here. The exams render `Options:` blocks from the committed record itself, so the diff logic is verified but the record's agreement with the live lobby is not \u2014 a real drift on 2026-09-05's capture would be invisible to this tree's suite by construction (that is the row's purpose). [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.WPSF4AXPSU/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1643 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 21%]\\n........................................................................ [ 26%]\\n........................................................................ [ 30%]\\n........................................................................ [ 35%]\\n........................................................................ [ 39%]\\n........................................................................ [ 43%]\\n........................................................................ [ 48%]\\n........................................................................ [ 52%]\\n........................................................................ [ 56%]\\n........................................................................ [ 61%]\\n........................................................................ [ 65%]\\n........................................................................ [ 70%]\\n........................................................................ [ 74%]\\n........................................................................ [ 78%]\\n........................................................................ [ 83%]\\n........................................................................ [ 87%]\\n........................................................................ [ 92%]\\n........................................................................ [ 96%]\\n...........................................................              [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1643 passed, 5 warnings in 144.92s (0:02:24) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}

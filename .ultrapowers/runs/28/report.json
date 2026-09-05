@@ -1,0 +1,349 @@
+{
+  "integrationBranch": "ultra/integration-run-28",
+  "baseSha": "af5edf80748834e026a1d7e46b60313d8ae71510",
+  "waves": [
+    [
+      "1",
+      "2"
+    ],
+    [
+      "3"
+    ]
+  ],
+  "dependencyEdges": [
+    "2 -> 3 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "fad827bded1f9fde76ae67ae828b1ba909f2efeb",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-28/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: `parseKeychainDump` (fleet/claude-token.mjs, the parser behind the new `keychainList()` seam) has no leg. Every leg stubs `keychainList`, so the one piece of new real-world logic in this diff \u2014 the `security dump-keychain` parse the Context specifies (an item opens at a `class:` line, `\"acct\"<blob>=\"\u2026\"` and `\"svce\"<blob>=\"\u2026\"` may arrive in either order, and only an item whose `svce` equals `ultrapowers-claude-oauth` contributes its `acct`) \u2014 is graded by nothing. The exam only asserts `typeof CT.defaultDeps().keychainList === 'function'`. Everything the Proof's legs (a)\u2013(e) name is covered, so this blocks nothing, but the parser is exported and pure and a leg is cheap. What would settle it: a leg feeding a literal two-item dump \u2014 one item under the service whose `svce` line follows its `acct` line, one item under another service, and a duplicate \u2014 and asserting `parseKeychainDump(dump)` deep-equals `['ultrapowers']`-style names only, plus `parseKeychainDump('')` -> `[]`.; unverified: `parseKeychainDump` \u2014 the new exported parser that is the entire body of the new `keychainList()` default dep (fleet/claude-token.mjs, `export function parseKeychainDump (out, service = KEYCHAIN.service)` and `keychainList: () => { const r = spawnSync('security', ['dump-keychain'], ...) }`) \u2014 has no assertion anywhere in fleet/tests/test_claude_token.mjs. Every `accounts`/`usage` leg stubs `keychainList` through the harness Map, so the `class: \"genp\"` / `\"acct\"<blob>=` / `\"svce\"<blob>=` line grammar the Context measured on 2026-09-05 is transcribed but never exercised. The Proof's legs (c) and (d) only require the seam, so this is not a leg the task names \u2014 but a regression in the parser (a changed regex, dropping the deferred `close()` that handles `svce` arriving after `acct`) would make `accounts` answer `[]` on the operator's laptop, and turn the sibling doctor's `accounts` row red, with the whole exam still green. What would settle it: one pure leg over a literal dump fixture \u2014 e.g. `assert.deepEqual(CT.parseKeychainDump('class: \"genp\"\\nattributes:\\n    \"acct\"<blob>=\"ultrapowers\"\\n    \"svce\"<blob>=\"ultrapowers-claude-oauth\"\\nclass: \"genp\"\\nattributes:\\n    \"svce\"<blob>=\"ultrapowers-claude-oauth\"\\n    \"acct\"<blob>=\"b\"\\nclass: \"genp\"\\nattributes:\\n    \"acct\"<blob>=\"other\"\\n    \"svce\"<blob>=\"something-else\"'), ['ultrapowers', 'b'])`, which pins the service filter, the reversed attribute order the Context warns about, and the item boundary at once.; Two additions this task does not require are never exercised by any leg. (1) fleet/claude-token.mjs's `defaultDeps()` grows a `stdout: (text) => process.stdout.write(text)` seam, but `main`'s writer is `const write = (text) => (deps.stdout ? deps.stdout(text) : process.stdout.write(text))` and the exam harness never sets `stdout` \u2014 every `--json` leg goes through `captureStdout`, i.e. the fallback branch, so the seam itself is dead in test and its only caller is the fallback it makes redundant. (2) fleet/tests/test_claude_token.mjs's `harness({ accountList })` option (`keychainList: () => accountList ? [...accountList] : [...store.keys()]`) is passed by no leg, as is the returned `store` handle. Either wire them up (inject `deps.stdout` in the `--json` legs instead of patching `process.stdout.write`; use `accountList` for the leg-(c) case where `keychainList()` names an account the store does not hold) or drop them.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9150e471ccf11dd74f24dbe2ded2e94e35100a72",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-28/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "M4 names the live-flag regex literally as `^\\s+(--[A-Za-z0-9-]+)`; fleet/doctor.mjs uses `const FLAG_LINE = /^[ \\t]+(--[A-Za-z0-9-]+)/gm`. The two agree on every `Options:` block the lobby prints (and on the exam's prose fixture), differing only where a flag sits at column 0 after a blank line \u2014 `^\\s+` would consume the preceding newline and count it, `[ \\t]+` would not. The divergence is undisclosed (the comment above it describes the block, not the narrowing). Behaviourally harmless, but the clause pins the regex, so either match it or say why the narrowing is deliberate. Swapping the class keeps every leg of group 8 green.; fleet/doctor.mjs:186-210 \u2014 `fleetConfigAccount` is a verbatim copy of `fleetConfigKeys` (same `configPath ?? DEFAULT_CONFIG_PATH()`, same read-try/parse-try/`!parsed || typeof !== 'object' || Array.isArray` guard), differing only in its last line; `loadFleetConfig` carries a third near-copy of the same block. Three readers of one file now each own their own copy of the file-absent / not-JSON / not-an-object ladder, so a change to any one of those error paths has to be made three times. Extracting a private `async function readConfigObject (configPath) { \u2026 return object | null }` and letting all three call it would keep every exported signature and every leg of group 4 unchanged.; unverified: the `accounts` row's contract with the credential tool is exercised only against stubs. Group 7 drives `node <dir>/claude-token.mjs accounts --json` through the `exec` seam and group 6b drives it through a PATH `node` shim that prints the literal `[{\"name\":\"ultrapowers\",\"expiresAt\":\"\u2026\",\"fresh\":true}]`; nothing in this task's FILES can establish that task 1's real `accounts` verb prints that shape (it owns fleet/claude-token.mjs, a SIBLING FILES path). What would settle it: the wave-integration run of `node fleet/tests/test_claude_token.mjs` leg (c), which pins the printed JSON, read together with this row's parser.; Duplicated assertion in `fleet/tests/test_doctor_config_keys.mjs`, group 1's `['cpu','memory','golden']` block: `assert.ok(capacity.detail.includes('golden'), ...)` is asserted twice within the same block, once as \"the detail names golden\" and again ten lines later as \"the detail names the key nothing reads\". The second is dead weight. Relatedly, that block dropped BASE's `assert.ok(!capacity.detail.includes('cpu,'), ...)` guard \u2014 the behaviour it named (a key something reads is never echoed as stale) is still covered, by group 4's exact-detail pin `capacity.detail === BASE_DETAIL` for `configKeys: ['cpu','memory','account']`, so no criterion is left unverified \u2014 but the net effect is one redundant assertion where a distinct one used to be. Collapse the two `includes('golden')` calls into one.; unverified: the `accounts` row's live read \u2014 `node <dir>/claude-token.mjs accounts --json` \u2014 is exercised only against the `exec` stub and the PATH `node` shim, both of which print the shape this task assumed. Whether sibling task 1's `claude-token.mjs accounts` actually prints `[{\"name\":\u2026,\"expiresAt\":\u2026,\"fresh\":\u2026}]` is a cross-task claim no assertion in this diff can settle (task 1's file is a SIBLING FILES path and is correctly untouched here). This is not a missing dependency edge \u2014 every criterion of this task is satisfiable with `claude-token.mjs` at BASE, since both exams stub the read. What would settle it: one run of `node fleet/doctor.mjs --json` against a real keychain, or a wave-level leg, once task 1 has landed the `accounts` verb.; concern: test-command-not-clean: `python3 -m pytest -p no:xdist` ends 1641 passed / 2 failed. Both failures are the BASE-shaped exams at the Proof's reserved `Test:` paths \u2014 `fleet/tests/test_doctor.mjs` fails its first assertion (`ROW_IDS is the five ids in order`) and `fleet/tests/test_doctor_config_keys.mjs` fails its `statusOf` deep-equal (now seven rows, and its green stub table has no `accounts --json` entry so that row reads 127/missing). Both are exactly the five-row shape M1 replaces; I did not touch either file, since the peer's extended exams are laid over them. Everything else in the suite is green, including `tests/test_docs_agree_with_code.py`.; concern: verified-outside-the-suite: because the two grading files are reserved, I checked M1\u2013M6 and Proof legs (a)\u2013(g) and (i) with a scratch harness written under the run directory (outside the repo) and deleted before committing \u2014 read order (five BASE reads, accounts, then one `ssh exe.dev \"help <verb>\"` per record verb, nothing else), every accounts-row case, `fleetConfigAccount`'s six answers, the `account`/`golden` configKeys pair, every `verbDrift` case including the `rm; whoami` key that never reaches the stub, and the CLI against a PATH shim (green: exit 0, seven rows, `12 verbs match fleet/exe-verbs.json (captured 2026-09-05)`; red: exit 1, two lines per red row and one for `verb-drift`; `--config` naming `zzz` \u2192 exit 1 with `accounts` missing).; concern: out-of-scope-doc-drift: `skills/ultrapowers/SKILL.md:48-49` still lists the doctor's row ids as the five BASE ones. It is not in FILES, the task names only first-run.md, and no test pins that list (`test_docs_agree_with_code.py` compares ROW_IDS against first-run.md's headings only), so I left it. It will read stale to an operator until a later task updates it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "91b8a2ad9309cedf6f223edef865e1dbc4dbc582",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-28/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/launch.mjs: the `try { \u2026 } catch` wrapped around `verbDrift(\u2026)` (patch lines 133\u2013146) is defensive work the task does not require and that no leg exercises. `verbDrift` in fleet/doctor.mjs never throws for the cases M4 names \u2014 an absent record, unparseable JSON, a record with no `verbs` object, a `help` answering non-zero \u2014 it returns `{ readable: false, \u2026 }` or a finding itself; the only way to reach this catch is a `help` seam that rejects, and every launch exam's `makeExec` answers `{ code: 0, stdout: '' }` instead. So the branch is unreached by the suite, and it hand-rolls a second copy of verbDrift's `unreadable` shape (`{ readable: false, capturedAt: null, findings: [], detail: 'fleet/exe-verbs.json could not be compared \u2026' }`) whose detail wording can drift from the one in doctor.mjs that leg (d) pins. Either drop the catch and let the seam's contract stand, or add a leg in `fleet/tests/test_launch.mjs` group i with a `help` rule that throws, asserting the launch still answers a VM, `exec.mutating()` is the one `new \u2026` line and the rendered line names `fleet/exe-verbs.json`.; fleet/launch.mjs: `DEFAULT_ACCOUNT = 'ultrapowers'` and `ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/` are transcribed from fleet/claude-token.mjs rather than imported \u2014 the header comment discloses this (\"copied rather than imported\"), and the Context does not ask for an import, so it is lawful. It is still one rule in two files: if the credential tool ever widens or narrows the name it accepts, the launcher will refuse a name the tool would take, or pass one it would not, and nothing in the suite compares the two. If fleet/claude-token.mjs's `DEFAULT_ACCOUNT` export (task 1's Produces list) is safe to import at module scope, importing both there would remove the drift; otherwise a leg asserting the launcher's constant equals the credential tool's would pin it.; `fleet/launch.mjs` re-declares the credential tool's two account rules instead of importing the one that is exported: `export const DEFAULT_ACCOUNT = 'ultrapowers'` and `const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/` duplicate `fleet/claude-token.mjs:57` (`DEFAULT_ACCOUNT`, exported) and `fleet/claude-token.mjs:69` (`ACCOUNT_RE`, module-private). The regexes are byte-identical today and the diff discloses the copy in a comment (\"copied rather than imported\"), so this is lawful, not wrong \u2014 but the two files must agree forever: if the credential tool's name rule ever narrows, the launcher accepts a name the tool refuses and the failure moves from a pre-exec `Refusal` to a `LobbyError` after the reads. The half that can be fixed inside this task's FILES is the constant: import `DEFAULT_ACCOUNT` from `./claude-token.mjs` (the launcher already imports `./doctor.mjs`, and claude-token's CLI dispatch is guarded by `process.argv[1]`, so the import has no side effect). Sharing the regex would need `ACCOUNT_RE` exported from `fleet/claude-token.mjs`, which is outside this task's FILES.; unverified: the Claim's second half \u2014 that the named entry is *installed on the proxy* before the launch \u2014 is not settled by this diff. `fleet/launch.mjs` only hands the name to the `refreshCredential` seam, and the install (`integrations edit claude-max --bearer - --comment account=<name>`) lives in `fleet/claude-token.mjs`, which this patch does not touch; every exam leg here drives a spy seam, and `defaultRefreshCredential`'s own leg drives a spy spawner, so no exam in this task's Proof observes an install. That is by design (no exam may touch the keychain or the edge), and the launcher's half \u2014 one call, with the chosen name, after the `integrations list --json` read and before the push \u2014 is pinned by group g. What would settle the rest is task 1's exam legs (b)/[M2] in `fleet/tests/test_claude_token.mjs`, where `refresh --account b` is pinned to the edit/add verb carrying `--comment account=b`.; The `try`/`catch` the diff wraps `verbDrift` in (`fleet/launch.mjs`, the preflight block) has no leg behind it and cannot be reached through the seam the exams drive. Per task 2's [M4] `verbDrift` answers `{ readable: false, detail }` for an absent, unparseable or verbs-less record rather than throwing, and leg (d)'s absent-`verbsPath` case exercises that return path, not this catch; the only way in is the injected `help` seam rejecting, i.e. a real `exec('ssh', \u2026)` failure, which the catch then renders as a `verb-drift:` finding line rather than a failed launch. That is consistent with [M4]'s \"a drift ... changes neither the launch's outcome nor its mutating verbs\", so no change is required \u2014 but note that an ssh transport that is down at preflight will read as `readable: false` on the launch line, indistinguishable from a missing record, and nothing in the suite pins that behaviour.; concern: `python3 -m pytest -p no:xdist` is 3 failed, 1640 passed. The three failures are exactly `test_launch.mjs`, `test_launch_reaps.mjs` and `test_launch_engine_source.mjs`, each on the rendered-lines deep-equal that still pins BASE's four lines while the launch now prints six. All three are the Proof's reserved `Test:` paths, so I wrote none of them; the peer's exam is laid over them. `test_launch_hold.mjs`, `test_launch_effort.mjs`, `test_doctor.mjs` and `tests/test_docs_agree_with_code.py` are green untouched.; concern: possible-exam-tension: leg (d) expects the `rm` drift line to render exactly `verb-drift: drift since 2026-09-05: rm: --json vanished`. BASE's `verbDrift` in `fleet/doctor.mjs` counts a help answer with zero flag lines as unreadable, and `rm`'s recorded flag set is just `[\"--json\"]` \u2014 so an `Options:` block without `--json` either has no flag (rendering `rm: help unreadable (code 0)`) or has some other flag (adding a `\u2026 appeared` segment). I implemented as written and render `verbDrift.detail` verbatim rather than reshaping the detail, which is `doctor.mjs`'s and not task-local.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-28/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1643 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...........................................................              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1643 passed, 5 warnings in 146.29s (0:02:26) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_claude_token.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_doctor_config_keys.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.08s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q -- '--account' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q -- '--no-install' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'accounts' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'usage' && sed -n '/^## accounts/,/^## github/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q '\"account\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## verb-drift/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'fleet/exe-verbs.json' && sed -n '/^## verb-drift/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'help' && sed -n '/^## verb-drift/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'finding'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '1,/^## exe-dev/p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'seven rows'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_hold.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.07s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 0cdb604f808000016786b479e3c1a5af81e41131",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/tests/_lobby_helpers.mjs)\" = 86c4674085d8fefc940938ef80553e4b945ebb34",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/claude-token.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/launch.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -q claude-oauth-token skills/ultrapowers/references/first-run.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 0cdb604f808000016786b479e3c1a5af81e41131",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/tests/_lobby_helpers.mjs)\" = 86c4674085d8fefc940938ef80553e4b945ebb34",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/claude-token.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/launch.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -q claude-oauth-token skills/ultrapowers/references/first-run.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1099921,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 3,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n.......................................s................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...........................................................              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1642 passed, 1 skipped, 5 warnings in 145.80s (0:02:25) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...........................................................              [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1643 passed, 5 warnings in 135.09s (0:02:15) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "177aef1744a1161c6df8f3cd20a3fe2ba7e378a9",
+      "branches": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "1c8bd356531a14d00f66afbc6b29fd4f4ccce993",
+      "branches": [
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-28/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-28/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.038,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-28/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-28/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.622,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/claude-token.mjs \u2014 the keychain seams (`keychainRead`/`keychainWrite`/`keychainList`) and `parseKeychainDump` against the real macOS `security` binary",
+      "reason": "external",
+      "why": "This sandbox is Linux and has no `security` command; every exam stubs the three seams with a Map, so `parseKeychainDump` (the only code that parses real `security dump-keychain` output, per the Context's 2026-09-05 laptop measurement) is exported but exercised by no leg. That one item per account is actually written and enumerated on a laptop is unverified here."
+    },
+    {
+      "deliverable": "fleet/claude-token.mjs `usage` \u2014 the `GET https://api.anthropic.com/api/oauth/usage` read and its `five_hour`/`seven_day` body",
+      "reason": "external",
+      "why": "The exams answer the URL from a `fetch` stub. That the live endpoint still answers 200 with `utilization`/`resets_at` under those two keys, and 401/429 for the control cases, is not executed in this environment."
+    },
+    {
+      "deliverable": "fleet/claude-token.mjs `installBearer` \u2014 `integrations edit|add \u2026 --comment account=<name>` and the `comment` field the doctor reads back from `integrations list --json`",
+      "reason": "external",
+      "why": "The lobby reaches the tool only through the `deps.lobby` stub, and the doctor's `edgeAccount` reads a stubbed listing. That exe.dev accepts `--comment` on both verbs and echoes it back on the `claude-max` entry is a 2026-09-05 measurement recorded in the Context, not something this run re-executed."
+    },
+    {
+      "deliverable": "fleet/exe-verbs.json \u2014 the recorded flag sets, and the `help <verb>` preflight in fleet/doctor.mjs and fleet/launch.mjs",
+      "reason": "external",
+      "why": "No `ssh exe.dev` is reachable here. The exams render `Options:` blocks from the committed record itself, so the diff logic is verified but the record's agreement with the live lobby is not \u2014 a real drift on 2026-09-05's capture would be invisible to this tree's suite by construction (that is the row's purpose)."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: test-command-not-clean: `python3 -m pytest -p no:xdist` ends 1641 passed / 2 failed. Both failures are the BASE-shaped exams at the Proof's reserved `Test:` paths \u2014 `fleet/tests/test_doctor.mjs` fails its first assertion (`ROW_IDS is the five ids in order`) and `fleet/tests/test_doctor_config_keys.mjs` fails its `statusOf` deep-equal (now seven rows, and its green stub table has no `accounts --json` entry so that row reads 127/missing). Both are exactly the five-row shape M1 replaces; I did not touch either file, since the peer's extended exams are laid over them. Everything else in the suite is green, including `tests/test_docs_agree_with_code.py`.",
+    "task 2: verified-outside-the-suite: because the two grading files are reserved, I checked M1\u2013M6 and Proof legs (a)\u2013(g) and (i) with a scratch harness written under the run directory (outside the repo) and deleted before committing \u2014 read order (five BASE reads, accounts, then one `ssh exe.dev \"help <verb>\"` per record verb, nothing else), every accounts-row case, `fleetConfigAccount`'s six answers, the `account`/`golden` configKeys pair, every `verbDrift` case including the `rm; whoami` key that never reaches the stub, and the CLI against a PATH shim (green: exit 0, seven rows, `12 verbs match fleet/exe-verbs.json (captured 2026-09-05)`; red: exit 1, two lines per red row and one for `verb-drift`; `--config` naming `zzz` \u2192 exit 1 with `accounts` missing).",
+    "task 2: out-of-scope-doc-drift: `skills/ultrapowers/SKILL.md:48-49` still lists the doctor's row ids as the five BASE ones. It is not in FILES, the task names only first-run.md, and no test pins that list (`test_docs_agree_with_code.py` compares ROW_IDS against first-run.md's headings only), so I left it. It will read stale to an operator until a later task updates it.",
+    "task 3: `python3 -m pytest -p no:xdist` is 3 failed, 1640 passed. The three failures are exactly `test_launch.mjs`, `test_launch_reaps.mjs` and `test_launch_engine_source.mjs`, each on the rendered-lines deep-equal that still pins BASE's four lines while the launch now prints six. All three are the Proof's reserved `Test:` paths, so I wrote none of them; the peer's exam is laid over them. `test_launch_hold.mjs`, `test_launch_effort.mjs`, `test_doctor.mjs` and `tests/test_docs_agree_with_code.py` are green untouched.",
+    "task 3: possible-exam-tension: leg (d) expects the `rm` drift line to render exactly `verb-drift: drift since 2026-09-05: rm: --json vanished`. BASE's `verbDrift` in `fleet/doctor.mjs` counts a help answer with zero flag lines as unreadable, and `rm`'s recorded flag set is just `[\"--json\"]` \u2014 so an `Options:` block without `--json` either has no flag (rendering `rm: help unreadable (code 0)`) or has some other flag (adding a `\u2026 appeared` segment). I implemented as written and render `verbDrift.detail` verbatim rather than reshaping the detail, which is `doctor.mjs`'s and not task-local.",
+    "task 3: examiner: (d) [M4] \"with the `help` rule for `rm` answering `Options:` without `--json` \u2026 its rendered `verb-drift:` line is `verb-drift: drift since 2026-09-05: rm: --json vanished`\" \u2014 as written, against the shipped record \u2014 The two halves contradict each other given the consumed verbDrift (fleet/doctor.mjs, not in this task's scope). fleet/exe-verbs.json records exactly one flag for `rm` (`--json`), and verbDrift treats a help answer with no flag line at all as unreadable, so an `Options:` block without `--json` yields `rm: help unreadable (code 0)`, never `rm: --json vanished`; any other flag it could answer with would be recorded as `appeared`. The exam keeps the pinned string live rather than weakening it: through the same injectable `verbsPath` the leg's last case uses, it hands the launcher the shipped record with one extra recorded `rm` flag and a help stub that answers that flag and not `--json`, and asserts the rendered line equals `verb-drift: drift since 2026-09-05: rm: --json vanished` exactly. The launcher-side behaviour the leg is about \u2014 a VM still answered, exec.mutating() still the one `new \u2026` line, the drift on the rendered line \u2014 is asserted unchanged."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "skills/ultrapowers/references/first-run.md, `## accounts` section (task 2, M7/Claim \u2014 the section is present and passes every required grep, so this is accuracy, not a shortfall of the slot): the third newcomer bullet says \"Reading `usage` spends a refresh and rewrites the keychain item\". `usage` only rotates an entry whose stored access token is absent or expired \u2014 fleet/claude-token.mjs:380-392 reads a fresh entry with the stored `accessToken` and issues no refresh grant, and task 1's Proof leg (d) pins exactly that (\"issues no token request for `fresh`\"). The bullet's heading (\"Metering refreshes an item without touching the edge\") and its second half are correct; only the unconditional \"spends a refresh\" overstates. Worth an issue, not a merge blocker."
+    }
+  ],
+  "blockedWaves": []
+}

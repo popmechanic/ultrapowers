@@ -1,0 +1,22 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-28.md run-28 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/claude-token.mjs — the keychain seams (`keychainRead`/`keychainWrite`/`keychainList`) and `parseKeychainDump` against the real macOS `security` binary — This sandbox is Linux and has no `security` command; every exam stubs the three seams with a Map, so `parseKeychainDump` (the only code that parses real `security dump-keychain` output, per the Context's 2026-09-05 laptop measurement) is exported but exercised by no leg. That one item per account is actually written and enumerated on a laptop is unverified here. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/claude-token.mjs `usage` — the `GET https://api.anthropic.com/api/oauth/usage` read and its `five_hour`/`seven_day` body — The exams answer the URL from a `fetch` stub. That the live endpoint still answers 200 with `utilization`/`resets_at` under those two keys, and 401/429 for the control cases, is not executed in this environment. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/claude-token.mjs `installBearer` — `integrations edit|add … --comment account=<name>` and the `comment` field the doctor reads back from `integrations list --json` — The lobby reaches the tool only through the `deps.lobby` stub, and the doctor's `edgeAccount` reads a stubbed listing. That exe.dev accepts `--comment` on both verbs and echoes it back on the `claude-max` entry is a 2026-09-05 measurement recorded in the Context, not something this run re-executed. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/exe-verbs.json — the recorded flag sets, and the `help <verb>` preflight in fleet/doctor.mjs and fleet/launch.mjs — No `ssh exe.dev` is reachable here. The exams render `Options:` blocks from the committed record itself, so the diff logic is verified but the record's agreement with the live lobby is not — a real drift on 2026-09-05's capture would be invisible to this tree's suite by construction (that is the row's purpose). [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
