@@ -182,7 +182,11 @@ approved plan, **is** the authorization to execute — no further approval pause
 5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs
    that finished over an hour ago, and reports the stale ones rather than
    removing them. The launcher runs it before every launch; nothing schedules it,
-   and the agent runs it by hand when this machine has been asleep.
+   and the agent runs it by hand when this machine has been asleep. No
+   scheduled job or timer on this machine runs the janitor, and none is to be
+   added: a run merges its own PR from the sandbox and the launcher runs the
+   reap (#660), so a local process on a timer would only be a second writer,
+   and one that dies when the laptop sleeps.
 
 ## Resources
 

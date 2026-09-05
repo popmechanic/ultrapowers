@@ -206,9 +206,10 @@ In the repository you want built, run `/ultrapowers <plan-path>`. The plan rides
 that repository's `ultra/plan-run-<N>` branch, and the run happens there: waves, per-task reviews,
 folds, the suite. Watch it or walk away.
 
-At the end you get the finished result and your second checkpoint. Approve it, and the sandbox
-opens the pull request on that repository — ultrapowers itself is just one such repository. Its
-body carries the gate receipt and links the evidence branch. Merge it or close it; either way, the
+At the end you get the finished result: the sandbox opens the pull request on that repository —
+ultrapowers itself is just one such repository. Its body carries the gate receipt and links the
+evidence branch. Once its checks are green the run merges it itself. Launch with `--hold` and the
+pull request stays open instead — your second checkpoint, yours to merge or close. Either way the
 run is over and the sandbox is gone.
 
 ### One hazard: keep the GitHub integration personal

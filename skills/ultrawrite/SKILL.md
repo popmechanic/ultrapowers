@@ -30,6 +30,16 @@ command from the paths alone, and it knows only pytest, `node fleet/tests/test_*
 `bun test`; a `**Review:** peer` task whose Proof names some other shape is refused at
 `--check` until one of the two is true.
 
+An optional `**Closes:**` line names the tickets the plan closes. It sits directly under
+`**Goal:**` — the next line — and is one line: `**Closes:** #660 #668`, the numbers
+space-separated, each an issue of the target repository (a bare `#N` means the target to
+GitHub, so a foreign target's plan names that repository's issues, never this plugin's).
+The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one
+`Closes #N` per number to the pull request body, so the run's merge closes them; a plan
+without the line closes nothing. The line is free prose to the compiler — nothing parses
+it, so a number scraped from `**Goal:**` is never used: the Goal line cites decisions as
+well as tickets, which is why scraping it was rejected.
+
 ## Task shape — pinned to what the parser actually reads
 
 `### Task N: <title>`, then the header block, then the Files block, then exactly six body
@@ -156,6 +166,23 @@ AskUserQuestion. The operator's pick plus their edits is the claim.
 Aim claims where the suite is structurally blind: integration seams, visual states, CLI
 output, error-path wording. A claim that only restates what a test already asserts buys
 nothing.
+
+## Authoring a queue
+
+A sitting's queue of well-defined issues drains by partitioning it by files into
+disjoint bundles: two plans that would touch one file go in one bundle, since same-file
+edits fold inside one run and never across two PRs. Dispatch one author subagent per
+bundle — each loads this skill, pins its own BASE facts, dispatches its own fresh gate
+readers per task, and compiles to `PLAN OK`. The issue's desired-state sentence is the
+plan's Claim, quoted rather than drafted, exactly as the elicitation path above has it.
+Grill an issue only when its ticket carries the `wayfinder:grilling` label; an undecided
+choice found mid-authoring comes back as a question, not as a guess.
+
+Hold the operator to one Claim confirmation and one execute choice per plan, each asked
+with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
+concurrent launches race on the run number (#667). The 2026-09-05 clock census of runs
+10–12 found authoring throughput, not the sandbox, was the first bound on how many runs
+could be live at once — a queue authored in parallel is what lifts it.
 
 ## The proof gate — before any compile
 
@@ -291,9 +318,14 @@ never dispatched. A prose bullet is only the referee's attention lens: it is wha
 whether a finding is minor, and nothing runs it. So a constraint a command can decide is
 written as a Check:, never as prose — prose is where the undecidable half goes. A prose
 bullet naming a byte-identical file or a script's output is one the driver could have run,
-so write it as a `Check:` beside the prose. And a `Check:` that runs a sim is paid by every
-task on every pass, where the same command in the owning task's `Run:` is paid once: put it
-there, and keep this section for what no single task owns.
+so write it as a `Check:` beside the prose. Such a comparison has a base to compare
+against: a `Check:` or `Run:` that compares the tree against BASE writes `$ULTRA_BASE`,
+which the driver sets, in the environment of every `Check:` and `Run:` it executes, to the
+run's base sha — so `- Check: git diff --quiet $ULTRA_BASE -- fleet/` is writable without
+knowing the sha, where a frozen `git hash-object` literal is the shape for a single file.
+And a `Check:` that runs a sim is paid by every task on every pass, where the same command
+in the owning task's `Run:` is paid once: put it there, and keep this section for what no
+single task owns.
 ## Execution handoff — analyze, then recommend
 
 Offer three options, parallel first, and do **not** default to the parallel lane. Read
@@ -349,3 +381,5 @@ task-by-task from contract plus proof.
   runtime behaviour its consumer needs (rule 2), and any exam that quantifies over a
   directory was checked against BASE for pre-existing violators (#536).
 - Global Constraints state results, not process; the plan carries an Acceptance line.
+- The `**Closes:**` line, when present, sits directly under `**Goal:**` and names only the
+  target repository's issues.

@@ -205,16 +205,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
 - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
   2026-08-31, reversing #469's auto-discovery).
-- **Author plans concurrently from the issues** — a sitting's queue is partitioned by files into
-  disjoint bundles and each bundle's plan is authored by its own subagent, the issue's desired-state
-  sentence being the Claim; the operator's touches are one Claim confirmation and one execute choice
-  per plan; grilling only for `wayfinder:grilling` tickets. Reason (operator, 2026-09-05, "can we
-  author plans concurrently when you already have my word in the GitHub issue?"): the clock census
-  of runs 10–12 found authoring throughput, not the substrate, was the first bound on how many runs
-  could be live at once (memory `parallel-authoring-from-issues`). Launches stay serial (#667).
-- **No local scheduled process, ever** — the janitor gets no cron or launchd job; a run merges its own
-  PR from the sandbox and the launcher runs the reap (#660). Reason (operator, 2026-09-05): "a process
-  every five minutes locally is too fragile."
+- **Author plans concurrently from the issues** — the procedure is `skills/ultrawrite/SKILL.md` §Authoring a queue: partition by files, one author per bundle, the issue's sentence as the Claim, two operator touches per plan, launches serial (memory `parallel-authoring-from-issues`).
+- **No local scheduled process, ever** — the rule is `skills/ultrapowers/SKILL.md` §Client step 5: the launcher reaps, by hand after a sleep, no scheduled job on this machine.
 - **Every choice is an AskUserQuestion** — 2–3 concrete options with their consequences and a
   `(Recommended)` tag, never a bare open question; the operator adjudicates, they do not author
   (memory `operator-elicitation-style`; since 2026-09-04 it binds the #598 setup agent too).
@@ -229,7 +221,7 @@ the complexity-creep era; #519 had already demoted trims): the reviewer hunts
 under-specification, scope reconciliation, and contradictions, with trim proposals
 welcome but not the mandate; the spec carries a `## Spec review` section with
 adopt-or-answer for every finding. Historical specs carry `## Trim review` sections
-(dispatch brief still in `skills/ultralearn/references/distilling-proposals.md` §Trim review). Plans default to `**Acceptance:** suite — the committed suite is the verification.`
+(dispatch brief still in `skills/ultralearn/references/distilling-proposals.md` §The spec review). Plans default to `**Acceptance:** suite — the committed suite is the verification.`
 (the compiler's frozen vocabulary needs the `suite — <reason>` form; a bare `suite`
 fails to parse — caught live on sitting 2's drain plan). A prose or procedure task proves
 itself with a `- Run:` bullet — a command the driver executes and an output a person can read —
