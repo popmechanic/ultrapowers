@@ -1,0 +1,95 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "d02c179849a68aa596738edc2822b4e1230a6919f4b0eac0baac0c9e0838ca63",
+   "verdict": "pass",
+   "reason": "round 2: M1 one exact line + four lines across the four test-file shapes; M2 four named negatives; M3 flag-absent runs + frozen-sha pin re-run"
+  },
+  "2": {
+   "hash": "af40ebaf3eabd4a3aa9b0d8c0cbabb2a04f5a2d5cf4dfb3dac4e1b487207512f",
+   "verdict": "pass",
+   "reason": "round 2: M1 three token forms, order, suffix, 79+ellipsis clip; M2 four rows; M3 --check-alone + corpus pin; M4 section-scoped grep for both halves + species list adjacency"
+  },
+  "3": {
+   "hash": "bdbf5c3dce46a96d5851c9d11c9f88a95870350be3e866470c603e183658a3a9",
+   "verdict": "pass",
+   "reason": "round 4: M1 seven phrases, bare .py name, wrapped bullet, 90-char clip; M2 six silences incl. Context-slot and Run:-only; M3 --check-alone + corpus pin; M4 section-scoped three-part sentence pin"
+  },
+  "4": {
+   "hash": "d1fa299fa00953da5612116ef0b56169ec6833b95cc7f83f57fa3544b7ff6015",
+   "verdict": "pass",
+   "reason": "round 2: M1 counts 9 and 12; M2 counts 9 and 11; M3 4+4+3 and 8-clause silence; M4 9/9 task under bare --check + corpus + species pins"
+  },
+  "5": {
+   "hash": "e0125a3b40ce3f8fbb1caf72726148c0de36e54877dfe7590ebb123764de8355",
+   "verdict": "pass",
+   "reason": "round 2: M1 all fifteen shapes each with a same-side-only leg + bound-only silence; M2 exact disjunct line; M3 repaired twins; M4 --check-alone + corpus + species pins"
+  }
+ },
+ "tally": {
+  "dispatched": 12,
+  "rejected": 7,
+  "rounds": {
+   "1": {
+    "dispatched": 5,
+    "rejected": 5
+   },
+   "2": {
+    "dispatched": 5,
+    "rejected": 1
+   },
+   "3": {
+    "dispatched": 1,
+    "rejected": 1
+   },
+   "4": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "two of four test-file shapes unexercised"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "fail",
+   "reason": "/tests/ token form unexercised; M4 whole-file grep"
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "path and phrase conditions not independently falsified; four phrases and the clip unexercised"
+  },
+  {
+   "round": 1,
+   "task": "4",
+   "verdict": "fail",
+   "reason": "--renders-less silence checked for wide-files only; single count value"
+  },
+  {
+   "round": 1,
+   "task": "5",
+   "verdict": "fail",
+   "reason": "fifteen bound shapes, two exercised"
+  },
+  {
+   "round": 2,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "M4 whole-file grep; slash-less script path row missing"
+  },
+  {
+   "round": 3,
+   "task": "3",
+   "verdict": "fail",
+   "reason": "M4 grep pinned two fragments, not the Check: instruction; section scoping untested"
+  }
+ ]
+}
