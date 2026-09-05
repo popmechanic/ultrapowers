@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-15.md run-15 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Task 2 — fleet/roles/implementer.md step 2 (\"The peer's exam is the task's test … write no test file of your own unless the task's Files name one\") — The role prose is pinned by the Proof's awk/grep legs (all exit 0 in the integrated run evidence), which verify the wording and the removal of the three old instructions. Whether a live implementer agent, handed this text plus the run-wide TEST COMMAND, actually stops authoring its own test files — the second half of the plan's Claim, 'a run's pull request carries the peer's exam and no test file the implementer wrote for itself' — is only observable in a real fleet run against a model; no sim in this tree exercises it. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

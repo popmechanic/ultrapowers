@@ -1,0 +1,275 @@
+{
+  "ok": true,
+  "stamp": "run-15",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-15"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The implementer is handed the suite, the exam keeps its command",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_exam_together.mjs",
+          "fleet/tests/test_run_engine_examiner.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The implementer's step 2 names the peer's exam as the task's test",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/implementer.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The implementer is handed the suite, the exam keeps its command",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_exam_together.mjs",
+            "fleet/tests/test_run_engine_examiner.mjs",
+            "fleet/tests/test_run_engine_implementer_suite.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_exam_together.mjs",
+            "fleet/tests/test_run_engine_examiner.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_implementer_suite.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_implementer_suite.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_implementer_suite.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_cap_width.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The implementer's step 2 names the peer's exam as the task's test",
+          "files": [
+            "fleet/roles/implementer.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/roles/implementer.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "awk '/^2\\. /{a=1} a&&/^3\\. /{f=1} END{exit !f}' fleet/roles/implementer.md",
+            "awk '/^2\\. / && !seen {a=1; seen=1} /^3\\. / {a=0} a' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q \"exam is the task's test.*iterate against the suite.*write no test file of your own unless the task's Files name one\"",
+            "! tr '\\n' ' ' < fleet/roles/implementer.md | grep -q 'write tests of your own'",
+            "! tr '\\n' ' ' < fleet/roles/implementer.md | grep -q 'Confirm they fail'",
+            "! tr '\\n' ' ' < fleet/roles/implementer.md | grep -q 'put your own tests somewhere else'",
+            "tr '\\n' ' ' < fleet/roles/implementer.md | grep -q \"reserved for a peer's exam\"",
+            "sed -n '1,/^Work red/p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q \"TEST COMMAND (the project's test command)\"",
+            "! grep -nE '\\b(N[E]VER|A[L]WAYS|M[U]ST)\\b' fleet/roles/implementer.md",
+            "node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_roles_examiner.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Implementers"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The vendored kernel is byte-identical to BASE: `skills/ultrapowers/kernel/vendor/manyana.py`\n  is sha-pinned on purpose and never patched.\n- The laptop side, the sandbox boot, the lobby, the janitor, the doctor, the contract, the\n  runbook, the operator skill and its first-run reference, the authoring skill, the distilling\n  reference and the compiler are byte-identical to BASE \u2014 three concurrent runs own them.\n- The four operator documents still agree with the code.\n- The examiner's, the reviewer's and the fix round's role texts are unchanged \u2014 the exam's\n  command is theirs and stays theirs; no shouted imperative (an all-caps must, never or\n  always as a whole word) is added to any file under `fleet/roles/`.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = fbe4d8dbc80d8a862f6dff86d2d946cee5eb580c",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = f47370d2badc0ef87b9d559f4e6a77f79d27d4b2",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 44556044708da98e6f794da8785f31f02f24638b",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = 2de1fc707f26a06373905a8425f2ef6b67571210",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/doctor.mjs)\" = 7e35dcd094d24a25da7c7e4277bb983f32ff84b0",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 1bf320dd7498f40e99558c397bebe669345b1cf7",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = f630c6a17bfd931d702a3be675ec8a91be2aa497",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = 3df41c3fae22e7cf67534d9b2814aa644fb87b39",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/references/first-run.md)\" = a042dcd5485bbca9db37e0137144e9c3018b3a95",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrawrite/SKILL.md)\" = 366683a35618d97008c3004a96f16f812c49617c",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultralearn/references/distilling-proposals.md)\" = c3aabdbbfdc8390e929ebe5f562d013f40eb78c7",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 18ad6070d1e0c33142710ebc107f11fe8f6765fa",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/reviewer.md)\" = 5e35f6d2569e5e8de68c0617156b91de2e669420",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/fix.md)\" = d4c5f2ec9be36ef2a8c4a8ce0bfc0a8fb9ac0787",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-15/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-15/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-15/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-15/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

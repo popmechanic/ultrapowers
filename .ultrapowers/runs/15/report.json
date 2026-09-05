@@ -1,0 +1,335 @@
+{
+  "integrationBranch": "ultra/integration-run-15",
+  "baseSha": "c32c08f9129b3266de17168678fd539d0723bb76",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "88ce8922776a7459db6e1c78dffd2aa237fbbc66",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-15/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Environment assumption in leg (f): `assert.ok(CPUS >= 2, 'this leg assumes a host with at least 2 cpus \u2026')` at fleet/tests/test_run_engine_implementer_suite.mjs:315 turns the whole committed sim red on a single-cpu host, where `capWorkerParallelism(cmd, 1, 1)` and `capWorkerParallelism(cmd, 2, 1)` both collapse to `-p no:xdist` and the leg is merely unobservable rather than wrong. Every M6 assertion below it is still correct there \u2014 only the `sharedOne !== sharedTwo` discrimination is lost. Advisory: on a host that cannot distinguish the two shares, log the fact and skip the discriminating block instead of failing the run. Nothing else in the diff depends on cpu count, and the driver's own exam evidence (exit 0) settles the leg on this tree.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "aaa1e772d9b093868b019a6cec3956173361d6af",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-15/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-15/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1519 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 28%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n.......                                                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1519 passed, 5 warnings in 99.50s (0:01:39) ==================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_implementer_suite.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_cap_width.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk '/^2\\. /{a=1} a&&/^3\\. /{f=1} END{exit !f}' fleet/roles/implementer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "awk '/^2\\. / && !seen {a=1; seen=1} /^3\\. / {a=0} a' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q \"exam is the task's test.*iterate against the suite.*write no test file of your own unless the task's Files name one\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! tr '\\n' ' ' < fleet/roles/implementer.md | grep -q 'write tests of your own'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! tr '\\n' ' ' < fleet/roles/implementer.md | grep -q 'Confirm they fail'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! tr '\\n' ' ' < fleet/roles/implementer.md | grep -q 'put your own tests somewhere else'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "tr '\\n' ' ' < fleet/roles/implementer.md | grep -q \"reserved for a peer's exam\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '1,/^Work red/p' fleet/roles/implementer.md | tr '\\n' ' ' | grep -q \"TEST COMMAND (the project's test command)\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -nE '\\b(N[E]VER|A[L]WAYS|M[U]ST)\\b' fleet/roles/implementer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_roles_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "role prose size: examiner.md = 411 words\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = fbe4d8dbc80d8a862f6dff86d2d946cee5eb580c",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = f47370d2badc0ef87b9d559f4e6a77f79d27d4b2",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 44556044708da98e6f794da8785f31f02f24638b",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = 2de1fc707f26a06373905a8425f2ef6b67571210",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/doctor.mjs)\" = 7e35dcd094d24a25da7c7e4277bb983f32ff84b0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 1bf320dd7498f40e99558c397bebe669345b1cf7",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = f630c6a17bfd931d702a3be675ec8a91be2aa497",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = 3df41c3fae22e7cf67534d9b2814aa644fb87b39",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/references/first-run.md)\" = a042dcd5485bbca9db37e0137144e9c3018b3a95",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrawrite/SKILL.md)\" = 366683a35618d97008c3004a96f16f812c49617c",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultralearn/references/distilling-proposals.md)\" = c3aabdbbfdc8390e929ebe5f562d013f40eb78c7",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 18ad6070d1e0c33142710ebc107f11fe8f6765fa",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.07s\n",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/reviewer.md)\" = 5e35f6d2569e5e8de68c0617156b91de2e669420",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/fix.md)\" = d4c5f2ec9be36ef2a8c4a8ce0bfc0a8fb9ac0787",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 381342,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n................................................s....................... [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n.......                                                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n============ 1518 passed, 1 skipped, 5 warnings in 98.37s (0:01:38) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 42%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 99%]\n.....                                                                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1518 passed, 5 warnings in 100.47s (0:01:40) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "3f503d8daecc851ddf9a59470226532351a2e611",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-15/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-15/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8520000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 2 \u2014 fleet/roles/implementer.md step 2 (\"The peer's exam is the task's test \u2026 write no test file of your own unless the task's Files name one\")",
+      "reason": "runtime",
+      "why": "The role prose is pinned by the Proof's awk/grep legs (all exit 0 in the integrated run evidence), which verify the wording and the removal of the three old instructions. Whether a live implementer agent, handed this text plus the run-wide TEST COMMAND, actually stops authoring its own test files \u2014 the second half of the plan's Claim, 'a run's pull request carries the peer's exam and no test file the implementer wrote for itself' \u2014 is only observable in a real fleet run against a model; no sim in this tree exercises it."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
