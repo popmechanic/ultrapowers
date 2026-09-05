@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1ed6d97eb315e380563ae73b08bd2915a4847052d9848e42d249abfdfb75fdc5",
+      "verdict": "pass",
+      "reason": "Each machine clause has a leg that would fail on its own falsification — M1/M2 pin the exact line text, counts and precedence (engine-plus-sims prints M1 only, nine/ten entries print the new line not the BASE knee), M3 pins every enumerated silent case plus a one-wider twin proving the four-threshold is live and a one-sim nine-path task still prints BASE, and M4 pins wide-contract fixtures, --check-alone silence with PLAN OK, the frozen-sha byte-identity and the five-species count both in-file and via the Run: bullet — leaving only the untested but pre-existing 6–8-entry app-path silence, which the unchanged BASE knee and existing fixtures already carry."
+    },
+    "2": {
+      "hash": "1b695593da631950451a35a61e6a9ead3da873b7a71515ab4ef4dd9d4494e459",
+      "verdict": "pass",
+      "reason": "Each clause has a leg that would fail on its negation at the compiler-stdout layer: M1 by the verbatim single line and the three-task per-task count in order, M2 by the abcde/abcdef pair, M3 by the fleet/tests/ vs fleet/tests pair, M4 by nine-undeclared, nine-with-one-declared and eight-file-eight-lines fixtures (the declared-file case distinguishes counting-all from counting-undeclared), and M5 by the existing --check-alone, no-base and frozen-sha byte-identity tests plus the Run: bullet over the five-species fixture, all of which exist in tests/."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 1,
+    "rounds": {
+      "1": {"dispatched": 2, "rejected": 1},
+      "2": {"dispatched": 1, "rejected": 0}
+    },
+    "history": [
+      {"round": 1, "task": "1", "hash": "ffb93d8ded45c401791014c94d2a09fdc7797addae4abd597c704c7ea2b5081b", "verdict": "fail", "reason": "M1 and M2 are asserted for every task with more than four entries, but no leg tests an engine-writing or two-sim task above the old eight knee (e.g. nine entries including fleet/run-engine.mjs), so an implementation that checks the BASE eight knee first and prints the BASE line there passes legs (a)–(e) while M1/M2 are false at n>8."}
+    ]
+  }
+}
