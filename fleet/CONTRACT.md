@@ -8,7 +8,8 @@ disagree, this text wins. The engine (`run-main.mjs`, `run-engine.mjs`, `run-wor
 
 ## The shape in one paragraph
 A run is a number N per target. The launcher validates its arguments, reads the account pool from
-`billing plan --json`, computes N from the target's own `ultra/*-run-*` branches, refreshes the Claude
+`billing plan --json`, computes N from the target's own `ultra/*-run-*` branches and its
+`ultra/{plan,evidence}/run-<N>` tags, refreshes the Claude
 bearer, and pushes the plan as ONE commit on `base=` to `ultra/plan-run-N` (that commit's tree is base
 plus `.ultrapowers/plan.md`, plus `.ultrapowers/gate-verdicts.json` when the plan has one). Then it
 issues ONE lobby verb — `new` — which creates a fresh VM and runs the generated setup script on it.
@@ -21,26 +22,40 @@ user service with a memory cap, serves a status page, commits its evidence to th
 `ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human
 gate: the target's one integration rides the VM for the run's whole life, and there is no grant step.
 There is no image to keep fresh, no state repository, no orchestrator, no control VM, and no token on
-any VM. Everything a run produced is three branches on the repository the run was about.
+any VM. The branches are the working surface and go at publish; what a run leaves on the repository it
+was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 
 ## Literals
 - **Run id:** `N` = 1 + max N over the target's `ultra/{plan,integration,evidence}-run-<N>` branches
-  (`--run N` overrides). `RUN_ID=run-N`.
+  and over its `ultra/{plan,evidence}/run-<N>` tags — the branches are transient and the tags are the
+  record, so a run number is read from both shapes and never from one (`--run N` overrides).
+  `RUN_ID=run-N`.
 - **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev reserves deleted
   names forever, so a name is one incarnation and is never derived from N alone. Lookup by pattern:
   `ssh exe.dev "ls 'fleet-r<N>-*' --json"`; the whole fleet: `ls 'fleet-r*' --json`. Read `.vms[]` ONLY
   (`.shared_vms` are other people's). Contractual row fields: `vm_name`, `ssh_dest`, `ssh_host`, `status`.
   `comment`, `tags`, `created_at` are undocumented: read them as optional, never crash on their absence,
   never decide from `created_at`. Use `ssh_dest` for ssh/scp, never `<vm_name>.exe.xyz`.
-- **The three branches on the target** (nothing else the fleet writes lives anywhere else):
+- **The three branches on the target** — where a run works, not what it leaves; each one is deleted
+  when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
     [+ `.ultrapowers/gate-verdicts.json`]. Written by the launcher, before any VM exists.
   - `ultra/evidence-run-<N>` — the run's record under `.ultrapowers/runs/<N>/`: `status.json`,
-    `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`, plus
+    `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
+    `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
     Committed from a detached worktree at every transition; append-only paths, `pull --rebase` and
     retry on non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
+    It goes with the merge (delete-on-merge); a `hold=1` run's stays while its PR is open.
+- **The two tags** — a run's record, and the only refs that outlive it. At publish the sandbox tags
+  the plan commit `ultra/plan/run-<N>` and the final evidence commit `ultra/evidence/run-<N>`, and the
+  branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both
+  tags are verified against the remote with `git ls-remote --tags`. A tag that does not verify keeps
+  both branches; a run that ends `failed` keeps them for the one-time sweep
+  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The record is
+  read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
+  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
   optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`, `hold=1`.
@@ -51,7 +66,7 @@ any VM. Everything a run produced is three branches on the repository the run wa
 - **Launch order (launcher):** validate `--target`/`--base`/plan → read the pool
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
   (`fleet/janitor.mjs`, the reap) → `git ls-remote` the target's
-  `ultra/*-run-*` for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
+  `ultra/*-run-*` branches and `ultra/{plan,evidence}/run-*` tags for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
   named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
   push `ultra/plan-run-N` → ONE verb:
@@ -157,6 +172,10 @@ any VM. Everything a run produced is three branches on the repository the run wa
     `MERGE_CHECKS_GRACE` (120 s) and is then merged as having nothing to wait for; a failed run, 30
     minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null;
     `hold=1` in the assignment skips all of it.
+  - record: after the last evidence push of a `done` or `parked` run, tag the plan commit `ultra/plan/run-<N>` and the evidence head `ultra/evidence/run-<N>`, verify both with `git ls-remote --tags` against the remote, then delete the branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
+    A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
+    both branches and logs `record: … kept` — the record step never leaves a run with neither a tag
+    nor a branch.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition.
@@ -177,7 +196,7 @@ any VM. Everything a run produced is three branches on the repository the run wa
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
-  | `capacity` | `ssh exe.dev "billing plan --json"` against `~/.ultrapowers/fleet.json` | the pool holds one run of the configured size; the detail says how many fit |
+  | `capacity` | `ssh exe.dev "billing plan --json"` against `~/.ultrapowers/fleet.json` | both are read and reported: the account's pool, and the size one run asks. The row is a report, not an arithmetic — allocation is over-committable, so it divides nothing and refuses nothing |
   | `claude` | `integrations list --json` + `node fleet/claude-token.mjs status` | `claude-max` exists, carries a bearer, and rides no tag; the keychain's refresh token is a warning, not a failure |
   | `github` | `ssh exe.dev "integrations setup github --list"` | at least one GitHub account is linked |
   | `integrations` | `integrations list --json` | no GitHub object rides `tag:fleet`; with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists and is attached to nothing |
@@ -187,7 +206,9 @@ any VM. Everything a run produced is three branches on the repository the run wa
 - **Janitor (`fleet/janitor.mjs`):** `ls 'fleet-r*' --json` → for each row, parse the VM's `comment` for
   `run=` and `target=` → read `.ultrapowers/runs/<N>/status.json` on that target's
   `ultra/evidence-run-<N>` with `gh api` (`gh api repos/<owner>/<repo>/contents/…?ref=…`) → `rm <vm>
-  --json` for a run in `done|parked|failed` whose `updatedAt` is older than 1 h. A VM whose run has had
+  --json` for a run in `done|parked|failed` whose `updatedAt` is older than 1 h. It reads the branch,
+  not the tag, so a run whose branches the record step has already deleted reads as absent to it until
+  it follows the tag; an absent page is never a reap. A VM whose run has had
   no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone. Run by
   `fleet/launch.mjs` before every launch and by hand after a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
 - **Laptop config `~/.ultrapowers/fleet.json`** — exactly two keys, both optional, an unknown key

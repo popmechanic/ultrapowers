@@ -57,9 +57,10 @@ export const RUN_PATH = '.ultrapowers/runs/7'
 /** The plan's path inside the plan commit's tree. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
 
-// M3's two links, spelled the way the PR body has to spell them.
-export const EVIDENCE_LINK = `https://github.com/${TARGET}/tree/${EVIDENCE_BRANCH}/${RUN_PATH}/`
-export const PLAN_LINK = `https://github.com/${TARGET}/blob/${PLAN_BRANCH}/${PLAN_PATH}`
+// M3's two links, spelled the way the PR body has to spell them: the two tags
+// the run creates at publish, never the branches those tags were cut from.
+export const EVIDENCE_LINK = `https://github.com/${TARGET}/tree/ultra/evidence/run-7/${RUN_PATH}/`
+export const PLAN_LINK = `https://github.com/${TARGET}/blob/ultra/plan/run-7/${PLAN_PATH}`
 export const PLAN_ROW = `| plan | \`${PLAN_PATH}\` at \`${PLAN_SHA}\` |`
 
 /**
@@ -201,6 +202,19 @@ case "$verb" in
     esac
     exit 0 ;;
   rev-list) if [ -n "\${STUB_NO_COMMITS:-}" ]; then echo 0; else echo 3; fi; exit 0 ;;
+  ls-remote)
+    # The REMOTE's own listing of the two record tags, in ls-remote's shape:
+    # \`<sha><tab><ref>\`. The default is the record the run just pushed — the
+    # plan tag at the plan sha, the evidence tag at the worktree's HEAD.
+    # STUB_TAG_PLAN_SHA / STUB_TAG_EVIDENCE_SHA move one of them to some other
+    # commit; STUB_TAGS_MISSING is a remote that lists neither.
+    case "$*" in
+      *--tags*)
+        [ -n "\${STUB_TAGS_MISSING:-}" ] && exit 0
+        printf '%s\\trefs/tags/ultra/plan/run-7\\n' "\${STUB_TAG_PLAN_SHA:-$STUB_PLAN_SHA}"
+        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}" ;;
+    esac
+    exit 0 ;;
   symbolic-ref)
     # What the remote advertised as HEAD at clone time; \`none\` is a remote
     # that advertised nothing.
@@ -208,7 +222,13 @@ case "$verb" in
     printf '%s\\n' "\${STUB_HEAD_REF:-refs/remotes/origin/main}"; exit 0 ;;
   show)
     case "$a1" in
-      *:.ultrapowers/plan.md) printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"; exit 0 ;;
+      *:.ultrapowers/plan.md)
+        # The plan text, and — only when a case asks for one — the header
+        # lines that case needs appended to it. This is the ONLY way plan text
+        # reaches the boot, so a reader of any other source sees none of it.
+        printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"
+        if [ -n "\${STUB_PLAN_EXTRA:-}" ]; then printf '%s\\n' "$STUB_PLAN_EXTRA"; fi
+        exit 0 ;;
       *:.ultrapowers/gate-verdicts.json) printf '{"tasks":{"1":{"verdict":"pass"}},"tally":{"tasks":1}}\\n'; exit 0 ;;
     esac
     exit 0 ;;
@@ -260,14 +280,14 @@ esac
 env >"$FLEET_HOME/systemd-run.env"
 say "systemd-run engine"
 run_dir="$FLEET_HOME/target/.claude/ultrapowers/run-run-7"
-mkdir -p "$run_dir" "$FLEET_HOME/target/fleet-receipts/run-7"
+mkdir -p "$run_dir"
 printf '{"kind":"engine:phase","phase":"gate","id":"x","ts":1}\\n' >"$run_dir/events.jsonl"
 # The engine talks on stdout and stderr, and a run that dies before its gate
 # leaves nothing else behind.
 printf 'run-main: preflight\\n'
 printf 'run-main: knob-validate-failed\\n' >&2
 if [ -z "\${STUB_NO_RECEIPT:-}" ]; then
-  printf '{"verdict":"%s"}\\n' "$STUB_VERDICT" >"$FLEET_HOME/target/fleet-receipts/run-7/gate-receipt.json"
+  printf '{"verdict":"%s"}\\n' "$STUB_VERDICT" >"$run_dir/gate-receipt.json"
   printf '{"stamp":"run-7"}\\n' >"$run_dir/report.json"
   printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
 fi
@@ -291,9 +311,21 @@ argv "npm" "$@"
 say "npm $1 in $PWD"
 exit 0
 `,
+  // Both reads the boot script makes of the engine binary, recorded in an argv
+  // log of its own so a case can count them. `STUB_AUTH` UNSET is the green
+  // box (`oauth_token`); set to a word it is that word; SET BUT EMPTY is the
+  // `claude` that answers nothing at all, which is a box with no oauth_token
+  // just as surely as one that names another method.
   claude: `
-say "claude $1 $2"
-printf 'authMethod: %s\\napiProvider: firstParty\\n' "\${STUB_AUTH:-oauth_token}"
+argv "claude" "$@"
+say "claude $*"
+case "$1" in
+  --version)
+    printf '%s\\n' "\${STUB_CLAUDE_VERSION:-2.1.250 (Claude Code)}"
+    exit 0 ;;
+esac
+[ -z "\${STUB_AUTH-oauth_token}" ] && exit 0
+printf 'authMethod: %s\\napiProvider: firstParty\\n' "\${STUB_AUTH-oauth_token}"
 exit 0
 `,
   // Never called directly by the boot script: busybox and node are argv to

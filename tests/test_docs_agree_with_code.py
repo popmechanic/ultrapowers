@@ -21,6 +21,9 @@ by rewording:
   * the literals the documents teach — the unit the launcher starts, the
     directory the engine is cloned into, the shape of a VM name — are the ones
     ``fleet/CONTRACT.md`` declares, and the unit is a file in ``fleet/``;
+  * a run's record is the two tags ``fleet/CONTRACT.md`` declares, and no
+    ``?ref=`` in the contract or the runbook still reads a run off the evidence
+    branch the record step deletes;
   * no document creates a GitHub integration attached to anything or
     read-only, the per-target one acts as the user, and no document binds any
     integration to ``tag:fleet`` (the contract's one-integration rule: both of
@@ -288,6 +291,72 @@ def test_vm_names_in_the_documents_follow_the_contract():
     for document in DOCUMENTS:
         old = OLD_VM_NAME_RE.findall(read(document))
         assert not old, f"{document} still names a VM by run number alone: {old!r}"
+
+
+# A run's record is two tags, not the branches it worked on: at publish the
+# sandbox tags the plan commit and the evidence head, verifies both, and deletes
+# `ultra/plan-run-<N>` and `ultra/evidence-run-<N>`. The contract's `**The two
+# tags` bullet is where both literals are declared, and a document that still
+# reads a run by its evidence BRANCH is a document sending an operator to a ref
+# the record step has already deleted.
+
+# The bullet, from its own `- **` line to the next one.
+TWO_TAGS_BULLET_RE = re.compile(r"^- \*\*The two tags.*?(?=^- \*\*)", re.M | re.S)
+# The two literals it has to declare, each as the documents spell it.
+TAG_LITERALS = ("ultra/plan/run-<N>", "ultra/evidence/run-<N>")
+# The branches the same bullet names as what goes; without them the bullet says
+# a run gains two refs and never says it loses two.
+BRANCH_LITERALS = ("ultra/plan-run-<N>", "ultra/evidence-run-<N>")
+
+
+def two_tags_bullet():
+    """The contract's `**The two tags` bullet, whole."""
+    match = TWO_TAGS_BULLET_RE.search(read(CONTRACT))
+    assert match, (
+        f"{CONTRACT} no longer carries a `- **The two tags` bullet under §Literals "
+        "— that bullet is where a run's record is declared"
+    )
+    return match.group(0)
+
+
+def test_the_contract_declares_the_two_tags_a_run_leaves():
+    bullet = two_tags_bullet()
+    missing = [name for name in TAG_LITERALS if f"`{name}`" not in bullet]
+    assert not missing, (
+        f"{CONTRACT}'s `**The two tags` bullet does not declare "
+        + ", ".join(missing)
+        + " — a run's record is those two tags, and every document teaches them "
+        "from here\nbullet:\n" + bullet
+    )
+    gone = [name for name in BRANCH_LITERALS if f"`{name}`" not in bullet]
+    assert not gone, (
+        f"{CONTRACT}'s `**The two tags` bullet declares the tags but never names "
+        + ", ".join(gone)
+        + " as the branch(es) deleted once they verify\nbullet:\n" + bullet
+    )
+
+
+# Every `?ref=` the two files show, with the ref it names.
+REF_RE = re.compile(r"\?ref=([^\s'\"`)]*)")
+
+
+def refs_named(path):
+    return [(path.name, ref) for ref in REF_RE.findall(read(path))]
+
+
+def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag():
+    refs = refs_named(RUNBOOK) + refs_named(CONTRACT)
+    branch = [f"{name}: ?ref={ref}" for name, ref in refs
+              if ref.startswith("ultra/evidence-run-")]
+    assert not branch, (
+        "a `?ref=` still reads a run's record off its evidence branch, which the "
+        "record step deletes once the tag verifies: " + ", ".join(branch)
+    )
+    assert any(ref.startswith("ultra/evidence/run-") for _, ref in refs), (
+        "neither fleet/RUNBOOK.md nor fleet/CONTRACT.md shows a "
+        "`?ref=ultra/evidence/run-<N>` read at all, so the pin above is vacuous; "
+        f"the `?ref=`s found were {refs!r}"
+    )
 
 
 # ── the one-integration rule ─────────────────────────────────────────────────
