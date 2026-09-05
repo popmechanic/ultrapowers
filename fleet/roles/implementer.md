@@ -19,19 +19,21 @@ Work red → green → refactor:
 1. Run `git rev-parse HEAD` first and report it verbatim as `startHead`.
 2. Restate what the task requires you to prove — its acceptance criteria, or,
    when the body carries the six-slot claims grammar, its Claim and the exams
-   its Proof slot names (the Proof is the contract you are graded by, not yours
-   to write). Then write tests of your own that encode them. Where the task
-   specifies exact outputs, assert full expected values with equality, not loose
-   containment. Confirm they fail.
-3. Implement the minimum to make them pass, refactor for clarity, and run the
+   its Proof slot names. The peer's exam is the task's test: a peer writes it
+   from the same task text while you work, so the Proof is the contract you
+   are graded by, not yours to write. Where the Claim fixes exact outputs, the
+   exam asserts full expected values with equality, not loose containment. You
+   iterate against the suite the TEST COMMAND runs — it is the signal you
+   have — and write no test file of your own unless the task's Files name one.
+3. Implement the minimum that satisfies them, refactor for clarity, and run the
    test command clean one final time.
 4. Commit your work.
 
 Every path the Proof's `Test:` line names is reserved for a peer's exam: a peer
 is writing it from the same task text while you work, and the driver lays it
-over that path in your tree once you finish. So put your own tests somewhere
-else, and expect the grading file to be one you never saw. The missing
-implementation is your job; the measurement of it is not.
+over that path in your tree once you finish. So expect the grading file to be
+one you never saw. The missing implementation is your job; the measurement of
+it is not.
 
 Judgment rules: treat FILES as your expected footprint, not a fence — a path
 outside it that the task genuinely requires is fine, but disclose it as a

@@ -21,7 +21,9 @@
 //        clone whose HEAD is the wave base and in which `bootstrapCmd` has
 //        already run, the implementer in `<clonesDir>/task-<id>`; the exam
 //        prompt is `examiner.md` followed by the implementer's own inputs byte
-//        for byte; the examiner's capture is written to
+//        for byte but the TEST COMMAND line, which is the exam's command for
+//        the examiner and the run-wide suite for the implementer (#663); the
+//        examiner's capture is written to
 //        `<patchesDir>/exam-<id>.patch`, never to `task-<id>.patch`.
 //   M2 — the wave-0 verdict is decided in the examiner's clone as at BASE:
 //        `exam` is `red`, or `green-at-base` with the judgment call
@@ -218,8 +220,18 @@ let clonesDirOfA = null
   const implPrompt = seen['impl:T1'].prompt
   assert.ok(examPrompt.startsWith(EXAMINER_TEXT), 'the exam prompt opens with examiner.md verbatim')
   assert.ok(implPrompt.startsWith(IMPLEMENTER_TEXT), 'the impl prompt opens with implementer.md verbatim')
-  assert.equal(examPrompt.slice(EXAMINER_TEXT.length), implPrompt.slice(IMPLEMENTER_TEXT.length),
-    'the examiner gets the implementer\'s inputs byte for byte')
+  // #663 — one line apart, and only that one: this task's `testCmd` names its
+  // Proof `Test:` path, which the implementer's tree does not hold until the
+  // handoff below, so the exam's command stays the examiner's and the
+  // implementer is handed the run-wide suite.
+  const examTail = examPrompt.slice(EXAMINER_TEXT.length)
+  const implTail = implPrompt.slice(IMPLEMENTER_TEXT.length)
+  assert.equal(examTail.replace('\nTEST COMMAND: bash t1_test.sh', '\nTEST COMMAND: bash check.sh'),
+    implTail, 'the examiner gets the implementer\'s inputs byte for byte but the TEST COMMAND line')
+  assert.deepEqual(examTail.split('\n').filter((l) => l.startsWith('TEST COMMAND: ')),
+    ['TEST COMMAND: bash t1_test.sh'], 'the examiner keeps the exam\'s command')
+  assert.deepEqual(implTail.split('\n').filter((l) => l.startsWith('TEST COMMAND: ')),
+    ['TEST COMMAND: bash check.sh'], 'the implementer is handed the run-wide suite')
 
   // [M1] the two captures, in their two places.
   assert.ok(fs.existsSync(path.join(patchesDir, 'exam-T1.patch')),

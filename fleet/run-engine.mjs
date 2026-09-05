@@ -213,6 +213,38 @@ const testCmdLine = (task, testCmd) => {
   const cmd = (task && typeof task.testCmd === 'string' && task.testCmd.trim()) || testCmd
   return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
 }
+// #663 — whose command is whose. A Proof `Test:` path is written by a PEER, in
+// the peer's own clone, and reaches the graded tree only at the driver's
+// handoff after the implementer has returned (#653, #551). So a task whose
+// `testCmd` names one of those paths hands its implementer a command that
+// cannot run in the implementer's tree: the file is not there yet, and the
+// worker's red/green/clean cycle is spent on a command that is red for a reason
+// it cannot fix. The exam's command stays the examiner's, the driver's
+// pre-review pass's and the reviewer's — every place that runs it does so on a
+// tree that HAS the exam. The implementer is handed the run-wide suite, which
+// is exactly what a task with no `testCmd` receives.
+//
+// The predicate is the plain one the compiler's shapes make honest: every
+// spelling `derive_task_test_cmd` emits (`node <path>`, `python3 -m pytest -q
+// <paths>`, `bun test <paths>`, an `**Exam command:**` template with `{paths}`
+// substituted) contains the Proof path verbatim. A `testCmd` set some other
+// way, or a task whose Proof names no `Test:` path at all, names none of them
+// and keeps its own command.
+const namesProofTest = (task) => {
+  const cmd = task && typeof task.testCmd === 'string' && task.testCmd.trim()
+  if (!cmd) return false
+  const paths = (task && Array.isArray(task.proofTests)) ? task.proofTests : []
+  return paths.some((p) => typeof p === 'string' && p.trim() !== '' && cmd.includes(p.trim()))
+}
+// The implementer's TEST COMMAND line: its own command, unless that command is
+// the peer's exam — then the run-wide one, capped for the sharers below.
+const implTestCmdLine = (task, testCmd) =>
+  testCmdLine(namesProofTest(task) ? null : task, testCmd)
+// The tasks whose implementer actually RUNS the run-wide command: those with no
+// command of their own, and those whose own command is the exam they will not
+// hold (#547 — divide the machine by the workers that share it, not by WIDTH).
+const sharesRunWideCmd = (task) =>
+  !(task && typeof task.testCmd === 'string' && task.testCmd.trim()) || namesProofTest(task)
 const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
   ? ('\nFILES: ' + task.files.join(', ')) : ''
 const interfacesLine = (task) => {
@@ -579,9 +611,10 @@ export async function runEngine({
   // The count is over every entry in the run (waves are sequential, but the
   // cap is one string computed once, so the whole run's sharers is the honest
   // upper bound). Zero sharers means the string is dead: leave it uncapped
-  // rather than log a cap nobody reads.
-  const runWideSharers = WAVES.reduce((n, w) => n + w.filter((t) =>
-    !(typeof t.testCmd === 'string' && t.testCmd.trim())).length, 0)
+  // rather than log a cap nobody reads. #663: a task whose own command IS its
+  // peer's exam is handed the run-wide one too, so the predicate that picks the
+  // implementer's line is the predicate that counts the sharers.
+  const runWideSharers = WAVES.reduce((n, w) => n + w.filter(sharesRunWideCmd).length, 0)
   const workerTestCmd = runWideSharers > 0
     ? capWorkerParallelism(testCmd, runWideSharers, os.cpus().length)
     : testCmd
@@ -796,17 +829,25 @@ export async function runEngine({
         '" — fell back to standard (valid: standard, mostCapable/most-capable)')
     }
 
-    const commonInputs = testCmdLine(task, workerTestCmd) + filesLine(task) + siblingsStr +
+    // Everything after the TEST COMMAND line is one string both workers get,
+    // byte for byte: the same BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS,
+    // INTERFACES and TASK blocks. Only that one line can differ (#663), and it
+    // differs only for a task whose own command is its peer's exam.
+    const sharedInputs = filesLine(task) + siblingsStr +
       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
+    const examinerInputs = testCmdLine(task, workerTestCmd) + sharedInputs
+    const implementerInputs = implTestCmdLine(task, workerTestCmd) + sharedInputs
 
     // ── the exam (#553, #653) ────────────────────────────────────────────────
     // A worker writes the tests the Proof names, in a clone of its OWN at BASE,
     // dispatched in the same breath as the implementer and awaited neither
-    // before nor after it. It receives exactly the implementer's inputs — the
-    // same BASE, TEST COMMAND, FILES, SIBLING FILES, GLOBAL CONSTRAINTS,
-    // INTERFACES and TASK blocks — and NOT the implementer's role: the one
-    // agent that may not be told to make the suite green is the one writing the
-    // thing that measures it.
+    // before nor after it. It receives the implementer's inputs — the same
+    // BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS, INTERFACES and TASK
+    // blocks — and NOT the implementer's role: the one agent that may not be
+    // told to make the suite green is the one writing the thing that measures
+    // it. The one line the two prompts can differ in is TEST COMMAND (#663):
+    // the exam's command is the examiner's, and the implementer, which will not
+    // hold the exam until the handoff, is handed the run-wide suite instead.
     //
     // Two clones rather than one (#653) buys two things at once. The graded
     // party never holds the exam in its tree while it works, so the peer rule
@@ -927,12 +968,12 @@ export async function runEngine({
     // is bounded by the caller and this code already runs inside one of its
     // slots, so nesting it could hand the wave a width it does not have.
     const examCall = examReady
-      ? agent(roles.examiner + '\nBASE: ' + baseShaForTask + commonInputs,
+      ? agent(roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs,
           { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
             schema: EXAMINER_SCHEMA })
       : null
     const implCall = agent(
-      roles.implementer + '\nBASE: ' + baseShaForTask + commonInputs,
+      roles.implementer + '\nBASE: ' + baseShaForTask + implementerInputs,
       { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
     const [ex, implReply] = await Promise.all([examCall, implCall])
     let impl = implReply
