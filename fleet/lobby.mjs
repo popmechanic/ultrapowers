@@ -425,13 +425,14 @@ export async function listIntegrations (exec) {
 
 /** The comment's keys, in the order the contract spells them. */
 export const COMMENT_KEYS = Object.freeze([
-  'run', 'plan', 'target', 'base', 'engine', 'overlap', 'tier'
+  'run', 'plan', 'target', 'base', 'engine', 'overlap', 'tier', 'effort'
 ])
 
 /**
  * Build the assignment comment: single line, space-separated `key=value`, keys
- * in contract order, optional `overlap=`/`tier=` last. Every value has already
- * been validated by the caller; nothing here can introduce a quote or a space.
+ * in contract order, optional `overlap=`/`tier=`/`effort=` last. Every value
+ * has already been validated by the caller; nothing here can introduce a quote
+ * or a space.
  */
 export function buildComment (fields) {
   return COMMENT_KEYS

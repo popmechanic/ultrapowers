@@ -181,10 +181,16 @@ node fleet/janitor.mjs
 
 It lists the fleet, reads each VM's comment for its run and its target, reads
 that run's status page off the target's evidence branch with `gh api`, and `rm`s
-every VM whose run has been `done`, `parked` or `failed` for over an hour. For
-any fleet VM whose run has had no status update in six hours it prints a line,
-once. It never sshes into a VM. Run it from cron every five minutes, or by hand.
-A VM that has to go now: `ssh exe.dev "rm <vm> --json"` — `rm` takes several
+every VM whose run has been `done`, `parked` or `failed` for over an hour. It
+also arms auto-merge on a `done` run's pull request: it asks `gh pr view` for
+the PR's state, and when the PR is open, not a draft and not armed already, one
+`gh pr merge <url> --auto --squash` lets an approved run merge itself the moment
+CI goes green with nobody waiting on it. That is independent of the reap — a
+`done` run too young to lose its VM is armed all the same — and when GitHub
+refuses `--auto` because the PR is already mergeable, the plain squash follows.
+For any fleet VM whose run has had no status update in six hours it prints a
+line, once. It never sshes into a VM. Run it from cron every five minutes, or
+by hand. A VM that has to go now: `ssh exe.dev "rm <vm> --json"` — `rm` takes several
 names.
 
 ## States

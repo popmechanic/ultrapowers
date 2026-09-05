@@ -251,6 +251,21 @@ assert.equal(shoutSet('it must always never bother'), '',
   '(g)/M7: lower-case prose is not a match')
 assert.notEqual(shoutSet('gained a ' + SHOUT[1] + ' here'), shoutSet('gained a here'),
   '(g)/M7: a gained word makes the sets differ — the leg fails on such a tree')
+// A test that names the shouted words is checking for them, not shouting them:
+// the suites are where the words have to appear literally for anything to be
+// asserted about them (#652). So the walk skips the two test directories and
+// only those — every other path keeps the scrutiny it had before.
+const skipsShoutScan = (rel) => rel.startsWith('fleet/tests/') || rel.startsWith('tests/')
+assert.equal(skipsShoutScan('fleet/tests/test_x.mjs'), true,
+  '(g)/M7: a path under fleet/tests/ is not walked')
+assert.equal(skipsShoutScan('tests/test_x.py'), true,
+  '(g)/M7: a path under tests/ is not walked')
+assert.equal(skipsShoutScan('fleet/run-main.mjs'), false,
+  '(g)/M7: a path directly under fleet/ is still walked')
+assert.equal(skipsShoutScan('fleet/CONTRACT.md'), false,
+  '(g)/M7: so is an operator document')
+assert.equal(skipsShoutScan('skills/ultrapowers/SKILL.md'), false,
+  '(g)/M7: and so is everything outside those two directories')
 {
   const BASE_SHA = 'd6efce4'
   const git = (argv) => {
@@ -270,6 +285,10 @@ assert.notEqual(shoutSet('gained a ' + SHOUT[1] + ' here'), shoutSet('gained a h
   if (!haveBase) console.log('(g)/M7: BASE ' + BASE_SHA + ' not in this clone (shallow) — leg skipped')
   assert.equal(diff.code, 0, '(g)/M7: `git diff --name-only ' + BASE_SHA + '` runs in this tree')
   for (const rel of diff.out.split('\n').filter((l) => l.trim() !== '')) {
+    // A suite that names the words is checking for them, not shouting them —
+    // this very leg cannot assert anything about NEV/ALW/MU without a copy of
+    // each to match against, and a peer's suite is in the same position.
+    if (skipsShoutScan(rel)) continue
     const shown = git(['show', BASE_SHA + ':' + rel])
     const atBase = shown.code === 0 ? shown.out : ''   // new since BASE → empty
     const abs = path.join(REPO_ROOT, rel)
