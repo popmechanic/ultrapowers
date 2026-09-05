@@ -15,8 +15,16 @@
  *   M2 — no comment, no `target=`, a 404, too young, and `booting|running|
  *        publishing` are never removed; a 404 whose `ultra/plan-run-<N>` commit
  *        is over six hours old, and a live run silent for six hours, are stale;
- *   M3 — `--dry-run` reads everything and removes nothing; no `ssh <ssh_dest>`,
- *        no `git`, and nothing under `~/.ultrapowers/` but `fleet.json`.
+ *   M3 — `--dry-run` reads everything and removes nothing; the only
+ *        `ssh <ssh_dest>` commands are the unit and journal reads of #607, each
+ *        at the `ssh_dest` of a row whose page said `booting|running|
+ *        publishing`; no `git`, and nothing under `~/.ultrapowers/` but
+ *        `fleet.json`.
+ *
+ * No VM answers in this exam: every `ssh <ssh_dest>` falls through to the
+ * fixture's empty-and-green default, which is "unit unreadable", which is
+ * "leave the row alone" — so every verdict below is the one the janitor reached
+ * before #607 as well.
  */
 
 import assert from 'node:assert/strict'
@@ -78,9 +86,20 @@ const ghRule = ({ evidence = {}, plans = {} } = {}) => cmdRule('gh', 'api', (cmd
   return NOT_FOUND
 })
 
+/** The states whose page says the run is in flight: the rows #607 may ssh into. */
+const LIVE_STATES = ['booting', 'running', 'publishing']
+/** Every such row's `ssh_dest`, collected as the legs can their pages. */
+const LIVE_DESTS = new Set()
+
 /** `evidence:` for a whole fleet, `[[run, status], …]` on one target. */
-const evidenceFor = (entries, { target = TARGET, wrap = (s) => s } = {}) =>
-  Object.fromEntries(entries.map(([run, status]) => [evidencePath(target, run), wrap(status)]))
+const evidenceFor = (entries, { target = TARGET, wrap = (s) => s } = {}) => {
+  const canned = {}
+  for (const [run, status] of entries) {
+    if (LIVE_STATES.includes(status.state)) LIVE_DESTS.add(vmRow(vm(run)).ssh_dest)
+    canned[evidencePath(target, run)] = wrap(status)
+  }
+  return canned
+}
 
 /** `ls '<pattern>'` answers the rows whose names match — what the server does. */
 const lsRules = (fleet) => [
@@ -320,10 +339,17 @@ const PLAN_FRESH = '2026-09-03T09:00:00Z' // three hours before NOW
   cleanup(home)
 }
 
-// ── (c) across every leg: no VM ssh, no git ─────────────────────────────────
+// ── (c) across every leg: the only VM ssh is #607's read, and no git ────────
+const UNIT_READ = 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show fleet-run@'
+const JOURNAL_READ = 'journalctl _SYSTEMD_USER_UNIT=fleet-run@'
 for (const [i, exec] of EXECS.entries()) {
-  assert.deepEqual(exec.vm(), [],
-    `(c)/M3 leg ${i}: the janitor issues no ssh <ssh_dest> command`)
+  for (const call of exec.vm()) {
+    assert.equal(LIVE_DESTS.has(call.dest), true,
+      `(c)/M3 leg ${i}: every ssh <ssh_dest> goes to the ssh_dest of a row whose page said booting|running|publishing, and ${call.dest} is not one`)
+    assert.equal(
+      call.command.startsWith(UNIT_READ) || call.command.startsWith(JOURNAL_READ), true,
+      `(c)/M3 leg ${i}: the only commands run on a VM are the unit read and the journal read, not ${JSON.stringify(call.command)}`)
+  }
   assert.deepEqual(exec.calls.filter((c) => c.cmd === 'git').map((c) => c.line), [],
     `(c)/M3 leg ${i}: the janitor issues no git command`)
 }
