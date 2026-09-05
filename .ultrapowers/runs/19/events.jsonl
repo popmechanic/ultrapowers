@@ -1,0 +1,118 @@
+{"kind":"run:open","runId":"run-19","base":"","source":"fleet/run-main.mjs","id":"01M1SGYM550000A6Z5PMD3P2ZY","ts":1788636778661}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M1SGYM560000SEQR2EKQMYJ0","ts":1788636778662}
+{"kind":"driver:stage","stage":"provision","detail":"BASE e04154b702407ac1efabaa22db6e21eab706a5f1; 1 task clone(s) + integration","id":"01M1SH2Z6S0000NN377JVE4Y9D","ts":1788636921049}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M1SH2ZGE0000ECV3SP1HETPV","ts":1788636921358}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M1SH2ZGE0001MXY0CJ1B0GT6","ts":1788636921358}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 4","id":"01M1SH2ZGG0000BC4EMRPXS4B3","ts":1788636921360}
+{"kind":"engine:phase","phase":"Setup","id":"01M1SH2ZGG00013Q8YYRCS83V3","ts":1788636921360}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-19 at e04154b702407ac1efabaa22db6e21eab706a5f1; baseline green","id":"01M1SH7A7R00000P37DD0EVBYD","ts":1788637063416}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M1SH7A7R0001W4G6T9J1M60W","ts":1788637063416}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"acdf4a04-725d-490e-82fa-97a050090044","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-19/clones/task-1","model":"opus","id":"01M1SH7A7V0000VBCPZVFBQKTZ","ts":1788637063419}
+{"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"acdf4a04-725d-490e-82fa-97a050090044","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2670,"output":4412,"cacheRead":433282,"cacheCreation":48628,"costUsd":0.826571,"models":["claude-opus-5"]},"id":"01M1SHD9HB00001A10WBRS03MS","ts":1788637259307}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'TOOLCHAIN_LADDER' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9J30000TX4EV5F95REP","ts":1788637259331}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'detectToolchainRung' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9JA0000PPF5GEB5ZR0X","ts":1788637259338}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'toolchain' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9JK0000GW669VD59EJK","ts":1788637259347}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'rung' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9JT00009MXJGPPATBK8","ts":1788637259354}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'manifest' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9K10000XBS9EEPXQJT3","ts":1788637259361}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'pytest.ini' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9KA00000WJ69MXH9KNM","ts":1788637259370}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'pyproject.toml' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9KJ0000TZA79M66K97Z","ts":1788637259378}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'package.json' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9KS0000C3C8WMB9KKWY","ts":1788637259385}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'Makefile' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9M10000MKW1VTPA5HER","ts":1788637259393}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'go.mod' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9M90000XZTN5F15RRHK","ts":1788637259401}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'Cargo.toml' fleet/launch.mjs)\" = 0","exit":0,"iter":0,"id":"01M1SHD9MH0000MGSNVRW7JCME","ts":1788637259409}
+{"kind":"driver:proof-run","task":"1","cmd":"test ! -e fleet/tests/test_launch_toolchain.mjs","exit":0,"iter":0,"id":"01M1SHD9MQ00002A3BDQAXB1YM","ts":1788637259415}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'toolchain')\" = 0","exit":0,"iter":0,"id":"01M1SHD9MZ0000K940H8X4WYFX","ts":1788637259423}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'Go, Rust')\" = 0","exit":0,"iter":0,"id":"01M1SHD9N80000RMKRDJ1MRF6K","ts":1788637259432}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'new Refusal(' fleet/launch.mjs)\" = 28","exit":0,"iter":0,"id":"01M1SHD9NF0000T2FRT7KQA84P","ts":1788637259439}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -rl 'TOOLCHAIN_LADDER' fleet skills tests | wc -l | tr -d ' ')\" = 0","exit":0,"iter":0,"id":"01M1SHD9P50000P8FEHA9A3EJ3","ts":1788637259461}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -rl 'detectToolchainRung' fleet skills tests | wc -l | tr -d ' ')\" = 0","exit":0,"iter":0,"id":"01M1SHD9PN000028VQ6H1V5T16","ts":1788637259477}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node --test fleet/tests/test_launch*.mjs 2>&1) && n=$(ls fleet/tests/test_launch*.mjs | wc -l | tr -d ' ') && printf '%s\\n' \"$out\" | grep -q \"pass $n\" && printf '%s\\n' \"$out\" | grep -q 'fail 0'","exit":0,"iter":0,"id":"01M1SHDC9300009YS1PQ323ZNS","ts":1788637262115}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M1SHDF8G0000R7A9KB935B8J","ts":1788637265168}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_effort.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M1SHDG650000GPQE8XXEHN41","ts":1788637266117}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_engine_source.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M1SHDGK7000083C189ZNSAS1","ts":1788637266535}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_hold.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M1SHDH480000Y6NJ2J244GAM","ts":1788637267080}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_reaps.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M1SHDHDJ00006Z00ZRHBPW9V","ts":1788637267378}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object fleet/tests/test_launch_engine_source.mjs)\" = 6e7079b7e0458b527ce3e9e20a637d68c20affe3","exit":0,"iter":0,"id":"01M1SHDHDT000080K7P7QHP5MM","ts":1788637267386}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object fleet/tests/test_launch.mjs)\" = 9faf40b1e3ed606b2283c829c0115a74057be9be","exit":0,"iter":0,"id":"01M1SHDHE10000WGQAQ9JBHSPH","ts":1788637267393}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec","exit":0,"iter":0,"id":"01M1SHDHEM00009GE7403S9FVD","ts":1788637267412}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636","exit":0,"iter":0,"id":"01M1SHDHEW00004AD6KYGB180G","ts":1788637267420}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec","exit":0,"minor":false,"iter":0,"id":"01M1SHDHF50000AHW88K5B4FDW","ts":1788637267429}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636","exit":0,"minor":false,"iter":0,"id":"01M1SHDHFC0000CDNK3EGJXZYA","ts":1788637267436}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object fleet/setup-script.mjs)\" = 1345f9e161f5eb032a687ed2f57e0ea5058b9e1e","exit":0,"minor":false,"iter":0,"id":"01M1SHDHFK0000HYN8XRGP135K","ts":1788637267443}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4","exit":0,"minor":false,"iter":0,"id":"01M1SHDHFV0000628NV4TZS8FA","ts":1788637267451}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'TOOLCHAIN_LADDER' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHG30000YW78YKD9BDZV","ts":1788637267459}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'detectToolchainRung' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHGA00005FT00MH4SSD0","ts":1788637267466}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'toolchain' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHGR000070N21AGT5BR3","ts":1788637267480}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'rung' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHH00000SR6VQ090Z7G7","ts":1788637267488}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'manifest' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHH90000FJ2ARGMTEYX5","ts":1788637267497}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'pytest.ini' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHHD0000N5C2XC3D1PMM","ts":1788637267501}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'pyproject.toml' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHHW0000T1FTAJRX7WCA","ts":1788637267516}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'package.json' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHJ10000Y2TNVC2P7NYQ","ts":1788637267521}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'Makefile' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHJ70000KCS8C8N4K9Y6","ts":1788637267527}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'go.mod' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHJE0000SFYTW9XBHYZ5","ts":1788637267534}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'Cargo.toml' fleet/launch.mjs)\" = 0","exit":0,"iter":1,"id":"01M1SHDHJM0000TF2FQ58P5TPJ","ts":1788637267540}
+{"kind":"driver:proof-run","task":"1","cmd":"test ! -e fleet/tests/test_launch_toolchain.mjs","exit":0,"iter":1,"id":"01M1SHDHJS0000G5ZJMHE8KZVJ","ts":1788637267545}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'toolchain')\" = 0","exit":0,"iter":1,"id":"01M1SHDHK20000718X9W1AK1JB","ts":1788637267554}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'Go, Rust')\" = 0","exit":0,"iter":1,"id":"01M1SHDHKA0000KRB16RT74CHW","ts":1788637267562}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -c 'new Refusal(' fleet/launch.mjs)\" = 28","exit":0,"iter":1,"id":"01M1SHDHKJ0000QD0E2RFP4Q36","ts":1788637267570}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -rl 'TOOLCHAIN_LADDER' fleet skills tests | wc -l | tr -d ' ')\" = 0","exit":0,"iter":1,"id":"01M1SHDHM70000DCMZJYBJEQCT","ts":1788637267591}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(grep -rl 'detectToolchainRung' fleet skills tests | wc -l | tr -d ' ')\" = 0","exit":0,"iter":1,"id":"01M1SHDHN80000A06QFTZFMWXB","ts":1788637267624}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node --test fleet/tests/test_launch*.mjs 2>&1) && n=$(ls fleet/tests/test_launch*.mjs | wc -l | tr -d ' ') && printf '%s\\n' \"$out\" | grep -q \"pass $n\" && printf '%s\\n' \"$out\" | grep -q 'fail 0'","exit":0,"iter":1,"id":"01M1SHDMCE00000Z0MERD3XSX9","ts":1788637270414}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":1,"id":"01M1SHDQH20000WJHTN4DRQEXM","ts":1788637273634}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_effort.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":1,"id":"01M1SHDRFY00007V3848M0J5YB","ts":1788637274622}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_engine_source.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":1,"id":"01M1SHDRZ70000MGHSWN50K2MV","ts":1788637275111}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_hold.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":1,"id":"01M1SHDSKY0000RK3R7ZHQ7P8T","ts":1788637275774}
+{"kind":"driver:proof-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_reaps.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"iter":1,"id":"01M1SHDSYH0000MK2RESA0E5DY","ts":1788637276113}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object fleet/tests/test_launch_engine_source.mjs)\" = 6e7079b7e0458b527ce3e9e20a637d68c20affe3","exit":0,"iter":1,"id":"01M1SHDSYT0000RV1RY1C84J2X","ts":1788637276122}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object fleet/tests/test_launch.mjs)\" = 9faf40b1e3ed606b2283c829c0115a74057be9be","exit":0,"iter":1,"id":"01M1SHDSZ2000032H2H98ANQAZ","ts":1788637276130}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec","exit":0,"iter":1,"id":"01M1SHDSZB0000JXBJCV1W2QYA","ts":1788637276139}
+{"kind":"driver:proof-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636","exit":0,"iter":1,"id":"01M1SHDSZK0000F1BHH5W1K9XT","ts":1788637276147}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec","exit":0,"minor":false,"iter":1,"id":"01M1SHDSZW0000DPV6RFTWJMT4","ts":1788637276156}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636","exit":0,"minor":false,"iter":1,"id":"01M1SHDT040000JJG51W900HXB","ts":1788637276164}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object fleet/setup-script.mjs)\" = 1345f9e161f5eb032a687ed2f57e0ea5058b9e1e","exit":0,"minor":false,"iter":1,"id":"01M1SHDT0C0000HA36BMPVRP0D","ts":1788637276172}
+{"kind":"driver:check-run","task":"1","cmd":"test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4","exit":0,"minor":false,"iter":1,"id":"01M1SHDT0M0000YMEG825Z68DG","ts":1788637276180}
+{"kind":"worker:start","label":"review:1:1","role":"reviewer","sessionId":"3b91b312-e72a-4a43-bcae-7bd722e6336b","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-19/clones/integration","model":"opus","id":"01M1SHDT0N0000505RZSK988WS","ts":1788637276181}
+{"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"3b91b312-e72a-4a43-bcae-7bd722e6336b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5554,"output":6732,"cacheRead":430536,"cacheCreation":70233,"costUsd":1.1136679999999999,"models":["claude-opus-5"]},"id":"01M1SHGHWB0000EVYGM73PYJNX","ts":1788637366155}
+{"kind":"driver:integrated-clean","wave":1,"removed":9,"id":"01M1SHMFHZ0000MDV5PQW5C7DT","ts":1788637494847}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'TOOLCHAIN_LADDER' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFJ70000Y2G5VMGXTYAC","ts":1788637494855}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'detectToolchainRung' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFJF0000Z27K2QDJN42Y","ts":1788637494863}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'toolchain' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFJP0000E0ZZBWVXMEXJ","ts":1788637494870}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'rung' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFJX0000594GH7GAEDWZ","ts":1788637494877}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'manifest' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFK5000023JWQWR9A7JE","ts":1788637494885}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'pytest.ini' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFKD0000T5QCXD40481E","ts":1788637494893}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'pyproject.toml' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFKM00009E716MN2FXSA","ts":1788637494900}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'package.json' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFKV0000V9GGAX9AF1Q5","ts":1788637494907}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'Makefile' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFM30000BMY8Q6RQD5MD","ts":1788637494915}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'go.mod' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFMA000090BKTZHEK86P","ts":1788637494922}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'Cargo.toml' fleet/launch.mjs)\" = 0","exit":0,"wave":1,"id":"01M1SHMFMH00004PJFYK5K3NMJ","ts":1788637494929}
+{"kind":"driver:integrated-run","task":"1","cmd":"test ! -e fleet/tests/test_launch_toolchain.mjs","exit":0,"wave":1,"id":"01M1SHMFMQ00004JZFNZ2PD833","ts":1788637494935}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'toolchain')\" = 0","exit":0,"wave":1,"id":"01M1SHMFN000001KXQH2ZH6PPP","ts":1788637494944}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'Go, Rust')\" = 0","exit":0,"wave":1,"id":"01M1SHMFN90000R12SCPYCK6MF","ts":1788637494953}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -c 'new Refusal(' fleet/launch.mjs)\" = 28","exit":0,"wave":1,"id":"01M1SHMFNH0000V2GVX6MY8ND8","ts":1788637494961}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -rl 'TOOLCHAIN_LADDER' fleet skills tests | wc -l | tr -d ' ')\" = 0","exit":0,"wave":1,"id":"01M1SHMFNW0000KH3YJHA5JB3C","ts":1788637494972}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(grep -rl 'detectToolchainRung' fleet skills tests | wc -l | tr -d ' ')\" = 0","exit":0,"wave":1,"id":"01M1SHMFP80000K0PWXHD3B964","ts":1788637494984}
+{"kind":"driver:integrated-run","task":"1","cmd":"out=$(node --test fleet/tests/test_launch*.mjs 2>&1) && n=$(ls fleet/tests/test_launch*.mjs | wc -l | tr -d ' ') && printf '%s\\n' \"$out\" | grep -q \"pass $n\" && printf '%s\\n' \"$out\" | grep -q 'fail 0'","exit":0,"wave":1,"id":"01M1SHMHZ800008M1PG2FHPHGR","ts":1788637497320}
+{"kind":"driver:integrated-run","task":"1","cmd":"out=$(node fleet/tests/test_launch.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"id":"01M1SHMMPD0000YS46VX6EX9MV","ts":1788637500109}
+{"kind":"driver:integrated-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_effort.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"id":"01M1SHMNDP0000Z5XD6HM71TRT","ts":1788637500854}
+{"kind":"driver:integrated-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_engine_source.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"id":"01M1SHMNS800004EMDNQH4GW24","ts":1788637501224}
+{"kind":"driver:integrated-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_hold.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"id":"01M1SHMP7F00003PH1A8JXMXK7","ts":1788637501679}
+{"kind":"driver:integrated-run","task":"1","cmd":"out=$(node fleet/tests/test_launch_reaps.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"id":"01M1SHMPEK0000KZBKDS8VVB37","ts":1788637501907}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(git hash-object fleet/tests/test_launch_engine_source.mjs)\" = 6e7079b7e0458b527ce3e9e20a637d68c20affe3","exit":0,"wave":1,"id":"01M1SHMPES0000H5TGWFSTYDTC","ts":1788637501913}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(git hash-object fleet/tests/test_launch.mjs)\" = 9faf40b1e3ed606b2283c829c0115a74057be9be","exit":0,"wave":1,"id":"01M1SHMPEY0000VCTKSJM1EV7R","ts":1788637501918}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec","exit":0,"wave":1,"id":"01M1SHMPF50000W6FWN6REMB2Y","ts":1788637501925}
+{"kind":"driver:integrated-run","task":"1","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636","exit":0,"wave":1,"id":"01M1SHMPFD0000MJ2N6N24XEGT","ts":1788637501933}
+{"kind":"driver:integrated-check","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec","exit":0,"minor":false,"wave":1,"id":"01M1SHMPFN00006JJV4MV1WG4R","ts":1788637501941}
+{"kind":"driver:integrated-check","cmd":"test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636","exit":0,"minor":false,"wave":1,"id":"01M1SHMPFW0000DMNJ800XQXE8","ts":1788637501948}
+{"kind":"driver:integrated-check","cmd":"test \"$(git hash-object fleet/setup-script.mjs)\" = 1345f9e161f5eb032a687ed2f57e0ea5058b9e1e","exit":0,"minor":false,"wave":1,"id":"01M1SHMPG40000D15KM9SF9AQV","ts":1788637501956}
+{"kind":"driver:integrated-check","cmd":"test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4","exit":0,"minor":false,"wave":1,"id":"01M1SHMPG70000RQ995GH6DJCJ","ts":1788637501959}
+{"kind":"engine:phase","phase":"Depth-1 Leg","id":"01M1SHMPG8000041E0SM8754HB","ts":1788637501960}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M1SHMPG800015PFA3DCMH8KM","ts":1788637501960}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"5e49ca25-1e5f-412a-ad30-74b0b84a78cc","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-19/clones/integration","model":"opus","id":"01M1SHMPG900009Y40T9347SYA","ts":1788637501961}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"5e49ca25-1e5f-412a-ad30-74b0b84a78cc","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4725,"output":5348,"cacheRead":282693,"cacheCreation":54846,"costUsd":0.8471315000000001,"models":["claude-opus-5"]},"id":"01M1SHQ39G0000WA772XJNTXX7","ts":1788637580592}
+{"kind":"engine:log","line":"depth-1 leg: green","id":"01M1SHRQDQ00009FQBJYDXWJW4","ts":1788637633975}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M1SHRQDX0000B3X6W64CH7EV","ts":1788637633981}
+{"kind":"driver:stage","stage":"finalize","id":"01M1SHRQE60000JFZZBM0WMGK4","ts":1788637633990}
+{"kind":"driver:stage","stage":"gate","id":"01M1SHRQF40000YVYFMTQPZJN9","ts":1788637634020}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M1SHWXAE0000K5FA66R8FDN8","ts":1788637771086}
+{"kind":"driver:stage","stage":"approve","id":"01M1SHWXAE0001PDGPC883HAW1","ts":1788637771086}
+{"kind":"driver:approved","stamp":"run-19","integrationBranch":"ultra/integration-run-19","id":"01M1SHWXBN0000E0E1HS533XK6","ts":1788637771125}

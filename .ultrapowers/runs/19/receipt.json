@@ -1,0 +1,180 @@
+{
+  "ok": true,
+  "stamp": "run-19",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-19"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The launcher carries no manifest ladder and no toolchain refusal",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs",
+          "fleet/tests/test_launch_toolchain.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The launcher carries no manifest ladder and no toolchain refusal",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_toolchain.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_toolchain.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c 'TOOLCHAIN_LADDER' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'detectToolchainRung' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'toolchain' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'rung' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'manifest' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'pytest.ini' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'pyproject.toml' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'package.json' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'Makefile' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'go.mod' fleet/launch.mjs)\" = 0",
+            "test \"$(grep -c 'Cargo.toml' fleet/launch.mjs)\" = 0",
+            "test ! -e fleet/tests/test_launch_toolchain.mjs",
+            "test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'toolchain')\" = 0",
+            "test \"$(awk 'NR==1,/^ \\*\\//' fleet/launch.mjs | grep -c 'Go, Rust')\" = 0",
+            "test \"$(grep -c 'new Refusal(' fleet/launch.mjs)\" = 28",
+            "test \"$(grep -rl 'TOOLCHAIN_LADDER' fleet skills tests | wc -l | tr -d ' ')\" = 0",
+            "test \"$(grep -rl 'detectToolchainRung' fleet skills tests | wc -l | tr -d ' ')\" = 0",
+            "out=$(node --test fleet/tests/test_launch*.mjs 2>&1) && n=$(ls fleet/tests/test_launch*.mjs | wc -l | tr -d ' ') && printf '%s\\n' \"$out\" | grep -q \"pass $n\" && printf '%s\\n' \"$out\" | grep -q 'fail 0'",
+            "out=$(node fleet/tests/test_launch.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "out=$(node fleet/tests/test_launch_effort.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "out=$(node fleet/tests/test_launch_engine_source.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "out=$(node fleet/tests/test_launch_hold.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "out=$(node fleet/tests/test_launch_reaps.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "test \"$(git hash-object fleet/tests/test_launch_engine_source.mjs)\" = 6e7079b7e0458b527ce3e9e20a637d68c20affe3",
+            "test \"$(git hash-object fleet/tests/test_launch.mjs)\" = 9faf40b1e3ed606b2283c829c0115a74057be9be",
+            "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec",
+            "test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The launcher carries no manifest ladder and no toolchai\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The deletion is exact: the ladder, its detector, the refusal and the header paragraph that\n  promises it leave `fleet/launch.mjs`, and no other line of that file changes \u2014 every other\n  refusal, the engine provenance (`--engine`, `defaultEngineSha`, `ENGINE_URL`), the reap, the\n  plan push and the lobby verb read as they did at BASE.\n- The rest of #648 outside the fleet \u2014 the exam command and the integration-hostile\n  advisories in `skills/ultrapowers/scripts/compile_plan.py`, the exam command in\n  `skills/ultrapowers/scripts/ultra_run.py` \u2014 is byte-identical to BASE.\n- The sandbox's setup script and the lobby are untouched.\n- No file outside the task's own Files block is edited; no file is created.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/ultra_run.py)\" = 0a23e6b72f23cab4dd7260fb2d3fab24be26a636",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/setup-script.mjs)\" = 1345f9e161f5eb032a687ed2f57e0ea5058b9e1e",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-19/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-19/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-19/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-19/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
