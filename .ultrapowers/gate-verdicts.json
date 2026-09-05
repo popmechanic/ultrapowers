@@ -1,0 +1,46 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "9b786a3de6deca7060ab7945a7b6a3890e643a5090e8314710318db2e39afdaa",
+   "verdict": "pass",
+   "reason": "Every clause of the sentence and of M1–M7 has a leg that a wrong tool fails — exact heads listing and single-listing pin (b), the POST/POST/ls-remote/DELETE order with the already-exists tolerance and the no-integration pin (c), kept-continues-and-exitCode-1 with its negative control (d), byte-identical PATCH and its no-PATCH twin (e,f), exactly-three-calls dry-run (g), stdout-captured lines written before the next run's POST in numeric order 3,5,12 (b,h), and the PATH-shim child process proving the real exec, exit 0/2, stderr and no out-of-seam git/gh (i, Run) — the only soft spot is that the pulls read's exact `state=closed&head=` query string is named by the seam rather than asserted, which does not touch the sentence's truth."
+  },
+  "2": {
+   "hash": "cb830042734db8bda8e4d4508730674895a4569322c206949998cc6e39434eed",
+   "verdict": "pass",
+   "reason": "Each machine clause has a leg that would fail if it were false: M1's read order, envelope check, --age boundary (61 vs 59 min) and per-target path are asserted on argv in (a)–(c); M2's tag-sha→commit-date path, branch-only-on-404 fallback, six-hour boundary and no-age-no-action are pinned by runs 21/24/25/26/27 in (d); M3's four `from` values and the rendered line shape are regex-matched in (d)/(e); and M4's dry-run parity, unknown rows, two-argv-word `gh` calls, no git/ssh, the HOME canary and the untouched launch-reaps sim are covered in (f) plus the four Run bullets — all at the stubbed-argv layer where the janitor's behavior actually lives."
+  },
+  "3": {
+   "hash": "7da4f2293848de66770451ead92b6315913146c5d86dc489fd95d0c693e35498",
+   "verdict": "pass",
+   "reason": "Each clause has a leg that would fail on its negation — M1's tag-spelled PR-body sentence plus a proximity-and-count guard against the branch spelling, M2's per-run regex, M3's ordered tag-first/branch-while-pending regex on both slices with explicit contrary-phrase negatives, M4's sentence pins and three BASE-hash slices (which I recomputed on f17b977 and they match), and M5's suite and five sims by their own exit status."
+  },
+  "4": {
+   "hash": "f697f88b64863767f08e7dde14ed2035f8d873ea8b3657b2985cf983abf762b9",
+   "verdict": "pass",
+   "reason": "Every clause has a live falsifier at BASE (f17b977, the tail hash 2443a80d matches that commit and no other, the absent literal 'never merged, linked from the PR' is present there once tr joins the wrapped line, the ordered tag→branch→'deleted at publish'→'verif' grep fails on the old banner), the comment-only and byte-identical-tail legs confine the edit to the banner, and bash -n covers M3 — the only residue is that 'against the remote' is not matched, a sub-phrase of a clause whose substance the ordered grep already pins."
+  }
+ },
+ "tally": {
+  "dispatched": 10,
+  "rejected": 6,
+  "rounds": {
+   "1": {"dispatched": 4, "rejected": 2},
+   "2": {"dispatched": 2, "rejected": 2},
+   "3": {"dispatched": 2, "rejected": 2},
+   "4": {"dispatched": 2, "rejected": 0}
+  }
+ },
+ "history": [
+  {"round": 1, "task": "1", "verdict": "fail", "reason": "no leg ran the file as a process; a script whose entry never calls retire with process.argv or never propagates the exit code passed"},
+  {"round": 1, "task": "2", "verdict": "pass", "reason": "all clauses entailed"},
+  {"round": 1, "task": "3", "verdict": "fail", "reason": "the pytest leg grepped 'passed' from the summary line, which '1 failed, N passed' satisfies; the M3 branch-not-tag negative read only the contract"},
+  {"round": 1, "task": "4", "verdict": "pass", "reason": "all clauses entailed"},
+  {"round": 2, "task": "1", "verdict": "fail", "reason": "leg (g) asserted only that no gh call carried -X, so a --dry-run that mutated through git push --delete passed"},
+  {"round": 2, "task": "3", "verdict": "fail", "reason": "the M3 greps ended at ultra/evidence/run-<N> then ultra/plan/run-<N>, so a sentence saying the branch is read after the sweep, or unconditionally, passed"},
+  {"round": 3, "task": "1", "verdict": "fail", "reason": "every seam leg ran retire() with an injected exec and the only process leg was the refusal, so an entry handing retire an inert exec passed"},
+  {"round": 3, "task": "3", "verdict": "fail", "reason": "M3's 'and then the plan branch' had no leg, and M1's absence grep was defeated by line wrapping"},
+  {"round": 4, "task": "1", "verdict": "pass", "reason": "all clauses entailed"},
+  {"round": 4, "task": "3", "verdict": "pass", "reason": "all clauses entailed"}
+ ]
+}
