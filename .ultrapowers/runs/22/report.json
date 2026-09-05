@@ -1,0 +1,283 @@
+{
+  "integrationBranch": "ultra/integration-run-22",
+  "baseSha": "e04154b702407ac1efabaa22db6e21eab706a5f1",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "bf18423de5f2cf771df83fb9bed5297f429f54ad",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-22/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Operator-facing drift the diff cannot repair from inside its own FILES: `fleet/CONTRACT.md:180` still describes the doctor's capacity row as green when \"the pool holds one run of the configured size; the detail says how many fit\", which this change makes false (a 4 vCPU pool against an 8 vCPU ask is now `ok`/`ready`, and the detail carries no count). `fleet/CONTRACT.md` is hash-pinned byte-identical to BASE by a Global Constraint and lies outside this task's Files block, and no task in this wave (only #1 doctor + #2 first-run.md) rewrites it, so the sentence survives the run. Nothing automated catches it: `tests/test_docs_agree_with_code.py` passed (Run evidence, exit 0) because it reads only `first-run.md`'s headings against `ROW_IDS`. A follow-up task owning `fleet/CONTRACT.md` (and, for the same reason, the RUNBOOK \u00a7capacity paragraph at `fleet/RUNBOOK.md:71-73`) would settle it.; Cross-file consequence worth the operator's attention, not fixable inside this task's FILES: the doctor now reports `ready` for a pool smaller than one run's ask (M2, `max_cpus` 4 vs an 8 vCPU ask \u2014 asserted at fleet/tests/test_doctor.mjs:284-297), while the launcher still hard-refuses that same launch \u2014 `fleet/launch.mjs:356` throws `launch: --cpu <n> does not fit the plan \u2014 billing plan --json says max_cpus <m>` and `fleet/launch.mjs:361` does the same for memory. So a green doctor can now precede a launch Refusal on exactly the number the row just called fine. This is what #681 asks for (the row reports and never limits) and `fleet/launch.mjs` is hash-pinned byte-identical to BASE by a Global Constraint, so the implementer cannot act on it; deciding whether the launcher's per-run fit check should also go is the plan's/operator's call.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "c9124c7a5d66fd3913172b2afae4bde6f4d00855",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-22/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Readability nit inside `skills/ultrapowers/references/first-run.md` \u00a7capacity: the new opening paragraph illustrates the green detail as `XLarge pool 16 vCPU / 64GB; a run asks 4 vCPU / 8GB`, but the JSON fence four lines below \u2014 retained verbatim per M4 \u2014 is `{\"cpu\": \"8\", \"memory\": \"16GB\"}`. A newcomer reading the section top-to-bottom sees a 4/8GB ask next to an 8/16GB config. This is faithfully transcribed from the task's own Context (which prescribes the 4 vCPU / 8GB shape, quoting #681's example of the operator's live file, while M4 pins the 8/16GB fence), so the fix is the task text's, not the diff's; nothing in the exams is violated. If the operator wants the section internally consistent, either the shape string becomes `a run asks 8 vCPU / 16GB` (still satisfies M2's `a run asks`) or a half-sentence notes the shape is an example from a smaller live file.; unverified: the paragraph's factual claims about the doctor's behavior \u2014 that the row is `missing` *only* for an unreadable pool or an unparseable config, and that the green detail has the shape `...; a run asks N vCPU / NGB` \u2014 are true only once sibling task 1's change to `fleet/doctor.mjs` lands; at this task's BASE the doctor still emits the `fits N` count and the `cannot hold` refusal. Nothing in this patch can settle it, and this task's own exam (the sed/grep Proof `Run:` commands plus `tests/test_docs_agree_with_code.py`, all exit 0 in RUN EVIDENCE) reads only the prose. What would settle it: `node fleet/tests/test_doctor.mjs` and `node fleet/tests/test_doctor_config_keys.mjs` on the merged wave, where task 1's M1/M4 pin the exact green string and the two `missing` branches. No action for this diff \u2014 recorded so the operator reads the doc claim as wave-conditional.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-22/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1618 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 131.11s (0:02:11) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "! grep -E 'fits|cannot hold' fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "out=$(node fleet/tests/test_doctor.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "out=$(node fleet/tests/test_doctor_config_keys.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.07s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'over-commit.*contention'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | grep -q '#667'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'a run asks'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'missing.*unreadable.*unparseable'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'fits three runs'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'cannot carry seven'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'is refused when the pool'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'how many such runs fit'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'cannot fit in'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'width of a wave of runs'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | grep -q '\"cpu\": \"8\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | grep -q '\"memory\": \"16GB\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'does not read.*red'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(grep '^## ' skills/ultrapowers/references/first-run.md | tr '\\n' ' ')\" = \"## exe-dev ## capacity ## claude ## github ## integrations \"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.05s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = a2bcd0491f5af05f77606c747c8f4f6bc3659138",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object tests/test_docs_agree_with_code.py)\" = c9687c77eca8374f6caf78b5deb587f24244fe9a",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = f286d45f24924654c4f71795903d8277ba9e9035",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = 7a45c72253c10632d1c914230df166b7d0934d70",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = a91fa2bb3bde04fa34396f6580a11f56e6e4bd8d",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 243344,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n...................................................................s.... [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1617 passed, 1 skipped, 5 warnings in 135.56s (0:02:15) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 145.29s (0:02:25) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "c3fbfe7357dc82b807b1bd1f1854c11976a933b3",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-22/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-22/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.7270000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 2 \u2014 the measured facts cited in first-run.md \u00a7capacity (56 vCPU allocated on the 16-vCPU plan with no `new` refused; six runs asking 24 vCPU concurrent on 2026-09-05) and the #667 measurement they point at",
+      "reason": "external",
+      "why": "These are observations of the live exe.dev account. The section is structurally complete and its wording is pinned by the Proof greps, but nothing in this tree or environment can confirm the account behaves as described."
+    },
+    {
+      "deliverable": "Task 1 \u2014 fleet/doctor.mjs capacity row against a real `ssh exe.dev \"billing plan --json\"`",
+      "reason": "external",
+      "why": "Both sims drive the row through an injected `exec` with canned billing JSON (the doctor's five reads are PATH-shimmed, no network). The row's shape and all red/green branches are proven against that rig, but the real command's response shape on the live account is not exercised here."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2 / Claim (skills/ultrapowers/references/first-run.md:53-55): the section says the row \"is `missing` only for an unreadable pool ... or an unparseable config\", but the integrated tree has a third missing branch \u2014 the #668 stale-key check in `capacityRow` (fleet/doctor.mjs:255-263) turns the row `missing` for any key that is neither `cpu` nor `memory`. The same paragraph (lines 56-58) does then describe that case (\"turns the row red until it is removed\"), so the prose is not wrong overall, only the word \"only\" is overstated against the code. The wording is the one the task's Context directed and M2 pins, hence minor rather than blocking."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 2 / Claim (skills/ultrapowers/references/first-run.md:49): the section's lead sentence \"Not a health check \u2014 arithmetic.\" is BASE wording left in place, and now sits one sentence before \"The row reports both and limits neither\". After this run the row performs no arithmetic \u2014 it formats the pool and the ask \u2014 so the lead-in contradicts the plan's Goal (\"stops computing a ceiling\") and the doctor's own header comment (fleet/doctor.mjs:13-14, \"The row reports; it limits nothing\"). Untouched by the task's Files-scoped edit and not pinned by any Machine clause, so worth an issue, not a merge stop."
+    }
+  ],
+  "blockedWaves": []
+}

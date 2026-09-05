@@ -1,0 +1,227 @@
+{
+  "ok": true,
+  "stamp": "run-22",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-22"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The capacity row prints the pool and the ask, and never a count",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/doctor.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "first-run.md \u00a7capacity says allocation is over-committable",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/references/first-run.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The capacity row prints the pool and the ask, and never a count",
+          "files": [
+            "fleet/doctor.mjs",
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/doctor.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_doctor.mjs && node fleet/tests/test_doctor_config_keys.mjs",
+          "proofRuns": [
+            "! grep -E 'fits|cannot hold' fleet/doctor.mjs",
+            "out=$(node fleet/tests/test_doctor.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "out=$(node fleet/tests/test_doctor_config_keys.mjs) && printf '%s\\n' \"$out\" | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "first-run.md \u00a7capacity says allocation is over-committable",
+          "files": [
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'over-commit.*contention'",
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | grep -q '#667'",
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'a run asks'",
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'missing.*unreadable.*unparseable'",
+            "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'fits three runs'",
+            "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'cannot carry seven'",
+            "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'is refused when the pool'",
+            "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'how many such runs fit'",
+            "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'cannot fit in'",
+            "! sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'width of a wave of runs'",
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | grep -q '\"cpu\": \"8\"'",
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | grep -q '\"memory\": \"16GB\"'",
+            "sed -n '/^## capacity$/,/^## claude$/p' skills/ultrapowers/references/first-run.md | tr -s '[:space:]' ' ' | grep -q 'does not read.*red'",
+            "test \"$(grep '^## ' skills/ultrapowers/references/first-run.md | tr '\\n' ' ')\" = \"## exe-dev ## capacity ## claude ## github ## integrations \"",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Capacitys"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The stale-key check of #668 is untouched: a key in `~/.ultrapowers/fleet.json` that is\n  neither `cpu` nor `memory` still turns the row `missing`, the detail still names it and\n  still says `keys nothing reads`, and a lacking read key is still named as taking its\n  default.\n- The `## capacity` heading of `first-run.md` and the five headings around it are\n  byte-identical to BASE \u2014 `tests/test_docs_agree_with_code.py` reads them against\n  `ROW_IDS` and is another bundle's file.\n- The fleet outside the doctor, the docs test, the operator skill and the two fleet\n  documents are byte-identical to BASE \u2014 they are other bundles' files in this wave.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = a2bcd0491f5af05f77606c747c8f4f6bc3659138",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 2f6289f1de89b48f5090b6a40d11a3d10c34b8b4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object tests/test_docs_agree_with_code.py)\" = c9687c77eca8374f6caf78b5deb587f24244fe9a",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = f286d45f24924654c4f71795903d8277ba9e9035",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = 7a45c72253c10632d1c914230df166b7d0934d70",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = a91fa2bb3bde04fa34396f6580a11f56e6e4bd8d",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-22/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-22/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-22/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-22/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

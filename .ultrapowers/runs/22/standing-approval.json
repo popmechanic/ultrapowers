@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-22.md run-22 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 2 — the measured facts cited in first-run.md §capacity (56 vCPU allocated on the 16-vCPU plan with no `new` refused; six runs asking 24 vCPU concurrent on 2026-09-05) and the #667 measurement they point at — These are observations of the live exe.dev account. The section is structurally complete and its wording is pinned by the Proof greps, but nothing in this tree or environment can confirm the account behaves as described. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — fleet/doctor.mjs capacity row against a real `ssh exe.dev \"billing plan --json\"` — Both sims drive the row through an injected `exec` with canned billing JSON (the doctor's five reads are PATH-shimmed, no network). The row's shape and all red/green branches are proven against that rig, but the real command's response shape on the live account is not exercised here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
