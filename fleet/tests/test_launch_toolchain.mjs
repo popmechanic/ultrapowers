@@ -273,17 +273,19 @@ async function launchAgainst (manifests) {
 
 // ── f. [M6] the usage string names no new flag ──────────────────────────────
 {
-  // The flags `fleet/launch.mjs` spelled at BASE (13c0e15), sorted. A launcher
-  // that grew a flag for this refusal would break the docs pin in
-  // tests/test_docs_agree_with_code.py; it is named here too, so the sim says
-  // which flag appeared.
+  // The flags `fleet/launch.mjs` spelled at BASE (13c0e15), sorted, plus
+  // `--implementer-effort`, which the effort work added for a reason of its own
+  // (see fleet/tests/test_launch_effort.mjs) — not for this refusal. A launcher
+  // that grew a flag for *this* refusal would break the docs pin in
+  // tests/test_docs_agree_with_code.py; the whole set is named here too, so the
+  // sim says which flag appeared.
   const BASE_FLAGS = [
-    '--base', '--config', '--cpu', '--engine', '--json', '--memory',
-    '--overlap', '--repo', '--run', '--target', '--tier'
+    '--base', '--config', '--cpu', '--engine', '--implementer-effort',
+    '--json', '--memory', '--overlap', '--repo', '--run', '--target', '--tier'
   ]
   assert.deepEqual(
     [...new Set(USAGE.match(/--[a-z][a-z-]*/g) ?? [])].sort(), BASE_FLAGS,
-    '(f) [M6] the usage string names the same flags it named at BASE — the refusal is unconditional, not a flag'
+    '(f) [M6] the usage string names no flag the toolchain refusal put there — the refusal is unconditional, not a flag'
   )
 }
 

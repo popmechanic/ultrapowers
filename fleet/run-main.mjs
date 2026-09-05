@@ -104,6 +104,9 @@ export const ROLE_TIMEOUT_MS = {
 export const DEFAULTS = Object.freeze({
   tier: 'mostCapable',
   overlap: null,
+  // Unset means "the CLI's own default, for every role" — the knob only ever
+  // turns the implementer down, and never touches a judge.
+  implementerEffort: null,
   testCmd: null,
   bootstrapCmd: null,
   cli: 'claude',
@@ -113,6 +116,7 @@ const FLAGS = Object.freeze({
   '--repo': 'repoDir',
   '--tier': 'tier',
   '--overlap': 'overlap',
+  '--implementer-effort': 'implementerEffort',
   '--test-cmd': 'testCmd',
   '--bootstrap-cmd': 'bootstrapCmd',
   '--cli': 'cli',
@@ -120,7 +124,8 @@ const FLAGS = Object.freeze({
 
 export const usage = () =>
   'usage: node fleet/run-main.mjs <plan.md> <runId> --repo DIR [--tier standard|mostCapable] ' +
-  '[--overlap fold|serialize] [--test-cmd CMD] [--bootstrap-cmd CMD|\'\'] [--cli BIN]\n' +
+  '[--overlap fold|serialize] [--implementer-effort low|medium|high] ' +
+  '[--test-cmd CMD] [--bootstrap-cmd CMD|\'\'] [--cli BIN]\n' +
   '  --bootstrap-cmd: omit to derive the install from the target\'s lockfile; \'\' disables it'
 
 export function parseArgs(argv) {
@@ -382,7 +387,14 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
 
 // ── agent composition — the one decision, both halves ────────────────────────
 export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
-                               promptFileFor, settingsFor, env, cli, eventLog, spawnFn }) {
+                               promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
+                               implementerEffort }) {
+  // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
+  // `implementer`; every other role answers undefined, so `buildArgs` pushes no
+  // `--effort` for it and each judge keeps the CLI's own default (#522).
+  const effortFor = implementerEffort
+    ? (role) => (role === 'implementer' ? implementerEffort : undefined)
+    : undefined
   const inner = createRunWorker({
     runId,
     workersDir,
@@ -393,6 +405,7 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
     env,
     cli,
     timeoutMsFor: (role) => ROLE_TIMEOUT_MS[role],
+    ...(effortFor ? { effortFor } : {}),
     onEvent: eventLog.onEvent,
     ...(spawnFn ? { spawnFn } : {}),
   })
@@ -439,7 +452,7 @@ export async function runMain(parsed, deps = {}) {
     log = console.error,
     env = process.env,
   } = deps
-  const { planPath, runId, tier, overlap, testCmd, bootstrapCmd, cli } = parsed
+  const { planPath, runId, tier, overlap, implementerEffort, testCmd, bootstrapCmd, cli } = parsed
   // Absolute, always: patchesDir is derived from repoDir, and waves.js's
   // PATCH_PREFIX second wall arms only for an absolute patchInput — a relative
   // --repo would silently disarm it, leaving only withPatchCapture's reply
@@ -560,7 +573,7 @@ export async function runMain(parsed, deps = {}) {
   const { agent, patchInput } = makeAgent({
     runId, base: () => patchBase.current, runDir,
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
-    promptFileFor, settingsFor, env: workerEnv, cli, eventLog,
+    promptFileFor, settingsFor, env: workerEnv, cli, eventLog, implementerEffort,
   })
   // #213 credential evidence (restored after the cutover deleted the shim's
   // copy — review finding 6): name the credential the workers will ride, in

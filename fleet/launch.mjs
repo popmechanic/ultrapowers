@@ -91,14 +91,19 @@ import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
                              [--repo <dir>] [--engine <40-hex>]
                              [--overlap fold|serialize] [--tier standard|mostCapable]
+                             [--implementer-effort low|medium|high]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--json]`
 
 export const usage = () => USAGE
 
-/** The two enumerated flags, with the exact spellings the comment carries. */
+/** The three enumerated flags, with the exact spellings the comment carries. */
 export const OVERLAP_VALUES = Object.freeze(['fold', 'serialize'])
 export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
+/** The effort the implementers (and their fix rounds) work at; every judge
+ *  keeps its own. The CLI also takes `xhigh` and `max`; the knob turns effort
+ *  DOWN, so it offers the lower three and refuses the rest. */
+export const EFFORT_VALUES = Object.freeze(['low', 'medium', 'high'])
 
 /** Where the plan lands in the commit the launcher pushes. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
@@ -244,6 +249,10 @@ export async function launch ({
   if (opts.tier !== undefined && !TIER_VALUES.includes(opts.tier)) {
     throw new Refusal(`launch: --tier must be one of ${TIER_VALUES.join('|')}, got ${JSON.stringify(opts.tier)}`)
   }
+  const implementerEffort = opts['implementer-effort']
+  if (implementerEffort !== undefined && !EFFORT_VALUES.includes(implementerEffort)) {
+    throw new Refusal(`launch: --implementer-effort must be one of ${EFFORT_VALUES.join('|')}, got ${JSON.stringify(implementerEffort)}`)
+  }
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
   }
@@ -285,7 +294,8 @@ export async function launch ({
     base: opts.base,
     engine: opts.engine ?? '0'.repeat(40),
     overlap: opts.overlap,
-    tier: opts.tier
+    tier: opts.tier,
+    effort: implementerEffort
   }
   const probeComment = buildComment(fields)
   if (Buffer.byteLength(probeComment, 'utf8') > COMMENT_MAX_BYTES) {

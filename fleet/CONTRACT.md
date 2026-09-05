@@ -36,13 +36,14 @@ any VM. Everything a run produced is three branches on the repository the run wa
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
     [+ `.ultrapowers/gate-verdicts.json`]. Written by the launcher, before any VM exists.
   - `ultra/evidence-run-<N>` — the run's record under `.ultrapowers/runs/<N>/`: `status.json`,
-    `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`. Committed from a
-    detached worktree at every transition; append-only paths, `pull --rebase` and retry on
-    non-fast-forward.
+    `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`, plus
+    `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
+    Committed from a detached worktree at every transition; append-only paths, `pull --rebase` and
+    retry on non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
-  optional `overlap=fold|serialize`, `tier=standard|mostCapable`. `plan=` is the tip of
+  optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`. `plan=` is the tip of
   `ultra/plan-run-<N>` on the target. Written once by `new --comment`; the sandbox reads it ONCE from
   `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run if it is absent or
   malformed. Nobody rewrites it.
