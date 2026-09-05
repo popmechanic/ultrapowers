@@ -17,12 +17,34 @@
  *       attempt's output in the failure;
  *   (e) [M5] the result's keys and the comment.
  *
+ * The launch line also names the keychain entry the run signs in with, and
+ * prints the verb-drift preflight. Those legs are lettered as their own task
+ * spells them — (a) [M1 account], (b) [M2 credential], (c) [M3 lines],
+ * (d) [M4 drift] — and the mnemonic in the bracket tells them apart from the
+ * clause numbers the groups above carry:
+ *
+ *   (a) [M1 account] `USAGE` names `--account`; the account is the flag, else
+ *       the config's, else `ultrapowers`; a missing or ill-formed value is a
+ *       `Refusal` before any command runs — groups 0, b and f;
+ *   (b) [M2 credential] the seam is called once, with that name, after the
+ *       integrations read and before the push; `{ ok: false }` is a
+ *       `LobbyError` before any push and any `new`; and
+ *       `defaultRefreshCredential(account, spawn)`'s argv and its three
+ *       answers — group g;
+ *   (c) [M3 lines] the result's `account` and `verbDrift`, the two rendered
+ *       lines, and the assignment comment that carries neither — groups e, h;
+ *   (d) [M4 drift] the `help <verb>` reads, where they sit, and that no drift
+ *       and no unreadable record changes the launch's outcome or its mutating
+ *       verbs — group i.
+ *
  * Nothing here opens a network socket. Every `ssh` goes through the injected
  * exec seam. The target is a real repository — `makeTargetRepo`'s bare origin
  * and its clone — whose `origin` is spelled the way a real target's is, and the
  * seam rewrites the remote of the launcher's own `ls-remote` and `push` to that
  * bare path and runs them for real: the push is a real push, `plan=` is a sha
- * git made, and the refs the launcher reads are the origin's own.
+ * git made, and the refs the launcher reads are the origin's own. The keychain
+ * is never touched either: every launch is handed a `refreshCredential` spy,
+ * and `defaultRefreshCredential` is exercised with a spawner of the exam's own.
  */
 
 import assert from 'node:assert/strict'
@@ -30,7 +52,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { USAGE, launch, renderLaunch } from '../launch.mjs'
+import { USAGE, defaultRefreshCredential, launch, renderLaunch } from '../launch.mjs'
+import { fleetConfigAccount } from '../doctor.mjs'
 import {
   FLEET_DEFAULTS,
   LobbyError,
@@ -67,6 +90,14 @@ const BILLING_OK = {
 }
 
 const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/** The verb record the preflight compares the lobby against, read once. */
+const VERBS_PATH = path.join(FLEET_DIR, 'exe-verbs.json')
+const VERBS = JSON.parse(fs.readFileSync(VERBS_PATH, 'utf8'))
+const VERB_NAMES = Object.keys(VERBS.verbs)
+/** The two lines a launch with no `--account` adds, verbatim. */
+const ACCOUNT_LINE = 'account=ultrapowers'
+const DRIFT_LINE = 'verb-drift: 12 verbs match fleet/exe-verbs.json (captured 2026-09-05)'
 
 // ── The seam's rules ────────────────────────────────────────────────────────
 
@@ -110,14 +141,45 @@ const NO_NETWORK_GIT = {
   answer: OFFLINE
 }
 
+/**
+ * `help <verb>` as the lobby prints it: a `Command:` line, an `Options:` block
+ * and one indented `--flag` line per flag. The flags are the record's own, so a
+ * launch over this rule finds no drift; a leg that wants one overrides the rule
+ * for the one verb it is about.
+ */
+const helpText = (verb, flags) => [
+  `Command: ${verb}`,
+  '',
+  'Options:',
+  ...flags.map((flag) => `  ${flag}  what ${flag} does`),
+  ''
+].join('\n')
+
+/** The verb a `help <verb>` remote command asked about. */
+const verbOf = (argv) => String(argv[1] ?? '').slice('help '.length)
+
+/** Every verb of `record` answered with the flags `record` has for it. */
+const helpFrom = (record) => (cmd, argv) => {
+  const verb = verbOf(argv)
+  const flags = record.verbs[verb]
+  return flags
+    ? answer(helpText(verb, flags))
+    : answer(`No help available for unrecognized command: ${verb}\n`)
+}
+
+/** The shipped record, answered back: the lobby the record was captured from. */
+const HELP_OK = helpFrom(VERBS)
+
 const readRules = ({
   repo,
   integrations = [{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }],
   billing = BILLING_OK,
-  newVerb = NEW_OK
+  newVerb = NEW_OK,
+  help = HELP_OK
 } = {}) => [
   ENGINE_RULE,
   ...(repo ? [localRemote(repo)] : []),
+  ...(help === null ? [] : [sshRule('help ', help)]),
   sshRule('integrations list --json', answer(integrations)),
   sshRule('billing plan --json', answer(billing)),
   sshRule('new ', newVerb),
@@ -156,18 +218,40 @@ const argvFor = (ws, extra = []) => [
   '--engine', ENGINE, ...extra
 ]
 
+/**
+ * The credential seam, recording the account it was handed and how many
+ * commands the launch had issued when it was called — so a leg can say where
+ * the refresh sits among `exec.calls` without the seam knowing about them.
+ * Nothing here spawns the credential tool, so no keychain is read.
+ */
+const refreshSpy = (exec, reply = { ok: true }) => {
+  const spy = (account) => {
+    spy.calls.push({ account, at: exec ? exec.calls.length : -1 })
+    return typeof reply === 'function' ? reply(account) : reply
+  }
+  spy.calls = []
+  return spy
+}
+
 const launchIn = (ws, {
   argv, exec, sleep = async () => {}, config = CONFIG,
-  refreshCredential = () => ({ ok: true })
+  refreshCredential = refreshSpy(exec), verbsPath
 } = {}) => launch({
-  argv: argv ?? argvFor(ws), exec, config, now: () => NOW, sleep, refreshCredential
+  argv: argv ?? argvFor(ws), exec, config, now: () => NOW, sleep, refreshCredential, verbsPath
 })
 
-/** A green launch with the default rules; answers the result and its seam. */
-async function greenLaunch (ws, { extra = [], rules = {} } = {}) {
+/** A green launch with the default rules; answers the result and its seams. */
+async function greenLaunch (ws, { extra = [], rules = {}, config, refresh, verbsPath } = {}) {
   const exec = makeExec({ rules: readRules({ repo: ws.repo, ...rules }) })
-  const result = await launchIn(ws, { argv: argvFor(ws, extra), exec })
-  return { result, exec }
+  const refreshCredential = refresh ?? refreshSpy(exec)
+  const result = await launchIn(ws, {
+    argv: argvFor(ws, extra),
+    exec,
+    refreshCredential,
+    verbsPath,
+    ...(config === undefined ? {} : { config })
+  })
+  return { result, exec, refresh: refreshCredential }
 }
 
 const newLines = (exec) => exec.lobby().filter((line) => line.startsWith('new '))
@@ -223,6 +307,20 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
     assert.ok(USAGE.includes(flag), `(0) [M5] the usage string names ${flag}`)
   }
   assert.ok(!USAGE.includes('--golden'), '(0) [M5] and no longer names --golden')
+
+  assert.ok(
+    USAGE.includes('--account'),
+    '(a) [M1 account] the usage string names --account: the launch line is where the per-run keychain entry is chosen'
+  )
+  assert.ok(
+    USAGE.includes('--account <name>'),
+    '(a) [M1 account] and spells its value <name>, the way the credential tool takes it'
+  )
+
+  // The fixture the two rendered lines are pinned against: the shipped record's
+  // twelve verbs, captured the day the account landed.
+  assert.equal(VERB_NAMES.length, 12, '(d) [M4 drift] fleet/exe-verbs.json records twelve verbs')
+  assert.equal(VERBS.capturedAt, '2026-09-05', '(d) [M4 drift] captured 2026-09-05')
 }
 
 // ── a. [M1] one mutating verb: the `new` line, with the script on its stdin ──
@@ -327,7 +425,17 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
       name: 'a config cpu that is not a positive integer',
       argv: (ws) => argvFor(ws),
       config: { cpu: 'many', memory: '16GB' }
-    }
+    },
+    // The account rides `--comment account=` on the edge and is the keychain
+    // item's own `acct`, so a name that is not `^[A-Za-z0-9][A-Za-z0-9._-]*$`
+    // is refused before anything is executed rather than interpolated into a
+    // remote command string. `--account` last on the line takes no value at
+    // all, which is the same refusal.
+    { name: '--account with no value', argv: (ws) => argvFor(ws, ['--account']), account: true },
+    { name: "--account 'bad name'", argv: (ws) => argvFor(ws, ['--account', 'bad name']), account: true },
+    { name: '--account -x', argv: (ws) => argvFor(ws, ['--account', '-x']), account: true },
+    { name: '--account .x', argv: (ws) => argvFor(ws, ['--account', '.x']), account: true },
+    { name: "--account 'a;b'", argv: (ws) => argvFor(ws, ['--account', 'a;b']), account: true }
   ]
 
   for (const kase of cases) {
@@ -352,6 +460,16 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
       Object.keys(branchesOf(ws)).every((ref) => !ref.startsWith('ultra/')),
       `(b) [M2] ${kase.name} leaves no ultra/ ref on the origin`
     )
+    if (kase.account) {
+      assert.ok(
+        error.message.includes('--account'),
+        `(a) [M1 account] ${kase.name} names --account in the refusal, got ${JSON.stringify(error.message)}`
+      )
+      assert.deepEqual(
+        exec.calls.map((c) => c.line), [],
+        `(a) [M1 account] ${kase.name} refuses before any command is executed`
+      )
+    }
     ws.cleanup()
   }
 
@@ -593,10 +711,17 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
     newLines(exec)[0].includes('--cpu 4 --memory 8GB'),
     '(e) [M1] and the `new` line asks for that size'
   )
+  assert.ok('account' in result, '(c) [M3 lines] the result carries account')
+  assert.equal(result.account, 'ultrapowers', '(c) [M3 lines] `ultrapowers` when nothing named another')
+  assert.ok('verbDrift' in result, '(c) [M3 lines] and verbDrift, the object verbDrift answered')
+  assert.equal(
+    result.verbDrift.readable, true,
+    '(c) [M3 lines] whose readable is true: the shipped record was read'
+  )
   assert.deepEqual(
     renderLaunch(result).split('\n'),
-    [result.runId, result.vm, result.statusUrl, result.comment],
-    '(e) [M5] renderLaunch prints the run id, the VM, the status URL and the comment'
+    [result.runId, result.vm, result.statusUrl, result.comment, ACCOUNT_LINE, DRIFT_LINE],
+    '(c) [M3 lines] renderLaunch prints the run id, the VM, the status URL and the comment, then account= and the verb-drift preflight'
   )
   ws.cleanup()
 
@@ -615,6 +740,357 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
     '(e) [M5] inside the 200-byte ceiling'
   )
   tagged.cleanup()
+}
+
+// ── f. (a) [M1 account] which entry the launch names ───────────────────────
+{
+  const ws = workspace()
+  const { result: flagged } = await greenLaunch(ws, { extra: ['--account', 'b'] })
+  assert.equal(flagged.account, 'b', '(a) [M1 account] --account b names b')
+  ws.cleanup()
+
+  const over = workspace()
+  const { result: overridden } = await greenLaunch(over, {
+    extra: ['--account', 'b'], config: { ...CONFIG, account: 'c' }
+  })
+  assert.equal(
+    overridden.account, 'b',
+    "(a) [M1 account] --account b over a config carrying account 'c' is b, not c: the flag is the per-run choice"
+  )
+  over.cleanup()
+
+  const configured = workspace()
+  const { result: fromConfig } = await greenLaunch(configured, {
+    config: { ...CONFIG, account: 'c' }
+  })
+  assert.equal(
+    fromConfig.account, 'c',
+    "(a) [M1 account] no flag and an injected config carrying account 'c' is c"
+  )
+  configured.cleanup()
+
+  const bare = workspace()
+  const { result: defaulted } = await greenLaunch(bare)
+  assert.equal(
+    defaulted.account, 'ultrapowers',
+    '(a) [M1 account] neither flag nor config account is `ultrapowers`, the entry BASE reads and writes'
+  )
+  bare.cleanup()
+
+  // No injected config: the file `--config` names is read, and its `account` is
+  // the one `fleetConfigAccount` answers over that same path.
+  const filed = workspace()
+  const configPath = path.join(filed.root, 'fleet.json')
+  fs.writeFileSync(configPath, '{"cpu":"8","memory":"16GB","account":"d"}')
+  const execFiled = makeExec({ rules: readRules({ repo: filed.repo }) })
+  const fromFile = await launchIn(filed, {
+    argv: argvFor(filed, ['--config', configPath]), exec: execFiled, config: null
+  })
+  assert.equal(
+    await fleetConfigAccount({ path: configPath }), 'd',
+    "(a) [M1 account] fleetConfigAccount reads the file's account"
+  )
+  assert.equal(
+    fromFile.account, 'd',
+    '(a) [M1 account] and a launch with no injected config takes the account off the file --config names'
+  )
+  filed.cleanup()
+
+  const dotted = workspace()
+  const { result: punctuated } = await greenLaunch(dotted, { extra: ['--account', 'a.b-c_d'] })
+  assert.equal(
+    punctuated.account, 'a.b-c_d',
+    '(a) [M1 account] a name of letters, digits, dot, dash and underscore goes through'
+  )
+  dotted.cleanup()
+}
+
+// ── g. (b) [M2 credential] the seam: its name, its place, its answers ───────
+{
+  const ws = workspace()
+  const { result, exec, refresh } = await greenLaunch(ws, { extra: ['--account', 'b'] })
+  assert.equal(refresh.calls.length, 1, '(b) [M2 credential] the seam is called exactly once')
+  assert.equal(
+    refresh.calls[0].account, 'b',
+    '(b) [M2 credential] with the account the launch chose'
+  )
+
+  const listAt = indexOf(exec, (c) => c.argv[1] === 'integrations list --json')
+  const pushAt = indexOf(exec, (c) => c.cmd === 'git' && c.argv.includes('push'))
+  const at = refresh.calls[0].at
+  assert.ok(listAt >= 0, '(b) [M2 credential] the integrations read happened')
+  assert.ok(pushAt >= 0, '(b) [M2 credential] and the plan push')
+  assert.ok(
+    at > listAt,
+    `(b) [M2 credential] the refresh is after the integrations list --json read: that read is call ${listAt}, the refresh came after call ${at}`
+  )
+  assert.ok(
+    at <= pushAt,
+    `(b) [M2 credential] and before the plan is pushed: the push is call ${pushAt}, the refresh came after call ${at}`
+  )
+  assert.ok(isVmName(result.vm), '(b) [M2 credential] and the launch went through')
+  ws.cleanup()
+
+  const plain = workspace()
+  const { refresh: bareSeam } = await greenLaunch(plain)
+  assert.equal(bareSeam.calls.length, 1, '(b) [M2 credential] a bare launch calls the seam once too')
+  assert.equal(
+    bareSeam.calls[0].account, 'ultrapowers',
+    '(b) [M2 credential] with `ultrapowers`: the BASE item is read and written as at BASE when no --account is given'
+  )
+  plain.cleanup()
+
+  // A refusal from the seam is a failure before any VM and before any push.
+  const doomed = workspace()
+  const execDoomed = makeExec({ rules: readRules({ repo: doomed.repo }) })
+  const seam = refreshSpy(execDoomed, { ok: false, out: 'x' })
+  const error = await thrown(() => launchIn(doomed, { exec: execDoomed, refreshCredential: seam }))
+  assert.ok(
+    error instanceof LobbyError,
+    `(b) [M2 credential] a { ok: false } answer is a LobbyError, got ${error?.name}: ${error?.message}`
+  )
+  assert.deepEqual(newLines(execDoomed), [], '(b) [M2 credential] with no `new` issued')
+  assert.deepEqual(execDoomed.mutating(), [], '(b) [M2 credential] and nothing else mutated')
+  assert.ok(
+    !execDoomed.calls.some((c) => c.cmd === 'git' && c.argv.includes('push')),
+    '(b) [M2 credential] and no plan pushed'
+  )
+  assert.ok(
+    Object.keys(branchesOf(doomed)).every((ref) => !ref.startsWith('ultra/')),
+    '(b) [M2 credential] so the target carries no ultra/ ref'
+  )
+  doomed.cleanup()
+}
+
+// ── g2. (b) [M2 credential] defaultRefreshCredential's argv and its answers ─
+{
+  /** A spawner of the exam's own: the credential tool never runs, so the
+   *  keychain is never read and no token is ever printed. */
+  const spawnSpy = (res) => {
+    const spy = (file, argv, options) => {
+      spy.calls.push({ file, argv, options })
+      return res
+    }
+    spy.calls = []
+    return spy
+  }
+
+  const green = spawnSpy({ status: 0, stdout: 'claude-max: refreshed b\n', stderr: '' })
+  const ok = defaultRefreshCredential('b', green)
+  assert.equal(green.calls.length, 1, '(b) [M2 credential] defaultRefreshCredential spawns exactly once')
+  assert.equal(
+    green.calls[0].file, process.execPath,
+    '(b) [M2 credential] the node that is running this exam'
+  )
+  assert.deepEqual(
+    green.calls[0].argv.slice(-3), ['refresh', '--account', 'b'],
+    '(b) [M2 credential] and asks it to refresh --account b'
+  )
+  assert.ok(
+    String(green.calls[0].argv[0]).endsWith('claude-token.mjs'),
+    `(b) [M2 credential] the script is claude-token.mjs, got ${JSON.stringify(green.calls[0].argv[0])}`
+  )
+  assert.ok(
+    fs.existsSync(green.calls[0].argv[0]),
+    "(b) [M2 credential] the fleet dir's own copy of it, a file that exists"
+  )
+  assert.equal(
+    green.calls[0].argv.length, 4,
+    '(b) [M2 credential] and nothing else on the line'
+  )
+  assert.equal(ok.ok, true, '(b) [M2 credential] status 0 answers { ok: true }')
+  assert.notEqual(ok.skipped, true, '(b) [M2 credential] and is not a skip')
+
+  const none = spawnSpy({
+    status: 1, stdout: '', stderr: 'claude-max: no refresh token in the keychain\n'
+  })
+  const skipped = defaultRefreshCredential('b', none)
+  assert.equal(skipped.ok, true, '(b) [M2 credential] `no refresh token in the keychain` is not fatal')
+  assert.equal(
+    skipped.skipped, true,
+    '(b) [M2 credential] it answers { ok: true, skipped: true }: a laptop set up with `claude setup-token` has no record to rotate'
+  )
+
+  const failed = spawnSpy({
+    status: 1, stdout: '', stderr: 'claude-max: the refresh endpoint answered 400\n'
+  })
+  const bad = defaultRefreshCredential('b', failed)
+  assert.equal(
+    bad.ok, false,
+    '(b) [M2 credential] any other non-zero answer is { ok: false }'
+  )
+  assert.ok(
+    String(bad.out ?? '').includes('the refresh endpoint answered 400'),
+    "(b) [M2 credential] carrying the tool's own words, so the operator can read what failed"
+  )
+}
+
+// ── h. (c) [M3 lines] the comment is BASE's, account= or no ────────────────
+{
+  const plain = workspace()
+  const { result: bare } = await greenLaunch(plain)
+  const named = workspace()
+  const { result: withAccount, exec } = await greenLaunch(named, { extra: ['--account', 'b'] })
+
+  assert.equal(
+    bare.comment,
+    `run=1 plan=${bare.plan} target=${TARGET} base=${plain.repo.base} engine=${ENGINE}`,
+    "(c) [M3 lines] a bare launch's comment is BASE's five keys"
+  )
+  assert.equal(
+    withAccount.comment,
+    `run=1 plan=${withAccount.plan} target=${TARGET} base=${named.repo.base} engine=${ENGINE}`,
+    '(c) [M3 lines] and --account b changes not one byte of it'
+  )
+  // The two launches necessarily commit different plan shas onto different
+  // bases, so the comparison is over the same plan sha and the same base:
+  // everything else in the two comments is compared verbatim.
+  const shapeOf = (result, ws) =>
+    result.comment.replaceAll(result.plan, '<plan>').replaceAll(ws.repo.base, '<base>')
+  assert.equal(
+    shapeOf(withAccount, named), shapeOf(bare, plain),
+    "(c) [M3 lines] the --account b comment is byte-identical to the comment the same launch built without the flag"
+  )
+  assert.ok(
+    !withAccount.comment.includes('account='),
+    '(c) [M3 lines] it carries no account=: sandbox-boot.sh fails an assignment with an unknown key'
+  )
+  assert.ok(
+    !newLines(exec)[0].includes('account='),
+    '(c) [M3 lines] and neither does the `new` line that carries it'
+  )
+  assert.equal(withAccount.account, 'b', '(c) [M3 lines] the account is on the result instead')
+  assert.deepEqual(
+    renderLaunch(withAccount).split('\n'),
+    [
+      withAccount.runId, withAccount.vm, withAccount.statusUrl, withAccount.comment,
+      'account=b', DRIFT_LINE
+    ],
+    '(c) [M3 lines] and on the launch line, after the comment: account=b, then the verb-drift preflight'
+  )
+  plain.cleanup()
+  named.cleanup()
+}
+
+// ── i. (d) [M4 drift] the preflight reads, and what a drift does not do ────
+{
+  // The reads, where they sit, and the lobby a green launch issues.
+  const ws = workspace()
+  const { result, exec } = await greenLaunch(ws)
+
+  assert.deepEqual(
+    exec.lobby().filter((line) => line.startsWith('help ')),
+    VERB_NAMES.map((verb) => `help ${verb}`),
+    '(d) [M4 drift] one `help <verb>` read per verb of the record, through the lobby seam'
+  )
+  const listAt = indexOf(exec, (c) => c.argv[1] === 'integrations list --json')
+  const lsAt = indexOf(exec, (c) => String(c.argv[1] ?? '').startsWith("ls '"))
+  const helpAt = exec.calls
+    .map((c, i) => (String(c.argv[1] ?? '').startsWith('help ') ? i : -1))
+    .filter((i) => i >= 0)
+  assert.ok(lsAt >= 0, "(d) [M4 drift] the reap's `ls` read happened")
+  assert.ok(
+    listAt >= 0 && listAt < helpAt[0],
+    `(d) [M4 drift] the reads come after the integrations list --json read: that read is call ${listAt}, the first help is call ${helpAt[0]}`
+  )
+  assert.ok(
+    helpAt[helpAt.length - 1] < lsAt,
+    `(d) [M4 drift] and before the reap's ls: the last help is call ${helpAt[helpAt.length - 1]}, the ls is call ${lsAt}`
+  )
+
+  const nonHelp = exec.lobby().filter((line) => !line.startsWith('help '))
+  assert.deepEqual(
+    nonHelp.slice(0, 3),
+    ['integrations list --json', 'billing plan --json', "ls 'fleet-r*' --json"],
+    "(d) [M4 drift] the lobby a green launch issues is BASE's, plus the help reads"
+  )
+  assert.equal(nonHelp.length, 4, '(d) [M4 drift] four lobby commands besides them')
+  assert.ok(nonHelp[3].startsWith('new '), '(d) [M4 drift] the last of them the `new`')
+  assert.equal(exec.mutating().length, 1, '(d) [M4 drift] and `exec.mutating()` is exactly one line')
+  assert.ok(
+    exec.mutating()[0].startsWith('new '),
+    '(d) [M4 drift] the `new …` line: a `help <verb>` read mutates nothing'
+  )
+  assert.equal(
+    result.verbDrift.detail, DRIFT_LINE.slice('verb-drift: '.length),
+    '(d) [M4 drift] a lobby answering the record has no finding'
+  )
+  ws.cleanup()
+
+  // A drift: `rm` no longer answers a flag the record has for it. The record
+  // this leg hands the launcher is the shipped one with a second `rm` flag,
+  // because `rm` ships with `--json` alone: a help answer with no flag at all
+  // is `unreadable`, not `vanished`, so a vanished-flag line needs a record
+  // whose verb has another flag left to answer with.
+  const drifted = workspace()
+  const record = JSON.parse(JSON.stringify(VERBS))
+  record.verbs.rm = ['--json', '--force']
+  const driftPath = path.join(drifted.root, 'exe-verbs.json')
+  fs.writeFileSync(driftPath, JSON.stringify(record))
+  const withoutJson = { ...record, verbs: { ...record.verbs, rm: ['--force'] } }
+  const { result: driftResult, exec: driftExec } = await greenLaunch(drifted, {
+    rules: { help: helpFrom(withoutJson) }, verbsPath: driftPath
+  })
+  assert.ok(isVmName(driftResult.vm), '(d) [M4 drift] a drift still answers a VM')
+  assert.equal(
+    driftExec.mutating().length, 1,
+    '(d) [M4 drift] and `exec.mutating()` is still the one `new …` line'
+  )
+  assert.ok(driftExec.mutating()[0].startsWith('new '), '(d) [M4 drift] that one line being the `new`')
+  assert.equal(
+    renderLaunch(driftResult).split('\n').find((line) => line.startsWith('verb-drift: ')),
+    'verb-drift: drift since 2026-09-05: rm: --json vanished',
+    '(d) [M4 drift] the rendered line names the verb and the flag that went'
+  )
+  drifted.cleanup()
+
+  // A `help` that answers non-zero is a finding, not a failure.
+  const unread = workspace()
+  const { result: unreadResult, exec: unreadExec } = await greenLaunch(unread, {
+    rules: {
+      help: (cmd, argv) => (verbOf(argv) === 'new'
+        ? answer('', { code: 255, stderr: 'exe: help failed\n' })
+        : HELP_OK(cmd, argv))
+    }
+  })
+  assert.ok(isVmName(unreadResult.vm), '(d) [M4 drift] a help that answers 255 still answers a VM')
+  const unreadLine = renderLaunch(unreadResult).split('\n').find((line) => line.startsWith('verb-drift: '))
+  assert.ok(
+    unreadLine.includes('new: help unreadable (code 255)'),
+    `(d) [M4 drift] and the line carries \`new: help unreadable (code 255)\`, got ${JSON.stringify(unreadLine)}`
+  )
+  assert.equal(unreadExec.mutating().length, 1, '(d) [M4 drift] one mutating verb still')
+  unread.cleanup()
+
+  // No `help` rule at all: every read answers empty, every verb is a finding.
+  const silent = workspace()
+  const { result: silentResult, exec: silentExec } = await greenLaunch(silent, { rules: { help: null } })
+  assert.ok(isVmName(silentResult.vm), '(d) [M4 drift] a lobby that answers nothing still answers a VM')
+  assert.equal(silentExec.mutating().length, 1, '(d) [M4 drift] with one mutating verb')
+  assert.ok(
+    renderLaunch(silentResult).split('\n').some((line) => line.startsWith('verb-drift: ')),
+    '(d) [M4 drift] and a verb-drift line all the same'
+  )
+  silent.cleanup()
+
+  // An unreadable record: nothing to compare the lobby against, and still a run.
+  const absent = workspace()
+  const missing = path.join(absent.root, 'no-such-record.json')
+  const { result: absentResult, exec: absentExec } = await greenLaunch(absent, { verbsPath: missing })
+  assert.ok(isVmName(absentResult.vm), '(d) [M4 drift] an absent record still answers a VM')
+  assert.equal(absentExec.mutating().length, 1, '(d) [M4 drift] with `exec.mutating()` the one line')
+  assert.ok(absentExec.mutating()[0].startsWith('new '), '(d) [M4 drift] the `new …` line')
+  assert.equal(
+    absentResult.verbDrift.readable, false,
+    '(d) [M4 drift] and result.verbDrift.readable false'
+  )
+  const absentLine = renderLaunch(absentResult).split('\n').find((line) => line.startsWith('verb-drift: '))
+  assert.ok(absentLine, '(d) [M4 drift] the launch line still carries a verb-drift line')
+  assert.ok(
+    absentLine.includes('fleet/exe-verbs.json'),
+    `(d) [M4 drift] naming the record it could not read, got ${JSON.stringify(absentLine)}`
+  )
+  absent.cleanup()
 }
 
 console.log('ALL TESTS PASSED')

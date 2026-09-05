@@ -12,9 +12,12 @@
  *      `--base` is a commit the checkout has, `integrations list --json` (the
  *      target's one GitHub object must exist), `billing plan --json` (one run
  *      must fit the plan's pool), the target's `ultra/*` refs (the run number
- *      is one past the highest N they carry) and the engine tip;
- *   3. refreshes the Claude credential — a refresh failure is a failure before
- *      any VM exists;
+ *      is one past the highest N they carry) and the engine tip, and asks
+ *      `help <verb>` for every verb of `fleet/exe-verbs.json` — a drift there
+ *      is a line on the launch, never a refusal;
+ *   3. refreshes the Claude credential the run signs in with, the entry
+ *      `--account` names — a refresh failure is a failure before any VM
+ *      exists;
  *   4. commits the plan against a temporary index and pushes it to the target
  *      as `ultra/plan-run-N`; that commit's sha is `plan=` in the assignment;
  *   5. issues exactly one mutating lobby verb:
@@ -56,6 +59,7 @@ import {
   CLAUDE_INTEGRATION,
   COMMENT_MAX_BYTES,
   ENGINE_URL,
+  EXE_HOST,
   FLEET_DEFAULTS,
   FLEET_TAG,
   LobbyError,
@@ -84,6 +88,7 @@ import {
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
+import { fleetConfigAccount, verbDrift } from './doctor.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 
@@ -94,7 +99,7 @@ export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<r
                              [--overlap fold|serialize] [--tier standard|mostCapable]
                              [--implementer-effort low|medium|high] [--hold]
                              [--cpu <n>] [--memory <n>GB]
-                             [--run <N>] [--config <path>] [--json]`
+                             [--run <N>] [--config <path>] [--account <name>] [--json]`
 
 export const usage = () => USAGE
 
@@ -105,6 +110,19 @@ export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
  *  keeps its own. The CLI also takes `xhigh` and `max`; the knob turns effort
  *  DOWN, so it offers the lower three and refuses the rest. */
 export const EFFORT_VALUES = Object.freeze(['low', 'medium', 'high'])
+
+/**
+ * The keychain entry a run signs in with when neither `--account` nor the
+ * config names one — the entry every laptop that walked the first run has.
+ * `ACCOUNT_NAME` is `fleet/claude-token.mjs`'s own rule, copied rather than
+ * imported: the launcher refuses a name the credential tool would refuse, and
+ * it refuses it before anything is executed.
+ */
+export const DEFAULT_ACCOUNT = 'ultrapowers'
+const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/** The lobby-verb record the preflight compares the live lobby against. */
+const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
 
 /** Where the plan lands in the commit the launcher pushes. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
@@ -175,8 +193,14 @@ async function defaultEngineSha (exec) {
 // laptop holds the refresh token. Before a VM exists, rotate it if it is within
 // 30 minutes of expiry — a run that outlives its bearer dies in the gate.
 // A laptop set up with `claude setup-token` (no keychain record) skips this.
-export function defaultRefreshCredential () {
-  const r = spawnSync(process.execPath, [new URL('./claude-token.mjs', import.meta.url).pathname, 'refresh'], { encoding: 'utf8' })
+//
+// The account is the launch's, so the entry this rotates and installs is the
+// one the run signs in with — one entry, chosen per run and never mid-run.
+// `spawn` is the second argument for the exam's sake: a spy records the argv
+// and the real credential tool, and the keychain behind it, stay untouched.
+export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spawnSync) {
+  const tool = new URL('./claude-token.mjs', import.meta.url).pathname
+  const r = spawn(process.execPath, [tool, 'refresh', '--account', account], { encoding: 'utf8' })
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
   if (r.status === 0) return { ok: true, out }
   if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
@@ -189,7 +213,7 @@ export function defaultRefreshCredential () {
  */
 export async function launch ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
-  refreshCredential = defaultRefreshCredential
+  refreshCredential = defaultRefreshCredential, verbsPath = VERBS_PATH
 }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold'] })
 
@@ -228,8 +252,29 @@ export async function launch ({
   if (opts.run !== undefined && !isRunNumber(opts.run)) {
     throw new Refusal(`launch: --run must be a positive integer, got ${JSON.stringify(opts.run)}`)
   }
+  // `--account` reaches `claude-token.mjs refresh` as an argument and the
+  // keychain as an item's account, so a name it would refuse is refused here,
+  // before the first read — a launch that cannot name its entry has not yet
+  // touched exe.dev or the target.
+  if (opts.account !== undefined && (opts.account === true || !ACCOUNT_NAME.test(opts.account))) {
+    throw new Refusal(
+      `launch: --account must be a name matching ${ACCOUNT_NAME.source}, got ${JSON.stringify(opts.account === true ? null : opts.account)}`
+    )
+  }
 
   const settings = config ?? await loadFleetConfig({ path: opts.config })
+  // Which keychain entry this run signs in with: the flag, else the config's
+  // `account`, else the entry the first-run walk builds. `loadFleetConfig`
+  // answers only the two keys the pool is sized from, so the file's account is
+  // read by `fleetConfigAccount` — and only when no config was injected, so an
+  // exam that hands `launch` a config never reads the laptop's own.
+  let account = opts.account === undefined ? null : String(opts.account)
+  if (account === null) {
+    const named = config === undefined || config === null
+      ? await fleetConfigAccount({ path: opts.config })
+      : config.account
+    account = typeof named === 'string' && named !== '' ? named : DEFAULT_ACCOUNT
+  }
   const cpu = String(opts.cpu ?? settings.cpu ?? FLEET_DEFAULTS.cpu)
   const memory = String(opts.memory ?? settings.memory ?? FLEET_DEFAULTS.memory)
   if (!isPositiveInt(cpu)) {
@@ -300,6 +345,28 @@ export async function launch ({
     )
   }
 
+  // ── The verb-drift preflight. `help <verb>` for every verb of the record,
+  //    diffed against the flags recorded there. Every read, and every one of
+  //    them a `help` line: `exec.mutating()` is untouched by it. A drift, a
+  //    `help` that answers non-zero and a record that cannot be read at all
+  //    are findings on the launch line and nothing more — the lobby's flags
+  //    are exe.dev's to change, and a launch that still works is not a launch
+  //    to refuse. So even a `help` seam that throws leaves the outcome alone.
+  let drift
+  try {
+    drift = await verbDrift({
+      help: (verb) => exec('ssh', [EXE_HOST, `help ${verb}`]),
+      recordPath: verbsPath
+    })
+  } catch (error) {
+    drift = {
+      readable: false,
+      capturedAt: null,
+      findings: [],
+      detail: `fleet/exe-verbs.json could not be compared against the lobby: ${error?.message ?? error}`
+    }
+  }
+
   // One run must fit the plan's pool. Allocation is over-committable and
   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
   // contention bounds concurrency, and two plans at once is by design.
@@ -338,7 +405,7 @@ export async function launch ({
   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
   const engine = opts.engine ?? await defaultEngineSha(exec)
 
-  const cred = refreshCredential()
+  const cred = refreshCredential(account)
   if (!cred.ok) {
     throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
   }
@@ -407,6 +474,12 @@ export async function launch ({
     base: opts.base,
     engine,
     engineSource,
+    // The account is the run's, but never the assignment's: `parse_assignment`
+    // on the VM refuses a comment key it does not know, and neither
+    // `COMMENT_KEYS` nor `buildComment` spells `account`. It lives here and on
+    // the launch line instead.
+    account,
+    verbDrift: drift,
     github: githubName,
     cpu,
     memory,
@@ -496,9 +569,15 @@ const engineLine = (result) =>
 
 /**
  * The lines a launched run prints: its id, its VM, where to watch, what it was
- * told, one line per VM this launch's reap removed — and, when nobody pinned
- * one, which engine it happens to have caught. A launch that reaped nothing
- * prints no reap line at all.
+ * told, one line per VM this launch's reap removed, which keychain entry it
+ * signed in with, what the verb-drift preflight found — and, when nobody
+ * pinned one, which engine it happens to have caught. A launch that reaped
+ * nothing prints no reap line at all.
+ *
+ * `account=` is a rendered line and never part of the comment: the comment is
+ * the assignment the VM parses, and a key it does not know kills the run at
+ * boot. The two launches that differ only in `--account` build the same
+ * comment byte for byte and differ on this line.
  */
 export const renderLaunch = (result) => [
   result.runId,
@@ -506,6 +585,8 @@ export const renderLaunch = (result) => [
   result.statusUrl,
   result.comment,
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
+  result.account === undefined ? null : `account=${result.account}`,
+  result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
   engineLine(result)
 ].filter((line) => line !== null).join('\n')
 

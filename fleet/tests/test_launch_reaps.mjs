@@ -30,6 +30,13 @@
  *       empty `reaped`, still issues exactly one `new`, and renders as exactly
  *       the four BASE lines;
  *   (d) the sentinel [M3].
+ *
+ * The launch line now also names the keychain entry the run signs in with and
+ * prints the verb-drift preflight, so both deep-equals here carry two more
+ * lines — `account=ultrapowers` and the preflight's own — after the comment and
+ * after any `reaped` line. That is this file's half of the account task's leg
+ * (c) [M3 lines], and the `help <verb>` reads the preflight issues are answered
+ * from `fleet/exe-verbs.json` itself, so a green launch finds no drift.
  */
 
 import assert from 'node:assert/strict'
@@ -61,6 +68,12 @@ const BILLING_OK = {
 
 const minutesAgo = (m) => new Date(NOW.getTime() - m * 60000).toISOString()
 const hoursAgo = (h) => minutesAgo(h * 60)
+
+/** The verb record the preflight compares the lobby against, read once. */
+const VERBS = JSON.parse(fs.readFileSync(new URL('../exe-verbs.json', import.meta.url), 'utf8'))
+/** The two lines a launch with no `--account` adds, verbatim. */
+const ACCOUNT_LINE = 'account=ultrapowers'
+const DRIFT_LINE = 'verb-drift: 12 verbs match fleet/exe-verbs.json (captured 2026-09-05)'
 
 // ── The launcher's own rules, as test_launch.mjs cans them ──────────────────
 
@@ -158,10 +171,24 @@ const FLEET_LISTING = vmsPayload([reapRow(OLD), reapRow(YOUNG)])
 /** The listing verb answering non-zero — what `listVms` throws a LobbyError on. */
 const FLEET_LISTING_FAILS = answer('', { code: 1, stderr: 'exe.dev: ls failed\n' })
 
+/**
+ * `help <verb>` as the lobby prints it, answered from the record's own flags:
+ * an `Options:` block and one indented `--flag` line per flag, so the preflight
+ * finds nothing drifted.
+ */
+const HELP_OK = (cmd, argv) => {
+  const verb = String(argv[1] ?? '').slice('help '.length)
+  const flags = VERBS.verbs[verb]
+  return flags
+    ? answer([`Command: ${verb}`, '', 'Options:', ...flags.map((f) => `  ${f}  what ${f} does`), ''].join('\n'))
+    : answer(`No help available for unrecognized command: ${verb}\n`)
+}
+
 const readRules = ({ repo, listing = FLEET_LISTING } = {}) => [
   ...reapRules(listing),
   ENGINE_RULE,
   ...(repo ? [localRemote(repo)] : []),
+  sshRule('help ', HELP_OK),
   sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
   sshRule('billing plan --json', answer(BILLING_OK)),
   sshRule('new ', NEW_OK),
@@ -243,8 +270,8 @@ const baseLines = (result) => [result.runId, result.vm, result.statusUrl, result
   assert.deepEqual(newLines(exec).length, 1, '(c)/M3 the launch still issues exactly one `new`')
   assert.deepEqual(
     renderLaunch(result).split('\n'),
-    [...baseLines(result), `reaped ${reapVm(OLD)}`],
-    '(c)/M3 renderLaunch prints the four lines it printed at BASE — the run id, the VM, the status URL and the comment — followed by one `reaped <vm>` line per name'
+    [...baseLines(result), `reaped ${reapVm(OLD)}`, ACCOUNT_LINE, DRIFT_LINE],
+    '(c)/M3 renderLaunch prints the four lines it printed at BASE — the run id, the VM, the status URL and the comment — followed by one `reaped <vm>` line per name, and then, per the account task\'s leg (c) [M3 lines], account= and the verb-drift preflight'
   )
   ws.cleanup()
 }
@@ -266,8 +293,8 @@ const baseLines = (result) => [result.runId, result.vm, result.statusUrl, result
   assert.equal(newLines(exec).length, 1,
     '(c)/M3 the launch still completes with exactly one `new`: a reap that fails does not refuse a run')
   assert.deepEqual(
-    renderLaunch(result).split('\n'), baseLines(result),
-    '(c)/M3 and renderLaunch is exactly the four BASE lines — no reaped line when nothing was reaped'
+    renderLaunch(result).split('\n'), [...baseLines(result), ACCOUNT_LINE, DRIFT_LINE],
+    '(c)/M3 and renderLaunch is exactly the four BASE lines and the account task\'s two — no reaped line when nothing was reaped'
   )
   ws.cleanup()
 }
