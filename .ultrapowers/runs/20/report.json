@@ -1,0 +1,92 @@
+{
+  "integrationBranch": "ultra/integration-run-20",
+  "baseSha": "e04154b702407ac1efabaa22db6e21eab706a5f1",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "proof-red",
+      "notes": "the Global Constraints Check: command failed: test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4 \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": null,
+  "acceptance": {
+    "mode": "suite",
+    "passed": false,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 142.63s (0:02:22) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "fleet/run-engine.mjs",
+        "fleet/tests/test_run_engine_pre_review.mjs",
+        "fleet/tests/test_run_engine_proof_runs.mjs"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: the driver's pre-review pass was red (the Global Constraints Check: command failed: test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4 \u2014 exit 1) \u2014 one repair round before any referee read the patch",
+    "task 1: plan-defect: the Global Constraints check `test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4` is unsatisfiable at this run's BASE. fleet/CONTRACT.md is blob a91fa2bb at BASE (e04154b) and at HEAD, unchanged since 1eae6b2; the pinned 2962f5f0 is the file's content at 9104a69, three releases earlier. The underlying constraint (contract byte-identical to BASE) is satisfied \u2014 `git diff e04154b -- fleet/CONTRACT.md` is empty. Fixing the command would mean editing fleet/CONTRACT.md, which is outside this task's Files block and would break the byte-identity the constraint enforces, so the check's expected hash needs re-pinning to a91fa2bb3bde04fa34396f6580a11f56e6e4bd8d in the plan rather than a change in this tree.",
+    "task 1: still red after the pre-review repair round (the Global Constraints Check: command failed: test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4 \u2014 exit 1) \u2014 no referee was dispatched",
+    "suite acceptance did not pass (committed test suite failed) \u2014 gate must not Approve"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}

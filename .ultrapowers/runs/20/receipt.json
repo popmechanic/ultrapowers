@@ -1,0 +1,175 @@
+{
+  "ok": true,
+  "stamp": "run-20",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-20"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The driver hands its Run: and Check: commands the base sha",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The driver hands its Run: and Check: commands the base sha",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_pre_review.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_pre_review.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_proof_runs.mjs && node fleet/tests/test_run_engine_pre_review.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '1,/^import /p' fleet/run-engine.mjs | grep -q ULTRA_BASE",
+            "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The driver hands its Run: and Check: commands the base \u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The driver's other shell runs \u2014 the suite, the bootstrap and the exam command \u2014 are not\n  what changes: only the `Run:` and `Check:` executions gain the variable.\n- The vendored kernel is byte-identical to BASE: `skills/ultrapowers/kernel/vendor/manyana.py`\n  is sha-pinned on purpose and never patched.\n- The clone-and-capture module, the sim helper, the compiler, the contract, the runbook and\n  the two skills are byte-identical to BASE \u2014 this plan is engine-only.\n- No file outside the task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-waves.mjs)\" = 350bb663dcdfa2d7cc90b85cd306e985fe359171",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/tests/_engine_helpers.mjs)\" = f929b25244dfd2657c99e4ed236e5ac1d1d30763",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/RUNBOOK.md)\" = 7a45c72253c10632d1c914230df166b7d0934d70",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = b546e04f843c07ea52e7a1e95e62b6f00836afec",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/SKILL.md)\" = f286d45f24924654c4f71795903d8277ba9e9035",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrawrite/SKILL.md)\" = 6a11e64f25dc02540b3d1cbe954e8e585d202d61",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-20/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-20/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-20/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-20/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

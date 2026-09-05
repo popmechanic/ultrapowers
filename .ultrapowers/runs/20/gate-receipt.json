@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-20",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-20/report.json",
+  "branch": "ultra/integration-run-20",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"1\", \"files\": [\"fleet/run-engine.mjs\", \"fleet/tests/test_run_engine_pre_review.mjs\", \"fleet/tests/test_run_engine_proof_runs.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 0/1 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.rTXZ8KHgoT/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1618 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 31%]\\n........................................................................ [ 35%]\\n........................................................................ [ 40%]\\n........................................................................ [ 44%]\\n........................................................................ [ 48%]\\n........................................................................ [ 53%]\\n........................................................................ [ 57%]\\n........................................................................ [ 62%]\\n........................................................................ [ 66%]\\n........................................................................ [ 71%]\\n........................................................................ [ 75%]\\n........................................................................ [ 80%]\\n........................................................................ [ 84%]\\n........................................................................ [ 88%]\\n........................................................................ [ 93%]\\n........................................................................ [ 97%]\\n..................................                                       [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1618 passed, 5 warnings in 139.71s (0:02:19) =================\"}\n"
+  },
+  "verdict": "BLOCKED"
+}
