@@ -1,0 +1,313 @@
+{
+  "integrationBranch": "ultra/integration-run-10",
+  "baseSha": "af1e7c70dedc3de5cbb4e9ca79af3bdb2756a701",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "cf50e5fc0edadbb64e003259e2f093b9f26fa885",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-10/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "out-of-FILES: `fleet/tests/test_run_engine_exam_fix_edit.mjs` is edited by the diff but is absent from this task's Files block, and the Proof's own bullet calls that sim \"unchanged: the fix round still runs in the task clone after the handoff\". The edit was unavoidable and correct: that file's leg (c) pinned `row.examEdited === ['t1_test.sh']` for a FIRST-round implementer write at the Proof path, which M4 now defines as no edit at all, so the leg could not have stayed as written. The hunk narrows leg (c) to the half that outlived the change (reviewed and folded) and re-pins `examEdited` to `[]`; legs (a), (b) and (d) still pin the fix round's edit, so nothing is weakened and the divergence is disclosed in the file's own comment. The defect is the task text (Files omits the path, and the Proof asserts it unchanged), and the fix lies outside FILES \u2014 recorded, not blocking.; Stale comment inside this task's own FILES: `fleet/run-engine.mjs:87-88`, the EXAMINER_SCHEMA header, still reads \"the wave-0 worker that writes the task's Proof tests in the task's own clone at BASE, before the implementer sees the tree\" \u2014 the two facts M1 and M3 just replaced. Every other comment on the path (the exam block, the handoff, `defaultCloneNameOf`) was rewritten; this one was missed.; Same stale claim outside FILES, where this diff cannot fix it: `fleet/run-worker.mjs:157-159` documents the examiner role as writing \"in the task's own clone at BASE, so its writable root is the implementer's \u2014 the same tree, before the implementer sees it\". The behaviour it justifies (`writableRoot: 'clone'`) is still correct, since the confine hook's root is the worker's cwd and `makeCwdFor` now answers `exam-<id>` \u2014 only the sentence is wrong. `fleet/run-worker.mjs` is in no task's Files block, so this is recorded for the operator rather than routed to a fix round.; The handoff copies the examiner's BYTES but not its file MODE when the implementer already created a file at the Proof path. `fs.copyFileSync` (fleet/run-engine.mjs:1014) opens an existing destination with O_TRUNC, so the destination keeps the mode the implementer gave it; git then records the implementer's mode (100644 vs 100755) in the re-captured patch and the fold. Harmless for the `bash <script>` / `node <file>` / `pytest` test commands in use, but it is the one byte of \"the peer's exam wins at the Proof path\" that the substrate does not enforce. Removing the destination first makes the copy create the file with the examiner's mode.; unverified: acceptance is `suite \u2014 the committed suite is the verification`, but the evidence covers the eight Proof `Run:` sims, this task's exam, and `tests/test_docs_agree_with_code.py` \u2014 not the whole gate (`python3 -m pytest`, which bridges every `fleet/tests/test_*.mjs` via `tests/test_fleet_suite.py`). Reading the tree closes most of the gap: every sim that dispatches an examiner (`proofTests` non-empty) is one of the eight already green, non-exam sims take the BASE path unchanged (with `examBlobs` null, the deleted `noteDrift('the implementer')` was a no-op and `'examEdited' in row === false` still holds, as `test_run_engine_proof_runs.mjs:176,431` require), `test_exam_dispatch_role.mjs`'s source regex still matches the new `label: 'exam:' + task.id \u2026 EXAMINER_SCHEMA` dispatch, and nothing globs `<patchesDir>` (the fold is handed `impl.patch` by name), so the new `exam-<id>.patch` is inert. What would settle it is one full `python3 -m pytest` on this tree.; Out-of-FILES edit, and the task text calls that file unchanged: the diff modifies `fleet/tests/test_run_engine_exam_fix_edit.mjs` (leg (c), lines 162-194), which is not in the Files block and which the Proof describes as \"the fix-round edit sim, unchanged\". The edit itself is necessary and correct \u2014 leg (c) pinned `row.examEdited === ['t1_test.sh']` for a first round that writes at the Proof path, and under M4 that value is now `[]`, so the sim could not have stayed unchanged and still passed. The defect is the task's own text: the Context's \"Deletion owed\" list and the Files block both omit this sim. The divergence is disclosed in the file's own comment (\"Since #653 there is nothing for it to record either\u2026\") and the Run: bullet for it exits 0, so nothing here blocks; the path that has to change is the task's Files block, which is outside this tree. This also trips the prose GLOBAL CONSTRAINT \"No file outside a task's own Files block is edited\", which carries no `Check:` the driver ran.; The handoff loses the examiner's file mode when the implementer already created the Proof path. `fleet/run-engine.mjs` copies with `fs.copyFileSync(path.resolve(examDir, p), dest)` over an existing `dest`; libuv passes the source mode only to the *creating* `open`, so an existing destination keeps the implementer's mode. That is exactly leg (c)'s shape (the implementer writes its own `t1_test.sh`, the peer's bytes are laid over it): the content is the peer's but the executable bit is the submitter's, and the re-captured `task-<id>.patch` records that mode. Harmless for an exam invoked as `bash t1_test.sh` \u2014 which is why the sim does not catch it \u2014 and wrong for one the test command executes directly. Unlinking before the copy makes the handed-in file the examiner's in mode as well as bytes.; A file the examiner wrote outside `proofTests` is now silently lost. The handoff in `fleet/run-engine.mjs` copies only the recorded `proofTests` paths, so a fixture or helper the exam imports stays behind in `exam-<id>` and the exam goes red in the graded clone for a reason that reads as the implementer's fault (a red pre-review pass burns the one repair round, then `proof-red`). At BASE the examiner wrote into the graded clone, so such a file survived by construction. `fleet/roles/examiner.md` step 2 (\"Write only the file(s) the Proof `Test:` slot names\") makes this the examiner's rule rather than a hole, and that file is byte-pinned here \u2014 but the loss is currently invisible. The examiner's own capture at `<patchesDir>/exam-<id>.patch` already names every path it touched; one `judgmentCalls.push` when that set exceeds `proofTests` would make a dropped fixture readable in the run report instead of arriving as an unexplained red exam.; unverified: `CLAUDE.md:155` still states the #551 map's rule as \"the implementer runs the peer's exam\", which this change makes false \u2014 the implementer works in a clone the exam never enters, and the first party to run it is the driver's pre-review pass (then the fix round). `CLAUDE.md` is outside this task's FILES and is not one of the four documents `tests/test_docs_agree_with_code.py` gates (that test covers SKILL, FIRST_RUN, `fleet/RUNBOOK.md`, `README.md`, and it exited 0), so nothing here blocks and no edit inside this tree answers it. Settling it means one line in the ledger's #551 entry, on a task that owns `CLAUDE.md`.; concern: out-of-FILES: fleet/tests/test_run_engine_exam_fix_edit.mjs \u2014 leg (c) pinned `examEdited: ['t1_test.sh']` for an IMPLEMENTER edit before review, which M4 inverts. Its comment and one assertion are converted to the new shape (`examEdited: []`, still reviewed and folded); the rest of the file, including all the fix-round legs, is untouched. Nothing outside FILES was deleted.; concern: plan-defect: the task's Proof declares fleet/tests/test_run_engine_exam_fix_edit.mjs \"unchanged\", but its leg (c) asserts exactly the semantics M4 inverts \u2014 the two cannot both hold. Implemented M4 as written and made the smallest possible edit to that leg.; concern: plan-defect: the Context suggests cutting `exam-<id>` from `paths.repoDir`. For waves \u2265 2 the wave base is a fold commit that exists only in the integration clone's object database (which is why the re-anchor loop fetches from `integ`), so a repoDir clone would fail there. Added `cloneSourceFor(sha)`, which checks `git cat-file -e <sha>^{commit}` in repoDir and falls back to the integration clone. A clone failure is recorded like a BLOCKED examiner rather than failing the task.; concern: docs: skills/ultrapowers/references/report-format.md is now imprecise on two rows \u2014 `tasks[].exam` says the blob shas and the red run are exec'd \"in the task's clone\" (they are read in the examiner's clone), and `tasks[].examEdited` says a path may be \"edited by the implementer or by a fix round\" (only a fix round can now hold the exam). The file is outside every task's Files block, so it was not edited; tests/test_docs_agree_with_code.py and both hash-pinned doc checks are green.; concern: docs: fleet/run-worker.mjs:158 carries a stale comment saying the examiner writes \"in the task's own clone at BASE ... the same tree, before the implementer sees it\". Behaviour is unaffected (the confine hook derives the writable root from the worker's cwd, which is now exam-<id>), and the file is outside FILES, so it was left alone.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "5572961e613f29ba79bab1cc4ae5f73976dab91a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-10/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Operator-visible phase label regression: `phase('Depth-1 Leg')` (fleet/run-engine.mjs, inside `runShallowLeg`) is now immediately superseded by `phase('Integration Review')` (first line of `runCritic`), because `Promise.all([runShallowLeg(), runCritic()])` starts the leg, which yields at its first `await` on the clone, and then the critic sets the phase. At BASE the operator saw `Depth-1 Leg` for the leg's whole ~90 s; now it flashes for microseconds and the ~90 s step is invisible in the live view. No test or doc pins either string (grep across the tree finds only the two `phase(...)` call sites), so a single combined label emitted once before the barrier \u2014 e.g. `phase('Integration Review + Depth-1 Leg')` outside both closures, dropping the two inner calls \u2014 restores the signal without changing any pin. Advisory only: no Machine clause or Proof leg covers phase events, and the rig makes `phase` a no-op.; plan-defect: the Proof's legs (b) and (c) name `report.review.findings` as the surface the critic's findings appear on, but `runEngine` has no `review` field in its report \u2014 the findings are exposed as `completenessFindings` (fleet/run-engine.mjs:2048 at BASE). The submission diverges correctly and discloses it: `criticFindings()` in fleet/tests/test_run_engine_depth1_beside_critic.mjs:29-33 reads `report.review.findings` when present and falls back to `report.completenessFindings`, with a comment naming the BASE line, so the legs still pin the finding rather than a field name. Lawful divergence, recorded only so the operator knows the plan text names a field the report does not carry; the fix is to the task text, outside this task's FILES.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b5640dee524d5635022eadeb583bbbd3474e5501",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-10/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Hygiene only: `runReconciledWave` in fleet/tests/test_run_engine_reconcile_subject.mjs creates a temp tree per scenario (`fs.mkdtempSync(... 'engine-recsubject-')`) and never removes it, so two full engine runs (clones, patches, run dir) are left in $TMPDIR after the sim passes. The sim named as the shape in Context, `fleet/tests/test_run_engine_reconcile.mjs`, does clean up (`fs.rmSync(tmp, {recursive: true, force: true})` at its end); `test_run_engine_fold_subject.mjs`, whose plan-file shape was copied, does not. Adding an `fs.rmSync(tmp, ...)` after the git reads (the returned `integ` path is only read inside `runReconciledWave`'s callers via `gitSync`, so the removal has to happen after those reads \u2014 e.g. return the formatted strings only and rm at the end of each block) would match the reconcile sim. Nothing about the exam's grading changes; the exam's oracle is the real git object at the branch tip either way.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-10/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 8/8 workers\n8 workers [1431 items]\n\n........................................................................ [  5%]\n........................................................................ [ 10%]\n........................................................................ [ 15%]\n........................................................................ [ 20%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n...............................................................          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1431 passed, 5 warnings in 102.77s (0:01:42) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_waves.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -q 'already in your tree' fleet/roles/implementer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -q 'write those tests exactly as given' fleet/roles/implementer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q \"reserved for a peer's exam\" fleet/roles/implementer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'not yours to reshape' fleet/roles/fix.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_depth1_beside_critic.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_shallow.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_reconcile_subject.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_fold_subject.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = 61d0e7ae4ffaba2103fa2fd507438871785f17e0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 6be6ef327f12bc4244d6850b58b1f9bac4b21b84",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/run-main.mjs)\" = d0a320f3937671db9ce480b450602d8f52d88080",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = e084e38b4247d028292e18bc7bb94a266c8e0fc3",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 8239e763c7757adb48c99fbcd8359f7a19b29f8f",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 65ccf30820183187f373a82e7694e4b40842dc87",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.07s\n",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git hash-object fleet/roles/reviewer.md)\" = 5e35f6d2569e5e8de68c0617156b91de2e669420",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 985754,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": ".................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n......................................................................... [ 60%]\n........................................................................ [ 65%]\n..........................................s............................. [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n.............................................................            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1430 passed, 1 skipped, 5 warnings in 100.16s (0:01:40) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n............................................................             [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1428 passed, 5 warnings in 93.95s (0:01:33) ==================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "9d4410658ebfe8415e02986befd943b8d9163e9f",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-10/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-10/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.08,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: examiner: (b)/(c) [M2][M3] \u2014 \"appears in `report.review.findings`\" / \"a `report.review.findings` entry whose `detail` contains `no wave merged`\" \u2014 The engine's report has no `review` field: the critic's findings are returned as `report.completenessFindings` (run-engine.mjs:2048), and M2/M3 both pin this output \"as at BASE\", so asserting the literal `report.review.findings` path would force a report-shape rename the task does not ask for and would be red at BASE for the wrong reason. Encoded the leg's substance instead via a `criticFindings(report)` accessor that reads `report.review.findings` when present and falls back to `report.completenessFindings` \u2014 the finding itself is still pinned by deepEqual on an exact stub-authored object, and the `no wave merged` detail by exact substring.",
+    "task 1: out-of-FILES: fleet/tests/test_run_engine_exam_fix_edit.mjs \u2014 leg (c) pinned `examEdited: ['t1_test.sh']` for an IMPLEMENTER edit before review, which M4 inverts. Its comment and one assertion are converted to the new shape (`examEdited: []`, still reviewed and folded); the rest of the file, including all the fix-round legs, is untouched. Nothing outside FILES was deleted.",
+    "task 1: plan-defect: the task's Proof declares fleet/tests/test_run_engine_exam_fix_edit.mjs \"unchanged\", but its leg (c) asserts exactly the semantics M4 inverts \u2014 the two cannot both hold. Implemented M4 as written and made the smallest possible edit to that leg.",
+    "task 1: plan-defect: the Context suggests cutting `exam-<id>` from `paths.repoDir`. For waves \u2265 2 the wave base is a fold commit that exists only in the integration clone's object database (which is why the re-anchor loop fetches from `integ`), so a repoDir clone would fail there. Added `cloneSourceFor(sha)`, which checks `git cat-file -e <sha>^{commit}` in repoDir and falls back to the integration clone. A clone failure is recorded like a BLOCKED examiner rather than failing the task.",
+    "task 1: docs: skills/ultrapowers/references/report-format.md is now imprecise on two rows \u2014 `tasks[].exam` says the blob shas and the red run are exec'd \"in the task's clone\" (they are read in the examiner's clone), and `tasks[].examEdited` says a path may be \"edited by the implementer or by a fix round\" (only a fix round can now hold the exam). The file is outside every task's Files block, so it was not edited; tests/test_docs_agree_with_code.py and both hash-pinned doc checks are green.",
+    "task 1: docs: fleet/run-worker.mjs:158 carries a stale comment saying the examiner writes \"in the task's own clone at BASE ... the same tree, before the implementer sees it\". Behaviour is unaffected (the confine hook derives the writable root from the worker's cwd, which is now exam-<id>), and the file is outside FILES, so it was left alone."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Footprint escape against the plan's global constraint \"No file outside a task's own Files block is edited\": `fleet/tests/test_run_engine_exam_fix_edit.mjs` was edited in this run, but it is not in Task 1's Files block (which lists run-engine.mjs, run-waves.mjs, roles/implementer.md, roles/fix.md, and the four sims examiner/exam_edits/exam_edited_patches/exam_evidence, plus the new exam_together test), and Task 1's Proof bullet explicitly describes it as \"the fix-round edit sim, unchanged\". Its leg (c) now carries post-#653 prose and assertions that cannot have existed at BASE af1e7c7 \u2014 the comment at lines 165-171 reads \"Since #653 there is nothing for it to record either: the implementer never holds the exam, so its own file at the Proof path is overwritten by the peer's bytes at the handoff\", and line 191 asserts `row.examEdited` deep-equals `[]` \"the handoff put the peer's bytes there\". At BASE this leg pinned the opposite (the implementer's first-round edit being recorded), so the edit was substantively necessary once Task 1's handoff landed \u2014 the defect is that the plan declared the file unchanged and left it out of the Files block, so the change was made outside the declared scope and no referee read it against a contract that admitted it. The edit itself is correct and the sim is green in the integrated run evidence, so this is worth an issue against the plan's scoping (Task 1 Files/Proof slots) rather than a stop on the merge."
+    }
+  ],
+  "blockedWaves": []
+}

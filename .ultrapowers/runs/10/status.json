@@ -1,1 +1,1 @@
-{"run":"10","state":"running","phase":"engine starting","pr":null,"prAuthor":null,"branch":"ultra/integration-run-10","vm":"fleet-r10-2609050649-0de7","startedAt":"2026-09-05T06:49:28Z","updatedAt":"2026-09-05T06:49:51Z","error":null}
+{"run":"10","state":"publishing","phase":"gate-green — pushing ultra/integration-run-10","pr":null,"prAuthor":null,"branch":"ultra/integration-run-10","vm":"fleet-r10-2609050649-0de7","startedAt":"2026-09-05T06:49:28Z","updatedAt":"2026-09-05T07:40:41Z","error":null}

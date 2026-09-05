@@ -1,0 +1,315 @@
+{
+  "ok": true,
+  "stamp": "run-10",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-10"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The examiner and the implementer start together",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/fix.md",
+          "fleet/roles/implementer.md",
+          "fleet/run-engine.mjs",
+          "fleet/run-waves.mjs",
+          "fleet/tests/test_exam_edited_patches.mjs",
+          "fleet/tests/test_run_engine_exam_edits.mjs",
+          "fleet/tests/test_run_engine_exam_evidence.mjs",
+          "fleet/tests/test_run_engine_examiner.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The depth-1 leg runs beside the critic",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A reconciled wave keeps the plan's title",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The examiner and the implementer start together",
+          "files": [
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-waves.mjs",
+            "fleet/tests/test_exam_edited_patches.mjs",
+            "fleet/tests/test_run_engine_exam_edits.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_exam_together.mjs",
+            "fleet/tests/test_run_engine_examiner.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-waves.mjs",
+            "fleet/tests/test_exam_edited_patches.mjs",
+            "fleet/tests/test_run_engine_exam_edits.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_examiner.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_exam_together.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_exam_together.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_waves.mjs | grep -q 'ALL TESTS PASSED'",
+            "! grep -q 'already in your tree' fleet/roles/implementer.md",
+            "! grep -q 'write those tests exactly as given' fleet/roles/implementer.md",
+            "grep -q \"reserved for a peer's exam\" fleet/roles/implementer.md",
+            "grep -q 'not yours to reshape' fleet/roles/fix.md"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The depth-1 leg runs beside the critic",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_depth1_beside_critic.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_depth1_beside_critic.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_depth1_beside_critic.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_depth1_beside_critic.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_shallow.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "A reconciled wave keeps the plan's title",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reconcile_subject.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_reconcile_subject.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_reconcile_subject.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_reconcile_subject.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_fold_subject.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 3 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The vendored kernel is byte-identical to BASE: `skills/ultrapowers/kernel/vendor/manyana.py`\n  is sha-pinned on purpose and never patched.\n- The laptop side, the sandbox boot, the janitor, the lobby, the contract and the compiler are\n  byte-identical to BASE \u2014 a concurrent run owns them.\n- The four operator documents still agree with the code.\n- The examiner's role text and the reviewer's are unchanged; no shouted imperative (an\n  all-caps must, never or always as a whole word) is added to any file under `fleet/roles/`.\n- No file outside a task's own Files block is edited.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/kernel/vendor/manyana.py)\" = 0e0367d23d19cdf87a047bd7f5cd814698f75fc4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/launch.mjs)\" = 61d0e7ae4ffaba2103fa2fd507438871785f17e0",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/sandbox-boot.sh)\" = 6be6ef327f12bc4244d6850b58b1f9bac4b21b84",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/run-main.mjs)\" = d0a320f3937671db9ce480b450602d8f52d88080",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/janitor.mjs)\" = e084e38b4247d028292e18bc7bb94a266c8e0fc3",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/lobby.mjs)\" = 8239e763c7757adb48c99fbcd8359f7a19b29f8f",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/CONTRACT.md)\" = 2962f5f03177da6347519ea7472bd4aa00af5bb4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object skills/ultrapowers/scripts/compile_plan.py)\" = 65ccf30820183187f373a82e7694e4b40842dc87",
+        "minor": false
+      },
+      {
+        "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/examiner.md)\" = 3a8c8acf9e60d1a868db0bbfcc2226d42566bbf4",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git hash-object fleet/roles/reviewer.md)\" = 5e35f6d2569e5e8de68c0617156b91de2e669420",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-10/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-10/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-10/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-10/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
