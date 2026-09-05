@@ -7,16 +7,25 @@
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * Five rows, all reads, every one of them answered by exe.dev's own truth:
+ * Seven rows, all reads, every one of them answered by exe.dev's own truth or
+ * by this laptop's own keychain:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
  *   capacity      `billing plan --json` names the pool, beside the size one
  *                 run asks for. The row reports; it limits nothing.
  *   claude        the `claude-max` integration carries the bearer at the edge
  *                 and rides no tag; claude-token's status line rides along.
+ *   accounts      `claude-token.mjs accounts --json` lists every keychain
+ *                 entry with its expiry, and the row says which account the
+ *                 edge carries and whether the config names one the keychain
+ *                 does not hold.
  *   github        `integrations setup github --list` lists an account.
  *   integrations  no GitHub integration is attached to `tag:fleet`, and with
  *                 `--target` the target's own object exists, unattached.
+ *   verb-drift    `help <verb>` for every verb in fleet/exe-verbs.json, and
+ *                 the diff against the flags recorded there. A flag that
+ *                 appeared or vanished is a finding in a green row; only a
+ *                 record the doctor cannot read turns it red.
  *
  * Running the doctor twice is the same as running it once: nothing here
  * creates, copies or removes a VM, and nothing writes a file. A red row names
@@ -52,9 +61,11 @@ const execFileAsync = promisify(execFile)
  *  would certify a fleet the launcher never looks at. */
 export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
 
-/** The five rows, in the order the doctor reports them. Each id is also a
+/** The seven rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
-export const ROW_IDS = Object.freeze(['exe-dev', 'capacity', 'claude', 'github', 'integrations'])
+export const ROW_IDS = Object.freeze([
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift'
+])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
  *  every row id is its own heading. */
@@ -66,14 +77,21 @@ const FIXES = Object.freeze(Object.fromEntries(ROW_IDS.map((id) => [id, id])))
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
 
-/** The five reads, in the order the doctor issues them, and the only commands
- *  it ever runs. */
+/** The recorded flag set per lobby verb, captured from the live lobby and read
+ *  from beside this file. `verbsPath`/`recordPath` override it, so an exam
+ *  drives the row from a fixture rather than from the committed record. */
+const DEFAULT_VERBS_PATH = () => path.join(HERE, 'exe-verbs.json')
+
+/** The six standing reads, in the order the doctor issues them. The `help`
+ *  reads of the verb-drift row follow, one per verb of the record; together
+ *  they are the only commands the doctor ever runs. */
 const READS = Object.freeze({
   whoami: 'ssh exe.dev whoami',
   billing: 'ssh exe.dev "billing plan --json"',
   list: 'ssh exe.dev "integrations list --json"',
   github: 'ssh exe.dev "integrations setup github --list"',
-  token: `node ${CLAUDE_TOKEN} status`
+  token: `node ${CLAUDE_TOKEN} status`,
+  accounts: `node ${CLAUDE_TOKEN} accounts --json`
 })
 
 /** The tag a fleet VM inherits, and the integration that carries the bearer. */
@@ -165,6 +183,35 @@ export async function fleetConfigKeys ({ path: configPath } = {}) {
   return Object.keys(parsed)
 }
 
+/**
+ * The config file's default account: its top-level `account`, or null when the
+ * file is absent, is not JSON, is not a JSON object, or names no account. The
+ * launcher reads the same key to pick the keychain entry a run signs in with;
+ * the doctor reads it only to ask whether the keychain holds that name.
+ *
+ * It travels beside `loadFleetConfig` rather than inside it: `result.config` is
+ * exactly the two keys the doctor itself reads, and the account reaches
+ * `doctor()` as its own option.
+ */
+export async function fleetConfigAccount ({ path: configPath } = {}) {
+  const target = configPath ?? DEFAULT_CONFIG_PATH()
+  let text
+  try {
+    text = await fsp.readFile(target, 'utf8')
+  } catch {
+    return null
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const account = parsed.account
+  return typeof account === 'string' && account !== '' ? account : null
+}
+
 /** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
  *  every row with a stub and the CLI drives them with a shell. stderr joins
  *  stdout because claude-token logs its status line there. */
@@ -235,30 +282,37 @@ function poolRow (res, config) {
 /** The two key names the doctor reads, as the row's detail spells them. */
 const READ_KEYS = Object.keys(DOCTOR_DEFAULTS)
 
+/** Every name the config file may carry: the two the doctor reads, and
+ *  `account`, which the launcher reads to pick the keychain entry a run signs
+ *  in with. A name outside this list is a key nothing reads. */
+const CONFIG_KEYS = Object.freeze([...READ_KEYS, 'account'])
+
 /**
  * The pool arithmetic, plus what the config file's own key names say about it.
  *
  * `configKeys` is `fleetConfigKeys`'s answer for the same file: null when there
  * is no file to read keys off, and otherwise every top-level name in it. A name
- * the doctor does not read is a key left by a fleet from before the lift — the
+ * outside `CONFIG_KEYS` is a key left by a fleet from before the lift — the
  * operator wrote a setting nothing consults, so the row is red until the file is
  * rewritten, and the detail names those keys by echoing the file rather than
- * spelling any of them here. A file that omits one of the two the doctor does
- * read is not wrong, only silent, so the green detail says which default it
- * fell back to.
+ * spelling any of them here. `account` is not one of them: the doctor never
+ * reads it, but the launcher does, and the `accounts` row says whether the
+ * keychain holds the name it carries. A file that omits one of the two the
+ * doctor does read is not wrong, only silent, so the green detail says which
+ * default it fell back to.
  */
 function capacityRow (res, config, configKeys = null) {
   const base = poolRow(res, config)
   const keys = Array.isArray(configKeys) ? configKeys.filter((k) => typeof k === 'string') : null
   if (keys === null) return base
 
-  const stale = keys.filter((key) => !READ_KEYS.includes(key))
+  const stale = keys.filter((key) => !CONFIG_KEYS.includes(key))
   if (stale.length > 0) {
     return row(
       'capacity',
       'missing',
       `~/.ultrapowers/fleet.json carries ${stale.join(', ')} — keys nothing reads; ` +
-        `it reads ${READ_KEYS.join(' and ')} only. ${base.detail}`
+        `it reads ${READ_KEYS.join(' and ')} only, and the launcher reads account. ${base.detail}`
     )
   }
   if (base.status !== 'ok') return base
@@ -291,8 +345,10 @@ function readJson (stdout) {
  * each entry either the string `tag:fleet` / `vm:fleet-run-3` or an object
  * carrying a `tag` key.
  *
- * Answers a Map of name → `{ name, tags, github, bearer }`, or null when the
- * stdout is not a listing at all.
+ * Answers a Map of name → `{ name, tags, github, bearer, comment }`, or null
+ * when the stdout is not a listing at all. `comment` is the entry's own comment
+ * string or null: the credential tool writes `account=<name>` into `claude-max`'s
+ * on every install, and the `accounts` row reads the edge's account off it.
  */
 export function parseIntegrations (stdout) {
   const parsed = readJson(stdout)
@@ -310,7 +366,8 @@ export function parseIntegrations (stdout) {
       name,
       tags: attachedTags(entry),
       github: isGithub(entry, name),
-      bearer: hasBearer(entry)
+      bearer: hasBearer(entry),
+      comment: typeof entry.comment === 'string' ? entry.comment : null
     })
   }
   return out
@@ -395,6 +452,182 @@ function claudeRow (found, tokenRes) {
   return row('claude', 'ok', `${OAUTH_INTEGRATION} carries the bearer at the edge; ${status}`)
 }
 
+// ── accounts ─────────────────────────────────────────────────────────────────
+
+/** The command a laptop with no usable keychain entry runs. */
+const LOGIN = 'node fleet/claude-token.mjs login'
+
+/** The token the credential tool writes into `claude-max`'s comment on every
+ *  install, so the edge itself records which account its bearer came from. */
+const ACCOUNT_TOKEN = 'account='
+
+/**
+ * `claude-token.mjs accounts --json` prints one object per keychain entry —
+ * `{ name, expiresAt, fresh }` — under the one service. Nothing secret is in
+ * it: an expiry and a name, never a token.
+ */
+function parseAccounts (res) {
+  if (res.code !== 0) return null
+  const parsed = readJson(res.stdout)
+  return Array.isArray(parsed) ? parsed : null
+}
+
+const accountName = (entry) => (entry && typeof entry.name === 'string' ? entry.name : '')
+
+const describeAccount = (entry) =>
+  `${accountName(entry)} ${entry?.fresh === true ? 'fresh until' : 'expired'} ${String(entry?.expiresAt ?? '')}`
+
+/**
+ * The account the edge carries, off `claude-max`'s comment: the value after
+ * `account=` in the first whitespace-separated token that starts with it. Null
+ * when the comment is prose with no such token — an install from before the
+ * tool wrote one, which the next refresh records.
+ */
+function edgeAccount (found) {
+  const comment = found?.get(OAUTH_INTEGRATION)?.comment
+  if (typeof comment !== 'string') return null
+  for (const word of comment.split(/\s+/)) {
+    if (!word.startsWith(ACCOUNT_TOKEN)) continue
+    const name = word.slice(ACCOUNT_TOKEN.length)
+    return name === '' ? null : name
+  }
+  return null
+}
+
+/**
+ * Which accounts this laptop holds, when each one expires, which of them the
+ * edge is carrying, and — when `~/.ultrapowers/fleet.json` names one — whether
+ * the keychain holds that name at all. An expired entry is not red: the
+ * launcher refreshes before every run, and the bearer already lives at the
+ * edge. An empty keychain is, because nothing can be refreshed from it.
+ */
+function accountsRow (res, found, account) {
+  const entries = parseAccounts(res)
+  if (entries === null) {
+    return row(
+      'accounts',
+      'missing',
+      `claude-token.mjs accounts --json answered code ${res.code} with no JSON array of keychain entries — ${LOGIN}`
+    )
+  }
+  if (entries.length === 0) {
+    return row('accounts', 'missing', `the keychain holds no account — ${LOGIN}`)
+  }
+
+  const listed = entries.map(describeAccount).join(', ')
+  const edge = edgeAccount(found)
+  const carries = edge === null ? '; edge account unrecorded' : `; edge carries ${edge}`
+  if (account !== null && !entries.map(accountName).includes(account)) {
+    return row(
+      'accounts',
+      'missing',
+      `~/.ultrapowers/fleet.json names ${account}, which no keychain entry carries — ` +
+        `${listed}${carries} — ${LOGIN} --account ${account}`
+    )
+  }
+  const named = account === null ? '' : `; fleet.json names ${account}`
+  return row('accounts', 'ok', `${listed}${carries}${named}`)
+}
+
+// ── verb-drift ───────────────────────────────────────────────────────────────
+
+/** The only shape a verb name may take before it is interpolated into an ssh
+ *  string. Any other key of the record is reported unreadable, never run. */
+const VERB = /^[a-z][a-z0-9 -]*$/
+
+/** The lobby's `Options:` block: two spaces, the flag, spaces, its description.
+ *  `help <verb>` and `<verb> --help` print the same block (measured 2026-09-05),
+ *  and `help …` is not a mutating verb, so this is the form the doctor asks. */
+const FLAG_LINE = /^[ \t]+(--[A-Za-z0-9-]+)/gm
+
+function helpFlags (stdout) {
+  const flags = []
+  for (const match of String(stdout ?? '').matchAll(FLAG_LINE)) {
+    if (!flags.includes(match[1])) flags.push(match[1])
+  }
+  return flags
+}
+
+/**
+ * Re-fetch `help <verb>` for every verb of `fleet/exe-verbs.json` and diff the
+ * live flag set against the recorded one.
+ *
+ * `--help` answers text, not JSON — a `Command:` line, a description, an
+ * optional `Usage:` line, an `Options:` block and an optional `Examples:` block
+ * — so the diff unit is the flag set and the record stores flag names, not
+ * prose. A verb the lobby no longer knows answers a line starting `No help
+ * available for unrecognized command:` at exit 0, which is why a stdout with no
+ * flag at all counts as unreadable whatever the exit code was.
+ *
+ * A drift is a finding, never a refusal: the caller decides what a finding is
+ * worth. Only a record this cannot read at all answers `readable: false`.
+ */
+export async function verbDrift ({ help, recordPath } = {}) {
+  const target = recordPath ?? DEFAULT_VERBS_PATH()
+  const unreadable = (why) => ({
+    readable: false,
+    capturedAt: null,
+    findings: [],
+    detail: `fleet/exe-verbs.json ${why} — re-capture it from ssh exe.dev "help <verb>" output`
+  })
+
+  let text
+  try {
+    text = await fsp.readFile(target, 'utf8')
+  } catch {
+    return unreadable('is not there')
+  }
+  let record
+  try {
+    record = JSON.parse(text)
+  } catch {
+    return unreadable('is not JSON')
+  }
+  const verbs = record && typeof record === 'object' ? record.verbs : null
+  if (!verbs || typeof verbs !== 'object' || Array.isArray(verbs)) {
+    return unreadable('carries no verbs object')
+  }
+  const capturedAt = typeof record.capturedAt === 'string' ? record.capturedAt : null
+
+  const names = Object.keys(verbs)
+  const findings = []
+  const segments = []
+  for (const verb of names) {
+    const recorded = Array.isArray(verbs[verb]) ? verbs[verb].filter((f) => typeof f === 'string') : []
+
+    if (!VERB.test(verb)) {
+      findings.push({ verb, appeared: [], vanished: [], unreadable: -1 })
+      segments.push(`${verb}: help unreadable (code -1)`)
+      continue
+    }
+
+    const res = await help(verb)
+    const live = helpFlags(res?.stdout)
+    if (res?.code !== 0 || live.length === 0) {
+      const code = typeof res?.code === 'number' ? res.code : -1
+      findings.push({ verb, appeared: [], vanished: [], unreadable: code })
+      segments.push(`${verb}: help unreadable (code ${code})`)
+      continue
+    }
+
+    const appeared = live.filter((flag) => !recorded.includes(flag))
+    const vanished = recorded.filter((flag) => !live.includes(flag))
+    if (appeared.length === 0 && vanished.length === 0) continue
+    findings.push({ verb, appeared, vanished, unreadable: null })
+    if (appeared.length > 0) segments.push(`${verb}: ${appeared.join(', ')} appeared`)
+    if (vanished.length > 0) segments.push(`${verb}: ${vanished.join(', ')} vanished`)
+  }
+
+  const detail = segments.length === 0
+    ? `${names.length} verbs match fleet/exe-verbs.json (captured ${capturedAt})`
+    : `drift since ${capturedAt}: ${segments.join('; ')}`
+  return { readable: true, capturedAt, findings, detail }
+}
+
+/** A readable record is a green row whatever it found; an unreadable one is the
+ *  only red, because then the doctor has nothing to compare the lobby against. */
+const verbDriftRow = (drift) => row('verb-drift', drift.readable ? 'ok' : 'missing', drift.detail)
+
 // ── github ───────────────────────────────────────────────────────────────────
 
 /**
@@ -474,28 +707,42 @@ function integrationsRow (found, target) {
  * for the same path `config` was loaded from, or null when there is no file.
  * It reaches the `capacity` row and nothing else: `result.config` stays exactly
  * the two keys the doctor reads.
+ *
+ * `account` is that file's own `account` — `fleetConfigAccount` for the same
+ * path — and reaches the `accounts` row alone, for the same reason. `verbsPath`
+ * overrides the verb record the `verb-drift` row reads.
  */
-export async function doctor ({ config, exec, target = null, configKeys = null } = {}) {
+export async function doctor ({
+  config, exec, target = null, configKeys = null, account = null, verbsPath = null
+} = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
   const want = target === null || target === undefined ? null : String(target)
   if (want !== null && !TARGET.test(want)) {
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
+  const wantAccount = account === null || account === undefined ? null : String(account)
 
   const whoami = await run(READS.whoami)
   const billing = await run(READS.billing)
   const list = await run(READS.list)
   const github = await run(READS.github)
   const token = await run(READS.token)
+  const accounts = await run(READS.accounts)
+  const drift = await verbDrift({
+    help: (verb) => run(`ssh exe.dev "help ${verb}"`),
+    recordPath: verbsPath
+  })
 
   const found = list.code === 0 ? parseIntegrations(list.stdout) : null
   const rows = [
     exeDevRow(whoami),
     capacityRow(billing, cfg, configKeys),
     claudeRow(found, token),
+    accountsRow(accounts, found, wantAccount),
     githubRow(github),
-    integrationsRow(found, want)
+    integrationsRow(found, want),
+    verbDriftRow(drift)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }
@@ -535,9 +782,10 @@ async function main (argv) {
   const configPath = opts.configPath ?? DEFAULT_CONFIG_PATH()
   const config = await loadFleetConfig({ path: configPath })
   const configKeys = await fleetConfigKeys({ path: configPath })
+  const account = await fleetConfigAccount({ path: configPath })
   let result
   try {
-    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys })
+    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account })
   } catch (error) {
     process.stderr.write(`${error.message}\n`)
     process.exitCode = 2

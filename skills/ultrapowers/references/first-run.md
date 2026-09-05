@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with five rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with seven rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -54,8 +54,8 @@ green detail is the pool and the size one run asks for, in the shape
 an unreadable pool (`billing plan --json` failing or answering no numbers) or an
 unparseable config (`cpu` not an integer, `memory` not `<int>GB`). The agent
 writes the file with both keys explicitly — these are also the defaults, and a
-key the doctor does not read (one left by a fleet from before the lift) turns
-the row red until it is removed:
+key nothing reads (one left by a fleet from before the lift) turns the row red
+until it is removed:
 
 ```json
 {
@@ -63,6 +63,9 @@ the row red until it is removed:
   "memory": "16GB"
 }
 ```
+
+The one other name the file may carry is the account key of the `accounts` row
+below; anything else is stale.
 
 **In a browser:** nothing, unless the answer is a bigger plan.
 
@@ -78,8 +81,8 @@ Two things a newcomer would not know:
 - **`memory` is `<int>GB` or `<int>G`.** A bare number, or a fractional
   `1.5GB`, is unreadable and turns the row red before the pool is even
   consulted. A missing file means the defaults;
-  a key the doctor does not read is named in the red detail, and the agent
-  rewrites the file with cpu and memory only.
+  a key nothing reads is named in the red detail, and the agent rewrites the
+  file with the keys that are read.
 
 ## claude
 
@@ -122,6 +125,63 @@ Three things this command hides:
   carries `claude-token`'s own status line too — a laptop with no refresh token
   in its keychain is a warning inside a green row, because the bearer already
   lives at the edge and only the next refresh needs the keychain.
+
+## accounts
+
+One Claude account is one item in your login keychain, and every one of them
+lives under the same keychain service — the account name is what tells them
+apart. This row lists each item with its expiry, says which account the edge is
+carrying, and is `missing` when the keychain holds nothing at all, or when
+`~/.ultrapowers/fleet.json` names an account no keychain item carries. An
+expired item is not red: the launcher refreshes it before the run that uses it.
+
+**In a browser:** claude.ai's consent page again — once for each account you
+add, signed in as that account.
+
+**The agent runs** this to add a second account without moving the edge off the
+first:
+
+```bash
+node <plugin-root>/fleet/claude-token.mjs login --code-from-clipboard \
+  --account <name> --no-install
+```
+
+then `node <plugin-root>/fleet/claude-token.mjs accounts` to list what the
+keychain holds, and `node <plugin-root>/fleet/claude-token.mjs usage` for the
+table of what each one has spent against its limits.
+
+To make an account the default for every run, the agent adds the `"account"`
+key to `~/.ultrapowers/fleet.json`:
+
+```json
+{
+  "cpu": "8",
+  "memory": "16GB",
+  "account": "<name>"
+}
+```
+
+and the launcher's `--account <name>` overrides it for one run. Whichever wins,
+the install writes `account=<name>` into the `claude-max` integration's comment,
+which is where this row reads the edge's account from; an integration whose
+comment predates that says `edge account unrecorded`, and the next refresh
+records it.
+
+Three things a newcomer would not know:
+
+- **`--no-install` is the half that matters.** Without it, a login also sets
+  the bearer on `claude-max`, which moves the edge onto the account you just
+  added. With it, the exchange stops at the keychain: the new account is
+  available to pick, and every run still goes out on the account the edge
+  already carries.
+- **The refresh token rotates on every use.** A record copied to another laptop
+  is dead the first time either machine refreshes, so there is no such thing as
+  sharing one keychain item across two machines. Each machine logs in for
+  itself; the accounts are the same, the items are not.
+- **Metering refreshes an item without touching the edge.** Reading `usage`
+  spends a refresh and rewrites the keychain item, and it changes nothing about
+  which account the edge carries. Switching accounts is per run and never
+  mid-run: a sandbox is launched on one account and stays on it until it dies.
 
 ## github
 
@@ -201,3 +261,42 @@ Three things this command hides:
   not on the box, and the edge proxies only that repository's own paths. A
   target with no object is a launch refusal, public repo or not: the clone
   would work and the push would not.
+
+## verb-drift
+
+`fleet/exe-verbs.json` is the flag set of every lobby verb the fleet drives,
+recorded verb by verb with the date it was captured. The doctor and the
+launcher re-fetch `help <verb>` for each of them and diff what the lobby prints
+today against what is recorded. A flag that appeared or vanished is a
+**finding** printed inside a green row — the lobby moving is news, not a
+failure, and nothing is refused over it. The row is `missing` only when the
+record itself cannot be read: absent, not JSON, or carrying no `verbs` object.
+
+**In a browser:** nothing. This row is about the lobby's own help text.
+
+**The agent runs** the doctor, and when the row reports a drift, re-captures the
+verbs it named:
+
+```bash
+ssh exe.dev "help <verb>"
+```
+
+and edits `fleet/exe-verbs.json` — the flag names out of that `Options:` block,
+in the verb's array — then bumps the file's `capturedAt` to today's date.
+
+Three things a newcomer would not know:
+
+- **The record stores flag names, not help text.** `help <verb>` prints prose —
+  a `Command:` line, a description, an optional `Usage:` line, an `Options:`
+  block, sometimes `Examples:` — and prose churns for reasons nobody needs to
+  hear about. The diff unit is the set of `--flags` in the `Options:` block, so
+  a reworded description is silent and a removed flag is not.
+- **`help <verb>` and `<verb> --help` print the same block.** The doctor asks
+  the first form on purpose: `help …` runs nothing, while `new --help` starts
+  with the `new` verb, and the fleet's own exams treat any line starting with a
+  mutating verb as a launch.
+- **An unreadable answer is a finding too, not a red row.** A verb the lobby no
+  longer recognises answers `No help available for unrecognized command:` at
+  exit 0, and a verb whose name is not plain lower-case words is never sent to
+  the lobby at all; both are reported as `help unreadable` inside the same green
+  row, with the exit code that came back.

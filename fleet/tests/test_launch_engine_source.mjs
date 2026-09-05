@@ -34,6 +34,14 @@
  * paths, which is the half of M2 that has a reader. Leg (b) pins that: pinned
  * renders BASE's four lines and nothing else.
  *
+ * The launch line now also names the keychain entry the run signs in with and
+ * prints the verb-drift preflight, so every deep-equals here carries two more
+ * lines — `account=ultrapowers` and the preflight's own — after the comment and
+ * before the engine line, which stays last. That is this file's half of the
+ * account task's leg (c) [M3 lines]; the `help <verb>` reads the preflight
+ * issues are answered from `fleet/exe-verbs.json` itself, so a green launch
+ * finds no drift.
+ *
  * Nothing here opens a network socket. Every command goes through the injected
  * exec seam; the target is a real repository — `makeTargetRepo`'s bare origin
  * and its clone — and the seam points the launcher's own `push`/`ls-remote` at
@@ -73,6 +81,12 @@ const BILLING_OK = {
 /** The annotation M1 spells, verbatim. */
 const mainTipLine = (sha) => `engine=${sha} (main tip; pass --engine <40-hex> to pin)`
 
+/** The verb record the preflight compares the lobby against, read once. */
+const VERBS = JSON.parse(fs.readFileSync(new URL('../exe-verbs.json', import.meta.url), 'utf8'))
+/** The two lines a launch with no `--account` adds, verbatim. */
+const ACCOUNT_LINE = 'account=ultrapowers'
+const DRIFT_LINE = 'verb-drift: 12 verbs match fleet/exe-verbs.json (captured 2026-09-05)'
+
 // ── The seam's rules ────────────────────────────────────────────────────────
 
 /** `new … --json` answers the row for whatever name the line asked for. */
@@ -110,9 +124,23 @@ const NO_NETWORK_GIT = {
   answer: OFFLINE
 }
 
+/**
+ * `help <verb>` as the lobby prints it, answered from the record's own flags:
+ * an `Options:` block and one indented `--flag` line per flag, so the preflight
+ * finds nothing drifted.
+ */
+const HELP_OK = (cmd, argv) => {
+  const verb = String(argv[1] ?? '').slice('help '.length)
+  const flags = VERBS.verbs[verb]
+  return flags
+    ? answer([`Command: ${verb}`, '', 'Options:', ...flags.map((f) => `  ${f}  what ${f} does`), ''].join('\n'))
+    : answer(`No help available for unrecognized command: ${verb}\n`)
+}
+
 const readRules = (repo) => [
   ENGINE_RULE,
   localRemote(repo),
+  sshRule('help ', HELP_OK),
   sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
   sshRule('billing plan --json', answer(BILLING_OK)),
   sshRule('new ', NEW_OK),
@@ -227,8 +255,8 @@ const baseLines = (result) => [result.runId, result.vm, result.statusUrl, result
     '(a) [M1] and does not call the tip pinned'
   )
   assert.deepEqual(
-    lines, [...baseLines(result), mainTipLine(MAIN_TIP)],
-    "(a) [M1] the annotation joins BASE's four lines, last, and changes none of them"
+    lines, [...baseLines(result), ACCOUNT_LINE, DRIFT_LINE, mainTipLine(MAIN_TIP)],
+    "(a) [M1] the annotation joins BASE's four lines and the account task's two, last, and changes none of them"
   )
 
   const expectedComment =
@@ -262,8 +290,8 @@ const baseLines = (result) => [result.runId, result.vm, result.statusUrl, result
   // `fleet/tests/test_launch.mjs`, whose every launch is pinned and whose
   // rendering is pinned to four lines. See the head of this file.
   assert.deepEqual(
-    rendered.split('\n'), baseLines(result),
-    "(b) [M2] a pinned launch renders BASE's four lines, unannotated: the sha was the operator's own, and the comment already prints it"
+    rendered.split('\n'), [...baseLines(result), ACCOUNT_LINE, DRIFT_LINE],
+    "(b) [M2] a pinned launch renders BASE's four lines and the account task's two, unannotated: the sha was the operator's own, and the comment already prints it"
   )
   assert.ok(
     rendered.includes(`engine=${PINNED}`),
@@ -297,8 +325,8 @@ const baseLines = (result) => [result.runId, result.vm, result.statusUrl, result
     '(c) [M2] the source rides the result whatever else the comment carries'
   )
   assert.deepEqual(
-    renderLaunch(result).split('\n'), baseLines(result),
-    '(c) [M2] and a pinned launch still renders BASE\'s four lines, `overlap=` and `tier=` or no'
+    renderLaunch(result).split('\n'), [...baseLines(result), ACCOUNT_LINE, DRIFT_LINE],
+    '(c) [M2] and a pinned launch still renders BASE\'s four lines and the account task\'s two, `overlap=` and `tier=` or no'
   )
   ws.cleanup()
 }
