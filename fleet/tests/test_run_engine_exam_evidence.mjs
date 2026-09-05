@@ -183,13 +183,16 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
 
   // [M1] the exam ran after the implementer and before the first review, twice:
   // the driver's own pre-review pass and review round 1's fresh execution. The
-  // FIRST `exam-run` is wave 0's red-at-BASE probe, which M5 leaves as it was.
+  // FIRST `exam-run` is wave 0's red-at-BASE probe, which M5 leaves as it was —
+  // and since #653 it lands after `impl:T1` rather than before it: the pair is
+  // dispatched together, so the verdict is read in the examiner's clone once
+  // BOTH have returned, not while the implementer is still working.
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
     .filter(Boolean).filter((l) => l !== 'integration')
   assert.deepEqual(order,
-    ['exam:T1', 'exam-run', 'impl:T1', 'exam-run', 'exam-run', 'review:T1:1'],
-    'the exam runs at BASE for the wave-0 verdict, then twice after the ' +
-    'implementer — the pre-review pass and the review round — both before any referee')
+    ['exam:T1', 'impl:T1', 'exam-run', 'exam-run', 'exam-run', 'review:T1:1'],
+    'the exam runs at BASE for the wave-0 verdict once the pair is back, then ' +
+    'twice on the patch — the pre-review pass and the review round — both before any referee')
 
   // [M1] one `driver:exam-run` record per post-patch execution, and only those.
   assert.equal(events.length, 2,

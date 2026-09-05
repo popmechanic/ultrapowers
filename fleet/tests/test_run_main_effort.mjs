@@ -33,7 +33,7 @@ import { EventEmitter } from 'node:events'
 import { execFileSync } from 'node:child_process'
 
 import { parseArgs, provisionRunTree, composeAgent } from '../run-main.mjs'
-import { makeEventLog } from '../run-waves.mjs'
+import { cloneAtBase, makeEventLog } from '../run-waves.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-effort-'))
 const git = (argv, cwd) =>
@@ -106,6 +106,10 @@ const ENVELOPE = JSON.stringify({
 async function argvByLabel (name, extra) {
   const runDir = path.join(tmp, name)
   const tree = provisionRunTree({ repoDir: repo, runDir, base: BASE, taskIds: ['T1'] })
+  // The examiner runs in a clone of its own (#653): `exam:<id>` routes to
+  // `exam-<id>`, which the engine cuts at dispatch and `provisionRunTree` does
+  // not — so this rig, which dispatches the label directly, cuts it here.
+  cloneAtBase({ repo, dest: path.join(tree.clonesDir, 'exam-T1'), base: BASE })
   const eventLog = makeEventLog({
     file: path.join(runDir, 'events.jsonl'), runId: name, base: BASE
   })

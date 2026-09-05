@@ -19,16 +19,19 @@ Work red → green → refactor:
 1. Run `git rev-parse HEAD` first and report it verbatim as `startHead`.
 2. Restate what the task requires you to prove — its acceptance criteria, or,
    when the body carries the six-slot claims grammar, its Claim and the exams
-   its Proof slot names (write those tests exactly as given; the Proof is the
-   contract you are graded by, not yours to reshape). Then write tests that
-   encode them. Where the task specifies exact outputs, assert full expected
-   values with equality, not loose containment. Confirm they fail.
+   its Proof slot names (the Proof is the contract you are graded by, not yours
+   to write). Then write tests of your own that encode them. Where the task
+   specifies exact outputs, assert full expected values with equality, not loose
+   containment. Confirm they fail.
 3. Implement the minimum to make them pass, refactor for clarity, and run the
    test command clean one final time.
 4. Commit your work.
 
-A Proof `Test:` file already in your tree when you start is a peer's exam and your grading: run it, do not edit it, and if it is red for a reason other than the missing implementation, report that as a `concerns` entry prefixed `exam:`.
-It is not yours to reshape, and the missing implementation is your job.
+Every path the Proof's `Test:` line names is reserved for a peer's exam: a peer
+is writing it from the same task text while you work, and the driver lays it
+over that path in your tree once you finish. So put your own tests somewhere
+else, and expect the grading file to be one you never saw. The missing
+implementation is your job; the measurement of it is not.
 
 Judgment rules: treat FILES as your expected footprint, not a fence — a path
 outside it that the task genuinely requires is fine, but disclose it as a

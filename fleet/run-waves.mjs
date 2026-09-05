@@ -92,13 +92,14 @@ function defaultGit(argv, cwd) {
 
 // label -> the directory that worker runs in (the `cwdFor` runWorker needs).
 //
-// The two isolation:'worktree' sites get their task's own clone; every other
-// role runs in the integration clone, matching waves.js:232-235's grouping of
-// which roles write to the integration tree. A label whose task has no clone is
-// a provisioning error and fails loudly — never a silent fallback to the
+// The isolation:'worktree' sites get a clone of their task's; every other role
+// runs in the integration clone, matching waves.js:232-235's grouping of which
+// roles write to the integration tree. A label whose task has no clone is a
+// provisioning error and fails loudly — never a silent fallback to the
 // integration tree, which is the one directory a stray implementer could do
 // real damage in.
-export function makeCwdFor({ clonesDir, taskIdOf = defaultTaskIdOf }) {
+export function makeCwdFor({ clonesDir, taskIdOf = defaultTaskIdOf,
+                             cloneNameOf = defaultCloneNameOf }) {
   const integration = path.join(clonesDir, 'integration')
   return function cwdFor(opts) {
     if (opts.isolation !== 'worktree') return integration
@@ -107,7 +108,7 @@ export function makeCwdFor({ clonesDir, taskIdOf = defaultTaskIdOf }) {
       throw new Error('cwdFor: isolation:worktree on label "' + opts.label +
         '" but no task id could be read from it')
     }
-    const dir = path.join(clonesDir, 'task-' + id)
+    const dir = path.join(clonesDir, cloneNameOf(opts.label, id))
     if (!fs.existsSync(dir)) {
       throw new Error('cwdFor: no clone provisioned for task ' + id + ' at ' + dir +
         ' — refusing to run an isolated worker in the integration tree')
@@ -117,12 +118,22 @@ export function makeCwdFor({ clonesDir, taskIdOf = defaultTaskIdOf }) {
 }
 
 // The three labels that carry isolation:'worktree': `exam:<id>`, `impl:<id>`
-// and `fix:<id>:<iter>` — all three run in the task's own clone, which for the
-// examiner (#553) is the point: it writes the Proof's tests into the tree the
-// implementer will be handed, at BASE, before that implementer exists.
+// and `fix:<id>:<iter>` — all three belong to one task, and two of its clones.
 export function defaultTaskIdOf(label) {
   const m = /^(?:exam|impl|fix):([^:]+)/.exec(String(label || ''))
   return m ? m[1] : null
+}
+
+// Which of the task's two clones a label runs in (#653). The examiner writes
+// the exam in a clone of its own, cut at the same BASE; the implementer and its
+// fix rounds share the task clone the patch is captured from. That separation
+// IS the peer rule: the graded party never holds the exam in its tree while it
+// works, so it cannot type over it, and the driver hands the bytes in itself
+// once both have returned. The two clones give the two captures their two
+// names, `exam-<id>.patch` and `task-<id>.patch`, so the examiner's diff can
+// never overwrite the diff the fold reads.
+export function defaultCloneNameOf(label, id) {
+  return (/^exam:/.test(String(label || '')) ? 'exam-' : 'task-') + id
 }
 
 // ── the patch against BASE — what a worker's tree becomes (Amendment 9) ──────
@@ -180,12 +191,13 @@ export function defaultTaskIdOf(label) {
 // read must not pass a model-typed patch through the wrapper.
 export function withPatchCapture({ agent, clonesDir, base, patchesDir,
                                    git = defaultGit, taskIdOf = defaultTaskIdOf,
+                                   cloneNameOf = defaultCloneNameOf,
                                    onEvent = () => {} }) {
   // ONE label→directory mapping: makeCwdFor already owns it (and its
   // fail-loud missing-clone error). A second copy here is where a clone-
   // naming change would silently make the capture diff a different tree
   // than the one the worker wrote to.
-  const cwdFor = makeCwdFor({ clonesDir, taskIdOf })
+  const cwdFor = makeCwdFor({ clonesDir, taskIdOf, cloneNameOf })
   return async (prompt, opts) => {
     const reply = await agent(prompt, opts)
     if (!reply) return reply
@@ -203,7 +215,11 @@ export function withPatchCapture({ agent, clonesDir, base, patchesDir,
       // diffs must be taken against it, not the original BASE). A static sha
       // keeps the original single-wave semantics unchanged.
       const baseSha = (typeof base === 'function') ? base(opts) : base
-      const out = patchAgainstBase({ cwd, base: baseSha, out: path.join(patchesDir, 'task-' + id + '.patch'), git })
+      // The capture is named after the CLONE, not the task: the examiner's diff
+      // lands in `exam-<id>.patch` and never over the `task-<id>.patch` the
+      // fold reads.
+      const out = patchAgainstBase({ cwd, base: baseSha,
+        out: path.join(patchesDir, cloneNameOf(opts.label, id) + '.patch'), git })
       reply.patch = out
       reply.branch = ''                                  // detached by design; no branch exists
       reply.headSha = git(['rev-parse', 'HEAD'], cwd).trim()  // driver-derived, replacing the model-typed sha
