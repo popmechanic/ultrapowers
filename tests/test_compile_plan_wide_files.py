@@ -31,6 +31,22 @@ Every line either species prints is read back through
 `tests/test_compile_plan_proof_species.py`'s own `SPECIES_LINE_RE`, so a line
 that does not carry the shared `proof-species` shape fails here as well.
 
+Task "The wide-files knee reads the paths" (#666, proposal 1: "the advisory
+reads the paths, not only the count") narrows the `wide-files` knee for two
+kinds of task, and its rows live in the last section of this file:
+
+  #666 M1 / leg (a) — more than FOUR `Create:`/`Modify:` entries that include
+    `fleet/run-engine.mjs` print one line naming the engine as the reason.
+  #666 M2 / leg (b) — more than four entries that include more than one
+    `fleet/tests/test_<name>.mjs` sim, and no engine path, print one line
+    naming `<k>` sims as the reason; the engine reason wins when both hold.
+  #666 M3 / leg (c), (d) — every other task keeps the eight knee: one sim, two
+    `_helpers.mjs` modules, four entries with the engine, and `Test:`-only sim
+    paths are all silent, and the app-path fixtures still draw the BASE line.
+  #666 M4 / leg (e) — `wide-contract` is unchanged, `--check` alone is still
+    silent, the frozen-sha byte identity still holds, and the five-species
+    exam and the species-vocabulary pins still pass.
+
 Every fixture plan below is a signed claims-v1 plan (spec §4.5: the compiler
 refuses to compile one without its gate-verdict record), and `_rendered`
 asserts the fixture's own health — exit 0, `PLAN OK` — before its species lines
@@ -404,3 +420,292 @@ def test_the_five_species_exam_still_passes():
         "leg (d) [M4]: the existing species exam must still pass — the "
         "five-species fixture (one file per task, one to three clauses) draws "
         "no new line. Got rc=%d\n%s%s" % (p.returncode, p.stdout, p.stderr))
+
+
+# =========================================================================== #
+# Task "The wide-files knee reads the paths" (#666) — the narrow knee.        #
+#                                                                             #
+# Everything above is this task's M3/M4 app-path rows and stays as it is. The #
+# rows below are its own four clauses: the engine reason [M1], the sims       #
+# reason [M2], the eight knee everywhere else [M3], and the untouched frozen  #
+# channel [M4].                                                               #
+# =========================================================================== #
+# The two verbatim narrow-knee lines, quoted from the task's own Machine
+# clauses. Both end in the same advice; `<id>` is task 1 in every fixture.
+NARROW_KNEE_ADVICE = (
+    "run-10's eight-file engine task took 24.7 min while its one- and "
+    "two-file siblings took 2–4; split along a Produces symbol")
+# M1: `%d` is `<n>`, the Create: plus Modify: count.
+ENGINE_KNEE_LINE = (
+    "ADVISORY proof-species: wide-files — task 1: %d Create/Modify entries, "
+    "wide at four because it writes fleet/run-engine.mjs — "
+    + NARROW_KNEE_ADVICE)
+# M2: the holes are `<n>` then `<k>`, the count of sim paths.
+SIMS_KNEE_LINE = (
+    "ADVISORY proof-species: wide-files — task 1: %d Create/Modify entries, "
+    "wide at four because it writes %d fleet/tests/test_*.mjs sims — "
+    + NARROW_KNEE_ADVICE)
+
+ENGINE_PATH = "fleet/run-engine.mjs"
+
+
+def _sims(n):
+    """`n` paths of the shape `fleet/tests/test_<name>.mjs` — the sim shape
+    M2 reads (`startswith` `fleet/tests/test_`, `endswith` `.mjs`)."""
+    return ["fleet/tests/test_s%d.mjs" % i for i in range(1, n + 1)]
+
+
+def _helpers(n):
+    """`n` modules under the same directory WITHOUT the `test_` prefix — not
+    sims, so leg (c) [M3] expects silence for them."""
+    return ["fleet/tests/h%d_helpers.mjs" % i for i in range(1, n + 1)]
+
+
+def _app(n, kind="m"):
+    return ["app/%s%d.py" % (kind, i) for i in range(1, n + 1)]
+
+
+def _path_plan(creates=(), modifies=(), tests=(), clauses=2):
+    """A one-task plan whose Files block names these exact paths — the width
+    helpers above build `app/` paths only, and these fixtures need the engine
+    path and the sim paths by name."""
+    files = (["- Create: `%s`" % p for p in creates]
+             + ["- Modify: `%s`" % p for p in modifies]
+             + ["- Test: `%s`" % p for p in tests])
+    return HEADER + _task("1", files, _clauses(clauses), [_legs(clauses)])
+
+
+# leg (a) [M1]: five `Modify:` — the engine and four `app/` paths.
+ENGINE_FIVE_PLAN = _path_plan(modifies=[ENGINE_PATH] + _app(4))
+# leg (a) [M1] [M2]: seven — the engine under `Create:`, two sims and four
+# `app/` paths under `Modify:`. Both reasons hold; the engine reason wins.
+ENGINE_AND_SIMS_SEVEN_PLAN = _path_plan(creates=[ENGINE_PATH],
+                                        modifies=_sims(2) + _app(4))
+# leg (a) [M1]: nine — the engine and eight `app/` paths. Over the OLD knee
+# too, so the reason-carrying line must win over the BASE line.
+ENGINE_NINE_PLAN = _path_plan(modifies=[ENGINE_PATH] + _app(8))
+# leg (b) [M2]: two sims and three `app/` paths — five entries, `<k>` = 2.
+SIMS_FIVE_PLAN = _path_plan(modifies=_sims(2) + _app(3))
+# leg (b) [M2]: three sims and three `app/` paths — six entries, `<k>` = 3.
+SIMS_SIX_PLAN = _path_plan(modifies=_sims(3) + _app(3))
+# leg (b) [M2]: two sims and eight `app/` paths — ten entries, over the old
+# knee as well, so again the reason-carrying line must win.
+SIMS_TEN_PLAN = _path_plan(modifies=_sims(2) + _app(8))
+# leg (c) [M3]: exactly ONE sim and four `app/` paths — more than one is the
+# M2 trigger, so one is silent.
+ONE_SIM_FIVE_PLAN = _path_plan(modifies=_sims(1) + _app(4))
+# leg (c) [M3]: two `fleet/tests/<name>_helpers.mjs` and three `app/` paths —
+# no `test_` prefix, so not sims.
+HELPERS_FIVE_PLAN = _path_plan(modifies=_helpers(2) + _app(3))
+# leg (c) [M3]: four entries including the engine — four is not MORE than four.
+ENGINE_FOUR_PLAN = _path_plan(modifies=[ENGINE_PATH] + _app(3))
+# leg (c) [M3]: four `Create:` `app/` paths and three sim paths under `Test:` —
+# a `Test:` entry is a read; it neither counts nor triggers.
+FOUR_APP_AND_THREE_SIM_TESTS_PLAN = _path_plan(creates=_app(4, "c"),
+                                               tests=_sims(3))
+# leg (d) [M3]: nine entries of which exactly one is a sim — the eight knee.
+NINE_WITH_ONE_SIM_PLAN = _path_plan(modifies=_sims(1) + _app(8))
+
+
+def _wide(tmp_path, repo, text, what):
+    return _lines(tmp_path, repo, text, "wide-files", what)
+
+
+# --------------------------------------------------------------------------- #
+# #666 (a) [M1] the engine path narrows the knee to four                      #
+# --------------------------------------------------------------------------- #
+def test_666_five_entries_including_the_engine_print_the_engine_knee_line(
+        tmp_path, repo):
+    lines = _wide(tmp_path, repo, ENGINE_FIVE_PLAN,
+                  "the engine and four app/ paths")
+    assert lines == [ENGINE_KNEE_LINE % 5], (
+        "#666 leg (a) [M1]: five `Create:`/`Modify:` entries including "
+        "`fleet/run-engine.mjs` print exactly one `wide-files` line, verbatim, "
+        "with `<n>` = 5. Expected:\n%s\nGot:\n%s"
+        % (ENGINE_KNEE_LINE % 5, "\n".join(lines) or "(no wide-files line)"))
+
+
+def test_666_the_engine_reason_wins_over_the_sims_reason(tmp_path, repo):
+    """#666 leg (a) [M1] [M2]: one line per task — a task that writes the
+    engine AND more than one sim prints the M1 line and no M2 line."""
+    out = _rendered(tmp_path, repo, ENGINE_AND_SIMS_SEVEN_PLAN,
+                    "the engine, two sims and four app/ paths")
+    lines = _of(out, "wide-files")
+    assert lines == [ENGINE_KNEE_LINE % 7], (
+        "#666 leg (a) [M1] [M2]: seven entries — the engine under `Create:`, "
+        "two sims and four `app/` paths under `Modify:` — print exactly one "
+        "`wide-files` line, the engine one, with `<n>` = 7. Expected:\n%s\n"
+        "Got:\n%s"
+        % (ENGINE_KNEE_LINE % 7, "\n".join(lines) or "(no wide-files line)"))
+    sims = [l for l in _species_lines(out) if "sims" in l]
+    assert sims == [], (
+        "#666 leg (a) [M1] [M2]: the engine reason wins, so no line naming "
+        "`sims` is printed for the same task. Got:\n" + "\n".join(sims))
+
+
+def test_666_nine_entries_including_the_engine_print_the_engine_line_not_base(
+        tmp_path, repo):
+    lines = _wide(tmp_path, repo, ENGINE_NINE_PLAN,
+                  "the engine and eight app/ paths")
+    assert lines == [ENGINE_KNEE_LINE % 9], (
+        "#666 leg (a) [M1]: nine entries including `fleet/run-engine.mjs` "
+        "print the engine line with `<n>` = 9 — one line, and NOT the BASE "
+        "eight-knee line\n%s\nExpected:\n%s\nGot:\n%s"
+        % (WIDE_FILES_LINE % 9, ENGINE_KNEE_LINE % 9,
+           "\n".join(lines) or "(no wide-files line)"))
+
+
+# --------------------------------------------------------------------------- #
+# #666 (b) [M2] more than one sim narrows the knee to four                    #
+# --------------------------------------------------------------------------- #
+def test_666_five_entries_with_two_sims_print_the_sims_knee_line(tmp_path, repo):
+    lines = _wide(tmp_path, repo, SIMS_FIVE_PLAN, "two sims and three app/ paths")
+    assert lines == [SIMS_KNEE_LINE % (5, 2)], (
+        "#666 leg (b) [M2]: five entries of which two are "
+        "`fleet/tests/test_<name>.mjs` print exactly one `wide-files` line, "
+        "verbatim, with `<n>` = 5 and `<k>` = 2. Expected:\n%s\nGot:\n%s"
+        % (SIMS_KNEE_LINE % (5, 2),
+           "\n".join(lines) or "(no wide-files line)"))
+
+
+def test_666_six_entries_with_three_sims_count_the_sims(tmp_path, repo):
+    lines = _wide(tmp_path, repo, SIMS_SIX_PLAN, "three sims and three app/ paths")
+    assert lines == [SIMS_KNEE_LINE % (6, 3)], (
+        "#666 leg (b) [M2]: `<n>` is the entry count and `<k>` the sim count — "
+        "three sims and three `app/` paths give `<n>` = 6, `<k>` = 3. "
+        "Expected:\n%s\nGot:\n%s"
+        % (SIMS_KNEE_LINE % (6, 3),
+           "\n".join(lines) or "(no wide-files line)"))
+
+
+def test_666_ten_entries_with_two_sims_print_the_sims_line_not_base(tmp_path, repo):
+    lines = _wide(tmp_path, repo, SIMS_TEN_PLAN, "two sims and eight app/ paths")
+    assert lines == [SIMS_KNEE_LINE % (10, 2)], (
+        "#666 leg (b) [M2]: ten entries of which two are sims print exactly "
+        "one `wide-files` line, the sims one with `<n>` = 10 and `<k>` = 2 — "
+        "NOT the BASE eight-knee line\n%s\nExpected:\n%s\nGot:\n%s"
+        % (WIDE_FILES_LINE % 10, SIMS_KNEE_LINE % (10, 2),
+           "\n".join(lines) or "(no wide-files line)"))
+
+
+# --------------------------------------------------------------------------- #
+# #666 (c) [M3] everything else keeps the eight knee — the silences           #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("text,what,why", [
+    (ONE_SIM_FIVE_PLAN, "one sim and four app/ paths",
+     "one `fleet/tests/test_<name>.mjs` is not MORE than one, so five entries "
+     "stay under the eight knee and print nothing"),
+    (HELPERS_FIVE_PLAN, "two fleet/tests helpers modules and three app/ paths",
+     "`fleet/tests/<name>_helpers.mjs` has no `test_` prefix, so it is not a "
+     "sim and five entries print nothing"),
+    (ENGINE_FOUR_PLAN, "the engine and three app/ paths",
+     "four entries is not MORE than four, so even the engine prints nothing"),
+    (FOUR_APP_AND_THREE_SIM_TESTS_PLAN, "four app/ Create: and three sim Test:",
+     "a `Test:` entry is a read — three sim paths there neither count toward "
+     "`<n>` nor trigger the sims reason"),
+])
+def test_666_the_narrow_knee_is_silent(tmp_path, repo, text, what, why):
+    lines = _wide(tmp_path, repo, text, what)
+    assert lines == [], (
+        "#666 leg (c) [M3]: %s — %s. Got:\n%s" % (what, why, "\n".join(lines)))
+
+
+def test_666_the_silence_at_four_is_the_threshold_and_not_a_dead_render(
+        tmp_path, repo):
+    """#666 leg (c) [M3]: the four-entry engine fixture is silent only if the
+    same fixture one `app/` entry wider prints — otherwise the silence is an
+    absent render, not a threshold."""
+    silent = _wide(tmp_path, repo, ENGINE_FOUR_PLAN,
+                   "the engine and three app/ paths")
+    assert silent == [], (
+        "#666 leg (c) [M3]: four entries including the engine print no "
+        "`wide-files` line. Got:\n" + "\n".join(silent))
+    wider = _wide(tmp_path, repo, ENGINE_FIVE_PLAN,
+                  "the engine and four app/ paths")
+    assert wider == [ENGINE_KNEE_LINE % 5], (
+        "#666 leg (c) [M3]: the SAME fixture one `app/` entry wider prints the "
+        "M1 line with `<n>` = 5, so the silence at four is the threshold. "
+        "Expected:\n%s\nGot:\n%s"
+        % (ENGINE_KNEE_LINE % 5, "\n".join(wider) or "(no wide-files line)"))
+
+
+# --------------------------------------------------------------------------- #
+# #666 (d) [M3] the app-path rows still draw the BASE eight-knee line         #
+# --------------------------------------------------------------------------- #
+def test_666_the_app_path_fixture_still_draws_the_base_eight_knee_line(
+        tmp_path, repo):
+    lines = _wide(tmp_path, repo, FIVE_AND_FOUR_PLAN,
+                  "five Create: and four Modify: app/ paths")
+    assert lines == [WIDE_FILES_LINE % 9], (
+        "#666 leg (d) [M3]: the existing five-`Create:`-and-four-`Modify:` "
+        "app-path fixture still prints exactly the BASE eight-knee line with "
+        "`<n>` = 9 — the narrow knee reads paths, it does not move the old "
+        "one. Expected:\n%s\nGot:\n%s"
+        % (WIDE_FILES_LINE % 9, "\n".join(lines) or "(no wide-files line)"))
+
+
+def test_666_nine_entries_with_one_sim_draw_the_base_line_not_the_sims_line(
+        tmp_path, repo):
+    lines = _wide(tmp_path, repo, NINE_WITH_ONE_SIM_PLAN,
+                  "one sim and eight app/ paths")
+    assert lines == [WIDE_FILES_LINE % 9], (
+        "#666 leg (d) [M3]: nine entries of which exactly one is a sim are "
+        "wide by the EIGHT knee, so the BASE line prints and the M2 line does "
+        "not. Expected:\n%s\nGot:\n%s"
+        % (WIDE_FILES_LINE % 9, "\n".join(lines) or "(no wide-files line)"))
+
+
+# --------------------------------------------------------------------------- #
+# #666 (e) [M4] wide-contract, the frozen channel, the neighbouring exams     #
+# --------------------------------------------------------------------------- #
+def test_666_the_wide_contract_species_is_unchanged(tmp_path, repo):
+    nine = _lines(tmp_path, repo, NINE_CLAUSE_PLAN, "wide-contract",
+                  "nine Machine clauses")
+    eleven = _lines(tmp_path, repo, ELEVEN_CLAUSE_PLAN, "wide-contract",
+                    "eleven Machine clauses")
+    assert (nine, eleven) == ([WIDE_CONTRACT_LINE % 9],
+                              [WIDE_CONTRACT_LINE % 11]), (
+        "#666 leg (e) [M4]: `wide-contract` is untouched — its nine-clause and "
+        "eleven-clause fixtures still print exactly their lines. Got:\n%s\n%s"
+        % ("\n".join(nine) or "(none)", "\n".join(eleven) or "(none)"))
+
+
+def test_666_the_engine_fixture_draws_nothing_without_renders(tmp_path, repo):
+    """#666 leg (e) [M4]: the narrow knee rides behind `--renders` like the
+    knee it narrows — the five-entry engine fixture draws its line under
+    `--check --renders` and nothing under `--check` alone."""
+    plan = _write(tmp_path, ENGINE_FIVE_PLAN)
+    with_renders = _healthy(_check(plan, "--renders", "--base", str(repo)),
+                            "the engine and four app/ paths")
+    assert _of(with_renders, "wide-files") == [ENGINE_KNEE_LINE % 5], (
+        "#666 leg (e) [M4]: the fixture draws the M1 line under `--renders`, "
+        "so the silence asserted next is the flag's and not an absent render. "
+        "Got:\n" + with_renders)
+
+    bare = _check(plan)
+    assert (bare.returncode, bare.stdout.splitlines()[:1]) == (0, ["PLAN OK"]), (
+        "#666 leg (e) [M4]: `--check` alone exits 0 with `PLAN OK` as its "
+        "first line, exactly as at BASE. Got rc=%d\n%s%s"
+        % (bare.returncode, bare.stdout, bare.stderr))
+    assert _of(bare.stdout, "wide-files") == [], (
+        "#666 leg (e) [M4]: `--check` alone prints no `wide-files` line. "
+        "Got:\n" + bare.stdout)
+    assert "wide-files" not in bare.stdout, (
+        "#666 leg (e) [M4]: the frozen `--check` channel names the species "
+        "nowhere. Got:\n" + bare.stdout)
+
+
+def test_666_the_species_vocabulary_and_five_species_exams_still_pass():
+    """#666 leg (e) [M4]: the Proof's `Run:` — the five-species fixture
+    (exactly five lines, one per registered species) and the
+    species-vocabulary pins over the skill text, neither of which this task
+    may move."""
+    p = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+         "tests/test_compile_plan_proof_species.py",
+         "tests/test_compile_plan_check_cost.py"],
+        capture_output=True, text=True, cwd=str(ROOT))
+    assert p.returncode == 0, (
+        "#666 leg (e) [M4]: the narrow knee adds no species and no word to the "
+        "refusal vocabulary, so both exams pass unchanged. Got rc=%d\n%s%s"
+        % (p.returncode, p.stdout, p.stderr))

@@ -8,7 +8,7 @@ implementer will break blind — so it is named before a reader is dispatched.
 This exam pins the three Machine clauses leg by leg:
 
   M1 / leg (a) — under `--check --renders --base <checkout>`, for each
-    claims-v1 task and each backticked span of three or more characters in its
+    claims-v1 task and each backticked span of six or more characters in its
     Machine clauses, a tracked TEST file under the checkout containing that
     span as a SUBSTRING, and named in no task's Files block, draws exactly one
     line per (task, span, path):
@@ -31,6 +31,10 @@ This exam pins the three Machine clauses leg by leg:
     fixture plan's `--check` output stays byte-identical to the compiler at the
     frozen sha — `tests/test_compile_plan_proof_runs.py`'s leg (e) assertion,
     imported and re-run from here.
+
+The second half of this exam is #671's follow-on — the spans that pin nothing
+are skipped, and the per-task loop is pinned by a three-task plan. Its five
+Machine clauses are restated above the section that carries them.
 
 Every fixture plan below is a signed claims-v1 plan (spec §4.5: the compiler
 refuses to compile one without its gate-verdict record), and `_rendered`
@@ -152,7 +156,7 @@ PLAN = _plan(TASK_1, TASK_2)
 PLAN_TASK_2_OWNS_PROBE = _plan(TASK_1, TASK_2_OWNING)
 
 # M1's length floor: a backticked span of TWO characters is below the
-# three-or-more bar, so a test file asserting it draws nothing.
+# six-or-more bar, so a test file asserting it draws nothing.
 SHORT_SPAN = "ok"
 PLAN_SHORT_SPAN = _plan(_task("1", ["- Modify: `app/x.py`"],
                               "M1. The probe header reports `%s`." % SHORT_SPAN,
@@ -312,13 +316,13 @@ def test_the_four_line_shape_agrees_with_the_verbatim_single_line():
     assert pin_line("1", LITERAL, PROBE_PY) == EXPECTED_ONE
 
 
-def test_a_backticked_span_under_three_characters_draws_nothing(tmp_path):
-    """[M1]: the span floor is three characters — a tracked test file
+def test_a_backticked_span_under_six_characters_draws_nothing(tmp_path):
+    """[M1]: the span floor is six characters — a tracked test file
     asserting a two-character span is not a pin this species reports."""
     base = _repo(tmp_path, "repo_short",
                  {PROBE_PY: _probe_source(SHORT_SPAN)})
     assert _lines(tmp_path, base, PLAN_SHORT_SPAN, "plan_short.md") == [], (
-        "[M1]: `%s` is %d characters, below the three-or-more bar, so the "
+        "[M1]: `%s` is %d characters, below the six-or-more bar, so the "
         "test file asserting it draws no line"
         % (SHORT_SPAN, len(SHORT_SPAN)))
 
@@ -365,6 +369,8 @@ def test_silent_on_a_legacy_grammar_plan(tmp_path, repo):
 
 # --------------------------------------------------------------------------- #
 # (c) [M3] the frozen `--check` channel                                        #
+# — and, unchanged, #671's leg (g) [M5]: these three tests and the byte-        #
+#   identity assertion below are exactly what that leg says still passes.      #
 # --------------------------------------------------------------------------- #
 def test_check_alone_prints_no_pinned_elsewhere_line(tmp_path, repo):
     """[M3]: without `--renders`, nothing is printed and the exit code and
@@ -403,9 +409,212 @@ def _fixture_fn(fixture):
 
 def test_every_run_less_fixture_plan_still_checks_byte_identically_to_base(
         tmp_path_factory):
-    """leg (c) [M3]: the new species rides behind `--renders`, so the frozen
-    `--check` channel is untouched — the assertion is
-    `tests/test_compile_plan_proof_runs.py`'s leg (e), imported and called."""
+    """leg (c) [M3], and #671's leg (g) [M5]: the species rides behind
+    `--renders`, so the frozen `--check` channel is untouched — the assertion
+    is `tests/test_compile_plan_proof_runs.py`'s leg (e), imported and
+    called."""
     base_compiler = _fixture_fn(proof_runs.base_compiler)(tmp_path_factory)
     proof_runs.test_every_run_less_fixture_plan_checks_byte_identically_to_base(
         base_compiler)
+
+
+# =========================================================================== #
+# Task 2 of #671's wave — "Pinned-elsewhere skips the spans that pin nothing" #
+#                                                                             #
+# A span shorter than six characters, a span ending in `/`, and a span more   #
+# than eight tracked test files contain pin nothing: they are grep noise, not #
+# one sibling's strict-equality pin. The literal shape the species was built  #
+# for (`runner: None`, one test file) is kept, and the per-task loop is       #
+# pinned by a plan whose three tasks all carry that span.                     #
+#                                                                             #
+#   M1 / leg (a) — the literal shape is kept, and the loop is per task: a     #
+#     three-task plan each of whose tasks carries `runner: None` draws three  #
+#     lines, one per task, in task order.                                     #
+#   M2 / leg (b) — the span floor is six: a five-character span draws         #
+#     nothing, a six-character one in the same clause position and the same   #
+#     file draws one line.                                                    #
+#   M3 / leg (c) — a span ending in `/` is a directory prefix and draws       #
+#     nothing whatever its length; the same span without its trailing `/`     #
+#     draws one line.                                                         #
+#   M4 / legs (d), (e), (f) — a span in MORE THAN EIGHT tracked test files is #
+#     vocabulary: nine files draw nothing, nine of which one is declared draw #
+#     nothing (the count is taken BEFORE the `declared` filter), and eight    #
+#     draw eight lines, one per file in path order.                           #
+#   M5 / leg (g) — the frozen channel: the three tests directly above, plus   #
+#     the five-species fixture the Proof's `Run:` bullet runs.                #
+# =========================================================================== #
+
+# leg (a) [M1]: the same clause in three tasks. Each task's Files names its
+# own path, so `tests/test_probe.py` is still declared by none of them.
+TASK_2_SAME_SPAN = _task("2", ["- Create: `app/y.py`"], MACHINE_1, LEGS_1)
+TASK_3_SAME_SPAN = _task("3", ["- Create: `app/z.py`"], MACHINE_1, LEGS_1)
+PLAN_THREE_TASKS = _plan(TASK_1, TASK_2_SAME_SPAN, TASK_3_SAME_SPAN)
+
+# legs (b), (c): one-task plans differing only in the backticked span, run
+# against a checkout whose one tracked test file contains it.
+SPAN_FIVE = "abcde"          # five characters — below the floor
+SPAN_SIX = "abcdef"          # six characters — the first span the floor keeps
+SPAN_DIR = "fleet/tests/"    # twelve characters, ending in `/` — a directory
+SPAN_NO_SLASH = "fleet/tests"  # the same span, eleven characters, no slash
+
+
+def _span_plan(span):
+    """The one-task fixture plan whose Machine clause carries `span` in the
+    clause position `MACHINE_1` carries `runner: None` in."""
+    return _plan(_task("1", ["- Modify: `app/x.py`"],
+                       "M1. The probe header reports `%s`." % span, LEGS_1))
+
+
+# legs (d), (e), (f) [M4]: the same literal in N tracked test files under
+# `tests/`, sorted by path already (single digits).
+def _probe_paths(n):
+    return ["tests/test_p%d.py" % i for i in range(1, n + 1)]
+
+
+def _many_repo(tmp_path, n):
+    return _repo(tmp_path, "repo_%d" % n,
+                 {p: _probe_source(LITERAL) for p in _probe_paths(n)})
+
+
+# leg (e) [M4]: the nine-file checkout with the FIRST of those files added as
+# task 2's `Test:` entry — the `TASK_2_OWNING` shape, one more Files bullet.
+PLAN_TASK_2_OWNS_P1 = _plan(
+    TASK_1,
+    _task("2", ["- Create: `app/y.py`", "- Test: `tests/test_p1.py`"],
+          MACHINE_2, LEGS_2))
+
+
+# --------------------------------------------------------------------------- #
+# (a) [M1] the literal shape is kept, and the loop is per task                 #
+# --------------------------------------------------------------------------- #
+def test_a_the_literal_shape_the_species_was_built_for_is_kept(
+        tmp_path, repo):
+    """leg (a) [M1]: `runner: None` is twelve characters, has no trailing
+    slash, and is in ONE tracked test file — none of the three new skips
+    touches it, so the verbatim line stands exactly as it did."""
+    lines = _lines(tmp_path, repo, PLAN)
+    assert lines == [EXPECTED_ONE], (
+        "leg (a) [M1]: the one shape the species was built for — task 1's "
+        "clause carrying `%s`, tracked `%s` asserting it, no task's Files "
+        "naming that file — is still exactly one line:\n%s\ngot:\n%s"
+        % (LITERAL, PROBE_PY, EXPECTED_ONE, "\n".join(lines)))
+
+
+def test_a_three_tasks_carrying_the_same_span_draw_three_lines_in_task_order(
+        tmp_path, repo):
+    """leg (a) [M1]: the loop in `_render_proof_species` is per task — three
+    tasks carrying the same clause span against the same checkout draw the
+    task-1, task-2 and task-3 lines, in that order (#671's loop question)."""
+    lines = _lines(tmp_path, repo, PLAN_THREE_TASKS, "plan_three.md")
+    expected = [pin_line(i, LITERAL, PROBE_PY) for i in ("1", "2", "3")]
+    assert lines == expected, (
+        "leg (a) [M1]: tasks 1, 2 and 3 each carry `%s` in a Machine clause "
+        "and `%s` pins it for all three, so three lines print in task order. "
+        "Got:\n%s\nwanted:\n%s"
+        % (LITERAL, PROBE_PY, "\n".join(lines), "\n".join(expected)))
+
+
+# --------------------------------------------------------------------------- #
+# (b) [M2] the span floor is six characters                                    #
+# --------------------------------------------------------------------------- #
+def test_b_a_five_character_span_draws_nothing(tmp_path):
+    """leg (b) [M2]: below six characters a span is grep noise, so the tracked
+    test file containing it draws no pinned-elsewhere line."""
+    base = _repo(tmp_path, "repo_five", {PROBE_PY: _probe_source(SPAN_FIVE)})
+    lines = _lines(tmp_path, base, _span_plan(SPAN_FIVE), "plan_five.md")
+    assert lines == [], (
+        "leg (b) [M2]: `%s` is %d characters, below the six-character floor, "
+        "so tracked `%s` containing it draws nothing. Got:\n%s"
+        % (SPAN_FIVE, len(SPAN_FIVE), PROBE_PY, "\n".join(lines)))
+
+
+def test_b_a_six_character_span_in_the_same_position_draws_one_line(tmp_path):
+    """leg (b) [M2]: the same clause position and the same file, one character
+    longer — six is the first length the floor keeps, so the line prints."""
+    base = _repo(tmp_path, "repo_six", {PROBE_PY: _probe_source(SPAN_SIX)})
+    lines = _lines(tmp_path, base, _span_plan(SPAN_SIX), "plan_six.md")
+    expected = [pin_line("1", SPAN_SIX, PROBE_PY)]
+    assert lines == expected, (
+        "leg (b) [M2]: `%s` is %d characters — at the floor, not below it — "
+        "so tracked `%s` containing it draws exactly one line:\n%s\ngot:\n%s"
+        % (SPAN_SIX, len(SPAN_SIX), PROBE_PY, expected[0], "\n".join(lines)))
+
+
+# --------------------------------------------------------------------------- #
+# (c) [M3] a span ending in `/` is a directory and draws nothing               #
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def repo_dir_span(tmp_path):
+    """One tracked test file containing `fleet/tests/` — and so containing
+    `fleet/tests` too, which is what makes the pair below a controlled
+    experiment: only the trailing slash of the SPAN differs."""
+    return _repo(tmp_path, "repo_dir", {PROBE_PY: _probe_source(SPAN_DIR)})
+
+
+def test_c_a_span_ending_in_a_slash_draws_nothing_however_long(
+        tmp_path, repo_dir_span):
+    """leg (c) [M3]: `fleet/tests/` is twelve characters — well over the floor
+    — but it is a directory prefix an import line contains and no test pins."""
+    lines = _lines(tmp_path, repo_dir_span, _span_plan(SPAN_DIR),
+                   "plan_dir.md")
+    assert lines == [], (
+        "leg (c) [M3]: `%s` is %d characters and ends in `/`, so tracked `%s` "
+        "containing it draws nothing — length does not rescue a directory. "
+        "Got:\n%s" % (SPAN_DIR, len(SPAN_DIR), PROBE_PY, "\n".join(lines)))
+
+
+def test_c_the_same_span_without_its_trailing_slash_draws_one_line(
+        tmp_path, repo_dir_span):
+    """leg (c) [M3]: the same file, the same span minus its trailing slash —
+    the skip is the slash and nothing else."""
+    lines = _lines(tmp_path, repo_dir_span, _span_plan(SPAN_NO_SLASH),
+                   "plan_noslash.md")
+    expected = [pin_line("1", SPAN_NO_SLASH, PROBE_PY)]
+    assert lines == expected, (
+        "leg (c) [M3]: `%s` is %d characters and ends in no slash, so tracked "
+        "`%s` containing it draws exactly one line:\n%s\ngot:\n%s"
+        % (SPAN_NO_SLASH, len(SPAN_NO_SLASH), PROBE_PY, expected[0],
+           "\n".join(lines)))
+
+
+# --------------------------------------------------------------------------- #
+# (d) (e) (f) [M4] a span in more than eight tracked test files is vocabulary  #
+# --------------------------------------------------------------------------- #
+def test_d_a_span_in_nine_tracked_test_files_draws_nothing(tmp_path):
+    """leg (d) [M4]: nine tracked test files, none of them declared — over the
+    eight-file line, so the span is vocabulary and nothing prints."""
+    base = _many_repo(tmp_path, 9)
+    lines = _lines(tmp_path, base, PLAN, "plan_nine.md")
+    assert lines == [], (
+        "leg (d) [M4]: `%s` is contained by nine tracked test files (%s), "
+        "more than eight, so no pinned-elsewhere line is printed. Got:\n%s"
+        % (LITERAL, ", ".join(_probe_paths(9)), "\n".join(lines)))
+
+
+def test_e_the_count_is_taken_before_the_declared_filter(tmp_path):
+    """leg (e) [M4]: the same nine files with the first declared as task 2's
+    `Test:` entry — eight files survive the ownership filter, but the count
+    that decides the skip is the nine tracked test files among the grep hits,
+    so still nothing prints."""
+    base = _many_repo(tmp_path, 9)
+    lines = _lines(tmp_path, base, PLAN_TASK_2_OWNS_P1, "plan_nine_owned.md")
+    assert lines == [], (
+        "leg (e) [M4]: nine tracked test files contain `%s` and one of them, "
+        "`tests/test_p1.py`, is task 2's `- Test:` entry — the count is taken "
+        "over the tracked test files among the grep hits, BEFORE the "
+        "`declared` filter, so nine is still nine and nothing prints. Got:\n%s"
+        % (LITERAL, "\n".join(lines)))
+
+
+def test_f_a_span_in_eight_tracked_test_files_draws_eight_lines(tmp_path):
+    """leg (f) [M4]: eight is the line the compiler already draws for width —
+    at eight files, none declared, every line still prints, one per file in
+    path order."""
+    base = _many_repo(tmp_path, 8)
+    lines = _lines(tmp_path, base, PLAN, "plan_eight.md")
+    expected = [pin_line("1", LITERAL, p) for p in _probe_paths(8)]
+    assert lines == expected, (
+        "leg (f) [M4]: eight tracked test files contain `%s` and none is "
+        "declared — eight is not MORE than eight, so eight lines print, one "
+        "per file in path order. Got:\n%s\nwanted:\n%s"
+        % (LITERAL, "\n".join(lines), "\n".join(expected)))
