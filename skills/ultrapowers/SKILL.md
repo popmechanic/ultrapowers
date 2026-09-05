@@ -65,8 +65,10 @@ Then the agent asks, again with AskUserQuestion, which key file `~/.ssh/config`
 should point at — `~/.ssh/id_ed25519` (Recommended) or another path the user
 names — and writes the `Host *.exe.xyz exe.dev` stanza itself.
 
-`capacity` — the pool the account's plan allows. The agent reads the doctor's
-`detail` for the pool it found and asks with
+`capacity` — the pool the account's plan allows. When the detail names keys
+nothing reads, the agent rewrites the file with cpu and memory only, keeping
+any size it already carried, and re-runs the doctor — no question is asked.
+The agent reads the doctor's `detail` for the pool it found and asks with
 AskUserQuestion: **Lower the run size, or upgrade the plan?** — `Lower it to {"cpu":"4","memory":"8GB"} (Recommended)` / `Upgrade the plan instead`.
 On the first the agent writes the smaller size into `~/.ultrapowers/fleet.json`
 itself; on the second the human upgrades the plan in the browser and the agent
@@ -142,6 +144,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    both integrations attached, the assignment as its comment, and a setup
    script that starts the run's unit. No ssh, no second step.
 
+   Add `--hold` to that line when the PR should stay open for a person — a
+   measurement run; the sandbox then publishes and does not merge.
+
 3. **Walk away.** The run outlives this session; there is nothing to tail. Its
    state is `status.json`, the same bytes on the VM's status page and on the
    run's evidence branch at every transition: `booting` → `running` →
@@ -166,15 +171,18 @@ approved plan, **is** the authorization to execute — no further approval pause
    `prAuthor` in `status.json` are the PR's URL and who GitHub says opened it —
    read both back to the user, and say so when the author is the installation
    bot rather than them (their GitHub account is not yet linked on exe.dev's
-   Integrations page). The operator merges or closes the PR; a parked run is
+   Integrations page). A ready PR merges itself once its checks are green —
+   `status.json`'s `merged` cell is the squash commit — and `--hold`
+   on the launch line keeps it open for the operator; a draft PR is the
+   operator's to merge or close; a parked run is
    acknowledged by marking it ready, or re-driven as a narrower plan. A parked
    run with nothing to publish opens no PR; its evidence branch is still
    pushed. The laptop never fetches a run branch.
 
 5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs
    that finished over an hour ago, and reports the stale ones rather than
-   removing them. It is a cron job; the agent runs it by hand when that
-   machine has been asleep.
+   removing them. The launcher runs it before every launch; nothing schedules it,
+   and the agent runs it by hand when this machine has been asleep.
 
 ## Resources
 

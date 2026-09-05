@@ -106,6 +106,8 @@ POLL_SECONDS="${FLEET_POLL_SECONDS:-2}"
 STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
 ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
 PUBLISH_BRANCH_WAIT="${PUBLISH_BRANCH_WAIT:-60}"             # for the pushed branch to show at the edge
+MERGE_CHECK_WAIT="${FLEET_MERGE_CHECK_WAIT:-1800}"           # 30 min for the PR head's checks to conclude
+MERGE_CHECKS_GRACE="${FLEET_MERGE_CHECKS_GRACE:-120}"        # before "no check runs" means "none are coming"
 
 # Run identity, filled by `parse_assignment`. `RUN_N` is the bare number (the
 # `runs/<N>/` path); `RUN_ID` is `run-<N>` (the engine's runId, its run dir and
@@ -119,6 +121,9 @@ ENGINE_SHA=""
 OVERLAP=""
 TIER=""
 EFFORT=""
+# `hold=1` in the assignment: publish the PR and stop there, leaving the merge
+# button to a human. Empty is the default — the sandbox finishes its own PR.
+HOLD=""
 BRANCH=""
 # The other two of #598's three branches, and the paths that hang off them.
 PLAN_BRANCH=""
@@ -135,6 +140,17 @@ PR_URL=""
 # `--act-as-user` took, the app bot when it did not. Recorded so a bot-authored
 # PR is a fact on the page, not a surprise on GitHub.
 PR_AUTHOR=""
+# The pushed head of the integration branch, read once — by `await_branch_visible`
+# before the PR POST, and reused by the merge step, which asks the edge about
+# the checks of THAT sha. One read, so the run branch is read back for its head
+# exactly once in a run.
+BRANCH_HEAD=""
+# The squash commit the PR merged as, once the sandbox has merged it. Empty is
+# `null` on the page: a PR still open, or one deliberately left open.
+MERGED_SHA=""
+# What the `done` phase says about the merge — `merged <sha>`, or
+# `left open: <reason>`. Set by `merge_pr`, read by `do_boot`.
+MERGE_NOTE=""
 ERROR=""
 
 # --- seams -------------------------------------------------------------------
@@ -193,14 +209,18 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
   if [ "$#" -ge 2 ]; then PHASE="$2"; fi
   mkdir -p "$WWW_DIR"
   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
-  local pr_cell="null" author_cell="null" err_cell="null" tmp
+  local pr_cell="null" author_cell="null" merged_cell="null" err_cell="null" tmp
   [ -n "$PR_URL" ] && pr_cell="\"$(json_escape "$PR_URL")\""
   [ -n "$PR_AUTHOR" ] && author_cell="\"$(json_escape "$PR_AUTHOR")\""
+  # `merged` is a cell on EVERY page, null until the sandbox has merged: a
+  # reader of the evidence branch can tell a PR that went in from one left open
+  # without opening GitHub.
+  [ -n "$MERGED_SHA" ] && merged_cell="\"$(json_escape "$MERGED_SHA")\""
   [ -n "$ERROR" ] && err_cell="\"$(json_escape "$ERROR")\""
   :
   tmp="$STATUS_FILE.tmp.$$"
   cat >"$tmp" <<EOF
-{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
+{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
 EOF
   mv "$tmp" "$STATUS_FILE"
   log "status: state=$STATE phase=$PHASE"
@@ -307,6 +327,7 @@ parse_assignment() { # $1 = the comment line
       overlap) OVERLAP="$val" ;;
       tier)    TIER="$val" ;;
       effort)  EFFORT="$val" ;;
+      hold)    HOLD="$val" ;;
       *) fail "assignment: unknown key '$key' in comment" ;;
     esac
   done
@@ -318,6 +339,10 @@ parse_assignment() { # $1 = the comment line
   case "$OVERLAP" in ''|fold|serialize) : ;; *) fail "assignment: bad overlap '$OVERLAP'" ;; esac
   case "$TIER" in ''|standard|mostCapable) : ;; *) fail "assignment: bad tier '$TIER'" ;; esac
   case "$EFFORT" in ''|low|medium|high) : ;; *) fail "assignment: bad effort '$EFFORT'" ;; esac
+  # One value, `1`. `hold=0` and `hold=yes` are refused rather than read as
+  # falsey: a launcher that meant to hold a run and mistyped the value would
+  # otherwise get a merged PR out of the typo.
+  case "$HOLD" in ''|1) : ;; *) fail "assignment: bad hold '$HOLD'" ;; esac
 
   RUN_ID="run-$RUN_N"
   BRANCH="ultra/integration-$RUN_ID"
@@ -326,7 +351,7 @@ parse_assignment() { # $1 = the comment line
   EVIDENCE_PATH=".ultrapowers/runs/$RUN_N"
   PLAN_FILE="$PLANS_DIR/$RUN_ID.md"
   ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
-  log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>} effort=${EFFORT:-<default>}"
+  log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>} effort=${EFFORT:-<default>} hold=${HOLD:-<default>}"
 }
 
 # --- clones ------------------------------------------------------------------
@@ -742,7 +767,8 @@ default_branch() {
 # the operator can re-trigger by hand; no PR is nothing to re-trigger.
 await_branch_visible() {
   local head attempts n=0 t0 answer code sha
-  head="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
+  BRANCH_HEAD="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
+  head="$BRANCH_HEAD"
   attempts="$(poll_attempts "$PUBLISH_BRANCH_WAIT")"
   t0="$(date +%s)"
   while [ "$n" -lt "$attempts" ]; do
@@ -802,6 +828,143 @@ publish() { # $1 = outcome (gate-green|parked)
   log "publish: author ${PR_AUTHOR:-<unknown>}"
 }
 
+# --- merge -------------------------------------------------------------------
+#
+# A ready PR is the sandbox's own to finish. The operator's act is the launch;
+# what stands between the branch and the base after that is the TARGET's own
+# CI, which no human adds anything to by watching. So the script polls the PR
+# head's check runs and squash-merges the PR once every one of them is green.
+# `hold=1` in the assignment is how a launch keeps the merge button for a human.
+#
+# Same edge, same `fleet_curl`, no `gh` — for the reasons `publish` gives. Only
+# the three green conclusions merge: `success`, `neutral` and `skipped` are an
+# ALLOWLIST, so a conclusion GitHub adds tomorrow leaves the PR open for a
+# reader instead of being merged as "not failure".
+#
+# Reading the document without jq: split it at `{`, which puts each check run's
+# flat fields on a line of their own. A run still going carries
+# `"conclusion": null` — not a quoted string, so `json_field` answers '' for it
+# and `status` is what decides.
+
+# The PR number is the tail of the URL GitHub answered the POST with (`…/pull/<n>`).
+pr_number() { printf '%s' "${PR_URL##*/}"; }
+
+check_runs_verdict() { # one check run per line on stdin
+  # -> `green` | `pending` | `none` | `red <name> <conclusion>`
+  local line status conclusion name runs=0
+  # `|| [ -n "$line" ]`: the document's last fragment has no newline after it,
+  # and a plain `read` would drop the only run of a one-run answer.
+  while IFS= read -r line || [ -n "$line" ]; do
+    status="$(printf '%s' "$line" | json_field status)"
+    [ -n "$status" ] || continue
+    runs=$(( runs + 1 ))
+    if [ "$status" != completed ]; then
+      printf 'pending\n'
+      return 0
+    fi
+    conclusion="$(printf '%s' "$line" | json_field conclusion)"
+    case "$conclusion" in
+      success|neutral|skipped) : ;;
+      *)
+        name="$(printf '%s' "$line" | json_field name)"
+        printf 'red %s %s\n' "${name:-<unnamed>}" "${conclusion:-<none>}"
+        return 0 ;;
+    esac
+  done
+  if [ "$runs" -gt 0 ]; then printf 'green\n'; else printf 'none\n'; fi
+}
+
+merge_pr() {
+  local head number attempts grace n=1 t0 answer code body verdict payload heading
+  MERGE_NOTE=""
+  # Nothing to merge without a PR, and a re-entry that already recorded a merge
+  # sha has one behind it — the same record that makes `publish` idempotent.
+  [ -n "$PR_URL" ] || return 0
+  if [ -n "$MERGED_SHA" ]; then
+    log "merge: $PR_URL is already recorded as merged $MERGED_SHA"
+    MERGE_NOTE="merged $MERGED_SHA"
+    return 0
+  fi
+  if [ "$HOLD" = "1" ]; then
+    log "merge: hold=1 — leaving $PR_URL open"
+    MERGE_NOTE="left open: hold=1"
+    return 0
+  fi
+  # The head `await_branch_visible` already read, so the checks asked about are
+  # the checks of the sha the PR was opened on. A re-entry that published
+  # earlier has no such read behind it and makes its own.
+  head="$BRANCH_HEAD"
+  [ -n "$head" ] || head="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
+  number="$(pr_number)"
+  attempts="$(poll_attempts "$MERGE_CHECK_WAIT")"
+  grace="$(poll_attempts "$MERGE_CHECKS_GRACE")"
+  t0="$(date +%s)"
+  # The served page while the poll runs. No evidence commit goes with it: the
+  # transitions this run publishes are still `running`, `publishing`, `done`.
+  write_status publishing "$PR_URL — awaiting checks"
+  verdict=pending
+  while [ "$n" -le "$attempts" ]; do
+    # No `-f` and no `-X`: this is a GET, and an answer the edge refuses is
+    # "not yet", not a failure of the run.
+    answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/commits/$head/check-runs" \
+      -w '\n%{http_code}' 2>/dev/null || true)"
+    code="$(printf '%s' "$answer" | tail -n 1)"
+    body="$(printf '%s' "$answer" | sed '$d')"
+    case "$code" in
+      2[0-9][0-9]) verdict="$(printf '%s' "$body" | tr '{' '\n' | check_runs_verdict)" ;;
+      *) verdict=pending ;;
+    esac
+    # An answer listing no run at all is GitHub's index catching up for as long
+    # as the grace lasts, and "this repository runs no checks on this PR" after
+    # it — a target without CI is not a target whose PRs never merge.
+    if [ "$verdict" = none ] && [ "$n" -le "$grace" ]; then verdict=pending; fi
+    case "$verdict" in pending) : ;; *) break ;; esac
+    n=$(( n + 1 ))
+    sleep "$POLL_SECONDS"
+  done
+
+  case "$verdict" in
+    green)
+      log "merge: checks green after $(( $(date +%s) - t0 ))s — merging $PR_URL" ;;
+    none)
+      log "merge: no check runs after ${MERGE_CHECKS_GRACE}s — nothing to wait for" ;;
+    red*)
+      set -- $verdict
+      log "merge: check $2 concluded $3 — leaving $PR_URL open"
+      MERGE_NOTE="left open: check $2 concluded $3"
+      return 0 ;;
+    *)
+      log "merge: checks still pending after ${MERGE_CHECK_WAIT}s — leaving $PR_URL open"
+      MERGE_NOTE="left open: checks still pending after ${MERGE_CHECK_WAIT}s"
+      return 0 ;;
+  esac
+
+  # The plan's H1 as the commit title, because the fold commits under it are
+  # titled from the same line; `sha` pins the merge to the head whose checks
+  # were read, so a push that landed during the poll is refused rather than
+  # merged unchecked.
+  heading="$(plan_title)"
+  [ -n "$heading" ] || heading="$RUN_ID"
+  payload="{\"merge_method\":\"squash\",\"commit_title\":\"$(json_escape "$heading")\",\"sha\":\"$(json_escape "$head")\"}"
+  answer="$(fleet_curl -sS -X PUT "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number/merge" \
+    -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  body="$(printf '%s' "$answer" | sed '$d')"
+  case "$code" in
+    2[0-9][0-9]) : ;;
+    *)
+      # One PUT, ever. GitHub refuses a merge for reasons that do not change on
+      # a retry — a protected base, a conflict, a review it wants — and each
+      # retry is another chance to merge something a human meant to look at.
+      log "merge: PUT answered $code — leaving $PR_URL open"
+      MERGE_NOTE="left open: merge PUT answered $code"
+      return 0 ;;
+  esac
+  MERGED_SHA="$(printf '%s' "$body" | json_field sha)"
+  log "merge: merged $PR_URL as ${MERGED_SHA:-<no sha>}"
+  MERGE_NOTE="merged ${MERGED_SHA:-<no sha>}"
+}
+
 # --- the two entry points ----------------------------------------------------
 
 do_boot() {
@@ -812,6 +975,7 @@ do_boot() {
   STARTED_AT="$(read_status_field startedAt)"
   PR_URL="$(read_status_field pr)"
   PR_AUTHOR="$(read_status_field prAuthor)"
+  MERGED_SHA="$(read_status_field merged)"
   VM_NAME="$(read_status_field vm)"
   start_status_server
   # RE-ENTRY, GUARD 1. A page that already reached a terminal state with the
@@ -946,11 +1110,18 @@ $(engine_tail)"
     publish "$outcome"
   fi
 
+  # A ready PR is finished here: the checks the target runs on its head decide,
+  # and a parked run's draft is left for the operator either way.
+  MERGE_NOTE=""
+  if [ "$outcome" = "gate-green" ]; then
+    merge_pr
+  fi
+
   if [ "$outcome" = "gate-green" ]; then
     # The PR first, then WHAT greened it — a reader of the branch can tell a
     # PASS from a NEEDS_ACK the two-move rule signed off without opening the
-    # gate receipt.
-    write_status done "$PR_URL — $approved_how"
+    # gate receipt — and last what became of it at the merge button.
+    write_status done "$PR_URL — $approved_how${MERGE_NOTE:+ — $MERGE_NOTE}"
   else
     ERROR="parked: gate verdict ${verdict:-none}"
     write_status parked "$PR_URL"

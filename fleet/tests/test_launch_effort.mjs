@@ -11,7 +11,8 @@
  *       assignment comment, after `tier=` when a tier is present and directly
  *       after `engine=` when it is not; any other value is a refusal naming the
  *       three; a launch without the flag writes the comment BASE's launch
- *       writes, byte for byte; `COMMENT_KEYS` ends with `effort`; and the
+ *       writes, byte for byte; `COMMENT_KEYS` carries `effort` after the seven
+ *       keys that precede it; and the
  *       launcher's `USAGE` names `--implementer-effort low|medium|high`;
  *   (m4) [M4] `fleet/CONTRACT.md`'s Comment sentence lists
  *       `effort=low|medium|high` as the third optional key, directly after
@@ -252,15 +253,16 @@ const newLines = (exec) => exec.lobby().filter((line) => line.startsWith('new ')
     bare.cleanup()
   }
 
-  // The two source-level halves of M1.
-  assert.equal(
-    COMMENT_KEYS[COMMENT_KEYS.length - 1], 'effort',
-    '(a) [M1] COMMENT_KEYS in fleet/lobby.mjs ends with effort'
-  )
+  // The source-level half of M1: the whole key list, in contract order. The
+  // hold work (#660) appended `hold=1` after `effort=`, so `effort` is no
+  // longer last — what this leg needs is that it still comes after the seven
+  // that precede it, which one equality of the list says better than two
+  // assertions about its tail did.
   assert.deepEqual(
-    [...COMMENT_KEYS].slice(0, -1),
-    ['run', 'plan', 'target', 'base', 'engine', 'overlap', 'tier'],
-    "(a) [M1] and the keys before it are BASE's seven, in contract order"
+    [...COMMENT_KEYS],
+    ['run', 'plan', 'target', 'base', 'engine', 'overlap', 'tier', 'effort', 'hold'],
+    '(a) [M1] COMMENT_KEYS in fleet/lobby.mjs is the nine contract keys, in order, ' +
+    'with effort after the seven BASE spelled'
   )
   assert.ok(
     USAGE.includes('--implementer-effort low|medium|high'),

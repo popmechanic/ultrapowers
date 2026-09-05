@@ -30,24 +30,15 @@
  * Age is the evidence page's `updatedAt`, else the plan commit's committer
  * date; `created_at` on the `ls` row is undocumented and never consulted.
  *
- * The janitor also arms auto-merge. A run whose status page is `done` with a
- * `pr` URL is an approved run whose pull request is open and waiting on CI, so
- * the same pass asks GitHub about it:
+ * The reap is the whole of it. The janitor merges nothing — an approved run
+ * merges its own pull request from the sandbox — so its only `gh` commands are
+ * `gh api` reads, and every action it records is an `rm`.
  *
- *   gh pr view <url> --json state,isDraft,autoMergeRequest
+ * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, and it
+ * is run by hand after the laptop has been asleep.
  *
- * — and when the answer is `OPEN`, not a draft and not already armed, one
- * `gh pr merge <url> --auto --squash`. No `--subject` is passed: the fold
- * commit is titled from the plan's H1 and the squash takes it. GitHub refuses
- * `--auto` on a pull request that is already mergeable, with `clean status` in
- * the message; that refusal is the state auto-merge would have reached on its
- * own, so it falls back to one plain `gh pr merge <url> --squash`. The arming
- * is independent of the reap: a `done` run too young to lose its VM is armed
- * all the same, and an old one is armed and removed in the same pass.
- *
- * `--dry-run` issues every read — the view included — and no `rm` and no merge.
- * There is no attachment sweep: attachments carry `--for` and lapse by
- * themselves.
+ * `--dry-run` issues every read and no `rm`. There is no attachment sweep:
+ * attachments carry `--for` and lapse by themselves.
  */
 
 import { Buffer } from 'node:buffer'
@@ -83,19 +74,6 @@ export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
 export const DEFAULT_AGE = '1h'
 /** No status update for this long is a stale run, reported and left alone. */
 export const STALE_MS = 6 * 60 * 60 * 1000
-/** The three fields that say whether a pull request can be armed. */
-export const PR_VIEW_JSON = 'state,isDraft,autoMergeRequest'
-/** GitHub's refusal when the pull request is already mergeable. */
-const CLEAN_STATUS = 'clean status'
-
-/** A command's output, `stdout` then `stderr`, as one string. */
-const outputOf = (res) => `${res.stdout ?? ''}\n${res.stderr ?? ''}`
-
-/** The last line of an output that says anything — what a failure is reported as. */
-const lastNonEmptyLine = (text) => {
-  const lines = String(text).split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '')
-  return lines.length === 0 ? '' : lines[lines.length - 1]
-}
 
 /**
  * One `gh api <path>` on the laptop, through the exec seam. An absent file is
@@ -131,52 +109,6 @@ async function planCommittedAt (exec, target, run) {
   const payload = await ghApi(exec, `repos/${target}/branches/${branch}`)
   const at = Date.parse(String(payload?.commit?.commit?.committer?.date ?? ''))
   return Number.isFinite(at) ? at : null
-}
-
-/**
- * What GitHub says about a pull request, or null when it will not say — a URL
- * nobody can read is not a pull request to arm.
- */
-async function viewPr (exec, url) {
-  const res = await exec('gh', ['pr', 'view', url, '--json', PR_VIEW_JSON])
-  if (res.code !== 0) return null
-  const view = parseJson(res.stdout)
-  return view && typeof view === 'object' ? view : null
-}
-
-/**
- * Whether that answer is a pull request auto-merge can be armed on: open, not
- * a draft, and nobody armed it already. Anything else is left exactly as it is.
- */
-const isArmable = (view) =>
-  view !== null &&
-  view.state === 'OPEN' &&
-  view.isDraft === false &&
-  (view.autoMergeRequest ?? null) === null
-
-/**
- * Arm one pull request, recording on the action what happened. A green `--auto`
- * leaves the action as it was pushed; the `clean status` refusal means the pull
- * request is already mergeable, and the plain squash that follows is the state
- * `--auto` would have reached by itself, so it is recorded as `merged`. Every
- * other non-zero exit is not applied, and says why in the output's last line.
- */
-async function armAutoMerge (exec, action) {
-  const res = await exec('gh', ['pr', 'merge', action.pr, '--auto', '--squash'])
-  if (res.code === 0) return
-  const output = outputOf(res)
-  if (!output.includes(CLEAN_STATUS)) {
-    action.applied = false
-    action.error = lastNonEmptyLine(output)
-    return
-  }
-  const merged = await exec('gh', ['pr', 'merge', action.pr, '--squash'])
-  if (merged.code === 0) {
-    action.merged = true
-    return
-  }
-  action.applied = false
-  action.error = lastNonEmptyLine(outputOf(merged))
 }
 
 /**
@@ -240,20 +172,6 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
 
     const state = typeof status.state === 'string' ? status.state : null
 
-    // The arming is a read and a decision, and owes the reap nothing: a done
-    // run is armed whatever its age, and the view runs under --dry-run too.
-    const pr = typeof status.pr === 'string' && status.pr !== '' ? status.pr : null
-    if (state === 'done' && pr !== null && isArmable(await viewPr(exec, pr))) {
-      actions.push({
-        kind: 'auto-merge',
-        vm: row.name,
-        run,
-        pr,
-        command: `gh pr merge ${pr} --auto --squash`,
-        applied: !dryRun
-      })
-    }
-
     const updatedAt = typeof status.updatedAt === 'string' ? status.updatedAt : null
     const updated = Date.parse(String(updatedAt))
     // An age nobody recorded is not six hours; it is unknown, and left alone.
@@ -282,25 +200,16 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
     }
   }
 
-  // ── Then the mutations: the arming through `gh`, the reap through the lobby.
+  // ── Then the one mutation there is: the reap, through the lobby. ──────────
   if (!dryRun) {
-    for (const action of actions) {
-      if (action.kind === 'auto-merge') await armAutoMerge(exec, action)
-      else await lobby(exec, action.command)
-    }
+    for (const action of actions) await lobby(exec, action.command)
   }
 
   return { dryRun, age, actions, stale, unknown }
 }
 
-const renderAction = (a, dryRun) => {
-  const would = dryRun ? 'would ' : ''
-  if (a.kind === 'auto-merge') {
-    const outcome = a.error !== undefined ? ` — ${a.error}` : (a.merged === true ? ' (merged)' : '')
-    return `${would}auto-merge ${a.pr}  run=${a.run}${outcome}`
-  }
-  return `${would}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}`
-}
+const renderAction = (a, dryRun) =>
+  `${dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}`
 
 export const renderJanitor = (result) => {
   const lines = [

@@ -54,7 +54,8 @@ account key is what `launch.mjs` uses.
 A second key, tag-scoped, is the right one for anything that only reaps.
 Register it with `ssh-key add --tag=fleet`. Measured 2026-09-03: such a key
 sees only fleet-tagged VMs in `ls --json`, can `comment` and `rm` them, and gets
-"not found" for anything else. Put the janitor's cron behind it.
+"not found" for anything else. That is the key for a machine that only reaps by
+hand.
 
 **2. `capacity` — the size of a run.** `ssh exe.dev "billing plan --json"` is
 the account's pool; `~/.ultrapowers/fleet.json` is how large one run asks to be.
@@ -149,6 +150,8 @@ exits before the plan branch is pushed and before any lobby verb runs.
 `--engine <sha>` pins the engine; the default is the public tip of this
 repository, because the sandbox clones from GitHub. `--run N` overrides the
 run number; `--overlap` and `--tier` ride the comment to the engine.
+`--hold` keeps the pull request open for a person: the sandbox publishes it
+and does not merge it (a measurement run).
 
 **Watch.** The same bytes are in two places:
 
@@ -166,8 +169,12 @@ through the edge (`POST /api/v3/repos/<owner>/<repo>/pulls`, never `gh`):
 ready on PASS or on the two-move rule's approval, a draft carrying the gate
 receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so
 the PR is the whole index of the run. `pr` and `prAuthor` on the status page are
-the answer's `html_url` and `user.login`. The PR is the gate: merge it, or close
-it. A squash-merge takes the plan's title as its subject, because the fold
+the answer's `html_url` and `user.login`.
+A ready PR merges itself: the sandbox polls its head's check runs and
+squash-merges it once every check is green, unless the launch said `--hold`; a
+failed check, thirty minutes of pending, or a refused merge leaves it open for
+you, and `status.json`'s `merged` cell says which. A draft is yours to merge or
+close. A squash-merge takes the plan's title as its subject, because the fold
 commit is titled from the plan's H1 and `frontier fold wave <n>` rides its body.
 A `prAuthor` that is the installation bot rather than you means
 `--act-as-user` did not take — link your GitHub account on exe.dev's
@@ -182,16 +189,13 @@ node fleet/janitor.mjs
 It lists the fleet, reads each VM's comment for its run and its target, reads
 that run's status page off the target's evidence branch with `gh api`, and `rm`s
 every VM whose run has been `done`, `parked` or `failed` for over an hour. It
-also arms auto-merge on a `done` run's pull request: it asks `gh pr view` for
-the PR's state, and when the PR is open, not a draft and not armed already, one
-`gh pr merge <url> --auto --squash` lets an approved run merge itself the moment
-CI goes green with nobody waiting on it. That is independent of the reap — a
-`done` run too young to lose its VM is armed all the same — and when GitHub
-refuses `--auto` because the PR is already mergeable, the plain squash follows.
+merges nothing: an approved run merges its own pull request from the sandbox.
 For any fleet VM whose run has had no status update in six hours it prints a
-line, once. It never sshes into a VM. Run it from cron every five minutes, or
-by hand. A VM that has to go now: `ssh exe.dev "rm <vm> --json"` — `rm` takes several
-names.
+line, once. It never sshes into a VM. A VM that has to go now:
+`ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
+
+The launcher runs it before every launch; nothing schedules it. Run it by hand
+after a sleep.
 
 ## States
 
@@ -202,7 +206,7 @@ names.
 | `booting` | the setup script is provisioning, or the bootstrap is cloning the engine and the boot script the target |
 | `running` | `fleet-engine-<N>.service` is active; `phase` says which wave |
 | `publishing` | the engine service is inactive and the branch is ahead of base; evidence committed, pushing and opening the PR |
-| `done` | PASS, or a verdict the two-move rule approved; `pr` is the ready PR, `prAuthor` who GitHub says opened it |
+| `done` | PASS, or a verdict the two-move rule approved; `pr` is the ready PR, `prAuthor` who GitHub says opened it; merged is the squash commit's sha, or null when the PR was left open |
 | `parked` | a gate verdict other than PASS that no `approve-receipt.json` approved; `pr` is a draft PR, or `null` when the branch had nothing to publish |
 | `failed` | a step other than the engine's verdict broke; `error` says which |
 
@@ -393,8 +397,9 @@ fit at once; that number is the width of a wave of runs.
 The `publishing` state is the sandbox asserting about itself: the engine
 service is inactive before anything is pushed. That guards against an
 accident, not a hostile model. What bounds a hostile model is mechanical: one
-repository, six hours, a pull request rather than a merge, and a human at the
-merge button. Credentials lapse on wall clock with nothing to revoke. The
+repository, six hours, a pull request whose merge waits on the target's own
+checks, and `--hold` to keep a human at the merge button. Credentials lapse on
+wall clock with nothing to revoke. The
 Claude token is on no VM and in no argv.
 
 ## Rollback
