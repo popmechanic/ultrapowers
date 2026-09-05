@@ -2542,6 +2542,18 @@ def _git_literal_in_code(base, literal, exclude=()):
                      *_code_pathspecs(exclude)).strip())
 
 
+def _git_substring_files(base, literal, exclude=()):
+    """Tracked files under `base` containing `literal` as a SUBSTRING
+    (`git grep -l -F`), sorted, relative to `base`.
+
+    Unlike `_git_word_files` this is neither word-bounded nor extension-scoped:
+    a Machine clause pins spans like `runner: None`, which is not one word and
+    can be asserted from a fixture of any extension. `-e` keeps a span opening
+    with `-` from reading as a flag."""
+    return sorted(_git(base, "grep", "-l", "-F", "-e", literal,
+                       "--", *_exclude_pathspecs(exclude)).split())
+
+
 def default_base(plan_path):
     """The git toplevel of the plan's directory, or None outside a checkout."""
     top = _git(Path(plan_path).resolve().parent, "rev-parse", "--show-toplevel").strip()
@@ -2854,9 +2866,15 @@ PROCESS_RULE_PHRASES = (
 PROCESS_RULE_CLIP = 90
 
 
+def _bullet_text(s):
+    """A bullet's sentence: list marker gone, wrapped lines collapsed to one
+    space \u2014 what a reader hears when the bullet is read aloud."""
+    return re.sub(r"^(?:[-*+]|\d+\.)\s+", "", " ".join(s.split()))
+
+
 def _clip(s, n=PROCESS_RULE_CLIP):
     # A constraints section is a bullet list; quote the sentence, not its marker.
-    s = re.sub(r"^(?:[-*+]|\d+\.)\s+", "", " ".join(s.split()))
+    s = _bullet_text(s)
     return s if len(s) <= n else s[:n - 1].rstrip() + "\u2026"
 
 
@@ -2882,6 +2900,81 @@ def _render_process_rules(tasks, ctx):
 
 
 ADVISORY_RENDERS.append(("process-rule", _render_process_rules))
+
+
+# P4b — the other half of the same section (#632). Where a process rule is a
+# constraint NO reviewer can decide, this is one a COMMAND could have: "`x.mjs`
+# is byte-identical to BASE", "`report.sh` prints `ready`". Left as prose it is
+# still only the reviewer's attention lens, so it comes back as a per-task
+# unverifiable finding and parks the run on an ack — while the same sentence
+# written as a `- Check:` is run by the driver and decided before anyone reads
+# a diff.
+#
+# Like PROCESS_RULE_PHRASES this is a short explicit list, never a heuristic: a
+# bullet must name something a command could be handed (a backticked path or
+# script) AND say something a command could decide about it. Either alone is an
+# ordinary orienting sentence.
+PROSE_CHECK_PHRASES = ("byte-identical", "unchanged from BASE", "is not edited",
+                       "are not edited", "not changed", "prints ", "exits 0")
+# A backticked span is a path when it carries a directory separator, or ends in
+# one of these — a bare `validate_skill.py` names a script with no slash in it.
+PROSE_CHECK_PATH_EXTS = (".py", ".mjs", ".sh", ".ts", ".js", ".md")
+_BULLET_START = re.compile(r"^(?:[-*+]|\d+\.)\s+\S")
+
+
+def _prose_bullets(body):
+    """The section's bullets, each one sentence: a line starting no new `- ` is
+    a continuation and joins the bullet above it. A wrapped bullet routinely
+    carries its path on the first line and its phrase on the second, and
+    matching line by line sees neither."""
+    bullets, open_bullet = [], False
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line:
+            open_bullet = False
+        elif _BULLET_START.match(line):
+            bullets.append(_bullet_text(line))
+            open_bullet = True
+        elif open_bullet:
+            bullets[-1] += " " + line
+    return bullets
+
+
+def _prose_check_paths(text):
+    """The backticked paths and scripts a bullet names, document order."""
+    out = []
+    for span in PATH_RE.findall(text):
+        span = span.strip()
+        if "/" in span or span.endswith(PROSE_CHECK_PATH_EXTS):
+            if span not in out:
+                out.append(span)
+    return out
+
+
+def _render_prose_check(tasks, ctx):
+    plan_text = ctx["plan_path"].read_text()
+    # The section's own `- Check:` commands. A task's Proof `Run:` is NOT one of
+    # these: it runs for that one task, while the bullet binds every task — so
+    # the exclusion is by path named in a section Check:, which is exactly what
+    # keeps a plan's prose gloss above its own Check: lines silent.
+    checked = " ".join(c["cmd"] for c in parse_constraint_checks(plan_text))
+    lines = []
+    for text in _prose_bullets(parse_global_constraints(plan_text)):
+        low = text.lower()
+        if not any(p.lower() in low for p in PROSE_CHECK_PHRASES):
+            continue
+        paths = _prose_check_paths(text)
+        if not paths or any(p in checked for p in paths):
+            continue
+        lines.append(
+            'ADVISORY prose-check: `## Global Constraints` says "%s" — a '
+            "command can decide this; write it as a Check: so the driver runs "
+            "it, since a prose bullet is only the referee's lens and parks the "
+            "run on an ack" % _clip(text))
+    return lines
+
+
+ADVISORY_RENDERS.append(("prose-check", _render_prose_check))
 
 
 # P5 — the recurring rejection species (#616). The 2026-09-04 rejections kept
@@ -2924,6 +3017,34 @@ DURATION_RE = re.compile(
 CLOCK_RE = re.compile(
     r"(elapsed|wall|Date\.now|time\.|perf_counter|monotonic|clock)", re.I)
 NO_CLOCK_DETAIL = "a duration bound with no wall-clock leg"
+# `a VM older than 6 h is stale` cited only by a leg probing `7 h`: the bound is
+# stated, but every leg lands on the near side of it, so nothing in the Proof
+# reads where the bound actually sits. The FAR side of a lower-bounded shape is
+# below it, of an upper-bounded shape above it. `no more than` is upper-bounded
+# whole, so the shapes are tried longest-first and the lower-bounded `more than`
+# inside it never wins; `>=` before `>`, `<=` before `<`, for the same reason.
+LOWER_BOUND_SHAPES = ("over", "more than", "older than", "at least")
+UPPER_BOUND_SHAPES = ("under", "less than", "younger than", "at most",
+                      "no more than", "within")
+LOWER_BOUND_SYMBOLS = (">=", ">")
+UPPER_BOUND_SYMBOLS = ("<=", "<", "≤")
+BOUND_RE = re.compile(
+    r"(?:(?<![\w-])(?P<word>%s)(?![\w-])|(?P<sym>%s))"
+    r"\s*(?P<num>\d+(?:\.\d+)?)(?:[ \t]*(?P<unit>[A-Za-z]+))?"
+    % ("|".join(sorted(LOWER_BOUND_SHAPES + UPPER_BOUND_SHAPES,
+                       key=len, reverse=True)),
+       "|".join(re.escape(s) for s in sorted(
+           LOWER_BOUND_SYMBOLS + UPPER_BOUND_SYMBOLS, key=len, reverse=True))),
+    re.I)
+# A number a leg carries, with the unit that rides on it — `7 h`, `199 bytes`,
+# `3 times`, or a bare `4` inside a backticked `-n 4`.
+LEG_NUMBER_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)(?:[ \t]*([A-Za-z]+))?")
+ONE_SIDED_DETAIL = "clause %s bounds at %s; its legs probe one side only"
+# `the type is `github` or the name starts `gh-`` cited by a leg naming only
+# `github`: the Proof argues one arm of the either/or and leaves the other
+# unread. Both alternatives are backticked and the ` or ` sits between them.
+DISJUNCT_RE = re.compile(r"`([^`]+)`[^`]*?(?<![\w-])or(?![\w-])[^`]*?`([^`]+)`")
+DISJUNCT_DETAIL = "clause %s names `%s` or `%s`; the legs name only `%s`"
 # The two integration-hostile shapes (#631). Since #604 the driver re-runs every
 # merged task's `Run:` on the ADOPTED tree, where every sibling's changes have
 # folded in — so both of these pass in the task's own clone and fail there,
@@ -2946,7 +3067,71 @@ ABSENCE_RE = re.compile(r"(?:(?<=[;&|])|^)\s*test\s+!\s+-[ed]\s+(\S+)")
 DIRECTORY_ABSENCE_ADVICE = ("a bare directory survives as a `__pycache__` on "
                             "the adopted tree — name the file whose absence "
                             "is the claim")
+# The two WIDTH species (#582). These read the task's shape rather than its
+# text: how many files it writes, how many clauses its contract carries. Both
+# are named before a VM is spent on the task — eight is the low end of run-55's
+# measured knee ("between 8 and 19 files"), so MORE than eight draws the line
+# and eight itself is silent. `reads` (the Files block's `Test:` paths) is not
+# a write and does not count.
+WIDTH_THRESHOLD = 8
+WIDE_FILES_ADVICE = ("run-55's 19-file task hit the worker wall clock while "
+                     "its 3–8-file siblings finished; split along a Produces "
+                     "symbol")
+WIDE_CONTRACT_ADVICE = "one contract per task; split along a Produces symbol"
 
+
+# The one TREE-reading species (#656). A clause that replaces a literal some
+# existing test already asserts is a strict-equality pin the implementer will
+# break blind — unless that test is in some task's Files, where it folds. So
+# the pinning file is named before a reader is dispatched.
+BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
+# Below three characters a span is grep noise: `4`, `ok`, `-v` match half the
+# tree as substrings, and this species greps for a substring, not a word.
+MIN_SPAN = 3
+PINNED_ELSEWHERE_DETAIL = "%s is asserted in %s, which is in no task's Files"
+# A test file by path or by basename: under a tests directory the repo keeps
+# suites in, or named the way a runner discovers one.
+TEST_DIR_PREFIXES = ("tests/", "fleet/tests/")
+
+
+def _is_test_file(path):
+    basename = path.rsplit("/", 1)[-1]
+    return (path.startswith(TEST_DIR_PREFIXES)
+            or basename.startswith("test_") or ".test." in basename)
+
+
+def _clause_spans(clauses):
+    """The backticked spans of `MIN_SPAN`+ characters across a task's Machine
+    clauses, document order, deduped — one line per (task, span, path) means a
+    span repeated across clauses is still one span."""
+    spans, seen = [], set()
+    for clause in clauses:
+        for m in BACKTICK_SPAN_RE.finditer(clause["text"]):
+            span = m.group(1)
+            if len(span) >= MIN_SPAN and span not in seen:
+                seen.add(span)
+                spans.append(span)
+    return spans
+
+
+def _declared_files(tasks):
+    """Every path any task's Files block names — its `writes` (Create:/Modify:)
+    and its `reads` (Test:). A pin inside one of these folds at merge time."""
+    declared = set()
+    for t in tasks:
+        declared |= set(t.get("writes") or ()) | set(t.get("reads") or ())
+    return declared
+
+
+def _species_pinned_elsewhere(task_id, clauses, base, declared, exclude):
+    lines = []
+    for span in _clause_spans(clauses):
+        for path in _git_substring_files(base, span, exclude):
+            if _is_test_file(path) and path not in declared:
+                lines.append(_species_line(
+                    "pinned-elsewhere", task_id,
+                    PINNED_ELSEWHERE_DETAIL % (span, path)))
+    return lines
 
 def _clip_run(command, n=RUN_CLIP):
     """A command's first `n` characters, whitespace collapsed — the command,
@@ -3045,6 +3230,68 @@ def _species_duration_without_clock(task_id, clauses, legs, runs):
     return lines
 
 
+def _clause_bound(text):
+    """The first numeric bound `text` states, as
+    `(value, unit, verbatim, lower)` — or None when it states none.
+
+    `verbatim` is the number with its unit exactly as the clause writes them
+    (`6 h`, `10240 bytes`), which is what rides into the advisory line; `lower`
+    is True for the shapes whose far side lies below the bound."""
+    m = BOUND_RE.search(text)
+    if not m:
+        return None
+    shape = (m.group("word") or m.group("sym")).lower()
+    lower = shape in LOWER_BOUND_SHAPES or shape in LOWER_BOUND_SYMBOLS
+    end = m.end("unit") if m.group("unit") else m.end("num")
+    return (float(m.group("num")), (m.group("unit") or "").lower(),
+            text[m.start("num"):end], lower)
+
+
+def _leg_numbers(legs):
+    """Every `(value, unit)` the legs carry, `[M…]` citations stripped first —
+    a clause marker is the leg's bookkeeping, not a number it probes."""
+    return [(float(m.group(1)), (m.group(2) or "").lower())
+            for leg in legs
+            for m in LEG_NUMBER_RE.finditer(LEG_CITE_RE.sub(" ", leg["text"]))]
+
+
+def _species_threshold_one_sided(task_id, clauses, legs, runs):
+    lines = []
+    for clause in clauses:
+        cited = _citing_legs(legs, clause["id"])
+        bound = _clause_bound(clause["text"])
+        if not bound or not cited:
+            continue
+        value, unit, verbatim, lower = bound
+        # Only a number in the bound's own unit is comparable to it: a leg
+        # counting `3 times` against a `90 s` bound probes neither side, and a
+        # leg that merely restates `90 s` probes nothing — that shape belongs to
+        # `default-unpinned` or `duration-without-clock`.
+        probes = [v for v, u in _leg_numbers(cited) if u == unit and v != value]
+        if probes and not any(v < value if lower else v > value for v in probes):
+            lines.append(_species_line(
+                "threshold-one-sided", task_id,
+                ONE_SIDED_DETAIL % (clause["id"], verbatim)))
+    return lines
+
+
+def _species_disjunct_without_leg(task_id, clauses, legs, runs):
+    lines = []
+    for clause in clauses:
+        cited = _citing_legs(legs, clause["id"])
+        m = DISJUNCT_RE.search(clause["text"])
+        if not m or not cited:
+            continue
+        spans = (m.group(1), m.group(2))
+        named = [s for s in spans
+                 if any(s in leg["text"] for leg in cited)]
+        if len(named) == 1:
+            lines.append(_species_line(
+                "disjunct-without-leg", task_id,
+                DISJUNCT_DETAIL % ((clause["id"],) + spans + (named[0],))))
+    return lines
+
+
 def _pins_suite_total(command):
     """True when `command` compares a whole-suite `--collect-only` count against
     a bare integer.
@@ -3080,6 +3327,27 @@ def _species_directory_absence_pin(task_id, clauses, legs, runs):
             for cmd in runs if _bare_directory_absence(cmd)]
 
 
+def _species_wide_files(task, clauses):
+    """A task that writes more than `WIDTH_THRESHOLD` files — `Create:` plus
+    `Modify:`, never `Test:`."""
+    n = len(task["creates"]) + len(task["modifies"])
+    if n <= WIDTH_THRESHOLD:
+        return []
+    return [_species_line("wide-files", task["id"],
+                          "%d Create/Modify entries — %s"
+                          % (n, WIDE_FILES_ADVICE))]
+
+
+def _species_wide_contract(task, clauses):
+    """A task whose Machine line numbers more than `WIDTH_THRESHOLD` clauses —
+    more contract than one task's Proof can argue."""
+    if len(clauses) <= WIDTH_THRESHOLD:
+        return []
+    return [_species_line("wide-contract", task["id"],
+                          "%d Machine clauses — %s"
+                          % (len(clauses), WIDE_CONTRACT_ADVICE))]
+
+
 # Species order inside a task; print order overall is task-major, so every line
 # for a task prints before any line for the next.
 PROOF_SPECIES = (
@@ -3088,12 +3356,28 @@ PROOF_SPECIES = (
     _species_default_unpinned,
     _species_universal_as_count_floor,
     _species_duration_without_clock,
+    _species_threshold_one_sided,
+    _species_disjunct_without_leg,
     _species_suite_total_pin,
     _species_directory_absence_pin,
 )
 
+# The width species read the whole task, not its clauses, legs and runs — same
+# line shape, same task-major order, their own signature.
+PROOF_WIDTH_SPECIES = (
+    _species_wide_files,
+    _species_wide_contract,
+)
+
 
 def _render_proof_species(tasks, ctx):
+    # `pinned-elsewhere` is the one species that reads the TREE rather than the
+    # task's own text, so it takes the checkout and the plan-wide declared set
+    # instead of PROOF_SPECIES' (clauses, legs, runs) — both computed once, then
+    # run last within each task so print order stays task-major.
+    base = ctx["base"]
+    declared = _declared_files(tasks)
+    exclude = ctx["exclude"]
     lines = []
     for t in tasks:
         claims = t.get("claims") or {}
@@ -3104,10 +3388,46 @@ def _render_proof_species(tasks, ctx):
         runs = claims.get("proof_runs") or []
         for species in PROOF_SPECIES:
             lines.extend(species(t["id"], clauses, legs, runs))
+        for species in PROOF_WIDTH_SPECIES:
+            lines.extend(species(t, clauses))
+        lines.extend(_species_pinned_elsewhere(t["id"], clauses, base,
+                                               declared, exclude))
     return lines
 
 
 ADVISORY_RENDERS.append(("proof-species", _render_proof_species))
+
+
+# P6 — a `Check:` that runs a sim is a per-task cost (#657). A `- Check:` bullet
+# under `## Global Constraints` is run by the driver in EVERY task's clone on
+# every pass, so a check that runs a test suite is paid W times over on a wave
+# of width W — while the same command as the owning task's `Run:` is paid once.
+# The compiler can name that cost before a reader is dispatched.
+#
+# Its own render, not a `proof-species` line: the species line shape names a
+# task, and a `Check:` belongs to none. For the same reason it belongs to no
+# grammar — a legacy-grammar plan's section is read exactly as a claims-v1
+# plan's is. A `(minor)` check is never dispatched, so it costs nothing.
+CHECK_COST_ADVICE = ("paid by every task on every pass; if one task owns what "
+                     "it tests, make it that task's Run:")
+
+
+def _names_test_path(command):
+    """True when some token of `command` names a path under `tests/` or
+    `fleet/tests/` — a token beginning `tests/` or `fleet/tests/`, or one
+    carrying `/tests/` anywhere (`packages/x/tests/y.mjs`)."""
+    return any(tok.startswith(("tests/", "fleet/tests/")) or "/tests/" in tok
+               for tok in command.split())
+
+
+def _render_check_cost(tasks, ctx):
+    return ["ADVISORY check-cost: %s — %s"
+            % (_clip_run(check["cmd"]), CHECK_COST_ADVICE)
+            for check in parse_constraint_checks(ctx["plan_path"].read_text())
+            if not check["minor"] and _names_test_path(check["cmd"])]
+
+
+ADVISORY_RENDERS.append(("check-cost", _render_check_cost))
 
 
 def main(argv=None):
