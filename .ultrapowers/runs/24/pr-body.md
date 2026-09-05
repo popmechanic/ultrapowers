@@ -1,0 +1,97 @@
+## fleet run-24 — gate-green
+
+| | |
+|---|---|
+| verdict | `NEEDS_ACK` |
+| target | `popmechanic/ultrapowers` at `e04154b702407ac1efabaa22db6e21eab706a5f1` |
+| engine | `e04154b702407ac1efabaa22db6e21eab706a5f1` |
+| plan | `.ultrapowers/plan.md` at `81f10936c9f9bcb3250952f1c736ca0cbbcd50d8` |
+| branch | `ultra/integration-run-24` |
+| vm | `fleet-r24-2609051933-07a3` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-24",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-24/report.json",
+  "branch": "ultra/integration-run-24",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/janitor.mjs \u2014 the on-VM reads: `ssh -o BatchMode=yes -o ConnectTimeout=15 <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show fleet-run@<N>.service -p ActiveState -p SubState -p Result -p ExecMainStatus'` (fleet/janitor.mjs:187-202) and `journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200` (fleet/janitor.mjs:192) \u2014 Both command strings are byte-identical to the frozen contract's and runbook's own literals (fleet/CONTRACT.md:97 and :204, fleet/RUNBOOK.md:221 and :259), and the unit name matches what fleet/setup-script.mjs:148 starts. The exams exercise them only through the stubbed `exec` seam (`makeExec({ passthrough: [] })`), so that these commands actually return the four `key=value` lines against a live sandbox's systemd \u2014 including that `$(id -u)` expands on the VM and that `Result=timeout` appears at the 6 h `RuntimeMaxSec` budget \u2014 is not executable in this sandbox. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/janitor.mjs \u2014 the two contents-API writes: `gh api -X PUT repos/<target>/contents/.ultrapowers/runs/<N>/janitor-journal.txt` (no `sha=`, new file) and `.../status.json` (with the read envelope's `sha=`), fleet/janitor.mjs:135-146, 247-272 \u2014 The exams stub `gh` entirely and assert on the recorded argv, so the assertions confirm the flag shape (`-X PUT`, path first among `repos/\u2026`, one `-f key=value` per field) but not that GitHub's contents API accepts it \u2014 in particular that the `sha`-bearing PUT lands on `ultra/evidence-run-<N>` and that a concurrent sandbox push yields the 409/422 the `applied: false` path is written for. No network call is made in this environment. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.qWvEshwXIB/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1619 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 31%]\\n........................................................................ [ 35%]\\n........................................................................ [ 40%]\\n........................................................................ [ 44%]\\n........................................................................ [ 48%]\\n........................................................................ [ 53%]\\n........................................................................ [ 57%]\\n........................................................................ [ 62%]\\n........................................................................ [ 66%]\\n........................................................................ [ 71%]\\n........................................................................ [ 75%]\\n........................................................................ [ 80%]\\n........................................................................ [ 84%]\\n........................................................................ [ 88%]\\n........................................................................ [ 93%]\\n........................................................................ [ 97%]\\n...................................                                      [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1619 passed, 5 warnings in 141.67s (0:02:21) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence-run-24/.ultrapowers/runs/24/
+
+- approve-receipt.json
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- receipt.json
+- report.json
+- standing-approval.json
+- status.json
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan-run-24/.ultrapowers/plan.md
