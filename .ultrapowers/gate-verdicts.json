@@ -1,0 +1,50 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "8933a4c972ce4f8e87ab29aa57185cbf1d67409305c9053b2a510eb923d7447d",
+   "verdict": "pass",
+   "reason": "The negated grep pins the literal's absence from both the script and the stub rig (M1), leg (a) fails any script that still parks on a fossil NEEDS_ACK, leg (b) fails any guard that ignores the run directory's receipt, and leg (c) plus the green-path sentinel fail any stub that routes the receipt through the old directory."
+  },
+  "2": {
+   "hash": "ad7e89ae4258ad35247cc6440c76d97cb2b82e426750afc91981adeda794830d",
+   "verdict": "pass",
+   "reason": "Each clause has a leg that would fail on its negation at the PR-body layer: (a) pins the source to $PLAN_FILE and the Closes lines as the exact last lines in order, (b) the no-Closes body, (c) every M3 placement plus the exactly-one-line rule, (d) both links under their headings and the absence of the old branch paths."
+  },
+  "3": {
+   "hash": "2625435e48193e2defd05050dafe614dfeafa8c70265dfebb01d7b95e25e511a",
+   "verdict": "pass",
+   "reason": "Each machine clause has a leg that fails on its negation at the boot-script sim layer (M1: none/empty auth -> failed state, /oauth_token/ error, zero engine runs, commit-then-push ordering; M2: api_key -> failed with /api_key/, no engine; M3: exactly one --version before systemd-run, file present with version content, last add scoped to the run dir and ordered add<commit<push; M4: both log lines with the stub's version), and the two Run bullets execute both sims to their sentinel."
+  },
+  "4": {
+   "hash": "3a8347e175c65de1683944ec1db899041f7fcb8583a2690bfe9a67c6ca85174f",
+   "verdict": "pass",
+   "reason": "Every machine clause has a leg that would fail on its negation at the script's argv layer: M1's two tag pushes with their -C roots are pinned on the green and both parked shapes, M2's single listing, single two-branch deletion, ordering and no-integration-deletion are pinned on all three, M3's three disagreeing listings each pin no --delete, the record: kept line, exit 0 and done, M4 pins no tag and no delete on a non-zero engine exit, and M5 pins the literal state/commit/PR/notify sequences plus tag-after-last-evidence-push."
+  },
+  "5": {
+   "hash": "0aae71c7fca7205722378057853ae4179fd32398ce7ac04823e6943973b09740",
+   "verdict": "pass",
+   "reason": "Each machine clause has a falsifying leg at the lobby.mjs layer the claim names \u2014 M1 by number-and-string speller pins, M2 by the four tag shapes, four branch shapes and five null shapes (including the peeled line and the integration tag), M3 by the exact single-argv assertion plus tags-only, mixed, empty and exit-128 listings, and M4 by the three BASE branch literals \u2014 with the launch-reaps sim keeping the launcher's own read on the widened pattern."
+  },
+  "6": {
+   "hash": "122dd04e560bed21ec852de9056a060561a8ffd933685cb747b4b32e67d5469f",
+   "verdict": "pass",
+   "reason": "Each machine clause has a leg that falsifies it at the right layer: (a) pins the two helper strings [M1]; (b)/(c)/(d)/(e) drive the real main against a stubbed gh and pin the exact argv log so a per-file retry, a never-tried tag, a tag probe after a branch hit, and a fallback after a landed file each fail [M2, M3, M4]; (d) pins the FAILED-LOOKUP: line with all four names and the --help grep pins the tag [M5], with the BASE six-call exam kept green for M4 by the second Run bullet."
+  },
+  "7": {
+   "hash": "72ab7d9c435be6db9222aad23b99eb505b880e93abe85b2d90b6f047e34cbf79",
+   "verdict": "pass",
+   "reason": "Every clause M1-M7 has a leg that a wrong tool fails at the declared layer (the exec seam): refusal with empty calls, the single heads listing and skip line, the POST->ls-remote->DELETE ordering with the already-exists tolerance and no integration DELETE, both kept variants continuing to run 12 with exit 1, the byte-identical PATCH and the untouched PR, the -X-free would dry-run, and the ordered one-line-per-run output plus the sentinel and RUNBOOK pins."
+  },
+  "8": {
+   "hash": "17f61fb54acd45b2316c4d0a8a93467f474806181a51d731557eae6cbcedc0f1",
+   "verdict": "pass",
+   "reason": "Every clause of the operator sentence has a leg that fails on its negation at the document/test layer \u2014 ordered greps over the exact bullets and paragraphs (whose anchors all exist in the current files), the four merge sims for the unchanged sentences, the three absent-phrase greps, and two trap-restored negative rows that edit the literals back and require the new pytest tests to fail; the one soft leg (branches.*tags for the run-id bullet) guards a machine detail the operator sentence does not assert."
+  }
+ },
+ "tally": {
+  "pass": 8,
+  "fail": 0,
+  "tasks": 8,
+  "rounds": 5
+ }
+}
