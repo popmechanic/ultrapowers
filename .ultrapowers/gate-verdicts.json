@@ -1,0 +1,47 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "eec4799e3511788b813d120c9a0d08c5016d895ecc05bb65ccbe7834367465eb",
+   "verdict": "pass",
+   "reason": "round 2: M1 order against a deferred examiner reply, per-role cwd, HEAD-at-base, bootstrap-before-dispatch, prompt tail, capture paths; M2 both verdicts + call literal in the exam clone; M3/M4 handoff event, folded bytes, one repair round, examEdited both ways; M5 BLOCKED and null; M6 makeCwdFor + role greps"
+  },
+  "2": {
+   "hash": "0a01b6fdd322bcd76d9aafbb264c9c328d6b5e577aeaea88eb3a86a096e6ccc9",
+   "verdict": "pass",
+   "reason": "round 2: M1 order file shallow-start,critic,shallow-end; M2 red/green shapes with the manual deferral and one critic dispatch; M3 shallowLeg:false and the no-wave-merged shape (no critic, no wave merged finding)"
+  },
+  "3": {
+   "hash": "5e4316e738162b20b828269def56669addef1af87b380f605e768dad899b57d0",
+   "verdict": "pass",
+   "reason": "round 1: M1/M3 titled plan \u2192 %s Widget plan, %b wave 1 reconcile (attempt 1); M2 no planPath \u2192 bare %B; existing reconcile + fold-subject sims re-run"
+  }
+ },
+ "tally": {
+  "dispatched": 5,
+  "rejected": 2,
+  "rounds": {
+   "1": {
+    "dispatched": 3,
+    "rejected": 2
+   },
+   "2": {
+    "dispatched": 2,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "verdict": "fail",
+   "reason": "M1 clone-at-base/bootstrap unpinned; M2 blobs clause unpinned; M5 no-reply row missing"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "fail",
+   "reason": "M3 no-wave-merged trigger had no leg"
+  }
+ ]
+}
