@@ -1,0 +1,15 @@
+Running as unit: fleet-engine-32.service; invocation ID: b695e9be677b4a328b6e9cd80fe9e19b
+run-main: preflight
+run-main: tiers — 6 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE 306093709c28d525d459344e62415a5847b2df45; 6 task clone(s) + integration
+run-main: engine — waves 5/1, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: gate-blocked — ultra_gate exited 1 — gate receipt is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 2h 8min 45.750s
+CPU time consumed: 2h 8min 25.613s
+Memory peak: 1.7M
+Memory swap peak: 0B

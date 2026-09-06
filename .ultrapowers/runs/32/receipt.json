@@ -1,0 +1,429 @@
+{
+  "ok": true,
+  "stamp": "run-32",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-32"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "6 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The resolver loop is a function the folder can call",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`resolveConflicts({ agent, runCli, roles, common, taskArgs, commutesArgs, open, contendingBlock, waveDir, labelPrefix, onEvent }) -> Promise<{ ok, reason, transcripts, selfChecks }>`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The contending block for a cross-run conflict",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold-block.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`contendingBlock({ repo, base, tip, run, path, tasks }) -> Promise<string>`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The folder \u2014 `fleet/publish-fold.mjs`",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`resolveConflicts({ agent, runCli, roles, common, taskArgs, commutesArgs, open, contendingBlock, waveDir, labelPrefix, onEvent }) -> Promise<{ ok, reason, transcripts, selfChecks }>`",
+            "`contendingBlock({ repo, base, tip, run, path, tasks }) -> Promise<string>`"
+          ],
+          "produces": [
+            "`publishFold({ repo, base, branch, run, runDir, evidenceDir, attempt }, deps) -> Promise<receipt>`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The boot script publishes the folded head and retries the merge once",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing a sibling produces (the folder is a sibling task in this plan; this task's sim stubs its unit and never runs it)"
+          ],
+          "produces": [
+            "`FOLD_HOLD` (a boot-script variable read by `merge_pr`)"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The launcher refuses a base that is not on main",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing a sibling consumes"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The contract names the fold",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing a sibling produces"
+          ],
+          "produces": [
+            "nothing a sibling consumes"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "3",
+        "why": "interface"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "4",
+        "5",
+        "6"
+      ],
+      [
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The resolver loop is a function the folder can call",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_conflict.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`resolveConflicts({ agent, runCli, roles, common, taskArgs, commutesArgs, open, contendingBlock, waveDir, labelPrefix, onEvent }) -> Promise<{ ok, reason, transcripts, selfChecks }>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_conflict.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_conflict.mjs",
+          "proofRuns": []
+        },
+        {
+          "id": "2",
+          "title": "The contending block for a cross-run conflict",
+          "files": [
+            "fleet/publish-fold-block.mjs",
+            "fleet/tests/test_publish_fold_block.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`contendingBlock({ repo, base, tip, run, path, tasks }) -> Promise<string>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/publish-fold-block.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold_block.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold_block.mjs",
+          "proofRuns": []
+        },
+        {
+          "id": "4",
+          "title": "The boot script publishes the folded head and retries the merge once",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing a sibling produces (the folder is a sibling task in this plan; this task's sim stubs its unit and never runs it)"
+            ],
+            "produces": [
+              "`FOLD_HOLD` (a boot-script variable read by `merge_pr`)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_merge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_record.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "The launcher refuses a base that is not on main",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing a sibling consumes"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch.mjs",
+          "proofRuns": []
+        },
+        {
+          "id": "6",
+          "title": "The contract names the fold",
+          "files": [
+            "fleet/CONTRACT.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing a sibling produces"
+            ],
+            "produces": [
+              "nothing a sibling consumes"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'running \u2192 publishing \u2192 running \u2192 publishing \u2192 done'",
+            "test \"$(tr '\\n' ' ' < fleet/CONTRACT.md | grep -o 'running \u2192 publishing \u2192 running \u2192 publishing \u2192 done' | wc -l | tr -d ' ')\" = 1",
+            "test \"$(grep -n '^- \\*\\*status\\.json:\\*\\*' fleet/CONTRACT.md | cut -d: -f1)\" -lt \"$(grep -n '^- \\*\\*Publish:\\*\\*' fleet/CONTRACT.md | cut -d: -f1)\"",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'commits/<head>/check-runs.*pulls/<n>/merge.*hold=1'",
+            "test \"$(grep -n '^- \\*\\*Boot script' fleet/CONTRACT.md | cut -d: -f1)\" -lt \"$(grep -n '^- \\*\\*status\\.json' fleet/CONTRACT.md | cut -d: -f1)\"",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'a 405 whose .message. says the pull request is not mergeable.*re-folds onto the new tip.*PUTs once more.*a second 405 leaves the PR open'",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'left open: merge PUT answered 405 twice'",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Fleet-Run: <N>.*Plan-Tag: ultra/plan/run-<N>'",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'unit=fleet-engine-<N>.*unit=fleet-fold-<N>-<attempt>.*fleet/publish-fold.mjs'",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '.publishing. (written only after .systemctl --user is-active fleet-engine-<N>.service. and .systemctl --user is-active fleet-fold-<N>-<attempt>.service. are inactive'",
+            "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -o 'evidence committed BEFORE the push[^)]*' | grep -q 'except attempt 2.s push, made under .running'",
+            "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'publish-fold/.*receipt.json'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+            "test \"$(grep -c \"CONTRACT.md's\" fleet/tests/test_sandbox_boot_merge.mjs)\" -ge 3",
+            "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        }
+      ],
+      [
+        {
+          "id": "3",
+          "title": "The folder \u2014 `fleet/publish-fold.mjs`",
+          "files": [
+            "fleet/publish-fold.mjs",
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`resolveConflicts({ agent, runCli, roles, common, taskArgs, commutesArgs, open, contendingBlock, waveDir, labelPrefix, onEvent }) -> Promise<{ ok, reason, transcripts, selfChecks }>`",
+              "`contendingBlock({ repo, base, tip, run, path, tasks }) -> Promise<string>`"
+            ],
+            "produces": [
+              "`publishFold({ repo, base, branch, run, runDir, evidenceDir, attempt }, deps) -> Promise<receipt>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/publish-fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold.mjs",
+          "proofRuns": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 5 tasks",
+      "The folder \u2014 `fleet/publish-fold.mjs`"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The fold kernel (`skills/ultrapowers/kernel/`, the sha-pinned `vendor/manyana.py` most of\n  all) and the frozen gate scripts are not the fix: the first Check above is the whole of that\n  rule, and a mode park on a chmod main made since BASE is counted, not patched around.\n- `collect_evidence` in `fleet/sandbox-boot.sh` is byte-identical to BASE (the second Check): a\n  concurrent run (#702) owns that function, and every receipt this plan adds rides the evidence\n  commit by being written directly into the evidence worktree, never by a list change there.\n- Amendment 10 stands: no model runs git and no GitHub call is a model's. The resolver the\n  folder may dispatch is the read-only `fleet/roles/resolver.md` role answering through\n  `RESOLVER_SCHEMA`; the driver writes every reply directory, every ref move and every push.\n- No token on any VM and none in any argv: the folder runs under the same edge-injected envelope\n  as the engine (`ANTHROPIC_BASE_URL` at the proxy, `CLAUDE_CODE_OAUTH_TOKEN=placeholder`,\n  `CLAUDE_CONFIG_DIR` unset at the unit and set to the run tree's `claude/` for workers).\n- `status.json`'s shape is unchanged \u2014 the same ten cells; the fold's record is the\n  `driver:publish-fold` event, the `publish-fold/` receipts directory and the PR body's\n  `## Publish fold` section, never a new cell on the page.\n- The wave loop's in-wave behaviour is unchanged by the extraction: same prompt, same labels,\n  same reply-directory grammar, same park conditions; a run with no conflict dispatches nothing.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "bash -c 'diff <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | sed -n \"/^collect_evidence() {/,/^}/p\") <(sed -n \"/^collect_evidence() {/,/^}/p\" fleet/sandbox-boot.sh)'",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/ fleet/claude-token.mjs fleet/janitor.mjs fleet/target.mjs fleet/doctor.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-32/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-32/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-32/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-32/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

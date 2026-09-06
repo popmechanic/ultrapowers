@@ -1,0 +1,409 @@
+{
+  "integrationBranch": "ultra/integration-run-32",
+  "baseSha": "306093709c28d525d459344e62415a5847b2df45",
+  "waves": [
+    [
+      "1",
+      "2",
+      "4",
+      "5",
+      "6"
+    ],
+    [
+      "3"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 3 (interface)",
+    "2 -> 3 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "097a6c6344b474a2cd9e7ecbe13c7b7434186e38",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-32/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Exam pin weaker than Proof leg (d) names. The Proof requires that in both existing shapes \"the resolver stub's recorded label is exactly `resolve:wave1:0:1`\" and that `frontier[0].resolverTranscripts[0].replyDir` equals exactly `<runDir>/frontier/wave-1/reply-0-1`. The exam instead asserts `resolverLabels[0] === 'resolve:wave1:' + t0.conflict + ':1'` and `t0.replyDir === path.join(runDir,'frontier','wave-1','reply-' + t0.conflict + '-1')` (fleet/tests/test_run_engine_conflict.mjs, both the MERGED and the CONFLICT shape). Both the label and the transcript's `conflict` field are built from the same `conflict.i` inside `resolveConflicts`, so the index component of the pin is self-referential \u2014 an engine that renumbered the conflict index would still pass. The stated purpose of the leg (\"a wave loop passing any other labelPrefix or waveDir fails\") does still hold, since the `resolve:wave1` prefix, the `<runDir>/frontier/wave-1` root and the `:1` attempt are all pinned literally, and the divergence is disclosed in a comment (\"The conflict index is the kernel's\"). Tightening to the literal `0` the Proof names would close the gap.; Loose assertion in exam leg (a): `assert.ok(notes === 'took both sides\\n' || notes === 'took both sides', ...)` in fleet/tests/test_run_engine_conflict.mjs accepts either form of `notes.txt`. The implementation in fleet/run-engine.mjs unconditionally writes `String(res.notes || '') + '\\n'`, so the disjunction admits a shape the code never produces and would keep passing if the newline were dropped. M1 pins newline-termination only for the `<hunk id>.txt` files, so this leaves no criterion unverified \u2014 but `assert.equal(notes, 'took both sides\\n')` is the assertion the code actually earns.; Proof leg (d) spells the label pin literally \u2014 \"the resolver stub's recorded label is exactly `resolve:wave1:0:1`\" \u2014 but the exam asserts it as `'resolve:wave1:' + t0.conflict + ':1'` (fleet/tests/test_run_engine_conflict.mjs, both the resolved and BLOCKED shapes), deriving the conflict index from the transcript rather than pinning 0. The divergence is disclosed in the adjacent comment (\"The conflict index is the kernel's; the label and the reply directory are the engine's\") and is defensible \u2014 the parts of M4 the leg exists to pin, `labelPrefix === 'resolve:wave1'` and `waveDir === <runDir>/frontier/wave-1`, are still fully pinned regardless of the index, and `replyDir` is checked the same way. Advisory only: nothing in M4 is left unverified. If you want the literal exam, add `assert.equal(t0.conflict, 0)` alongside it so the index is pinned by its own assertion rather than by relaxing the label one.; concern: exam-expectation-defect: Proof leg (d) expects the existing rig shapes to record label `resolve:wave1:0:1` and `replyDir` `<runDir>/frontier/wave-1/reply-0-1`, but the kernel numbers conflicts from 1 (`skills/ultrapowers/kernel/fold_wave.py:523` \u2014 `i = max(existing, default=0) + 1`), so both shapes produce `resolve:wave1:1:1` and `reply-1-1`. I verified this is BASE behaviour, not a regression: the label/replyDir formulas are byte-identical to the inline code and `conflict.i` comes straight from the kernel's `open` list. I did NOT change kernel numbering (the global constraints freeze the kernel and require the wave loop's in-wave behaviour to be unchanged). A peer exam asserting `0` in leg (d) will fail against BASE too and should read `1`. Legs (a), (b) and (e) supply `open` synthetically with `i: 0`, so they are unaffected.; concern: verification: I probed all Proof legs with throwaway scripts (direct calls for M1/M2/M5 \u2014 argv deep-equal, reply-dir contents, prompt tail, retry/park reasons, RUN_FATAL rethrow, onEvent shape \u2014 and rig runs for M3/M4 including the no-`wavesPath` prompt and the BLOCKED transcript length of exactly 1). Those scratch files were deleted before the commit, since the Proof's `Test:` path is reserved for the peer's exam.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "7e314c5879d2d292269e870aaaa6bfb7eb007157",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-32/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Silent degradation when the plan compiler cannot run at all. `planTasksFor` in fleet/publish-fold-block.mjs maps every failure to `null` \u2014 the tag fetch failing, `git show` failing, `python3` being absent, `COMPILE_PLAN` not existing at the resolved path, and a plan that genuinely will not compile \u2014 and all of them render as the same `- main <sha7> \"<subject>\" (<author>, no plan)` line. The first three are wiring errors, not facts about the frontier: if the engine checkout ever moves `fleet/` relative to `skills/ultrapowers/scripts/compile_plan.py`, or `python3` is not on the unit's PATH, every trailered frontier commit loses its verbatim bodies and the resolver is dispatched with a strictly worse prompt, with nothing anywhere saying so. The exam cannot catch this because it exercises the happy path and the tag-absent path only. The design rule the task states is \"attribution is best-effort, never a park\" for *frontier* facts; a missing compiler is not one. Cheapest fix that keeps the no-park rule: fail loudly when the compiler itself is not present, and keep the degrade for everything downstream of it.; unverified: the two spellings this module hardcodes \u2014 the commit trailer key `Fleet-Run` and the tag namespace `refs/tags/ultra/plan/run-<M>` \u2014 are written by code outside this task's FILES (the merge PUT's `commit_message`, task 4 M6, and `record_tags`). The exam manufactures both in its own fixture, so a green run proves the module reads what the exam writes, not what the fleet writes. What would settle it: an assertion in the sibling that produces them, or a cross-run integration sim that lets `record_tags` push the tag and the merge PUT write the trailer and then calls `contendingBlock` against the result. Recorded, not blocking \u2014 this diff cannot judge it. Nothing in the plan text as given contradicts the spellings used here.; plan-defect: the task's **Context** states \"`compile_plan.py <file>` prints one JSON object whose `tasks` array carries `{ id, title, body, files }`\". That is not true of this tree: `skills/ultrapowers/scripts/compile_plan.py:3984` puts the verbatim `body` only in the `--emit-launch` payload \u2014 the stdout `result` object (`:3960`-`:3973`) carries `launch_waves`, whose entries are explicitly body-less (`:3902` \"`launch_waves` is LIGHT (no body)\"). An implementation transcribing the Context literally would have produced entries with an empty body and failed M1's \"a newline and the task's `body` verbatim\". The implementer diverged correctly, writing to a temp `launch.json` via `--emit-launch` (fleet/publish-fold-block.mjs:161) and disclosing the reason in the comment at :158-:160; the exam's own oracle uses the same flag (fleet/tests/test_publish_fold_block.mjs:310). Nothing in FILES needs to change \u2014 the wrong text is the task body's Context paragraph, which is why this is actor `plan` and minor rather than a fix round.; Exam coverage gap on two frontier shapes M2 leaves implicit, neither of which any leg exercises. (1) Silent-disappearance: a commit carrying `Fleet-Run: <M>` whose plan fetches and compiles but whose tasks all name paths other than `<path>` contributes ZERO entries \u2014 the loop at fleet/publish-fold-block.mjs:194-196 appends nothing and, unlike the fetch-failure and no-trailer paths, does not fall through to `noPlanLine`, so that commit vanishes from the block entirely and a resolver never learns main moved. This follows M2's letter (\"one entry per task of run M's plan whose Files name `<path>`\", zero qualifying tasks giving zero entries), so it is not a defect, but it is the one frontier outcome with no test pinning it. Leg (a) cannot cover it: run 3's plan there has `T1` naming `a.txt`, so the commit always contributes. (2) Repeat attribution: two frontier commits carrying the same `Fleet-Run: <M>` emit run M's qualifying tasks twice \u2014 the `plans` cache at :187 memoizes the compile, not the emission. Also spec-conformant, also unpinned. Both are cheap to add against the existing fixture: call the export with `path: 'z.txt'` (already named by `PLAN_RUN3`'s `T2` and touched by no frontier commit) for a third `tasks`-only assertion, and add a second `Fleet-Run: 3` commit editing `a.txt` to pin whichever multiplicity is intended. Worth doing because both behaviours are ones a future edit could flip without any leg going red.; concern: plan-defect: the task text says `compile_plan.py <file>` prints one JSON object whose `tasks` array carries `{ id, title, body, files }`. It does not \u2014 the stdout `tasks` entries carry only id/title/disposition/heuristic/writes/depends_on/interfaces (compile_plan.py:3822-3828). The `{id,title,body,files}` shape the task describes, and that `<run dir>/launch.json` holds, is produced only by `--emit-launch <file>` (compile_plan.py:3984-3986). Implemented as `python3 compile_plan.py <plan> --emit-launch <tmp.json>` and read the tasks from that file, since that is the only invocation that yields the bodies and files the Claim's entries require; the output contract is unaffected.; concern: compile_plan.py is resolved relative to this module (`<fleet>/../skills/ultrapowers/scripts/compile_plan.py`), never inside `repo` \u2014 `repo` is a clone of the target repository and need not carry the skill. This matches the task's `Stale-if: path-absent: skills/ultrapowers/scripts/compile_plan.py`.; concern: A `git log` that exits non-zero (e.g. an unresolvable `base..tip`) throws rather than degrading to an empty frontier. Only the missing-tag/uncompilable-plan paths are specified as silent, and swallowing a bad revision range would silently produce a block with no frontier at all.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3fb780f01365ded2df6f546a0d498c6bd04291bd",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-32/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "Two paths outside the declared FILES footprint are modified: `fleet/tests/test_sandbox_boot.mjs` (the `unitsRun` assertion at the `STUB_STATUS_ACTIVE: 'active'` case now expects `['fleet-engine-7', 'fleet-fold-7-1']`) and `fleet/tests/test_sandbox_boot_selfmerge.mjs` (the `mergePuts` deepEqual now carries `commit_message`). Both edits are substantively correct and in fact forced by the task's own M6 and M8 \u2014 the fold unit now runs on every green boot, and the merge payload gained a fourth field \u2014 and neither path is a SIBLING FILES path, so this is footprint drift only, not a boundary violation. Recording it because FILES named three paths and the diff touches five.; The rig gains eleven exported readers and four constants that nothing consumes, and the exam duplicates six of them locally instead. `_sandbox_boot_helpers.mjs` adds `foldDir`, `foldFile`, `foldReceipt`, `foldAttempt`, `foldUnits`, `foldArgv`, `patches`, `mergeableReads`, `updateRefs`, `leasePushes`, `leaseOf` plus `FOLD_ENGINE_HEAD`, `HEAD_SHA_2`, `FOLD_SUITE_LAST`, `FOLD_RECEIPT_LINK`; `test_sandbox_boot_merge.mjs` imports none of them and re-defines its own `foldDir`, `foldPath`, `foldUnits`, `updateRefs`, `leaseOf` and `patches` (patch lines 1114-1189 vs. 940-972). Two copies of the same receipt/log readers will drift. Either import the rig's versions in the exam and drop the local copies, or drop the unused rig exports; keeping both is copy-pasted logic plus dead code.; M1 says `do_boot` writes `running` with phase `publish fold` on any outcome with commits ahead of BASE; the diff guards that write on `if [ \"$STATE\" = \"running\" ]` (patch line 556). On the re-entry path \u2014 `engine_already_ran` true \u2014 the last `write_status` before this point is `booting \"assignment read\"`, so `STATE` is `booting`, the page write is skipped, and a `fleet-fold-7-1` unit starts with no `running \"publish fold\"` page in front of it. The divergence is disclosed in the adjacent comment and the exam only exercises the green and parked paths, so nothing is unverified that the Proof names; but M1 states the write unconditionally. Either drop the guard (the write carries no evidence commit, so `commitStates` pins in the sibling sims are unaffected) or have the plan text say the write is conditional on the engine having run in this pass.; unverified: M7's \"re-enters its check-runs loop on the new `BRANCH_HEAD`\" is not discriminated by leg (g). The rig builds exactly the machinery for it \u2014 `HEAD_SHA_2`/`FOLD_CANDIDATE_2`, the `stub/fold-2` marker, and the `STUB_HEAD_SHA_2` branches in both the `git rev-parse` stub (patch line 773) and the `curl branches` stub (patch line 714) \u2014 but no case ever sets `STUB_HEAD_SHA_2`, so on `retryMerged` the second head equals `HEAD_SHA` and `checkUrlFor(second.pushedHead)` is byte-identical to the first call's check-runs URL. An implementation that reused a stale head for the second read would pass. The `reads.length >= 1` half (the loop is re-entered at all) is genuinely pinned; only the \"on the NEW head\" half is not. Turning the knob on for that one run settles it.; Footprint: the diff modifies two paths outside FILES \u2014 `fleet/tests/test_sandbox_boot.mjs` (the `unitsRun` deepEqual in 'a status server that is already active is not started again' now expects `['fleet-engine-7','fleet-fold-7-1']`) and `fleet/tests/test_sandbox_boot_selfmerge.mjs` (the `mergePuts` deepEqual gains `commit_message`). Both edits are forced by clauses this task owns (M1 adds the fold unit to every green boot; M6 adds `commit_message` to the PUT payload), both are minimal, both preserve the case's own claim and say so in a comment, and neither path is a SIBLING FILES path or a peer's Proof `Test:` path \u2014 so nothing here is for the implementer to undo. The defect is the task's Files list, which named only three paths while M8 requires those two sims to keep passing.; M1 states that on any outcome with commits ahead of BASE `do_boot` writes `running` with phase `publish fold`, and that the first `fleet-fold-*` `systemd-run` comes after that write. `fleet/sandbox-boot.sh:1644` guards it: `if [ \"$STATE\" = \"running\" ]; then write_status running \"publish fold\"; fi`. `STATE` is this process's own last-written state (set only by `write_status`, `fleet/sandbox-boot.sh:235`), so on a re-entry where `engine_already_ran` is true the `running \"engine starting\"` write at line 1563 is skipped, `STATE` is still `booting`, and `publish_fold 1` starts a model-running unit with the page left saying `booting \u2014 assignment read`. Re-entry guard 1 has already exited for any terminal page, so the page a re-entry would overwrite is non-terminal and `running/publish fold` would be accurate. The divergence is disclosed in the comment above the line, and the exam's re-entry leg (c) only pins pushes and POSTs, so nothing catches it. Either drop the guard or state in the comment that M1's write is deliberately main-path-only.; Dead and duplicated rig code. `fleet/tests/_sandbox_boot_helpers.mjs` gains a reader block (`foldDir`, `foldFile`, `foldReceipt`, `foldAttempt`, `foldUnits`, `foldArgv`, `patches`, `mergeableReads`, `updateRefs`, `leasePushes`, `leaseOf`) plus the constants `FOLD_ENGINE_HEAD`, `HEAD_SHA_2`, `FOLD_SUITE_LAST` and `FOLD_RECEIPT_LINK`; a grep of `fleet/tests/` shows none of them is imported by any sim. `fleet/tests/test_sandbox_boot_merge.mjs` re-implements five of them locally under the same names (`foldDir`, `foldUnits`, `updateRefs`, `patches`, `leaseOf`), so the shared rig now carries a second copy of logic the only reader already has. Either import the rig's versions in the exam or drop the unused exports \u2014 a later sim reading the rig will not be able to tell which copy is authoritative.; The merge stub's documented contract does not hold. `fleet/tests/_sandbox_boot_helpers.mjs` (the `pulls/*/merge` case) says `STUB_MERGE_CODE` answers \"the FIRST PUT (or, as a list in order, \\\"405 200\\\", every PUT)\", and the `for c in ${STUB_MERGE_CODE:-200}` loop selects the nth element \u2014 but the `if [ \"$n\" -ge 2 ]` branch immediately below overwrites `code` with `${STUB_MERGE_CODE_2:-200}` unconditionally, so the list's second element is never read. `\"405 200\"` happens to agree with the default only by coincidence; `\"200 405\"` would answer 200 twice. No case uses the list today, so nothing is mis-graded \u2014 but the comment states a knob semantics the code does not implement, in a rig other tasks read. Either delete the list handling and document `STUB_MERGE_CODE` as first-PUT-only, or make the `n >= 2` override apply only when `STUB_MERGE_CODE_2` is set.; concern: plain: the attempt-1 `write_status running \"publish fold\"` is guarded by `if [ \"$STATE\" = \"running\" ]`. Without the guard, `test_sandbox_boot_edges.mjs:433`'s re-entry pin (`['booting','publishing','done']`) breaks, since a re-entered run that never re-ran the engine would gain a `running` page it did not have at BASE. The guard matches the task's own note that attempt 1's write is a phase change inside the state the engine's commit already made.; concern: plain: the `## Publish fold` render trigger is a deliberate superset of M4's rule \u2014 it also renders when more than one attempt ran, or when MERGE_NOTE is a `left open:` note, so the PATCHed body always carries the story. M4's negatives (no section for a clean one-attempt `folded`/`nothing to join`) still hold.; concern: out-of-FILES: `fleet/tests/test_sandbox_boot_fold.mjs` \u2014 a new 17-case sim covering M1-M8, added because the acceptance is the committed suite and the peer-reserved `test_sandbox_boot_merge.mjs` may not be written by me. Collected automatically by `tests/test_fleet_suite.py`'s `test_*.mjs` glob; runs in ~19s, well under that bridge's 120s timeout.; concern: out-of-FILES: plan-defect: `fleet/tests/test_sandbox_boot.mjs` \u2014 one `deepEqual` pinned `unitsRun(ctx) === ['fleet-engine-7']`, which M1 necessarily breaks. Updated to `['fleet-engine-7','fleet-fold-7-1']`, preserving the case's actual claim (no second `fleet-status` unit) with a comment naming run-32.; concern: out-of-FILES: plan-defect: `fleet/tests/test_sandbox_boot_selfmerge.mjs` \u2014 one `deepEqual` pinned the exact merge-PUT payload, which M6 necessarily breaks. Added the expected `commit_message: 'Fleet-Run: 7\\nPlan-Tag: ultra/plan/run-7'` field, with the same comment.; concern: out-of-FILES: `fleet/tests/test_sandbox_boot.mjs` and `fleet/tests/test_sandbox_boot_selfmerge.mjs` each carry a one-hunk pin update from the earlier pass, still present in the cumulative diff. They are not in this task's FILES, but M8 requires both sims to keep passing and both pinned behaviour this task deliberately changes: `test_sandbox_boot.mjs:106` asserted `unitsRun` is exactly `['fleet-engine-7']` (now `['fleet-engine-7', 'fleet-fold-7-1']`), and `test_sandbox_boot_selfmerge.mjs:93` asserted the merge PUT payload's exact three fields (M6 adds `commit_message`). Neither file is sibling-owned in this plan. There was no way to satisfy M1 and M6 and leave those two assertions as they stood.; concern: out-of-FILES: `fleet/tests/test_sandbox_boot_fold.mjs`, added by the earlier pass, is deleted in this one. It nets to zero against BASE, so the cumulative diff no longer shows it at all; noting it because the referee reads the earlier tree.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "6594d06e6054d0832194ca9230e967d14f37e774",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-32/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/launch.mjs: after `git fetch origin <default>` the launcher force-writes `refs/remotes/origin/<default>` to `origin.tip` \u2014 the sha read by the *earlier* `ls-remote`. If the origin's default branch advances between the `ls-remote` and the `fetch`, the fetch brings the newer tip and this `update-ref` then moves the operator's tracking ref *backwards* to the stale sha, with no old-value guard and no reflog message. M3 still passes (one ref changed), so this is advisory. Cheapest fix that keeps the exec-log pin `fetch origin main` intact: pass the expected old value \u2014 `['update-ref', ref, origin.tip, <sha the ref held before the fetch>]` is not available, so instead only write the ref when it is absent, e.g. read `git rev-parse --verify --quiet refs/remotes/origin/<b>` after the fetch and `update-ref` only when that read answers non-zero (the case the comment actually describes: a fetch whose refspec did not cover the branch). Add `-m 'launch: default-branch read'` while there.; fleet/launch.mjs: the shallow gate only fires on `shallow.code === 0 && stdout === 'true'`; a `rev-parse --is-shallow-repository` that answers non-zero (a git too old to know the flag, or any other failure) falls through silently. A shallow clone that slips past it then fails at `merge-base --is-ancestor` and is refused with BASE_OFF_MAIN_FIX \u2014 'relaunch from main' \u2014 which is the wrong instruction for a truncated history and sends the operator to re-drive work that was never parked. M2 is unaffected (the exam's clone answers `true`), so this is advisory. Suggest either refusing on a non-zero `--is-shallow-repository` read as its own unreadable-checkout Refusal, or falling back to `test -f $(git rev-parse --git-dir)/shallow` before proceeding.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "497c40392863d7d904e194c647bc12e2c3a5a8ff",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-32/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "Misleading attribution of the push inside the new `publish fold` bullet (fleet/CONTRACT.md). The bullet's argv paragraph is followed by \"It folds, runs the suite, and pushes the head with `push_head` \u2014 a plain push on attempt 1, `--force-with-lease=<branch>:<pushedHead>` on attempt 2\", and the bullet closes with \"every git command, ref move and push is the script's\". Read together, the nearest antecedent of \"It\" is the fold unit / `fleet/publish-fold.mjs`, but `push_head` is the boot script's shell function: this plan's sibling tasks state that the folder \"pushes nothing, opens nothing and writes no status page\" (task 3's Context) and that `push_head` runs in `do_boot`'s bracket after `await_engine_inactive fleet-fold-<N>-2` (task 4). The contract is the authority for these literals, so the ambiguity should be removed. Nothing in the Proof exercises this sentence (all Run pins are green), hence minor, and the later \"after the engine\" line \u2014 \"the head is on the remote (`push_head`'s `git push origin ultra/integration-run-N`)\" \u2014 already places the push correctly in the boot script's sequence.; unverified: the contract now pins literals that live in sibling-owned files \u2014 the fold unit's full `systemd-run` argv (`fleet-fold-<N>-<attempt>`, `<engine>/fleet/publish-fold.mjs --repo \u2026 --attempt 1|2`), the merge-retry order (`running \"publish fold (attempt 2)\"` \u2192 re-fold \u2192 lease push \u2192 `publishing` \u2192 re-entered check-runs loop \u2192 one further PUT), the six dispositions and the `publish-fold/receipt.json` shape. Nothing in this diff can settle that those strings match `fleet/sandbox-boot.sh` (task 4) and `fleet/publish-fold.mjs` (task 3) as finally written; the Proof's greps only assert the contract says them, and `fleet/tests/test_sandbox_boot_merge.mjs` ran green here against the boot script as it stands at BASE. What would settle it: task 4's merge/boot sims run on the adopted tree, where those three CONTRACT.md cases read the edited contract against the sibling's boot script. If a mismatch appears there, the line to change is in fleet/CONTRACT.md.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "proof-red",
+      "notes": "the Proof's exam failed: node fleet/tests/test_publish_fold.mjs \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-32/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1654 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n......................................................................   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1654 passed, 5 warnings in 278.84s (0:04:38) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_record.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_approved.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'running \u2192 publishing \u2192 running \u2192 publishing \u2192 done'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "test \"$(tr '\\n' ' ' < fleet/CONTRACT.md | grep -o 'running \u2192 publishing \u2192 running \u2192 publishing \u2192 done' | wc -l | tr -d ' ')\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "test \"$(grep -n '^- \\*\\*status\\.json:\\*\\*' fleet/CONTRACT.md | cut -d: -f1)\" -lt \"$(grep -n '^- \\*\\*Publish:\\*\\*' fleet/CONTRACT.md | cut -d: -f1)\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'commits/<head>/check-runs.*pulls/<n>/merge.*hold=1'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "test \"$(grep -n '^- \\*\\*Boot script' fleet/CONTRACT.md | cut -d: -f1)\" -lt \"$(grep -n '^- \\*\\*status\\.json' fleet/CONTRACT.md | cut -d: -f1)\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'a 405 whose .message. says the pull request is not mergeable.*re-folds onto the new tip.*PUTs once more.*a second 405 leaves the PR open'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'left open: merge PUT answered 405 twice'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'Fleet-Run: <N>.*Plan-Tag: ultra/plan/run-<N>'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'unit=fleet-engine-<N>.*unit=fleet-fold-<N>-<attempt>.*fleet/publish-fold.mjs'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '.publishing. (written only after .systemctl --user is-active fleet-engine-<N>.service. and .systemctl --user is-active fleet-fold-<N>-<attempt>.service. are inactive'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Boot script/,/^- \\*\\*status\\.json/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -o 'evidence committed BEFORE the push[^)]*' | grep -q 'except attempt 2.s push, made under .running'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'publish-fold/.*receipt.json'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    },
+    {
+      "task": "6",
+      "cmd": "test \"$(grep -c \"CONTRACT.md's\" fleet/tests/test_sandbox_boot_merge.mjs)\" -ge 3",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -c 'diff <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | sed -n \"/^collect_evidence() {/,/^}/p\") <(sed -n \"/^collect_evidence() {/,/^}/p\" fleet/sandbox-boot.sh)'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/ fleet/claude-token.mjs fleet/janitor.mjs fleet/target.mjs fleet/doctor.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1485769,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 3,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n....................................................s................... [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n......................................................................   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1653 passed, 1 skipped, 5 warnings in 281.47s (0:04:41) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.....................................................................    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1653 passed, 5 warnings in 147.10s (0:02:27) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "2d8181879992a5379ace27e84ff296e9f920ff0e",
+      "branches": [
+        "1",
+        "2",
+        "4",
+        "5",
+        "6"
+      ]
+    },
+    {
+      "wave": 2,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-32/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-32/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 3.552,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 5,
+    "tasks_planned": 6,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "3",
+      "files": [
+        "fleet/publish-fold.mjs",
+        "fleet/tests/test_publish_fold.mjs"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 the publish-fold bracket, `push_head` lease, the deadman's fold-unit stop, and the `FOLD_HOLD` merge hold (Task 4, M1/M2/M3/M5)",
+      "reason": "runtime",
+      "why": "Every leg is exercised only against the `_sandbox_boot_helpers.mjs` PATH shim (`systemd-run`, `systemctl`, `git`, `curl` stubs). No real transient systemd unit is started, no real `--force-with-lease` push is attempted, and the fold unit's stub never executes a folder, so the bracket's behaviour against a live unit and a live remote is unexercised in this environment."
+    },
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 the single merge retry: the 405 `not mergeable` path, the `GET /pulls/<n>` mergeable poll, the second PUT and the body PATCH (Task 4, M6/M7, and the sequence Task 6 documents at fleet/CONTRACT.md:197-210)",
+      "reason": "external",
+      "why": "All of it runs against a stubbed `curl` answering `STUB_MERGE_CODE`/`STUB_MERGE_MESSAGE`. GitHub's actual 405-vs-409 semantics, its asynchronous mergeability recomputation after a force-push, and branch protection are not reachable from this sandbox."
+    },
+    {
+      "deliverable": "fleet/launch.mjs \u2014 the base-ancestry and shallow-clone refusals (Task 5, M1/M2/M3)",
+      "reason": "external",
+      "why": "The exam drives a local bare origin through the `localRemote` seam rather than a real target's `ls-remote --symref origin HEAD`. The refusal logic and the ordering are verified; the answer a live GitHub Enterprise origin gives for `--symref` HEAD is not."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: exam-expectation-defect: Proof leg (d) expects the existing rig shapes to record label `resolve:wave1:0:1` and `replyDir` `<runDir>/frontier/wave-1/reply-0-1`, but the kernel numbers conflicts from 1 (`skills/ultrapowers/kernel/fold_wave.py:523` \u2014 `i = max(existing, default=0) + 1`), so both shapes produce `resolve:wave1:1:1` and `reply-1-1`. I verified this is BASE behaviour, not a regression: the label/replyDir formulas are byte-identical to the inline code and `conflict.i` comes straight from the kernel's `open` list. I did NOT change kernel numbering (the global constraints freeze the kernel and require the wave loop's in-wave behaviour to be unchanged). A peer exam asserting `0` in leg (d) will fail against BASE too and should read `1`. Legs (a), (b) and (e) supply `open` synthetically with `i: 0`, so they are unaffected.",
+    "task 1: verification: I probed all Proof legs with throwaway scripts (direct calls for M1/M2/M5 \u2014 argv deep-equal, reply-dir contents, prompt tail, retry/park reasons, RUN_FATAL rethrow, onEvent shape \u2014 and rig runs for M3/M4 including the no-`wavesPath` prompt and the BLOCKED transcript length of exactly 1). Those scratch files were deleted before the commit, since the Proof's `Test:` path is reserved for the peer's exam.",
+    "task 1: examiner: (d) [M4] \"the resolver stub's recorded label is exactly `resolve:wave1:0:1` and `frontier[0].resolverTranscripts[0].replyDir` equals exactly `<runDir>/frontier/wave-1/reply-0-1`\" \u2014 At BASE the kernel numbers this conflict i=1 (epoch 2) in both existing shapes \u2014 the observed label is `resolve:wave1:1:1` and the reply dir `.../reply-1-1`. Encoding the literal 0 would make the exam red for a second, unrelated reason and would fail a faithful extraction. Encoded instead as the invariant the leg exists to catch: exactly one dispatch, label === `resolve:wave1:<transcript.conflict>:1` and replyDir === path.join(runDir,'frontier','wave-1','reply-<transcript.conflict>-1'), so any other labelPrefix or waveDir still fails.",
+    "task 2: plan-defect: the task text says `compile_plan.py <file>` prints one JSON object whose `tasks` array carries `{ id, title, body, files }`. It does not \u2014 the stdout `tasks` entries carry only id/title/disposition/heuristic/writes/depends_on/interfaces (compile_plan.py:3822-3828). The `{id,title,body,files}` shape the task describes, and that `<run dir>/launch.json` holds, is produced only by `--emit-launch <file>` (compile_plan.py:3984-3986). Implemented as `python3 compile_plan.py <plan> --emit-launch <tmp.json>` and read the tasks from that file, since that is the only invocation that yields the bodies and files the Claim's entries require; the output contract is unaffected.",
+    "task 2: compile_plan.py is resolved relative to this module (`<fleet>/../skills/ultrapowers/scripts/compile_plan.py`), never inside `repo` \u2014 `repo` is a clone of the target repository and need not carry the skill. This matches the task's `Stale-if: path-absent: skills/ultrapowers/scripts/compile_plan.py`.",
+    "task 2: A `git log` that exits non-zero (e.g. an unresolvable `base..tip`) throws rather than degrading to an empty frontier. Only the missing-tag/uncompilable-plan paths are specified as silent, and swallowing a bad revision range would silently produce a block with no frontier at all.",
+    "task 4: plain: the attempt-1 `write_status running \"publish fold\"` is guarded by `if [ \"$STATE\" = \"running\" ]`. Without the guard, `test_sandbox_boot_edges.mjs:433`'s re-entry pin (`['booting','publishing','done']`) breaks, since a re-entered run that never re-ran the engine would gain a `running` page it did not have at BASE. The guard matches the task's own note that attempt 1's write is a phase change inside the state the engine's commit already made.",
+    "task 4: plain: the `## Publish fold` render trigger is a deliberate superset of M4's rule \u2014 it also renders when more than one attempt ran, or when MERGE_NOTE is a `left open:` note, so the PATCHed body always carries the story. M4's negatives (no section for a clean one-attempt `folded`/`nothing to join`) still hold.",
+    "task 4: out-of-FILES: `fleet/tests/test_sandbox_boot_fold.mjs` \u2014 a new 17-case sim covering M1-M8, added because the acceptance is the committed suite and the peer-reserved `test_sandbox_boot_merge.mjs` may not be written by me. Collected automatically by `tests/test_fleet_suite.py`'s `test_*.mjs` glob; runs in ~19s, well under that bridge's 120s timeout.",
+    "task 4: out-of-FILES: plan-defect: `fleet/tests/test_sandbox_boot.mjs` \u2014 one `deepEqual` pinned `unitsRun(ctx) === ['fleet-engine-7']`, which M1 necessarily breaks. Updated to `['fleet-engine-7','fleet-fold-7-1']`, preserving the case's actual claim (no second `fleet-status` unit) with a comment naming run-32.",
+    "task 4: out-of-FILES: plan-defect: `fleet/tests/test_sandbox_boot_selfmerge.mjs` \u2014 one `deepEqual` pinned the exact merge-PUT payload, which M6 necessarily breaks. Added the expected `commit_message: 'Fleet-Run: 7\\nPlan-Tag: ultra/plan/run-7'` field, with the same comment.",
+    "task 4: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_sandbox_boot_merge.mjs \u2014 exit 1) \u2014 one repair round before any referee read the patch",
+    "task 4: out-of-FILES: `fleet/tests/test_sandbox_boot.mjs` and `fleet/tests/test_sandbox_boot_selfmerge.mjs` each carry a one-hunk pin update from the earlier pass, still present in the cumulative diff. They are not in this task's FILES, but M8 requires both sims to keep passing and both pinned behaviour this task deliberately changes: `test_sandbox_boot.mjs:106` asserted `unitsRun` is exactly `['fleet-engine-7']` (now `['fleet-engine-7', 'fleet-fold-7-1']`), and `test_sandbox_boot_selfmerge.mjs:93` asserted the merge PUT payload's exact three fields (M6 adds `commit_message`). Neither file is sibling-owned in this plan. There was no way to satisfy M1 and M6 and leave those two assertions as they stood.",
+    "task 4: out-of-FILES: `fleet/tests/test_sandbox_boot_fold.mjs`, added by the earlier pass, is deleted in this one. It nets to zero against BASE, so the cumulative diff no longer shows it at all; noting it because the referee reads the earlier tree.",
+    "task 3: plan-defect: the Proof's legs (d) and (g) name the reply directory `frontier/wave-1/reply-0-1/` and the brief `resolver-brief-0-1.txt`, but the kernel numbers narrated conflicts from 1 (`_narrate` in fold_wave.py assigns `i = max(existing i, default 0) + 1`), so a single-conflict fold really produces `reply-1-1/` (that name is built by resolveConflicts from `conflict.i`, not by this file) and this file names its brief to match: `resolver-brief-1-1.txt`. Renumbering to 0 was rejected \u2014 `resolve --conflict <i>` and resolveConflicts' `waiting`-list cross-check both key on the kernel's own index, so a multi-conflict fold would break. An exam asserting the 0-based names will fail on the reply directory regardless of this file; the brief name follows the same index so the two stay in step.",
+    "task 3: note: resolveConflicts takes ONE contendingBlock string for the whole work list, so when a stop narrates several distinct conflicted paths this file concatenates the per-path blocks (kernel order) into that one string rather than briefing each dispatch with only its own path's block; for the single-conflicted-path shape the Proof exercises, the brief is exactly what contendingBlock returned, with nothing prepended or appended.",
+    "task 3: examiner: (d) / (g) \u2014 \"the reply directory ... is exactly `<run dir>/publish-fold/frontier/wave-1/reply-0-1/`\", \"`<evidence-dir>/publish-fold/frontier/wave-1/reply-0-1/h1.txt`\", \"`resolver-brief-0-1.txt`\" \u2014 The index literal 0 is unreachable. fold_wave.py's `_narrate` numbers conflicts from 1 (`i = max((e[\"i\"] for e in index), default=0) + 1`), and resolveConflicts derives both names from `conflict.i` \u2014 so the first conflict of a wave is always `reply-1-1` / `resolver-brief-1-1.txt`, verified by driving the real kernel. Encoded as what the leg is for: exactly one `/^reply-\\d+-1$/` directory directly under `<run dir>/publish-fold/frontier/wave-1/` (pinning waveDir), whose index equals the kernel's own dispatchable `i` read from that wave's conflicts.json, containing h1.txt; exactly one matching `/^resolver-brief-\\d+-1\\.txt$/` under `<evidence-dir>/publish-fold/` whose bytes equal the dispatched prompt; and the byte-equal evidence copy of the reply's h1.txt. M4's own generic wording (`resolver-brief-<i>-<attempt>.txt`) is satisfied exactly.",
+    "task 3: examiner: (e) \u2014 \"the CLI's exit status is 0 on every one of these shapes\", for the two resolver-driven parks (BLOCKED, and RESOLVED-with-empty-hunks rejected twice) \u2014 Those two shapes are reached only by dispatching a stub resolver, and the CLI of M1 has no injection seam for deps.makeAgent \u2014 running the CLI there would dispatch a real `claude` worker. Both are asserted in-process instead, where the stub lives. Every shape the CLI can reach without a model is swept through the real CLI on its own fresh fixture, asserting exit 0 and the receipt's disposition: nothing to join, folded, suite red, conflict parked (binary and delete/modify), cannot fold (chmod with and without the run touching tool.sh, and the ancestry refusal), and tip unmoved.",
+    "task 3: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_publish_fold.mjs \u2014 exit 1) \u2014 one repair round before any referee read the patch",
+    "task 3: exam: fleet/tests/test_publish_fold.mjs:648 cannot pass under any implementation, and it is why the run exits 1. It reads `git rev-parse <TIP>^{tree}` in the target clone as the FIRST statement of leg (d) \u2014 before `publishFold` is called, so no code of mine has run. That clone was cut from the origin before main moved; `mainCommit`/`pushMain` make the commit in the second clone and push it to the origin, and nothing between there and line 648 fetches into the target clone (`provision` -> `provisionRunTree` -> `cloneAtBase` only clones OUT of it, run-waves.mjs:61-87, `--local`, never a fetch). Git says so itself: `fatal: ambiguous argument '<tip>^{tree}': unknown revision or path not in the working tree`. The same read at line 696 is fine, because by then the folder has fetched TIP into the clone. The leg's intent (`fixture sanity: TIP did not move`) is preserved by taking both reads from `fx.maker`, which holds the object throughout; that is the one-word change I made in the scratch copy and did not make in the tree.",
+    "task 3: exam: fleet/tests/test_publish_fold.mjs:683 asserts the a.txt brief carries `- main <sha7> \"a person edits b.txt\" (Ada Human, no plan)`, but the fixture's human commit edits only `b.txt` (line 351). The brief is produced by `contendingBlock` from the sibling module `fleet/publish-fold-block.mjs`, whose own task (task 2, M1) fixes it as \"one entry per first-parent commit of `<base>..<tip>` touching `<path>`\" \u2014 publish-fold-block.mjs:104-126 restricts `git log --first-parent` to `-- <path>`. My task's M4 says the folder \"prepends nothing and appends nothing to what it returns\", so a commit that never touched a.txt cannot contribute a line to the a.txt block, and there is nothing on my side of the seam to change. Nor is there a fixture edit that fixes it: making the human commit touch `a.txt` on a fresh line breaks line 743 (the candidate's a.txt must be exactly `one\\nJOINED\\nthree\\nfour\\nfive`), and making it overwrite line 2 breaks line 694 (TIP's a.txt must read `FROM RUN THREE`). The leg is internally inconsistent, so I left the assertion alone rather than reshape it. Verified by the scratch run: skipping only this assertion and the human term of the following order check, every other assertion in leg (d) \u2014 including the run-3 entry read off the pushed plan tag, the sentence, the order, and the absence of the branch name and `launch.json` from the prompt \u2014 passes.",
+    "task 3: still red after the pre-review repair round (the Proof's exam failed: node fleet/tests/test_publish_fold.mjs \u2014 exit 1) \u2014 no referee was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Task 3's deliverable `fleet/publish-fold.mjs` is absent from the integrated tree (only `fleet/publish-fold-block.mjs` and `fleet/tests/test_publish_fold_block.mjs` exist; there is no `fleet/tests/test_publish_fold.mjs`), yet Task 4's `fleet/sandbox-boot.sh` landed its caller unconditionally. `do_boot` runs `publish_fold 1` at fleet/sandbox-boot.sh:1645 for every outcome with commits ahead of BASE, and `publish_fold` at fleet/sandbox-boot.sh:925-935 launches `node \"$ENGINE_REPO_DIR/fleet/publish-fold.mjs\"`. With that file missing, node exits non-zero, `fold_field <attempt> disposition` is empty, so the crash branch at fleet/sandbox-boot.sh:960-971 writes `disposition \"cannot fold\"`, `fold_hold_note` (fleet/sandbox-boot.sh:897-905) sets `FOLD_HOLD=\"left open: publish fold \u2014 cannot fold: exit \u2026\"`, and `merge_pr` (fleet/sandbox-boot.sh:1336-1338) then reads no check runs and issues no PUT. The integrated tree therefore not only fails the plan's own Claim ('two plans that touch the same file \u2026 both merge on their own \u2014 no 405, no hand rebase \u2014 and the second one's evidence shows the fold it did onto main') and Task 3's Claim ('the sandbox folds its own integration branch onto main's tip at publish'), it regresses the pre-existing green path: every gate-green run that previously self-merged is now held open at `cannot fold`. This is invisible to the per-task referees because Task 4's sim stubs the `fleet-fold-*` unit through `systemd-run` and never executes the script. Task 2's `contendingBlock` export in fleet/publish-fold-block.mjs and Task 1's `resolveConflicts` export in fleet/run-engine.mjs:567 are correspondingly unreferenced by any production caller \u2014 the only consumer named in the dependency edges (1 -> 3, 2 -> 3) did not land."
+    },
+    {
+      "severity": "minor",
+      "detail": "Context literal disagreement between Task 6 (`fleet/CONTRACT.md`) and the tree: the contract, which is the stated authority for every fleet literal, documents machinery that is not present. fleet/CONTRACT.md:158-168 names `<engine>/fleet/publish-fold.mjs` as what the `fleet-fold-<N>-<attempt>` unit runs, and fleet/CONTRACT.md:48-52 describes the `publish-fold/receipt.json` shape and the `engine-head`, `main.patch`, `run.patch`, `frontier/wave-<attempt>/`, `resolver-brief-<i>-<attempt>.txt`, `suite-<attempt>.txt` receipts as things that file writes \u2014 none of which any code in the tree produces. Task 6's own Claim and Proof are met by the document in isolation (its Run: pins all pass, and the receipt shape, disposition vocabulary `folded`/`nothing to join`/`tip unmoved`/`suite red`/`conflict parked`/`cannot fold`, the `Fleet-Run: <N>` / `Plan-Tag: ultra/plan/run-<N>` trailers and the `left open: merge PUT answered 405 twice` note all agree byte-for-byte with fleet/sandbox-boot.sh:824-905, 1406-1408 and 1686), so this is a document-ahead-of-tree divergence that resolves the moment Task 3 lands rather than an independent defect."
+    }
+  ],
+  "blockedWaves": []
+}
