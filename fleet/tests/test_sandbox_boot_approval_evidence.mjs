@@ -26,6 +26,18 @@
  *                     wrote them`. The Proof's own `sed`+`grep` is this
  *                     clause's other half; the test below reads the same bullet.
  *
+ * #702 Task 2 extends the same rig with the same question about a THIRD thing
+ * the run directory holds — the worker slices:
+ *
+ *   M1 / leg (a)      `collect_evidence` copies every
+ *                     `<run dir>/transcripts/*.jsonl` into
+ *                     `.ultrapowers/runs/<N>/transcripts/<same name>` byte for
+ *                     byte, a run that wrote none commits none, and a completed
+ *                     boot leaves exactly one `transcripts/` directory.
+ *   M2                the same `ultra/evidence-run-<N>` bullet also names
+ *                     `transcripts/<sessionId>.jsonl`, located by its unchanged
+ *                     opening line.
+ *
  * The rig is `_sandbox_boot_helpers.mjs` — the stub bin dir, `makeHome`,
  * `boot`, `statusOf`, `evidenceDir` and `runTests` — shared with
  * `test_sandbox_boot.mjs` and `test_sandbox_boot_approved.mjs`. The one thing
@@ -84,11 +96,50 @@ const APPROVE_BYTES = '{\n  "stamp": "run-7",\n  "verdict": "PASS",\n  "acks": [
 const STANDING_BYTES =
   '{\n  "grantedAt": "launch directive",\n  "ackList": ["#649", "#650"]\n}\n'
 
+// ── #702 Task 2: the worker slices ride beside the receipts ──────────────────
+//
+// M1: `collect_evidence` copies every `<run dir>/transcripts/*.jsonl` to
+// `<evidence worktree>/.ultrapowers/runs/<N>/transcripts/<same name>` byte for
+// byte when the directory exists; a run whose engine wrote none commits none;
+// and because the function runs at EVERY transition (and once more at `fail`),
+// a completed boot leaves exactly one `transcripts/` directory — a `cp -R` of
+// the directory itself nests a second one inside the first copy on the second
+// pass, which leg (a) reads `readdirSync` to refuse.
+
+/** The engine's two slice files, written under `$run_dir/transcripts/` — the
+ *  same splice point and the same shape as APPROVAL_SNIPPET. */
+const TRANSCRIPTS_SNIPPET = `
+if [ -n "\${STUB_TRANSCRIPT_A:-}" ]; then
+  mkdir -p "$run_dir/transcripts"
+  printf '%s' "$STUB_TRANSCRIPT_A" >"$run_dir/transcripts/aaaa-1.jsonl"
+  printf '%s' "$STUB_TRANSCRIPT_B" >"$run_dir/transcripts/bbbb-2.jsonl"
+fi
+`
+
+/** The two names the engine writes: `<sessionId>.jsonl`, one per worker
+ *  session, in the order `readdirSync` sorts them. */
+const TRANSCRIPT_NAMES = ['aaaa-1.jsonl', 'bbbb-2.jsonl']
+
+/** Two distinct, non-trivial slice bodies — the transcript's own shape, one
+ *  record per line. Distinct so a copy that wrote one file twice, truncated, or
+ *  re-serialized is not "byte for byte". */
+const TRANSCRIPT_A =
+  '{"type":"user","uuid":"u-1","sessionId":"aaaa-1","message":{"role":"user",' +
+  '"content":[{"type":"text","text":"implement task 2"}]}}\n' +
+  '{"type":"system","subtype":"elided","records":37}\n'
+const TRANSCRIPT_B =
+  '{"type":"assistant","uuid":"u-2","sessionId":"bbbb-2","message":' +
+  '{"role":"assistant","model":"claude-opus-5","content":[{"type":"text",' +
+  '"text":"the second worker reports"}]}}\n'
+
 /** The engine's run directory — where both files are written and read back
  *  from, so a green leg (a) cannot be a rig that quietly wrote nothing. */
 const runDir = (ctx) => path.join(ctx.home, 'target', '.claude', 'ultrapowers', 'run-run-7')
 /** The run's record on the evidence worktree — what the branch will carry. */
 const evidenceRunDir = (ctx) => path.join(evidenceDir(ctx), RUN_PATH)
+/** The engine's `transcripts/` directory, and the copy of it on the record. */
+const runTranscripts = (ctx) => path.join(runDir(ctx), 'transcripts')
+const evidenceTranscripts = (ctx) => path.join(evidenceRunDir(ctx), 'transcripts')
 
 function approvalHome() {
   const ctx = makeHome()
@@ -96,7 +147,8 @@ function approvalHome() {
   assert.ok(body.includes(ENGINE_EXIT),
     `the shared engine stub no longer ends in '${ENGINE_EXIT}' — this sim's splice is stale`)
   const file = path.join(ctx.bin, 'systemd-run')
-  fs.writeFileSync(file, PRELUDE + body.replace(ENGINE_EXIT, () => APPROVAL_SNIPPET + ENGINE_EXIT))
+  fs.writeFileSync(file, PRELUDE + body.replace(
+    ENGINE_EXIT, () => APPROVAL_SNIPPET + TRANSCRIPTS_SNIPPET + ENGINE_EXIT))
   fs.chmodSync(file, 0o755)
   return ctx
 }
@@ -120,8 +172,15 @@ const approvedRun = () =>
 /** PASS, with the pre-authorization record beside the receipts. */
 const standingRun = () =>
   run('standing', { STUB_VERDICT: 'PASS', STUB_STANDING_BYTES: STANDING_BYTES })
-/** PASS with neither approval file — a run the engine never had to approve. */
+/** PASS with neither approval file — a run the engine never had to approve.
+ *  It writes no `transcripts/` either, which is #702 Task 2's absence case. */
 const bareRun = () => run('bare', { STUB_VERDICT: 'PASS' })
+/** #702 Task 2: PASS, with two worker slices under `<run dir>/transcripts/`. */
+const transcriptsRun = () => run('transcripts', {
+  STUB_VERDICT: 'PASS',
+  STUB_TRANSCRIPT_A: TRANSCRIPT_A,
+  STUB_TRANSCRIPT_B: TRANSCRIPT_B,
+})
 
 const read = (file) => fs.readFileSync(file)
 
@@ -256,6 +315,80 @@ test('CONTRACT.md\'s evidence-branch bullet names both approvals  [M3]', () => {
     /`approve-receipt\.json` and `standing-approval\.json`, present when the engine wrote them/,
     'the `ultra/evidence-run-<N>` bullet must name `approve-receipt.json` and ' +
       '`standing-approval.json`, present when the engine wrote them — got:\n' + bullet)
+})
+
+// ── #702 Task 2, leg (a): the slices ride to the evidence worktree  [M1] ─────
+
+test('every worker slice reaches the evidence worktree byte for byte  [#702 Task 2 / M1 / leg (a)]', () => {
+  const ctx = transcriptsRun()
+
+  // The rig left two slices where the engine leaves them: `<run
+  // dir>/transcripts/<sessionId>.jsonl`, the layout Task 1 writes.
+  assert.deepEqual(fs.readdirSync(runTranscripts(ctx)).sort(), TRANSCRIPT_NAMES,
+    `the engine stub must write ${TRANSCRIPT_NAMES.join(' and ')} under ${runTranscripts(ctx)}`)
+  assert.equal(read(path.join(runTranscripts(ctx), 'aaaa-1.jsonl')).toString(), TRANSCRIPT_A,
+    'the rig wrote the bytes it meant to')
+  assert.equal(read(path.join(runTranscripts(ctx), 'bbbb-2.jsonl')).toString(), TRANSCRIPT_B,
+    'the rig wrote the bytes it meant to')
+
+  // M1: every `<run dir>/transcripts/*.jsonl` is on the record, under the SAME
+  // name, byte for byte.
+  assert.ok(fs.existsSync(evidenceTranscripts(ctx)),
+    `collect_evidence must copy the run's transcripts into ${RUN_PATH}/transcripts, got: ` +
+      fs.readdirSync(evidenceRunDir(ctx)).join(' '))
+  for (const name of TRANSCRIPT_NAMES) {
+    const source = path.join(runTranscripts(ctx), name)
+    const collected = path.join(evidenceTranscripts(ctx), name)
+    assert.ok(fs.existsSync(collected),
+      `${RUN_PATH}/transcripts/${name} must be collected, got: ` +
+        fs.readdirSync(evidenceTranscripts(ctx)).join(' '))
+    assert.deepEqual(read(collected), read(source),
+      `the collected ${name} must be byte-equal to the run directory's`)
+  }
+  assert.equal(read(path.join(evidenceTranscripts(ctx), 'aaaa-1.jsonl')).toString(), TRANSCRIPT_A)
+  assert.equal(read(path.join(evidenceTranscripts(ctx), 'bbbb-2.jsonl')).toString(), TRANSCRIPT_B)
+
+  // The record is the real one — the receipts are in it beside the slices.
+  assert.ok(fs.existsSync(path.join(evidenceRunDir(ctx), 'gate-receipt.json')),
+    `${RUN_PATH}/gate-receipt.json must be collected — otherwise this leg reads the wrong directory`)
+})
+
+test('the copied transcripts directory holds the two names and nothing nested  [#702 Task 2 / M1 / leg (a)]', () => {
+  const ctx = transcriptsRun()
+  assert.ok(fs.existsSync(evidenceTranscripts(ctx)),
+    `collect_evidence must leave a ${RUN_PATH}/transcripts directory on the record, got: ` +
+      fs.readdirSync(evidenceRunDir(ctx)).join(' '))
+  // `collect_evidence` runs at EVERY `write_status` transition. A `cp -R` of
+  // the directory itself puts a second `transcripts/` inside the first copy on
+  // the second pass; copying the FILES leaves exactly the two names, however
+  // many times the function ran.
+  assert.deepEqual(fs.readdirSync(evidenceTranscripts(ctx)).sort(), TRANSCRIPT_NAMES,
+    `${RUN_PATH}/transcripts must hold exactly ${TRANSCRIPT_NAMES.join(' and ')} — a nested ` +
+      '`transcripts` entry is the second transition copying the directory itself, got: ' +
+      fs.readdirSync(evidenceTranscripts(ctx)).join(' '))
+  assert.ok(!fs.existsSync(path.join(evidenceTranscripts(ctx), 'transcripts')),
+    'no second transcripts directory is nested inside the copied one')
+})
+
+test('a run whose engine wrote no transcripts commits none  [#702 Task 2 / M1 / leg (a)]', () => {
+  const ctx = bareRun()
+  assert.ok(!fs.existsSync(runTranscripts(ctx)),
+    'this run\'s engine wrote no transcripts directory')
+  const names = fs.readdirSync(evidenceRunDir(ctx))
+  assert.ok(!names.includes('transcripts'),
+    'a run whose engine wrote no transcripts/ directory commits none, got: ' + names.join(' '))
+})
+
+// ── #702 Task 2: the contract names the slices  [M2] ─────────────────────────
+
+test('CONTRACT.md\'s evidence-branch bullet names the worker slices  [#702 Task 2 / M2]', () => {
+  const bullet = evidenceBullet()
+  // The Proof's first `Run:` greps the file for the same literal; this reads it
+  // in the one bullet M2 confines the change to, located by the SAME opening
+  // line the M3 test above uses.
+  assert.match(bullet, /`transcripts\/<sessionId>\.jsonl`/,
+    'the `ultra/evidence-run-<N>` bullet must name `transcripts/<sessionId>.jsonl` — got:\n' +
+      bullet)
 })
 
 runTests(tests)

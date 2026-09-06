@@ -44,6 +44,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
+    `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
+    readers slice — is there on the same terms, present when the engine wrote them.
     Committed from a detached worktree at every transition; append-only paths, `pull --rebase` and
     retry on non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.

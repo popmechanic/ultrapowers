@@ -138,7 +138,12 @@ def _api_path(name, run=RUN, target=TARGET):
 
 
 def _expected_paths(run=RUN, target=TARGET):
-    return [_api_path(n, run, target) for n in EVIDENCE_FILES]
+    # #702 Task 2: the six files, then the `transcripts/` listing — one more
+    # read, issued once the six have resolved a ref and `events.jsonl` has
+    # landed. The stub answers no listing key here, so it is a 404: an absence,
+    # and the run still bundles.
+    return ([_api_path(n, run, target) for n in EVIDENCE_FILES]
+            + [_api_path("transcripts", run, target)])
 
 
 def _answers(run=RUN, run_id=None, *, missing=(), target=TARGET):
@@ -255,7 +260,9 @@ def test_evidence_run_fetches_exactly_the_six_contents_paths_and_bundles(
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     calls = _calls(log)
-    assert len(calls) == 6, f"expected six gh api calls, got {calls}"
+    # #702 Task 2: seven, not six — the six files plus the `transcripts/`
+    # listing.
+    assert len(calls) == 7, f"expected seven gh api calls, got {calls}"
     assert sorted(c[-1] for c in calls) == sorted(_expected_paths()), calls
     # M2 spells the command exactly: `gh api <path>`, nothing else.
     assert [c for c in calls if c != ["api", c[-1]]] == [], calls
@@ -366,7 +373,9 @@ def test_absent_engine_log_and_receipt_are_skips_and_the_run_still_bundles(
     cap = capsys.readouterr()
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
-    assert len(_calls(log)) == 6, "all six paths are still asked for"
+    # #702 Task 2: seven — all six paths are still asked for, and the
+    # `transcripts/` listing after them.
+    assert len(_calls(log)) == 7, "all six paths are still asked for"
     assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
     assert "engine.log" in cap.err, f"absent engine.log went unmarked: {cap.err}"
     assert "receipt.json" in cap.err, f"absent receipt.json went unmarked: {cap.err}"
@@ -378,13 +387,17 @@ def test_absent_events_jsonl_is_a_failed_lookup_naming_the_run_and_branch(
     """M2, leg (b): `events.jsonl` is the one absence that is a failure — a
     `FAILED-LOOKUP:` line naming the run and `ultra/evidence-run-7`, exit 2,
     and nothing written to the cache."""
-    _install_gh(tmp_path, monkeypatch, _answers(missing=("events.jsonl",)))
+    log = _install_gh(tmp_path, monkeypatch, _answers(missing=("events.jsonl",)))
     cache = tmp_path / "cache"
 
     rc = _main(["--evidence", TARGET, "--run", RUN, "--cache", str(cache),
                 "--engine-version", "0.3.0"])
     cap = capsys.readouterr()
 
+    # #702 Task 2: the count does not move here — a run whose `events.jsonl`
+    # never landed raises before the `transcripts/` listing is ever read.
+    assert len(_calls(log)) == 6, _calls(log)
+    assert [c for c in _calls(log) if "transcripts" in c[-1]] == [], _calls(log)
     failed = _lines(cap.err, "FAILED-LOOKUP:")
     assert len(failed) == 1, f"expected one FAILED-LOOKUP line, got: {cap.err}"
     assert BRANCH in failed[0], failed[0]

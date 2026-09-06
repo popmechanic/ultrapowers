@@ -678,6 +678,16 @@ collect_evidence() {
   for f in report.json events.jsonl receipt.json standing-approval.json; do
     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
   done
+  # The engine's per-worker transcripts — the reduced records ultralearn's
+  # readers slice, and the only trace of what a worker actually did that
+  # outlives the box. Copied FILE BY FILE, never `cp -R` of the directory: this
+  # function runs at every `write_status` transition and once more at `fail`, so
+  # a directory copy onto a destination that already holds `transcripts/` nests
+  # a second one inside the first. A run whose engine wrote none commits none.
+  if [ -d "$run_dir/transcripts" ]; then
+    mkdir -p "$dest/transcripts"
+    cp "$run_dir/transcripts/"*.jsonl "$dest/transcripts/" 2>/dev/null || true
+  fi
   # The engine's combined output rides along: it is the only evidence a run that
   # died before writing a receipt produces at all.
   [ -f "$ENGINE_LOG" ] && cp "$ENGINE_LOG" "$dest/engine.log"
