@@ -223,5 +223,242 @@ assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isol
   assert.ok(after > before, 'a backwards clock step cannot mint an id that sorts earlier')
 }
 
+// ── 7. Task 1 (#714): the capture drops untracked binaries no task named ─────
+//
+// Claim: the patch the driver captures for a task carries no path outside the
+// task's Files block that is untracked at BASE and binary. The run-7 shape this
+// makes inexpressible: four implementers each ran `python3 -m pytest` in its
+// clone, and `app/__pycache__/registry.cpython-312.pyc` — untracked at BASE,
+// named by no task — rode into every one of the four patches.
+//
+// M1. untracked at the task's base sha + binary as `git diff --numstat` reports
+//     it (`-` for both counts) + absent from the task's FILES list ⇒ not in the
+//     `.patch` the capture writes, for every worktree label (`impl:`, `exam:`,
+//     `fix:`).
+// M2. a binary path FILES names, and every text path named or not, IS in the
+//     patch with the content it had in the clone.
+// M3. one `{ kind: 'capture:dropped', label, paths }` per capture that drops,
+//     `paths` listing every dropped path; none when nothing is dropped.
+// M4. four clones at one base, one shared untracked `.pyc` named by no task ⇒
+//     four patches, no two naming a binary path in common.
+{
+  // The fixture repo for these legs: `app/registry.py` tracked at BASE2 and
+  // nothing else, so every artifact below is untracked-at-base by construction.
+  // Its own repo, so §2–§6 keep the tree and the assertions they already have.
+  // No `.gitignore` anywhere — an operator's ignore file is the workaround this
+  // task replaces, so the exam's fixture must not be carrying one.
+  const R2 = path.join(tmp, 'repo2')
+  fs.mkdirSync(R2, { recursive: true })
+  git(['init', '-q', '-b', 'main'], R2)
+  git(['config', 'user.email', 'sim@example.com'], R2)
+  git(['config', 'user.name', 'sim'], R2)
+  fs.mkdirSync(path.join(R2, 'app'), { recursive: true })
+  fs.writeFileSync(path.join(R2, 'app', 'registry.py'), 'registry = {}\n')
+  git(['add', '-A'], R2); git(['commit', '-qm', 'base'], R2)
+  const BASE2 = git(['rev-parse', 'HEAD'], R2).trim()
+  assert.equal(git(['ls-files'], R2).trim(), 'app/registry.py', 'one tracked path at BASE2')
+
+  // Every blob below carries a NUL, so git calls it binary — the definition M1
+  // uses (`-` for both counts under --numstat), not a filename heuristic.
+  const PYC = Buffer.from([0x03, 0xf3, 0x0d, 0x0a, 0, 0, 0, 0, 0x5a, 0x1f, 0x8b, 0x00, 0x7f])
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49])
+  const BLOB = Buffer.from([0, 1, 2, 3, 4, 0xff, 0])
+  const TWO = Buffer.from([0xff, 0, 0xff, 0, 0x01])
+  const write = (dir, rel, content) => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+    fs.writeFileSync(path.join(dir, rel), content)
+  }
+
+  // What a patch NAMES, read the way leg (d) asks for it: `git apply --numstat`
+  // parses the patch and reports `-`/`-` for a binary hunk. Reading the header
+  // lines by hand would let a truncated patch pass as an empty one.
+  const numstat = (patchFile) => git(['apply', '--numstat', path.resolve(patchFile)], R2)
+    .split('\n').filter(Boolean)
+    .map((l) => { const c = l.split('\t'); return { added: c[0], deleted: c[1], path: c.slice(2).join('\t') } })
+  const pathsIn = (f) => numstat(f).map((r) => r.path).sort()
+  const binaryPathsIn = (f) => numstat(f).filter((r) => r.added === '-' && r.deleted === '-')
+    .map((r) => r.path).sort()
+
+  // The task's FILES list reaches the capture BY LABEL: the wrapper is built
+  // once in run-main.mjs before the engine runs (composeAgent), so the per-task
+  // array — the same `task.files` run-engine's `filesLine` hands the
+  // implementer — has to arrive as a lookup, never as a second parse of the
+  // plan. These legs grade the DROP, not the name of the plumbing, so the exam
+  // hands the same lookup in under each shape the Context allows and any one of
+  // them satisfying is a pass.
+  const captureFor = ({ clonesDir, patchesDir, filesById, agent, onEvent = () => {} }) => {
+    const lookup = (label) => filesById[defaultTaskIdOf(label) || ''] || []
+    return withPatchCapture({
+      agent, clonesDir, base: BASE2, patchesDir, onEvent,
+      filesOf: lookup, filesFor: lookup, taskFilesOf: lookup,
+    })
+  }
+  const dispatch = (label, filesById) => ({
+    label, isolation: 'worktree', files: filesById[defaultTaskIdOf(label) || ''] || [],
+  })
+  const ok = async () => ({ status: 'DONE', branch: 'wt', headSha: 'deadbeef', patch: '/lie' })
+
+  // (a) [M1] one clone, three writes: a text edit to a FILES path, an untracked
+  // `__pycache__/*.pyc` outside FILES, an untracked text file outside FILES.
+  {
+    const clonesDir = path.join(tmp, 'drop-a', 'clones')
+    const patchesDir = path.join(tmp, 'drop-a', 'patches')
+    const filesById = { T1: ['app/registry.py'] }
+    const PYC_PATH = 'app/__pycache__/registry.cpython-312.pyc'
+    const seed = (dir) => {
+      write(dir, 'app/registry.py', 'registry = {"one": 1}\n')
+      write(dir, PYC_PATH, PYC)
+      write(dir, 'notes.txt', 'a stray text file no task named\n')
+    }
+    // Two clones of one task, seeded identically: `exam:T1` captures from
+    // `exam-T1` and `impl:`/`fix:` from `task-T1` (defaultCloneNameOf), so the
+    // three labels see the same tree.
+    const taskClone = cloneAtBase({ repo: R2, dest: path.join(clonesDir, 'task-T1'), base: BASE2 })
+    const examClone = cloneAtBase({ repo: R2, dest: path.join(clonesDir, 'exam-T1'), base: BASE2 })
+    seed(taskClone); seed(examClone)
+
+    // The difference this task makes, stated as a before/after on ONE tree: the
+    // pre-task whole-tree capture (the §4 leg, `patchAgainstBase` with no task
+    // list to consult) names the .pyc, and must keep naming it — it is the
+    // unfiltered primitive the wrapper composes.
+    const whole = patchAgainstBase({ cwd: taskClone, base: BASE2,
+      out: path.join(patchesDir, 'whole-tree.patch') })
+    assert.deepEqual(pathsIn(whole), ['app/__pycache__/registry.cpython-312.pyc', 'app/registry.py', 'notes.txt'],
+      '(a) the pre-task whole-tree capture names the .pyc — that is what run-7 folded')
+    assert.deepEqual(binaryPathsIn(whole), [PYC_PATH], '(a) and git calls it binary: - / - under --numstat')
+
+    const wrapped = captureFor({ clonesDir, patchesDir, filesById, agent: ok })
+    const r = await wrapped('p', dispatch('impl:T1', filesById))
+    assert.equal(r.patch, path.join(patchesDir, 'task-T1.patch'), '(a) the capture is still the driver’s path')
+    assert.deepEqual(pathsIn(r.patch), ['app/registry.py', 'notes.txt'],
+      '(a) [M1] the captured patch names the FILES text edit and the stray TEXT file, and not the .pyc')
+    assert.ok(!fs.readFileSync(r.patch, 'utf8').includes('__pycache__'),
+      '(a) [M1] the dropped path is absent from the patch bytes, header line included')
+    // All three worktree labels alike — the exam and the fix rounds capture
+    // from the same shape and drop the same path.
+    for (const label of ['exam:T1', 'fix:T1:0']) {
+      const rl = await wrapped('p', dispatch(label, filesById))
+      assert.deepEqual(pathsIn(rl.patch), ['app/registry.py', 'notes.txt'],
+        '(a) [M1] label ' + label + ' drops the untracked .pyc too — impl:, exam:, fix: alike')
+      assert.ok(!fs.readFileSync(rl.patch, 'utf8').includes('__pycache__'),
+        '(a) [M1] ' + label + ': the .pyc is absent from the patch bytes')
+    }
+    // The clone still holds what the worker wrote: the capture filters the
+    // PATCH, it does not delete the worker's files.
+    assert.ok(fs.existsSync(path.join(taskClone, PYC_PATH)), '(a) the drop is capture-side, not a deletion in the clone')
+  }
+
+  // (b) [M2] a FILES list that NAMES a binary: it rides, byte-for-byte; the
+  // unnamed binary beside it does not.
+  {
+    const clonesDir = path.join(tmp, 'drop-b', 'clones')
+    const patchesDir = path.join(tmp, 'drop-b', 'patches')
+    const filesById = { T2: ['app/registry.py', 'assets/logo.png'] }
+    const c = cloneAtBase({ repo: R2, dest: path.join(clonesDir, 'task-T2'), base: BASE2 })
+    write(c, 'app/registry.py', 'registry = {"two": 2}\n')
+    write(c, 'assets/logo.png', PNG)
+    write(c, 'build/blob.bin', BLOB)
+
+    const wrapped = captureFor({ clonesDir, patchesDir, filesById, agent: ok })
+    const r = await wrapped('p', dispatch('impl:T2', filesById))
+    assert.deepEqual(pathsIn(r.patch), ['app/registry.py', 'assets/logo.png'],
+      '(b) [M2] exactly the named binary and the text edit — build/blob.bin is not named')
+    assert.deepEqual(binaryPathsIn(r.patch), ['assets/logo.png'],
+      '(b) [M2] the named binary rides as a binary hunk')
+    assert.ok(!fs.readFileSync(r.patch, 'utf8').includes('build/blob.bin'),
+      '(b) [M1] the unnamed binary is absent from the patch bytes')
+
+    // Byte-for-byte: apply the captured patch to a fresh tree at BASE2 and
+    // compare against the clone. A header that names the path proves nothing
+    // about the bytes underneath it.
+    const verify = cloneAtBase({ repo: R2, dest: path.join(tmp, 'drop-b', 'verify'), base: BASE2 })
+    git(['apply', '--binary', path.resolve(r.patch)], verify)
+    assert.equal(Buffer.compare(fs.readFileSync(path.join(verify, 'assets/logo.png')),
+      fs.readFileSync(path.join(c, 'assets/logo.png'))), 0,
+      '(b) [M2] the named binary arrives with the same content it had in the clone')
+    assert.equal(Buffer.compare(fs.readFileSync(path.join(verify, 'assets/logo.png')), PNG), 0)
+    assert.equal(fs.readFileSync(path.join(verify, 'app/registry.py'), 'utf8'), 'registry = {"two": 2}\n',
+      '(b) [M2] and the text edit is the clone’s text')
+    assert.ok(!fs.existsSync(path.join(verify, 'build/blob.bin')),
+      '(b) [M1] applying the patch cannot produce the unnamed binary')
+  }
+
+  // (c) [M3] the event: ONE `capture:dropped` per capture that drops, listing
+  // every dropped path — a per-path event fails the count, a one-path list
+  // fails the equality — and none at all when nothing is dropped.
+  {
+    const clonesDir = path.join(tmp, 'drop-c', 'clones')
+    const patchesDir = path.join(tmp, 'drop-c', 'patches')
+    const filesById = { T1: ['app/registry.py'], T2: ['app/registry.py', 'assets/logo.png'] }
+    const c1c = cloneAtBase({ repo: R2, dest: path.join(clonesDir, 'task-T1'), base: BASE2 })
+    write(c1c, 'app/registry.py', 'registry = {"one": 1}\n')
+    write(c1c, 'build/blob.bin', BLOB)
+    write(c1c, 'out/two.bin', TWO)
+
+    const events = []
+    const wrapped = captureFor({ clonesDir, patchesDir, filesById, agent: ok,
+      onEvent: (e) => events.push(e) })
+    const r = await wrapped('p', dispatch('impl:T1', filesById))
+    const dropped = events.filter((e) => e.kind === 'capture:dropped')
+    assert.equal(dropped.length, 1,
+      '(c) [M3] one event for the capture, not one per dropped path: ' + JSON.stringify(events))
+    assert.equal(dropped[0].label, 'impl:T1', '(c) [M3] the event names the label it dropped for')
+    assert.deepEqual([...dropped[0].paths].sort(), ['build/blob.bin', 'out/two.bin'],
+      '(c) [M3] `paths` lists EVERY dropped path')
+    assert.equal(events.filter((e) => e.kind === 'capture:error').length, 0,
+      '(c) a drop is not a capture failure — capture:error stays what it was')
+    assert.ok(!('captureError' in r), '(c) the reply carries no captureError for a drop')
+    assert.deepEqual(pathsIn(r.patch), ['app/registry.py'], '(c) and the patch is the FILES text edit alone')
+
+    // Nothing dropped ⇒ no event. A clone holding only FILES paths (one of them
+    // binary) and text.
+    const c2c = cloneAtBase({ repo: R2, dest: path.join(clonesDir, 'task-T2'), base: BASE2 })
+    write(c2c, 'app/registry.py', 'registry = {"two": 2}\n')
+    write(c2c, 'assets/logo.png', PNG)
+    write(c2c, 'notes.txt', 'text, unnamed, kept\n')
+    events.length = 0
+    const r2 = await wrapped('p', dispatch('impl:T2', filesById))
+    assert.deepEqual(events.filter((e) => e.kind === 'capture:dropped'), [],
+      '(c) [M3] nothing dropped ⇒ no capture:dropped event at all')
+    assert.deepEqual(pathsIn(r2.patch), ['app/registry.py', 'assets/logo.png', 'notes.txt'],
+      '(c) [M2] and every one of those paths is in the patch')
+  }
+
+  // (d) [M4] the run-7 shape: four clones at one base, one shared untracked
+  // `.pyc` named by no task. The defect was four patches naming the same binary.
+  {
+    const clonesDir = path.join(tmp, 'drop-d', 'clones')
+    const patchesDir = path.join(tmp, 'drop-d', 'patches')
+    const ids = ['D1', 'D2', 'D3', 'D4']
+    const PYC_PATH = 'app/__pycache__/registry.cpython-312.pyc'
+    const filesById = {}
+    for (const id of ids) filesById[id] = ['app/registry.py']
+    for (const id of ids) {
+      const dir = cloneAtBase({ repo: R2, dest: path.join(clonesDir, 'task-' + id), base: BASE2 })
+      write(dir, 'app/registry.py', 'registry = {}\nregistry["' + id + '"] = 1\n')
+      write(dir, PYC_PATH, PYC)  // byte-identical in all four, as pytest wrote it
+    }
+    const wrapped = captureFor({ clonesDir, patchesDir, filesById, agent: ok })
+    const patches = []
+    for (const id of ids) patches.push((await wrapped('p', dispatch('impl:' + id, filesById))).patch)
+    assert.equal(patches.length, 4)
+    for (let i = 0; i < patches.length; i++) {
+      assert.ok(pathsIn(patches[i]).includes('app/registry.py'),
+        '(d) [M4] ' + ids[i] + ' still carries its own edit to the shared file')
+      assert.deepEqual(pathsIn(patches[i]).filter((p) => /\.pyc$|__pycache__/.test(p)), [],
+        '(d) [M4] ' + ids[i] + ' names no .pyc')
+      assert.deepEqual(binaryPathsIn(patches[i]), [],
+        '(d) [M4] ' + ids[i] + ' names no binary path at all — none was in its FILES')
+    }
+    for (let i = 0; i < patches.length; i++) {
+      for (let j = i + 1; j < patches.length; j++) {
+        const bi = binaryPathsIn(patches[i]), bj = binaryPathsIn(patches[j])
+        assert.deepEqual(bi.filter((p) => bj.includes(p)), [],
+          '(d) [M4] ' + ids[i] + ' and ' + ids[j] + ' name no binary path in common')
+      }
+    }
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

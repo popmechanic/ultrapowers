@@ -1074,8 +1074,15 @@ export async function runEngine({
       appendEvent({ kind: 'driver:exam-handoff', task: task.id, paths: handed })
       if (hasCoordinates(impl)) {
         try {
+          // Same drop rule as the wrapper's capture (#714): this re-capture
+          // writes over the same file the fold reads, so a `__pycache__` the
+          // implementer's test run left behind must not ride back in here
+          // after the wrapper had already dropped it.
           impl.patch = patchAgainstBase({ cwd: cloneDir, base: baseShaForTask,
-            out: patchPrefix + 'task-' + task.id + '.patch' })
+            out: patchPrefix + 'task-' + task.id + '.patch',
+            files: Array.isArray(task.files) ? task.files : [],
+            onDropped: (paths) => appendEvent({ kind: 'capture:dropped',
+              label: 'impl:' + task.id, paths }) })
         } catch (e) {
           impl.patch = ''
           impl.headSha = ''

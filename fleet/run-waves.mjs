@@ -189,15 +189,23 @@ export function defaultCloneNameOf(label, id) {
 // The strip of the MODEL-typed patch happens before every return, including
 // the unrecognized-label one: a worktree dispatch whose label taskIdOf cannot
 // read must not pass a model-typed patch through the wrapper.
-export function withPatchCapture({ agent, clonesDir, base, patchesDir,
-                                   git = defaultGit, taskIdOf = defaultTaskIdOf,
-                                   cloneNameOf = defaultCloneNameOf,
-                                   onEvent = () => {} }) {
+export function withPatchCapture(options) {
+  const { agent, clonesDir, base, patchesDir,
+          git = defaultGit, taskIdOf = defaultTaskIdOf,
+          cloneNameOf = defaultCloneNameOf,
+          onEvent = () => {} } = options || {}
   // ONE label→directory mapping: makeCwdFor already owns it (and its
   // fail-loud missing-clone error). A second copy here is where a clone-
   // naming change would silently make the capture diff a different tree
   // than the one the worker wrote to.
   const cwdFor = makeCwdFor({ clonesDir, taskIdOf, cloneNameOf })
+  // The task's Files, by label (#714). The driver supplies the lookup — the
+  // engine builds the implementer's `FILES:` line from the SAME compiled
+  // array — and when it supplies none, the prompt the worker was handed
+  // carries that line and is read as the fallback. An empty list is not
+  // "no filter": a task that names no file names no binary either, so every
+  // untracked binary in its clone is outside its Files.
+  const filesFor = makeFilesFor(options)
   return async (prompt, opts) => {
     const reply = await agent(prompt, opts)
     if (!reply) return reply
@@ -219,7 +227,13 @@ export function withPatchCapture({ agent, clonesDir, base, patchesDir,
       // lands in `exam-<id>.patch` and never over the `task-<id>.patch` the
       // fold reads.
       const out = patchAgainstBase({ cwd, base: baseSha,
-        out: path.join(patchesDir, cloneNameOf(opts.label, id) + '.patch'), git })
+        out: path.join(patchesDir, cloneNameOf(opts.label, id) + '.patch'), git,
+        files: filesFor(opts, id, prompt),
+        // ONE event per capture, listing every path it dropped — not one event
+        // per path: the reader of the log is asking "did this task's patch
+        // lose anything, and what", and a per-path stream makes that a join.
+        onDropped: (paths) => onEvent({ kind: 'capture:dropped', label: opts.label, paths }),
+      })
       reply.patch = out
       reply.branch = ''                                  // detached by design; no branch exists
       reply.headSha = git(['rev-parse', 'HEAD'], cwd).trim()  // driver-derived, replacing the model-typed sha
@@ -236,18 +250,175 @@ export function withPatchCapture({ agent, clonesDir, base, patchesDir,
   }
 }
 
+// ── the untracked binaries no task named (#714) ──────────────────────────────
+//
+// `git add -A` stages the WHOLE tree, which is what makes the capture
+// independent of the worker having committed — and, on a clone where the
+// implementer ran the project's tests, also stages every `__pycache__/*.pyc`
+// pytest left behind. Nineteen of them on the run-7 fixture, in four clones at
+// once, named by no task's Files: the fold then had four tasks writing the
+// same binary path and the wave was contended on bytes nobody wrote on
+// purpose. A `.gitignore` on the target is the operator's workaround; the fix
+// is capture-side, because the capture is the only place that knows both the
+// task's Files and what BASE tracked.
+//
+// Three conditions, all required, none of them a heuristic about names:
+//   - UNTRACKED AT BASE — `git ls-tree` at the task's base sha, never the
+//     clone's index, which `git add -A` has just filled with everything;
+//   - BINARY BY GIT'S OWN DETECTION — `--numstat` reports `-` for both counts,
+//     the same test the patch's own `GIT binary patch` hunk is chosen by;
+//   - OUTSIDE THE TASK'S FILES — the compiled `files` array, the same one the
+//     engine's `FILES:` line is built from.
+// A text file no task named still rides (it is reviewable, and the reviewers'
+// scope rule is what judges it); a binary the task DID name still rides.
+const normalizePath = (p) => String(p == null ? '' : p).replace(/^\.\/+/, '').replace(/^\/+/, '')
+
+// An exact-path allow list, with a trailing `/` reading as "this directory" —
+// a Files entry is a path, but a plan that scopes a task to `assets/` should
+// not have its own assets dropped.
+export function makeFilesAllow(files) {
+  const list = (Array.isArray(files) ? files : []).map(normalizePath).filter(Boolean)
+  const exact = new Set(list)
+  const dirs = list.filter((f) => f.endsWith('/'))
+  return (p) => exact.has(p) || dirs.some((d) => p.startsWith(d))
+}
+
+export function droppedBinaryPaths({ cwd, base, files, git = defaultGit }) {
+  const allowed = makeFilesAllow(files)
+  // -z so a path with a space or a non-ASCII byte arrives raw rather than
+  // C-quoted; --no-renames so every row is `added\tdeleted\tpath`.
+  const rows = git(['diff', '--cached', '--numstat', '-z', '--no-renames', base], cwd)
+    .split('\0').filter(Boolean)
+  const candidates = []
+  for (const row of rows) {
+    const m = /^(\S+)\t(\S+)\t([\s\S]*)$/.exec(row)
+    if (!m || m[1] !== '-' || m[2] !== '-') continue
+    const p = normalizePath(m[3])
+    if (p && !allowed(p)) candidates.push(p)
+  }
+  if (candidates.length === 0) return []
+  // Only now the tree read: a capture with no unnamed binary in it pays for no
+  // second git call.
+  const tracked = new Set(git(['ls-tree', '-r', '--name-only', '-z', base], cwd)
+    .split('\0').filter(Boolean).map(normalizePath))
+  return candidates.filter((p) => !tracked.has(p)).sort()
+}
+
 // `--output` writes the patch from git's own process: the bytes never pass
 // through Node, so there is no maxBuffer to overflow (execFileSync's 1 MiB
 // default threw ENOBUFS on a ~4 MB diff, reproduced in review) and no utf8
 // decode to mangle non-UTF-8 text hunks into U+FFFD before the kernel sees
 // them. `out` is resolved first — git would otherwise write relative to cwd,
 // the clone.
-export function patchAgainstBase({ cwd, base, out, git = defaultGit }) {
+//
+// `files` absent (null) is the whole-tree capture this function has always
+// been — the drop arms only for a caller that knows the task's Files, so a
+// direct call with none keeps every byte of the clone.
+export function patchAgainstBase({ cwd, base, out, git = defaultGit,
+                                   files = null, onDropped = null }) {
   fs.mkdirSync(path.dirname(out), { recursive: true })
   git(['add', '-A'], cwd)
+  const dropped = files == null ? [] : droppedBinaryPaths({ cwd, base, files, git })
+  // The exclusion is a PATHSPEC, not an index edit: the capture stays
+  // read-only on the clone (`git rm --cached` would leave the next fix round's
+  // `add -A` diffing a tree the worker never saw). `top` makes each path
+  // root-relative whatever cwd is; `literal` stops a `*` or `[` in a path from
+  // being read as a glob.
+  const exclude = dropped.length
+    ? ['--', ':(top)', ...dropped.map((p) => ':(exclude,literal,top)' + p)]
+    : []
   git(['diff', '--cached', '--binary', '--full-index', '--no-renames',
-       '--output=' + path.resolve(out), base], cwd)
+       '--output=' + path.resolve(out), base, ...exclude], cwd)
+  if (dropped.length && onDropped) onDropped(dropped)
   return out
+}
+
+// The task's Files reach the capture BY LABEL: `withPatchCapture` is built
+// once, before the engine runs, so it cannot hold one task's list. The driver
+// (run-main) passes a lookup; this reads whichever shape it was given —
+// a function of the dispatch, of the label, or of the task id, or a plain
+// map keyed by either, or one flat array when every capture shares a scope —
+// and falls back to the `FILES:` line of the prompt the worker was actually
+// handed, which the engine builds from the same compiled array.
+const FILES_KEYS = ['filesFor', 'filesOf', 'filesForLabel', 'filesForTask',
+                    'taskFilesOf', 'taskFiles', 'files']
+
+// A lookup that does not RECOGNIZE what it was handed answers `[]`, and `[]` is
+// also how a task that names no file answers — the same value for "I don't know
+// this dispatch" and "this task's scope is empty". They cannot be told apart at
+// the call, so the resolution never lets an empty answer end the search: every
+// shape and every argument is tried, the first NON-EMPTY list wins, and `[]` is
+// returned only once nothing else produced a scope. Reading a label-taking
+// lookup's `[]` (from being called with the dispatch object, whose taskIdOf is
+// null) as "this task names nothing" is what dropped a FILES-named binary.
+function makeFilesFor(options) {
+  const specs = FILES_KEYS.map((k) => options && options[k]).filter((v) => v != null)
+  // Returns the first non-empty list this spec yields for any of the arguments
+  // the Context allows it to be a function of; `[]` when it answered but
+  // answered empty; null when it did not answer at all.
+  const fromSpec = (spec, opts, id) => {
+    if (Array.isArray(spec)) return spec
+    let sawEmpty = false
+    const take = (v) => {
+      if (!Array.isArray(v)) return null
+      if (v.length) return v
+      sawEmpty = true
+      return null
+    }
+    if (typeof spec === 'function') {
+      // Label and id first: a lookup of the dispatch reads `.label` off it and
+      // still answers, while a lookup of the label handed the dispatch object
+      // stringifies it to "[object Object]" and answers empty.
+      for (const arg of [opts && opts.label, id, opts]) {
+        let v
+        try { v = spec(arg) } catch { v = null }
+        const hit = take(v)
+        if (hit) return hit
+      }
+      return sawEmpty ? [] : null
+    }
+    if (spec instanceof Map) {
+      for (const k of [opts && opts.label, id]) {
+        const hit = take(spec.get(k))
+        if (hit) return hit
+      }
+      return sawEmpty ? [] : null
+    }
+    if (typeof spec === 'object') {
+      for (const k of [opts && opts.label, id]) {
+        const hit = take(k == null ? null : spec[k])
+        if (hit) return hit
+      }
+    }
+    return sawEmpty ? [] : null
+  }
+  return (opts, id, prompt) => {
+    let sawEmpty = false
+    for (const spec of specs) {
+      const v = fromSpec(spec, opts, id)
+      if (v && v.length) return v
+      if (v) sawEmpty = true
+    }
+    // The dispatch may carry the task's scope itself — run-engine puts the same
+    // compiled array on the worktree dispatch it builds the `FILES:` line from.
+    if (Array.isArray(opts && opts.files) && opts.files.length) return opts.files
+    if (Array.isArray(opts && opts.files)) sawEmpty = true
+    // Last, the `FILES:` line of the prompt the worker was actually handed.
+    const fromPrompt = filesFromPrompt(prompt)
+    if (fromPrompt.length) return fromPrompt
+    // Nobody named anything: an empty scope, which is not "no filter" — a task
+    // that names no file names no binary either.
+    return sawEmpty ? [] : fromPrompt
+  }
+}
+
+// The engine's own `FILES: a, b, c` line (run-engine.mjs `filesLine`), read
+// back off the prompt. Not a second parse of the plan — it is the very text
+// the implementer was told to stay inside.
+export function filesFromPrompt(prompt) {
+  const m = /^FILES:[ \t]*(.+)$/m.exec(String(prompt == null ? '' : prompt))
+  if (!m) return []
+  return m[1].split(',').map((s) => s.trim().replace(/^`|`$/g, '')).filter(Boolean)
 }
 
 // ── the run's event log — the record, written while it happens (#414 P1) ─────

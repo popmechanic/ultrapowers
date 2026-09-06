@@ -388,7 +388,7 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
 // ── agent composition — the one decision, both halves ────────────────────────
 export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
-                               implementerEffort }) {
+                               implementerEffort, filesFor }) {
   // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
   // `implementer`; every other role answers undefined, so `buildArgs` pushes no
   // `--effort` for it and each judge keeps the CLI's own default (#522).
@@ -412,6 +412,11 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
   const agent = withPatchCapture({
     agent: inner, clonesDir, base, patchesDir,
     taskIdOf: defaultTaskIdOf, onEvent: eventLog.onEvent,
+    // #714: the task's Files, by label. The capture drops an untracked binary
+    // no task named rather than folding a `__pycache__` four clones wrote at
+    // once; without a lookup it falls back to the `FILES:` line of the prompt
+    // the worker was handed, which is the same compiled array.
+    ...(filesFor ? { filesFor } : {}),
   })
   // The flag's value IS the trust anchor: waves.js strips any reply patch
   // outside this prefix, so a launch template carrying `patchInput: true`
@@ -570,10 +575,18 @@ export async function runMain(parsed, deps = {}) {
   // `current` to each adopted integration head so later waves diff against
   // the tree they actually built on (see run-engine.mjs patchBase).
   const patchBase = { current: base }
+  // #714: the compiled `files` array of each task, by task id — the SAME array
+  // the engine builds its `FILES:` line from, so the scope the implementer was
+  // told to stay inside and the scope the capture keeps are one fact. Built
+  // here because the wrapper is built once, before the engine runs, and a
+  // second parse of the plan would be a second fact.
+  const filesByTask = new Map(argsObj.waves.flat()
+    .map((t) => [t.id, Array.isArray(t.files) ? t.files : []]))
   const { agent, patchInput } = makeAgent({
     runId, base: () => patchBase.current, runDir,
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog, implementerEffort,
+    filesFor: (opts) => filesByTask.get(defaultTaskIdOf(opts && opts.label)) || [],
   })
   // #213 credential evidence (restored after the cutover deleted the shim's
   // copy — review finding 6): name the credential the workers will ride, in
