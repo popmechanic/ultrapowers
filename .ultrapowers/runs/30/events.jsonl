@@ -1,0 +1,41 @@
+{"kind":"run:open","runId":"run-30","base":"","source":"fleet/run-main.mjs","id":"01M1T5NPNM0000YKG8B74DXT5W","ts":1788658506420}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M1T5NPNP0000PGG1T29GKM5C","ts":1788658506422}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 7e819bb903f65092fdde6f274037b77e82053170; 1 task clone(s) + integration","id":"01M1T5T9900000C7HV9EFZC7Q4","ts":1788658656544}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M1T5T9M60000FATVKCG6HZ61","ts":1788658656902}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M1T5T9M60001FEP5VE6S2920","ts":1788658656902}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 4","id":"01M1T5T9MB0000EGFQ10V1T2M4","ts":1788658656907}
+{"kind":"engine:phase","phase":"Setup","id":"01M1T5T9MB0001XWZ19WT3R3V5","ts":1788658656907}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-30 at 7e819bb903f65092fdde6f274037b77e82053170; baseline green","id":"01M1T5YSAB00003N79KS1VM4NY","ts":1788658804043}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M1T5YSAB00016YS8NH9JZJSY","ts":1788658804043}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"f9c78e27-bdab-4b11-988c-c8c9948a732c","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-30/clones/exam-1","model":"opus","id":"01M1T5YSCE0000Y9A9G26RF1HK","ts":1788658804110}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"98955840-f18d-4f52-ac3c-63078ab5032e","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-30/clones/task-1","model":"opus","id":"01M1T5YSCF0000ZPTZSGXKN05W","ts":1788658804111}
+{"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"f9c78e27-bdab-4b11-988c-c8c9948a732c","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2545,"output":25641,"cacheRead":919316,"cacheCreation":80957,"costUsd":1.9229779999999999,"models":["claude-opus-5"]},"id":"01M1T6828S0000PSAS3HX3PZK6","ts":1788659108121}
+{"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"98955840-f18d-4f52-ac3c-63078ab5032e","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2695,"output":32694,"cacheRead":1842462,"cacheCreation":101885,"costUsd":2.770905999999999,"models":["claude-opus-5"]},"id":"01M1T6F8ZG0000MHWEHXM10KJV","ts":1788659344368}
+{"kind":"driver:exam-handoff","task":"1","paths":["fleet/tests/test_run_waves.mjs"],"id":"01M1T6F9E40000CZCFH0XE7145","ts":1788659344836}
+{"kind":"driver:exam-run","task":"1","cmd":"node fleet/tests/test_run_waves.mjs","exit":1,"iter":0,"id":"01M1T6F9XM0000V3992NP4X1KC","ts":1788659345332}
+{"kind":"driver:check-run","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/","exit":0,"minor":false,"iter":0,"id":"01M1T6F9XX0000SCD3PXSSRE3E","ts":1788659345341}
+{"kind":"worker:start","label":"fix:1:0","role":"implementer","sessionId":"3d484d13-727e-4c53-912f-8b04ae5c97be","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-30/clones/task-1","model":"opus","id":"01M1T6F9XY0000DQGSZSF99K9M","ts":1788659345342}
+{"kind":"worker:end","label":"fix:1:0","role":"implementer","sessionId":"3d484d13-727e-4c53-912f-8b04ae5c97be","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2731,"output":10447,"cacheRead":900690,"cacheCreation":35838,"costUsd":1.0835549999999998,"models":["claude-opus-5"]},"id":"01M1T6KY7P0000GZW9PCJ9XAXP","ts":1788659497206}
+{"kind":"driver:exam-run","task":"1","cmd":"node fleet/tests/test_run_waves.mjs","exit":0,"iter":0,"id":"01M1T6KZ2C0000TVXWPJHCXWBC","ts":1788659498060}
+{"kind":"driver:check-run","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/","exit":0,"minor":false,"iter":0,"id":"01M1T6KZ2N0000ZHT5J4AA1269","ts":1788659498069}
+{"kind":"driver:exam-run","task":"1","cmd":"node fleet/tests/test_run_waves.mjs","exit":0,"iter":1,"id":"01M1T6KZX90000QVBSDZSSVG88","ts":1788659498921}
+{"kind":"driver:check-run","task":"1","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/","exit":0,"minor":false,"iter":1,"id":"01M1T6KZXH000013NB1GDWC1GQ","ts":1788659498929}
+{"kind":"worker:start","label":"review:1:1:1","role":"reviewer","sessionId":"95c38303-2707-4a8c-8edf-9bf92084f327","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-30/clones/integration","model":"opus","id":"01M1T6KZXJ0000G76NFWTWMH3P","ts":1788659498930}
+{"kind":"worker:start","label":"review:1:1:2","role":"reviewer","sessionId":"32b2d91a-082c-4f8d-8304-97677e24ee67","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-30/clones/integration","model":"opus","id":"01M1T6KZXK0000CHAPCSRET14P","ts":1788659498931}
+{"kind":"worker:end","label":"review:1:1:1","role":"reviewer","sessionId":"95c38303-2707-4a8c-8edf-9bf92084f327","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3919,"output":13372,"cacheRead":635407,"cacheCreation":76789,"costUsd":1.4394885,"models":["claude-opus-5"]},"id":"01M1T6SH3T0000RHRFG0NTS2E3","ts":1788659680378}
+{"kind":"worker:end","label":"review:1:1:2","role":"reviewer","sessionId":"32b2d91a-082c-4f8d-8304-97677e24ee67","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3917,"output":15380,"cacheRead":569435,"cacheCreation":77283,"costUsd":1.4616325000000003,"models":["claude-opus-5"]},"id":"01M1T6TEDX0000PKM2MFMWHW0H","ts":1788659710397}
+{"kind":"driver:integrated-clean","wave":1,"removed":9,"id":"01M1T6ZC2A0000T2FTVBZ9MC96","ts":1788659871818}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/","exit":0,"minor":false,"wave":1,"id":"01M1T6ZC2H000031Q3VKJ95X7T","ts":1788659871825}
+{"kind":"engine:phase","phase":"Depth-1 Leg","id":"01M1T6ZC2H0001NYT1BX8TSEXJ","ts":1788659871825}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M1T6ZC2K0000QT906XZDBZH1","ts":1788659871827}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"00be6705-28c9-414a-950b-6bca34ac98b6","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-30/clones/integration","model":"opus","id":"01M1T6ZC2M0000TYDZV1690T5F","ts":1788659871828}
+{"kind":"engine:log","line":"depth-1 leg: green","id":"01M1T7479C0000DNEHQFV8HA9C","ts":1788660030764}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"00be6705-28c9-414a-950b-6bca34ac98b6","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2855,"output":14836,"cacheRead":848474,"cacheCreation":87955,"costUsd":1.6889619999999999,"models":["claude-opus-5"]},"id":"01M1T75GRD00003X7KGYGZAGYJ","ts":1788660073229}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M1T75GRR0000EM7XM2YPT80B","ts":1788660073240}
+{"kind":"driver:stage","stage":"finalize","id":"01M1T75GT50000GZ4BA810Q7S5","ts":1788660073285}
+{"kind":"driver:stage","stage":"gate","id":"01M1T75GW000006H8XY4BH07BY","ts":1788660073344}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M1T7AE7Q00003X8FX5K7J4XQ","ts":1788660234487}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M1T7AE7R00005RZG41FCWWMV","ts":1788660234488}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M1T7AE7R0001PEJT9SWDTVQJ","ts":1788660234488}
+{"kind":"driver:stage","stage":"approve","id":"01M1T7AE7R0002EG6TZSYHKGVQ","ts":1788660234488}
+{"kind":"driver:approved","stamp":"run-30","integrationBranch":"ultra/integration-run-30","id":"01M1T7AE8Y0000VD2H2DTA2CZ8","ts":1788660234526}

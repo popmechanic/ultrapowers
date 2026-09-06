@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-30.md run-30 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 Claim, live half: \"a fleet run on a Python target with no .gitignore folds its tasks clean ... and I see the four-task run-7 shape merge instead of parking\" (fleet/run-waves.mjs, fleet/run-main.mjs, fleet/run-engine.mjs) — The end-to-end confirmation is a real fleet run against the #694 2x2 control target (`popmechanic/ab`, run-7 fold arm) — provisioned VMs, live workers and a remote target repo, none of which exist in this environment. What is executable here is covered and green: the driver's suite (`python3 -m pytest -n auto`, passed) includes fleet/tests/test_run_waves.mjs leg (d), which reproduces the four-clone / one-shared-untracked-.pyc shape on real git and shows the four patches naming no binary path in common; the kernel fold itself is exercised only by the pre-existing section-4 leg, not by leg (d). [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

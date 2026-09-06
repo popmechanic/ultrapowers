@@ -1,0 +1,113 @@
+{
+  "integrationBranch": "ultra/integration-run-30",
+  "baseSha": "7e819bb903f65092fdde6f274037b77e82053170",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "49b123d57191a7b40d280edb9453b15131a01f18",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-30/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Over-general lookup resolution in `fleet/run-waves.mjs` (`FILES_KEYS` / `makeFilesFor`). The driver supplies exactly one shape \u2014 `run-main.mjs`'s `filesFor: (opts) => ...`, a function of the dispatch object \u2014 yet the resolver accepts seven alias keys (`filesFor`, `filesOf`, `filesForLabel`, `filesForTask`, `taskFilesOf`, `taskFiles`, `files`), three argument shapes (label, id, opts), Map and plain-object specs, plus an empty/non-empty tri-state. The new exam legs hand three of those aliases in at once (`filesOf`, `filesFor`, `taskFilesOf`), so no assertion pins the name or the argument shape the production wiring actually uses \u2014 the machinery is untested surface that exists to make any wiring pass. Two concrete consequences: (1) `try { v = spec(arg) } catch { v = null }` swallows a throwing lookup, so a wiring bug degrades to \"scope unknown\" and silently drops every untracked binary in the clone instead of surfacing through the existing `capture:error` path; (2) the final `return sawEmpty ? [] : fromPrompt` is dead \u2014 `fromPrompt` is `[]` on that branch either way. Suggest narrowing to one documented `filesFor(opts, id, prompt)` contract plus the `FILES:`-line fallback, and letting a lookup's throw propagate into the capture's catch.; unverified: the run-main \u2192 composeAgent \u2192 withPatchCapture wiring is not exercised by the exam. Legs (a)\u2013(d) in `fleet/tests/test_run_waves.mjs` construct `withPatchCapture` directly with their own lookup, so nothing asserts that `run-main.mjs:575-583`'s `filesByTask` (built from `argsObj.waves.flat()` with `t.files`) reaches the capture, nor that `composeAgent`'s `...(filesFor ? { filesFor } : {})` spread lands. The code reads correct \u2014 `run-main.mjs:546` already treats `argsObj.waves.flat()` entries as task objects with `.id`, and `run-engine.mjs:258` builds `filesLine` from the same `task.files` array \u2014 but a regression there (a compiled task without `files`, a renamed key) would fall through to the prompt's `FILES:` line or to an empty scope with no test failing. What would settle it: a leg composing the agent via `composeAgent` (or an assertion in `fleet/tests/test_run_main.mjs`, outside this task's Files) that a task whose FILES names a binary still carries that binary through the composed capture.; `makeFilesAllow` (`fleet/run-waves.mjs`) treats a Files entry as a directory prefix only when it ends with `/`, and matches otherwise by exact path. A plan that scopes a task to `assets` rather than `assets/` therefore has its own generated binaries under that directory dropped from the capture, with only the `capture:dropped` event to say so. Not reachable from this repo's plan shape (every Files entry is a file path), so advisory; if you want the safe reading, treat an entry with no extension that prefixes a path at a `/` boundary as a directory too.; `EVENT_KINDS` in `skills/ultralearn/scripts/fleet_events.py:24-27` enumerates the engine's emitted vocabulary (its comment cites `fleet/run-waves.mjs:215-293` as the source) and does not list the new `capture:dropped`. Nothing breaks \u2014 the comment states the set names what is known and does not filter, so the event still parses and renders \u2014 but the census vocabulary is now stale against the emitter. The fix lies outside this task's FILES (`fleet/run-engine.mjs`, `fleet/run-main.mjs`, `fleet/run-waves.mjs`, `fleet/tests/test_run_waves.mjs`), so it belongs to a follow-up, not to this diff.; Speculative generality in the new lookup resolution. `makeFilesFor` (fleet/run-waves.mjs) accepts seven key aliases (`filesFor`, `filesOf`, `filesForLabel`, `filesForTask`, `taskFilesOf`, `taskFiles`, `files`), three spec shapes (function / Map / plain object / array), three argument shapes (label, id, opts), a per-call try/catch, plus an `opts.files` fallback \u2014 while production has exactly one caller: `run-main.mjs` passes `filesFor: (opts) => ...`, and the engine's worktree dispatches (run-engine.mjs:1189 and siblings) carry no `files` key, so that branch is dead. `makeFilesAllow`, `droppedBinaryPaths` and `filesFromPrompt` are exported but imported by nothing, including the exam (fleet/tests/test_run_waves.mjs:14). The exam deliberately hands the same lookup under three of the aliases (\"any one of them satisfying is a pass\"), so the extra shapes are graded by nothing. Collapse to one documented shape \u2014 `filesFor(opts)` returning the task's compiled `files` array \u2014 and drop the unused exports; the Context only asks that the per-task list reach the wrapper by label.; unverified: the wrapper never passes `files: null`, so the drop is armed for every existing `withPatchCapture` caller, not only the ones that supply a lookup. `patchAgainstBase` keeps the old whole-tree behavior only when `files == null`, but `withPatchCapture` always passes `filesFor(opts, id, prompt)`, which returns `[]` (an empty allow list = drop every untracked binary) when no lookup was supplied and the prompt carries no `FILES:` line. That silently changes capture behavior for `fleet/tests/_engine_helpers.mjs:62`, `fleet/tests/test_run_engine_examiner.mjs:51`, `test_run_engine_proof_runs.mjs:289`, `test_weave_emit.mjs:35` and the other harnesses that construct the wrapper without one, and for any real dispatch whose task id misses `filesByTask` (e.g. a numeric task id in the plan vs. the string `defaultTaskIdOf` returns). Acceptance is the committed suite, but the only execution evidence here is `node fleet/tests/test_run_waves.mjs`; running the rest of `fleet/tests/*.mjs` would settle it. Safer shape: have the resolver return `null` when nothing named a scope and pass that through, so an uninstrumented caller keeps the pre-task capture exactly.; The exam never exercises the \"untracked at BASE\" half of M1. The fixture repo tracks exactly one path at BASE2 and it is text (`app/registry.py`, asserted at the `ls-files` line), so every binary in every leg is untracked by construction: deleting the `git ls-tree` guard at the end of `droppedBinaryPaths` (`return candidates.filter((p) => !tracked.has(p)).sort()`) leaves all four legs green, while a modification to a binary tracked at BASE and outside FILES would then be silently dropped from the patch \u2014 the condition the Context spells out (`git ls-tree` at the task's base sha, never the clone's index). Add a leg: commit a binary (say `assets/tracked.bin`) into the BASE2 commit, modify it in a clone whose FILES names only `app/registry.py`, and assert it is still in `binaryPathsIn(r.patch)` and absent from the `capture:dropped` paths.; `filesFromPrompt` matches the first `^FILES:` line anywhere in the prompt, and the engine emits the task body BEFORE its own `filesLine` (run-engine.mjs:1185-1186, 1401, 1245). A task body that quotes a line starting with `FILES:` (plans in this repo routinely quote prompt fragments) would therefore be read as the task's scope by the fallback, and a binary the real FILES list names would be dropped. Since the fallback only fires when the primary lookup missed, the cheap hardening is to anchor it to the engine's line \u2014 e.g. take the LAST `^FILES:` match rather than the first, or only consult the prompt when the lookup returned nothing at all rather than when it returned empty.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-30/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1653 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.....................................................................    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1653 passed, 5 warnings in 160.31s (0:02:40) =================\n"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 392915,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n....................................................................s... [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.....................................................................    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1652 passed, 1 skipped, 5 warnings in 158.46s (0:02:38) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.....................................................................    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1653 passed, 5 warnings in 146.93s (0:02:26) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5523fbef739f09bc3756c7ad23eab608db583be6",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-30/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-30/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8440000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 Claim, live half: \"a fleet run on a Python target with no .gitignore folds its tasks clean ... and I see the four-task run-7 shape merge instead of parking\" (fleet/run-waves.mjs, fleet/run-main.mjs, fleet/run-engine.mjs)",
+      "reason": "external",
+      "why": "The end-to-end confirmation is a real fleet run against the #694 2x2 control target (`popmechanic/ab`, run-7 fold arm) \u2014 provisioned VMs, live workers and a remote target repo, none of which exist in this environment. What is executable here is covered and green: the driver's suite (`python3 -m pytest -n auto`, passed) includes fleet/tests/test_run_waves.mjs leg (d), which reproduces the four-clone / one-shared-untracked-.pyc shape on real git and shows the four patches naming no binary path in common; the kernel fold itself is exercised only by the pre-existing section-4 leg, not by leg (d)."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_run_waves.mjs \u2014 exit 1) \u2014 one repair round before any referee read the patch"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "fleet/run-engine.mjs:1718 (Task 1, adjacent to its Claim, not a shortfall of it): the reconcile path in the integration clone still stages the whole tree with `git add -A` and commits it. The candidate suite runs in that same clone, so on the operator's motivating case \u2014 a Python target with no `.gitignore` \u2014 `__pycache__/*.pyc` left by the candidate suite is committed onto the integration branch. Task 1's drop rule is deliberately capture-side only (`patchAgainstBase` in fleet/run-waves.mjs:317-334), so this channel is untouched; the Claim is about what reaches a `.patch` and about the fold not parking, and both hold, so this does not block. Related: the two \"changed nothing\" guards at fleet/run-engine.mjs:1727-1728 compare the staged tree against the candidate and HEAD, and regenerated bytecode alone is enough to make both differ, so a reconcile that edited no source can still be credited with a commit on such a target."
+    }
+  ],
+  "blockedWaves": []
+}

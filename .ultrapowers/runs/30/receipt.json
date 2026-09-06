@@ -1,0 +1,148 @@
+{
+  "ok": true,
+  "stamp": "run-30",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-30"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The capture drops untracked binaries no task named",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs",
+          "fleet/run-waves.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`patchAgainstBase({ cwd, base, out, git })`",
+            "`withPatchCapture({ agent, clonesDir, base, patchesDir, git, taskIdOf, cloneNameOf, onEvent })`"
+          ],
+          "produces": [
+            "nothing a sibling consumes (the `capture:dropped` event is read by the event log)"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The capture drops untracked binaries no task named",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/run-waves.mjs",
+            "fleet/tests/test_run_waves.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`patchAgainstBase({ cwd, base, out, git })`",
+              "`withPatchCapture({ agent, clonesDir, base, patchesDir, git, taskIdOf, cloneNameOf, onEvent })`"
+            ],
+            "produces": [
+              "nothing a sibling consumes (the `capture:dropped` event is read by the event log)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/run-waves.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_waves.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_waves.mjs",
+          "proofRuns": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The capture drops untracked binaries no task named"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The fold kernel is not the fix: no change under `skills/ultrapowers/kernel/` (the Check above).\n- A text path outside a task's Files is still captured exactly as before \u2014 the reviewers' scope\n  rule is the only thing that judges it; the driver drops binaries and nothing else.\n- Every existing assertion in `fleet/tests/test_run_waves.mjs` still holds; the new legs sit under\n  a comment naming this task.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-30/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-30/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-30/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-30/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
