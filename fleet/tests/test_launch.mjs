@@ -37,6 +37,19 @@
  *       and no unreadable record changes the launch's outcome or its mutating
  *       verbs — group i.
  *
+ * The launcher also refuses a `--base` that is not on the target's default
+ * branch, and a launch clone that is shallow. Those legs are lettered as their
+ * own task spells them — group j:
+ *
+ *   (a) [M1] a side-branch `--base`: `ls-remote --symref origin HEAD`,
+ *       `fetch origin main` and `merge-base --is-ancestor <base> <tip>`, in
+ *       that order and all after the `rev-parse --verify` read, and a `Refusal`
+ *       naming the base, the tip and the fix text;
+ *   (b) [M2] a `--depth 1` launch clone: refused before the `ls-remote`, with
+ *       no `--unshallow` and no `--depth` of the launcher's own;
+ *   (c) [M3] a green launch still mutates one verb, and the fetch moves
+ *       `refs/remotes/origin/<default>` and nothing else in the clone.
+ *
  * Nothing here opens a network socket. Every `ssh` goes through the injected
  * exec seam. The target is a real repository — `makeTargetRepo`'s bare origin
  * and its clone — whose `origin` is spelled the way a real target's is, and the
@@ -113,21 +126,38 @@ const ENGINE_RULE = {
 }
 
 /**
+ * `origin` pointed at the bare repository the exam really made. A bare
+ * `fetch origin <branch>` is additionally spelled out with the refspec a
+ * *configured* remote supplies for it, because git only updates
+ * `refs/remotes/origin/<branch>` when the remote is named rather than given as
+ * a URL — and that one ref moving, and nothing else moving, is what leg (j.c)
+ * [M3] measures. The exec log still records the argv the launcher issued.
+ */
+const pointAtOrigin = (repo, argv) => {
+  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
+  const fetchAt = argv.indexOf('fetch')
+  if (fetchAt < 0) return pointed
+  const remoteAt = argv.indexOf('origin', fetchAt)
+  const branch = String(argv[remoteAt + 1] ?? '')
+  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
+  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  return pointed
+}
+
+/**
  * The launcher names the target's remote the way an operator's checkout spells
  * it; the seam points that name at the bare repository the exam really made and
  * runs the command for real. The command the launcher issued is what the exec
- * log records, so the refspec and the ordering are still its own.
+ * log records, so the refspec and the ordering are still its own. `fetch` is on
+ * this rule as well as `push` and `ls-remote`, so the launcher's default-branch
+ * fetch reaches the bare origin instead of the offline rule below.
  */
 const localRemote = (repo) => ({
   when: (cmd, argv) => cmd === 'git' &&
-    (argv.includes('push') || argv.includes('ls-remote')) &&
+    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
     !argv.includes('--get-url') &&
     !argv.some((a) => /ultrapowers/.test(String(a))),
-  answer: (cmd, argv, options) => defaultExec(
-    'git',
-    argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a)),
-    options ?? {}
-  )
+  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
 })
 
 /** No socket, whatever else the launcher tries. */
@@ -1091,6 +1121,249 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
     `(d) [M4 drift] naming the record it could not read, got ${JSON.stringify(absentLine)}`
   )
   absent.cleanup()
+}
+
+// ── j. Task 5: the launcher refuses a base that is not on main ─────────────
+//
+// The three legs of "The launcher refuses a base that is not on main": a
+// `--base` off the default branch (M1), a shallow launch clone (M2), and the
+// green launch whose fetch moves one remote-tracking ref and nothing else (M3).
+// Every command still goes through the injected seam, and the origin every read
+// reaches is the bare repository `makeTargetRepo` built — no socket is opened.
+{
+  /** The fix text M1 pins, and the shallow refusal's text M2 pins, verbatim. */
+  const FIX_TEXT = 'relaunch from main; a parked branch is re-driven as a plan on main, not as a base'
+  const SHALLOW_TEXT = 'is a shallow clone — unshallow it by hand and relaunch'
+
+  /**
+   * Move the origin's `main` one commit on without touching the launch clone:
+   * the commit is built with plumbing and pushed by path, so the clone's HEAD,
+   * its `refs/heads/main` and its `refs/remotes/origin/main` all stay where
+   * they were. A stale tracking ref is what leg (c) [M3] measures the fetch by,
+   * and a tip that is not `<base>` is what leg (a) [M1] names in the refusal.
+   */
+  const advanceOrigin = (ws) => {
+    const tip = ws.repo.git([
+      'commit-tree', `${ws.repo.base}^{tree}`, '-p', ws.repo.base, '-m', 'origin moves on'
+    ])
+    ws.repo.git(['push', ws.repo.origin, `${tip}:refs/heads/main`])
+    return tip
+  }
+
+  /** A commit on a side branch of the clone: `rev-parse --verify` finds it, and
+   *  the origin's `main` does not have it. HEAD is left back on `main`. */
+  const parkedCommit = (ws) => {
+    ws.repo.git(['checkout', '-q', '-b', 'parked'])
+    fs.writeFileSync(path.join(ws.repo.dir, 'parked.txt'), 'work done on a parked branch\n')
+    ws.repo.git(['add', '-A'])
+    ws.repo.git(['commit', '-m', 'parked work'])
+    const sha = ws.repo.git(['rev-parse', 'HEAD'])
+    ws.repo.git(['checkout', '-q', 'main'])
+    return sha
+  }
+
+  /** `git for-each-ref`'s lines as `{ '<refname>': '<sha>' }`. */
+  const refMap = (text) => Object.fromEntries(
+    text.split('\n').filter((line) => line !== '').map((line) => {
+      const [left, name] = line.split('\t')
+      return [name, left.split(' ')[0]]
+    })
+  )
+
+  /** The launch clone as M3 measures it: its refs, its HEAD, its porcelain. */
+  const snapshot = (repo) => ({
+    refs: refMap(repo.git(['for-each-ref'])),
+    head: repo.git(['rev-parse', 'HEAD']),
+    porcelain: repo.git(['status', '--porcelain'])
+  })
+
+  /** The refs whose sha differs between two snapshots, added and removed ones
+   *  included. */
+  const changedRefs = (before, after) =>
+    [...new Set([...Object.keys(before.refs), ...Object.keys(after.refs)])]
+      .filter((name) => before.refs[name] !== after.refs[name])
+      .sort()
+
+  /** The index of the first `git` call whose argv, joined, contains `text`. */
+  const gitCallAt = (exec, text) =>
+    exec.calls.findIndex((c) => c.cmd === 'git' && c.argv.map(String).join(' ').includes(text))
+
+  // ── (a) [M1] a --base on a side branch ──────────────────────────────────
+  {
+    const ws = workspace()
+    const tip = advanceOrigin(ws)
+    const parked = parkedCommit(ws)
+    assert.notEqual(parked, tip, '(j.a) [M1] the fixture: the parked commit is not the origin\'s tip')
+    assert.equal(branchesOf(ws).main, tip, "(j.a) [M1] the fixture: the origin's main is that tip")
+
+    const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+    const error = await thrown(() => launchIn(ws, {
+      argv: [ws.planPath, '--target', TARGET, '--base', parked, '--repo', ws.repo.dir,
+        '--engine', ENGINE],
+      exec
+    }))
+
+    assert.ok(
+      error,
+      '(j.a) [M1] a --base that is a side-branch commit, not an ancestor of the default branch, must be refused'
+    )
+    assert.ok(
+      error instanceof Refusal,
+      `(j.a) [M1] and the refusal is a Refusal, got ${error?.name}: ${error?.message}`
+    )
+    assert.ok(
+      error.message.includes(parked),
+      `(j.a) [M1] whose message names <base>, the sha it was given, got ${JSON.stringify(error.message)}`
+    )
+    assert.ok(
+      error.message.includes(tip),
+      `(j.a) [M1] and <tip>, the default branch's tip it is not on, got ${JSON.stringify(error.message)}`
+    )
+    assert.ok(
+      error.message.includes(FIX_TEXT),
+      `(j.a) [M1] and the fix text \`${FIX_TEXT}\` in full, got ${JSON.stringify(error.message)}`
+    )
+
+    assert.deepEqual(exec.mutating(), [], '(j.a) [M1] with zero mutating lobby verbs issued')
+    assert.deepEqual(newLines(exec), [], '(j.a) [M1] and no `new`')
+    assert.ok(
+      !exec.calls.some((c) => c.cmd === 'git' && c.argv.includes('push')),
+      '(j.a) [M1] and no push: the refusal comes before the plan commit is pushed'
+    )
+    assert.deepEqual(
+      Object.keys(branchesOf(ws)).filter((ref) => ref.startsWith('ultra/plan-run-')), [],
+      '(j.a) [M1] so the origin carries no ultra/plan-run-* ref'
+    )
+
+    const verifyAt = exec.calls.findIndex((c) =>
+      c.cmd === 'git' && c.argv.includes('rev-parse') && c.argv.includes('--verify'))
+    const symrefAt = gitCallAt(exec, 'ls-remote --symref origin HEAD')
+    const fetchAt = gitCallAt(exec, 'fetch origin main')
+    const mergeAt = gitCallAt(exec, `merge-base --is-ancestor ${parked} ${tip}`)
+
+    assert.ok(verifyAt >= 0, '(j.a) [M1] the `rev-parse --verify <base>^{commit}` read still happens')
+    assert.ok(symrefAt >= 0, '(j.a) [M1] `git ls-remote --symref origin HEAD` reads the default branch name and tip')
+    assert.ok(fetchAt >= 0, '(j.a) [M1] `git fetch origin main` fetches the default branch')
+    assert.ok(
+      mergeAt >= 0,
+      `(j.a) [M1] and \`git merge-base --is-ancestor ${parked} ${tip}\` asks whether the base is on it`
+    )
+    assert.ok(
+      verifyAt < symrefAt,
+      `(j.a) [M1] the ls-remote is after the rev-parse --verify read: verify is call ${verifyAt}, ls-remote is call ${symrefAt}`
+    )
+    assert.ok(
+      symrefAt < fetchAt,
+      `(j.a) [M1] the fetch is after the ls-remote: ls-remote is call ${symrefAt}, fetch is call ${fetchAt}`
+    )
+    assert.ok(
+      fetchAt < mergeAt,
+      `(j.a) [M1] and the merge-base after the fetch: fetch is call ${fetchAt}, merge-base is call ${mergeAt}`
+    )
+    ws.cleanup()
+  }
+
+  // ── (b) [M2] a shallow launch clone ─────────────────────────────────────
+  {
+    const ws = workspace()
+    advanceOrigin(ws)
+    // `--depth` needs the `file://` transport; the clone's `origin` is then
+    // spelled the way a real target's is, so the launch gets past the origin
+    // check and the shallow refusal is the one under test.
+    const shallowDir = path.join(ws.root, 'shallow-clone')
+    ws.repo.git(['clone', '--quiet', '--depth', '1', `file://${ws.repo.origin}`, shallowDir])
+    const gitIn = (argv) => ws.repo.git(['-C', shallowDir, ...argv])
+    gitIn(['remote', 'set-url', 'origin', ORIGIN_URL])
+    assert.equal(
+      gitIn(['rev-parse', '--is-shallow-repository']), 'true',
+      '(j.b) [M2] the fixture: the --depth 1 clone is a shallow repository'
+    )
+    const shallowBase = gitIn(['rev-parse', 'HEAD'])
+
+    const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+    const error = await thrown(() => launchIn(ws, {
+      argv: [ws.planPath, '--target', TARGET, '--base', shallowBase, '--repo', shallowDir,
+        '--engine', ENGINE],
+      exec
+    }))
+
+    assert.ok(error, '(j.b) [M2] a launch clone that is shallow must be refused')
+    assert.ok(
+      error instanceof Refusal,
+      `(j.b) [M2] and the refusal is a Refusal, got ${error?.name}: ${error?.message}`
+    )
+    assert.ok(
+      error.message.includes(shallowDir),
+      `(j.b) [M2] whose message names the clone's path, got ${JSON.stringify(error.message)}`
+    )
+    assert.ok(
+      error.message.includes(SHALLOW_TEXT),
+      `(j.b) [M2] and carries \`${SHALLOW_TEXT}\` in full, got ${JSON.stringify(error.message)}`
+    )
+
+    assert.deepEqual(exec.mutating(), [], '(j.b) [M2] with zero mutating lobby verbs issued')
+    assert.deepEqual(
+      exec.calls.filter((c) => c.argv.some((a) => String(a) === '--unshallow')).map((c) => c.line), [],
+      '(j.b) [M2] and no `--unshallow`: unshallowing is the operator\'s to do by hand'
+    )
+    assert.deepEqual(
+      exec.calls.filter((c) => c.argv.some((a) => String(a) === '--depth')).map((c) => c.line), [],
+      '(j.b) [M2] and no `--depth` fetch either'
+    )
+    assert.deepEqual(
+      exec.calls
+        .filter((c) => c.cmd === 'git' && c.argv.includes('ls-remote') && c.argv.includes('--symref'))
+        .map((c) => c.line), [],
+      '(j.b) [M2] and no `ls-remote --symref` call: the shallow check comes before it'
+    )
+    assert.deepEqual(
+      Object.keys(branchesOf(ws)).filter((ref) => ref.startsWith('ultra/plan-run-')), [],
+      '(j.b) [M2] and the origin carries no ultra/plan-run-* ref'
+    )
+    ws.cleanup()
+  }
+
+  // ── (c) [M3] a green launch: one `new`, and one ref moved ───────────────
+  {
+    const ws = workspace()
+    const tip = advanceOrigin(ws)
+    const before = snapshot(ws.repo)
+    assert.equal(
+      before.refs['refs/remotes/origin/main'], ws.repo.base,
+      "(j.c) [M3] the fixture: the clone's tracking ref is behind the origin before the launch"
+    )
+
+    const { result, exec } = await greenLaunch(ws)
+    const after = snapshot(ws.repo)
+
+    assert.ok(isVmName(result.vm), '(j.c) [M3] a base that is on the default branch launches')
+    assert.equal(exec.mutating().length, 1, '(j.c) [M3] recording exactly one mutating verb')
+    assert.ok(
+      exec.mutating()[0].startsWith('new '),
+      `(j.c) [M3] and that one verb is the \`new …\` line, got ${JSON.stringify(exec.mutating()[0])}`
+    )
+
+    assert.deepEqual(
+      changedRefs(before, after), ['refs/remotes/origin/main'],
+      '(j.c) [M3] the fetch moves refs/remotes/origin/main and no other ref of the launch clone'
+    )
+    assert.equal(
+      after.refs['refs/remotes/origin/main'], tip,
+      "(j.c) [M3] which afterward equals the origin's main"
+    )
+    assert.equal(
+      after.refs['refs/remotes/origin/main'], branchesOf(ws).main,
+      "(j.c) [M3] read off the origin's own refs"
+    )
+    assert.equal(
+      after.refs['refs/heads/main'], before.refs['refs/heads/main'],
+      '(j.c) [M3] the clone\'s local main is where it was'
+    )
+    assert.equal(after.head, before.head, '(j.c) [M3] its HEAD is where it was')
+    assert.equal(before.porcelain, '', '(j.c) [M3] its working tree was clean before the launch')
+    assert.equal(after.porcelain, '', '(j.c) [M3] and is clean and identical after it')
+    ws.cleanup()
+  }
 }
 
 console.log('ALL TESTS PASSED')

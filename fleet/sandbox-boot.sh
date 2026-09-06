@@ -163,6 +163,21 @@ MERGED_SHA=""
 # What the `done` phase says about the merge — `merged <sha>`, or
 # `left open: <reason>`. Set by `merge_pr`, read by `do_boot`.
 MERGE_NOTE=""
+# What the publish fold left behind, as a merge note: empty when the fold
+# folded (or had nothing to join), and `left open: publish fold — …` otherwise.
+# Set by `publish_fold`, read by `merge_pr`, which treats a non-empty value
+# exactly as `hold=1` — no check runs read, no PUT issued.
+FOLD_HOLD=""
+# The merge's retry signal. Every path of `merge_pr` returns 0 under `set -e`,
+# so the one outcome that earns a second fold (a 405 whose body says the PR is
+# not mergeable) is carried in a variable. `do_boot` tests it exactly once,
+# between its two `merge_pr` calls, and never clears it — which is also how
+# `merge_pr` knows, on entry, that it is the second call.
+MERGE_RETRY=""
+# How many fold attempts this run has started. A second attempt lands its
+# disposition AFTER the PR was opened, which is what makes the body PATCH
+# necessary.
+FOLD_ATTEMPTS=0
 ERROR=""
 
 # --- seams -------------------------------------------------------------------
@@ -642,14 +657,14 @@ engine_already_ran() {
 # `publishing` and `parked` are claims that no model is running. They are made
 # only after systemd says so — this check IS Amendment 10 made mechanical: the
 # push and the PR happen after the engine service is inactive, never beside it.
-await_engine_inactive() {
-  local attempts n=0 out
+await_engine_inactive() { # $1 = unit name, without the `.service` suffix
+  local unit="$1" attempts n=0 out
   attempts="$(poll_attempts "$ENGINE_STOP_TIMEOUT")"
   while [ "$n" -lt "$attempts" ]; do
-    out="$(fleet_systemctl --user is-active "fleet-engine-$RUN_N.service" 2>&1 || true)"
+    out="$(fleet_systemctl --user is-active "$unit.service" 2>&1 || true)"
     case "$out" in
       *inactive*|*failed*|*unknown*|*"not found"*|"")
-        log "engine: fleet-engine-$RUN_N.service is ${out:-gone} — no model is running"
+        log "engine: $unit.service is ${out:-gone} — no model is running"
         return 0 ;;
     esac
     n=$(( n + 1 ))
@@ -733,6 +748,258 @@ gate_verdict() {
   json_field verdict <"$receipt"
 }
 
+# --- the publish fold --------------------------------------------------------
+#
+# run-32 task 4 (#715). Between the engine and the push sits one more model:
+# the folder, which rebases this run's branch onto the base as it is NOW and
+# runs the suite on the result. It runs as its own transient unit, under the
+# same edge-injected envelope as the engine and with no token anywhere in its
+# argv, and it reports through ONE file — `publish-fold/receipt.json` in the
+# evidence worktree, which is how every receipt it writes rides the evidence
+# commit without `collect_evidence` learning a new name.
+#
+# What this script does with that file is the whole of its side: it pushes the
+# head the folder left (with a lease, once an earlier attempt pushed one), it
+# renders what happened into the PR body, and it HOLDS the merge whenever the
+# fold did not end clean. A red suite after a clean fold holds the PR with the
+# failure in its body.
+
+fold_dir() { printf '%s/%s/publish-fold\n' "$EVIDENCE_DIR" "$EVIDENCE_PATH"; }
+
+# ONE READER for the receipt, so every question about it is asked of a JSON
+# parser (as `check_runs_verdict` reads check runs) and an absent, unparsable or
+# oddly-shaped file answers empty rather than failing a `set -e` script. `$1` is
+# the query:
+#   `field <attempt|''> <name>` — one value; the top-level document when the
+#                                 attempt is empty, '' when there is no such key
+#   `top`     — the highest attempt carrying a `disposition`
+#   `pushed`  — the highest attempt carrying a `pushedHead`
+#   `highest` — the highest attempt with a row at all
+fold_receipt() {
+  local f
+  f="$(fold_dir)/receipt.json"
+  [ -f "$f" ] || return 0
+  python3 -c '
+import json, sys
+path, query, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
+try:
+    doc = json.load(open(path))
+    if not isinstance(doc, dict):
+        raise ValueError("not an object")
+except Exception:
+    sys.exit(0)
+attempts = doc.get("attempts")
+if not isinstance(attempts, dict):
+    attempts = {}
+def keys(pred):
+    out = []
+    for k, row in attempts.items():
+        if str(k).isdigit() and isinstance(row, dict) and pred(row):
+            out.append(int(k))
+    return sorted(out)
+if query == "field":
+    who, name = rest[0], rest[1]
+    row = attempts.get(who) if who else doc
+    if isinstance(row, dict) and row.get(name) is not None:
+        print(row[name])
+elif query == "top":
+    ks = keys(lambda r: r.get("disposition"))
+    if ks: print(ks[-1])
+elif query == "pushed":
+    ks = keys(lambda r: r.get("pushedHead"))
+    if ks: print(ks[-1])
+elif query == "highest":
+    ks = keys(lambda r: True)
+    if ks: print(ks[-1])
+' "$f" "$@"
+}
+
+fold_field() { fold_receipt field "$1" "$2"; }
+
+# ONE WRITER, and it writes `receipt.json.tmp` then renames — the folder and
+# this script both hold the file, and a reader that caught a half-written
+# receipt would read a run's disposition wrong. `$2` seeds `engineHead` when
+# the file is absent or unparsable; the rest are name/value pairs merged into
+# attempt `$1`'s row, leaving every other key the folder wrote in place.
+fold_receipt_set() { # $1 = attempt, $2 = engineHead seed, then name value …
+  local dir
+  dir="$(fold_dir)"
+  mkdir -p "$dir"
+  python3 -c '
+import json, os, sys
+path, attempt, seed, pairs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+try:
+    doc = json.load(open(path))
+    if not isinstance(doc, dict):
+        raise ValueError("not an object")
+except Exception:
+    doc = {"engineHead": seed, "attempts": {}}
+if not isinstance(doc.get("attempts"), dict):
+    doc["attempts"] = {}
+row = doc["attempts"].get(attempt)
+if not isinstance(row, dict):
+    row = {}
+for i in range(0, len(pairs) - 1, 2):
+    row[pairs[i]] = pairs[i + 1]
+doc["attempts"][attempt] = row
+tmp = path + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(doc, fh, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+' "$dir/receipt.json" "$@"
+}
+
+# The sha this attempt has to put back when the folder died mid-fold. Attempt 1
+# restores the head the ENGINE left, which the folder records in `engine-head`
+# before it touches anything — and which this script writes itself when the
+# folder died before writing it, since a rewind with no floor is worse than a
+# rewind to where the branch already is. Attempt 2 restores attempt 1's
+# candidate: the folded head that was pushed and opened the PR.
+fold_restore() { # $1 = attempt
+  local dir head
+  dir="$(fold_dir)"
+  if [ "$1" = "2" ]; then
+    head="$(fold_field 1 candidate)"
+    [ -n "$head" ] && { printf '%s\n' "$head"; return 0; }
+  fi
+  if [ ! -f "$dir/engine-head" ]; then
+    mkdir -p "$dir"
+    fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" >"$dir/engine-head" 2>/dev/null || true
+  fi
+  head="$(head -n 1 "$dir/engine-head" 2>/dev/null || true)"
+  printf '%s\n' "$head"
+}
+
+# The disposition of attempt `$1`, as a sentence — the vocabulary is the
+# folder's (`folded`, `nothing to join`, `tip unmoved`, `suite red`,
+# `conflict parked`, `cannot fold`), and only the last two carry a detail.
+fold_phrase() { # $1 = attempt
+  local d detail
+  d="$(fold_field "$1" disposition)"
+  case "$d" in
+    "")
+      printf 'no disposition recorded\n' ;;
+    "conflict parked")
+      detail="$(fold_field "$1" path)"
+      printf 'conflict parked on %s\n' "${detail:-<unknown path>}" ;;
+    "cannot fold")
+      detail="$(fold_field "$1" reason)"
+      printf 'cannot fold: %s\n' "${detail:-<no reason>}" ;;
+    *)
+      printf '%s\n' "$d" ;;
+  esac
+}
+
+# What the fold leaves the merge — the hold, or nothing. `folded`, `nothing to
+# join` and `tip unmoved` are not holds: the first two are a fold that ended
+# clean, and the third is answered by the retry's own note.
+fold_hold_note() {
+  local a
+  a="$(fold_receipt top)"
+  [ -n "$a" ] || return 0
+  case "$(fold_field "$a" disposition)" in
+    "suite red"|"conflict parked"|"cannot fold")
+      printf 'left open: publish fold — %s\n' "$(fold_phrase "$a")" ;;
+  esac
+}
+
+# ONE ATTEMPT of the fold. The bracket is `run_engine`'s, and only its: a
+# transient service, `--wait` for the code, `${PIPESTATUS[0]}` inside
+# `set +e`/`set -e` because `set -euo pipefail` would otherwise kill `do_boot`
+# on a folder that exits non-zero. Two things beside it are deliberately
+# ABSENT. No `phase_refresher`: it rewrites the page from `engine:phase` events
+# and would erase the deadman's `parked` the moment it wrote one. No
+# `ENGINE_DONE_MARKER` write: that file is the ENGINE's exit code, and
+# `engine_exit_code` would read the folder's on re-entry as an engine failure.
+publish_fold() { # $1 = attempt
+  local attempt="$1" dir code=0 page restore last reason
+  dir="$(fold_dir)"
+  # Before the bracket, because `tee -a` needs the directory to exist — and
+  # because every receipt the folder writes lands here, inside the evidence
+  # worktree, where `push_evidence` stages it without a list change.
+  mkdir -p "$dir"
+  FOLD_ATTEMPTS="$attempt"
+
+  set +e
+  fleet_systemd_run --user "--unit=fleet-fold-$RUN_N-$attempt" --pipe --wait --collect \
+    -p MemoryMax=40G -p MemorySwapMax=0 -p "WorkingDirectory=$TARGET_DIR" -- \
+    env -u CLAUDE_CONFIG_DIR \
+      "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
+      "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
+      "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
+      node "$ENGINE_REPO_DIR/fleet/publish-fold.mjs" \
+      --repo "$TARGET_DIR" --base "$BASE_SHA" --branch "$BRANCH" \
+      --run "$RUN_N" --run-dir "$(run_dir_path)" \
+      --evidence-dir "$EVIDENCE_DIR/$EVIDENCE_PATH" --attempt "$attempt" \
+    2>&1 | tee -a "$dir/publish-fold-$attempt.log" >>"$BOOT_LOG"
+  code=${PIPESTATUS[0]}
+  set -e
+  log "fold: attempt $attempt exited $code"
+  await_engine_inactive "fleet-fold-$RUN_N-$attempt" \
+    || fail "fold: fleet-fold-$RUN_N-$attempt.service still active after ${ENGINE_STOP_TIMEOUT}s"
+
+  # THE PAGE FIRST, then the exit code. A unit the deadman stopped exits
+  # non-zero exactly like a folder that crashed, and the two want opposite
+  # things: the crash rewinds the branch and goes on to the push, the deadman
+  # stops here. The page is what tells them apart, because the deadman wrote
+  # `parked` while the unit was still running.
+  page="$(read_status_field state)"
+  if [ "$page" = "parked" ]; then
+    log "fold: the page reads parked — the deadman stopped attempt $attempt"
+    # A half-written receipt is the folder's, not evidence: it dies with it.
+    rm -f "$dir/receipt.json.tmp"
+    collect_evidence
+    push_evidence "$RUN_ID: parked — deadman"
+    record_tags
+    exit 0
+  fi
+
+  # A folder that wrote its disposition and THEN died keeps its row: what it
+  # decided is what happened, whatever the exit code says afterwards.
+  if [ "$code" != "0" ] && [ -z "$(fold_field "$attempt" disposition)" ]; then
+    restore="$(fold_restore "$attempt")"
+    if [ -n "$restore" ]; then
+      fleet_git -C "$TARGET_DIR" update-ref "refs/heads/$BRANCH" "$restore" \
+        || log "fold: update-ref $BRANCH $restore was refused"
+    fi
+    last="$(tail -n 1 "$dir/publish-fold-$attempt.log" 2>/dev/null || true)"
+    reason="exit $code: $last"
+    fold_receipt_set "$attempt" "$restore" \
+      disposition "cannot fold" reason "$reason" candidate "$restore"
+    log "fold: attempt $attempt recorded no disposition — cannot fold ($reason)"
+  fi
+
+  FOLD_HOLD="$(fold_hold_note)"
+  [ -z "$FOLD_HOLD" ] || log "fold: $FOLD_HOLD"
+  return 0
+}
+
+# The push of the run's own branch, which the fold moved. A plain push while no
+# attempt has pushed anything, and a LEASE on the last head this script pushed
+# once one has — the fold rebases, so the second push is not a fast-forward,
+# and `--force` would overwrite whatever else reached the branch meanwhile
+# while `--force-with-lease` refuses and this run parks instead.
+push_head() {
+  local attempt lease
+  attempt="$(fold_receipt pushed)"
+  if [ -n "$attempt" ]; then
+    lease="$(fold_field "$attempt" pushedHead)"
+    log "fold: pushing $BRANCH over attempt $attempt's head $lease, under a lease"
+    fleet_git -C "$TARGET_DIR" push "--force-with-lease=$BRANCH:$lease" origin "$BRANCH" \
+      || fail "publish: push $BRANCH refused — the lease on $lease did not hold"
+  else
+    fleet_git -C "$TARGET_DIR" push origin "$BRANCH" || fail "publish: push $BRANCH"
+  fi
+  await_branch_visible
+  # What was pushed, recorded where the next attempt's lease will read it.
+  if [ -n "$BRANCH_HEAD" ]; then
+    attempt="$(fold_receipt highest)"
+    [ -n "$attempt" ] || attempt="${FOLD_ATTEMPTS:-1}"
+    fold_receipt_set "$attempt" "$BRANCH_HEAD" pushedHead "$BRANCH_HEAD"
+  fi
+}
+
 # --- publish -----------------------------------------------------------------
 
 plan_title() {
@@ -765,6 +1032,56 @@ plan_closes() {
   ' "$PLAN_FILE"
 }
 
+# The fold's section of the PR body, or nothing at all. It is the reader's only
+# account of what happened between the engine's commit and the head this PR
+# carries, so it appears whenever that account is not "it just folded": on any
+# disposition but a clean `folded` or `nothing to join`, on a `folded` that had
+# to dispatch a resolver, on a run that needed a second attempt, and on a merge
+# this script left open. A green run that folded with nothing to resolve says
+# nothing, because there is nothing a reader would do with it.
+fold_section() {
+  local a d n highest suite render=""
+  a="$(fold_receipt top)"
+  d=""
+  [ -n "$a" ] && d="$(fold_field "$a" disposition)"
+  case "$d" in
+    ""|folded|"nothing to join") : ;;
+    *) render=1 ;;
+  esac
+  if [ "$d" = "folded" ]; then
+    case "$(fold_field "$a" resolversDispatched)" in
+      ""|0) : ;;
+      *) render=1 ;;
+    esac
+  fi
+  highest="$(fold_receipt highest)"
+  [ -n "$highest" ] && [ "$highest" != "1" ] && render=1
+  case "$MERGE_NOTE" in "left open:"*) render=1 ;; esac
+  [ -n "$render" ] || return 0
+
+  printf '## Publish fold\n\n'
+  n=1
+  while [ -n "$highest" ] && [ "$n" -le "$highest" ]; do
+    if [ -n "$(fold_field "$n" disposition)$(fold_field "$n" candidate)$(fold_field "$n" tip)" ]; then
+      printf -- '- attempt %s: %s\n' "$n" "$(fold_phrase "$n")"
+    fi
+    n=$(( n + 1 ))
+  done
+  case "$MERGE_NOTE" in "left open:"*) printf -- '- merge: %s\n' "$MERGE_NOTE" ;; esac
+  printf '\n'
+  # The suite the fold ran on the folded head is the whole of a `suite red`:
+  # without its tail the section says a run is held and not by what.
+  suite="$(fold_dir)/suite-$a.txt"
+  if [ "$d" = "suite red" ] && [ -f "$suite" ]; then
+    printf '```\n'
+    tail -n 20 "$suite"
+    printf '```\n\n'
+  fi
+  printf 'https://github.com/%s/tree/ultra/evidence/%s/%s/publish-fold/receipt.json\n\n' \
+    "$TARGET_REPO" "$RUN_ID" "$EVIDENCE_PATH"
+  return 0
+}
+
 render_card() { # $1 = outcome; prints the body file's path
   local body dest verdict receipt
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
@@ -789,6 +1106,10 @@ render_card() { # $1 = outcome; prints the body file's path
     else
       printf 'No gate receipt was produced.\n\n'
     fi
+    # What happened between the engine's commit and the head this PR carries,
+    # when anything did — above the evidence listing, because a reader who is
+    # about to be told the merge is held wants the reason first.
+    fold_section
     # Both records, on the target, spelled as a browser can follow them: the
     # receipts this run wrote, and the plan it was given. The tags, not the
     # branches — a branch moves on, a tag is where this run's reader lands.
@@ -852,10 +1173,11 @@ await_branch_visible() {
 # decides for itself which token to present, and the aggregate host proxies
 # only `/repos/<owner>/<repo>/…` — `/user`, which `gh` likes to ask first,
 # answers 403 from the edge. One POST, one JSON answer, nothing to negotiate.
+# The push that used to open this function is `push_head`, which `do_boot` calls
+# before it: the fold moved the branch, so what is pushed and how (plain, or
+# under a lease) is the fold's business, and what is left here is the POST.
 publish() { # $1 = outcome (gate-green|parked)
   local body title heading base draft payload answer code reply
-  fleet_git -C "$TARGET_DIR" push origin "$BRANCH" || fail "publish: push $BRANCH"
-  await_branch_visible
   body="$(render_card "$1")"
   heading="$(plan_title)"
   [ -n "$heading" ] || heading="$RUN_ID"
@@ -884,6 +1206,24 @@ publish() { # $1 = outcome (gate-green|parked)
   [ -n "$PR_URL" ] || fail "publish: POST /repos/$TARGET_REPO/pulls answered $code with no html_url: $(printf '%s' "$reply" | tail -c 2000)"
   log "publish: $PR_URL (base $base, draft $draft)"
   log "publish: author ${PR_AUTHOR:-<unknown>}"
+}
+
+# A disposition that lands AFTER the PR was opened — a second attempt's, or the
+# note a PR that answered 405 twice earns — reaches the reader only if the body
+# is rewritten, so it is: one PATCH with the re-rendered card, sent after the
+# merge that produced the note, never before.
+patch_pr_body() { # $1 = outcome
+  local number body answer code
+  [ -n "$PR_URL" ] || return 0
+  number="$(pr_number)"
+  [ -n "$number" ] || { log "publish: no PR number in $PR_URL — the body stands"; return 0; }
+  body="$(render_card "$1")"
+  answer="$(fleet_curl -sS -X PATCH "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number" \
+    -H 'content-type: application/json' \
+    -d "{\"body\":\"$(json_escape "$(cat "$body")")\"}" -w '\n%{http_code}' 2>/dev/null || true)"
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  log "publish: PATCH /repos/$TARGET_REPO/pulls/$number answered ${code:-<no answer>}"
+  return 0
 }
 
 # --- merge -------------------------------------------------------------------
@@ -935,8 +1275,46 @@ print("green")
 '
 }
 
+# Whether GitHub has an opinion about this PR's mergeability yet. `mergeable`
+# is null while the index recomputes it after a push, and a merge PUT made in
+# that window is the 405 this poll exists to avoid. A timeout PUTs anyway: a
+# refusal is an answer this script records, and never asking is not.
+await_mergeable() { # $1 = PR number
+  local attempts n=0 answer code doc
+  attempts="$(poll_attempts "$MERGE_CHECK_WAIT")"
+  while [ "$n" -lt "$attempts" ]; do
+    answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$1" \
+      -w '\n%{http_code}' 2>/dev/null || true)"
+    code="$(printf '%s' "$answer" | tail -n 1)"
+    doc="$(printf '%s' "$answer" | sed '$d')"
+    case "$code" in
+      2[0-9][0-9])
+        if [ "$(printf '%s' "$doc" | mergeable_field)" = answered ]; then
+          log "merge: GitHub has recomputed the mergeability of $PR_URL"
+          return 0
+        fi ;;
+    esac
+    n=$(( n + 1 ))
+    sleep "$POLL_SECONDS"
+  done
+  log "merge: GitHub still has no mergeability for $PR_URL after ${MERGE_CHECK_WAIT}s — asking anyway"
+  return 0
+}
+
+mergeable_field() { # the PR document on stdin -> `answered` | `null`
+  python3 -c '
+import json, sys
+try:
+    doc = json.load(sys.stdin)
+except Exception:
+    doc = {}
+value = doc.get("mergeable") if isinstance(doc, dict) else None
+print("null" if value is None else "answered")
+'
+}
+
 merge_pr() {
-  local head number attempts grace n=1 t0 answer code body verdict payload heading
+  local head number attempts grace n=1 t0 answer code body verdict payload heading message
   MERGE_NOTE=""
   # Nothing to merge without a PR, and a re-entry that already recorded a merge
   # sha has one behind it — the same record that makes `publish` idempotent.
@@ -949,6 +1327,15 @@ merge_pr() {
   if [ "$HOLD" = "1" ]; then
     log "merge: hold=1 — leaving $PR_URL open"
     MERGE_NOTE="left open: hold=1"
+    return 0
+  fi
+  # A fold that did not end clean is a hold, and exactly the same hold as
+  # `hold=1`: no check runs are read (they are the checks of a head this run
+  # will not merge) and no PUT is issued. `hold=1` is tested first, so an
+  # operator's hold keeps its own note whatever the fold left.
+  if [ -n "$FOLD_HOLD" ]; then
+    log "merge: $FOLD_HOLD"
+    MERGE_NOTE="$FOLD_HOLD"
     return 0
   fi
   # The head `await_branch_visible` already read, so the checks asked about are
@@ -1000,13 +1387,25 @@ merge_pr() {
       return 0 ;;
   esac
 
+  # THE SECOND CALL waits for GitHub before it asks again. A 405 whose body
+  # says the PR is not mergeable is an index that has not caught up with the
+  # head just pushed: `mergeable` reads null while GitHub recomputes it, and a
+  # PUT made in that window is refused for a reason that is gone a moment
+  # later. The first call makes no such read — nothing has moved under it.
+  if [ "$MERGE_RETRY" = "1" ]; then await_mergeable "$number"; fi
+
   # The plan's H1 as the commit title, because the fold commits under it are
   # titled from the same line; `sha` pins the merge to the head whose checks
   # were read, so a push that landed during the poll is refused rather than
-  # merged unchecked.
+  # merged unchecked. The BODY carries the two coordinates that make a squashed
+  # commit on the base traceable back to the run and the plan that produced it —
+  # the branches are transient, the tags outlive them, and `git log` on the base
+  # is where a reader starts.
   heading="$(plan_title)"
   [ -n "$heading" ] || heading="$RUN_ID"
-  payload="{\"merge_method\":\"squash\",\"commit_title\":\"$(json_escape "$heading")\",\"sha\":\"$(json_escape "$head")\"}"
+  message="Fleet-Run: $RUN_N
+Plan-Tag: ultra/plan/$RUN_ID"
+  payload="{\"merge_method\":\"squash\",\"commit_title\":\"$(json_escape "$heading")\",\"commit_message\":\"$(json_escape "$message")\",\"sha\":\"$(json_escape "$head")\"}"
   answer="$(fleet_curl -sS -X PUT "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number/merge" \
     -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
   code="$(printf '%s' "$answer" | tail -n 1)"
@@ -1014,9 +1413,28 @@ merge_pr() {
   case "$code" in
     2[0-9][0-9]) : ;;
     *)
-      # One PUT, ever. GitHub refuses a merge for reasons that do not change on
-      # a retry — a protected base, a conflict, a review it wants — and each
-      # retry is another chance to merge something a human meant to look at.
+      # ONE PUT PER FOLD. GitHub refuses a merge for reasons that do not change
+      # on a retry — a protected base, a conflict, a review it wants — and each
+      # blind retry is another chance to merge something a human meant to look
+      # at. The single exception is the one refusal that says so in the answer:
+      # a 405 whose message reads `not mergeable` is the base having moved, and
+      # the answer to that is not another PUT but another FOLD. `do_boot` runs
+      # it; this function only raises the signal, because every path here
+      # returns 0 under `set -e` and a return code could not carry it.
+      if [ "$code" = 405 ] && [ "$MERGE_RETRY" = "1" ]; then
+        log "merge: PUT answered 405 again after a second fold — leaving $PR_URL open"
+        MERGE_NOTE="left open: merge PUT answered 405 twice"
+        return 0
+      fi
+      if [ "$code" = 405 ]; then
+        case "$body" in
+          *"not mergeable"*)
+            log "merge: PUT answered 405 — GitHub does not call $PR_URL mergeable; folding again"
+            MERGE_RETRY=1
+            MERGE_NOTE="left open: merge PUT answered 405"
+            return 0 ;;
+        esac
+      fi
       log "merge: PUT answered $code — leaving $PR_URL open"
       MERGE_NOTE="left open: merge PUT answered $code"
       return 0 ;;
@@ -1195,7 +1613,8 @@ $(engine_tail)"
     outcome="parked"
   fi
   log "outcome: $outcome (verdict=${verdict:-none}$approval)"
-  await_engine_inactive || fail "engine: fleet-engine-$RUN_N.service still active after ${ENGINE_STOP_TIMEOUT}s"
+  await_engine_inactive "fleet-engine-$RUN_N" \
+    || fail "engine: fleet-engine-$RUN_N.service still active after ${ENGINE_STOP_TIMEOUT}s"
 
   # run-69: a parked run whose every task was blocked has a branch equal to
   # BASE, and GitHub refuses a PR with no commits. Nothing to publish is a
@@ -1216,11 +1635,23 @@ $(engine_tail)"
     exit 0
   fi
 
+  # THE PUBLISH FOLD, attempt 1. Every outcome with commits ahead of base folds
+  # — a parked run's draft is read by a human who wants it rebased on the base
+  # as it is now no less than a green one's. The page says so first: the phase
+  # is a change inside the `running` state the engine's own commit already made,
+  # which is why no evidence commit goes with it. A re-entry that skipped the
+  # engine is not in that state and does not claim to be.
+  if [ "$STATE" = "running" ]; then write_status running "publish fold"; fi
+  publish_fold 1
+
   # The receipts are committed BEFORE the push, so a publish that dies leaves
   # its verdict on the evidence branch and not only on this box.
   write_status publishing "$outcome — pushing $BRANCH"
   collect_evidence
   push_evidence "$RUN_ID: $outcome receipts"
+
+  # The head the fold left, pushed as the fold's own receipt says to push it.
+  push_head
 
   # RE-ENTRY, GUARD 2. The PR is the one step here that is not idempotent by
   # construction, so it is made idempotent by its own record: a status page that
@@ -1239,14 +1670,46 @@ $(engine_tail)"
     merge_pr
   fi
 
+  # THE ONE RETRY, tested exactly once. GitHub refused the merge because the
+  # base moved under the head this run pushed, so the answer is a second fold
+  # onto the base as it is now, a leased push of what it produces and one more
+  # PUT — and nothing else in this script loops on it. A second attempt that
+  # moved nothing has no new head to offer and no second PUT to make.
+  local fold_tail=""
+  if [ "$MERGE_RETRY" = "1" ]; then
+    write_status running "publish fold (attempt 2)"
+    collect_evidence
+    push_evidence "$RUN_ID: publish fold (attempt 2)"
+    publish_fold 2
+    if [ "$(fold_field 2 disposition)" = "tip unmoved" ]; then
+      log "fold: attempt 2 moved the tip nowhere — there is nothing new to merge"
+      MERGE_NOTE="left open: merge PUT answered 405 twice"
+      write_status publishing "$PR_URL — the fold moved nothing"
+      collect_evidence
+      push_evidence "$RUN_ID: publish fold (attempt 2) — tip unmoved"
+    else
+      push_head
+      write_status publishing "$PR_URL — awaiting checks on the folded head"
+      collect_evidence
+      push_evidence "$RUN_ID: publish fold (attempt 2) receipts"
+      merge_pr
+    fi
+    # What attempt 2 decided landed after the POST, so the body a reader opens
+    # is rewritten with it before the run is called done.
+    patch_pr_body "$outcome"
+    if [ -n "$(fold_receipt top)" ]; then
+      fold_tail=" — publish fold: $(fold_phrase "$(fold_receipt top)")"
+    fi
+  fi
+
   if [ "$outcome" = "gate-green" ]; then
     # The PR first, then WHAT greened it — a reader of the branch can tell a
     # PASS from a NEEDS_ACK the two-move rule signed off without opening the
     # gate receipt — and last what became of it at the merge button.
-    write_status done "$PR_URL — $approved_how${MERGE_NOTE:+ — $MERGE_NOTE}"
+    write_status done "$PR_URL — $approved_how$fold_tail${MERGE_NOTE:+ — $MERGE_NOTE}"
   else
     ERROR="parked: gate verdict ${verdict:-none}"
-    write_status parked "$PR_URL"
+    write_status parked "$PR_URL$fold_tail"
   fi
   collect_evidence
   push_evidence "$RUN_ID: $outcome — $PR_URL"
@@ -1273,13 +1736,25 @@ do_deadman() {
       log "deadman: already $state — nothing to do"
       exit 0 ;;
   esac
+  # A run parked during the publish fold already has its PR: the page this one
+  # overwrites carries it, and a `parked` page that dropped those three cells
+  # would tell the janitor and the operator that a PR which exists does not.
+  PR_URL="$(read_status_field pr)"
+  PR_AUTHOR="$(read_status_field prAuthor)"
+  MERGED_SHA="$(read_status_field merged)"
   ERROR="deadman: parked by hand without done"
   write_status parked "deadman"
   notify "run-${RUN_N:-?} parked" "$ERROR"
+  # Every model this run may have running, not only the engine's: the folder
+  # runs as its own unit, and a deadman that stopped the engine and left a
+  # folder rebasing would leave a model working under a `parked` page.
   if [ -n "$RUN_N" ]; then
-    case "$(fleet_systemctl --user is-active "fleet-engine-$RUN_N.service" 2>&1 || true)" in
-      active*) fleet_systemctl --user stop "fleet-engine-$RUN_N.service" || true ;;
-    esac
+    local unit
+    for unit in "fleet-engine-$RUN_N" "fleet-fold-$RUN_N-1" "fleet-fold-$RUN_N-2"; do
+      case "$(fleet_systemctl --user is-active "$unit.service" 2>&1 || true)" in
+        active*) fleet_systemctl --user stop "$unit.service" || true ;;
+      esac
+    done
   fi
   exit 0
 }

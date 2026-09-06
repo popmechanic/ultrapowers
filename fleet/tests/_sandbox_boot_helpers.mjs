@@ -63,6 +63,39 @@ export const EVIDENCE_LINK = `https://github.com/${TARGET}/tree/ultra/evidence/r
 export const PLAN_LINK = `https://github.com/${TARGET}/blob/ultra/plan/run-7/${PLAN_PATH}`
 export const PLAN_ROW = `| plan | \`${PLAN_PATH}\` at \`${PLAN_SHA}\` |`
 
+// ── the publish fold's literals (run-32 task 4, #715) ────────────────────────
+//
+// The folder is a SIBLING task's program. This rig never runs it: the
+// `fleet-fold-*` unit is answered by the `systemd-run` stub, which writes what
+// the folder would have written — `engine-head`, `publish-fold/receipt.json`,
+// a suite file — and exits the code the case asked for. Everything below is
+// what that stub writes by default, named so a case can assert on it.
+
+/** The head the folder records as the engine's before it touches the branch.
+ *  Equal to what the `git` stub answers `rev-parse <branch>` with, because the
+ *  folder reads it the same way — and so the boot script's own fallback, when
+ *  the folder died before writing `engine-head`, lands on the same sha. */
+export const FOLD_ENGINE_HEAD = HEAD_SHA
+/** The folded head attempt 1 leaves on the branch — NOT the engine's, so a
+ *  case can tell a rewind from a fold. */
+export const FOLD_CANDIDATE = 'a7'.repeat(20)
+/** The folded head attempt 2 leaves. */
+export const FOLD_CANDIDATE_2 = 'b8'.repeat(20)
+/** The head `rev-parse` answers once attempt 2 has run, when a case sets
+ *  `STUB_HEAD_SHA_2` — the second push's. */
+export const HEAD_SHA_2 = FOLD_CANDIDATE_2
+/** The one line the fold stub prints, which is therefore the last line of
+ *  `publish-fold/publish-fold-<attempt>.log`. */
+export const FOLD_STUB_LINE = 'fold stub speaking'
+/** What the stub writes to `publish-fold/suite-<attempt>.txt` on `suite red`. */
+export const FOLD_SUITE_TEXT = 'FAIL fleet/tests/test_fold.py::test_join\n1 failed, 12 passed in 3.10s'
+/** Its last line — the one the PR body has to carry. */
+export const FOLD_SUITE_LAST = '1 failed, 12 passed in 3.10s'
+/** Where the fold's receipts live inside the evidence worktree. */
+export const FOLD_PATH = `${RUN_PATH}/publish-fold`
+/** The link the `## Publish fold` section points a reader at. */
+export const FOLD_RECEIPT_LINK = `${EVIDENCE_LINK}publish-fold/receipt.json`
+
 /**
  * M4's forbidden names, assembled rather than written, because the same
  * prohibition covers this exam's own files: no source under `fleet/` may
@@ -101,10 +134,11 @@ export const STUBS = {
   // `-w '\\n%{http_code}'` makes real curl print.
   curl: `
 argv "curl" "$@"
-url=""; payload=""; prev=""
+url=""; payload=""; prev=""; method=GET
 for a in "$@"; do
   case "$a" in https://*) url="$a" ;; esac
   [ "$prev" = "-d" ] && payload="$a"
+  [ "$prev" = "-X" ] && method="$a"
   prev="$a"
 done
 bump() {
@@ -134,10 +168,15 @@ case "$url" in
     # STUB_BRANCH_404 reads (forever under STUB_BRANCH_NEVER), then the branch
     # document — its own \`commit.sha\` first, the nested tree sha after it.
     n=$(bump branches); say "curl branches $n"
+    # Once the second fold has run, the branch carries the head the git stub
+    # now answers \`rev-parse\` with — otherwise this read would never agree
+    # with the boot's and the second publish would time out.
+    head="$STUB_HEAD_SHA"
+    [ -f "$FLEET_HOME/stub/fold-2" ] && head="\${STUB_HEAD_SHA_2:-$STUB_HEAD_SHA}"
     if [ -n "\${STUB_BRANCH_NEVER:-}" ] || [ "$n" -le "\${STUB_BRANCH_404:-0}" ]; then
       printf '{"message":"Branch not found"}\\n404\\n'
     else
-      printf '{"name":"ultra/integration-run-7","commit":{"sha":"%s","commit":{"tree":{"sha":"%s"}}}}\\n200\\n' "$STUB_HEAD_SHA" "\${STUB_TREE_SHA:-tree}"
+      printf '{"name":"ultra/integration-run-7","commit":{"sha":"%s","commit":{"tree":{"sha":"%s"}}}}\\n200\\n' "$head" "\${STUB_TREE_SHA:-tree}"
     fi ;;
   *github.int.exe.xyz/api/v3/repos/*/pulls)
     say "curl pr create"; printf '%s\\n' "$payload" >>"$FLEET_HOME/pr.log"
@@ -156,9 +195,38 @@ case "$url" in
     [ -n "\${STUB_CHECKS:-}" ] && body="$STUB_CHECKS"
     printf '%s\\n%s\\n' "$body" "\${STUB_CHECKS_CODE:-200}" ;;
   *github.int.exe.xyz/api/v3/repos/*/pulls/*/merge)
+    # The say line is EXACTLY \`curl pr merge\`, with the count kept in the
+    # counter file: a sim reads this line by equality to find the PUT in the
+    # stream. STUB_MERGE_CODE answers the FIRST PUT (or, as a list in order,
+    # "405 200", every PUT); STUB_MERGE_CODE_2 answers the SECOND and defaults
+    # to 200 — the retry a 405 buys is the one that merges unless a case says
+    # otherwise, so a refusal knob for the first PUT never leaks into the second.
+    n=$(bump merge)
     say "curl pr merge"; printf '%s\\n' "$payload" >>"$FLEET_HOME/merge.log"
-    printf '{"sha":"%s","merged":true,"message":"Pull Request successfully merged"}\\n%s\\n' \\
-      "$STUB_MERGE_SHA" "\${STUB_MERGE_CODE:-200}" ;;
+    code=""; i=0
+    for c in \${STUB_MERGE_CODE:-200}; do i=$((i + 1)); [ "$i" -le "$n" ] && code="$c"; done
+    [ -n "$code" ] || code=200
+    msg="\${STUB_MERGE_MESSAGE:-Pull Request successfully merged}"
+    if [ "$n" -ge 2 ]; then
+      code="\${STUB_MERGE_CODE_2:-200}"
+      msg="\${STUB_MERGE_MESSAGE_2:-$msg}"
+    fi
+    printf '{"sha":"%s","merged":true,"message":"%s"}\\n%s\\n' "$STUB_MERGE_SHA" "$msg" "$code" ;;
+  *github.int.exe.xyz/api/v3/repos/*/pulls/*)
+    # The PR document itself: read (GET) for its \`mergeable\`, which GitHub
+    # answers null while it recomputes after a push, and rewritten (PATCH) when
+    # a disposition lands after the POST. STUB_MERGEABLE_NULL is how many reads
+    # answer null before the answer arrives.
+    if [ "$method" = PATCH ]; then
+      say "curl pr patch"; printf '%s\\n' "$payload" >>"$FLEET_HOME/patch.log"
+      printf '%s\\n%s\\n' "$STUB_PR_BODY" "\${STUB_PATCH_CODE:-200}"
+    else
+      n=$(bump mergeable); say "curl pr read $n"
+      m=true
+      [ "$n" -le "\${STUB_MERGEABLE_NULL:-0}" ] && m=null
+      printf '{"number":1,"state":"open","mergeable":%s,"html_url":"%s"}\\n%s\\n' \\
+        "$m" "${PR_URL}" "\${STUB_PR_READ_CODE:-200}"
+    fi ;;
   *notify.int.exe.xyz*)
     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
@@ -198,7 +266,12 @@ case "$verb" in
     # plan sha — i.e. the launcher and the VM agree.
     case "$a1" in
       FETCH_HEAD) printf '%s\\n' "\${STUB_FETCH_HEAD:-$STUB_PLAN_SHA}" ;;
-      *) printf '%s\\n' "$STUB_HEAD_SHA" ;;
+      *)
+        # The fold moves the branch, so a case that wants the second attempt's
+        # head to differ sets STUB_HEAD_SHA_2; by default nothing moves and
+        # every read answers the same sha it always did.
+        if [ -f "$FLEET_HOME/stub/fold-2" ]; then printf '%s\\n' "\${STUB_HEAD_SHA_2:-$STUB_HEAD_SHA}"
+        else printf '%s\\n' "$STUB_HEAD_SHA"; fi ;;
     esac
     exit 0 ;;
   rev-list) if [ -n "\${STUB_NO_COMMITS:-}" ]; then echo 0; else echo 3; fi; exit 0 ;;
@@ -259,6 +332,19 @@ case "$verb" in
   push)
     case "$*" in
       *evidence-run-7*) [ -n "\${STUB_EVIDENCE_PUSH_FAIL:-}" ] && exit 1 ;;
+      # A refused push of the run's own branch. STUB_INTEGRATION_PUSH_FAIL
+      # refuses every one of them; STUB_LEASE_FAIL refuses only the LEASED
+      # push, which is the remote having moved under the head this run pushed.
+      *integration-run-7*)
+        [ -n "\${STUB_INTEGRATION_PUSH_FAIL:-}" ] && {
+          printf 'error: failed to push some refs\\n' >&2; exit 1
+        }
+        case "$*" in
+          *--force-with-lease*)
+            [ -n "\${STUB_LEASE_FAIL:-}" ] && {
+              printf 'stale info: refusing to update ultra/integration-run-7\\n' >&2; exit 1
+            } ;;
+        esac ;;
     esac ;;
 esac
 exit 0
@@ -276,6 +362,101 @@ unit=""
 for a in "$@"; do case "$a" in --unit=*) unit="\${a#--unit=}" ;; esac; done
 case "$unit" in
   fleet-status) say "systemd-run status"; exit 0 ;;
+  fleet-fold-*)
+    # THE FOLDER'S UNIT, and it comes first: every other unit here is the
+    # engine, so a fold unit that fell through would be answered as one. The
+    # folder itself belongs to a sibling task and is never run — this writes
+    # what it would have left in the evidence worktree and exits.
+    attempt="\${unit##*-}"
+    fold="$FLEET_HOME/evidence/.ultrapowers/runs/7/publish-fold"
+    # The boot script mkdir's this before the unit starts, because its \`tee\`
+    # needs it; a case reads this line to prove it did.
+    [ -d "$fold" ] && say "fold dir present $attempt"
+    # The line NAMES ITS UNIT: a sim finds a fold's start in the stream by the
+    # unit name, which is how it orders the page write, the unit and its await.
+    say "systemd-run fold $unit"
+    # Its OWN env file, never systemd-run.env: that one is the engine's, and a
+    # case reads it to prove the engine ran under an envelope with no token.
+    env >"$FLEET_HOME/fold.env"
+    mkdir -p "$fold" "$FLEET_HOME/stub"
+    [ "$attempt" = 2 ] && : >"$FLEET_HOME/stub/fold-2"
+    if [ -z "\${STUB_FOLD_NO_HEAD:-}\${STUB_FOLD_NO_ENGINE_HEAD:-}" ]; then
+      printf '%s\\n' "\${STUB_FOLD_ENGINE_HEAD:-$STUB_HEAD_SHA}" >"$fold/engine-head"
+    fi
+    if [ "$attempt" = 2 ]; then
+      code="\${STUB_FOLD_CODE_2:-0}"
+      dis="\${STUB_FOLD_DISPOSITION_2:-\${STUB_FOLD_DISPOSITION:-folded}}"
+      cand="\${STUB_FOLD_CANDIDATE_2:-}"
+      row=1
+      [ "$code" != 0 ] && [ -z "\${STUB_FOLD_DISPOSITION_2:-}" ] && row=""
+    else
+      code="\${STUB_FOLD_CODE:-0}"
+      dis="\${STUB_FOLD_DISPOSITION:-folded}"
+      cand="\${STUB_FOLD_CANDIDATE:-}"
+      row=1
+      # A folder that died wrote no disposition, UNLESS the case says it wrote
+      # one and then died — which is the other half of that rule.
+      [ "$code" != 0 ] && [ -z "\${STUB_FOLD_DISPOSITION:-}" ] && row=""
+    fi
+    if [ -n "\${STUB_FOLD_BAD_RECEIPT:-}\${STUB_FOLD_RECEIPT_BAD:-}" ]; then
+      printf '{not json\\n' >"$fold/receipt.json"
+    elif [ -n "$row" ]; then
+      FOLD_N="$attempt" FOLD_DIS="$dis" FOLD_CAND="$cand" \\
+        FOLD_PATH="\${STUB_FOLD_PATH:-}" FOLD_REASON="\${STUB_FOLD_REASON:-}" \\
+        FOLD_RESOLVERS="\${STUB_FOLD_RESOLVERS:-0}" \\
+        FOLD_JOINED="\${STUB_FOLD_PATHS_JOINED:-0}" \\
+        FOLD_HEAD="\${STUB_FOLD_ENGINE_HEAD:-$STUB_HEAD_SHA}" \\
+        python3 - "$fold/receipt.json" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+try:
+    doc = json.load(open(path))
+    if not isinstance(doc, dict):
+        raise ValueError("not an object")
+except Exception:
+    doc = {}
+doc.setdefault("engineHead", os.environ["FOLD_HEAD"])
+if not isinstance(doc.get("attempts"), dict):
+    doc["attempts"] = {}
+n = os.environ["FOLD_N"]
+row = doc["attempts"].get(n) or {}
+row["tip"] = os.environ["FOLD_HEAD"]
+row["disposition"] = os.environ["FOLD_DIS"]
+row["resolversDispatched"] = int(os.environ["FOLD_RESOLVERS"] or 0)
+row["pathsJoined"] = int(os.environ["FOLD_JOINED"] or 0)
+if os.environ["FOLD_CAND"]:
+    row["candidate"] = os.environ["FOLD_CAND"]
+if os.environ["FOLD_PATH"]:
+    row["path"] = os.environ["FOLD_PATH"]
+if os.environ["FOLD_REASON"]:
+    row["reason"] = os.environ["FOLD_REASON"]
+doc["attempts"][n] = row
+tmp = path + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(doc, fh, indent=2)
+    fh.write("\\n")
+os.replace(tmp, path)
+PY
+    fi
+    [ "$dis" = "suite red" ] && printf '%s\\n' "\${STUB_FOLD_SUITE:-}" >"$fold/suite-$attempt.txt"
+    if [ -n "\${STUB_FOLD_PARK:-}" ]; then
+      # THE DEADMAN, as it is seen from inside the unit: the page goes to
+      # \`parked\` while the fold is still running, and the unit is stopped —
+      # which from the boot script's side is a non-zero exit with a parked page
+      # in front of it.
+      mkdir -p "$FLEET_HOME/www"
+      printf '{"run":"7","state":"parked","phase":"deadman","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-7","vm":"%s","startedAt":"2026-09-06T00:00:00Z","updatedAt":"2026-09-06T00:00:01Z","error":"deadman: parked by hand without done"}\\n' \\
+        "$STUB_VM_NAME" >"$FLEET_HOME/www/status.json"
+      # The page only — NO \`status:\` line in the boot log. That log is the boot
+      # script's own voice, and a sim reads it to prove the script wrote nothing
+      # after the deadman's page; a line forged here would read as its writing.
+      printf '%s\\n' "$STUB_FOLD_LINE"
+      exit "\${STUB_FOLD_PARK_CODE:-143}"
+    fi
+    # One line on stdout: the boot script tees it into
+    # publish-fold-<attempt>.log, where it is the last line a crash row quotes.
+    printf '%s\\n' "$STUB_FOLD_LINE"
+    exit "$code" ;;
 esac
 env >"$FLEET_HOME/systemd-run.env"
 say "systemd-run engine"
@@ -301,6 +482,7 @@ if [ "$2" = "is-active" ]; then
   case "$3" in
     fleet-status.service) printf '%s\\n' "\${STUB_STATUS_ACTIVE:-inactive}" ;;
     fleet-engine-*) printf '%s\\n' "\${STUB_ENGINE_ACTIVE:-inactive}" ;;
+    fleet-fold-*) printf '%s\\n' "\${STUB_FOLD_ACTIVE:-inactive}" ;;
     *) printf 'inactive\\n' ;;
   esac
 fi
@@ -362,6 +544,10 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true 
   const engine = path.join(home, 'engines', ENGINE_SHA, 'fleet')
   fs.mkdirSync(engine, { recursive: true })
   fs.writeFileSync(path.join(engine, 'run-main.mjs'), '')
+  // The folder's entrypoint sits beside the engine's in the same checkout —
+  // never executed here (the `fleet-fold-*` unit is answered by the
+  // `systemd-run` stub), present so the path the boot script names is real.
+  fs.writeFileSync(path.join(engine, 'publish-fold.mjs'), '')
   fs.writeFileSync(path.join(engine, 'package.json'), packageJson)
   if (nodeModules) fs.mkdirSync(path.join(engine, 'node_modules'))
   return { home, bin }
@@ -389,6 +575,13 @@ export function boot(ctx, args = ['boot'], env = {}) {
       STUB_PLAN_SHA: PLAN_SHA,
       STUB_HEAD_SHA: HEAD_SHA,
       STUB_MERGE_SHA: MERGE_SHA,
+      // The fold stub's defaults: a clean fold that moves the branch to a head
+      // of its own, one line of output, and the suite text a `suite red` case
+      // gets without asking for one.
+      STUB_FOLD_CANDIDATE: FOLD_CANDIDATE,
+      STUB_FOLD_CANDIDATE_2: FOLD_CANDIDATE_2,
+      STUB_FOLD_LINE: FOLD_STUB_LINE,
+      STUB_FOLD_SUITE: FOLD_SUITE_TEXT,
       ...env,
     },
     timeout: 60000,
@@ -437,6 +630,43 @@ export const mergeArgv = (ctx) => argvLines(ctx, 'curl').find((a) => a.some((s) 
 export const checkReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl check-runs')).length
 /** How many times Reflection's /integrations was read. */
 export const integrationsReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length
+
+// ── reading the publish fold ─────────────────────────────────────────────────
+
+/** The fold's directory inside the evidence worktree. */
+export const foldDir = (ctx) => path.join(ctx.home, 'evidence', FOLD_PATH)
+/** One of the fold's files, or '' when the run wrote none. */
+export const foldFile = (ctx, name) => {
+  const f = path.join(foldDir(ctx), name)
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
+}
+/** The fold receipt as this run left it, or null when there is none. */
+export const foldReceipt = (ctx) => {
+  const raw = foldFile(ctx, 'receipt.json')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+/** One attempt's row, `{}` when the receipt names none. */
+export const foldAttempt = (ctx, attempt = 1) => (foldReceipt(ctx)?.attempts || {})[String(attempt)] || {}
+/** Every `fleet-fold-*` unit this run started, in order. */
+export const foldUnits = (ctx) => unitsRun(ctx).filter((u) => u && u.startsWith('fleet-fold-'))
+/** The `systemd-run` argv of one fold attempt, or undefined. */
+export const foldArgv = (ctx, attempt = 1) =>
+  argvLines(ctx, 'systemd-run').find((a) => a.includes(`--unit=fleet-fold-7-${attempt}`))
+/** The PR body PATCHes the script sent, as parsed payloads. */
+export const patches = (ctx) => lines(readLog(ctx, 'patch.log')).map((l) => JSON.parse(l))
+/** How many times the PR document was read for its `mergeable`. */
+export const mergeableReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl pr read')).length
+/** Every `git update-ref` the script made. */
+export const updateRefs = (ctx) => gitLog(ctx).filter((a) => verbOf(a) === 'update-ref')
+/** Every push that carried a lease, and the lease each one asserted. */
+export const leasePushes = (ctx) =>
+  gitLog(ctx).filter((a) => a.some((s) => s.startsWith('--force-with-lease=')))
+export const leaseOf = (a) => a.find((s) => s.startsWith('--force-with-lease='))?.slice(19)
 
 // ── reading the git log ──────────────────────────────────────────────────────
 

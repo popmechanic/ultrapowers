@@ -18,7 +18,8 @@ The setup script installs the toolchain, an immutable bootstrap and the run's un
 engine at `engine=` into a content-addressed directory, and execs that checkout's
 `fleet/sandbox-boot.sh`. The boot script clones the target at `base=`, runs the engine as a transient
 user service with a memory cap, serves a status page, commits its evidence to the TARGET repository on
-`ultra/evidence-run-N` at every transition, and — only when there is something to publish — pushes
+`ultra/evidence-run-N` at every transition, and — only when there is something to publish — folds the
+target's moved tip into the run's branch in a second transient unit, then pushes
 `ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human
 gate: the target's one integration rides the VM for the run's whole life, and there is no grant step.
 There is no image to keep fresh, no state repository, no orchestrator, no control VM, and no token on
@@ -44,6 +45,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
+    The publish fold writes its own `publish-fold/` receipts directory beside them, holding
+    `receipt.json` (the fold's record: `{ engineHead, attempts: { "1": { tip, candidate, pushedHead,
+    disposition, reason, path, pathsJoined, resolversDispatched, suite } } }`), `engine-head`,
+    `main.patch`, `run.patch`, `frontier/wave-<attempt>/`, `resolver-brief-<i>-<attempt>.txt`,
+    `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
     Committed from a detached worktree at every transition; append-only paths, `pull --rebase` and
     retry on non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
@@ -63,7 +69,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
   if it is absent or malformed. Nobody rewrites it.
-- **Launch order (launcher):** validate `--target`/`--base`/plan → read the pool
+- **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
+  of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
+  is a shallow launch clone, whose history cannot answer that question → read the pool
   (`ssh exe.dev "billing plan --json"`) and refuse a run larger than it → run the janitor
   (`fleet/janitor.mjs`, the reap) → `git ls-remote` the target's
   `ultra/*-run-*` branches and `ultra/{plan,evidence}/run-*` tags for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
@@ -144,11 +152,29 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
     service's (`--wait`). `claude auth status` must show `oauth_token` — logged before the engine starts.
     No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
+  - publish fold: the target's default branch may have moved while the run worked, so before the PR is
+    opened the boot script folds that tip into the run's branch — under state `running` with phase
+    `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient
+    unit through the same `systemd-run` prefix as the engine's line above:
+    `systemd-run --user --unit=fleet-fold-<N>-<attempt> --pipe --wait --collect -p MemoryMax=40G
+    -p MemorySwapMax=0 -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz
+    CLAUDE_CODE_OAUTH_TOKEN=placeholder ULTRAPOWERS_FLEET_RUN=run-N node
+    <engine>/fleet/publish-fold.mjs --repo /home/exedev/target --base <base> --branch
+    ultra/integration-run-N --run N --run-dir <run dir> --evidence-dir
+    /home/exedev/evidence/.ultrapowers/runs/N --attempt 1|2`.
+    It folds, runs the suite, and pushes the head with `push_head` — a plain push on attempt 1,
+    `--force-with-lease=<branch>:<pushedHead>` on attempt 2. Its disposition is one of `folded`,
+    `nothing to join`, `tip unmoved`, `suite red`, `conflict parked` or `cannot fold`, and its receipt is
+    `.ultrapowers/runs/<N>/publish-fold/receipt.json`. A `hold=1` run still folds — only its merge is
+    skipped — and keeps `left open: hold=1`. Amendment 10 holds inside the fold: the only model it may
+    dispatch is the read-only `fleet/roles/resolver.md` role answering through `RESOLVER_SCHEMA`, and
+    every git command, ref move and push is the script's.
   - after the engine: exit 1 WITH a gate receipt is a verdict (parked), not a failure. `ahead = git rev-list
     --count <base>..ultra/integration-run-N`; `ahead == 0` → state `parked`, evidence committed, NO push,
-    NO PR. Otherwise `publishing` (written only after `systemctl --user is-active
-    fleet-engine-<N>.service` is inactive; evidence committed BEFORE the push) → `git push origin
-    ultra/integration-run-N` → one REST call, never `gh`: `curl -sS -X POST
+    NO PR. Otherwise the publish fold above runs, and then
+    `publishing` (written only after `systemctl --user is-active fleet-engine-<N>.service` and `systemctl --user is-active fleet-fold-<N>-<attempt>.service` are inactive;
+    evidence committed BEFORE the push, except attempt 2's push, made under `running`, before its `publishing` commit) → the head is on the remote (`push_head`'s `git push origin
+    ultra/integration-run-N`) → one REST call, never `gh`: `curl -sS -X POST
     https://github.int.exe.xyz/api/v3/repos/<owner>/<repo>/pulls -H 'content-type: application/json'
     -d <json>` with `title` (`fleet run-N: <plan h1>`), `head` = `ultra/integration-run-N`, `base` = the
     target's default branch read from the clone (`git symbolic-ref refs/remotes/origin/HEAD`; unreadable
@@ -169,9 +195,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   - merge: after a gate-green publish the script polls `GET /repos/<owner>/<repo>/commits/<head>/check-runs`
     every 2 s and, when every listed run is completed with `success`, `neutral` or `skipped`, issues one
     `PUT /repos/<owner>/<repo>/pulls/<n>/merge` (`merge_method` squash, `commit_title` the plan's H1, `sha`
-    the head) and records the answer's `sha` as `merged`; an answer with no runs waits
+    the head, and `commit_message` the run's two trailers on two lines — `Fleet-Run: <N>`
+    then `Plan-Tag: ultra/plan/run-<N>`) and records the answer's `sha` as `merged`; an answer with no runs waits
     `MERGE_CHECKS_GRACE` (120 s) and is then merged as having nothing to wait for; a failed run, 30
-    minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null;
+    minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null.
+    The merge is retried exactly once, and only for a moved tip:
+    a 405 whose `message` says the pull request is not mergeable
+    means the target moved between the fold and the PUT, so the script writes
+    `running "publish fold (attempt 2)"` (an evidence commit),
+    re-folds onto the new tip, pushes with the lease, writes `publishing` (an evidence commit),
+    re-enters its check-runs loop on the new head, polls `GET /pulls/<n>` until `mergeable` is
+    non-null and PUTs once more;
+    a second 405 leaves the PR open with `left open: merge PUT answered 405 twice`, and
+    any other non-2xx keeps the one PUT it made.
     `hold=1` in the assignment skips all of it.
   - record: after the last evidence push of a `done` or `parked` run, tag the plan commit `ultra/plan/run-<N>` and the evidence head `ultra/evidence/run-<N>`, verify both with `git ls-remote --tags` against the remote, then delete the branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
     A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
@@ -180,6 +216,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition.
+  The `state` cell is a sequence, not a set: a run that published reads
+  `booting → running → publishing → done`, and a run whose merge PUT answered 405 and was folded and
+  PUT again reads `running → publishing → running → publishing → done` — the second `running` is the
+  fold's attempt 2 (phase `publish fold (attempt 2)`), the merge is retried exactly once, and there is
+  no third `publishing`. `parked` and `failed` are terminal wherever they are reached.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR.
   The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; a ready PR the
@@ -189,6 +230,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
   `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
   integration is attached to `tag:fleet`, ever.
+  The publish fold is the run's last edit and the PR's first section: the body carries a
+  `## Publish fold` section before `### Evidence`, and a fold that ends `suite red`, `conflict parked`
+  or `cannot fold` opens the PR held — non-draft on a green verdict, merge skipped,
+  `left open: publish fold — <disposition text>`. The fold's record is that section, the
+  `publish-fold/` receipts directory and the `driver:publish-fold` event; `status.json` gains no cell
+  for it.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created attached to nothing by `node fleet/target.mjs <owner>/<repo>`;
   `new --integration claude-max,gh-<owner>-<repo>` binds both to the run's VM at creation. Never two

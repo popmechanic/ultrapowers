@@ -103,7 +103,10 @@ test('the status page is its own transient service, started once, before anythin
 test('a status server that is already active is not started again', () => {
   const ctx = makeHome()
   assert.equal(boot(ctx, ['boot'], { STUB_STATUS_ACTIVE: 'active' }).status, 0)
-  assert.deepEqual(unitsRun(ctx), ['fleet-engine-7'], 'only the engine is started')
+  // The engine and, since run-32 (#715), the publish fold — never a second
+  // `fleet-status`, which is this case's claim.
+  assert.deepEqual(unitsRun(ctx), ['fleet-engine-7', 'fleet-fold-7-1'],
+    'only the engine and the fold are started')
   // The boot script IS the run unit's process (fleet-run@7.service); it asks
   // systemd only about the engine unit and the page, never about itself.
   assert.ok(!argvLines(ctx, 'systemctl').some((a) => a.some((s) => s.includes('fleet-run'))),

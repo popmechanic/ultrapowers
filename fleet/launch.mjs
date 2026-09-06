@@ -8,8 +8,9 @@
  * handed to `new` on stdin. The launcher, in this order:
  *
  *   1. validates its own arguments — nothing has been executed yet;
- *   2. reads: the `--repo` checkout's `origin` (it must name `--target`), that
- *      `--base` is a commit the checkout has, `integrations list --json` (the
+ *   2. reads: that the `--repo` checkout is not shallow, its `origin` (it must
+ *      name `--target`), that `--base` is a commit the checkout has and that it
+ *      is on the target's default branch, `integrations list --json` (the
  *      target's one GitHub object must exist), `billing plan --json` (one run
  *      must fit the plan's pool), the target's `ultra/*` refs (the run number
  *      is one past the highest N they carry) and the engine tip, and asks
@@ -37,6 +38,13 @@
  * both, on the VM. A `new` that answers non-zero is retried — three attempts in
  * all, a freshly minted name each time, because exe.dev reserves a refused name
  * forever — and the failure after the third carries every attempt's output.
+ *
+ * A `--base` the target's default branch has never seen is a refusal, before
+ * the plan is pushed: run-27 was launched off a parked branch and every merge
+ * after it was a hand rebase. The read is the origin's own — one `ls-remote
+ * --symref origin HEAD` for the branch's name and tip, one `fetch` of that
+ * branch, one `merge-base --is-ancestor` — and a shallow checkout, which cannot
+ * answer the question at all, is refused before even that.
  *
  * A target with no `gh-<owner>-<repo>` object is a refusal, before the plan is
  * pushed: a public repo would still clone from github.com, but nothing could
@@ -127,6 +135,18 @@ const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
 /** Where the plan lands in the commit the launcher pushes. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
 export const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
+
+/**
+ * What a base off the default branch is told to do. The parked branch is not
+ * lost and nothing here takes a patch: decision 5 of #715 asks the operator to
+ * re-drive that work as a plan on `main`, which is procedure and not a flag.
+ */
+export const BASE_OFF_MAIN_FIX =
+  'relaunch from main; a parked branch is re-driven as a plan on main, not as a base'
+
+/** What a shallow launch checkout is told to do — by hand, never by the
+ *  launcher: unshallowing an operator's clone is not a launch's business. */
+export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
 
 /**
  * How many `new` lines a launch may issue, and the window it sleeps in between
@@ -323,6 +343,18 @@ export async function launch ({
   }
 
   // ── Reads. Still nothing mutated, on exe.dev or on the target. ────────────
+
+  // A shallow checkout is refused first, before anything is read off the
+  // origin: its history is truncated, so no `merge-base` it could answer says
+  // anything about where `--base` sits. The launcher does not deepen it — an
+  // operator's clone is theirs, and a launch is not the place to rewrite it.
+  const shallow = await git(exec, repoDir, ['rev-parse', '--is-shallow-repository'])
+  if (shallow.code === 0 && String(shallow.stdout ?? '').trim() === 'true') {
+    throw new Refusal(
+      `launch: --repo ${repoDir} ${SHALLOW_FIX}: a truncated history cannot answer whether --base ${opts.base} is on ${target}'s default branch`
+    )
+  }
+
   const originUrl = await readOriginUrl({ exec, repoDir })
   const originTarget = targetOfOriginUrl(originUrl)
   if (originTarget !== target) {
@@ -335,6 +367,39 @@ export async function launch ({
   if (baseCheck.code !== 0) {
     throw new Refusal(
       `launch: ${repoDir} has no commit ${opts.base}:\n${output(baseCheck)}`
+    )
+  }
+
+  // ── The base is on the target's default branch, or it is a refusal. The
+  //    origin names its own default branch and that branch's tip in one
+  //    `ls-remote --symref`; the fetch brings the tip's history into this
+  //    checkout, and `merge-base --is-ancestor` answers the question. Every one
+  //    of the three is a read of the target, and the only ref any of them
+  //    writes is this checkout's `refs/remotes/origin/<default>`: `HEAD`, the
+  //    local branches and the working tree are the operator's and stay as they
+  //    were.
+  const origin = await readDefaultBranch({ exec, repoDir })
+  const fetched = await git(exec, repoDir, ['fetch', 'origin', origin.branch])
+  // A fetch that answered non-zero is not itself the refusal — a checkout that
+  // already has the tip needs nothing from it. What is fatal is not having the
+  // tip afterward, because then no ancestry answer means anything.
+  const hasTip = await git(exec, repoDir, ['cat-file', '-e', `${origin.tip}^{commit}`])
+  if (hasTip.code !== 0) {
+    throw new Refusal(
+      `launch: ${repoDir} does not have ${target}'s ${origin.branch} tip ${origin.tip} — git fetch origin ${origin.branch} answered exit ${fetched.code}:\n${output(fetched)}`
+    )
+  }
+  // git refreshes `refs/remotes/origin/<default>` on a fetch only when the line
+  // named a configured remote and its refspec covers the branch; the launch's
+  // one effect on the checkout should not depend on either, so the ref is
+  // pointed at the tip the fetch just brought.
+  if (fetched.code === 0) {
+    await git(exec, repoDir, ['update-ref', `refs/remotes/origin/${origin.branch}`, origin.tip])
+  }
+  const ancestry = await git(exec, repoDir, ['merge-base', '--is-ancestor', opts.base, origin.tip])
+  if (ancestry.code !== 0) {
+    throw new Refusal(
+      `launch: --base ${opts.base} is not on ${target}'s ${origin.branch} (tip ${origin.tip}) — ${BASE_OFF_MAIN_FIX}`
     )
   }
 
@@ -503,6 +568,37 @@ async function readOriginUrl ({ exec, repoDir }) {
     )
   }
   return String(res.stdout ?? '').trim()
+}
+
+/**
+ * The origin's default branch and the sha it points at, off one `ls-remote
+ * --symref origin HEAD`. That prints two lines — `ref: refs/heads/<name>\tHEAD`
+ * and `<sha>\tHEAD` — and the name comes off the first, the tip off the second.
+ * A branch name is used in later git lines, so it is pinned to the shape a
+ * branch has; anything the launcher cannot read is a refusal, because guessing
+ * `main` here is exactly the guess this check exists to stop making.
+ */
+async function readDefaultBranch ({ exec, repoDir }) {
+  const res = await git(exec, repoDir, ['ls-remote', '--symref', 'origin', 'HEAD'])
+  if (res.code !== 0) {
+    throw new Refusal(
+      `launch: git ls-remote --symref origin HEAD in ${repoDir} failed (exit ${res.code}):\n${output(res)}`
+    )
+  }
+  let branch = null
+  let tip = null
+  for (const line of String(res.stdout ?? '').split('\n')) {
+    const symref = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/.exec(line.trim())
+    if (symref) branch ??= symref[1]
+    const head = /^([0-9a-f]{40})\s+HEAD$/.exec(line.trim())
+    if (head) tip ??= head[1]
+  }
+  if (branch === null || tip === null || !/^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(branch)) {
+    throw new Refusal(
+      `launch: git ls-remote --symref origin HEAD named no default branch and tip:\n${output(res)}`
+    )
+  }
+  return { branch, tip }
 }
 
 /**
