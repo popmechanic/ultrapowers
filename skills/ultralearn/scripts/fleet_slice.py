@@ -33,6 +33,15 @@ ENVELOPE_BUDGET: int = 6000
 ENVELOPE_SCALARS = ("stop_reason", "num_turns", "is_error", "subtype",
                     "terminal_reason", "total_cost_usd", "duration_ms")
 
+# The only `tool_use` input keys a slice ever shows: path-shaped scalars, the
+# part a lens reads a tool call for. Everything else is file contents by another
+# name — `Write`'s `content`, `Edit`'s `new_string`, `Task`'s `prompt` — and the
+# patches already carry the files. The restriction is on the RENDERING, so a
+# live, unreduced transcript under `projects/` is as safe to slice as a reduced
+# one off the evidence branch.
+TOOL_USE_INPUT_KEYS = ("file_path", "path", "command", "pattern", "glob",
+                       "description")
+
 
 def _elide(text, budget):
     """Head-and-tail elision with an explicit marker, or `text` if it fits."""
@@ -44,15 +53,72 @@ def _elide(text, budget):
             + text[-tail:])
 
 
-def find_transcript(projects_root, session_id):
-    """First `<projects_root>/*/<session_id>.jsonl`, else None."""
+def _session_of(path):
+    """The `sessionId` the first record naming one carries, or None.
+
+    A transcript file is one session, so the first record that names one names
+    the file. Advisory like everything else here: an unreadable or unparseable
+    file is simply not a match.
+    """
     try:
-        return next(Path(projects_root).glob(f"*/{session_id}.jsonl"), None)
+        with Path(path).open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError as exc:
+                    swallow("an unparseable line does not name a session; the "
+                            "next line still can", exc)
+                    continue
+                if isinstance(rec, dict) and isinstance(rec.get("sessionId"), str):
+                    return rec["sessionId"]
+    except OSError as exc:
+        swallow("unreadable transcript is simply not a match", exc)
+    return None
+
+
+def find_transcript(projects_root, session_id, run_dir=None):
+    """`<run_dir>/transcripts/<session_id>.jsonl` when it is there, else the
+    first `<projects_root>/*/<session_id>.jsonl`, else the `transcripts/` file
+    whose records carry `session_id`, else None.
+
+    The run dir comes first because a HARVESTED run directory has only what the
+    evidence branch carried — the reduced slices under `transcripts/`, and no
+    `claude/projects/` at all — while a local sandbox-logs tarball has both, and
+    there the two are the same session, one of them already reduced.
+
+    The last rule is the name-free one: the engine names each slice for its
+    session, but a name is a convention and the `sessionId` inside the file is
+    the fact. A committed slice a lens cannot find reads exactly like a slice
+    that was never committed, which is the failure this whole path exists to
+    end.
+    """
+    if run_dir is not None and session_id:
+        sliced = Path(run_dir) / "transcripts" / f"{session_id}.jsonl"
+        if sliced.is_file():
+            return sliced
+    try:
+        found = next(Path(projects_root).glob(f"*/{session_id}.jsonl"), None)
     except OSError as exc:
         swallow("transcript search failed; this worker's slice carries no "
                 "transcript", exc)
         print(f"fleet_slice: cannot search {projects_root}: {exc}", file=sys.stderr)
+        found = None
+    if found is not None or run_dir is None or not session_id:
+        return found
+    try:
+        candidates = sorted(Path(run_dir).glob("transcripts/*.jsonl"))
+    except OSError as exc:
+        swallow("transcript search failed; this worker's slice carries no "
+                "transcript", exc)
+        print(f"fleet_slice: cannot search {run_dir}: {exc}", file=sys.stderr)
         return None
+    for path in candidates:
+        if _session_of(path) == session_id:
+            return path
+    return None
 
 
 def find_envelope(workers_root, session_id, label=None):
@@ -127,6 +193,20 @@ def envelope_section(envelope, budget=ENVELOPE_BUDGET):
     return "**envelope:**\n\n```\n" + "\n\n".join(lines) + "\n```"
 
 
+def _tool_use_line(block):
+    """One `tool_use` block as `**tool_use:** <name> <kept input>`.
+
+    `block_text` returns "" for a tool_use block — it has no `text` and no
+    `content` — so without this a slice showed a worker's prose and its tool
+    RESULTS and never what it actually called. `kept` is the six-key
+    projection: the call, never its payload.
+    """
+    src = block.get("input")
+    src = src if isinstance(src, dict) else {}
+    kept = {k: src[k] for k in TOOL_USE_INPUT_KEYS if k in src}
+    return f"**tool_use:** {block.get('name')} {json.dumps(kept, sort_keys=True)}"
+
+
 def _worker_lines(records):
     """Transcript blocks a fleet lens needs, in order.
 
@@ -144,6 +224,9 @@ def _worker_lines(records):
     lines = []
     for _idx, record, block in _readers.iter_blocks_indexed(records):
         rtype = record.get("type")
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            lines.append(_tool_use_line(block))
+            continue
         txt = _readers.block_text(block).strip()
         if not txt:
             continue
@@ -185,21 +268,23 @@ def worker_slice(transcript_path, budget=WORKER_BUDGET):
 
 
 def build_slice(timeline_md, workers, projects_root, budget=WORKER_BUDGET,
-                workers_root=None, envelope_budget=ENVELOPE_BUDGET):
+                workers_root=None, envelope_budget=ENVELOPE_BUDGET, run_dir=None):
     """One markdown bundle: the event timeline, then a section per worker.
 
     `workers` is a list of plain dicts carrying at least `label`, `role` and
     `sessionId` — the builder never parses an event log itself. `workers_root`
     is the run dir's `workers/`; when given, each section also carries that
     worker's envelope. It is optional so a caller with transcripts alone still
-    builds a slice.
+    builds a slice. `run_dir`, likewise optional, is the run directory whose
+    `transcripts/` a harvested run carries its slices in — see
+    `find_transcript`.
     """
     sections = [f"## Event timeline\n\n```\n{timeline_md}\n```"]
     for w in workers:
         label = w.get("label")
         role = w.get("role")
         session_id = w.get("sessionId")
-        path = find_transcript(projects_root, session_id)
+        path = find_transcript(projects_root, session_id, run_dir=run_dir)
         body = worker_slice(path, budget=budget) if path is not None else ""
         if not body:
             body = "_no transcript found_"
