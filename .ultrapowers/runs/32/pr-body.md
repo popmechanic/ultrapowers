@@ -1,0 +1,104 @@
+## fleet run-32 — parked
+
+| | |
+|---|---|
+| verdict | `BLOCKED` |
+| target | `popmechanic/ultrapowers` at `306093709c28d525d459344e62415a5847b2df45` |
+| engine | `306093709c28d525d459344e62415a5847b2df45` |
+| plan | `.ultrapowers/plan.md` at `cc09fc3d0c5101b5355ec38042f695b107adcbb5` |
+| branch | `ultra/integration-run-32` |
+| vm | `fleet-r32-2609062034-95cb` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-32",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-32/report.json",
+  "branch": "ultra/integration-run-32",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"3\", \"files\": [\"fleet/publish-fold.mjs\", \"fleet/tests/test_publish_fold.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 5/6 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/sandbox-boot.sh \u2014 the publish-fold bracket, `push_head` lease, the deadman's fold-unit stop, and the `FOLD_HOLD` merge hold (Task 4, M1/M2/M3/M5) \u2014 Every leg is exercised only against the `_sandbox_boot_helpers.mjs` PATH shim (`systemd-run`, `systemctl`, `git`, `curl` stubs). No real transient systemd unit is started, no real `--force-with-lease` push is attempted, and the fold unit's stub never executes a folder, so the bracket's behaviour against a live unit and a live remote is unexercised in this environment. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/sandbox-boot.sh \u2014 the single merge retry: the 405 `not mergeable` path, the `GET /pulls/<n>` mergeable poll, the second PUT and the body PATCH (Task 4, M6/M7, and the sequence Task 6 documents at fleet/CONTRACT.md:197-210) \u2014 All of it runs against a stubbed `curl` answering `STUB_MERGE_CODE`/`STUB_MERGE_MESSAGE`. GitHub's actual 405-vs-409 semantics, its asynchronous mergeability recomputation after a force-push, and branch protection are not reachable from this sandbox. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/launch.mjs \u2014 the base-ancestry and shallow-clone refusals (Task 5, M1/M2/M3) \u2014 The exam drives a local bare origin through the `localRemote` seam rather than a real target's `ls-remote --symref origin HEAD`. The refusal logic and the ordering are verified; the answer a live GitHub Enterprise origin gives for `--symref` HEAD is not. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.KQkYBxGb8I/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1654 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 21%]\\n........................................................................ [ 26%]\\n........................................................................ [ 30%]\\n........................................................................ [ 34%]\\n........................................................................ [ 39%]\\n........................................................................ [ 43%]\\n........................................................................ [ 47%]\\n........................................................................ [ 52%]\\n........................................................................ [ 56%]\\n........................................................................ [ 60%]\\n........................................................................ [ 65%]\\n........................................................................ [ 69%]\\n........................................................................ [ 74%]\\n........................................................................ [ 78%]\\n........................................................................ [ 82%]\\n........................................................................ [ 87%]\\n........................................................................ [ 91%]\\n........................................................................ [ 95%]\\n......................................................................   [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1654 passed, 5 warnings in 278.43s (0:04:38) =================\"}\n"
+  },
+  "verdict": "BLOCKED"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-32/.ultrapowers/runs/32/
+
+- claude-version.txt
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- receipt.json
+- report.json
+- status.json
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-32/.ultrapowers/plan.md
