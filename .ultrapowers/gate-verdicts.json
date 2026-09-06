@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "d1cd8671ae075287349782adcfdbb46ee0dac2456449e3b72893487f398cbc03",
+      "verdict": "pass",
+      "reason": "Each clause has a leg that would fail if it were false at the capture layer: (a) drops the unnamed untracked binary under all three labels while keeping text and the out-of-FILES text file [M1], (b) keeps the FILES-named binary and text byte-for-byte while dropping the unnamed one [M2], (c) pins exactly one event with the full paths list and its absence when nothing is dropped [M3], and (d) shows four same-base patches with no .pyc and the shared text edit present [M4]."
+    }
+  },
+  "tally": { "dispatched": 3, "rejected": 2, "rounds": { "1": "fail: M1 labels untested", "2": "fail: M3 one-path list", "3": "pass" } }
+}
