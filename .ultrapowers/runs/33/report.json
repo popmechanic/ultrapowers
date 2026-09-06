@@ -1,0 +1,111 @@
+{
+  "integrationBranch": "ultra/integration-run-33",
+  "baseSha": "2d8181879992a5379ace27e84ff296e9f920ff0e",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "739000e41912fbbc84b46028948a40db9a01e004",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-33/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: the two patch cuts are captured through `execSeam`'s UTF-8 stdout string and written with `fs.writeFileSync` (fleet/publish-fold.mjs:416-417), so a path git treats as TEXT but whose content is not valid UTF-8 (e.g. a latin-1 source file \u2014 `--binary` only base64-encodes paths git calls BINARY) reaches `main.patch`/`run.patch` with U+FFFD substitutions. The kernel's `git apply` then fails on the mangled hunk and the fold degrades to `cannot fold`. The engine's own capture avoids this by never routing a diff through a string: `fleet/run-waves.mjs:330` passes `--output=<file>` and lets git write the bytes. The fix cannot land inside this diff: M2 pins the cut as `git diff --binary --full-index --no-renames <BASE>..<TIP>` \u2014 \"that argv\" \u2014 and the exam pins it exactly (`assert.deepEqual(diffs.slice(0, 2), [...])`, fleet/tests/test_publish_fold.mjs leg (a.1)), so adding `--output=` would diverge from both. Settling this needs M2's argv clause relaxed to permit `--output=`, after which fleet/publish-fold.mjs:416-417 and the leg (a.1) deepEqual would both change. Not blocking: no clause requires non-UTF-8 text safety, the exam is green, and the failure mode is a refusal rather than a silently wrong candidate.; The global constraint \"No token in any argv: the folder reads its credentials from the environment the unit hands it and sets `CLAUDE_CONFIG_DIR` to the run tree's `claude/` for the worker it composes\" carries no `Check:`, and I read it as requiring the composed worker env to carry `CLAUDE_CONFIG_DIR = <run dir>/claude` with no credential on any command line. The diff meets it by inspection \u2014 fleet/publish-fold.mjs:278-285 builds `env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(runDir, 'claude'), ... }` and no argv anywhere in the module carries a token \u2014 but no leg asserts it, even though the exam's own stub already captures exactly the data needed: `stubAgent` records `sink.composedWith = composeOpts` (fleet/tests/test_publish_fold.mjs, the `stubAgent` helper) and nothing ever reads it, leaving that recording as dead fixture code. Adding one assertion in leg (d), where a resolver is actually dispatched, would both retire the dead capture and pin the constraint.; fleet/publish-fold.mjs:540 \u2014 on `resolveConflicts` returning `ok: false`, the receipt's `path` is taken from the LAST transcript (`(last && last.path) || open[0].path`), but Context specifies `path` = \"the first outstanding conflict's path\". These agree for every shape M5 names (BLOCKED and the twice-rejected reply both push a transcript for the conflict being worked before parking), so no exam leg is affected. They diverge in one reachable corner: on a multi-conflict wave where conflict 1 resolves and the dispatch for conflict 2 throws, `resolveConflicts` parks without pushing a transcript for conflict 2, so the receipt would name conflict 1's path. Consider recording the parked path from the reason/outstanding position rather than the last transcript, or documenting the approximation.; fleet/tests/test_publish_fold.mjs:340 \u2014 `stubAgent` records `sink.composedWith = composeOpts` but no assertion ever reads it, so the capture is dead scaffolding. It is also the natural place to cover the global constraint \"No token in any argv: the folder \u2026 sets `CLAUDE_CONFIG_DIR` to the run tree's `claude/`\": that constraint carries no `Check:` command and is currently evidenced only by the code line (fleet/publish-fold.mjs:274-286, the `env` block handed to `composeAgent`), not by any test. Suggested: in leg (d), assert `stub.composedWith.env.CLAUDE_CONFIG_DIR === path.join(fx.runDir, 'claude')` and that no `composedWith` argv/env value carries a token.; unverified: the exam evidence settles `node fleet/tests/test_publish_fold.mjs` exiting 0 standalone, but not that it fits the committed suite's own budget \u2014 `tests/test_fleet_suite.py:44` runs each `fleet/tests/test_*.mjs` under a 120 s `subprocess.run(..., timeout=120)`, and this sim builds ~20 per-case fixtures (each a template copy plus a `provisionRunTree` local clone) while driving the real `fold_wave.py` and `compile_plan.py`. The plan's mitigation (build the seeded origin and clones once, copy per case) is implemented at fleet/tests/test_publish_fold.mjs:134-183. What would settle it: the wall time of one `pytest tests/test_fleet_suite.py -k test_publish_fold` run on the sim host, under `--dist load` contention.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-33/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1655 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.......................................................................  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1655 passed, 5 warnings in 294.25s (0:04:54) =================\n"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh fleet/sandbox-boot.sh fleet/run-engine.mjs fleet/publish-fold-block.mjs fleet/launch.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 538088,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n..................................................................s..... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.......................................................................  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1654 passed, 1 skipped, 5 warnings in 295.89s (0:04:55) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n......................................................................   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1654 passed, 5 warnings in 267.47s (0:04:27) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "a694dd9db04c94fc378be85c0fb163ce4027c0f2",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-33/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-33/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.45699999999999996,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/publish-fold.mjs \u2014 the resolver dispatch against the real `claude` CLI (the `conflict parked` on BLOCKED, the twice-rejected reply, and the resolved fold)",
+      "reason": "runtime",
+      "why": "As Context records, the CLI has no injection seam for a stub resolver, so every resolver-driven shape is asserted in-process with a stub `deps.makeAgent`. The real path \u2014 `composeAgent` -> `createRunWorker` -> the `claude` binary answering `RESOLVER_SCHEMA` under the confine hook \u2014 needs a live model and credentials and is never executed by the committed suite. The composition itself is structurally correct (labels route to the read-only `resolver` role via `roleForLabel`, cwd to `clones/integration` via `makeCwdFor`, `CLAUDE_CONFIG_DIR` to the run tree's `claude/`), but its behaviour is unexercised here."
+    },
+    {
+      "deliverable": "The plan's elicited Claim end to end \u2014 two concurrent plans touching one file both merging on their own, no 405 and no hand rebase, with the second run's evidence showing its fold onto main",
+      "reason": "external",
+      "why": "The folder is the last missing piece and its own Claim (fold onto main's tip at publish) is met in the tree, but the surrounding half is the boot script's: the `fleet-fold-<N>-<attempt>` systemd unit, `push_head`'s `--force-with-lease`, the merge PUT, the 405 retry into attempt 2, and the evidence push to the target. Those need a real GitHub target, a sandbox VM and an actual cross-run race. The plan itself states #715 closes only when its Tier-2 metric is met on live runs, so this is deferred rather than a shortfall."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

@@ -1,0 +1,142 @@
+{
+  "ok": true,
+  "stamp": "run-33",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-33"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The folder \u2014 `fleet/publish-fold.mjs`",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`resolveConflicts({ agent, runCli, roles, common, taskArgs, commutesArgs, open, contendingBlock, waveDir, labelPrefix, onEvent }) -> Promise<{ ok, reason, transcripts, selfChecks }>`",
+            "`contendingBlock({ repo, base, tip, run, path, tasks }) -> Promise<string>`"
+          ],
+          "produces": [
+            "`publishFold({ repo, base, branch, run, runDir, evidenceDir, attempt }, deps) -> Promise<receipt>`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The folder \u2014 `fleet/publish-fold.mjs`",
+          "files": [
+            "fleet/publish-fold.mjs",
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`resolveConflicts({ agent, runCli, roles, common, taskArgs, commutesArgs, open, contendingBlock, waveDir, labelPrefix, onEvent }) -> Promise<{ ok, reason, transcripts, selfChecks }>`",
+              "`contendingBlock({ repo, base, tip, run, path, tasks }) -> Promise<string>`"
+            ],
+            "produces": [
+              "`publishFold({ repo, base, branch, run, runDir, evidenceDir, attempt }, deps) -> Promise<receipt>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/publish-fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold.mjs",
+          "proofRuns": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The folder \u2014 `fleet/publish-fold.mjs`"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The folder is the only new code (the Check above is the whole of that rule). A kernel\n  behaviour the folder meets \u2014 conflict indices from 1, a mode park on a chmod main made since\n  BASE, exit 2 on an existing fold log \u2014 is met on the folder's side, never patched around.\n- Amendment 10 stands: no model runs git and no GitHub call is a model's. The one model the folder\n  may dispatch is the read-only `fleet/roles/resolver.md` role answering through\n  `RESOLVER_SCHEMA`; the driver writes every reply directory and every ref move, and the folder\n  pushes nothing \u2014 `push_head` in the boot script does.\n- No token in any argv: the folder reads its credentials from the environment the unit hands it\n  and sets `CLAUDE_CONFIG_DIR` to the run tree's `claude/` for the worker it composes.\n- `status.json`'s shape is unchanged; the fold's record is the `driver:publish-fold` event and\n  the `publish-fold/` receipts directory under the evidence directory.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh fleet/sandbox-boot.sh fleet/run-engine.mjs fleet/publish-fold-block.mjs fleet/launch.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-33/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-33/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-33/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-33/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

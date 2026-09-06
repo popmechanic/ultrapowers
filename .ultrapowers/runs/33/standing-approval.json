@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-33.md run-33 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/publish-fold.mjs — the resolver dispatch against the real `claude` CLI (the `conflict parked` on BLOCKED, the twice-rejected reply, and the resolved fold) — As Context records, the CLI has no injection seam for a stub resolver, so every resolver-driven shape is asserted in-process with a stub `deps.makeAgent`. The real path — `composeAgent` -> `createRunWorker` -> the `claude` binary answering `RESOLVER_SCHEMA` under the confine hook — needs a live model and credentials and is never executed by the committed suite. The composition itself is structurally correct (labels route to the read-only `resolver` role via `roleForLabel`, cwd to `clones/integration` via `makeCwdFor`, `CLAUDE_CONFIG_DIR` to the run tree's `claude/`), but its behaviour is unexercised here. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "The plan's elicited Claim end to end — two concurrent plans touching one file both merging on their own, no 405 and no hand rebase, with the second run's evidence showing its fold onto main — The folder is the last missing piece and its own Claim (fold onto main's tip at publish) is met in the tree, but the surrounding half is the boot script's: the `fleet-fold-<N>-<attempt>` systemd unit, `push_head`'s `--force-with-lease`, the merge PUT, the 405 retry into attempt 2, and the evidence push to the target. Those need a real GitHub target, a sandbox VM and an actual cross-run race. The plan itself states #715 closes only when its Tier-2 metric is met on live runs, so this is deferred rather than a shortfall. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
