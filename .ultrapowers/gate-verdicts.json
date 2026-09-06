@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "8b51ffe166afd4f66df9e93588fbb58270d7903f928794dff745cc1b045d47d3",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a leg that would fail on a wrong implementation rather than merely mention it — argv recorded via the injected exec seam (patch cuts, fold/materialize flags, ordering of fetch/read-tree/bash/reset), the rename spy pins the tmp+mv seam by byte equality, the throw-after-rev-parse fixture pins when `tip` is written, the first-fetch assertion pins when `engine-head` is written, each disposition is produced by a concrete fixture with branch/candidate/parent/tree checks against the bare origin, and re-entry, event, copy and attempt-2 shapes are each exercised with the distinguishing counter-case (Y not X, engineHead not candidate 1, parked wins) — so a passing exam leaves the clauses true at the folder's own layer; the only unfalsified fragment, 'callers read the disposition from the receipt, never stdout', is a statement about callers outside this task and cannot be tested here."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": {
+      "1": "1 dispatched, 1 pass (task 1, first reader) — after compile --check --renders repairs: leg-named-in-prose in (e), the two-path row moved to its own leg (i), the M6 fetch literal on one line, the Global Constraints prose bullet trimmed to its undecidable half"
+    },
+    "note": "Re-drive of run-32 task 3 (plan 2026-09-06-tier2-cross-run-fold.md) on BASE 2d8181879992a5379ace27e84ff296e9f920ff0e; the reader saw only extract_gate_input.py --task 1."
+  }
+}
