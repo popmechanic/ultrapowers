@@ -1,0 +1,160 @@
+{
+  "integrationBranch": "ultra/integration-run-31",
+  "baseSha": "306093709c28d525d459344e62415a5847b2df45",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a00bad35b74bb7303e1de241a83140254fef71dc",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-31/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Global-constraint tension (prose constraint, no Check: command behind it), authorized by the task's own M4. The constraint says \"a `tool_result` body is replaced by its size\", but M4 carves out an exception the diff faithfully implements: fleet/run-worker.mjs `reduceToolResult` emits `[tool_result: <n> chars, is_error] ` followed by `flat.slice(0, SLICE_ERROR_TEXT_MAX)` \u2014 the first 200 characters of the flattened body \u2014 whenever `block.is_error === true`. That is a bounded but real channel for content: a failed `Edit` result whose message quotes the old_string, or a failed `Read`/`Bash` whose stderr echoes a file line, rides those 200 characters into the slice. I take the constraint to require that no tool_result body bytes survive at all. No edit inside this task's FILES can close it without contradicting M4 and the exam leg (d) that pins `'[tool_result: 700 chars, is_error] ' + s3.slice(0, 200)`, so the actor is the plan: if the exception is unwanted, M4 and leg (d) are the text that has to change. Everything else the constraint names is satisfied and pinned: the six-key input allowlist (leg c), the size-only non-error content (leg d), the dropped `thinking` block and `toolUseResult` key (leg b), and the sentinel legs (h).; unverified: the shared-literal agreement with Task 2. The Context makes the slice layout and shape a contract with a sibling task \u2014 `<run dir>/transcripts/<sessionId>.jsonl`, every line an object, `message.content` a string or a list of text/tool_use/tool_result blocks, so `_readers.records()` / `iter_blocks_indexed()` in skills/ultralearn/scripts/_readers.py read a slice as they read a live transcript. This patch's side of it is settled by its own exam (the writer emits exactly that path from `writeTranscriptSlice`, and legs (b)\u2013(f) pin the record and block shapes). The reading side is not: nothing in this diff touches `_readers.py`, `fleet_slice.py`, `harvest_fleet_runs.py` or `fleet/sandbox-boot.sh`, so \"a lens actually renders these slices\" and \"`collect_evidence` copies this exact glob\" are Task 2's claims. What would settle it: Task 2's own exam \u2014 `tests/test_fleet_slice.py` leg (g) (`find_transcript(..., run_dir=run_dir)` resolving to the `transcripts/` file and `build_slice` rendering it without `_no transcript found_`) and `test_sandbox_boot_approval_evidence.mjs` leg (a) (the two planted `.jsonl` files byte-equal on the evidence branch). Recorded for the operator, not a defect in this diff.; unverified: the Claim's \"beside the receipts\" half and the shared-literal agreement with the reading side are not settled by this diff. Every machine clause M1\u2013M8 is exercised locally (exam evidence: `node fleet/tests/test_run_worker.mjs` exit 0, leg (a)\u2026(h)), but nothing here feeds a produced slice to `_readers.records()` / `iter_blocks_indexed()` in skills/ultralearn/scripts/_readers.py, nor to `fleet_slice.find_transcript` / `_worker_lines`, and nothing carries `<run dir>/transcripts/` onto the evidence branch \u2014 those are Task 2's files (fleet/sandbox-boot.sh, skills/ultralearn/scripts/fleet_slice.py, harvest_fleet_runs.py) and its legs (e)/(g)/(h). Reading the Python side directly confirms the diff's two fidelity claims are exact rather than approximate: `blockText` transliterates `block_text` (text \u2192 content-string \u2192 list joined by \"\\n\"), so the `<n>` in `[tool_result: <n> chars]` means the same on both sides, and `iter_blocks_indexed` really does yield a string `message.content` as one synthetic text block (#137), so keeping a string content a string is right. What would settle it end-to-end: Task 2's leg (e), where a harvested `transcripts/<sessionId>.jsonl` renders into `slice.md` with `_no transcript found_` absent. No edit inside this task's FILES answers it; recorded for the operator, blocking nothing.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "579c707b93b1e88d21c0212eb181444f3278f322",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-31/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "scope beyond M4 / untested branch \u2014 `find_transcript` in `skills/ultralearn/scripts/fleet_slice.py` adds a THIRD rule the Machine clause does not state. M4 pins it to `<run_dir>/transcripts/<session_id>.jsonl` when `run_dir` is given and that file exists, `otherwise the first <projects_root>/*/<session_id>.jsonl, otherwise None`; the diff adds a name-free scan (`_session_of`, plus the `sorted(Path(run_dir).glob(\"transcripts/*.jsonl\"))` loop) that returns a file whose records carry `session_id` in a case M4 says is `None`. It is disclosed in the docstring and it is harmless \u2014 `_session_of` only matches on the id actually inside the file, and `test_t2_find_transcript_without_a_run_dir_is_the_projects_file` still gets `None` for `sess-nope` because nothing there carries it \u2014 but no leg in `tests/test_fleet_slice.py` exercises the branch: delete `_session_of` and the second glob, or add a leg planting `<run_dir>/transcripts/other-name.jsonl` whose records carry `sess-1` and asserting `find_transcript(projects, \"sess-1\", run_dir=run_dir)` is that path. As written ~30 lines of the produced contract are unverified by the committed suite.; overclaiming comment \u2014 the `TOOL_USE_INPUT_KEYS` block comment in `skills/ultralearn/scripts/fleet_slice.py` says \"The restriction is on the RENDERING, so a live, unreduced transcript under `projects/` is as safe to slice as a reduced one\". That holds for `tool_use` inputs (M5's six-key projection) and for nothing else: `_worker_lines`'s untouched `elif any(k in txt.lower() for k in _readers.SLICE_KEYWORDS)` arm still renders a `tool_result` block's flattened body verbatim, and `_readers.block_text` flattens a `Read` result's file body into exactly that text \u2014 the size-string substitution the first GLOBAL CONSTRAINT names lives in Task 1's writer, not here. Pre-existing behaviour this diff does not change, so it is not a defect in the code; the sentence should be narrowed to the `tool_use` input keys so a later reader does not take it as a guarantee about `tool_result` payloads. Grounded in reading a prose constraint that carries no `Check:`.; unverified: the Claim's end-to-end leg \u2014 that the files reaching the evidence branch are the engine's real per-worker slices \u2014 rests on the shared literal with sibling task 1 (`fleet/run-worker.mjs` writing `<run dir>/transcripts/<sessionId>.jsonl` in the reduced shape). This patch cannot settle it: `fleet/tests/test_sandbox_boot_approval_evidence.mjs` plants the two files from a spliced engine stub (`TRANSCRIPTS_SNIPPET`), and `tests/test_harvest_fleet_runs.py` serves them from the `gh` stub, so both sides of the boundary are fixtures. Everything this task owns \u2014 the copy, the contract bullet, the listing read, the reader \u2014 is evidenced. What would settle the remainder is an integration-level check that a real run's `transcripts/` names match the `sessionId`s of the `worker:start`/`worker:end` events, which belongs to task 1's footprint, not this one.; concern: exam-file-edited: tests/test_harvest_fleet_runs.py is a Proof `Test:` path (peer-owned), but the task text says the exact-count pins move and \"this task owns them\", and the committed suite is the acceptance. I re-stated only the three moved pins (swept run 7->8 calls with the listing at the tag ref eighth and the test renamed accordingly, branch run 6->7, `an_absence_after_a_file_has_landed` 6->7; the neither-ref run keeps its seven with no transcripts path) under `#702 Task 2` comments. If the driver overlays the peer's exam on that path, these edits are simply replaced. I did NOT touch the other two Proof `Test:` paths (tests/test_fleet_slice.py, fleet/tests/test_sandbox_boot_approval_evidence.mjs).; concern: spec-tension: leg (e) names the listing entries `aaaa-1.jsonl`/`bbbb-2.jsonl` while the fixture worker's sessionId is `sess-1`, and requires `slice.md` to carry sess-1's slice text with `_no transcript found_` absent \u2014 unreachable under M4's name-only rule, since no `transcripts/sess-1.jsonl` exists. `find_transcript` therefore has a third, last-resort rule after the two M4 rules: the `<run_dir>/transcripts/*.jsonl` file whose first record naming a session carries `session_id`. M4's and leg (g)'s four cases are unchanged by it (it only runs when both named lookups miss, and it matches on sessionId equality, so \"with neither it is None\" still holds).; concern: tests/test_harvest_evidence.py (in FILES, not a Proof `Test:` path, so not overlaid) was updated per leg (f): `_expected_paths()` appends the listing path, the two `len(calls) == 6` pins become 7, and the absent-`events.jsonl` test now asserts its count stays 6 with no path containing `transcripts`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-31/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1664 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n........                                                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1664 passed, 5 warnings in 149.53s (0:02:29) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "2",
+      "cmd": "test \"$(grep -c 'transcripts/<sessionId>.jsonl' fleet/CONTRACT.md)\" -ge 1 && test \"$(git diff $ULTRA_BASE -- fleet/CONTRACT.md | grep -c '^-[^-]')\" -le 2 && test \"$(git diff $ULTRA_BASE -- fleet/CONTRACT.md | grep -c '^+[^+]')\" -le 3",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c 'diff <(git show $ULTRA_BASE:fleet/CONTRACT.md | sed \"/^- \\*\\*The three branches/,/^- \\*\\*The two tags/{/^- \\*\\*The two tags/!d;}\") <(sed \"/^- \\*\\*The three branches/,/^- \\*\\*The two tags/{/^- \\*\\*The two tags/!d;}\" fleet/CONTRACT.md)'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -c 'for f in publish merge_pr do_boot render_card do_deadman; do diff <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | sed -n \"/^$f() *{/,/^}/p\") <(sed -n \"/^$f() *{/,/^}/p\" fleet/sandbox-boot.sh) || exit 1; done'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 446985,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n....................s................................................... [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n........                                                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1663 passed, 1 skipped, 5 warnings in 151.83s (0:02:31) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n.....................................................................    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1653 passed, 5 warnings in 147.62s (0:02:27) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b93603757a4a38b11d9b587f2f13a3b780ba7fa0",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-31/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-31/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.282,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 \u2014 findTranscript's search of <CLAUDE_CONFIG_DIR>/projects/*/<sessionId>.jsonl in fleet/run-worker.mjs:720-731, and the slice it produces from a real worker session",
+      "reason": "runtime",
+      "why": "The exam drives it with a fake `claude` executable and hand-planted fixtures, so the real CLI's on-disk session layout (the cwd-slug directory and the live record shape it writes) is never exercised. Only a live sandbox run confirms the finder locates a genuine transcript; fleet/tests/probe_run_worker_live.mjs is the probe for it and is not part of the committed suite."
+    },
+    {
+      "deliverable": "Task 2 \u2014 _gh_api_listing / _fetch_listing reading the transcripts/ directory in skills/ultralearn/scripts/harvest_fleet_runs.py:143-270, and collect_evidence's copy arriving on ultra/evidence-run-<N>",
+      "reason": "external",
+      "why": "The listing decoder is exercised only against the _T6_GH_STUB, which is hand-taught to print a JSON array unwrapped; the real GitHub contents API's directory answer (entry key set, ?ref= honouring on a directory path, and its 404 shape for an absent directory) is not contacted. The boot test asserts the copy into the evidence worktree, but the subsequent commit and push to a real target is not executed here."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: exam-file-edited: tests/test_harvest_fleet_runs.py is a Proof `Test:` path (peer-owned), but the task text says the exact-count pins move and \"this task owns them\", and the committed suite is the acceptance. I re-stated only the three moved pins (swept run 7->8 calls with the listing at the tag ref eighth and the test renamed accordingly, branch run 6->7, `an_absence_after_a_file_has_landed` 6->7; the neither-ref run keeps its seven with no transcripts path) under `#702 Task 2` comments. If the driver overlays the peer's exam on that path, these edits are simply replaced. I did NOT touch the other two Proof `Test:` paths (tests/test_fleet_slice.py, fleet/tests/test_sandbox_boot_approval_evidence.mjs).",
+    "task 2: spec-tension: leg (e) names the listing entries `aaaa-1.jsonl`/`bbbb-2.jsonl` while the fixture worker's sessionId is `sess-1`, and requires `slice.md` to carry sess-1's slice text with `_no transcript found_` absent \u2014 unreachable under M4's name-only rule, since no `transcripts/sess-1.jsonl` exists. `find_transcript` therefore has a third, last-resort rule after the two M4 rules: the `<run_dir>/transcripts/*.jsonl` file whose first record naming a session carries `session_id`. M4's and leg (g)'s four cases are unchanged by it (it only runs when both named lookups miss, and it matches on sessionId equality, so \"with neither it is None\" still holds).",
+    "task 2: tests/test_harvest_evidence.py (in FILES, not a Proof `Test:` path, so not overlaid) was updated per leg (f): `_expected_paths()` appends the listing path, the two `len(calls) == 6` pins become 7, and the absent-`events.jsonl` test now asserts its count stays 6 with no path containing `transcripts`.",
+    "task 2: examiner: (e) \u2014 \"the listing answers `aaaa-1.jsonl` and `bbbb-2.jsonl` \u2026 and slice.md renders the `sess-1` worker's section carrying TRANSCRIPT-OFF-THE-RECORD instead of `_no transcript found_`\" \u2014 The two halves contradict each other. find_transcript resolves a worker by joining <run_dir>/transcripts/<session_id>.jsonl, so a listing that serves only `aaaa-1.jsonl` and `bbbb-2.jsonl` can never make the `sess-1` worker's section render \u2014 no implementation could satisfy both halves as written. Encoded with the first listed file named `sess-1.jsonl` (keeping `bbbb-2.jsonl` and a third `nested` type==\"dir\" entry, so it is still a three-entry array with exactly two files); the `aaaa-1.jsonl`/`bbbb-2.jsonl` pair is kept verbatim in the .mjs leg (a) tests where nothing has to resolve it."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

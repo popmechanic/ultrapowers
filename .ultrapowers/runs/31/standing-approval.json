@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-31.md run-31 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Task 1 — findTranscript's search of <CLAUDE_CONFIG_DIR>/projects/*/<sessionId>.jsonl in fleet/run-worker.mjs:720-731, and the slice it produces from a real worker session — The exam drives it with a fake `claude` executable and hand-planted fixtures, so the real CLI's on-disk session layout (the cwd-slug directory and the live record shape it writes) is never exercised. Only a live sandbox run confirms the finder locates a genuine transcript; fleet/tests/probe_run_worker_live.mjs is the probe for it and is not part of the committed suite. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "Task 2 — _gh_api_listing / _fetch_listing reading the transcripts/ directory in skills/ultralearn/scripts/harvest_fleet_runs.py:143-270, and collect_evidence's copy arriving on ultra/evidence-run-<N> — The listing decoder is exercised only against the _T6_GH_STUB, which is hand-taught to print a JSON array unwrapped; the real GitHub contents API's directory answer (entry key set, ?ref= honouring on a directory path, and its 404 shape for an absent directory) is not contacted. The boot test asserts the copy into the evidence worktree, but the subsequent commit and push to a real target is not executed here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

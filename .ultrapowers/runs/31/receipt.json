@@ -1,0 +1,213 @@
+{
+  "ok": true,
+  "stamp": "run-31",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-31"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The engine writes each worker's transcript slice",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-worker.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`none`"
+          ],
+          "produces": [
+            "`sliceTranscript(jsonl: string) -> string`",
+            "`writeTranscriptSlice({ configDir, runDir, sessionId }) -> { bytes: number } | null`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The record carries the slices and the harvester reads them",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "skills/ultralearn/scripts/fleet_slice.py",
+          "skills/ultralearn/scripts/harvest_fleet_runs.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`none`"
+          ],
+          "produces": [
+            "`find_transcript(projects_root, session_id, run_dir=None) -> Path | None`",
+            "`build_slice(timeline_md, workers, projects_root, budget=WORKER_BUDGET, workers_root=None, envelope_budget=ENVELOPE_BUDGET, run_dir=None) -> str`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The engine writes each worker's transcript slice",
+          "files": [
+            "fleet/run-worker.mjs",
+            "fleet/tests/test_run_worker.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`none`"
+            ],
+            "produces": [
+              "`sliceTranscript(jsonl: string) -> string`",
+              "`writeTranscriptSlice({ configDir, runDir, sessionId }) -> { bytes: number } | null`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-worker.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_worker.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_worker.mjs",
+          "proofRuns": []
+        },
+        {
+          "id": "2",
+          "title": "The record carries the slices and the harvester reads them",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "skills/ultralearn/scripts/fleet_slice.py",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "tests/test_fleet_slice.py",
+            "tests/test_harvest_evidence.py",
+            "tests/test_harvest_fleet_runs.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`none`"
+            ],
+            "produces": [
+              "`find_transcript(projects_root, session_id, run_dir=None) -> Path | None`",
+              "`build_slice(timeline_md, workers, projects_root, budget=WORKER_BUDGET, workers_root=None, envelope_budget=ENVELOPE_BUDGET, run_dir=None) -> str`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "skills/ultralearn/scripts/fleet_slice.py",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "tests/test_harvest_fleet_runs.py",
+            "tests/test_fleet_slice.py"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs && python3 -m pytest -q tests/test_harvest_fleet_runs.py tests/test_fleet_slice.py",
+          "proofRuns": [
+            "test \"$(grep -c 'transcripts/<sessionId>.jsonl' fleet/CONTRACT.md)\" -ge 1 && test \"$(git diff $ULTRA_BASE -- fleet/CONTRACT.md | grep -c '^-[^-]')\" -le 2 && test \"$(git diff $ULTRA_BASE -- fleet/CONTRACT.md | grep -c '^+[^+]')\" -le 3",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+            "bash -c 'diff <(git show $ULTRA_BASE:fleet/CONTRACT.md | sed \"/^- \\*\\*The three branches/,/^- \\*\\*The two tags/{/^- \\*\\*The two tags/!d;}\") <(sed \"/^- \\*\\*The three branches/,/^- \\*\\*The two tags/{/^- \\*\\*The two tags/!d;}\" fleet/CONTRACT.md)'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- No slice carries file contents: a `tool_use` input other than the six path-shaped scalar keys\n  (`file_path`, `path`, `command`, `pattern`, `glob`, `description`) never rides, a\n  `tool_result` body is replaced by its size, a `thinking` block and a record's `toolUseResult`\n  key are dropped, and a rendered slice shows only those same six input keys.\n- The boot script's `publish`, `merge_pr`, `do_boot`, `render_card` and `do_deadman` functions\n  are the base's bytes \u2014 a concurrent run edits them, and this plan touches only\n  `collect_evidence`.\n- `fleet/CONTRACT.md` changes only inside the `ultra/evidence-run-<N>` bullet; the\n  `**The two tags` bullet and the state list are the base's bytes.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/ skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "bash -c 'for f in publish merge_pr do_boot render_card do_deadman; do diff <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | sed -n \"/^$f() *{/,/^}/p\") <(sed -n \"/^$f() *{/,/^}/p\" fleet/sandbox-boot.sh) || exit 1; done'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-31/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-31/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-31/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-31/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
