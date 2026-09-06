@@ -1,0 +1,45 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "6c311410212a7892164fd4835df360cf2adcb5c19cacfd673526c1a8c496324a",
+      "verdict": "pass",
+      "reason": "Every mechanism is falsified at its own layer — M1/M2/M5 by direct calls with stub agent and stub runCli asserting exact argv, labels, reply-dir contents, prompt composition, dispatch counts and reasons; M3/M4 through the real wave loop asserting the contending-block lines, the label `resolve:wave1:0:1`, the exact replyDir under `<runDir>/frontier/wave-1`, the transcript length, and the MERGED/CONFLICT tree outcomes — with only the `<wavesPath>` substitution and the null-twice reason's path being checked by substring rather than verbatim."
+    },
+    "2": {
+      "hash": "719bf9d8d7d4261d68bee92e9c9f26c42c29ca3a992960919dfb5dcfc4e5ad91",
+      "verdict": "pass",
+      "reason": "Leg (a)'s byte-for-byte deep-equal against a fixture that exercises every M1/M2 branch (tagged trailer with a non-matching task, untrailered human commit, first-parent-only merge, tag-less trailer, excluded task B, multi-file task C, order, leak substrings), leg (b)'s before/after ref check plus deleted-tag fallback, and leg (c)'s untouched-path and empty-tasks cases falsify each clause rather than mention it, with only the internal 'compiled via compile_plan.py into a temp file' mechanism left unobserved — an implementation detail below the block's contract."
+    },
+    "3": {
+      "hash": "15a34a33d8c5569dca972d95d92395f5338fb218749e08fb0cc8a6edac6586c1",
+      "verdict": "pass",
+      "reason": "Every machine clause M1–M8 is falsified by a leg that inspects the actual effect (git parents/trees/refs, receipt bytes via the rename spy, recorded argv order, reply-directory paths, evidence-tree listings, exit status, event deep-equality) rather than merely naming it, and the fixtures run the exported function/CLI at the layer the claim addresses."
+    },
+    "4": {
+      "hash": "b13678e684163723dd2be6df59be286c38eb7ccefb9a541e0aa370b7444ddf89",
+      "verdict": "pass",
+      "reason": "Every machine clause M1–M8 has a citing leg that would fail on its negation — unit ordering and argv, the parked/cannot-fold/unparsable receipt restores, the plain-then-lease push, section placement and PATCH count, FOLD_HOLD skipping check reads and PUTs, the commit_message payload, the 405-retry state sequence versus 409/422/500, and the stub's fold branch plus the seven sibling sims run by `- Run:` — with only implementation-shape phrases (`set +e`/PIPESTATUS, python3 as the writer, testing MERGE_RETRY once) pinned by their observable effects rather than their text."
+    },
+    "5": {
+      "hash": "c6fe1b06a0128bcd1b485a3e2dbea10813bb4ff0c7b83db686b64c2136caa36e",
+      "verdict": "pass",
+      "reason": "Each machine clause has a falsifying leg at the launch-clone layer: (a) pins the refusal text, both shas, the ls-remote→fetch→merge-base order after rev-parse, empty mutating log and no plan ref; (b) pins the shallow refusal text and path, absence of --unshallow/--depth and of ls-remote, empty mutating log and no plan ref; (c) pins exactly one `new` verb and a before/after ref+HEAD+porcelain snapshot differing only in refs/remotes/origin/main."
+    },
+    "6": {
+      "hash": "cf212eb5b3a051bcf363913fbd4dbdbe2eaf5f48f11c0598c62a52651b82f020",
+      "verdict": "pass",
+      "reason": "Each machine clause is pinned by a leg that reads only the named bullet's window and matches the exact ordered literal (sequence uniqueness counted, retry sentence's four parts in order, both trailers, fold unit beside the engine line, the publishing wait naming both units, the attempt-2 exception inside the evidence-before-push parenthesis, the receipts path in the evidence-branch bullet), and M5 is covered by the structural pytest plus the sim run gated on its three contract-reading cases still existing — so a passing exam leaves no clause that could be false."
+    }
+  },
+  "tally": {
+    "dispatched": 18,
+    "rejected": 10,
+    "rounds": {
+      "1": "6 dispatched, 6 fail (1: commutesArgs/walk order; 2: first-parent/per-path filter/exactness; 3: exit-0 universal, second rejection, delete/modify, two completed attempts, bash -lc/--no-tags/waveDir; 4: fold argv, tee, mkdir, CONTRACT clause; 5: refusal texts, ref snapshot; 6: sed window, substantive pins)",
+      "2": "6 dispatched, 2 pass (2, 5), 4 fail (1: wave-loop labelPrefix/waveDir; 3: materialize argv, run-dir vs evidence-dir, engine-head before fetch; 4: attempt-2 restore, unparsable receipt at crash, refused push; 6: M1 window, M5 substance)",
+      "3": "4 dispatched, 2 pass (1, 6), 2 fail (3: tmp+mv seam, stray tmp, tip timing, diff argv; 4: 422/500 and the 405-twice PATCH)",
+      "4": "2 dispatched, 2 pass (3, 4)",
+      "5": "2 dispatched after the (quoted from #715) tag was unwrapped onto one line for provenance (the Claim text unchanged, the hash moved), 2 pass (3, 4)"
+    }
+  }
+}
