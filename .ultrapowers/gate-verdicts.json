@@ -1,0 +1,27 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "105647de3be81cab0da754433a4c093131ae687997b4cf99e460d40e07828287",
+      "verdict": "pass",
+      "reason": "Every machine clause M1–M8 has a leg that would fail on a wrong implementation (event-after-worker:end with byte match and the #2 file, key-set reduction with dropped record types, allowlist-with-500-cut and exact block keys, the three tool_result shapes, both truncation limits with the last-assistant exception, the 8k/4k elision geometry plus the 14×100KB total, the three missing/unreadable paths with unchanged return, and the two sentinels), so the top-layer sentence follows — the only untested slivers (non-scalar values under allowlisted input keys, exact tool_result key set, worker:end payload identity) are narrow sub-conditions that cannot reintroduce file contents."
+    },
+    "2": {
+      "hash": "061b8098421b3d959d63e0bd12724de577cef2bba66aa64122e14dabb98aa71d",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg at its own layer: M1's byte-copy, absence and no-nesting are pinned by the boot sim's buffers and readdir; M2's wording, diff bounds and outside-the-bullet immutability are pinned by the grep/diff counts plus the sed-excised whole-file diff and the unchanged-opening-line locators; M3's call order, dir-entry skip, 404 shape and no-listing-without-events are pinned by exact argv sequences and counts; M4's four find_transcript branches and the run_dir hand-through are pinned end to end (slice.md lacks the sentinel with an empty projects_root); and M5's allowlist is forced by the `{}` rendering of a non-six-key input with the secret body absent."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 1,
+    "rounds": {
+      "1": {"dispatched": 2, "pass": 1, "fail": 1},
+      "2": {"dispatched": 1, "pass": 1, "fail": 0}
+    }
+  },
+  "history": [
+    {"round": 1, "task": "1", "hash": "105647de3be81cab0da754433a4c093131ae687997b4cf99e460d40e07828287", "verdict": "pass"},
+    {"round": 1, "task": "2", "hash": "35d477045294c2f8149664cc80f9b641a291e74c1e62f8760fb7f0925040a45a", "verdict": "fail", "reason": "M2's 'the state list is untouched' is only mentioned, not falsified: the first Run bounds the whole CONTRACT.md diff at ≤2 removed/≤3 added, and leg (b)'s argument that 'the state list is longer than that' is wrong — a one-line replacement inside the state list is −1/+1 and fits under the budget beside a compact transcripts edit, whereas only the `**The two tags` bullet gets a byte-exact diff pin (leg c); likewise M3's `type == \"file\"` filter has no leg with a non-file entry that must be skipped."},
+    {"round": 2, "task": "2", "hash": "061b8098421b3d959d63e0bd12724de577cef2bba66aa64122e14dabb98aa71d", "verdict": "pass"}
+  ]
+}
