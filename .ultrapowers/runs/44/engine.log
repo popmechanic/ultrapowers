@@ -1,0 +1,5 @@
+Running as unit: fleet-engine-44.service
+run-main: preflight
+run-main: tiers — 2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE 9cd8190ffb5e68b1de0eb9eac44b116ab0631d28; 2 task clone(s) + integration
+run-main: engine — waves 2, width bound 12, patch input armed
