@@ -214,6 +214,36 @@ export function fillTiers(argsObj, tier) {
   return filled
 }
 
+// ── the gate's acceptance run, teed into the run directory (#739) ────────────
+// `ultra_gate.py` hands `receipt.json`'s `testCmd` verbatim to
+// `run_acceptance.sh --suite-gate --run`, which evaluates it inside a detached
+// worktree and keeps only `tail -c 8000` of the output; the gate receipt then
+// keeps only the last 4000 chars of THAT. Both scripts are frozen, so the full
+// output can only be preserved by the string the driver puts in the receipt.
+// This is that string. Each piece is load-bearing:
+//
+//   `set -o pipefail;`   the pipeline's status is the SUITE's, not tee's 0.
+//                        The evaluating shell already has it on; saying it
+//                        here keeps the literal self-contained.
+//   `{ <testCmd>; }`     a command carrying `&&` or `;`
+//                        (`bunx tsc --noEmit && bun test`) is grouped BEFORE
+//                        the redirection, so the whole of it is captured and
+//                        the group's status is the suite's.
+//   `2>&1 | tee '<log>'` both streams reach the file AND the pipe's stdout —
+//                        which is what run_acceptance.sh captures into $OUT,
+//                        so the receipt's tail is unchanged in content. `tee`
+//                        reads to EOF, so there is no SIGPIPE.
+//
+// The path is absolute and single-quoted: the eval runs with cwd = the exam
+// worktree under `mktemp -d`, never the run dir. (A repository toplevel
+// containing a single quote is out of scope — the run dir is
+// `<toplevel>/.claude/ultrapowers/run-<stamp>` and parseArgs already refuses a
+// stamp with a space.)
+export const acceptanceLogPath = (runDir) => path.join(runDir, 'acceptance.log')
+
+export const acceptanceWrap = (testCmd, runDir) =>
+  "set -o pipefail; { " + testCmd + "; } 2>&1 | tee '" + acceptanceLogPath(runDir) + "'"
+
 // ── the two-move rule (SKILL.md step 5, made deterministic) ──────────────────
 // NEEDS_ACK approves iff EVERY ack is a deferredVerification item with reason
 // runtime or external (ack.type is "deferred:<reason>", gate_check.py:134).
@@ -652,6 +682,33 @@ export async function runMain(parsed, deps = {}) {
   if (fin.code !== 0) {
     return fail('finalize-failed', (fin.stderr || fin.stdout).slice(-800))
   }
+  // The acceptance capture (#739), and this is the one spot it can happen: the
+  // run dir is known (since step 1) and the gate has not yet read receipt.json.
+  // The wrapper goes into the RECEIPT and nowhere else — the engine and
+  // publish-fold read `args.json`'s testCmd (run-engine.mjs for the baseline,
+  // the proof runs and the integrated suite), and the knob the driver forwards
+  // to ultra_run.py is the operator's, unwrapped. Every other key ultra_run
+  // stamped (ok, baseBranch, argsFile, testCmdSource, compile, …) is carried
+  // through by value; `acceptanceLog` is added so a reader of the evidence
+  // branch's receipt sees where the full output went without parsing a shell
+  // command. A receipt with no testCmd is left alone: the gate has its own
+  // fail-closed message for that, and wrapping nothing would hide it.
+  const runReceiptPath = path.join(runDir, 'receipt.json')
+  try {
+    const runReceipt = readJson(runReceiptPath)
+    if (typeof runReceipt.testCmd === 'string' && runReceipt.testCmd) {
+      runReceipt.testCmd = acceptanceWrap(runReceipt.testCmd, runDir)
+      runReceipt.acceptanceLog = acceptanceLogPath(runDir)
+      fs.writeFileSync(runReceiptPath, JSON.stringify(runReceipt, null, 2))
+      stage('acceptance-capture', 'gate suite tees to ' + runReceipt.acceptanceLog)
+    } else {
+      stage('acceptance-capture', 'receipt carries no testCmd — nothing to wrap')
+    }
+  } catch (e) {
+    return fail('acceptance-capture-failed', 'could not rewrite ' + runReceiptPath +
+      ' with the acceptance-log wrapper: ' + String((e && e.message) || e))
+  }
+
   stage('gate')
   const gate = await exec(py, [path.join(scripts, 'ultra_gate.py'),
     '--stamp', stamp, '--result', resultPath], { cwd: repoDir, env: pyEnv })
