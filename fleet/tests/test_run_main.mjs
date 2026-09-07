@@ -15,10 +15,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import {
   parseArgs, fillTiers, ackDecision, acksOf, criticDecision, boundedParallel, provisionRunTree,
   writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage, DEFAULTS,
-  makeAddDirsFor,
+  makeAddDirsFor, acceptanceWrap,
   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
 } from '../run-main.mjs'
 import { makeEventLog } from '../run-waves.mjs'
@@ -287,6 +288,19 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
   const runDir = path.join(repoDir, '.claude/ultrapowers', 'run-' + runId)
   const argsFile = path.join(runDir, 'args.json')
   const calls = []
+  // The receipt ultra_run.py stamps at preflight — `testCmd`/`testCmdSource`
+  // included, exactly as the real script writes them (~ultra_run.py:603).
+  const receiptWritten = Object.freeze({
+    ok: true, baseBranch: 'fleet-base', argsFile, testCmd: 'true', testCmdSource: 'plan',
+  })
+  // `<run dir>/receipt.json` AS EACH STUBBED SCRIPT SEES IT at the moment it is
+  // called: the file is the seam the gate reads its --run from, so the legs
+  // below read these snapshots, never the end-of-run file.
+  const receiptSeen = {}
+  const snapReceipt = (key) => {
+    const p = path.join(runDir, 'receipt.json')
+    receiptSeen[key] = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null
+  }
   const exec = async (cmd, argv, opts) => {
     calls.push([cmd, ...argv])
     if (cmd === 'git') {
@@ -298,6 +312,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
     }
     const script = path.basename(argv[0])
     if (script === 'ultra_run.py' && argv.includes('--validate-knobs')) {
+      snapReceipt('atValidateKnobs')
       return { code: 0, stdout: '{"ok": true}', stderr: '' }
     }
     if (script === 'ultra_run.py') {
@@ -311,15 +326,19 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
       }))
       // ultra_run prints the receipt to STDOUT on success (run-main derives the
       // run dir from receipt.argsFile, never a reconstructed path).
-      const receipt = { ok: true, baseBranch: 'fleet-base', argsFile, testCmd: 'true' }
-      fs.writeFileSync(path.join(runDir, 'receipt.json'), JSON.stringify(receipt))
-      return { code: 0, stdout: JSON.stringify(receipt), stderr: '' }
+      fs.writeFileSync(path.join(runDir, 'receipt.json'), JSON.stringify(receiptWritten))
+      return { code: 0, stdout: JSON.stringify(receiptWritten), stderr: '' }
     }
     if (script === 'finalize_report.py') return { code: 0, stdout: '', stderr: '' }
     if (script === 'ultra_gate.py' && argv.includes('--approve')) {
+      snapReceipt('atApprove')
       return { code: 0, stdout: JSON.stringify({ mode: 'suite', stamp: runId, branch: 'ultra/integration-' + runId }), stderr: '' }
     }
     if (script === 'ultra_gate.py') {
+      // Gate mode (--stamp/--result): the real script reads its --run out of
+      // `<run dir>/receipt.json` HERE (~ultra_gate.py:131), so this snapshot is
+      // what the gate's acceptance run would actually be.
+      snapReceipt('atGate')
       // The REAL gate-receipt shape (ultra_gate.py:107): acks are NESTED under
       // gateCheck, never flat at the top. A flat {acks} stub is what let the
       // two-move-rule bypass through review — the stub must match the script.
@@ -335,7 +354,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
     }
     throw new Error('exec stub: unexpected ' + cmd + ' ' + argv.join(' '))
   }
-  return { exec, calls, runDir }
+  return { exec, calls, runDir, argsFile, receiptWritten, receiptSeen }
 }
 
 const WAVES = [[{ id: 'T1', title: 't', files: ['a.txt'], tier: null, review: 'lean', writes: ['a.txt'], commutes: [] }]]
@@ -570,6 +589,170 @@ function freshRepo(name) {
   assert.equal(empty[i + 1], '', "'' rides verbatim so ultra_run.py disables derivation")
   const given = await drive('boot-given', 'bun install')
   assert.equal(given[given.indexOf('--bootstrap-cmd') + 1], 'bun install')
+}
+
+// ── The driver tees the gate's acceptance run into the run directory ─────────
+// (task 1 of this run; claim quoted from #739: "The gate's acceptance run writes
+// its full stdout+stderr to `<run dir>/acceptance.log`".)
+//
+// The seam is `<run dir>/receipt.json`: `ultra_gate.py` (frozen) reads its
+// `testCmd` from that file and hands it verbatim to `run_acceptance.sh --run`,
+// keeping only a 4000-char tail of the result. The driver is the only
+// non-frozen writer of that string, so the capture is the driver's.
+
+// Legs (a) + (b) [M1, M2]: one runMain flow over the exec stub — the rewrite
+// lands in the receipt, after every other reader and before the gate, and
+// nowhere else.
+{
+  const repoDir = freshRepo('flow-acceptance-log')
+  const runId = 'run-97'
+  const { exec, calls, runDir, argsFile, receiptWritten, receiptSeen } =
+    makeExecStub({ repoDir, runId, gateExit: 0, waves: WAVES })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => ({ integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [] }),
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 0, out.verdict + ': ' + out.detail)
+
+  // (a) [M1] The receipt the gate reads, at the moment the gate reads it.
+  const seen = receiptSeen.atGate
+  assert.ok(seen, 'the gate-mode ultra_gate.py stub snapshotted <run dir>/receipt.json')
+  // The run dir is path.dirname of the receipt's own argsFile — the driver's
+  // authoritative run dir, never a reconstructed path.
+  const expectRunDir = path.dirname(receiptWritten.argsFile)
+  assert.equal(expectRunDir, runDir)
+  assert.ok(path.isAbsolute(expectRunDir), 'the run dir is absolute — the eval runs in the exam worktree, not here')
+  // Both halves of the clause: the produced helper's output, AND the verbatim
+  // literal the clause pins. A wrapper that is not this string is not this leg.
+  assert.equal(seen.testCmd, acceptanceWrap('true', expectRunDir),
+    'the gate reads acceptanceWrap(<the testCmd ultra_run.py stamped>, <run dir>)')
+  assert.equal(seen.testCmd,
+    "set -o pipefail; { true; } 2>&1 | tee '" + path.join(expectRunDir, 'acceptance.log') + "'",
+    'the wrapper is exactly the literal the clause pins: pipefail, the brace group, 2>&1 | tee <quoted absolute path>')
+  assert.equal(seen.acceptanceLog, path.join(expectRunDir, 'acceptance.log'),
+    'acceptanceLog names where the full output went, so the evidence reader parses no command')
+  // Every other key the receipt carried is unchanged in value.
+  assert.equal(seen.ok, receiptWritten.ok)
+  assert.equal(seen.baseBranch, receiptWritten.baseBranch)
+  assert.equal(seen.argsFile, receiptWritten.argsFile)
+  assert.equal(seen.testCmdSource, receiptWritten.testCmdSource,
+    'testCmdSource stays as ultra_run.py stamped it — the wrapper is not a new source')
+  for (const k of Object.keys(receiptWritten)) {
+    if (k === 'testCmd') continue
+    assert.deepEqual(seen[k], receiptWritten[k], 'receipt key preserved through the rewrite: ' + k)
+  }
+
+  // (b) [M2] The wrapper reaches the gate through the receipt and no reader
+  // before it.
+  const onDisk = JSON.parse(fs.readFileSync(path.join(runDir, 'args.json'), 'utf8'))
+  assert.equal(onDisk.testCmd, 'true',
+    "args.json keeps the plain command: the engine's baseline/proof/integrated runs read args.testCmd")
+  assert.equal(JSON.parse(fs.readFileSync(argsFile, 'utf8')).testCmd, 'true')
+  const beforeGate = receiptSeen.atValidateKnobs
+  assert.ok(beforeGate, 'the --validate-knobs stub snapshotted the receipt too')
+  assert.equal(beforeGate.testCmd, 'true',
+    'the rewrite happens AFTER every other reader: --validate-knobs still sees the unwrapped command')
+  // No exec argv of the whole flow carries the log path — not the preflight,
+  // not --validate-knobs, not finalize_report.py, and neither gate call.
+  const approveCall = calls.find((c) => c.includes('--approve'))
+  assert.ok(approveCall, 'the green flow reached --approve')
+  for (const c of calls) {
+    for (const el of c) {
+      assert.ok(!String(el).includes('acceptance.log'),
+        'no argv element carries the log path (the receipt is the only channel): ' + c.join(' '))
+    }
+  }
+}
+
+// Legs (c) + (d) [M3]: the wrapper evaluated exactly the way the frozen
+// run_acceptance.sh evaluates its --run in suite-gate mode — a real invocation
+// of that script against a throwaway repository. Both frozen tails (8000 chars
+// in the script's JSON, 4000 in the gate receipt) are shorter than either
+// stream here, so a log holding only a tail cannot pass.
+{
+  const engineDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+  const acceptSh = path.join(engineDir, 'skills/ultrapowers/scripts/run_acceptance.sh')
+  assert.ok(fs.existsSync(acceptSh), 'the frozen script is where the gate finds it: ' + acceptSh)
+
+  const repoDir = freshRepo('acceptance-wrap-real')
+  const branch = 'fleet-base'
+  const runDir = path.join(tmp, 'acceptance-wrap-rundir')
+  fs.mkdirSync(runDir, { recursive: true })
+  const logPath = path.join(runDir, 'acceptance.log')
+
+  // A command with a marked first line, >10000 bytes on EACH stream, a marked
+  // last line, and a chosen exit status. Ordinary sequential writes, so the
+  // bytes the pipe carries are fully determined.
+  const NONCE = 'a1b2c3'
+  const stdoutBytes = 'BEGIN-' + NONCE + '\n' + ('a'.repeat(99) + '\n').repeat(102)
+  const stderrBytes = ('b'.repeat(99) + '\n').repeat(102)
+  const endBytes = 'END-' + NONCE + '\n'
+  assert.ok(Buffer.byteLength(stdoutBytes) >= 10000 && Buffer.byteLength(stderrBytes) >= 10000)
+  const outFile = path.join(tmp, 'aw-stdout.txt')
+  const errFile = path.join(tmp, 'aw-stderr.txt')
+  fs.writeFileSync(outFile, stdoutBytes)
+  fs.writeFileSync(errFile, stderrBytes)
+  const emitter = path.join(tmp, 'aw-emitter.sh')
+  fs.writeFileSync(emitter, [
+    '#!/usr/bin/env bash',
+    "cat '" + outFile + "'",
+    "cat '" + errFile + "' >&2",
+    "printf 'END-%s\\n' '" + NONCE + "'",
+    'exit "$1"',
+  ].join('\n') + '\n')
+  const emitted = stdoutBytes + stderrBytes + endBytes
+
+  const runGate = (exitCode) => {
+    fs.rmSync(logPath, { force: true })
+    const cmd = "bash '" + emitter + "' " + exitCode
+    const run = acceptanceWrap(cmd, runDir)
+    let stdout = '', code = 0
+    try {
+      stdout = execFileSync('bash', [acceptSh, '--suite-gate', '--branch', branch,
+        '--repo', repoDir, '--run', run], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      code = e.status
+      stdout = String(e.stdout || '')
+    }
+    return { code, json: JSON.parse(stdout), log: fs.readFileSync(logPath, 'utf8') }
+  }
+
+  // (c) exit 0: green, the log is the WHOLE of what the command emitted, and
+  // what tee forwarded on stdout is still what the script captured.
+  const green = runGate(0)
+  assert.equal(green.code, 0, 'the script exits 0 for a suite that exits 0')
+  assert.equal(green.json.passed, true)
+  assert.equal(green.json.exitCode, 0)
+  assert.ok(fs.existsSync(logPath), '<run dir>/acceptance.log exists')
+  assert.equal(Buffer.byteLength(green.log), Buffer.byteLength(emitted),
+    'the log is the complete stdout+stderr, not a tail')
+  assert.equal(green.log, emitted, 'the log is exactly the bytes the command emitted')
+  assert.equal(green.log.split('\n')[0], 'BEGIN-' + NONCE, 'the opening marker is the log\'s first line')
+  assert.equal(green.log.trimEnd().split('\n').at(-1), 'END-' + NONCE, 'the closing marker is the log\'s last line')
+  assert.ok(green.json.output.length <= 8000, 'the frozen tail is untouched: output is at most 8000 chars')
+  assert.ok(green.json.output.includes('END-' + NONCE),
+    'tee forwards on stdout what the script captures — the receipt tail keeps its content')
+  assert.ok(!green.json.output.includes('BEGIN-' + NONCE),
+    'the tail is a tail: the opening marker is 20000 bytes back, so the log is the only complete record')
+
+  // (d) the exit status crosses the pipe — pipefail, not tee's 0.
+  const red = runGate(3)
+  assert.equal(red.code, 1, 'the script exits 1 for a red suite')
+  assert.equal(red.json.exitCode, 3, 'the suite\'s exit status survived the pipeline')
+  assert.equal(red.json.passed, false)
+  assert.equal(red.log, emitted, 'the log is complete on the red path too')
+  assert.equal(red.log.split('\n')[0], 'BEGIN-' + NONCE)
+  assert.equal(red.log.trimEnd().split('\n').at(-1), 'END-' + NONCE)
+  assert.equal(Buffer.byteLength(red.log), Buffer.byteLength(emitted))
+
+  const nocollect = runGate(5)
+  assert.equal(nocollect.json.exitCode, 5,
+    'the frozen no-tests guard still fires — the pipeline did not launder 5 into tee\'s 0')
+  assert.equal(nocollect.json.passed, false)
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

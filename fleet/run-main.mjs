@@ -444,6 +444,36 @@ export const boundedParallel = (limit) => async (thunks) => {
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'))
 
+// ── the gate's acceptance run, teed into the run dir (#739) ──────────────────
+// `ultra_gate.py` hands `receipt.json`'s `testCmd` verbatim to the frozen
+// `run_acceptance.sh --run`, which evaluates it inside a detached worktree
+// (`OUT="$( (cd "$EXAM_WT" && eval "$SG_RUN") 2>&1 )"`) and keeps only a tail:
+// 8000 chars in the script's JSON, 4000 more in the gate receipt. Both frozen,
+// so the FULL output can only be kept by the string the driver puts in that
+// field. Every piece of the wrapper is load-bearing:
+//
+//   set -o pipefail  the pipeline's status is the suite's, not `tee`'s 0. The
+//                    evaluating shell already has it on; saying it here keeps
+//                    the literal self-contained (and keeps a `5` a `5`, so the
+//                    frozen no-tests guard still fires).
+//   { <cmd>; }       a command with `&&` or `;` in it (`tsc && bun test`) is
+//                    grouped BEFORE the redirection, so the whole of it is
+//                    captured and the group's status is the suite's.
+//   2>&1 | tee PATH  both streams reach the file AND the pipe's stdout — which
+//                    is what run_acceptance.sh captures into $OUT, so the
+//                    receipt's tail is unchanged in content. tee reads to EOF:
+//                    no SIGPIPE. The path is single-quoted and ABSOLUTE — the
+//                    eval's cwd is the exam worktree under `mktemp -d`, never
+//                    the run dir. (A toplevel containing a single quote is out
+//                    of scope: the run dir is `<toplevel>/.claude/ultrapowers/
+//                    run-<stamp>` and parseArgs refuses a stamp with a space.)
+export const acceptanceLogPath = (runDir) => path.join(runDir, 'acceptance.log')
+
+export function acceptanceWrap(testCmd, runDir) {
+  return "set -o pipefail; { " + testCmd + "; } 2>&1 | tee '" +
+    acceptanceLogPath(runDir) + "'"
+}
+
 // ── the engine, end to end ───────────────────────────────────────────────────
 // Returns { code, verdict, detail } — code is the process exit (0 only on an
 // approved run), verdict names where it ended for the log. Every refusal path
@@ -652,6 +682,33 @@ export async function runMain(parsed, deps = {}) {
   if (fin.code !== 0) {
     return fail('finalize-failed', (fin.stderr || fin.stdout).slice(-800))
   }
+  // The acceptance capture (#739). The receipt is the ONLY channel: the gate
+  // reads `testCmd` from it, and nothing else does — the engine and
+  // publish-fold read `args.testCmd` (which keeps the plain command, so the
+  // baseline, the proof runs and the integrated suite are untouched), and the
+  // argv the driver hands ultra_run.py is the operator's knob, unwrapped. So
+  // the rewrite lands HERE: after preflight stamped the command, after
+  // --validate-knobs and finalize_report.py have read what they read, and
+  // before the one process that consumes it. `acceptanceLog` is recorded
+  // beside it so a reader of the evidence branch's receipt sees where the full
+  // output went without parsing a shell string.
+  const runReceiptPath = path.join(runDir, 'receipt.json')
+  try {
+    const runReceipt = readJson(runReceiptPath)
+    if (typeof runReceipt.testCmd === 'string' && runReceipt.testCmd) {
+      runReceipt.testCmd = acceptanceWrap(runReceipt.testCmd, runDir)
+      runReceipt.acceptanceLog = acceptanceLogPath(runDir)
+      fs.writeFileSync(runReceiptPath, JSON.stringify(runReceipt, null, 2))
+      stage('acceptance-capture', 'gate suite tees to ' + acceptanceLogPath(runDir))
+    }
+    // No testCmd to wrap: leave the receipt exactly as stamped so the gate
+    // emits its own "receipt lacks testCmd" refusal rather than eval'ing an
+    // empty group.
+  } catch (e) {
+    return fail('acceptance-capture-failed', 'could not rewrite ' + runReceiptPath +
+      ': ' + String((e && e.message) || e))
+  }
+
   stage('gate')
   const gate = await exec(py, [path.join(scripts, 'ultra_gate.py'),
     '--stamp', stamp, '--result', resultPath], { cwd: repoDir, env: pyEnv })

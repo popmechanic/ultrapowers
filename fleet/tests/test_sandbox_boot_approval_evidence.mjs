@@ -38,6 +38,20 @@
  *                     `transcripts/<sessionId>.jsonl`, located by its unchanged
  *                     opening line.
  *
+ * #739 Task 2 asks it of a FOURTH thing that directory holds — the gate's
+ * acceptance run's own output, which the frozen receipt keeps only a 4000-char
+ * tail of:
+ *
+ *   M1 / legs (a)(d)  `collect_evidence` copies `<run dir>/acceptance.log` into
+ *                     `.ultrapowers/runs/<N>/acceptance.log` byte for byte when
+ *                     the file is present — all 9000 bytes, first line the
+ *                     stub's marker, `gate-receipt.json` beside it — and the
+ *                     copy lives in the function's own body.
+ *   M2 / leg (b)      a run whose engine wrote no `acceptance.log` commits none.
+ *   M3 / leg (c)      the same `ultra/evidence-run-<N>` bullet names
+ *                     `acceptance.log` and, before any other backticked name,
+ *                     calls it the full stdout+stderr.
+ *
  * The rig is `_sandbox_boot_helpers.mjs` — the stub bin dir, `makeHome`,
  * `boot`, `statusOf`, `evidenceDir` and `runTests` — shared with
  * `test_sandbox_boot.mjs` and `test_sandbox_boot_approved.mjs`. The one thing
@@ -116,6 +130,61 @@ if [ -n "\${STUB_TRANSCRIPT_A:-}" ]; then
 fi
 `
 
+// ── #739 Task 2: the acceptance log rides beside the gate receipt ────────────
+//
+// M1: `collect_evidence` copies `<run dir>/acceptance.log` — the run dir being
+// `$TARGET_DIR/.claude/ultrapowers/run-$RUN_ID`, the same directory
+// `gate-receipt.json` is read from — to `.ultrapowers/runs/<N>/acceptance.log`
+// on the evidence worktree, BYTE FOR BYTE, when the file is present. The
+// receipt keeps only a 4000-char tail of that output in `acceptance.output`
+// (the verification periphery is frozen), so the log is the only place the
+// whole run reads; a copy that carried a tail is not this clause.
+// M2: a run whose engine wrote no `acceptance.log` commits none.
+// M3: `fleet/CONTRACT.md`'s evidence bullet names it.
+
+/** The engine's `acceptance.log`, written from an env variable with the same
+ *  `printf '%s'` the two snippets above use, into the run directory and
+ *  nowhere else — the path the driver tees the gate's acceptance run into. */
+const ACCEPTANCE_SNIPPET = `
+if [ -n "\${STUB_ACCEPTANCE_BYTES:-}" ]; then
+  printf '%s' "$STUB_ACCEPTANCE_BYTES" >"$run_dir/acceptance.log"
+fi
+`
+
+/** The opening marker of the stub's acceptance log — a distinct first line, so
+ *  a collected file that begins anywhere else is not this run's log. */
+const ACCEPTANCE_MARKER = 'ACCEPTANCE-BEGIN-5f3ab21c'
+/** How long the stub's log is: longer than the receipt's 4000-char tail, so a
+ *  copy of that tail is visibly not "byte for byte". */
+const ACCEPTANCE_LENGTH = 9000
+/** The body itself: the marker, then filler, exactly ACCEPTANCE_LENGTH bytes of
+ *  ASCII and therefore exactly that many characters. */
+const ACCEPTANCE_BYTES = (() => {
+  let body = ACCEPTANCE_MARKER + '\n'
+  for (let i = 1; body.length < ACCEPTANCE_LENGTH; i += 1) {
+    body += `acceptance: fleet/tests/test_${i}.py .......... passed\n`
+  }
+  return body.slice(0, ACCEPTANCE_LENGTH - 1) + '\n'
+})()
+
+/** The two `Run:` legs of this task's Proof, verbatim — read from the repo
+ *  root, where the Proof runs them. */
+const REPO = path.join(HERE, '..', '..')
+const RUN_COLLECT_EVIDENCE =
+  `sed -n '/^collect_evidence()/,/^}/p' fleet/sandbox-boot.sh | grep -c 'acceptance.log'`
+const RUN_CONTRACT_BULLET =
+  `sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>/p' ` +
+  `fleet/CONTRACT.md | grep -c 'acceptance.log'`
+/** What one of those pipelines printed, as a number. `grep -c` prints `0` and
+ *  exits 1 when nothing matched, so the count is read off stdout. */
+function grepCount(command) {
+  const r = spawnSync('bash', ['-c', command], { cwd: REPO, encoding: 'utf8' })
+  const n = Number(String(r.stdout).trim())
+  assert.ok(Number.isInteger(n),
+    `\`${command}\` must print a count, got: ${JSON.stringify(r.stdout)}${r.stderr}`)
+  return n
+}
+
 /** The two names the engine writes: `<sessionId>.jsonl`, one per worker
  *  session, in the order `readdirSync` sorts them. */
 const TRANSCRIPT_NAMES = ['aaaa-1.jsonl', 'bbbb-2.jsonl']
@@ -148,7 +217,8 @@ function approvalHome() {
     `the shared engine stub no longer ends in '${ENGINE_EXIT}' — this sim's splice is stale`)
   const file = path.join(ctx.bin, 'systemd-run')
   fs.writeFileSync(file, PRELUDE + body.replace(
-    ENGINE_EXIT, () => APPROVAL_SNIPPET + TRANSCRIPTS_SNIPPET + ENGINE_EXIT))
+    ENGINE_EXIT,
+    () => APPROVAL_SNIPPET + TRANSCRIPTS_SNIPPET + ACCEPTANCE_SNIPPET + ENGINE_EXIT))
   fs.chmodSync(file, 0o755)
   return ctx
 }
@@ -181,6 +251,9 @@ const transcriptsRun = () => run('transcripts', {
   STUB_TRANSCRIPT_A: TRANSCRIPT_A,
   STUB_TRANSCRIPT_B: TRANSCRIPT_B,
 })
+/** #739 Task 2: PASS, with a 9000-byte `<run dir>/acceptance.log`. */
+const acceptanceRun = () =>
+  run('acceptance', { STUB_VERDICT: 'PASS', STUB_ACCEPTANCE_BYTES: ACCEPTANCE_BYTES })
 
 const read = (file) => fs.readFileSync(file)
 
@@ -389,6 +462,93 @@ test('CONTRACT.md\'s evidence-branch bullet names the worker slices  [#702 Task 
   assert.match(bullet, /`transcripts\/<sessionId>\.jsonl`/,
     'the `ultra/evidence-run-<N>` bullet must name `transcripts/<sessionId>.jsonl` — got:\n' +
       bullet)
+})
+
+// ── #739 Task 2, leg (a): the acceptance log rides to the record  [M1] ───────
+
+test('the acceptance log reaches the evidence worktree byte for byte  [#739 Task 2 / M1 / leg (a)]', () => {
+  const ctx = acceptanceRun()
+  const source = path.join(runDir(ctx), 'acceptance.log')
+  const collected = path.join(evidenceRunDir(ctx), 'acceptance.log')
+
+  // The rig left the log where the driver tees the gate's acceptance run:
+  // `<run dir>/acceptance.log`, beside the receipt the gate wrote.
+  assert.ok(fs.existsSync(source), `the engine stub must write ${source}`)
+  assert.equal(read(source).length, ACCEPTANCE_LENGTH,
+    `the rig wrote a ${ACCEPTANCE_LENGTH}-byte log — longer than the receipt's 4000-char tail`)
+  assert.equal(read(source).toString(), ACCEPTANCE_BYTES, 'the rig wrote the bytes it meant to')
+
+  // M1: the file is on the record, under the same name, byte for byte.
+  assert.ok(fs.existsSync(collected),
+    'collect_evidence must copy acceptance.log into ' + RUN_PATH + ', got: ' +
+      fs.readdirSync(evidenceRunDir(ctx)).join(' '))
+  assert.deepEqual(read(collected), read(source),
+    'the collected acceptance.log must be byte-equal to the run directory\'s')
+  assert.equal(read(collected).length, ACCEPTANCE_LENGTH,
+    `the collected acceptance.log must be all ${ACCEPTANCE_LENGTH} bytes — a 4000-char tail is ` +
+      'the receipt\'s summary, not this file')
+  assert.equal(read(collected).toString(), ACCEPTANCE_BYTES)
+  assert.equal(read(collected).toString().split('\n')[0], ACCEPTANCE_MARKER,
+    `the collected log's first line must be the opening marker ${ACCEPTANCE_MARKER} — a copy ` +
+      'that starts anywhere else carried a tail, not the file')
+
+  // The receipt whose 4000-char summary this log completes sits in the same
+  // directory — otherwise this leg reads the wrong one.
+  assert.ok(fs.existsSync(path.join(evidenceRunDir(ctx), 'gate-receipt.json')),
+    `${RUN_PATH}/gate-receipt.json must be collected beside acceptance.log, got: ` +
+      fs.readdirSync(evidenceRunDir(ctx)).join(' '))
+})
+
+// ── #739 Task 2, leg (b): a run that wrote none commits none  [M2] ───────────
+
+test('a run whose engine wrote no acceptance.log commits none  [#739 Task 2 / M2 / leg (b)]', () => {
+  const ctx = bareRun()
+  const dir = evidenceRunDir(ctx)
+
+  assert.ok(!fs.existsSync(path.join(runDir(ctx), 'acceptance.log')),
+    'this run\'s engine wrote no acceptance.log')
+
+  // The evidence directory is the real one — the run's record is in it.
+  for (const f of ['gate-receipt.json', 'status.json']) {
+    assert.ok(fs.existsSync(path.join(dir, f)),
+      `${RUN_PATH}/${f} must be collected — otherwise this leg reads the wrong directory`)
+  }
+  assert.ok(!fs.existsSync(path.join(dir, 'acceptance.log')),
+    'acceptance.log must not appear on the evidence branch of a run that never wrote it, got: ' +
+      fs.readdirSync(dir).join(' '))
+})
+
+// ── #739 Task 2, leg (c): the contract names the log  [M3] ───────────────────
+
+test('CONTRACT.md\'s evidence-branch bullet names acceptance.log  [#739 Task 2 / M3 / leg (c)]', () => {
+  const bullet = evidenceBullet()
+  // The name, then its description BEFORE any other backticked name: a bullet
+  // that omits the name, or parks its description after some other backticked
+  // file, does not match.
+  assert.match(bullet, /`acceptance\.log`[^`]*full stdout\+stderr/,
+    'the `ultra/evidence-run-<N>` bullet must name `acceptance.log` and then, before any other ' +
+      'backticked name, say it is the gate\'s acceptance run\'s full stdout+stderr — got:\n' +
+      bullet)
+
+  // The Proof's second `Run:` reads the same span with `sed`+`grep`.
+  const n = grepCount(RUN_CONTRACT_BULLET)
+  assert.ok(n >= 1,
+    `\`${RUN_CONTRACT_BULLET}\` must print at least 1, got ${n}`)
+})
+
+// ── #739 Task 2, leg (d): the copy is in collect_evidence itself  [M1] ───────
+
+test('collect_evidence\'s own body names acceptance.log, and the script parses  [#739 Task 2 / M1 / leg (d)]', () => {
+  // The Proof's first `Run:`: the FUNCTION BODY names the file — a comment
+  // elsewhere in the script is outside this slice and does not count.
+  const n = grepCount(RUN_COLLECT_EVIDENCE)
+  assert.ok(n >= 1,
+    `\`${RUN_COLLECT_EVIDENCE}\` must print at least 1 — the copy belongs inside ` +
+      `collect_evidence, got ${n}`)
+  // The same check the rig's first test makes, restated here because leg (d)
+  // is the function body AND a script that still parses.
+  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0,
+    'fleet/sandbox-boot.sh must still parse')
 })
 
 runTests(tests)

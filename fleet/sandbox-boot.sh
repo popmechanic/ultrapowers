@@ -758,9 +758,12 @@ collect_evidence() {
   [ -n "$approve" ] && cp "$approve" "$dest/approve-receipt.json"
   run_dir="$(run_dir_path)"
   # `standing-approval.json` is the pre-authorization record the engine writes
-  # beside the receipts. Every name here is copied WHEN THE ENGINE WROTE IT — a
-  # run that needed no approval commits none.
-  for f in report.json events.jsonl receipt.json standing-approval.json; do
+  # beside the receipts. `acceptance.log` is the acceptance run's full
+  # stdout+stderr, of which `gate-receipt.json` keeps only a 4000-char tail —
+  # the whole of it belongs on the record. Every name here is copied WHEN THE
+  # ENGINE WROTE IT — a run that needed no approval commits none, and a run
+  # whose engine never ran the suite commits no log.
+  for f in report.json events.jsonl receipt.json standing-approval.json acceptance.log; do
     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
   done
   # The engine's per-worker transcripts — the reduced records ultralearn's

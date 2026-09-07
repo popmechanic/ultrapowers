@@ -47,6 +47,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
+    `acceptance.log` — the gate's acceptance run's full stdout+stderr, of which the receipt keeps
+    only a 4000-char tail — is there on the same terms, present when the engine wrote it.
     The publish fold writes its own `publish-fold/` receipts directory beside them, holding
     `receipt.json` (the fold's record: `{ engineHead, attempts: { "1": { tip, candidate, pushedHead,
     disposition, reason, path, pathsJoined, resolversDispatched, suite } } }`), `engine-head`,
