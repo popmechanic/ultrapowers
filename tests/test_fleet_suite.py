@@ -3,11 +3,15 @@ import glob, os, subprocess, pytest
 
 FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
 
-# Measured wall at 0.3.11: 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s. Under
-# `--dist load` a worker that picks up an 83 s sim last holds the whole suite
-# open, so the six longest go out first, longest first; the rest follow
+# Measured wall at 0.3.18: 106 s, 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s.
+# Under `--dist load` a worker that picks up a 106 s sim last holds the whole
+# suite open, so the seven longest go out first, longest first; the rest follow
 # alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
-SLOW_FIRST = ('test_run_engine_examiner.mjs', 'test_sandbox_boot.mjs',
+# test_sandbox_boot_merge.mjs leads it because leg (j) re-runs seven sibling
+# sims inside itself: its wall is theirs plus its own, so it is the longest sim
+# there is and it grows whenever any of the seven does.
+SLOW_FIRST = ('test_sandbox_boot_merge.mjs', 'test_run_engine_examiner.mjs',
+              'test_sandbox_boot.mjs',
               'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
               'test_run_engine_proof_runs.mjs', 'test_deadline_slack.mjs')
 
@@ -41,7 +45,12 @@ def _ensure_node_modules():
 @pytest.mark.parametrize("path", TESTS, ids=[os.path.basename(p) for p in TESTS])
 def test_fleet_mjs(path):
     _ensure_node_modules()
-    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=120)
+    # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+    # contention, and that sim is now test_sandbox_boot_merge.mjs, which spends
+    # most of its own wall re-running seven siblings one after another. A wall
+    # only a little above that sim's honest runtime reports a slow box as a
+    # broken suite; this one is a deadlock catcher, not a budget.
+    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ALL TESTS PASSED" in r.stdout
 

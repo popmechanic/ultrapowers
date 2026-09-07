@@ -260,7 +260,7 @@ structural dozen).
   `hooks/session_start.sh` and `ultrawrite/SKILL.md` (pinned by
   `tests/test_recommendation_rubric.py`).
 - **Fleet engine sims ride the pytest suite.** `fleet/tests/test_*.mjs` are run by
-  `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 120 s per file, no network — `curl`,
+  `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 300 s per file, no network — `curl`,
   `git`, `gh`, `ssh`, `systemd-run` and `systemctl` are stubbed through a PATH shim); the old
   `run_acceptance.sh --suite-gate` harness leg is inert since 0.3.0 (its
   `harnesses/*.js` trigger path no longer exists — the frozen script is untouched).
