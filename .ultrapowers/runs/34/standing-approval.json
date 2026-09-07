@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-34.md run-34 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/sandbox-boot.sh — the phase evidence commits as seen on a real run's `ultra/evidence-run-<N>` history (`git log --format='%s'` listing one subject per relayed phase between `run-<N>: running` and the `publishing` commit), at the production 30 s FLEET_STATUS_INTERVAL, against a real remote and real systemd — The plan's Rule 5 states this half is read off a live run after the change lands, never from a sandbox. Every exam here drives the script through the PATH shim that stubs git, systemd-run, systemctl and curl (fleet/tests/_sandbox_boot_helpers.mjs), so real push/`pull --rebase` contention on GitHub, real unit-kill timing against the EVIDENCE_LOCK, and the engine's own phase spellings are structurally covered by the sims but not executed in this environment. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

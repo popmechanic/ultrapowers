@@ -1,0 +1,129 @@
+{
+  "integrationBranch": "ultra/integration-run-34",
+  "baseSha": "00fb22436c9fad7f6e37de3f11f73f709675ad35",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "da3598bd0ff1bceac89cbd6afacd34da4a04abea",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-34/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the acceptance mode is `suite`, but the exam the driver ran is only `node fleet/tests/test_sandbox_boot.mjs`. This diff changes two artifacts that four other sims drive: `fleet/sandbox-boot.sh` (the refresher now commits, `run_engine` now takes a lock before the kill, `push_evidence` grew a soft mode) and the shared rig `fleet/tests/_sandbox_boot_helpers.mjs` (the `systemd-run` engine branch now creates/removes `$FLEET_HOME/stub/engine-alive` and writes `events.jsonl` through a new `STUB_ENGINE_PHASES` branch; the `git` stub's `push` case grew a second guard). Static reading says the siblings are safe \u2014 `grep` finds `FLEET_STATUS_INTERVAL` set to `1` in exactly one case outside the new section (`fleet/tests/test_sandbox_boot.mjs:47`, which asserts `states(ctx)` and one `status: state=running phase=gate` line, not `commitStates`), every other `commitStates` pin (`test_sandbox_boot_edges.mjs`, `_record.mjs`, `_selfmerge.mjs`, `_merge.mjs`) runs on `green()` at interval `30` with no engine sleep so the refresher never polls, and `STUB_ENGINE_PHASES` unset reproduces the single `gate` line byte for byte. What would settle it: run `node fleet/tests/test_sandbox_boot_edges.mjs`, `_record.mjs`, `_selfmerge.mjs` and `_merge.mjs` on this tree.; `fleet/sandbox-boot.sh`: the soft `add` path silently retires the phase. In `push_evidence`, `EVIDENCE_PUSH_SOFT` makes a failed `git add` `return 0` after a log line, and `commit_phase_evidence` ends `return 0` unconditionally \u2014 so the refresher sets `last=\"$p\"` for a phase that was never committed, and that phase is never retried on a later poll. This contradicts the function's own comment (\"`last` is committed only once the commit was actually made, so a phase the lock cost us this poll is committed on the next one\"), which is true only for a lost lock, not for a lost add. No leg pins it (the rig's `git` stub never refuses an `add`), so it costs nothing in the exam; it costs one missing wave commit on a real branch. Propagating the failure restores the retry the comment promises.; `fleet/sandbox-boot.sh`: `EVIDENCE_LOCK` is `$FLEET_HOME/.fleet-evidence-lock`, the same persistent directory that holds `ENGINE_DONE_MARKER` \u2014 so a boot that died mid-commit (box reset while the refresher held the lock) leaves the directory behind, and the next boot that re-runs the engine (`engine_already_ran` false, because the marker was never written) pays `EVIDENCE_LOCK_TRIES` \u00d7 0.1s = 30s on every poll, `commit_phase_evidence` returns 1 every time, and the phase commits the claim promises are silently absent for the whole run; `run_engine` also pays a 30s wait before its kill. Nothing holds the lock at the point the refresher is started, so clearing it once there is safe and makes the lock per-run rather than per-FLEET_HOME.; unverified: the acceptance mode is `suite` and the task's Context pins four sibling sims that share this rig \u2014 `test_sandbox_boot_edges.mjs` ~82, `test_sandbox_boot_record.mjs` ~287, `test_sandbox_boot_selfmerge.mjs` ~293 and `test_sandbox_boot_merge.mjs` ~494/~1232/~1310, plus the merge sim's `no phase_refresher runs beside the fold unit` case ~863 \u2014 as \"unchanged by this task\". The provided EXAM EVIDENCE covers only `node fleet/tests/test_sandbox_boot.mjs`, so nothing in the record exercises those four files against the changed `fleet/sandbox-boot.sh` and `fleet/tests/_sandbox_boot_helpers.mjs`. Reading them makes the risk look low \u2014 none sets `FLEET_STATUS_INTERVAL` or `STUB_ENGINE_SLEEP`, so they boot at the rig default interval of 30s against an engine stub that returns immediately and `phase_refresher` never polls, and with `STUB_ENGINE_PHASES` unset the stub's `events.jsonl` line is byte-identical to BASE \u2014 but that is my reading, not an execution. What would settle it: run `node fleet/tests/test_sandbox_boot_edges.mjs`, `..._record.mjs`, `..._selfmerge.mjs` and `..._merge.mjs` in this clone and confirm each exits 0.; The lock-timeout fallback in `run_engine` can do exactly what the lock exists to prevent. `evidence_lock || log \"evidence: lock still held \u2014 killing the refresher anyway\"` gives up after `EVIDENCE_LOCK_TRIES=300` (30s) and then kills the refresher regardless. In the sandbox a phase commit is instant, but against a real remote a soft-mode `push_evidence` can spend three `git push` attempts and two `git pull --rebase` calls \u2014 comfortably over 30s on a slow network \u2014 so the timeout branch is reachable in production. `kill \"$refresher\"` signals only the subshell, not the `git` child it is blocked on, so that `pull --rebase` keeps running detached in `$EVIDENCE_DIR` and can still be mid-rebase when the foreground's `publishing` `collect_evidence`/`push_evidence` pair runs in the same worktree \u2014 the two-writer collision the lock was introduced to rule out, and the one the block comment claims \"never happens\". The bounded wait is a defensible choice (a lost commit beats a hung run, as the comment says), but the fallback should leave the worktree usable rather than assume it is. Two cheap options inside this task's own FILES: signal the whole process group (`kill -- -\"$refresher\"`) on the timeout branch so the in-flight git dies with its parent, and/or clear a half-made rebase before the next foreground commit, e.g. `fleet_git -C \"$EVIDENCE_DIR\" rebase --abort 2>/dev/null || true` on that branch. Neither is exercised by any leg, so this is advisory rather than a gap in the exam.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-34/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 324.76s (0:05:24) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>. \u2014 the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/launch.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 462754,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n....................................................s................... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 326.31s (0:05:26) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 278.99s (0:04:38) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5cfd5a23c70b5e41491bd5a057f2d60289a40a7e",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-34/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-34/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8170000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 the phase evidence commits as seen on a real run's `ultra/evidence-run-<N>` history (`git log --format='%s'` listing one subject per relayed phase between `run-<N>: running` and the `publishing` commit), at the production 30 s FLEET_STATUS_INTERVAL, against a real remote and real systemd",
+      "reason": "external",
+      "why": "The plan's Rule 5 states this half is read off a live run after the change lands, never from a sandbox. Every exam here drives the script through the PATH shim that stubs git, systemd-run, systemctl and curl (fleet/tests/_sandbox_boot_helpers.mjs), so real push/`pull --rebase` contention on GitHub, real unit-kill timing against the EVIDENCE_LOCK, and the engine's own phase spellings are structurally covered by the sims but not executed in this environment."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: agent error at mostCapable \u2014 retrying once at mostCapable (same tier): WORKER_SIGTERM: SIGTERM: killed with no envelope (exit 143)",
+    "task 1: recovered after same-tier retry at mostCapable",
+    "wave 1: candidate adopted after reconcile (7e8a488c410cf3b13a8ad6e30152d737cf88ea82 + fixes \u2192 5cfd5a23c70b5e41491bd5a057f2d60289a40a7e)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
