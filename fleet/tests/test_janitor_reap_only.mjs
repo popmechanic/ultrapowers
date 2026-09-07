@@ -24,7 +24,9 @@
  *       `--input` or any other flag, every recorded action has `kind` `rm`, the
  *       mutating lobby verbs are exactly one `rm <old vm> --json`, the young
  *       run's VM is in no action, `--dry-run` over the same fleet issues no
- *       `rm`, and the module exports no `PR_VIEW_JSON`;
+ *       `rm`, and the module exports no `PR_VIEW_JSON`. The argv list is the
+ *       two contents reads and — #724 Task 2 — the one `matching-refs` read the
+ *       branch report issues per distinct target;
  *   (b) [M2] `fleet/tests/test_janitor_automerge.mjs` — the sim of the deleted
  *       arming — is absent;
  *   (m4) [M4] the RUNBOOK no longer says `arms auto-merge`, the RUNBOOK and
@@ -40,6 +42,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { evidenceTagFor } from '../lobby.mjs'
+// #724 Task 2: the janitor's read surface gained one per-target read.
 import * as janitorModule from '../janitor.mjs'
 import { janitor, renderJanitor } from '../janitor.mjs'
 import {
@@ -82,6 +85,12 @@ const donePage = (run, updatedAt) => ({
 
 const evidencePath = (run) =>
   `repos/${TARGET}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceTagFor(run)}`
+
+/** #724 Task 2: the one read per distinct target of the branch report. It is a
+ *  read like the others — `gh api <path beginning repos/>`, no flag — and this
+ *  exam cans no answer for it, so it 404s and reports nothing. */
+const matchingRefsPath = (target) =>
+  `repos/${target}/git/matching-refs/heads/ultra/integration-run-`
 
 /** What `gh api` prints for an absent file: exit 1, `HTTP 404` on stderr. */
 const NOT_FOUND = answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })
@@ -146,8 +155,14 @@ const legAExec = () => makeExec({
 
   assert.deepEqual(
     sortedJson(ghArgvs(exec)),
-    sortedJson([['api', evidencePath(OLD)], ['api', evidencePath(YOUNG)]]),
-    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>'
+    // #724 Task 2: and the one matching-refs read the branch report issues per
+    // distinct target — two rows on one target, so one read.
+    sortedJson([
+      ['api', evidencePath(OLD)],
+      ['api', evidencePath(YOUNG)],
+      ['api', matchingRefsPath(TARGET)]
+    ]),
+    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>, and one per target at repos/<target>/git/matching-refs/heads/ultra/integration-run-'
   )
   for (const argv of ghArgvs(exec)) {
     assert.equal(argv.length, 2,

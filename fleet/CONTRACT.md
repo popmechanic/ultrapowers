@@ -57,13 +57,15 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     branch's history reads wave by wave; append-only paths, `pull --rebase` and retry on
     non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
-    It goes with the merge (delete-on-merge); a `hold=1` run's stays while its PR is open.
+    It has three fates, and the pull request with the highest number on its head decides which: it goes with the merge (delete-on-merge); a `hold=1` run's stays while its PR is open; and one whose deciding pull request is closed and not merged is the retire sweep's to delete (`node fleet/retire.mjs --target <owner>/<repo>`).
 - **The two tags** — a run's record, and the only refs that outlive it. At publish the sandbox tags
   the plan commit `ultra/plan/run-<N>` and the final evidence commit `ultra/evidence/run-<N>`, and the
   branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both
   tags are verified against the remote with `git ls-remote --tags`. A tag that does not verify keeps
   both branches; a run that ends `failed` keeps them for the one-time sweep
-  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The record is
+  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target).
+  That retire sweep also deletes the run's `ultra/integration-run-<N>` when its deciding pull request is closed and not merged; it deletes nothing else.
+  The record is
   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
   `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):

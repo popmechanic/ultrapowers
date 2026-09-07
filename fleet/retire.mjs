@@ -28,23 +28,37 @@
  *     two tags. Only a listing that shows BOTH at the branch heads earns the
  *     two DELETEs; anything else keeps the run's branches and moves on.
  *
- * The integration branch is not this tool's business — it goes with its merge —
- * and no command here ever names `refs/heads/ultra/integration-run-<N>`. The
- * name is still read once per run, as the `head=` filter of the closed-PR list:
- * GitHub keeps a pull request's head ref name after the branch is deleted, so
- * `head=<owner>:ultra/integration-run-<N>` still finds the run's PR. Every such
- * body that links `/blob/ultra/plan-run-<N>/` or `/tree/ultra/evidence-run-<N>/`
- * is rewritten to the tag paths, so the links survive the deletion — and
- * nothing else in the body is touched.
+ * The integration branch has a fate here too, and one read decides it. For a
+ * run whose listing carries `refs/heads/ultra/integration-run-<N>`, the pull
+ * request with the highest `number` among the rows of
+ * `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>`
+ * decides; `state` `"open"` keeps the branch; `state` `"closed"` with
+ * `merged_at` `null` retires it — that one this sweep deletes; `merged_at` a
+ * string keeps it (delete-on-merge's, and a merged PR whose branch is still
+ * there is a repository whose setting is off, which is the operator's to see);
+ * no rows keeps it; the rows' order is not the rule. Highest number and not
+ * "any closed-unmerged row" because run numbers restarted at 1 on 2026-09-04,
+ * so one head name carries the pull requests of two runs. The list endpoint's
+ * rows carry `merged_at` and no `merged` boolean — `merged` is the single-PR
+ * endpoint's field, and this tool does not read that endpoint. A branch that
+ * stays is in the state it should be in: the line says so and nothing else
+ * records it — no exit code, no `kept`, no key on the resolved value.
+ *
+ * The head ref's NAME is read a second, separate time, as the `head=` filter of
+ * the closed-PR list (`state=closed`): GitHub keeps a pull request's head ref
+ * name after the branch is deleted, so `head=<owner>:ultra/integration-run-<N>`
+ * still finds the run's PR. Every such body that links `/blob/ultra/plan-run-<N>/`
+ * or `/tree/ultra/evidence-run-<N>/` is rewritten to the tag paths, so the links
+ * survive the deletion — and nothing else in the body is touched.
  *
  * Every run the listing carries prints one line as it is decided, on this
  * process's stdout, in ascending N. Stdout is the record: the resolved value
  * carries the same lines under `lines`, but the printing is what a reader of a
  * long sweep actually sees, and it happens before the next run is started.
  *
- * `--dry-run` says what it would do: the one heads-and-tags listing and one
- * closed-PR read per candidate, and no command that creates or deletes
- * anything.
+ * `--dry-run` says what it would do: the one heads-and-tags listing, one
+ * closed-PR read per candidate and one fate read per integration branch, and no
+ * command that creates or deletes anything.
  */
 
 import path from 'node:path'
@@ -88,8 +102,13 @@ export function parseLsRemote (stdout) {
 
 /**
  * Every run the listing carries a BRANCH for, ascending, with the two refs of
- * the pair. A run named only by tags has nothing left to sweep — its branches
- * are already gone — so it is not a run this tool has anything to say about.
+ * the pair and the integration branch beside them. A run named only by tags has
+ * nothing left to sweep — its branches are already gone — so it is not a run
+ * this tool has anything to say about.
+ *
+ * `branches` names the pair halves and only those: it is what a lone half's line
+ * and the `skipped` array are made of, and the integration branch is neither
+ * half of a pair. Its sha rides on `integration` instead.
  */
 export function runsOf (refs) {
   const runs = new Map()
@@ -97,11 +116,15 @@ export function runsOf (refs) {
     if (!ref.startsWith('refs/heads/')) continue
     const run = runOfBranch(ref)
     if (run === null) continue
-    const entry = runs.get(run) ?? { run, plan: null, evidence: null, branches: [] }
+    const entry = runs.get(run) ?? { run, plan: null, evidence: null, integration: null, branches: [] }
     const name = ref.slice('refs/heads/'.length)
-    if (name === planBranchFor(run)) entry.plan = sha
-    else if (name === evidenceBranchFor(run)) entry.evidence = sha
-    entry.branches.push(name)
+    if (name === integrationBranchFor(run)) {
+      entry.integration = sha
+    } else {
+      if (name === planBranchFor(run)) entry.plan = sha
+      else if (name === evidenceBranchFor(run)) entry.evidence = sha
+      entry.branches.push(name)
+    }
     runs.set(run, entry)
   }
   return [...runs.values()].sort((a, b) => a.run - b.run)
@@ -182,6 +205,28 @@ async function pullsToPatch (exec, target, run) {
   return patches
 }
 
+/**
+ * The pull request that decides an integration branch's fate: the row with the
+ * highest `number` among `state=all&head=<owner>:ultra/integration-run-<N>`, or
+ * null when the read answers no usable row. Whichever order the rows arrive in
+ * — one head name carries the pull requests of two runs, because run numbers
+ * restarted at 1, so the newest number is the run this sweep is about.
+ */
+async function decidingPull (exec, target, run) {
+  const owner = String(target).split('/')[0]
+  const payload = await ghRead(
+    exec,
+    `repos/${target}/pulls?state=all&head=${owner}:${integrationBranchFor(run)}`
+  )
+  const rows = Array.isArray(payload) ? payload : []
+  let top = null
+  for (const row of rows) {
+    if (typeof row?.number !== 'number') continue
+    if (top === null || row.number > top.number) top = row
+  }
+  return top
+}
+
 /** The one PATCH per PR: `body` and nothing else. */
 async function patchPull (exec, target, patch) {
   await exec('gh', [
@@ -220,26 +265,30 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
     process.stdout.write(`${line}\n`)
   }
 
-  for (const entry of runsOf(refs)) {
+  /**
+   * The pair half of one run: the tags, the verify, the two DELETEs and the
+   * body patches. Answers the run's pair segment, or null for a run whose
+   * listing carries no pair branch at all.
+   */
+  const sweepPair = async (entry) => {
     const { run, plan, evidence } = entry
+    if (plan === null && evidence === null) return null
 
     // A half pair is not a record: tagging one side would claim the run's
     // other side was recorded somewhere, and it is not.
     if (plan === null || evidence === null) {
       const lone = entry.branches.join(', ')
       skipped.push(...entry.branches)
-      say(`run ${run}: skip — lone ${lone}`)
-      continue
+      return `skip — lone ${lone}`
     }
 
     if (dryRun) {
       const patches = await pullsToPatch(exec, target, run)
-      say(
-        `run ${run}: would retire ${planTagFor(run)}@${short(plan)} ` +
+      return (
+        `would retire ${planTagFor(run)}@${short(plan)} ` +
         `${evidenceTagFor(run)}@${short(evidence)}, delete 2 branches, ` +
         `patch ${patches.length} PR(s)`
       )
-      continue
     }
 
     await createTag(exec, target, planTagFor(run), plan)
@@ -255,8 +304,7 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
         ? tagComplaint(tags, planTagFor(run), plan)
         : tagComplaint(tags, evidenceTagFor(run), evidence)
       kept.push(run)
-      say(`run ${run}: kept — ${why}`)
-      continue
+      return `kept — ${why}`
     }
 
     await exec('gh', ['api', '-X', 'DELETE', `repos/${target}/git/refs/heads/${planBranchFor(run)}`])
@@ -266,11 +314,43 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
     for (const patch of patches) await patchPull(exec, target, patch)
 
     retired.push(run)
-    say(
-      `run ${run}: retired ${planTagFor(run)}@${short(plan)} ` +
+    return (
+      `retired ${planTagFor(run)}@${short(plan)} ` +
       `${evidenceTagFor(run)}@${short(evidence)}, 2 branches deleted, ` +
       `${patches.length} PR(s) patched`
     )
+  }
+
+  /**
+   * The integration branch of one run, decided by the one fate read and said in
+   * the run's line. A branch that stays joins no array and sets no exit code —
+   * it is already in the state it should be in. Answers null for a run whose
+   * listing carries no integration branch, which is also the only run for which
+   * no fate read is issued.
+   */
+  const sweepIntegration = async (entry) => {
+    if (entry.integration === null) return null
+    const { run } = entry
+    const branch = integrationBranchFor(run)
+
+    const pull = await decidingPull(exec, target, run)
+    if (pull === null) return `${branch} stays — no pull request`
+
+    const mergedAt = typeof pull.merged_at === 'string' ? pull.merged_at : null
+    if (pull.state === 'closed' && mergedAt === null) {
+      if (dryRun) return `would delete ${branch} — PR #${pull.number} closed, not merged`
+      await exec('gh', ['api', '-X', 'DELETE', `repos/${target}/git/refs/heads/${branch}`])
+      return `${branch} deleted — PR #${pull.number} closed, not merged`
+    }
+    if (mergedAt !== null) return `${branch} stays — PR #${pull.number} merged`
+    return `${branch} stays — PR #${pull.number} open`
+  }
+
+  for (const entry of runsOf(refs)) {
+    // The pair's commands first, whole and in their order; then the fate read
+    // and, when it names one, the integration DELETE last.
+    const segments = [await sweepPair(entry), await sweepIntegration(entry)]
+    say(`run ${entry.run}: ${segments.filter((s) => s !== null).join('; ')}`)
   }
 
   // A kept run is not a refusal and not a thrown failure — the sweep ran and

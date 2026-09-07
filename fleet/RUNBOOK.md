@@ -32,9 +32,9 @@ no approval step before it.
 The three branches are where a run works, not what it leaves. At publish the
 sandbox tags the plan commit `ultra/plan/run-<N>` and the final evidence commit
 `ultra/evidence/run-<N>`, verifies both against the remote, and deletes
-`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step;
-`ultra/integration-run-<N>` goes with the merge, and stays only while a `--hold`
-PR is open. What a run leaves on the repository it was about is those two tags.
+`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
+`ultra/integration-run-<N>` has three fates, decided by the newest pull request on its head: it goes with the merge, it stays while a `--hold` PR is open, and when that pull request is closed and not merged the one-time retire sweep (`fleet/retire.mjs`) deletes it.
+What a run leaves on the repository it was about is those two tags.
 
 There is no image to keep fresh, no state repository, no orchestrator, no
 control VM, and no token on any VM. The Claude subscription and the GitHub
@@ -442,6 +442,5 @@ the whole of the rollback: nothing in the new path writes anywhere the old path
 read. A new-path run leaves no branch behind to clean up: its record is the two
 tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, and those are kept —
 deleting them is deleting the run. Runs from before the tags, and runs that
-ended `failed`, still have `ultra/*-run-<N>` branches on their target; the
-one-time retire sweep is what clears those, never a `git push origin --delete`
-by hand. `fleet/CONTRACT.md` names the script it runs from.
+ended `failed`, still have `ultra/*-run-<N>` branches on their target; the one-time retire sweep is what clears those — the plan-and-evidence pair, and an `ultra/integration-run-<N>` whose newest pull request is closed and not merged — never a `git push origin --delete` by hand.
+`fleet/CONTRACT.md` names the script it runs from.
