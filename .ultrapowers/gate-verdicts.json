@@ -1,0 +1,24 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1e0088e8610330f9257f804a857331355666451a2450d9eda9f5f00b0f70e963",
+      "verdict": "pass",
+      "reason": "Every clause M1–M7 has a leg that would fail on a wrong implementation — the per-pair contents read is pinned by URL and ordering (a), the import and no-retyped-list by source regex (b), each live/terminal state and each malformed-page shape by exact line, call set, result field and exit code (c–g), the open-PR gate by exact call sequence and line (h–i), both --dry-run flag orders by exact call lists and captured-line equality (j), the process layer by shims on PATH (k), and the docs by literal-in-section Run commands plus the pin suite (l) — so the exam passing entails the operator's sentence at the CLI-against-gh layer."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 2,
+    "rounds": {
+      "1": "1 dispatched, 1 fail (task 1, hash 15f761a8…) — M2's 'the sweep goes on to the next N' was never falsified: every state-live pair sat last in the listing, so a tool returning after the first skip passed (c), (d), (j), (k). Revised: the live pair is run 3 with a terminal run 12 behind it in (c), (d), (j), plus a mirror case.",
+      "2": "1 dispatched, 1 fail (task 1, hash 882bbe12…) — M2/M3 enumerated only the three live and three terminal states, so a denylist of booting|running|publishing (REAPABLE_STATES imported but unused) passed every leg while sweeping a run in any other state. Revised: a fourth row `blocked` — a word the boot never writes — in M2 and leg (c).",
+      "3": "1 dispatched, 1 pass (task 1, hash 1e0088e8…)"
+    },
+    "history": [
+      { "round": 1, "task": "1", "hash": "15f761a82c9fcc8fc1103e08603aa1ee3b878650b3cd04dbab3228186eb9261e", "verdict": "fail", "reason": "M2's 'the sweep goes on to the next N' is never falsified — in every leg the state-live pair (run 12) is the last pair in the listing, so a tool that returns from the whole sweep after printing a live (<state>) line passes (c), (d), (j) and (k) unchanged, whereas only the PR-live case (h) puts a skipped pair ahead of a terminal one." },
+      { "round": 2, "task": "1", "hash": "882bbe1228f1909704312958a1877767fd284f4c8e6067656a40e1162e277ca2", "verdict": "fail", "reason": "M2/M3 enumerate only booting|running|publishing and done|parked|failed, so no leg feeds a state outside both sets (e.g. blocked), and an implementation that denylists the three live states — with REAPABLE_STATES imported but unused, which (b)'s regex still accepts — passes every leg while sweeping a run whose state is not done|parked|failed, making the operator's sentence false." },
+      { "round": 3, "task": "1", "hash": "1e0088e8610330f9257f804a857331355666451a2450d9eda9f5f00b0f70e963", "verdict": "pass" }
+    ],
+    "note": "Authored 2026-09-07 for #706 on main 9cd8190ffb5e68b1de0eb9eac44b116ab0631d28; each reader saw only extract_gate_input.py --task 1. Compile --check repairs before the first reader: M3's three rows split into legs (e)(f)(g) with single-letter labels (the compiler counts only those), leg (a) names the exec seam (disjunct-without-leg)."
+  }
+}
