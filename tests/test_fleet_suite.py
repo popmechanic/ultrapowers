@@ -2,14 +2,15 @@ import fcntl
 import glob, os, subprocess, pytest
 
 FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
-
 # Measured wall at 0.3.18: 106 s, 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s.
 # Under `--dist load` a worker that picks up a 106 s sim last holds the whole
 # suite open, so the seven longest go out first, longest first; the rest follow
 # alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
 # test_sandbox_boot_merge.mjs leads it because leg (j) re-runs seven sibling
 # sims inside itself: its wall is theirs plus its own, so it is the longest sim
-# there is and it grows whenever any of the seven does.
+# there is and it grows whenever any of the seven does — every leg added to a
+# sibling lands on it twice, which is also why `timeout` below reads
+# MJS_TIMEOUT rather than a literal.
 SLOW_FIRST = ('test_sandbox_boot_merge.mjs', 'test_run_engine_examiner.mjs',
               'test_sandbox_boot.mjs',
               'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
@@ -42,6 +43,16 @@ def _ensure_node_modules():
                            cwd=FLEET, check=True, capture_output=True)
 
 
+# The cap is per sim, and it is a hang detector, not a budget: a sim that has
+# not spoken in this long is wedged, not slow. 120 s was a fit for a fleet whose
+# longest sim was 83.5 s, and it stopped being one when the nesting above made
+# `test_sandbox_boot_merge.mjs` the sum of eight sims — ~130 s of wall on an idle
+# four-core box, and every core busy with a peer worker under `-n auto` puts it
+# near 150 s. 300 s keeps roughly the margin over the longest pole that 120 s
+# had over 83.5 s.
+MJS_TIMEOUT = 300
+
+
 @pytest.mark.parametrize("path", TESTS, ids=[os.path.basename(p) for p in TESTS])
 def test_fleet_mjs(path):
     _ensure_node_modules()
@@ -50,7 +61,7 @@ def test_fleet_mjs(path):
     # most of its own wall re-running seven siblings one after another. A wall
     # only a little above that sim's honest runtime reports a slow box as a
     # broken suite; this one is a deadlock catcher, not a budget.
-    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=300)
+    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ALL TESTS PASSED" in r.stdout
 

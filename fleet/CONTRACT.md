@@ -243,6 +243,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `left open: publish fold — <disposition text>`. The fold's record is that section, the
   `publish-fold/` receipts directory and the `driver:publish-fold` event; `status.json` gains no cell
   for it.
+  The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's
+  own and carrying the same `id`/`ts` stamp: `publish:pr` (`url`, `number`, `draft`) once the POST
+  answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
+  `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
+  merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
+  `checks red`, `checks pending` or `refused` and `detail` the account (`check <name> concluded
+  <conclusion>`, `still pending after <N>s`, `merge PUT answered <code>`). The LAST `publish:merge`
+  line is what became of the PR.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created attached to nothing by `node fleet/target.mjs <owner>/<repo>`;
   `new --integration claude-max,gh-<owner>-<repo>` binds both to the run's VM at creation. Never two

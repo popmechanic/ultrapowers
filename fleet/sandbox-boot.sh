@@ -1267,6 +1267,87 @@ await_branch_visible() {
   return 0
 }
 
+# --- the publish record ------------------------------------------------------
+#
+# The publish decisions used to survive only as prose: a `log` line that dies
+# with the box and a phase sentence on the `done` page. They are events too,
+# now, in the run's own `events.jsonl` — so a held run, a merged run and a
+# merge that failed are three different records a reader can tell apart
+# without parsing English.
+#
+# The shape is `makeEventLog`'s (`fleet/run-waves.mjs`), because this file is
+# the ENGINE'S log and the boot only ever appends to it: the event's own fields
+# first, then `id`, then `ts`. Nothing already in the file is read, rewritten or
+# reordered.
+#
+# THE ID IS THE SORT KEY. `fleet_events.read_events` orders a log by `id` as a
+# STRING and never by `ts`, so a line whose id is not the engine's ULID shape
+# sorts wherever its bytes happen to fall. So this mints the same shape: ten
+# characters of the millisecond clock in Crockford base 32, most significant
+# first, four of a sequence, twelve random. The clamp is the engine's too — a
+# `now` at or behind the last one keeps the timestamp and bumps the sequence —
+# so the boot's own lines strictly ascend even under a clock that steps
+# backwards, and the millisecond prefix puts every one of them after the
+# engine's.
+#
+# `python3` writes the line. `json_escape` escapes for a string cell and is not
+# an encoder, and neither `node` nor `gh` is a tool this script calls.
+EVENT_LAST_TS=0
+EVENT_SEQ=0
+append_event() { # $1 = kind, then `<name>=<tag>:<value>` — s string, i int, b bool, n null
+  local out
+  out="$(EVENT_FILE="$(run_dir_path)/events.jsonl" \
+    EVENT_LAST_TS="$EVENT_LAST_TS" EVENT_SEQ="$EVENT_SEQ" python3 -c '
+import json, os, secrets, sys, time
+B32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+def b32(n, width):
+    out = ""
+    for _ in range(width):
+        out = B32[n % 32] + out
+        n //= 32
+    return out
+event = {"kind": sys.argv[1]}
+for arg in sys.argv[2:]:
+    name, _, rest = arg.partition("=")
+    tag, _, value = rest.partition(":")
+    if tag == "n":
+        event[name] = None
+    elif tag == "b":
+        event[name] = value == "true"
+    elif tag == "i":
+        try:
+            event[name] = int(value)
+        except ValueError:
+            event[name] = value
+    else:
+        event[name] = value
+last = int(os.environ["EVENT_LAST_TS"] or 0)
+seq = int(os.environ["EVENT_SEQ"] or 0)
+ts = int(time.time() * 1000)
+if ts <= last:
+    ts, seq = last, seq + 1
+else:
+    seq = 0
+event["id"] = b32(ts, 10) + b32(seq, 4) + "".join(secrets.choice(B32) for _ in range(12))
+event["ts"] = ts
+path = os.environ["EVENT_FILE"]
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
+sys.stdout.write("%d %d\n" % (ts, seq))
+' "$@")" || out=""
+  # The record is a record, not a gate: a run whose event log could not be
+  # written still publishes and still merges, and says here that it could not.
+  case "$out" in
+    [0-9]*' '[0-9]*)
+      EVENT_LAST_TS="${out%% *}"
+      EVENT_SEQ="${out##* }" ;;
+    *)
+      log "event: could not append $1 to $(run_dir_path)/events.jsonl" ;;
+  esac
+  return 0
+}
+
 # The PR is opened over GitHub's REST API through the edge, not with `gh`. `gh`
 # decides for itself which token to present, and the aggregate host proxies
 # only `/repos/<owner>/<repo>/…` — `/user`, which `gh` likes to ask first,
@@ -1304,6 +1385,11 @@ publish() { # $1 = outcome (gate-green|parked)
   [ -n "$PR_URL" ] || fail "publish: POST /repos/$TARGET_REPO/pulls answered $code with no html_url: $(printf '%s' "$reply" | tail -c 2000)"
   log "publish: $PR_URL (base $base, draft $draft)"
   log "publish: author ${PR_AUTHOR:-<unknown>}"
+  # The PR's own record, appended after the answer that made it real: the URL
+  # and the number GitHub gave back, and the `draft` this POST asked for — so a
+  # reader of the log can tell a parked run's draft from a ready PR without the
+  # page. A run that opens no PR reaches none of this and records none of it.
+  append_event publish:pr "url=s:$PR_URL" "number=i:$(pr_number)" "draft=b:$draft"
 }
 
 # A disposition that lands AFTER the PR was opened — a second attempt's, or the
@@ -1425,6 +1511,9 @@ merge_pr() {
   if [ "$HOLD" = "1" ]; then
     log "merge: hold=1 — leaving $PR_URL open"
     MERGE_NOTE="left open: hold=1"
+    # A hold's `why` is the phase's own text after `left open: `, so a reader of
+    # either record matches the other word for word.
+    append_event publish:hold "why=s:hold=1"
     return 0
   fi
   # A fold that did not end clean is a hold, and exactly the same hold as
@@ -1434,6 +1523,7 @@ merge_pr() {
   if [ -n "$FOLD_HOLD" ]; then
     log "merge: $FOLD_HOLD"
     MERGE_NOTE="$FOLD_HOLD"
+    append_event publish:hold "why=s:${FOLD_HOLD#left open: }"
     return 0
   fi
   # The head `await_branch_visible` already read, so the checks asked about are
@@ -1478,10 +1568,16 @@ merge_pr() {
       set -- $verdict
       log "merge: check $2 concluded $3 — leaving $PR_URL open"
       MERGE_NOTE="left open: check $2 concluded $3"
+      # A merge that did not happen is a `publish:merge` with a null `sha`:
+      # `left` names the class of the refusal and `detail` the account of it,
+      # so a reader counts the classes without parsing the account.
+      append_event publish:merge sha=n: "left=s:checks red" "detail=s:check $2 concluded $3"
       return 0 ;;
     *)
       log "merge: checks still pending after ${MERGE_CHECK_WAIT}s — leaving $PR_URL open"
       MERGE_NOTE="left open: checks still pending after ${MERGE_CHECK_WAIT}s"
+      append_event publish:merge sha=n: "left=s:checks pending" \
+        "detail=s:still pending after ${MERGE_CHECK_WAIT}s"
       return 0 ;;
   esac
 
@@ -1522,6 +1618,8 @@ Plan-Tag: ultra/plan/$RUN_ID"
       if [ "$code" = 405 ] && [ "$MERGE_RETRY" = "1" ]; then
         log "merge: PUT answered 405 again after a second fold — leaving $PR_URL open"
         MERGE_NOTE="left open: merge PUT answered 405 twice"
+        append_event publish:merge sha=n: "left=s:refused" \
+          "detail=s:merge PUT answered 405 twice"
         return 0
       fi
       if [ "$code" = 405 ]; then
@@ -1530,16 +1628,26 @@ Plan-Tag: ultra/plan/$RUN_ID"
             log "merge: PUT answered 405 — GitHub does not call $PR_URL mergeable; folding again"
             MERGE_RETRY=1
             MERGE_NOTE="left open: merge PUT answered 405"
+            # The retry's first refusal is a record of its own: two
+            # `publish:merge` lines in order is what a retried merge looks like,
+            # and the LAST of them is what became of the PR.
+            append_event publish:merge sha=n: "left=s:refused" \
+              "detail=s:merge PUT answered 405"
             return 0 ;;
         esac
       fi
       log "merge: PUT answered $code — leaving $PR_URL open"
       MERGE_NOTE="left open: merge PUT answered $code"
+      append_event publish:merge sha=n: "left=s:refused" \
+        "detail=s:merge PUT answered $code"
       return 0 ;;
   esac
   MERGED_SHA="$(printf '%s' "$body" | json_field sha)"
   log "merge: merged $PR_URL as ${MERGED_SHA:-<no sha>}"
   MERGE_NOTE="merged ${MERGED_SHA:-<no sha>}"
+  # The merge that happened: a `sha` and nothing else — no `left`, no `detail`,
+  # so the one record that needs no reading to classify carries no excuse.
+  append_event publish:merge "sha=s:${MERGED_SHA:-<no sha>}"
 }
 
 # --- the record ---------------------------------------------------------------
@@ -1782,6 +1890,11 @@ $(engine_tail)"
     if [ "$(fold_field 2 disposition)" = "tip unmoved" ]; then
       log "fold: attempt 2 moved the tip nowhere — there is nothing new to merge"
       MERGE_NOTE="left open: merge PUT answered 405 twice"
+      # The one refusal `merge_pr` never gets to record, because this branch
+      # makes it without re-entering: the note is the same and so is the event,
+      # so the last `publish:merge` line is what became of the PR here too.
+      append_event publish:merge sha=n: "left=s:refused" \
+        "detail=s:merge PUT answered 405 twice"
       write_status publishing "$PR_URL — the fold moved nothing"
       collect_evidence
       push_evidence "$RUN_ID: publish fold (attempt 2) — tip unmoved"

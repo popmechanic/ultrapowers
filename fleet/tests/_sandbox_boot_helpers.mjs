@@ -54,6 +54,20 @@ export const EVIDENCE_BRANCH = 'ultra/evidence-run-7'
 export const INTEGRATION_BRANCH = 'ultra/integration-run-7'
 /** Where the evidence lives inside the evidence worktree. */
 export const RUN_PATH = '.ultrapowers/runs/7'
+/** The run directory inside the target clone — where the engine writes its
+ *  `events.jsonl` and where the boot script appends its publish record. */
+export const RUN_DIR_PATH = '.claude/ultrapowers/run-run-7'
+/** The engine's id alphabet, Crockford base 32 (`fleet/run-waves.mjs`). */
+export const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+/** The engine stub's one event id, in the shape the real `ulid()` mints: ten
+ *  characters of the millisecond clock — here a `ts` of 1 — then a sequence and
+ *  randomness, which the stub spends on zeros so the line is a literal. An id
+ *  of `x` would sort ABOVE every real ULID (lowercase is past `Z`), and the
+ *  readers order by id, so the stub would invert the production order. */
+export const ENGINE_EVENT_ID = '0000000001' + '0'.repeat(16)
+/** The one line the engine stub leaves in `events.jsonl`, newline included. */
+export const ENGINE_EVENT_LINE =
+  `{"kind":"engine:phase","phase":"gate","id":"${ENGINE_EVENT_ID}","ts":1}\n`
 /** The plan's path inside the plan commit's tree. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
 
@@ -485,7 +499,7 @@ mkdir -p "$run_dir" "$FLEET_HOME/stub"
 # That handshake is what makes every listed phase a RELAYED phase, so the exam
 # counts commits instead of racing the refresher's interval.
 if [ -z "\${STUB_ENGINE_PHASES+set}" ]; then
-  printf '{"kind":"engine:phase","phase":"gate","id":"x","ts":1}\\n' >"$run_dir/events.jsonl"
+  printf '%s\n' '${ENGINE_EVENT_LINE.trimEnd()}' >"$run_dir/events.jsonl"
 else
   : >"$run_dir/events.jsonl"
   rest="$STUB_ENGINE_PHASES"; i=0
@@ -495,7 +509,7 @@ else
       *) p="$rest"; rest="" ;;
     esac
     i=$((i + 1))
-    printf '{"kind":"engine:phase","phase":"%s","id":"x","ts":%s}\\n' "$p" "$i" >>"$run_dir/events.jsonl"
+    printf '{"kind":"engine:phase","phase":"%s","id":"x","ts":%s}\n' "$p" "$i" >>"$run_dir/events.jsonl"
     n=0
     until grep -q "\\"phase\\":\\"$p\\"" "$FLEET_HOME/www/status.json" 2>/dev/null; do
       n=$((n + 1))
@@ -729,6 +743,42 @@ export const foldUnits = (ctx) => unitsRun(ctx).filter((u) => u && u.startsWith(
 /** The `systemd-run` argv of one fold attempt, or undefined. */
 export const foldArgv = (ctx, attempt = 1) =>
   argvLines(ctx, 'systemd-run').find((a) => a.includes(`--unit=fleet-fold-7-${attempt}`))
+// ── reading the run's event log ──────────────────────────────────────────────
+//
+// ONE file, two copies: the engine writes `events.jsonl` in the run directory
+// and the boot script appends its publish record there; `collect_evidence`
+// copies it onto the evidence branch at every transition. Both are read here,
+// so a sim can compare them and none has to spell either path itself.
+
+/** The run directory the engine and the boot script share. */
+export const runDir = (ctx) => path.join(ctx.home, 'target', RUN_DIR_PATH)
+/** The run directory's event log, or ''. */
+export const eventsRaw = (ctx) => {
+  const f = path.join(runDir(ctx), 'events.jsonl')
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
+}
+/** The evidence branch's copy of it, or ''. */
+export const evidenceEventsRaw = (ctx) => {
+  const f = path.join(ctx.home, 'evidence', RUN_PATH, 'events.jsonl')
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
+}
+/** Both files as paths, for a byte-for-byte comparison. */
+export const eventsFile = (ctx) => path.join(runDir(ctx), 'events.jsonl')
+export const evidenceEventsFile = (ctx) => path.join(ctx.home, 'evidence', RUN_PATH, 'events.jsonl')
+/** Every record in the run dir's log, IN FILE ORDER — never sorted, because
+ *  file order is what a reader of an append-only log has to be able to trust. */
+export const events = (ctx) => lines(eventsRaw(ctx)).map((l) => JSON.parse(l))
+/** The evidence copy's records, in file order. */
+export const evidenceEvents = (ctx) => lines(evidenceEventsRaw(ctx)).map((l) => JSON.parse(l))
+/** Only what the boot script appended: the publish record. */
+export const publishEvents = (ctx) => events(ctx).filter((e) => String(e.kind).startsWith('publish:'))
+/** Every event of one kind, in file order. */
+export const eventsOfKind = (ctx, kind) => events(ctx).filter((e) => e.kind === kind)
+/** The millisecond clock an id carries — its first ten characters read as
+ *  Crockford base 32, most significant first (the engine's `b32(ts, 10)`). */
+export const ulidTs = (id) =>
+  [...String(id).slice(0, 10)].reduce((n, c) => n * 32 + B32.indexOf(c), 0)
+
 /** The PR body PATCHes the script sent, as parsed payloads. */
 export const patches = (ctx) => lines(readLog(ctx, 'patch.log')).map((l) => JSON.parse(l))
 /** How many times the PR document was read for its `mergeable`. */
