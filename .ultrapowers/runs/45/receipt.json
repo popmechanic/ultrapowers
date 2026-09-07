@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -63,7 +63,7 @@
             "`parseJson(stdout)`"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the line segments and the read are literals both tasks carry"
+            "nothing a sibling consumes — the line segments and the read are literals both tasks carry"
           ]
         }
       },
@@ -84,7 +84,7 @@
             "`integrationBranchFor(run)`"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the result's new key and the report line are read by the operator, never by a task"
+            "nothing a sibling consumes — the result's new key and the report line are read by the operator, never by a task"
           ]
         }
       }
@@ -118,7 +118,7 @@
               "`parseJson(stdout)`"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the line segments and the read are literals both tasks carry"
+              "nothing a sibling consumes — the line segments and the read are literals both tasks carry"
             ]
           },
           "tier": null,
@@ -155,7 +155,7 @@
               "`integrationBranchFor(run)`"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the result's new key and the report line are read by the operator, never by a task"
+              "nothing a sibling consumes — the result's new key and the report line are read by the operator, never by a task"
             ]
           },
           "tier": null,
@@ -190,7 +190,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The decision rule lives in each tool, not in a shared helper: `fleet/lobby.mjs` is unchanged\n  (the Check above), and the two tools agree by literal, never by import of one another.\n- The pair sweep's commands and their order are BASE's: `ultra/plan-run-<N>` and\n  `ultra/evidence-run-<N>` are deleted only after both tags verify, exactly as at BASE, and the\n  janitor deletes nothing \u2014 its only mutation is still `rm <vm> --json`.\n- No committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a commit sha.\n- Every assertion that stands at BASE in `fleet/tests/test_retire.mjs`,\n  `fleet/tests/test_janitor.mjs`, `fleet/tests/test_janitor_liveness.mjs` and\n  `fleet/tests/test_janitor_reap_only.mjs` still holds, except the ones a task's Context names as\n  re-scoped with what replaces them; the new legs sit under a comment naming their task.\n- The four operator documents name no retired mechanism and no script that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens; Task 1 runs it).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The decision rule lives in each tool, not in a shared helper: `fleet/lobby.mjs` is unchanged\n  (the Check above), and the two tools agree by literal, never by import of one another.\n- The pair sweep's commands and their order are BASE's: `ultra/plan-run-<N>` and\n  `ultra/evidence-run-<N>` are deleted only after both tags verify, exactly as at BASE, and the\n  janitor deletes nothing — its only mutation is still `rm <vm> --json`.\n- No committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a commit sha.\n- Every assertion that stands at BASE in `fleet/tests/test_retire.mjs`,\n  `fleet/tests/test_janitor.mjs`, `fleet/tests/test_janitor_liveness.mjs` and\n  `fleet/tests/test_janitor_reap_only.mjs` still holds, except the ones a task's Context names as\n  re-scoped with what replaces them; the new legs sit under a comment naming their task.\n- The four operator documents name no retired mechanism and no script that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens; Task 1 runs it).\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/lobby.mjs fleet/sandbox-boot.sh fleet/launch.mjs fleet/target.mjs fleet/doctor.mjs",
@@ -205,11 +205,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-45/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-45/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-45/acceptance.log"
 }

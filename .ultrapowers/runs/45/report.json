@@ -1,0 +1,175 @@
+{
+  "integrationBranch": "ultra/integration-run-45",
+  "baseSha": "930a82051d89df183e7e683b93f926536a7548e1",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "1fa69fc4f7fda22e2089825d753c06428ef0f916",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-45/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Unverified/design gap: the integration fate read and its DELETE are issued unconditionally for any run whose listing carries `refs/heads/ultra/integration-run-<N>`, including a run the pair gate just declared in flight. `fleet/retire.mjs` `retire()` calls `sweepPair(entry)` and then, independently, `integrationSegment(exec, target, entry.run, dryRun)` whenever `entry.integration !== null` \u2014 so a run with a full plan+evidence pair whose status page is non-terminal or unreadable (`live (running) \u2014 skipped`, `live (no status page) \u2014 skipped`) still has its integration branch deleted when the highest-numbered PR is closed and unmerged. This follows the task text literally (M1 scopes the read to \"a run whose one heads-and-tags listing carries refs/heads/ultra/integration-run-<N>\", and M4 requires the segment even on a `skip \u2014 lone \u2026` line), and the exam never builds that combination \u2014 runs 32/40/41/42 carry no pair, run 7's page is `done`, run 9's PR is open \u2014 so no leg grades it. It also leaves `fleet/RUNBOOK.md:448-451` (retained verbatim from BASE) saying \"a run whose state is not terminal, or whose integration branch still has an open pull request, prints `run <N>: live (<why>) \u2014 skipped` and keeps its branches, so a run still in flight is never swept out from under itself\", which is now true only for the pair. Settling this is the plan's call: either gate `integrationSegment` behind the pair's live reason when the run carries a pair, or narrow that runbook sentence to the pair's branches. Nothing here fails the stated exam, and both Run: and Test: evidence are exit 0.; `fleet/retire.mjs` `integrationFate()` conflates a failed read with an empty answer: `ghRead` returns `null` when `gh` exits non-zero, `rows` becomes `[]`, and the run's line prints `ultra/integration-run-<N> stays \u2014 no pull request`. A transient 5xx or a rate limit therefore records \"no pull request\" for a branch that may well have a closed, unmerged PR. The branch survives, which is the safe direction, and BASE's `openPullOf`/`pullsToPatch` share the same shape, so this is consistency with the surrounding code rather than a regression \u2014 but the sweep's line is its whole record of the branch, and \"the read failed\" and \"GitHub has no PR for this head\" are different facts. Distinguishing them would mean having `integrationFate` see the `null` from `ghRead` (e.g. a `why: 'fate read failed'` segment) rather than folding it into the no-rows branch. Not required by any Machine clause, and M2's three `stays` literals stay as they are.; fleet/retire.mjs (new outer sweep loop, ~line 433 of the patched file): the integration fate read \u2014 and its DELETE \u2014 is issued for EVERY run whose listing carries `refs/heads/ultra/integration-run-<N>`, including a run the pair gate has just declared live. Two consequences the exam does not cover (no leg builds a live run that also carries an integration head): (1) a run whose status page says `running`/`booting`/`publishing` but whose highest-numbered PR is closed-and-unmerged has its integration branch deleted while the sandbox is still working on it; (2) for that same shape the printed line is `run <N>: live (<why>) \u2014 skipped; ultra/integration-run-<N> deleted \u2014 PR #<k> closed, not merged` without `--dry-run` and `\u2026; would delete \u2026` with it, which contradicts the sentence both documents still carry (fleet/CONTRACT.md:73 'is a run in flight and prints `run <N>: live (<why>) \u2014 skipped` instead \u2014 the same line under `--dry-run`') and the comment the diff keeps in `sweepPair` ('the sweep never asks what it would do to a run it is not going to touch'). M1 is written unconditionally ('for a run whose one heads-and-tags listing carries \u2026'), so the transcription is faithful and the exam is green; this is the shape the spec left open. Settle it either by gating the DELETE (not the read) behind a non-live pair \u2014 `if (entry.integration !== null && !liveThisRun)` \u2014 or by narrowing the two documents' 'the same line under `--dry-run`' clause to the pair segment. A leg with a `running` page plus an integration head whose fate read answers `{number, state:'closed', merged_at:null}`, asserting no `-X DELETE` names that run, is what would verify whichever is chosen.; Proof legs (e) and (f) enumerate exact call lists that omit #706's two gate reads for run 7 \u2014 `gh api repos/o/r/contents/.ultrapowers/runs/7/status.json?ref=ultra/evidence-run-7` and `gh api repos/o/r/pulls?state=open&head=o:ultra/integration-run-7`. BASE's flow necessarily issues both for a terminal pair, and M4 requires the pair sweep to stay BASE's, so those two lists are unsatisfiable as literally written. The submission diverges correctly and discloses it in the assertion messages (fleet/tests/test_retire.mjs, '#724 Task 1 (e)/M3 \u2026 run 7's #706 gate reads and its `state=closed` read' and '#724 Task 1 (f)/M4 run 7: the status read and the open-PR read that gate the pair (#706), then \u2026'), and both lists are otherwise exactly the Proof's. Lawful divergence, recorded only so the plan text is corrected rather than the exam.; concern: Proof leg (e) is self-contradictory and I resolved it toward BASE. It says the `--dry-run` calls over the task listing are *exactly* the listing, run 7's `state=closed` read, and six `state=all` reads. But run 7 is a plan-and-evidence pair, and #706 makes a pair's dry run issue its `contents/.../status.json?ref=ultra/evidence-run-7` read and its `pulls?state=open` read as well; M4 says the pair sweep is unchanged and the task's own Context says BASE's `--dry-run` exact call list grades unchanged. So my dry run emits ten calls: the listing, contents(7), state=open(7), state=closed(7), then state=all for 7, 9, 32, 40, 41, 42 \u2014 leg (e)'s three named kinds in the stated relative order, plus the two BASE pair reads it omits. If the peer's exam encodes leg (e)'s `exactly` literally, that assertion fails; dropping those two reads instead would break the standing #706 legs and the global constraint.; concern: M4 does not cover a run that is BOTH a live/kept pair AND carries an integration branch. I made the fate read unconditional on the pair's outcome \u2014 'issued only for a run whose listing carries the integration head', per the Context \u2014 so a live pair still gets its integration segment appended after `live (<why>) \u2014 skipped`. BASE's fixture carries no integration head, so every BASE leg (including #706 (c)'s 'the status read is the only command naming run 3') is unaffected, but the choice is mine, not the task's.; concern: `fleet/RUNBOOK.md` is in my FILES and also listed as a SIBLING FILE owned by task 2. I edited two sentences in it (the three-branches paragraph at lines 32-39 and the rollback sweep sentence around line 447); if task 2 rewrites the same regions the driver will see overlapping edits to one file.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "abecbd5e7170a6720adfe2270a9a7d4f8bcd30c8",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-45/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Re-scoped BASE pin in the exam that the task's Context does not name. `fleet/tests/test_janitor.mjs` leg (a)/M1 pinned `sorted(Object.keys(result))` deepEqual to the six BASE fields; the patch replaces it with a per-key presence check plus \"nothing beyond them but `branches`\". The global constraint \"Every assertion that stands at BASE in ... `fleet/tests/test_janitor.mjs` ... still holds, except the ones a task's Context names as re-scoped\" authorizes only one re-scope for this task \u2014 leg (a) of `fleet/tests/test_janitor_reap_only.mjs`. The pin is nonetheless unsatisfiable alongside M2 as implemented, since `janitor` now always returns the `branches` key (leg (a)'s fleet resolves it to `[]`); the only way to keep the BASE deepEqual literally would have been to omit the key when empty, which the Context's own `result.branches ?? []` phrasing argues against. The divergence is disclosed (comment naming `#724 Task 2`, both in the hunk and in the file header) and substance-preserving: the six BASE fields are still required present and no seventh key beyond `branches` is admitted. Recorded because it is a BASE-pin change the task text did not authorize; no edit inside this tree resolves the text's omission. This constraint carries no `Check:` the driver ran, so this rests on my reading of it.; Scope creep in `renderJanitor` (fleet/janitor.mjs): besides the required `...(result.branches ?? [])`, the patch also changes the two BASE lines `result.actions.map(...)` and `result.stale.map(...)` to `(result.actions ?? []).map(...)` and `(result.stale ?? []).map(...)`. M4 asks only that a result with no `branches` key render as at BASE, and every result the new legs build carries `actions` and `stale`, so nothing in the task requires this. The effect is a silently weakened error path: at BASE `renderJanitor({})` threw a TypeError on a malformed result; it now prints `nothing to do`. Reverting those two `?? []` (and keeping the one on `branches`) restores BASE behaviour with no test change \u2014 T2(e) constructs both keys explicitly.; unverified: the Claim's second clause \u2014 \"so a sitting's hygiene pass finds none\" \u2014 is cross-task. This diff settles that the janitor *reports* the closed-unmerged branch (M1\u2013M5 all map to lines and legs: `matchingRefsPath`/`integrationRunsOf`/`decidingPull`/`isClosedUnmerged`/`closedUnmergedBranches` in fleet/janitor.mjs, `renderBranch` for the operator line, legs T2(a)\u2013T2(f) in fleet/tests/test_janitor.mjs, exam exit 0). Whether a later pass then finds none depends on Task 1's sweep actually deleting the branch, in `fleet/retire.mjs`, which this patch does not touch. What would settle it: Task 1's own exam (`fleet/tests/test_retire.mjs`) passing, showing the `DELETE` on `refs/heads/ultra/integration-run-<N>` for the same rule. Nothing here is wrong \u2014 the printed remedy `node fleet/retire.mjs --target <t>` is a real invocation at BASE (fleet/retire.mjs:81 USAGE) and matches M2's literal exactly.; The exam's BASE key-set pin at fleet/tests/test_janitor.mjs:319-321 ((a)/M1 `sorted(Object.keys(result))` deepEqual against the six fields) is rewritten by this diff into a per-key `Object.hasOwn` loop plus \"nothing beyond them but `branches`\". That pin cannot survive M2, which mandates `result.branches`, so the change is forced and correct, and the implementer disclosed it in the file header (\"re-scopes one pin of leg (a)\"). But the task's Context names only one re-scoped pin \u2014 leg (a) of `fleet/tests/test_janitor_reap_only.mjs` (\"One strict-equality pin outside this exam changes\") \u2014 and the fourth GLOBAL CONSTRAINT requires every BASE assertion in `fleet/tests/test_janitor.mjs` to still hold \"except the ones a task's Context names as re-scoped with what replaces them\". The task text should have named this pin and its replacement; the constraint carries no Check the driver ran, so this is graded minor on my reading of the prose. The rewrite itself is the right shape (keys \u2287 the six BASE fields, \u2286 those plus `branches`), so no fix inside FILES is wanted.; Unrequested change in `renderJanitor` (fleet/janitor.mjs): beyond the required `result.branches ?? []`, the diff also converts `result.actions.map(...)` to `(result.actions ?? []).map(...)` and `result.stale.map(...)` to `(result.stale ?? []).map(...)`. Nothing in M4 or the Context asks for it \u2014 M4 only requires the *new* key to be optional to the renderer \u2014 and it quietly turns a malformed result (no `actions`) from a TypeError into a silent `nothing to do`. It is consistent with the pre-existing `deaths ?? []` / `unknown ?? []` style and breaks no BASE assertion, so it is advisory only.; unverified: `fleet/RUNBOOK.md` is in this task's own FILES and also in SIBLING FILES for Task 1, and both tasks are in the same wave with no edge between them \u2014 Task 1's M6 rewrites the \"three branches\" paragraph and the rollback section's sweep sentence, this task's M5 rewrites the janitor paragraph. This diff's only RUNBOOK hunk is confined to the janitor paragraph (the `It reaps VMs and nothing else\u2026` sentence and its replacement), which is a different region, so the two should merge textually; it is not a sibling-path violation because the path is inside this task's declared footprint. What would settle it: applying both patches to BASE and re-running `python3 -m pytest -q tests/test_docs_agree_with_code.py` plus both tasks' Test paths on the merged tree.; concern: I edited one assertion in `fleet/tests/test_janitor.mjs` \u2014 the Proof's reserved `Test:` path \u2014 because its BASE leg (a) pins `sorted(Object.keys(result))` to exactly six keys and M2's `branches` makes it seven; it now expects the seven keys, under a comment naming #724 Task 2. The path is in my FILES, but the peer's exam will overlay it, so this edit is expected to be discarded; nothing else in that file was touched and it passes unchanged otherwise.; concern: `fleet/RUNBOOK.md` is also a SIBLING FILE for task 1. I changed only the janitor 'Reap.' paragraph (five lines), leaving the rest byte-identical, but the two tasks' edits to that file may still need reconciling at merge.; concern: The result now always carries `branches` (`[]` when there is nothing to report), which is what makes `result.branches` an array in every pass; `renderJanitor` still reads it as `result.branches ?? []` so a BASE-shaped result renders as at BASE.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-45/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 337.39s (0:05:37) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "grep -n 'integration-run' fleet/CONTRACT.md fleet/RUNBOOK.md",
+      "exit": 0,
+      "stdout": "fleet/CONTRACT.md:23:`ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human\nfleet/CONTRACT.md:61:  - `ultra/integration-run-<N>` \u2014 the work. Pushed only when it is ahead of `base=`; the PR's head.\nfleet/CONTRACT.md:73:  whose `ultra/integration-run-<N>` still has an open pull request, is a run in flight and prints\nfleet/CONTRACT.md:75:  the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,\nfleet/CONTRACT.md:177:    ultra/integration-run-N --run N --run-dir <run dir> --evidence-dir\nfleet/CONTRACT.md:187:    --count <base>..ultra/integration-run-N`; `ahead == 0` \u2192 state `parked`, evidence committed, NO push,\nfleet/CONTRACT.md:191:    ultra/integration-run-N`) \u2192 one REST call, never `gh`: `curl -sS -X POST\nfleet/CONTRACT.md:193:    -d <json>` with `title` (`fleet run-N: <plan h1>`), `head` = `ultra/integration-run-N`, `base` = the\nfleet/CONTRACT.md:230:- **status.json:** `{\"run\":\"<N>\",\"state\":\"booting|running|publishing|done|parked|failed\",\"phase\":\"<text>\",\"pr\":\"<url or null>\",\"prAuthor\":\"<GitHub login or null>\",\"merged\":\"<40-hex or null>\",\"branch\":\"ultra/integration-run-<N>\",\"vm\":\"<vm_name>\",\"startedAt\":\"<iso>\",\"updatedAt\":\"<iso>\",\"error\":\"<string or null>\"}`\nfleet/RUNBOOK.md:28:there is something to publish \u2014 pushes `ultra/integration-run-<N>` and opens the\nfleet/RUNBOOK.md:36:`ultra/integration-run-<N>` has three fates: a merged PR's branch goes with the\nfleet/RUNBOOK.md:187:`ultra/integration-run-<N>` and opens the PR itself, over one REST call\nfleet/RUNBOOK.md:212:it also names, for each target its rows carry, every `ultra/integration-run-<N>`\n"
+    },
+    {
+      "task": "1",
+      "cmd": "grep -n 'closed and not merged' fleet/CONTRACT.md fleet/RUNBOOK.md",
+      "exit": 0,
+      "stdout": "fleet/CONTRACT.md:64:    and the retire sweep deletes one whose pull request is closed and not merged.\nfleet/CONTRACT.md:75:  the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,\nfleet/RUNBOOK.md:38:the retire sweep deletes one whose pull request is closed and not merged.\nfleet/RUNBOOK.md:213:whose highest-numbered pull request is closed and not merged. The janitor\nfleet/RUNBOOK.md:452:the retire sweep deletes one whose pull request is closed and not merged,\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.07s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor_reap_only.mjs",
+      "exit": 0,
+      "stdout": "ALL TESTS PASSED\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor_liveness.mjs",
+      "exit": 0,
+      "stdout": "ALL TESTS PASSED\n"
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c '! grep -q \"It reaps VMs and nothing else\" fleet/RUNBOOK.md'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c 'grep -q \"closed and not merged\" fleet/RUNBOOK.md && grep -q \"deletes no branch\" fleet/RUNBOOK.md'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.07s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/lobby.mjs fleet/sandbox-boot.sh fleet/launch.mjs fleet/target.mjs fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 918025,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n.....................................................s.................. [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 335.86s (0:05:35) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 335.02s (0:05:35) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "92421f4027bdded8d720321b29755644eea0468b",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-45/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-45/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.0250000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: I edited one assertion in `fleet/tests/test_janitor.mjs` \u2014 the Proof's reserved `Test:` path \u2014 because its BASE leg (a) pins `sorted(Object.keys(result))` to exactly six keys and M2's `branches` makes it seven; it now expects the seven keys, under a comment naming #724 Task 2. The path is in my FILES, but the peer's exam will overlay it, so this edit is expected to be discarded; nothing else in that file was touched and it passes unchanged otherwise.",
+    "task 2: `fleet/RUNBOOK.md` is also a SIBLING FILE for task 1. I changed only the janitor 'Reap.' paragraph (five lines), leaving the rest byte-identical, but the two tasks' edits to that file may still need reconciling at merge.",
+    "task 2: The result now always carries `branches` (`[]` when there is nothing to report), which is what makes `result.branches` an array in every pass; `renderJanitor` still reads it as `result.branches ?? []` so a BASE-shaped result renders as at BASE.",
+    "task 1: Proof leg (e) is self-contradictory and I resolved it toward BASE. It says the `--dry-run` calls over the task listing are *exactly* the listing, run 7's `state=closed` read, and six `state=all` reads. But run 7 is a plan-and-evidence pair, and #706 makes a pair's dry run issue its `contents/.../status.json?ref=ultra/evidence-run-7` read and its `pulls?state=open` read as well; M4 says the pair sweep is unchanged and the task's own Context says BASE's `--dry-run` exact call list grades unchanged. So my dry run emits ten calls: the listing, contents(7), state=open(7), state=closed(7), then state=all for 7, 9, 32, 40, 41, 42 \u2014 leg (e)'s three named kinds in the stated relative order, plus the two BASE pair reads it omits. If the peer's exam encodes leg (e)'s `exactly` literally, that assertion fails; dropping those two reads instead would break the standing #706 legs and the global constraint.",
+    "task 1: M4 does not cover a run that is BOTH a live/kept pair AND carries an integration branch. I made the fate read unconditional on the pair's outcome \u2014 'issued only for a run whose listing carries the integration head', per the Context \u2014 so a live pair still gets its integration segment appended after `live (<why>) \u2014 skipped`. BASE's fixture carries no integration head, so every BASE leg (including #706 (c)'s 'the status read is the only command naming run 3') is unaffected, but the choice is mine, not the task's.",
+    "task 1: `fleet/RUNBOOK.md` is in my FILES and also listed as a SIBLING FILE owned by task 2. I edited two sentences in it (the three-branches paragraph at lines 32-39 and the rollback sweep sentence around line 447); if task 2 rewrites the same regions the driver will see overlapping edits to one file."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
