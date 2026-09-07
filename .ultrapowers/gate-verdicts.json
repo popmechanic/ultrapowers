@@ -1,0 +1,30 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1ad20866c9f3347402c143a5f5421c86c6a5f45768deb0b4d4abbcefee4e6e19",
+      "verdict": "pass",
+      "reason": "Every clause has a leg whose expected output (exact call lists, exact stdout lines, exact result arrays, or a grep whose lines a reviewer reads for meaning) would differ under a wrong tool, and the Machine restatement stays at the same file-and-command layer as the operator's sentence about fleet/retire.mjs."
+    },
+    "2": {
+      "hash": "c69224f55c8908a929e8ba65993e5e9cfdb997e32f066be468f7a11e2cabe7a4",
+      "verdict": "pass",
+      "reason": "Every clause has a leg whose observable (exact gh argv multiset and order, exact result.branches, exact printed lines, exit codes of the two sibling sims) fails under the named wrong implementations, the fixtures are built to separate first-row/last-row/any-row/wrong-PR janitors, and the Machine restatement stays at the janitor's exec-surface layer the operator sentence names."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 3,
+    "rounds": {
+      "1": { "1": "fail: M6 leg (h) accepted 'a line' per file where the clause names two RUNBOOK sentences", "2": "fail: every pulls fixture older-first (a last-row janitor passes); no stale/unknown line to be placed after" },
+      "2": { "1": "pass", "2": "fail: nothing bounds the total matching-refs/pulls read counts, so a repos/undefined read from the unknown row passes" },
+      "3": { "2": "pass" }
+    }
+  },
+  "history": [
+    { "round": 1, "task": "1", "hash": "9ca9d4555d09d5ed785debc35735e5dc612570c631e09fb398c2e936a864b689", "verdict": "fail" },
+    { "round": 1, "task": "2", "hash": "e1c2b1cc9cb3eb91157a3d790ea376f4662184b225fb84a3752747e9b987a9ad", "verdict": "fail" },
+    { "round": 2, "task": "1", "hash": "1ad20866c9f3347402c143a5f5421c86c6a5f45768deb0b4d4abbcefee4e6e19", "verdict": "pass" },
+    { "round": 2, "task": "2", "hash": "19b866b27a6620d3c36dd662696e69ad3453e0cd2a5a40005007212124977b9f", "verdict": "fail" },
+    { "round": 3, "task": "2", "hash": "c69224f55c8908a929e8ba65993e5e9cfdb997e32f066be468f7a11e2cabe7a4", "verdict": "pass" }
+  ]
+}

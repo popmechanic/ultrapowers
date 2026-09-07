@@ -1,0 +1,379 @@
+# The closed-unmerged integration branch is retired
+
+**Grammar:** claims-v1
+
+**Claim:** `fleet/retire.mjs` (the one-time sweep) treats an integration branch whose PR is closed and not merged as retired and deletes it; and the janitor reports such branches beside the VMs it reaps, so a sitting's hygiene pass finds none. (elicited)
+
+**Goal:** #724 — the Claim above is the issue's desired-state sentence, verbatim, confirmed by the operator. Observed 2026-09-07: run-32 parked with draft PR #720; closing that PR by hand
+(superseded by run-33's #721) left `ultra/integration-run-32` on the target until it was deleted by
+hand. `fleet/CONTRACT.md` says the integration branch goes with the merge (delete-on-merge) and a
+`hold=1` run's stays while its PR is open — a closed-and-not-merged PR is neither, so nothing owns
+the branch. After this run the retire sweep owns it: a run whose newest pull request on
+`ultra/integration-run-<N>` is closed and not merged has that branch deleted by the sweep, the
+sweep's line says so, and the janitor names every such branch beside the VMs it reaps, pointing at
+the sweep. An open PR keeps its branch; a merged PR's branch is delete-on-merge's and is left alone.
+**Closes:** #724
+
+**Tech Stack:** Node 22 ESM (`fleet/*.mjs`); the sims drive every `git` and `gh` through the
+recording `exec` seam of `fleet/tests/_lobby_helpers.mjs` (`makeExec({ passthrough: [] })`) — no
+network, nothing real runs. The suite is `python3 -m pytest` from the repo root, which bridges every
+`fleet/tests/test_*.mjs` through `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 120 s
+per file).
+
+**Exam command:** node {paths}
+
+**Parallelization rationale:** one wave, width 2. The sweep's deletion and the janitor's report are
+two contracts over two tools, two exam files and disjoint Files blocks, and neither consumes a
+symbol the other produces: what they share is a rule and three literals — the highest-numbered
+pull request on the head decides, read from the rows' `state` and `merged_at`; the sweep's line
+segments; the janitor's `branch …` line — and those sit as one literal in both Contexts (rule 1),
+so no chain is drawn. Each task is a stranger to the other and needs nothing of the other's
+runtime behaviour.
+
+## Global Constraints
+
+- Check: `git diff --quiet $ULTRA_BASE -- fleet/lobby.mjs fleet/sandbox-boot.sh fleet/launch.mjs fleet/target.mjs fleet/doctor.mjs`
+- The decision rule lives in each tool, not in a shared helper: `fleet/lobby.mjs` is unchanged
+  (the Check above), and the two tools agree by literal, never by import of one another.
+- The pair sweep's commands and their order are BASE's: `ultra/plan-run-<N>` and
+  `ultra/evidence-run-<N>` are deleted only after both tags verify, exactly as at BASE, and the
+  janitor deletes nothing — its only mutation is still `rm <vm> --json`.
+- No committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a commit sha.
+- Every assertion that stands at BASE in `fleet/tests/test_retire.mjs`,
+  `fleet/tests/test_janitor.mjs`, `fleet/tests/test_janitor_liveness.mjs` and
+  `fleet/tests/test_janitor_reap_only.mjs` still holds, except the ones a task's Context names as
+  re-scoped with what replaces them; the new legs sit under a comment naming their task.
+- The four operator documents name no retired mechanism and no script that is not there
+  (`tests/test_docs_agree_with_code.py` is the lens; Task 1 runs it).
+
+**Acceptance:** suite — the committed suite is the verification.
+
+### Task 1: The sweep deletes the closed-unmerged integration branch
+
+**Type:** implementation
+**Review:** peer
+
+**Files:**
+- Modify: `fleet/retire.mjs`
+- Modify: `fleet/CONTRACT.md`
+- Modify: `fleet/RUNBOOK.md`
+- Test: `fleet/tests/test_retire.mjs`
+
+**Claim:** `fleet/retire.mjs` (the one-time sweep) treats an integration branch whose PR is closed and not merged as retired and deletes it (quoted from #724)
+Machine: M1. For a run whose one heads-and-tags listing carries
+`refs/heads/ultra/integration-run-<N>`, `retire` issues exactly one read
+`gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>`; when the row with the
+highest `number` has `state` `"closed"` and `merged_at` `null`, it issues exactly one
+`gh api -X DELETE repos/<t>/git/refs/heads/ultra/integration-run-<N>` and the run's line carries
+`ultra/integration-run-<N> deleted — PR #<k> closed, not merged`, `<k>` that row's `number`,
+whichever order the rows arrive in.
+M2. When the highest-numbered row has `state` `"open"` the line carries
+`ultra/integration-run-<N> stays — PR #<k> open`; when its `merged_at` is a string, it carries
+`ultra/integration-run-<N> stays — PR #<k> merged`; when the read answers no rows, it carries
+`ultra/integration-run-<N> stays — no pull request` — and in each of the three no `DELETE` names
+the integration branch, even when an older row is closed and unmerged.
+M3. Under `--dry-run` the read of M1 is issued, no command carries `-X`, and the deletable case's
+line carries `would delete ultra/integration-run-<N> — PR #<k> closed, not merged` while the three
+`stays` segments read as above.
+M4. The pair sweep is unchanged: a run with a plan-and-evidence pair and an integration branch
+issues the pair's five commands in BASE's order and its closed-PR read before the fate read, with
+the integration `DELETE` last, and its line is BASE's pair line followed by `; ` and the
+integration segment; a run whose listing holds only the integration branch prints
+`run <N>: <integration segment>`; a run with a lone pair half and an integration branch prints
+`run <N>: skip — lone <that half>; <integration segment>`; a run with no integration branch draws
+no fate read and prints BASE's line.
+M5. No integration-branch outcome puts a run in `kept` or sets `process.exitCode` to 1;
+`retired` and `kept` keep their pair meaning.
+M6. `fleet/CONTRACT.md`'s integration-branch bullet and both of `fleet/RUNBOOK.md`'s
+branch-lifecycle sentences (the "three branches" paragraph and the rollback section's sweep
+sentence) carry the phrase `closed and not merged` and say such a branch is the retire sweep's to
+delete, and no line of either document still gives the integration branch only the two fates of
+BASE.
+
+**Authorized-by:** #724 (enhancement, fleet); `fleet/CONTRACT.md` §Branches (the authority for
+every literal); the 2026-09-05 decision that the record is two tags and branches are transient
+(#624 c, shipped in #704).
+
+**Interfaces:**
+- Consumes: `integrationBranchFor(run)`
+- Consumes: `runOfBranch(ref)`
+- Consumes: `parseJson(stdout)`
+- Produces: nothing a sibling consumes — the line segments and the read are literals both tasks carry
+
+**Context:** The rule both tools carry, verbatim: *the pull request with the highest `number` among
+the rows of `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>` decides;
+`state` `"open"` keeps the branch; `state` `"closed"` with `merged_at` `null` retires it;
+`merged_at` a string keeps it (delete-on-merge's); no rows keeps it; the rows' order is not the
+rule.* The list endpoint's rows carry `merged_at` and no `merged` boolean — `merged` is the
+single-PR endpoint's field, and this tool does not read that endpoint. Why the highest number and
+not "any closed-unmerged row": run numbers restarted at 1 on 2026-09-04, so one head name carries
+the PRs of two runs. Read on the laptop 2026-09-07 (rule 5, correspondence not truth):
+`gh api 'repos/popmechanic/ultrapowers/pulls?state=all&head=popmechanic:ultra/integration-run-32' --jq '.[]|{number,state,merged_at}'`
+printed `{"number":720,"state":"closed","merged_at":null}` and
+`{"number":463,"state":"closed","merged_at":"2026-08-31T03:03:48Z"}` — the run the issue is about
+and the old run-32 on one head; and `…/pulls/720 --jq '{merged,merged_at}'` printed
+`{"merged":false,"merged_at":null}`. The BASE tool reads the closed PRs of a pair
+(`pullsToPatch`, `state=closed`) only to rewrite bodies; that read, its literal and its patch stay
+exactly as they are — the fate read is a second, separate read, issued only for a run whose listing
+carries the integration head, so a listing with no integration branch (BASE's fixture, runs 3/5/12)
+issues no new command and every BASE leg, the `--dry-run` exact call list and the process legs
+included, grades unchanged. Today `runsOf` files the integration name into `entry.branches`, so a
+lone integration branch prints `skip — lone ultra/integration-run-<N>` and lands in `skipped`;
+after this task the entry carries `integration: <sha>|null` beside `plan` and `evidence`, and
+`branches`, the `lone` line and `skipped` name pair halves only. The line segments, verbatim, with
+`<k>` the deciding row's `number`: `ultra/integration-run-<N> deleted — PR #<k> closed, not merged`
+/ `would delete ultra/integration-run-<N> — PR #<k> closed, not merged` /
+`ultra/integration-run-<N> stays — PR #<k> open` / `ultra/integration-run-<N> stays — PR #<k> merged`
+/ `ultra/integration-run-<N> stays — no pull request`. "Treats as retired" in the operator's sentence means deleted by the sweep and said so on the
+line; the resolved `retired` array is the pair-tag record and keeps that meaning, so the line's
+word for the integration branch is `deleted`, never `retired`. A `stays` is not a `kept`: it is the correct
+state, so it sets no exit code and joins no array — the line and the seam are the whole record of
+the integration branch, and the resolved value gains no key. Two BASE pins are re-scoped, and the
+task owns them: the (c)/M3 sweep over every seam at the end of `fleet/tests/test_retire.mjs`
+asserts today that no command names an integration branch with `DELETE` and that no command names
+`refs/heads/ultra/integration-run-<N>` at all; it becomes *a `DELETE` naming
+`refs/heads/ultra/integration-run-<N>` appears only for a run whose fate read answered a
+highest-numbered row that is closed and unmerged* (over every seam, the BASE fixture's included,
+where it still finds none). The header comment of `fleet/retire.mjs` that says the integration
+branch is not this tool's business and that no command names its ref is rewritten to the rule
+above. The new legs build their own listing (a `listing` option on the seam, or a second seam
+factory) rather than editing `HEADS_LISTING`, so every BASE leg keeps grading the fixture it was
+written for; the seam's `/pulls?` rule must tell `state=all` from `state=closed`, since one run
+(the pair-plus-integration one) receives both reads. The two documents: `fleet/CONTRACT.md`'s
+bullet `ultra/integration-run-<N> — the work …` today ends "It goes with the merge
+(delete-on-merge); a `hold=1` run's stays while its PR is open." and gains the third case — a
+closed-and-not-merged PR's branch is deleted by the retire sweep — and its two-tags bullet's
+mention of the sweep says the sweep also retires such integration branches; `fleet/RUNBOOK.md`'s
+"goes with the merge, and stays only while a `--hold` PR is open" sentence and its "the one-time
+retire sweep is what clears those, never a `git push origin --delete` by hand" sentence say the
+same — every one of those carries the phrase `closed and not merged` verbatim, which is what the
+second `Run:` counts, and no other sentence of either document keeps the two-fate wording. `tests/test_docs_agree_with_code.py` pins none of those sentences but bans the retired
+vocabulary (`sweep-branches`, `github-token`, …), so the rewrite names no mechanism that is not
+there. Delete-on-merge is the target repository's setting, on since 0.3.18, which is why a merged
+PR's branch is left to it: a merged PR whose branch is still there is a repository whose setting
+is off, and that is the operator's to see, not the sweep's to guess.
+**BASE facts:** (generated at 9cd8190)
+- `fleet/retire.mjs` blob 2b8cfc4
+- `retire` at `fleet/retire.mjs:198` blob 2b8cfc4
+- `number` at `fleet/retire.mjs:176` blob 2b8cfc4
+- `state` at `fleet/claude-token.mjs:76` blob b7e8e7b
+- `kept` at `fleet/retire.mjs:215` blob 2b8cfc4
+- `retired` at `fleet/retire.mjs:214` blob 2b8cfc4
+- `fleet/CONTRACT.md` blob bef5aa8
+- `fleet/RUNBOOK.md` blob a9e2912
+- `merged` at `fleet/tests/test_run_engine_conflict.mjs:73` blob 88b807e
+- `pullsToPatch` at `fleet/retire.mjs:167` blob 2b8cfc4
+- `runsOf` at `fleet/retire.mjs:94` blob 2b8cfc4
+- `skipped` at `fleet/retire.mjs:216` blob 2b8cfc4
+- `plan` at `fleet/doctor.mjs:265` blob f9a1174
+- `evidence` at `fleet/janitor.mjs:350` blob 3b43840
+- `branches` at `fleet/tests/test_lobby.mjs:285` blob b3bd0fe
+- `lone` at `fleet/retire.mjs:229` blob 2b8cfc4
+- `fleet/tests/test_retire.mjs` blob 8431938
+- `listing` at `fleet/retire.mjs:209` blob 2b8cfc4
+- `HEADS_LISTING` at `fleet/tests/test_retire.mjs:80` blob 8431938
+- `tests/test_docs_agree_with_code.py` blob 3db67e0
+
+**Proof:**
+- Test: `fleet/tests/test_retire.mjs`
+- Run: `grep -n 'integration-run' fleet/CONTRACT.md fleet/RUNBOOK.md`
+- Run: `grep -n 'closed and not merged' fleet/CONTRACT.md fleet/RUNBOOK.md`
+- Run: `python3 -m pytest -q tests/test_docs_agree_with_code.py`
+- Legs, under a comment naming this task (`#724 Task 1`), over one listing the legs build
+  themselves — call it the task listing: runs 7, 9, 32, 40, 41 and 42 as described below, and no
+  run of BASE's fixture: (a) run 32 — integration branch only; the fate read answers two rows,
+  `{ number: 463, state: 'closed', merged_at: '2026-08-31T03:03:48Z' }` and
+  `{ number: 720, state: 'closed', merged_at: null }`, older first in one seam and newer first in
+  another; in both, exactly one call is
+  `gh api repos/o/r/pulls?state=all&head=o:ultra/integration-run-32`, exactly one is
+  `gh api -X DELETE repos/o/r/git/refs/heads/ultra/integration-run-32`, and the captured stdout
+  line for run 32 is exactly `run 32: ultra/integration-run-32 deleted — PR #720 closed, not merged`
+  — a tool that takes the first row, or names #463, fails one of the two seams [M1];
+  (b) run 40 — integration branch only; its read answers
+  `{ number: 800, state: 'open', merged_at: null }` and an older
+  `{ number: 790, state: 'closed', merged_at: null }`: its line is exactly
+  `run 40: ultra/integration-run-40 stays — PR #800 open`, the fate read is issued exactly once,
+  and no call naming run 40 carries `DELETE` — a tool that deletes on any closed-unmerged row
+  fails here [M2]; (c) run 41 — integration branch only; its read answers
+  `{ number: 810, state: 'closed', merged_at: '2026-09-07T01:29:38Z' }` and an older
+  `{ number: 805, state: 'closed', merged_at: null }`: its line is exactly
+  `run 41: ultra/integration-run-41 stays — PR #810 merged`, the fate read is issued exactly
+  once, and no call naming run 41 carries `DELETE` [M2]; (d) run 42 — integration branch only;
+  its read answers `[]`: its line is exactly
+  `run 42: ultra/integration-run-42 stays — no pull request`, the fate read is issued exactly
+  once, and no call naming run 42 carries `DELETE` [M2]; (e) `--dry-run` over the task listing:
+  the calls through the seam are exactly the one heads-and-tags listing, run 7's `state=closed`
+  read, and one `state=all` read for each of runs 7, 9, 32, 40, 41 and 42, no call carrying
+  `-X`; run 32's line is exactly
+  `run 32: would delete ultra/integration-run-32 — PR #720 closed, not merged`, run 7's ends
+  `; would delete ultra/integration-run-7 — PR #300 closed, not merged`, and runs 40, 41 and 42
+  print the same three `stays` lines as without the flag; `process.exitCode` is not 1 [M3];
+  (f) run 7 — a plan-and-evidence pair plus an integration branch whose read answers one row
+  `{ number: 300, state: 'closed', merged_at: null }` with a body linking neither branch: the calls
+  naming run 7 are, in order, the two tag POSTs, the `ls-remote --tags` verify, the plan and
+  evidence `DELETE`s, the `state=closed` read, the `state=all` read, then
+  `gh api -X DELETE repos/o/r/git/refs/heads/ultra/integration-run-7`, and its line is BASE's
+  retired line (`retired ultra/plan/run-7@… ultra/evidence/run-7@…, 2 branches deleted, 0 PR(s) patched`)
+  followed by `; ultra/integration-run-7 deleted — PR #300 closed, not merged`; run 9 — a lone
+  `ultra/plan-run-9` plus an integration branch whose read answers
+  `{ number: 310, state: 'open', merged_at: null }`: its line is exactly
+  `run 9: skip — lone ultra/plan-run-9; ultra/integration-run-9 stays — PR #310 open`, no call
+  naming run 9 carries `DELETE` or `POST`, and `result.skipped` names `ultra/plan-run-9` and not
+  the integration branch; and over BASE's own listing (runs 3, 5, 12, no integration head) no
+  `state=all` read is issued and every BASE leg passes unchanged [M4]; (g) over the task listing,
+  `result.kept` is `[]`, `result.retired` is `[7]`, and `process.exitCode` is not 1; and the
+  re-scoped sweep over every seam finds a `DELETE` naming `refs/heads/ultra/integration-run-<N>`
+  only for runs 32 and 7 [M5]; (h) the second `Run:` prints at least one line of `fleet/CONTRACT.md` and at least two
+  lines of `fleet/RUNBOOK.md`, each of which names the retire sweep (`retire.mjs` or "retire
+  sweep") as what deletes the branch; the first `Run:`'s output holds no line of either file that
+  still gives `ultra/integration-run-<N>` only the merge and the open-PR fates — a rewrite that
+  touches one RUNBOOK sentence and leaves the other, or leaves the CONTRACT bullet at BASE, fails
+  one of the two; and the third `Run:` exits 0 [M6].
+
+**Stale-if:**
+- path-absent: `fleet/retire.mjs`
+- path-absent: `fleet/tests/test_retire.mjs`
+- issue-closed: #724
+
+### Task 2: The janitor reports the closed-unmerged branch beside the VMs it reaps
+
+**Type:** implementation
+**Review:** peer
+
+**Files:**
+- Modify: `fleet/janitor.mjs`
+- Modify: `fleet/tests/test_janitor_reap_only.mjs`
+- Test: `fleet/tests/test_janitor.mjs`
+
+**Claim:** the janitor reports such branches beside the VMs it reaps, so a sitting's hygiene pass finds none (quoted from #724)
+Machine: M1. After every row's reads, for each distinct `target=` among the rows with a readable
+assignment, `janitor` issues exactly one read
+`gh api repos/<t>/git/matching-refs/heads/ultra/integration-run-` and, for each `ref` it answers,
+exactly one read `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>`; a
+target no row names draws no read, and every read is `['api', '<path>']`.
+M2. A branch whose highest-numbered row has `state` `"closed"` and `merged_at` `null` is in
+`result.branches` as `{ target, run, branch: 'ultra/integration-run-<N>', pr: <k> }`, and
+`renderJanitor` prints
+`branch ultra/integration-run-<N>  target=<t> PR #<k> closed, not merged — node fleet/retire.mjs --target <t>`
+after every `rm`, `stale` and `unknown` line; a branch whose highest-numbered row is open, or
+merged, or which has no row, is in neither, even when an older row is closed and unmerged.
+M3. The janitor deletes no branch and runs no `git`: no `gh` call carries `-X DELETE`, and
+`--dry-run` issues the same reads and reports the same `branches`.
+M4. `renderJanitor` of a result with no `branches` key prints as at BASE (`nothing to do` for an
+empty result, exactly its `rm` line for a result of one action), and the sims `fleet/tests/test_janitor_reap_only.mjs` and
+`fleet/tests/test_janitor_liveness.mjs` pass with the per-target read in the surface.
+
+**Authorized-by:** #724 (enhancement, fleet); `fleet/CONTRACT.md` §Branches; #607 (the janitor
+writes the deaths — the shape its report lines follow).
+
+**Interfaces:**
+- Consumes: `runOfBranch(ref)`
+- Consumes: `integrationBranchFor(run)`
+- Produces: nothing a sibling consumes — the result's new key and the report line are read by the operator, never by a task
+
+**Context:** The rule both tools carry, verbatim: *the pull request with the highest `number` among
+the rows of `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>` decides;
+`state` `"open"` keeps the branch; `state` `"closed"` with `merged_at` `null` retires it;
+`merged_at` a string keeps it (delete-on-merge's); no rows keeps it; the rows' order is not the
+rule.* The list endpoint's rows carry `merged_at` and no `merged` boolean. Why the highest number:
+run numbers restarted at 1 on 2026-09-04, so one head name carries two runs' PRs — read on the
+laptop 2026-09-07, the head `ultra/integration-run-32` on `popmechanic/ultrapowers` answered
+`#720 closed, merged_at null` and `#463 closed, merged_at 2026-08-31T03:03:48Z`. The result key is `branches: [{ target, run, branch, pr }]`, ascending by target then run. The janitor
+reports and never deletes: the sweep's line segment for the same branch is
+`ultra/integration-run-<N> deleted — PR #<k> closed, not merged` (the sibling task's literal), and
+the janitor's line points the operator at it — `branch ultra/integration-run-<N>  target=<t> PR #<k>
+closed, not merged — node fleet/retire.mjs --target <t>`, two spaces after the first token like
+every other line `renderJanitor` prints, rendered last, after the `unknown` lines. Where the
+targets come from: the janitor knows a target only from a row's assignment comment (`target=`),
+so the read is per distinct target among rows with a readable assignment — one `matching-refs`
+read per target, however many of its runs are in the fleet — and a branch whose every VM is
+already reaped is the sweep's to find, not the janitor's; the run-32 shape (VM parked, PR closed
+by hand, VM reaped an hour on) is reported in the pass that reaps the VM, which is what "beside
+the VMs it reaps" means here. `git/matching-refs/heads/ultra/integration-run-` answers an array of
+`{ ref: 'refs/heads/ultra/integration-run-<N>', object: { sha } }` (a prefix match, so every N;
+`[]` when none; the run is `runOfBranch(ref)`), paged at GitHub's default of thirty — enough for a
+report whose remedy is the sweep, so no `per_page` rides the literal. The reads come after the row
+loop, so every BASE read order and the `--dry-run` same-paths pin hold; the seam of
+`fleet/tests/test_janitor.mjs` answers `HTTP 404` for any path no leg canned, and a 404 or a
+non-array answer is "no branches" — the BASE legs' execs therefore issue the one new read for
+`acme/widgets` and report nothing, which is why `readsFor`, `contentsReads` and the
+`mentions(p, n)` filters (a path ending `integration-run-` names no run) hold unchanged. One
+strict-equality pin outside this exam changes and the task owns it: leg (a) of
+`fleet/tests/test_janitor_reap_only.mjs` lists the janitor's gh argvs exactly
+(`sortedJson(ghArgvs(exec))` against the two contents reads) and gains the one
+`['api', 'repos/<its TARGET>/git/matching-refs/heads/ultra/integration-run-']` — its flag and
+two-word checks already admit it. The header comment of `fleet/janitor.mjs` saying its `gh`
+surface is "the contents API and nothing else" is rewritten to name the two reads. `--dry-run`
+changes nothing here: the branch report is reads, and it is printed either way. The result key is
+optional to the renderer (`result.branches ?? []`) so the BASE call
+`renderJanitor({ dryRun: false, age: '1h', actions: [], stale: [], unknown: [], deaths: [] })`
+still prints `nothing to do`.
+**BASE facts:** (generated at 9cd8190)
+- `janitor` at `fleet/janitor.mjs:322` blob 3b43840
+- `ref` at `fleet/janitor.mjs:192` blob 3b43840
+- `state` at `fleet/claude-token.mjs:76` blob b7e8e7b
+- `renderJanitor` at `fleet/janitor.mjs:429` blob 3b43840
+- `stale` at `fleet/doctor.mjs:309` blob f9a1174
+- `unknown` at `fleet/janitor.mjs:340` blob 3b43840
+- `git` at `fleet/lobby.mjs:271` blob 62d348b
+- `branches` at `fleet/tests/test_lobby.mjs:285` blob b3bd0fe
+- `fleet/tests/test_janitor_reap_only.mjs` blob d598956
+- `fleet/tests/test_janitor_liveness.mjs` blob dce8666
+- `fleet/CONTRACT.md` blob bef5aa8
+- `number` at `fleet/retire.mjs:176` blob 2b8cfc4
+- `merged` at `fleet/tests/test_run_engine_conflict.mjs:73` blob 88b807e
+- `fleet/tests/test_janitor.mjs` blob 33a16ad
+- `readsFor` at `fleet/tests/test_janitor.mjs:227` blob 33a16ad
+- `contentsReads` at `fleet/tests/test_janitor.mjs:225` blob 33a16ad
+- `fleet/janitor.mjs` blob 3b43840
+- `done` at `fleet/run-worker.mjs:953` blob da08fc7
+- `ls` at `fleet/tests/test_run_worker.mjs:858` blob f5f6a61
+
+**Proof:**
+- Test: `fleet/tests/test_janitor.mjs`
+- Run: `node fleet/tests/test_janitor_reap_only.mjs`
+- Run: `node fleet/tests/test_janitor_liveness.mjs`
+- Legs, under a comment naming this task (`#724 Task 2`), over one fleet the legs share — call
+  it the task fleet: two rows for `acme/widgets` (runs 71 and 72, both `done` two hours ago),
+  one row for `beta/lib` (run 5, `done` two hours ago), one `acme/widgets` row (run 80) whose page
+  says `running` updated seven hours ago and whose VM answers nothing to the unit read (a `stale`
+  row), and one row with no comment (an `unknown` row); `acme/widgets`' `matching-refs` read
+  answers refs for runs 32, 40, 41 and 42, `beta/lib`'s answers `[]`; run 32's pulls read answers
+  `{ number: 463, state: 'closed', merged_at: '2026-08-31T03:03:48Z' }` then
+  `{ number: 720, state: 'closed', merged_at: null }` (older first), run 40's answers
+  `{ number: 790, state: 'closed', merged_at: null }` then
+  `{ number: 800, state: 'open', merged_at: null }` (older first), run 41's answers
+  `{ number: 810, state: 'closed', merged_at: '2026-09-07T01:29:38Z' }` then
+  `{ number: 805, state: 'closed', merged_at: null }` (newer first), and run 42's answers `[]`:
+  (a) the gh paths containing `matching-refs` across the whole exec are exactly two —
+  `repos/acme/widgets/git/matching-refs/heads/ultra/integration-run-` (three rows, one read) and
+  `repos/beta/lib/git/matching-refs/heads/ultra/integration-run-`, in either order — so the
+  commentless row draws none (no path contains `repos/undefined/`, `repos/null/` or `repos//`)
+  and no read names `gamma/x`, a target no row carries; each of the two comes after the last
+  contents read; and every gh call that is not a `-X PUT` is exactly
+  `['api', '<path beginning repos/>']` [M1]; (b) the gh paths containing `pulls?` across the
+  whole exec are exactly four — one
+  `repos/acme/widgets/pulls?state=all&head=acme:ultra/integration-run-<N>` for each of 32, 40, 41
+  and 42, each after the `matching-refs` read that named it — so no `pulls?` read names run 71,
+  72, 80 or 5 (the rows' own runs) and `beta/lib`, whose refs answer was `[]`, draws none [M1]; (c) `result.branches` is exactly
+  `[{ target: 'acme/widgets', run: 32, branch: 'ultra/integration-run-32', pr: 720 }]`, and the
+  printed report's last line is exactly
+  `branch ultra/integration-run-32  target=acme/widgets PR #720 closed, not merged — node fleet/retire.mjs --target acme/widgets`,
+  after the three `rm` lines, the `stale` line for run 80 and the `unknown` line, in that order;
+  no printed line names run 40, 41 or 42 — a janitor that takes the first row fails on 32, one
+  that takes the last row fails on 41, one that reports any closed-unmerged row fails on 40 and
+  41, and one that names #463 fails on 32 [M2]; (d) no gh call in any
+  exec of this task carries `-X` with `DELETE`, no `git` command is issued, and `--dry-run` over
+  the task fleet issues the same gh paths, the same `ls`, no `rm`, and resolves the same
+  `result.branches` with the same last line [M3]; (e)
+  `renderJanitor({ dryRun: false, age: '1h', actions: [], stale: [], unknown: [], deaths: [] })`
+  is exactly `nothing to do`; `renderJanitor` of a result with one `rm` action and no `branches`
+  key renders exactly that one `rm` line; and a result whose only content is one `branches` entry
+  renders exactly the one `branch …` line — the two `Run:` bullets are the evidence for the two
+  sibling sims [M4].
+
+**Stale-if:**
+- path-absent: `fleet/janitor.mjs`
+- path-absent: `fleet/tests/test_janitor.mjs`
+- path-absent: `fleet/tests/test_janitor_reap_only.mjs`
+- issue-closed: #724
