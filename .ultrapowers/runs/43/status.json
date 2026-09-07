@@ -1,1 +1,1 @@
-{"run":"43","state":"running","phase":"engine starting","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-43","vm":"fleet-r43-2609072102-9db9","startedAt":"2026-09-07T21:02:29Z","updatedAt":"2026-09-07T21:02:51Z","error":null}
+{"run":"43","state":"running","phase":"Setup","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-43","vm":"fleet-r43-2609072102-9db9","startedAt":"2026-09-07T21:02:29Z","updatedAt":"2026-09-07T21:08:23Z","error":null}
