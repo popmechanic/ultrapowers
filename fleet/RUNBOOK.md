@@ -444,4 +444,9 @@ tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, and those are kept —
 deleting them is deleting the run. Runs from before the tags, and runs that
 ended `failed`, still have `ultra/*-run-<N>` branches on their target; the
 one-time retire sweep is what clears those, never a `git push origin --delete`
-by hand. `fleet/CONTRACT.md` names the script it runs from.
+by hand. The sweep reads a pair's `status.json` on the run's evidence branch
+first and touches nothing until it has: a run whose state is not terminal, or
+whose integration branch still has an open pull request, prints
+`run <N>: live (<why>) — skipped` and keeps its branches, so a run still in
+flight is never swept out from under itself. `fleet/CONTRACT.md` names the
+script it runs from.

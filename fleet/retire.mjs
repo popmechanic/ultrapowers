@@ -37,19 +37,31 @@
  * is rewritten to the tag paths, so the links survive the deletion — and
  * nothing else in the body is touched.
  *
+ * A pair of branches is not on its own a finished run. Before anything names a
+ * run's tags or branches, the sweep reads that run's status page — the contents
+ * API at `.ultrapowers/runs/<N>/status.json`, on the run's evidence branch — and
+ * only a page whose `state` is one of `REAPABLE_STATES` earns the sweep. A live
+ * page, an unreadable one, or an open pull request on the run's integration
+ * branch prints `run <N>: live (<why>) — skipped` and the sweep moves to the
+ * next N. The states are imported from `./janitor.mjs`, which is the one place
+ * they are spelled: the test is membership, never a denylist of the live words,
+ * so a `state` the boot never writes is skipped rather than swept.
+ *
  * Every run the listing carries prints one line as it is decided, on this
  * process's stdout, in ascending N. Stdout is the record: the resolved value
  * carries the same lines under `lines`, but the printing is what a reader of a
  * long sweep actually sees, and it happens before the next run is started.
  *
- * `--dry-run` says what it would do: the one heads-and-tags listing and one
- * closed-PR read per candidate, and no command that creates or deletes
- * anything.
+ * `--dry-run` says what it would do: the one heads-and-tags listing, the status
+ * read per candidate, the open-PR read per terminal candidate and one closed-PR
+ * read per candidate that would be swept, and no command that creates or deletes
+ * anything. A skipped run prints the same line either way.
  */
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { REAPABLE_STATES } from './janitor.mjs'
 import {
   Refusal,
   defaultExec,
@@ -114,6 +126,52 @@ const alreadyExists = (res) => /reference already exists/i.test(output(res))
 async function ghRead (exec, apiPath) {
   const res = await exec('gh', ['api', apiPath])
   return res.code === 0 ? parseJson(res.stdout) : null
+}
+
+/**
+ * The run's status page, off its evidence branch. The answer is the contents
+ * envelope — base64 under `content` — and nothing else is accepted: a bare
+ * status document would mean `gh` answered something other than the contents
+ * API, and a pair swept on a payload nobody read is a live run deleted. An
+ * absent file is exit 1 with `HTTP 404`, which `ghRead` already turns into
+ * `null`; every other unreadable shape lands here as `null` too, and `null` is
+ * "no page", which is a skip and never a sweep.
+ */
+async function readStatusPage (exec, target, run) {
+  const payload = await ghRead(
+    exec,
+    `repos/${target}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
+  )
+  if (!payload || typeof payload.content !== 'string') return null
+  const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
+  return decoded && typeof decoded === 'object' ? decoded : null
+}
+
+/**
+ * Why this run is not the sweep's to take, or `null` when it is. The test is
+ * membership in `REAPABLE_STATES` — the terminal words are spelled once, in
+ * `janitor.mjs` — so a `state` nobody writes is live, not sweepable.
+ */
+function liveReason (page) {
+  const state = page === null ? null : page.state
+  if (typeof state !== 'string') return 'no status page'
+  return REAPABLE_STATES.includes(state) ? null : state
+}
+
+/**
+ * The run's open pull request, if it has one. `head=<owner>:<ref>` matches on
+ * the head ref's NAME; `state=open` is the only difference from the closed read
+ * below. A run whose integration PR is still open is a run somebody is still
+ * looking at, and its branches are what its links resolve through.
+ */
+async function openPullOf (exec, target, run) {
+  const owner = String(target).split('/')[0]
+  const payload = await ghRead(
+    exec,
+    `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
+  )
+  const rows = Array.isArray(payload) ? payload : []
+  return rows.length > 0 ? rows[0] : null
 }
 
 /** Create one tag at one sha through the refs API. */
@@ -214,6 +272,7 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
   const retired = []
   const kept = []
   const skipped = []
+  const live = []
   const lines = []
   const say = (line) => {
     lines.push(line)
@@ -229,6 +288,21 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
       const lone = entry.branches.join(', ')
       skipped.push(...entry.branches)
       say(`run ${run}: skip — lone ${lone}`)
+      continue
+    }
+
+    // The gate, and the first thing that names this run: a pair whose page is
+    // not terminal, or whose integration PR is still open, is a run in flight.
+    // Skipping it is the same decision under `--dry-run` and without it — the
+    // sweep never asks what it would do to a run it is not going to touch.
+    let why = liveReason(await readStatusPage(exec, target, run))
+    if (why === null) {
+      const open = await openPullOf(exec, target, run)
+      if (open !== null) why = `PR #${open.number} open`
+    }
+    if (why !== null) {
+      live.push({ run, why })
+      say(`run ${run}: live (${why}) — skipped`)
       continue
     }
 
@@ -277,7 +351,7 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
   // did what it could — but it is not a clean sweep either, so it is exit 1.
   if (kept.length > 0) process.exitCode = 1
 
-  return { target, dryRun, retired, kept, skipped, lines }
+  return { target, dryRun, retired, kept, skipped, live, lines }
 }
 
 async function main (argv) {
