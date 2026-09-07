@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "aa952037066e517ea22690e2d1e5e7303ead69026255b1091ea73de05706aafe",
+      "verdict": "pass",
+      "reason": "Leg (a) pins the receipt the frozen gate actually reads to the exact wrapper string at call time, leg (b) pins that no earlier reader or argv sees it, and legs (c)/(d) evaluate that very string through a real run_acceptance.sh --suite-gate invocation with a large two-stream payload, checking log completeness by byte length and markers, output truncation, and exit-status propagation across the pipe (3 and 5) — the only untested link is the frozen ultra_gate.py forwarding testCmd verbatim to --run, the fixed layer the sentence presupposes."
+    },
+    "2": {
+      "hash": "cd0c409f5f7ed989fe34b611f25642d9a15feac81f9cf3d94847bfda3c0b0021",
+      "verdict": "pass",
+      "reason": "Legs (a)/(b) exercise the real script over a stub engine and check byte-equality plus absence in the bare case, (d) pins the name to the function body itself, and (c)'s ordered regex pins the contract bullet — each leg falsifies its cited clause at the layer the sentence lives in."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 0,
+    "rounds": {
+      "1": "2 dispatched, 2 pass (tasks 1 and 2, first readers) — after compile --check repairs: 46 pinned-elsewhere advisories cleared by dropping backticks from incidental names in the Machine clauses. Both readers passed but each named a leg worth tightening, so both Proofs were edited and re-dispatched rather than kept: task 1 leg (c) now requires the script's JSON output to carry the closing marker (tee still forwards stdout to the frozen capture) and M2 says what it establishes (no reader BEFORE the gate sees the wrapper); task 2 leg (c) ties the contract name to its description with an ordered regex and names the failing shapes, and the first Run: greps the collect_evidence body instead of the whole file.",
+      "2": "2 dispatched, 2 pass (tasks 1 and 2, second readers, fresh hashes). Remaining notes, recorded not adopted: the frozen ultra_gate.py is a stub in (a) and bypassed in (c) — its verbatim forwarding of receipt.json's testCmd to run_acceptance.sh --run is a BASE fact pinned in Task 1's Context and held by the Global Constraints freeze Check, not something a sim can exercise without the whole gate; the parenthetical 'the receipt keeps its 4000-char tail' in Task 2's quoted sentence is the frozen script's own behaviour, held by the same Check; M1's 'every other key unchanged' is checked for the four keys the stub writes."
+    },
+    "note": "Authored 2026-09-07 for #739 on BASE 9cd8190ffb5e68b1de0eb9eac44b116ab0631d28; each reader saw only extract_gate_input.py --task <id>."
+  }
+}
