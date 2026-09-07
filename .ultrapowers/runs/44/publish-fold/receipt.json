@@ -8,7 +8,8 @@
       "reason": "the candidate's suite exited 1",
       "pathsJoined": 4,
       "resolversDispatched": 4,
-      "suite": "fail"
+      "suite": "fail",
+      "pushedHead": "2da88a152e5d8d83ae928f68b9e12a93b5040ab7"
     }
   }
 }
