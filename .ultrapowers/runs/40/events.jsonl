@@ -72,3 +72,4 @@
 {"kind":"driver:fail","verdict":"needs-ack","detail":"non-pre-authorized ack(s): deferred:manual — gate receipt is the terminal artifact","id":"01M1YTJ6QV00015XJ8W8E6E0R9","ts":1788814629627}
 {"kind":"run:open","runId":"run-40","base":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","source":"fleet/publish-fold.mjs","id":"01M1YTJ6XZ0000VEDM945YWKN6","ts":1788814629823}
 {"kind":"driver:publish-fold","run":"40","attempt":"1","base":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","tip":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","candidate":"8f6cb456dc053aeed2b6745fe250545ddb1034c8","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","id":"01M1YTJ7YA0000HH9CXKHSMEGP","ts":1788814630858}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/743","number":743,"draft":true,"id":"01M1YTJCJG0000GZQ0HH2M23TG","ts":1788814635600}
