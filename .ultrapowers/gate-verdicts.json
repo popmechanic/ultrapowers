@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2b8584099515bcc62eb1dd658c7bff1b6fea6f8f5b755bba525f1e94fb5cc565",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that would fail on a wrong implementation — (a)/(b) pin the exact seven-commit sequence and place each phase commit between `systemd-run` and `engine: exited`, (c) and (d) name the absent second `gate` commit and the absent poll-tick commit, (f) names the absent `failed` state/notify/`FAILED:` line under refused pushes, and (h) greps the literal in both contract bullets — all observed on the boot script itself, the layer the sentence is about."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": {
+      "1": "1 dispatched, 1 pass (task 1, first reader) — after compile --check repairs: the two Run: lines stripped of backticks (the second's sed span matched with `.` in place of the contract's own backtick), leg (h) added for M5, the plan-level Claim closed (elicited) because the compiler admits no other tag there"
+    },
+    "note": "Authored 2026-09-07 for #723 on BASE 00fb22436c9fad7f6e37de3f11f73f709675ad35; the reader saw only extract_gate_input.py --task 1."
+  }
+}
