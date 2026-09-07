@@ -37,12 +37,18 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  SCRIPT, TARGET, HEAD_SHA, PR_URL, PLAN_H1, MERGE_SHA, ASSIGNMENT,
+  SCRIPT, TARGET, HEAD_SHA, PR_URL, PLAN_H1, MERGE_SHA, ASSIGNMENT, RUN_PATH,
   makeHome, boot, green,
   stream, statusOf, states, committed, commitStates, notifies, engineRuns,
-  readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads,
+  readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads, directCalls,
+  targetDir, evidenceDir,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
+
+// The clock before any boot of this process: leg (h) bounds every appended
+// `ts` between a `Date.now()` taken before its boot and one taken after it,
+// and the rig's `green()` is memoized, so its "before" is this.
+const SUITE_STARTED = Date.now()
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CONTRACT = path.join(HERE, '..', 'CONTRACT.md')
@@ -362,6 +368,381 @@ test('RUNBOOK.md says the PR merges itself, and puts no human at the button  [M6
 test('SKILL.md step 4 says a ready PR merges itself  [M7]', () => {
   const step = section(SKILL, /^4\. \*\*The PR is the gate/, /^5\. \*\*Reap/)
   assert.match(step, /A ready PR merges itself once its checks are green[\s\S]*--hold[\s\S]*on the launch line keeps it open/)
+})
+
+// ═══ #703 Task 1 — the boot writes its publish decisions as events ═══════════
+//
+// The claim: the boot writes the publish decisions into the run's event log —
+// `publish:pr` (url, number, draft), `publish:hold` (why) and `publish:merge`
+// (sha, or the reason the PR was left open) — so a held run, a merged run and a
+// merge that failed are three different records. The page and the log lines the
+// legs above pin stay exactly as they are; these events are added BESIDE them.
+//
+//   M1  a POST'd PR appends exactly one `publish:pr`; a parked run's record is
+//       that line alone with `draft` true; a run with nothing ahead of base
+//       appends no `publish:` line at all.                        legs (a)
+//   M2  `hold=1` and each of the three fold holds append exactly one
+//       `publish:hold`, whose `why` is the phase's text after `left open: `,
+//       and no `publish:merge`; a green run holds none.            leg  (b)
+//   M3  one `publish:merge` per merge decision — the squash sha, `checks red`,
+//       `checks pending`, `refused` — and the retry's two, in order, the last
+//       being what became of the PR.                              legs (c)–(g)
+//   M4  the stamp: a ULID-shaped `id` whose first ten characters are `ts`,
+//       ascending in file order, sorting after every engine line, the engine's
+//       own line untouched, and no direct `node`/`gh` call.        leg  (h)
+//   M5  the evidence copy is byte-identical to the run dir's file. leg  (i)
+//   M6  ultralearn's own reader renders the three records.         leg  (j)
+//   M7  the `- **Publish:**` bullet names the three kinds and their fields;
+//       the rest of that document, the reader and the engine's writer are the
+//       `Run:` commands' business — they are the ones the driver hands the
+//       base commit to. This file reads no environment variable naming a
+//       commit and embeds no sha: a frozen base literal would go red on the
+//       first unrelated commit to the contract or the engine.      leg  (k)
+
+const HOME_TARGET_RUN = ['.claude', 'ultrapowers', 'run-run-7']
+/** The run directory the engine and the boot both write, `run_dir_path()`. */
+const runDirOf = (ctx) => path.join(targetDir(ctx), ...HOME_TARGET_RUN)
+const runEventsPath = (ctx) => path.join(runDirOf(ctx), 'events.jsonl')
+/** The copy `collect_evidence` commits with the terminal page. */
+const evidenceEventsPath = (ctx) => path.join(evidenceDir(ctx), RUN_PATH, 'events.jsonl')
+
+const eventLines = (file) =>
+  (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter((l) => l !== '') : [])
+/** One event log, parsed; a line that is not one JSON object is the failure. */
+const eventsAt = (file) =>
+  eventLines(file).map((line, i) => {
+    try {
+      const record = JSON.parse(line)
+      assert.ok(record && typeof record === 'object' && !Array.isArray(record),
+        `${file} line ${i + 1} is not a JSON object: ${line}`)
+      return record
+    } catch (error) {
+      throw new Error(`${file} line ${i + 1} is not one JSON object: ${line}\n${error}`)
+    }
+  })
+const events = (ctx) => eventsAt(runEventsPath(ctx))
+const evidenceEvents = (ctx) => eventsAt(evidenceEventsPath(ctx))
+const isPublish = (e) => typeof e.kind === 'string' && e.kind.startsWith('publish:')
+const publishOf = (list) => list.filter(isPublish)
+const publishIn = (ctx) => publishOf(events(ctx))
+const ofKind = (ctx, kind) => events(ctx).filter((e) => e.kind === kind)
+/** A record without the stamp, so a leg can assert its whole content at once. */
+const unstamped = (e) => {
+  const rest = { ...e }
+  delete rest.id
+  delete rest.ts
+  return rest
+}
+
+// The engine's line as the rig leaves it: `makeEventLog`'s shape, so the boot's
+// ids sort after it and ultralearn's reader orders the file the way production
+// orders it. `b32(1, 10)` is nine zeros and a one; the stub's own sixteen
+// characters are zeros.
+const ENGINE_EVENT = {
+  kind: 'engine:phase', phase: 'gate', id: `${'0'.repeat(9)}1${'0'.repeat(16)}`, ts: 1,
+}
+/** Crockford base 32, `B32` in `fleet/run-waves.mjs`. */
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/
+/** An id's leading `b32(ts, 10)`, read back most-significant-first. */
+const tsOfId = (id) => {
+  let n = 0
+  for (const c of id.slice(0, 10)) n = n * 32 + B32.indexOf(c)
+  return n
+}
+
+const FLEET_EVENTS_PY = path.join(HERE, '..', '..', 'skills', 'ultralearn', 'scripts', 'fleet_events.py')
+
+// The eleven boots these legs read, one each, memoized: every assertion below
+// asks its questions of a run that was booted once. `green` is the rig's own
+// memoized green boot and costs nothing.
+const CASE_ENV = {
+  parked: { STUB_VERDICT: 'NEEDS_ACK' },
+  noCommits: { STUB_NO_COMMITS: '1' },
+  hold: { FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` },
+  suiteRed: { STUB_FOLD_DISPOSITION: 'suite red' },
+  conflict: { STUB_FOLD_DISPOSITION: 'conflict parked', STUB_FOLD_PATH: 'a.txt' },
+  cannotFold: { STUB_FOLD_DISPOSITION: 'cannot fold', STUB_FOLD_REASON: 'base not an ancestor' },
+  checksRed: { STUB_CHECKS: checksBody([completed('test', 'failure')]) },
+  pending: { STUB_CHECKS_PENDING: '50', FLEET_MERGE_CHECK_WAIT: '3' },
+  refused: { STUB_MERGE_CODE: '405' },
+  retry: { STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Pull Request is not mergeable' },
+}
+const BOXES = new Map()
+/** One case's boot, with the clock read either side of it — leg (h)'s bounds. */
+function box(key) {
+  if (key === 'green') return { ctx: green(), before: SUITE_STARTED, after: Date.now() }
+  if (!BOXES.has(key)) {
+    const before = Date.now()
+    const ctx = ran(CASE_ENV[key])
+    BOXES.set(key, { ctx, before, after: Date.now() })
+  }
+  return BOXES.get(key)
+}
+const ctxOf = (key) => box(key).ctx
+
+/** The one `publish:pr` a run that opened a PR appends. */
+const PR_EVENT = { kind: 'publish:pr', url: PR_URL, number: 1, draft: false }
+const DRAFT_PR_EVENT = { ...PR_EVENT, draft: true }
+/** What each case's LAST `publish:` line has to be — its outcome, one record. */
+const OUTCOME = {
+  green: { kind: 'publish:merge', sha: MERGE_SHA },
+  parked: DRAFT_PR_EVENT,
+  hold: { kind: 'publish:hold', why: 'hold=1' },
+  suiteRed: { kind: 'publish:hold', why: 'publish fold — suite red' },
+  conflict: { kind: 'publish:hold', why: 'publish fold — conflict parked on a.txt' },
+  cannotFold: { kind: 'publish:hold', why: 'publish fold — cannot fold: base not an ancestor' },
+  checksRed: {
+    kind: 'publish:merge', sha: null, left: 'checks red',
+    detail: 'check test concluded failure',
+  },
+  pending: {
+    kind: 'publish:merge', sha: null, left: 'checks pending',
+    detail: 'still pending after 3s',
+  },
+  refused: {
+    kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
+  },
+  retry: { kind: 'publish:merge', sha: MERGE_SHA },
+}
+/** Every case that opens a PR — `noCommits` opens none, which is its own leg. */
+const PUBLISHING_CASES = Object.keys(OUTCOME)
+
+/** A held run's `why` is the phase's own text after `left open: `. */
+const phaseHold = (ctx) => {
+  const phase = String(statusOf(ctx).phase || '')
+  const at = phase.indexOf('left open: ')
+  assert.ok(at >= 0, `the page's phase says nothing was left open: ${phase}`)
+  return phase.slice(at + 'left open: '.length)
+}
+
+// ── #703 (a) the PR record  [M1] ─────────────────────────────────────────────
+
+test('the POST\'d PR appends exactly one publish:pr, url number draft  [#703 M1 / leg (a)]', () => {
+  const ctx = ctxOf('green')
+  const prs = ofKind(ctx, 'publish:pr')
+  assert.equal(prs.length, 1, 'one line, after the POST\'s 2xx answer: '
+    + JSON.stringify(publishIn(ctx)))
+  assert.deepEqual(unstamped(prs[0]), PR_EVENT,
+    'the answer\'s html_url, its integer number, and the boolean the POST carried')
+  assert.equal(prPosts(ctx).length, 1, 'and one POST behind it')
+})
+
+test('a parked run\'s record is one draft publish:pr and nothing else  [#703 M1 / leg (a)]', () => {
+  const ctx = ctxOf('parked')
+  assert.equal(statusOf(ctx).state, 'parked')
+  assert.deepEqual(publishIn(ctx).map(unstamped), [DRAFT_PR_EVENT],
+    'one publish:pr with draft true, no publish:hold, no publish:merge')
+})
+
+test('a run with nothing ahead of base appends no publish: line  [#703 M1 / leg (a)]', () => {
+  const ctx = ctxOf('noCommits')
+  assert.deepEqual(prPosts(ctx), [], 'no PR was opened')
+  assert.deepEqual(publishIn(ctx), [], 'so nothing named its publication: '
+    + JSON.stringify(publishIn(ctx)))
+  assert.ok(events(ctx).length >= 1, 'the engine\'s own line is still there')
+})
+
+// ── #703 (b) the holds  [M2] ─────────────────────────────────────────────────
+
+test('hold=1 appends publish:pr then publish:hold why=hold=1, and no merge  [#703 M2 / leg (b)]', () => {
+  const ctx = ctxOf('hold')
+  assert.deepEqual(publishIn(ctx).map((e) => e.kind), ['publish:pr', 'publish:hold'],
+    'in file order')
+  const [, held] = publishIn(ctx)
+  assert.deepEqual(unstamped(held), { kind: 'publish:hold', why: 'hold=1' })
+  assert.equal(held.why, phaseHold(ctx), 'the same string the phase carries')
+  assert.deepEqual(mergePuts(ctx), [], 'no PUT')
+  assert.deepEqual(ofKind(ctx, 'publish:merge'), [], 'and no publish:merge')
+})
+
+for (const [key, why] of [
+  ['suiteRed', 'publish fold — suite red'],
+  ['conflict', 'publish fold — conflict parked on a.txt'],
+  ['cannotFold', 'publish fold — cannot fold: base not an ancestor'],
+]) {
+  test(`a publish fold ending "${why}" appends that hold  [#703 M2 / leg (b)]`, () => {
+    const ctx = ctxOf(key)
+    assert.deepEqual(publishIn(ctx).map((e) => e.kind), ['publish:pr', 'publish:hold'],
+      'a gate-green run held by its fold: the PR, then the hold')
+    const [, held] = publishIn(ctx)
+    assert.deepEqual(unstamped(held), { kind: 'publish:hold', why },
+      'the phrase `fold_phrase` renders for that attempt')
+    assert.equal(held.why, phaseHold(ctx),
+      'and it is the done page\'s phase text after `left open: `')
+    assert.deepEqual(mergePuts(ctx), [], 'no PUT')
+    assert.deepEqual(ofKind(ctx, 'publish:merge'), [], 'and no publish:merge')
+  })
+}
+
+test('a green run appends no publish:hold at all  [#703 M2 / leg (b)]', () => {
+  assert.deepEqual(ofKind(ctxOf('green'), 'publish:hold'), [])
+})
+
+// ── #703 (c)–(g) the merge decisions  [M3] ───────────────────────────────────
+
+test('a merged PR appends one publish:merge carrying the squash sha  [#703 M3 / leg (c)]', () => {
+  const ctx = ctxOf('green')
+  const merges = ofKind(ctx, 'publish:merge')
+  assert.equal(merges.length, 1)
+  assert.deepEqual(unstamped(merges[0]), { kind: 'publish:merge', sha: MERGE_SHA },
+    'the answer\'s sha, and no `left` and no `detail`')
+  assert.ok(!('left' in merges[0]) && !('detail' in merges[0]), 'a merge that happened leaves neither')
+  assert.equal(statusOf(ctx).merged, MERGE_SHA, 'the page says the same')
+})
+
+test('a red check run appends publish:merge left=checks red, and no PUT  [#703 M3 / leg (d)]', () => {
+  const ctx = ctxOf('checksRed')
+  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
+    kind: 'publish:merge', sha: null, left: 'checks red',
+    detail: 'check test concluded failure',
+  }])
+  assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
+})
+
+test('checks pending at the wait append publish:merge left=checks pending  [#703 M3 / leg (e)]', () => {
+  const ctx = ctxOf('pending')
+  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
+    kind: 'publish:merge', sha: null, left: 'checks pending',
+    detail: 'still pending after 3s',
+  }])
+  assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
+})
+
+test('a refused PUT appends publish:merge left=refused with the code  [#703 M3 / leg (f)]', () => {
+  const ctx = ctxOf('refused')
+  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
+    kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
+  }])
+  assert.equal(mergePuts(ctx).length, 1, 'the one PUT that was refused')
+})
+
+test('the one retry leaves two publish:merge lines, refusal then outcome  [#703 M3 / leg (g)]', () => {
+  const ctx = ctxOf('retry')
+  const merges = ofKind(ctx, 'publish:merge')
+  assert.equal(merges.length, 2, 'one per merge decision, in order: '
+    + JSON.stringify(merges.map(unstamped)))
+  assert.deepEqual(unstamped(merges[0]), {
+    kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
+  }, 'the 405 the second fold answered')
+  assert.deepEqual(unstamped(merges[1]), { kind: 'publish:merge', sha: MERGE_SHA },
+    'and the second PUT\'s outcome, with no `left`')
+  assert.equal(mergePuts(ctx).length, 2)
+  assert.equal(statusOf(ctx).merged, MERGE_SHA)
+})
+
+test('every publishing run holds one publish:pr, and its last publish: line is its outcome  [#703 M3 / leg (g)]', () => {
+  for (const key of PUBLISHING_CASES) {
+    const ctx = ctxOf(key)
+    const prs = ofKind(ctx, 'publish:pr')
+    assert.equal(prs.length, 1, `${key}: exactly one publish:pr`)
+    assert.deepEqual(unstamped(prs[0]), key === 'parked' ? DRAFT_PR_EVENT : PR_EVENT,
+      `${key}: the PR record`)
+    const lines = publishIn(ctx)
+    assert.deepEqual(unstamped(lines[lines.length - 1]), OUTCOME[key],
+      `${key}: the last publish: line is what became of the PR`)
+  }
+})
+
+// ── #703 (h) the stamp and the order  [M4] ───────────────────────────────────
+
+test('every appended line carries a ULID-shaped id encoding its own ts  [#703 M4 / leg (h)]', () => {
+  for (const key of [...PUBLISHING_CASES, 'noCommits']) {
+    const { ctx, before, after } = box(key)
+    const all = events(ctx)
+    const mine = publishOf(all)
+    for (const e of mine) {
+      assert.equal(typeof e.id, 'string', `${key}: ${e.kind} has no string id`)
+      assert.match(e.id, ID_RE, `${key}: ${e.kind}'s id is not 26 Crockford base-32 characters`)
+      assert.ok(Number.isInteger(e.ts), `${key}: ${e.kind}'s ts is not an integer: ${e.ts}`)
+      assert.equal(tsOfId(e.id), e.ts,
+        `${key}: ${e.kind}'s first ten id characters are not b32(ts, 10)`)
+      assert.ok(e.ts >= before && e.ts <= after,
+        `${key}: ${e.kind}'s ts ${e.ts} is outside the boot [${before}, ${after}]`)
+    }
+    for (let i = 1; i < mine.length; i += 1) {
+      assert.ok(mine[i].id > mine[i - 1].id,
+        `${key}: the ids do not ascend in file order: ${mine[i - 1].id} then ${mine[i].id}`)
+    }
+    // Sorted the way `fleet_events.read_events` sorts — by `id`, as strings —
+    // every boot line lands after every line the engine wrote.
+    const sorted = [...all].sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
+    const lastEngine = sorted.reduce((acc, e, i) => (isPublish(e) ? acc : i), -1)
+    const firstPublish = sorted.findIndex(isPublish)
+    if (firstPublish >= 0) {
+      assert.ok(firstPublish > lastEngine,
+        `${key}: sorted by id, a publish: line precedes an engine line`)
+    }
+    // The engine's own line is left exactly as it was written: the boot only
+    // appends. (The rig's engine writes one line; this is that line.)
+    assert.deepEqual(all[0], ENGINE_EVENT, `${key}: the first line is not the engine's`)
+    assert.ok(!eventLines(runEventsPath(ctx)).some((l) => l.includes('"id":"x"')),
+      `${key}: a line still carries the stub's un-ULID id`)
+    assert.deepEqual(directCalls(ctx), [],
+      `${key}: the boot minted its ids with a direct node or gh call`)
+  }
+})
+
+// ── #703 (i) the evidence copy  [M5] ─────────────────────────────────────────
+
+test('the committed events.jsonl is byte-identical to the run dir\'s  [#703 M5 / leg (i)]', () => {
+  for (const key of ['green', 'hold', 'refused']) {
+    const ctx = ctxOf(key)
+    const mine = fs.readFileSync(runEventsPath(ctx))
+    const committedCopy = fs.readFileSync(evidenceEventsPath(ctx))
+    assert.deepEqual(committedCopy, mine, `${key}: the evidence copy differs from the run dir's file`)
+    assert.deepEqual(publishOf(evidenceEvents(ctx)).map(unstamped),
+      publishIn(ctx).map(unstamped), `${key}: publish lines included`)
+    assert.ok(publishOf(evidenceEvents(ctx)).length > 0, `${key}: and there are some`)
+  }
+})
+
+// ── #703 (j) ultralearn's reader  [M6] ───────────────────────────────────────
+
+/** `fleet_events.py` over a run directory, as its non-empty stdout lines. */
+const timeline = (ctx) => {
+  const r = spawnSync('python3', [FLEET_EVENTS_PY, runDirOf(ctx)], { encoding: 'utf8' })
+  assert.equal(r.status, 0, `fleet_events.py exited ${r.status}: ${r.stderr}`)
+  return r.stdout.split('\n').filter((l) => l.trim() !== '')
+}
+
+test('fleet_events.py renders the merge, the hold and the refusal  [#703 M6 / leg (j)]', () => {
+  const merged = timeline(ctxOf('green'))
+  const last = merged[merged.length - 1]
+  assert.ok(last.includes('publish:merge') && last.includes(MERGE_SHA),
+    `the last line names the merge and the squash sha: ${last}`)
+  const before = merged[merged.length - 2]
+  assert.ok(before.includes('publish:pr') && before.includes(PR_URL),
+    `and the line before it carries the PR URL: ${before}`)
+
+  const held = timeline(ctxOf('hold'))
+  const heldLast = held[held.length - 1]
+  assert.ok(heldLast.includes('publish:hold') && heldLast.includes('hold=1'),
+    `a held run ends on its hold: ${heldLast}`)
+
+  const refused = timeline(ctxOf('refused'))
+  const refusedLast = refused[refused.length - 1]
+  assert.ok(refusedLast.includes('publish:merge') && refusedLast.includes('refused')
+    && refusedLast.includes('405'), `a refused merge names the code: ${refusedLast}`)
+})
+
+// ── #703 (k) the contract's Publish bullet  [M7] ─────────────────────────────
+//
+// The `- **Publish:**` bullet ALONE, the same range the first `Run:` cuts. What
+// the rest of that document, ultralearn's reader and the engine's event writer
+// still are is the `Run:` commands' business — the driver hands those the base
+// commit, and this file compares nothing to a commit.
+
+test('the Publish bullet names the three kinds and their fields  [#703 M7 / leg (k)]', () => {
+  const publish = section(CONTRACT, /^- \*\*Publish:\*\*/, /^- \*\*Integration naming/)
+  for (const word of [
+    'publish:pr', 'publish:hold', 'publish:merge',
+    'url', 'number', 'draft', 'why', 'left', 'detail',
+    'checks red', 'checks pending', 'refused',
+  ]) {
+    assert.ok(publish.includes(word),
+      `the Publish bullet does not name \`${word}\`: ${publish}`)
+  }
 })
 
 runTests(tests)
