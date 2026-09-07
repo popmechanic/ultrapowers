@@ -1,0 +1,118 @@
+{
+  "integrationBranch": "ultra/integration-run-41",
+  "baseSha": "9cd8190ffb5e68b1de0eb9eac44b116ab0631d28",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9832f71cfc735e8ad71b82c495ce75cf619b2205",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-41/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Over-broad pin in the M1 census leg: `assert.equal(/(^|[;&(]\\s*)trap\\s/m.test(code), false, 'the script traps no signal \u2026')` (fleet/tests/test_sandbox_boot_edges.mjs, section 11) forbids *every* `trap` in fleet/sandbox-boot.sh, where both M1 and the global constraint only require that SIGPIPE is never trapped or ignored. The task itself records that a concurrent run is editing `collect_evidence` in the same script; a perfectly lawful `trap \u2026 EXIT` cleanup added there would turn this leg red for a reason unrelated to the claim it grades. Narrowing the assertion to the PIPE/13 signal (the shape the `Check:` command `! grep -nE \"trap .*PIPE|set \\+o pipefail\"` already gates) keeps the leg discriminating without pinning unrelated code. Everything else in this leg is exactly M1: the fixture returns the five BASE lines plus the builtin-guarded sixth and not `json_field`'s line, and the census names nothing in the edited script.; Census blind spot (future-proofing only, not a current failure): `closesEarly` recognises an early-closing `grep` solely by a short-flag cluster \u2014 `/^-[A-Za-z]*[qml][A-Za-z]*$/` \u2014 so `grep --quiet`, `grep --max-count=1` and `grep --files-with-matches` piped after an unguarded writer would not be named. This is the algorithm M1 prescribes verbatim (\"`grep` with a `q`, `m` or `l` in a flag cluster\"), and no such long option exists in fleet/sandbox-boot.sh today, so the leg establishes what it claims for this tree; the gap only matters if a later edit reintroduces the bug in long-option form. Adding `|| /^--(quiet|silent|max-count|files-with-matches)(=|$)/.test(w)` to the same `wordsOf(...).some(...)` predicate closes it without touching the fixture's expected six findings.; unverified: the Claim's phrase \"every `| head`/`| tail`/`grep -q` reader in `fleet/sandbox-boot.sh` either reads its whole input or has its upstream guarded\" is established by the census's own algorithm, which reasons over pipeline *segments*: a shell function used as a reader (`| json_field`, `| duplicate_repos`, `| mergeable_field`, `| check_runs_verdict`) is judged by its name, not by what it does with stdin. I read those four at BASE and each consumes to EOF (`grep -o` with no `-q/-m/-l`, `python3 -c` with `json.load(sys.stdin)`), so the claim holds on this tree, but nothing in the diff would catch a future function that closes stdin early and is then fed by a builtin. What would settle it: extending the census to inline (or name-check) the script's own stdin-reading functions, rather than treating an unknown command word as a whole-input reader by default.; Over-strict assertion in leg (a): `fleet/tests/test_sandbox_boot_edges.mjs` asserts `/(^|[;&(]\\s*)trap\\s/m.test(code) === false` \u2014 i.e. that `fleet/sandbox-boot.sh` traps NO signal at all. The global constraint only forbids ignoring or trapping SIGPIPE (\"SIGPIPE is never ignored or trapped\"), and the plan's own Check is the narrower `! grep -nE \"trap .*PIPE|set \\+o pipefail\"`. It holds today (BASE has no `trap` anywhere outside comments \u2014 verified), so nothing is unverified, but the second global constraint says a concurrent run is editing `collect_evidence` in the same script; an ordinary `trap cleanup EXIT` added there would fail this exam for a reason the constraint does not forbid. Narrow the pattern to the signal the claim is about, e.g. `/(^|[;&(]\\s*)trap\\s+[^\\n]*\\b(PIPE|SIGPIPE|13)\\b/m` (keeping the existing `set -euo pipefail` and comment-stripping assertions as they are).; plan-defect: Proof leg (b) fixes the fixture sizes at 80000 lines of `# line <i>` and 16000 lines of `<40-hex>\\trefs/tags/other-<i>`, but Machine M2 requires each injected file to be \"at least 1 MiB\". Those counts produce ~1.03 MB and ~1.01 MB \u2014 both short of 1 MiB (1048576 bytes), so the two clauses cannot both be met literally. The submission resolves it in favour of M2: `writeBigFile` keeps emitting lines of the same shape until `text.length >= MIB`, discloses this in its doc comment (\"land a few kilobytes short of M2's 1 MiB on their own\"), and asserts the realised sizes (`planExtra.length >= MIB && listingExtra.length >= MIB`) after the boot. That is a disclosed, correct divergence and is lawful; recorded only so the operator knows the leg text and the Machine disagree. No edit inside this task's FILES is required.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-41/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 346.37s (0:05:46) =================\n"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -c 'comm -23 <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -oE \"^[a-z_]+\\(\\)\" | sort -u) <(grep -oE \"^[a-z_]+\\(\\)\" fleet/sandbox-boot.sh | sort -u) | { ! grep .; }'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -nE \"trap .*PIPE|set \\+o pipefail\" fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 406199,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n..................................................................s..... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 354.88s (0:05:54) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 327.22s (0:05:27) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "38bd4230534826dfef02beab885995f20029b7a2",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-41/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-41/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.721,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh:362-363 \u2014 `is_target`/`is_run_n` rewritten as `[[ $1 =~ <unquoted ERE> ]]`",
+      "reason": "runtime",
+      "why": "Task 1's Context asserts the two unquoted EREs are read identically by bash 3.2 and bash 5 (`#!/usr/bin/env bash`, so a macOS 3.2 host is in scope). The sandbox has one bash, and the committed sim runs the script only under it, so the 3.2 half of that equivalence \u2014 and the fact that no `shopt compat31` is in play there \u2014 is asserted in the plan but not executed by any leg. The bash-5 behaviour, and the agreement with the retired `grep -qE` forms on the refusal inputs, is executed: leg (c) drives `target=smoke` and `run=-7` through the real boot and confirms both still fail before any clone with an empty `git.log`."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

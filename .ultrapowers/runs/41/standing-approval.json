@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-41.md run-41 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/sandbox-boot.sh:362-363 — `is_target`/`is_run_n` rewritten as `[[ $1 =~ <unquoted ERE> ]]` — Task 1's Context asserts the two unquoted EREs are read identically by bash 3.2 and bash 5 (`#!/usr/bin/env bash`, so a macOS 3.2 host is in scope). The sandbox has one bash, and the committed sim runs the script only under it, so the 3.2 half of that equivalence — and the fact that no `shopt compat31` is in play there — is asserted in the plan but not executed by any leg. The bash-5 behaviour, and the agreement with the retired `grep -qE` forms on the refusal inputs, is executed: leg (c) drives `target=smoke` and `run=-7` through the real boot and confirms both still fail before any clone with an empty `git.log`. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
