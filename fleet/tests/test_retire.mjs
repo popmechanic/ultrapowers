@@ -31,6 +31,13 @@
  *       `PATH`: the entry hands `retire` the real exec and prints on the
  *       process's stdout.
  *
+ * Below those, in its own region, `#706 — the status read gates the sweep`: the
+ * pair's `.ultrapowers/runs/<N>/status.json` is read off the evidence branch
+ * before anything is tagged, a run whose state is not terminal or whose
+ * integration branch has an open pull request is skipped with its own line and
+ * its own `live` row, and everything above still holds for the runs that are
+ * swept. That region names its own Machine clauses.
+ *
  * Every call is driven through the `exec` seam with `makeExec({ passthrough: [] })`,
  * so no rule runs `git` or `gh` for real; the process legs run against shims the
  * exam writes into a temporary directory. Nothing here opens a socket and
@@ -104,6 +111,31 @@ const deleteLine = (run, kind) => {
 /** M5: the closed-PR read, by the head ref GitHub keeps after the delete. */
 const pullsLine = (run) =>
   `gh api repos/${TARGET}/pulls?state=closed&head=${OWNER}:ultra/integration-run-${run}`
+
+// ── #706 — the status read gates the sweep: the two new reads ───────────────
+
+/** M1: the one status read of a pair, off the run's evidence BRANCH. */
+const contentsLine = (run) =>
+  `gh api repos/${TARGET}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
+
+/** M4: the open-PR read of a terminal pair, by the same `head=` filter. */
+const openPullsLine = (run) =>
+  `gh api repos/${TARGET}/pulls?state=open&head=${OWNER}:ultra/integration-run-${run}`
+
+/** M1: the contents envelope a status read is answered with — base64 under
+ *  `content`, exactly as GitHub's contents API answers it. */
+const envelope = (page) => answer({
+  content: Buffer.from(JSON.stringify(page)).toString('base64'),
+  sha: sha('b1a')
+})
+
+/** M2: the three live states the boot writes, and one word it never writes —
+ *  `blocked` is here because the test is membership in `REAPABLE_STATES`, so a
+ *  denylist of the live three would sweep it. */
+const LIVE_PAGE_STATES = ['booting', 'running', 'publishing', 'blocked']
+
+/** M1: the pages the seam serves by default — both pairs terminal. */
+const TERMINAL_PAGES = { 3: { state: 'done' }, 12: { state: 'done' } }
 
 /** M3: the whole ordered sweep of one candidate, tags then verify then deletes. */
 const sweepLines = (run) => [
@@ -228,7 +260,17 @@ const runOfTagRead = (argv) => {
  * verify, the refs POST, the closed-PR read, the PATCH and the DELETE. Nothing
  * runs for real (`passthrough: []`), so no `git` and no `gh` is started here.
  */
-function makeSeam ({ tagVariant = {}, postAnswer = null, pulls = PULLS } = {}) {
+function makeSeam ({
+  tagVariant = {},
+  postAnswer = null,
+  pulls = PULLS,
+  // #706: the status page each run's evidence branch carries, the raw answers
+  // that override it (a `gh` that failed, a body that is not an envelope), and
+  // the open pull requests the `state=open` read finds.
+  pages = TERMINAL_PAGES,
+  contents = {},
+  openPulls = {}
+} = {}) {
   const snapshots = {}
   const rules = [
     {
@@ -251,10 +293,28 @@ function makeSeam ({ tagVariant = {}, postAnswer = null, pulls = PULLS } = {}) {
       }
     },
     {
+      // #706/M1: the status read. An unanswered run is a `gh` exit 1 with
+      // `HTTP 404` — the shape a missing file really has.
+      when: (c, argv) => c === 'gh' && argv[0] === 'api' && /\/contents\//.test(String(argv[1] ?? '')),
+      answer: (c, argv) => {
+        const match = /\/runs\/([1-9][0-9]*)\/status\.json/.exec(String(argv[1]))
+        const run = match === null ? null : Number(match[1])
+        if (run !== null && Object.hasOwn(contents, run)) return contents[run]
+        const page = run === null ? undefined : pages[run]
+        return page === undefined || page === null
+          ? answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })
+          : envelope(page)
+      }
+    },
+    {
+      // #706/M4: `state=open` and `state=closed` are two different reads and
+      // are answered from two different tables.
       when: (c, argv) => c === 'gh' && argv[0] === 'api' && /\/pulls\?/.test(String(argv[1] ?? '')),
       answer: (c, argv) => {
-        const match = /ultra\/integration-run-([1-9][0-9]*)/.exec(String(argv[1]))
-        return answer(match ? (pulls[Number(match[1])] ?? []) : [])
+        const spec = String(argv[1])
+        const match = /ultra\/integration-run-([1-9][0-9]*)/.exec(spec)
+        const table = /state=open/.test(spec) ? openPulls : pulls
+        return answer(match ? (table[Number(match[1])] ?? []) : [])
       }
     },
     { when: (c, argv) => c === 'gh' && argv.includes('PATCH'), answer: answer({ number: 0 }) },
@@ -315,8 +375,11 @@ assert.deepEqual(linesOf(healthy, (l) => l.startsWith('gh ') && namesRun(l, 5)),
 
 // ── (c) M3: the ordered sweep of a candidate ────────────────────────────────
 
+// #706: the status read names the run too (`?ref=ultra/evidence-run-N`), and it
+// gates the sweep rather than being part of it — so it is filtered out here
+// beside the pulls reads, and the ordered sweep below is what it always was.
 const sweepOf = (exec, run) =>
-  linesOf(exec, (l) => namesRun(l, run) && !l.includes('/pulls'))
+  linesOf(exec, (l) => namesRun(l, run) && !l.includes('/pulls') && !l.includes('/contents/'))
 
 assert.deepEqual(sweepOf(healthy, 3), sweepLines(3),
   '(c)/M3 run 3: the two tag POSTs, then the ls-remote --tags verify, then the two branch DELETEs, in that order')
@@ -385,7 +448,9 @@ for (const [i, exec] of SEAMS.entries()) {
 
 // ── (e) M5: the closed-PR read, and the body rewrite ────────────────────────
 
-assert.deepEqual(linesOf(healthy, (l) => l.includes('/pulls?')), [pullsLine(3), pullsLine(12)],
+// #706 adds a second read of the same list (`state=open`, M4), so this pin is
+// the CLOSED read only — its meaning is unchanged: one per swept candidate.
+assert.deepEqual(linesOf(healthy, (l) => l.includes('/pulls?state=closed')), [pullsLine(3), pullsLine(12)],
   '(e)/M5 one closed-PR read per candidate, by the integration head ref')
 
 const patches = healthy.calls.filter((c) => c.cmd === 'gh' && c.argv.includes('PATCH'))
@@ -407,8 +472,15 @@ for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target',
   const out = await captured(() => retire({ argv, exec }))
   const spelling = JSON.stringify(argv)
 
-  assert.deepEqual(lines(exec), [LIST_LINE, pullsLine(3), pullsLine(12)],
-    `(g)/M6 ${spelling}: the calls through the seam are exactly the one listing and one pulls read per candidate`)
+  // #706/M5: the sequence is the listing, then per pair in ascending N the
+  // status read, the open-PR read of a terminal page, and the closed-PR read
+  // only where no PR is open.
+  assert.deepEqual(lines(exec), [
+    LIST_LINE,
+    contentsLine(3), openPullsLine(3), pullsLine(3),
+    contentsLine(12), openPullsLine(12), pullsLine(12)
+  ],
+  `(g)/M6, #706/M5 ${spelling}: the calls through the seam are exactly the one listing, then per candidate the status read, the open-PR read and the closed-PR read`)
   assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
     `(g)/M6 ${spelling}: no gh api call carries -X`)
   assert.deepEqual(linesOf(exec, (l) => l.startsWith('git ') && l !== LIST_LINE), [],
@@ -436,6 +508,267 @@ for (const [i, exec] of SEAMS.entries()) {
     `(h)/M7 seam ${i}: only git and gh are reached through the exec seam`)
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// #706 — the status read gates the sweep
+//
+// Every leg below names its Machine clause. The read is a GATE: it decides
+// whether the sweep of clause M3 runs at all, and replaces no part of it.
+//
+//   (a) M1 — exactly one status read per pair, before that run's first POST,
+//       and none at all for a lone half.
+//   (b) M1 — the terminal states come from `REAPABLE_STATES` in janitor.mjs,
+//       and are not retyped in retire.mjs.
+//   (c) M2 — a live page skips the run with its own line, its own `live` row,
+//       no other command, and no effect on the runs after it.
+//   (d) M2 — a read that answers nothing readable is `no status page`.
+//   (e)(f)(g) M3 — `done`, `parked` and `failed` are swept exactly as before.
+//   (h)(i) M4 — a terminal pair with an open integration PR is skipped too;
+//       an empty answer lets the sweep proceed.
+//   (j) M5 — `--dry-run` prints the byte-identical skip lines and reads the
+//       three lists in order, creating and deleting nothing.
+//   (k) M6 — the same, as a process against PATH shims (below, beside the
+//       other process legs).
+//   (l) M7 — the contract's `**The two tags**` bullet and the runbook's
+//       `## Rollback` section each say it, in the line's own words.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── (a) M1: one read per pair, before the tagging, none for a lone half ─────
+
+for (const run of [3, 12]) {
+  const reads = linesOf(healthy, (l) => namesRun(l, run) && l.includes('/contents/'))
+  assert.deepEqual(reads, [contentsLine(run)],
+    `(a)/M1 run ${run}: exactly one status read, off the run's evidence branch; got ${JSON.stringify(reads)}`)
+
+  const all = lines(healthy)
+  const readAt = all.indexOf(contentsLine(run))
+  const firstPost = all.findIndex((l) => l.includes('-X POST') && namesRun(l, run))
+  assert.ok(firstPost !== -1,
+    `(a)/M1 run ${run}: the healthy pair is still tagged, so there is a POST to be after; got ${JSON.stringify(all)}`)
+  assert.ok(readAt !== -1 && readAt < firstPost,
+    `(a)/M1 run ${run}: the status read precedes the first command naming the run's tags or branches — a tool that reads the page after tagging fails; reads at ${readAt}, first POST at ${firstPost}`)
+}
+
+assert.deepEqual(linesOf(healthy, (l) => l.includes('/contents/') && namesRun(l, 5)), [],
+  '(a)/M1 a lone half is not a pair: no status page is read for run 5')
+assert.deepEqual(linesOf(healthy, (l) => l.includes('/contents/')), [contentsLine(3), contentsLine(12)],
+  '(a)/M1 the whole sweep reads exactly one status page per pair, ascending')
+
+// ── (b) M1: the terminal states are imported, never retyped ────────────────
+
+const retireSource = fs.readFileSync(RETIRE_SRC, 'utf8')
+assert.match(retireSource, /import\s*\{[^}]*\bREAPABLE_STATES\b[^}]*\}\s*from\s*'\.\/janitor\.mjs'/,
+  "(b)/M1 fleet/retire.mjs imports REAPABLE_STATES from './janitor.mjs' — the one place the terminal states are spelled")
+assert.doesNotMatch(retireSource, /['"]done['"]\s*,\s*['"]parked['"]\s*,\s*['"]failed['"]/,
+  '(b)/M1 and retypes no `done, parked, failed` list of its own')
+
+// ── (c) M2: a live page skips the run and the sweep goes on ────────────────
+
+/** The exact line a live page prints, and the `live` row it resolves. */
+const liveLine = (run, why) => `run ${run}: live (${why}) — skipped`
+
+/** The skip lines captured here, quoted verbatim by leg (j). */
+const captured706 = {}
+/** The run-3-is-`running` seam, re-read by leg (i). */
+let running3Seam = null
+
+for (const state of LIVE_PAGE_STATES) {
+  const exec = seam({ pages: { 3: { state }, 12: { state: 'done' } } })
+  if (state === 'running') running3Seam = exec
+  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
+
+  assert.equal(runLine(out, 3), liveLine(3, state),
+    `(c)/M2 a page whose state is \`${state}\` prints exactly one line for the run, verbatim`)
+  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3)), [contentsLine(3)],
+    `(c)/M2 \`${state}\`: the only command naming run 3 is its status read — no POST, no --tags, no DELETE, no PATCH, no /pulls`)
+  assert.deepEqual(out.result.live, [{ run: 3, why: state }],
+    `(c)/M2 \`${state}\`: the resolved value carries the run under \`live\` as { run, why }; got ${JSON.stringify(out.result.live ?? null)}`)
+  assert.deepEqual(out.result.retired, [12],
+    `(c)/M2 \`${state}\`: the sweep goes on to the next N — run 12 is still retired`)
+  assert.deepEqual(out.result.kept, [],
+    `(c)/M2 \`${state}\`: a live run is not \`kept\` — nothing failed to verify`)
+  assert.equal(Array.isArray(out.result.skipped) && out.result.skipped.length, 1,
+    `(c)/M2 \`${state}\`: \`skipped\` stays the lone halves' branch names; got ${JSON.stringify(out.result.skipped)}`)
+  assert.ok(/(^|\D)5(\D|$)/.test(String(out.result.skipped.join(' '))),
+    `(c)/M2 \`${state}\`: and names only run 5; got ${JSON.stringify(out.result.skipped)}`)
+  assert.deepEqual(sweepOf(exec, 12), sweepLines(12),
+    `(c)/M2, M3 \`${state}\`: run 12's ordered sweep is unchanged by the skip before it`)
+  assert.ok(runLine(out, 12).includes('retired'),
+    `(c)/M2 \`${state}\`: run 12's line says retired; got ${JSON.stringify(runLine(out, 12))}`)
+  assert.ok(out.lines.indexOf(runLine(out, 3)) < out.lines.indexOf(runLine(out, 12)),
+    `(c)/M2 \`${state}\`: the skip line comes before the later run's line`)
+  assert.notEqual(out.exitCode, 1,
+    `(c)/M2 \`${state}\`: a skipped live run does not set process.exitCode to 1`)
+
+  captured706[`live3_${state}`] = runLine(out, 3)
+}
+// `blocked` is in the loop above on purpose: it is not one of the three live
+// states the boot writes, so only membership in REAPABLE_STATES — never a
+// denylist of `booting|running|publishing` — leaves it unswept.
+
+// The mirror: the live pair is the LAST candidate, after a terminal one.
+{
+  const exec = seam({ pages: { 3: { state: 'done' }, 12: { state: 'running' } } })
+  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
+  assert.equal(runLine(out, 12), liveLine(12, 'running'),
+    '(c)/M2 the mirror: run 12 live behind a terminal run 3 prints the same line, verbatim')
+  assert.deepEqual(out.result.retired, [3], '(c)/M2 the mirror: run 3 is still retired')
+  assert.deepEqual(out.result.live, [{ run: 12, why: 'running' }],
+    `(c)/M2 the mirror: \`live\` carries run 12; got ${JSON.stringify(out.result.live ?? null)}`)
+  captured706.live12_running = runLine(out, 12)
+}
+
+// ── (d) M2: a read that answers nothing readable is `no status page` ───────
+
+for (const [what, contentsAnswer] of [
+  ['gh answers non-zero', answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })],
+  ['the body is a bare array, not the contents envelope', answer([])],
+  ['the envelope decodes to a page with no `state` string', envelope({ run: '3' })]
+]) {
+  const exec = seam({ contents: { 3: contentsAnswer } })
+  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
+
+  assert.equal(runLine(out, 3), liveLine(3, 'no status page'),
+    `(d)/M2 ${what}: run 3 is skipped with the \`no status page\` line, verbatim`)
+  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3) && /-X (POST|DELETE)/.test(l)), [],
+    `(d)/M2 ${what}: a pair with no readable page is skipped, never swept — no POST and no DELETE names run 3`)
+  assert.deepEqual(out.result.live, [{ run: 3, why: 'no status page' }],
+    `(d)/M2 ${what}: \`live\` carries the run with why \`no status page\`; got ${JSON.stringify(out.result.live ?? null)}`)
+  assert.deepEqual(out.result.retired, [12],
+    `(d)/M2 ${what}: the sweep goes on — run 12 is retired`)
+}
+
+// ── (e)(f)(g) M3: every terminal state is swept exactly as before ──────────
+
+assert.deepEqual(sweepOf(healthy, 3), sweepLines(3),
+  '(e)/M3 a `done` page: the read gates the sweep and replaces none of it — the two POSTs, the verify and the two DELETEs, in that order')
+assert.ok(runLine(base, 3).includes('retired'),
+  `(e)/M3 and the run's line says retired; got ${JSON.stringify(runLine(base, 3))}`)
+assert.deepEqual(base.result.live, [],
+  `(e)/M3 a sweep with no live run resolves an empty \`live\`; got ${JSON.stringify(base.result.live ?? null)}`)
+
+for (const [leg, state] of [['(f)', 'parked'], ['(g)', 'failed']]) {
+  const exec = seam({ pages: { 3: { state }, 12: { state: 'done' } } })
+  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
+  assert.deepEqual(sweepOf(exec, 3), sweepLines(3),
+    `${leg}/M3 a \`${state}\` page is swept exactly as before the read existed — a \`${state}\` run that is skipped fails this`)
+  assert.ok(runLine(out, 3).includes('retired'),
+    `${leg}/M3 \`${state}\`: the run's line says retired; got ${JSON.stringify(runLine(out, 3))}`)
+  assert.deepEqual(out.result.live, [],
+    `${leg}/M3 \`${state}\`: nothing is carried under \`live\`; got ${JSON.stringify(out.result.live ?? null)}`)
+}
+
+// ── (h) M4: a terminal pair with an open integration PR is skipped ─────────
+
+{
+  const exec = seam({ openPulls: { 3: [{ number: PR_3, body: '' }], 12: [] } })
+  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
+
+  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3)), [contentsLine(3), openPullsLine(3)],
+    '(h)/M4 an open PR: the calls naming run 3 are the status read then the open-PR read, in that order, and nothing else — no POST, no DELETE, no PATCH, no state=closed read')
+  assert.equal(runLine(out, 3), liveLine(3, `PR #${PR_3} open`),
+    "(h)/M4 the run's one line names the first row's number, verbatim")
+  assert.deepEqual(out.result.live, [{ run: 3, why: `PR #${PR_3} open` }],
+    `(h)/M4 \`live\` carries the run with the same why; got ${JSON.stringify(out.result.live ?? null)}`)
+  assert.deepEqual(sweepOf(exec, 12), sweepLines(12),
+    '(h)/M4 an empty answer lets run 12 proceed to the ordered sweep')
+  assert.ok(runLine(out, 12).includes('retired'),
+    `(h)/M4 and run 12's line says retired; got ${JSON.stringify(runLine(out, 12))}`)
+
+  const all = lines(exec)
+  const readAt = all.indexOf(contentsLine(12))
+  const openAt = all.indexOf(openPullsLine(12))
+  const postAt = all.findIndex((l) => l.includes('-X POST') && namesRun(l, 12))
+  assert.ok(readAt !== -1 && openAt !== -1 && postAt !== -1 && readAt < openAt && openAt < postAt,
+    `(h)/M4 run 12 is asked once, after its status read and before its first POST; read ${readAt}, open-PR ${openAt}, POST ${postAt}`)
+
+  captured706.pr3 = runLine(out, 3)
+}
+
+// ── (i) M4: the control, and no open-PR read behind an M2 skip ─────────────
+
+assert.deepEqual(linesOf(healthy, (l) => l.includes('/pulls?state=open')), [openPullsLine(3), openPullsLine(12)],
+  '(i)/M4 the control: each terminal pair is asked once for an open PR')
+assert.deepEqual(base.result.retired, [3, 12],
+  '(i)/M4 the control: with every open-PR read answering [], both runs are retired')
+assert.ok(running3Seam !== null, '(i)/M4 the run-3-is-`running` seam of (c) was built')
+assert.deepEqual(linesOf(running3Seam, (l) => l.includes('state=open') && namesRun(l, 3)), [],
+  '(i)/M4 a pair skipped under M2 is asked no open-PR read')
+
+// ── (j) M5: --dry-run says the same and does nothing ───────────────────────
+
+for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target', TARGET]]) {
+  const spelling = JSON.stringify(argv)
+
+  {
+    const exec = seam({ pages: { 3: { state: 'running' }, 12: { state: 'done' } } })
+    const out = await captured(() => retire({ argv, exec }))
+
+    assert.deepEqual(lines(exec), [LIST_LINE, contentsLine(3), contentsLine(12), openPullsLine(12), pullsLine(12)],
+      `(j)/M5 ${spelling}: the listing, then per pair ascending the status read, the open-PR read of the terminal pair only, and its closed-PR read`)
+    assert.equal(runLine(out, 3), captured706.live3_running,
+      `(j)/M5 ${spelling}: a live run's dry-run line is byte-identical to the line it prints without the flag`)
+    assert.ok(runLine(out, 12).includes('would'),
+      `(j)/M5 ${spelling}: only a terminal pair with no open PR prints a \`would\` line; got ${JSON.stringify(runLine(out, 12))}`)
+    assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
+      `(j)/M5 ${spelling}: no gh call carries -X`)
+    assert.deepEqual(linesOf(exec, (l) => l.startsWith('git ') && l !== LIST_LINE), [],
+      `(j)/M5 ${spelling}: no git call but the one listing is made`)
+    assert.notEqual(out.exitCode, 1,
+      `(j)/M5 ${spelling}: a dry run over a live pair does not set process.exitCode to 1`)
+  }
+
+  {
+    const exec = seam({
+      pages: { 3: { state: 'done' }, 12: { state: 'running' } },
+      openPulls: { 3: [{ number: PR_3 }] }
+    })
+    const out = await captured(() => retire({ argv, exec }))
+
+    assert.deepEqual(lines(exec), [LIST_LINE, contentsLine(3), openPullsLine(3), contentsLine(12)],
+      `(j)/M5 ${spelling}: an open PR ends run 3's reads, and the live run 12 is never asked for a PR — a dry run that stops after a skip fails this`)
+    assert.equal(runLine(out, 3), captured706.pr3,
+      `(j)/M5 ${spelling}: the open-PR skip line is byte-identical under --dry-run`)
+    assert.equal(runLine(out, 12), captured706.live12_running,
+      `(j)/M5 ${spelling}: and so is the live skip line`)
+    assert.deepEqual(out.runLines.filter((l) => l.includes('would')), [],
+      `(j)/M5 ${spelling}: a dry run prints no \`would\` line for a skipped run; got ${JSON.stringify(out.runLines)}`)
+  }
+}
+
+// ── (l) M7: the two documents say it, in the line's own words ──────────────
+
+const SKIP_WORDS = '— skipped'
+const CONTRACT_MD = path.join(FLEET_DIR, 'CONTRACT.md')
+const RUNBOOK_MD = path.join(FLEET_DIR, 'RUNBOOK.md')
+
+const contractText = fs.readFileSync(CONTRACT_MD, 'utf8')
+const runbookText = fs.readFileSync(RUNBOOK_MD, 'utf8')
+
+const twoTagsBullet = /^- \*\*The two tags[\s\S]*?(?=^- \*\*)/m.exec(contractText)
+assert.ok(twoTagsBullet,
+  '(l)/M7 fleet/CONTRACT.md still carries a `- **The two tags` bullet under §Literals')
+assert.ok(twoTagsBullet[0].includes(SKIP_WORDS),
+  `(l)/M7 the \`**The two tags**\` bullet says the sweep skips a run, carrying the line's literal \`${SKIP_WORDS}\`; the bullet reads ${JSON.stringify(twoTagsBullet[0])}`)
+
+const rollback = /^## Rollback[\s\S]*$/m.exec(runbookText)
+assert.ok(rollback, '(l)/M7 fleet/RUNBOOK.md still carries a `## Rollback` section')
+assert.ok(rollback[0].includes(SKIP_WORDS),
+  `(l)/M7 the \`## Rollback\` section says the same, carrying \`${SKIP_WORDS}\` — a skip declared in one document only fails this; the section reads ${JSON.stringify(rollback[0])}`)
+
+for (const [name, text] of [['fleet/CONTRACT.md', contractText], ['fleet/RUNBOOK.md', runbookText]]) {
+  assert.equal(text.includes('?ref=ultra/evidence-run-'), false,
+    `(l)/M7 ${name} shows no \`?ref=\` at the evidence branch — the record is read by tag, and the sentence names the branch in prose`)
+}
+
+// #706: every seam this exam has built, including the new ones, is checked
+// again — the two new reads name no `refs/heads/ultra/integration-run-<N>`.
+for (const [i, exec] of SEAMS.entries()) {
+  assert.deepEqual(linesOf(exec, (l) => l.includes('refs/heads/ultra/integration-run')), [],
+    `(h)/M4 seam ${i}: the open-PR read filters on the head ref's NAME — no command names refs/heads/ultra/integration-run-N`)
+  assert.deepEqual([...new Set(exec.calls.map((c) => c.cmd))].filter((c) => c !== 'git' && c !== 'gh'), [],
+    `(a)/M1 seam ${i}: only git and gh are reached through the exec seam`)
+}
+
 // ── (i) M1, M6, M7: the script as a process, against PATH shims ─────────────
 
 const cliRoot = tempDir('retire-cli-')
@@ -461,17 +794,24 @@ const runProcess = (args, dir) => spawnSync(process.execPath, [RETIRE_SRC, ...ar
 })
 
 /** A shim pair that logs and answers: git prints the two-line pair listing for
- *  run 3, gh prints an empty PR array. */
-const loggingShims = (name) => {
+ *  run 3, gh answers the `contents/` status read with a contents envelope
+ *  carrying `state` (#706/M6 — the read gates the sweep here too) and prints an
+ *  empty PR array for everything else. */
+const loggingShims = (name, { state = 'done' } = {}) => {
   const dir = shimDir(name, { git: '', gh: '' })
   const gitLog = path.join(dir, 'git.log')
   const ghLog = path.join(dir, 'gh.log')
   const listing =
     `${HEAD[3].plan}\\trefs/heads/${planBranchFor(3)}\\n${HEAD[3].evidence}\\trefs/heads/${evidenceBranchFor(3)}\\n`
+  const page = Buffer.from(JSON.stringify({ run: 3, state })).toString('base64')
   fs.writeFileSync(path.join(dir, 'git'),
     `#!/bin/sh\nprintf '%s\\n' "$*" >> "${gitLog}"\nprintf '${listing}'\nexit 0\n`, { mode: 0o755 })
   fs.writeFileSync(path.join(dir, 'gh'),
-    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${ghLog}"\nprintf '[]\\n'\nexit 0\n`, { mode: 0o755 })
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${ghLog}"\n` +
+    'case "$*" in\n' +
+    `  *contents/*) printf '{"content":"${page}","sha":"deadbee"}\\n' ;;\n` +
+    "  *) printf '[]\\n' ;;\n" +
+    'esac\nexit 0\n', { mode: 0o755 })
   fs.chmodSync(path.join(dir, 'git'), 0o755)
   fs.chmodSync(path.join(dir, 'gh'), 0o755)
   return { dir, gitLog, ghLog }
@@ -490,10 +830,13 @@ const loggingShims = (name) => {
   assert.equal(gitLogged.length, 1,
     `(i)/M6 the real exec reaches git on PATH exactly once; got ${JSON.stringify(gitLogged)}`)
   assert.ok(gitLogged[0].includes('ls-remote'), `(i)/M6 and that call is the listing; got ${gitLogged[0]}`)
-  assert.equal(ghLogged.length, 1,
-    `(i)/M6 the real exec reaches gh on PATH exactly once; got ${JSON.stringify(ghLogged)}`)
-  assert.ok(ghLogged[0].includes(`api repos/${TARGET}/pulls`),
-    `(i)/M6 and that call is the closed-PR read; got ${ghLogged[0]}`)
+  // #706/M5: three reads now — the status page, the open-PR list, the closed one.
+  assert.equal(ghLogged.length, 3,
+    `(i)/M6, #706/M5 the real exec reaches gh on PATH three times — the status read, the open-PR read, the closed-PR read; got ${JSON.stringify(ghLogged)}`)
+  assert.ok(ghLogged[0].includes(`api repos/${TARGET}/contents/.ultrapowers/runs/3/status.json`),
+    `(i)/M6, #706/M1 and the first is the status read; got ${ghLogged[0]}`)
+  assert.ok(ghLogged[2].includes(`api repos/${TARGET}/pulls`) && ghLogged[2].includes('state=closed'),
+    `(i)/M6 and the last is the closed-PR read; got ${ghLogged[2]}`)
   for (const line of [...gitLogged, ...ghLogged]) {
     assert.ok(!line.includes('-X') && !line.includes('--delete'),
       `(i)/M6 a dry run creates and deletes nothing through any command; got ${line}`)
@@ -504,8 +847,25 @@ const loggingShims = (name) => {
   const { dir, ghLog } = loggingShims('live')
   const res = runProcess(['--target', TARGET], dir)
   const ghLogged = logLines(ghLog)
-  assert.equal(ghLogged[0], `api -X POST repos/${TARGET}/git/refs -f ref=refs/tags/${planTagFor(3)} -f sha=${HEAD[3].plan}`,
-    `(i)/M1, M7 the script's entry calls retire with the real exec: the first gh call is the plan tag POST; stdout: ${res.stdout} stderr: ${res.stderr} log: ${JSON.stringify(ghLogged)}`)
+  // #706: the reads come first, so the pin is the first MUTATING call.
+  const firstMutating = ghLogged.find((l) => l.includes('-X'))
+  assert.equal(firstMutating, `api -X POST repos/${TARGET}/git/refs -f ref=refs/tags/${planTagFor(3)} -f sha=${HEAD[3].plan}`,
+    `(i)/M1, M7 the script's entry calls retire with the real exec: the first -X call is the plan tag POST; stdout: ${res.stdout} stderr: ${res.stderr} log: ${JSON.stringify(ghLogged)}`)
+}
+
+// ── (k) #706/M6: a live page skips the run when run as a process ───────────
+
+{
+  const { dir, ghLog } = loggingShims('live-page', { state: 'running' })
+  const res = runProcess(['--target', TARGET], dir)
+  assert.equal(res.status, 0,
+    `(k)/M6 a sweep whose only pair is live exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
+  assert.ok(res.stdout.split('\n').map((l) => l.trimEnd()).includes('run 3: live (running) — skipped'),
+    `(k)/M6 and prints the skip line, verbatim, on its own stdout; got ${JSON.stringify(res.stdout)}`)
+  for (const line of logLines(ghLog)) {
+    assert.ok(!line.includes('-X') && !line.includes('--delete'),
+      `(k)/M6 a live run is neither tagged nor deleted through any command; got ${line}`)
+  }
 }
 
 // M1 as a process: no `--target` exits 2, names it on stderr, starts nothing.

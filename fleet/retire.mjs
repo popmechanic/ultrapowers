@@ -28,9 +28,22 @@
  *     two tags. Only a listing that shows BOTH at the branch heads earns the
  *     two DELETEs; anything else keeps the run's branches and moves on.
  *
+ * Nothing is swept on the strength of the branches alone. A pair still carrying
+ * its two branches is either a run in flight or a run that ended before publish,
+ * and the run's own status page is what tells them apart: before it names a
+ * run's tags or branches, the sweep reads
+ * `.ultrapowers/runs/<N>/status.json` off that run's evidence branch through the
+ * contents API and sweeps only a page whose `state` is one of `REAPABLE_STATES`
+ * — the same list the janitor reaps on, imported, never retyped. Any other
+ * state, and a pair with no readable page, is a live run: one line, no commands,
+ * on to the next N. A terminal page still buys nothing if the run's integration
+ * branch has a pull request open, which is a run whose merge has not happened
+ * yet; that too is left alone.
+ *
  * The integration branch is not this tool's business — it goes with its merge —
  * and no command here ever names `refs/heads/ultra/integration-run-<N>`. The
- * name is still read once per run, as the `head=` filter of the closed-PR list:
+ * name is read twice per candidate, as the `head=` filter of the open-PR list
+ * and of the closed-PR list:
  * GitHub keeps a pull request's head ref name after the branch is deleted, so
  * `head=<owner>:ultra/integration-run-<N>` still finds the run's PR. Every such
  * body that links `/blob/ultra/plan-run-<N>/` or `/tree/ultra/evidence-run-<N>/`
@@ -42,14 +55,17 @@
  * carries the same lines under `lines`, but the printing is what a reader of a
  * long sweep actually sees, and it happens before the next run is started.
  *
- * `--dry-run` says what it would do: the one heads-and-tags listing and one
- * closed-PR read per candidate, and no command that creates or deletes
- * anything.
+ * `--dry-run` says what it would do: the one heads-and-tags listing, the same
+ * status read and open-PR read per pair, one closed-PR read per candidate that
+ * survives them, and no command that creates or deletes anything. A run the
+ * gate skips prints the byte-identical line it prints without the flag — the
+ * skip is a reading, and a reading does not change with the flag.
  */
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { REAPABLE_STATES } from './janitor.mjs'
 import {
   Refusal,
   defaultExec,
@@ -114,6 +130,42 @@ const alreadyExists = (res) => /reference already exists/i.test(output(res))
 async function ghRead (exec, apiPath) {
   const res = await exec('gh', ['api', apiPath])
   return res.code === 0 ? parseJson(res.stdout) : null
+}
+
+/**
+ * The run's status page, read off its evidence BRANCH — the pair still has one,
+ * and a run in flight has written its page nowhere else. The answer is the
+ * contents envelope and nothing else: a payload without a base64 `content`
+ * string means `gh` answered something other than the contents API, and a sweep
+ * that guessed there would delete branches on a page it never read. `null` is
+ * "no page", which is a run this tool leaves alone.
+ */
+async function readStatusPage (exec, target, run) {
+  const payload = await ghRead(
+    exec,
+    `repos/${target}/contents/.ultrapowers/runs/${run}/status.json` +
+    `?ref=${evidenceBranchFor(run)}`
+  )
+  if (!payload || typeof payload.content !== 'string') return null
+  const page = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
+  return page && typeof page === 'object' ? page : null
+}
+
+/**
+ * The number of an open pull request on the run's integration branch, or null.
+ * `head=<owner>:<ref>` matches on the head ref's NAME, exactly as the closed-PR
+ * read does; `state=open` is the whole of the difference. A run whose PR is
+ * still open has not been merged, so its branches are not the sweep's to take.
+ */
+async function openPullNumber (exec, target, run) {
+  const owner = String(target).split('/')[0]
+  const payload = await ghRead(
+    exec,
+    `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
+  )
+  const rows = Array.isArray(payload) ? payload : []
+  const number = rows[0]?.number
+  return typeof number === 'number' ? number : null
 }
 
 /** Create one tag at one sha through the refs API. */
@@ -214,6 +266,7 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
   const retired = []
   const kept = []
   const skipped = []
+  const live = []
   const lines = []
   const say = (line) => {
     lines.push(line)
@@ -229,6 +282,27 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
       const lone = entry.branches.join(', ')
       skipped.push(...entry.branches)
       say(`run ${run}: skip — lone ${lone}`)
+      continue
+    }
+
+    // The gate: what the run says about itself decides whether it is swept at
+    // all. It is read before anything names the run's tags or branches, and it
+    // reads the same under `--dry-run` — the skip is a reading, not an action.
+    const page = await readStatusPage(exec, target, run)
+    const state = typeof page?.state === 'string' ? page.state : null
+    const terminal = state !== null && REAPABLE_STATES.includes(state)
+    if (!terminal) {
+      const why = state ?? 'no status page'
+      live.push({ run, why })
+      say(`run ${run}: live (${why}) — skipped`)
+      continue
+    }
+
+    const openPull = await openPullNumber(exec, target, run)
+    if (openPull !== null) {
+      const why = `PR #${openPull} open`
+      live.push({ run, why })
+      say(`run ${run}: live (${why}) — skipped`)
       continue
     }
 
@@ -277,7 +351,10 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
   // did what it could — but it is not a clean sweep either, so it is exit 1.
   if (kept.length > 0) process.exitCode = 1
 
-  return { target, dryRun, retired, kept, skipped, lines }
+  // A live run is not a failure and not a half pair: it is a run this sweep is
+  // early for. It carries its own reason and its own field — `skipped` stays
+  // the lone halves' branch names — and it sets no exit code.
+  return { target, dryRun, retired, kept, skipped, live, lines }
 }
 
 async function main (argv) {
