@@ -63,7 +63,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both
   tags are verified against the remote with `git ls-remote --tags`. A tag that does not verify keeps
   both branches; a run that ends `failed` keeps them for the one-time sweep
-  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The record is
+  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The sweep
+  reads each pair's `.ultrapowers/runs/<N>/status.json` on the run's evidence branch before it names
+  that run's tags or branches: a run whose `state` is not one of `done`, `parked` or `failed`, or
+  whose `ultra/integration-run-<N>` still has an open pull request, is a run in flight and prints
+  `run <N>: live (<why>) — skipped` instead — the same line under `--dry-run`. The record is
   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
   `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
