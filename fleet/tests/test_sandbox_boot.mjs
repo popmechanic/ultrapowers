@@ -32,6 +32,11 @@ import {
   evidenceDisciplineProblem,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
+// Section 3's two readers are what task 1 of run-34 (#723) PRODUCES in the rig.
+// Read off the namespace rather than named-imported, so that a helpers module
+// which does not export them yet fails section 3's cases with a sentence about
+// the missing reader instead of refusing to load the whole exam.
+import * as helpers from './_sandbox_boot_helpers.mjs'
 
 const tests = []
 const test = (name, fn) => tests.push([name, fn])
@@ -823,6 +828,239 @@ test('leg (c) rejects a log whose integration push precedes any evidence push  [
   const uncommitted = [...cycle(), g(EV, 'push', 'origin', `HEAD:refs/heads/${EVIDENCE_BRANCH}`)]
   assert.ok(evidenceDisciplineProblem(uncommitted, EV),
     'a second push with no add and commit since the first must be a failure')
+})
+
+// ── 3. #723 — one evidence commit per relayed phase ──────────────────────────
+//
+// The claim: the boot script commits the page to the evidence branch on every
+// `engine:phase` event it already relays to the live page (wave N, integration
+// review, gate), not only on `running → publishing → done`.
+//
+// The engine's event log is READ, never changed: every case below drives the
+// script through the same `phase_refresher` that exists at BASE, and asserts on
+// what it committed. `commitPhases` and `relayedPhases` are the two readers the
+// task adds to the rig — the committed pages' `phase` cells, and the phases the
+// refresher relayed to the live page while the engine unit was alive.
+
+/** The rig's two new readers, each named in the sentence that asks for it, so a
+ *  helpers module without them says so rather than throwing a TypeError. */
+const requireReader = (name) => {
+  assert.equal(typeof helpers[name], 'function',
+    `_sandbox_boot_helpers.mjs must export ${name}(ctx) -> string[]  [#723, Produces]`)
+  return helpers[name]
+}
+/** The `phase` cell of each committed page, in commit order. */
+const commitPhases = (ctx) => requireReader('commitPhases')(ctx)
+/** What the refresher relayed to the page between the engine's `systemd-run`
+ *  line and `engine: exited`, consecutive duplicates folded. */
+const relayedPhases = (ctx) => requireReader('relayedPhases')(ctx)
+
+/** The engine's own spellings for the waves and the review, and `gate` for its
+ *  last act — the four phases the stub engine of legs (a), (b), (e) and (f)
+ *  relays, in order. */
+const PHASES = ['Wave 1', 'Wave 2', 'Integration Review', 'gate']
+/** M1's environment: four polls a second, the four phases, and an engine that
+ *  outlives the last of them.
+ *
+ *  The interval is a QUARTER of a second and not a whole one because leg (j) of
+ *  test_sandbox_boot_merge.mjs re-runs this whole exam inside its own, under the
+ *  wall tests/test_fleet_suite.py puts on a sim: four phases relayed at a
+ *  poll a second cost that chain four seconds per case for nothing the cases
+ *  read. What they read is the ORDER of the commits, which a faster poll only
+ *  reaches sooner. `STUB_ENGINE_SLEEP` is untouched — it is the margin the last
+ *  phase's commit has to land in before the unit exits, which legs (b) and (f)
+ *  assert on. */
+const PHASE_ENV = {
+  FLEET_STATUS_INTERVAL: '0.25',
+  STUB_ENGINE_PHASES: PHASES.join('|'),
+  STUB_ENGINE_SLEEP: '3',
+}
+/** M1's sequence: the `engine starting` commit, one commit per relayed phase,
+ *  then the two transitions that follow the engine. */
+const PHASE_COMMIT_STATES =
+  ['running', 'running', 'running', 'running', 'running', 'publishing', 'done']
+
+/** The index in `stream(ctx)` of each `git -C <evidence worktree> commit`, in
+ *  order — one per entry of `committed(ctx)`, which is the page the git stub
+ *  snapshots at that same call. */
+const commitLineIdx = (ctx) => {
+  const needle = `CALL git -C ${evidenceDir(ctx)} commit`
+  return stream(ctx).map((l, i) => (l.startsWith(needle) ? i : -1)).filter((i) => i >= 0)
+}
+
+/** The M1 run, booted once: legs (a), (b) and (e) all read it. */
+let PHASE_RUN = null
+const phaseRun = () => {
+  if (!PHASE_RUN) {
+    PHASE_RUN = makeHome()
+    PHASE_RUN.exit = boot(PHASE_RUN, ['boot'], PHASE_ENV)
+  }
+  return PHASE_RUN
+}
+
+test('#723 (a) one evidence commit per relayed phase, between engine starting and publishing  [M1]', () => {
+  const ctx = phaseRun()
+  assert.equal(ctx.exit.status, 0,
+    'a run that relays four phases still ends 0:\n' + ctx.exit.stdout + ctx.exit.stderr)
+
+  assert.deepEqual(commitStates(ctx), PHASE_COMMIT_STATES,
+    'five `running` commits — the engine-starting one and one per relayed phase — then the two ' +
+      'transitions; got ' + JSON.stringify(commitStates(ctx)))
+  assert.deepEqual(commitPhases(ctx).slice(0, 5),
+    ['engine starting', 'Wave 1', 'Wave 2', 'Integration Review', 'gate'],
+    'the committed pages carry the phases in the order the engine emitted them')
+})
+
+test('#723 (b) every phase relayed while the unit is alive is committed exactly once, in that window  [M1]', () => {
+  const ctx = phaseRun()
+  const relayed = relayedPhases(ctx)
+  const phases = commitPhases(ctx)
+
+  assert.deepEqual(relayed, PHASES,
+    'the four phases reached the live page while the unit was alive:\n' + stream(ctx).join('\n'))
+  for (const p of relayed) {
+    assert.equal(phases.filter((q) => q === p).length, 1,
+      `phase '${p}' was relayed, so exactly one committed page carries it: ${JSON.stringify(phases)}`)
+  }
+
+  // Each of those commits is made after the engine unit was started and before
+  // the script logged its exit — i.e. by the refresher, while the engine ran.
+  const engineAt = indexOf(ctx, 'CALL systemd-run engine')
+  const exitedAt = lastIndexOf(ctx, 'engine: exited')
+  assert.ok(engineAt >= 0 && exitedAt > engineAt,
+    'the unit and its exit must both be in the log:\n' + stream(ctx).join('\n'))
+  const idx = commitLineIdx(ctx)
+  assert.equal(idx.length, phases.length,
+    'every evidence commit snapshots exactly one page, so the two logs are the same length')
+  phases.forEach((p, i) => {
+    if (!PHASES.includes(p)) return
+    assert.ok(idx[i] > engineAt && idx[i] < exitedAt,
+      `the commit of phase '${p}' (log line ${idx[i]}) must sit between the engine's systemd-run ` +
+        `line (${engineAt}) and 'engine: exited' (${exitedAt})`)
+  })
+})
+
+test('#723 (c) a phase the page already carries produces no further commit  [M2]', () => {
+  // The stub's own single `gate` line, an engine that lives two seconds, and
+  // four polls a second: the page is rewritten every poll — its `updatedAt` is
+  // the heartbeat — while the branch takes one commit for that phase. The count
+  // below asks for three rewrites; this clock leaves room for about eight.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { FLEET_STATUS_INTERVAL: '0.25', STUB_ENGINE_SLEEP: '2' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+
+  const relays = stream(ctx).filter((l) => l === 'status: state=running phase=gate')
+  assert.ok(relays.length >= 3,
+    `the live page keeps being rewritten with phase gate; saw ${relays.length} writes:\n` +
+      stream(ctx).join('\n'))
+  assert.deepEqual(commitStates(ctx), ['running', 'running', 'publishing', 'done'],
+    'engine starting, the one gate phase, then the two transitions; got ' +
+      JSON.stringify(commitStates(ctx)))
+  assert.equal(commitPhases(ctx).filter((p) => p === 'gate').length, 1,
+    'exactly one committed page carries phase gate — a second is a commit for a phase the page ' +
+      'already had')
+})
+
+test('#723 (d) no phase, no commit  [M3]', () => {
+  // An engine that writes no `engine:phase` line at all: the refresher relays
+  // nothing, so the branch keeps exactly the transitions it had at BASE.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], {
+    FLEET_STATUS_INTERVAL: '0.25', STUB_ENGINE_SLEEP: '2', STUB_ENGINE_PHASES: '',
+  })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'done'],
+    'a commit made on a poll tick with no phase would show up here; got ' +
+      JSON.stringify(commitStates(ctx)))
+  assert.deepEqual(relayedPhases(ctx), [],
+    'nothing was relayed to the page while the unit was alive:\n' + stream(ctx).join('\n'))
+})
+
+test('#723 (e) the transitions keep their place after the last phase commit  [M3]', () => {
+  const ctx = phaseRun()
+  assert.deepEqual(commitStates(ctx).slice(-2), ['publishing', 'done'],
+    'the last two commits are the transitions, after every phase commit; got ' +
+      JSON.stringify(commitStates(ctx)))
+  assert.equal(evidenceDisciplineProblem(gitLog(ctx), evidenceDir(ctx)), null,
+    'the phase commits keep the evidence discipline over the whole log:\n' +
+      gitLog(ctx).map((a) => a.join(' ')).join('\n'))
+
+  // The refresher does not outlive the engine: the only `running` page written
+  // after the unit exited is the fold's own.
+  const exitedAt = lastIndexOf(ctx, 'engine: exited')
+  const after = stream(ctx).slice(exitedAt + 1).filter((l) => l.startsWith('status: state=running'))
+  assert.deepEqual(after, ['status: state=running phase=publish fold'],
+    'exactly one `status: state=running` page after `engine: exited`, the fold\'s:\n' +
+      stream(ctx).slice(exitedAt + 1).join('\n'))
+})
+
+test('#723 (f) a refused phase push does not end the run  [M4]', () => {
+  // Every push of the evidence branch is refused while the engine unit is
+  // alive, and accepted before and after it. The commits are local until a push
+  // lands; the run still ends `done`.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { ...PHASE_ENV, STUB_EVIDENCE_PUSH_FAIL_WHILE_ENGINE: '1' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.equal(statusOf(ctx).state, 'done', 'the run ends done')
+  assert.ok(!states(ctx).includes('failed'), 'no page ever said failed: ' + states(ctx).join(' → '))
+  assert.ok(!notifies(ctx).map((n) => n.title).includes('run-7 failed'),
+    'no failure notification: ' + JSON.stringify(notifies(ctx).map((n) => n.title)))
+  assert.deepEqual(stream(ctx).filter((l) => l.startsWith('FAILED:')), [],
+    'the boot log carries no FAILED: line')
+
+  assert.deepEqual(relayedPhases(ctx), PHASES,
+    'the refresher keeps relaying every later phase after a refusal:\n' + stream(ctx).join('\n'))
+  assert.deepEqual(commitStates(ctx), PHASE_COMMIT_STATES,
+    'and keeps committing them; got ' + JSON.stringify(commitStates(ctx)))
+
+  // A refusal was seen and retried, inside the engine's lifetime.
+  const engineAt = indexOf(ctx, 'CALL systemd-run engine')
+  const exitedAt = lastIndexOf(ctx, 'engine: exited')
+  assert.ok(engineAt >= 0 && exitedAt > engineAt)
+  const between = stream(ctx).slice(engineAt + 1, exitedAt)
+  assert.ok(between.some((l) => l.includes('evidence: push rejected — rebasing')),
+    'a refused phase push is logged as a rejection:\n' + between.join('\n'))
+  assert.ok(between.some((l) =>
+    l.startsWith(`CALL git -C ${evidenceDir(ctx)} pull`) && l.includes('--rebase')),
+    'and retried after a pull --rebase in the evidence worktree:\n' + between.join('\n'))
+
+  // The first push the remote accepts once the engine is gone is the
+  // `publishing` transition's — the phase commits ride out on it.
+  const s = stream(ctx)
+  const acceptedAt = s.findIndex((l, i) => i > exitedAt && l === `evidence: pushed to ${EVIDENCE_BRANCH}`)
+  assert.ok(acceptedAt > exitedAt,
+    'an evidence push is accepted after the engine exits:\n' + s.slice(exitedAt).join('\n'))
+  const nth = commitLineIdx(ctx).filter((i) => i < acceptedAt).length
+  assert.equal(commitStates(ctx)[nth - 1], 'publishing',
+    'the page that first accepted push carries is the publishing one, not a phase page: ' +
+      JSON.stringify(commitStates(ctx).slice(0, nth)))
+})
+
+test('#723 (g) the transition-only control: a run that relays nothing still commits three times  [M3]', () => {
+  // `green()` boots with the rig defaults — a thirty-second interval, no engine
+  // sleep — so its refresher never polls. The pin the sibling sims share, kept
+  // here as the control this task must not move.
+  const ctx = green()
+  assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'done'],
+    'one evidence commit per transition when no phase was relayed')
+})
+
+test('#723 (h) the contract declares the phase commits in both bullets  [M5]', () => {
+  const ROOT = path.resolve(SCRIPT, '..', '..')
+  const runs = [
+    // The `**status.json:**` bullet under §Literals.
+    "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+    // The `ultra/evidence-run-<N>` bullet, from its own line to the
+    // `ultra/integration-run-<N>` one.
+    "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+    // …and the docs pin stays green over the edited contract.
+    'python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider',
+  ]
+  for (const cmd of runs) {
+    const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000 })
+    assert.equal(r.status, 0,
+      `must exit 0: ${cmd}\n---\n${r.stdout || ''}${r.stderr || ''}`)
+  }
 })
 
 runTests(tests)

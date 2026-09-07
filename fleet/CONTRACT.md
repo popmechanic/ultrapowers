@@ -52,8 +52,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     disposition, reason, path, pathsJoined, resolversDispatched, suite } } }`), `engine-head`,
     `main.patch`, `run.patch`, `frontier/wave-<attempt>/`, `resolver-brief-<i>-<attempt>.txt`,
     `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
-    Committed from a detached worktree at every transition; append-only paths, `pull --rebase` and
-    retry on non-fast-forward.
+    Committed from a detached worktree at every transition **and at every `engine:phase` the boot
+    script relays to the page while the engine runs** — one commit per relayed phase, so the
+    branch's history reads wave by wave; append-only paths, `pull --rebase` and retry on
+    non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
     It goes with the merge (delete-on-merge); a `hold=1` run's stays while its PR is open.
 - **The two tags** — a run's record, and the only refs that outlive it. At publish the sandbox tags
@@ -217,7 +219,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     nor a branch.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
   — the SAME bytes are served at `/status.json` and committed to
-  `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition.
+  `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and at every
+  `engine:phase` the boot script relays to the page while the engine runs**. A phase the page
+  already carries is a heartbeat (`updatedAt` moves, the page is rewritten every poll) and earns no
+  second commit.
   The `state` cell is a sequence, not a set: a run that published reads
   `booting → running → publishing → done`, and a run whose merge PUT answered 405 and was folded and
   PUT again reads `running → publishing → running → publishing → done` — the second `running` is the

@@ -331,7 +331,16 @@ case "$verb" in
     [ -f "$snap" ] && cat "$snap" >>"$FLEET_HOME/commits.log" ;;
   push)
     case "$*" in
-      *evidence-run-7*) [ -n "\${STUB_EVIDENCE_PUSH_FAIL:-}" ] && exit 1 ;;
+      *evidence-run-7*)
+        [ -n "\${STUB_EVIDENCE_PUSH_FAIL:-}" ] && exit 1
+        # Refused only WHILE THE ENGINE UNIT IS ALIVE (#723): the phase pushes
+        # the refresher makes beside it are refused, the \`running\` push before
+        # it and every push after it are accepted — so a case can ask what a
+        # refused phase push does to a run without failing the run before the
+        # engine ever starts.
+        if [ -n "\${STUB_EVIDENCE_PUSH_FAIL_WHILE_ENGINE:-}" ] && [ -e "$FLEET_HOME/stub/engine-alive" ]; then
+          printf 'error: failed to push some refs\\n' >&2; exit 1
+        fi ;;
       # A refused push of the run's own branch. STUB_INTEGRATION_PUSH_FAIL
       # refuses every one of them; STUB_LEASE_FAIL refuses only the LEASED
       # push, which is the remote having moved under the head this run pushed.
@@ -461,8 +470,44 @@ esac
 env >"$FLEET_HOME/systemd-run.env"
 say "systemd-run engine"
 run_dir="$FLEET_HOME/target/.claude/ultrapowers/run-run-7"
-mkdir -p "$run_dir"
-printf '{"kind":"engine:phase","phase":"gate","id":"x","ts":1}\\n' >"$run_dir/events.jsonl"
+mkdir -p "$run_dir" "$FLEET_HOME/stub"
+# THE ENGINE'S LIFE, AS A FILE. The \`git\` stub refuses evidence pushes while it
+# exists (STUB_EVIDENCE_PUSH_FAIL_WHILE_ENGINE), which is the only way to refuse
+# the pushes the refresher makes BESIDE this unit without also refusing the
+# \`running\` push that comes before it and the \`publishing\` one that comes after.
+: >"$FLEET_HOME/stub/engine-alive"
+# The phases this engine reaches, as \`engine:phase\` lines. UNSET is the one
+# \`gate\` line this stub has always written; SET BUT EMPTY is an engine that
+# reaches no phase at all; otherwise a \`|\`-separated list, written in order.
+#
+# After each entry the stub WAITS for the boot script to relay it — for
+# \`$FLEET_HOME/www/status.json\` to carry that phase — before writing the next.
+# That handshake is what makes every listed phase a RELAYED phase, so the exam
+# counts commits instead of racing the refresher's interval.
+if [ -z "\${STUB_ENGINE_PHASES+set}" ]; then
+  printf '{"kind":"engine:phase","phase":"gate","id":"x","ts":1}\\n' >"$run_dir/events.jsonl"
+else
+  : >"$run_dir/events.jsonl"
+  rest="$STUB_ENGINE_PHASES"; i=0
+  while [ -n "$rest" ]; do
+    case "$rest" in
+      *"|"*) p="\${rest%%|*}"; rest="\${rest#*|}" ;;
+      *) p="$rest"; rest="" ;;
+    esac
+    i=$((i + 1))
+    printf '{"kind":"engine:phase","phase":"%s","id":"x","ts":%s}\\n' "$p" "$i" >>"$run_dir/events.jsonl"
+    n=0
+    until grep -q "\\"phase\\":\\"$p\\"" "$FLEET_HOME/www/status.json" 2>/dev/null; do
+      n=$((n + 1))
+      if [ "$n" -ge 200 ]; then
+        say "systemd-run engine: phase $p never reached the page"
+        rm -f "$FLEET_HOME/stub/engine-alive"
+        exit 3
+      fi
+      sleep 0.1
+    done
+  done
+fi
 # The engine talks on stdout and stderr, and a run that dies before its gate
 # leaves nothing else behind.
 printf 'run-main: preflight\\n'
@@ -473,6 +518,9 @@ if [ -z "\${STUB_NO_RECEIPT:-}" ]; then
   printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
 fi
 [ -n "\${STUB_ENGINE_SLEEP:-}" ] && sleep "$STUB_ENGINE_SLEEP"
+# Removed IMMEDIATELY before the exit: from here on the unit is done and every
+# evidence push is accepted again.
+rm -f "$FLEET_HOME/stub/engine-alive"
 exit \${STUB_ENGINE_CODE:-0}
 `,
   systemctl: `
@@ -615,6 +663,30 @@ export const notifies = (ctx) => lines(readLog(ctx, 'notify.log')).map((l) => JS
 /** The status page as it stood at each evidence commit, oldest first. */
 export const committed = (ctx) => lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
 export const commitStates = (ctx) => committed(ctx).map((c) => c.state)
+/** The `phase` cell of each committed page, in commit order — the branch's own
+ *  account of what the run was doing at every commit it made (#723). */
+export const commitPhases = (ctx) => committed(ctx).map((c) => c.phase)
+/**
+ * What the refresher relayed to the LIVE PAGE while the engine unit was alive:
+ * the consecutive-deduplicated phases of the `status: state=running phase=…`
+ * lines between the engine's `systemd-run` line and `engine: exited`. The
+ * `engine starting` page is written before the unit and is therefore not one of
+ * them, and the deduplication is what makes this the list of phases the page
+ * did not carry before — the same list the evidence branch owes one commit each.
+ */
+export const relayedPhases = (ctx) => {
+  const s = stream(ctx)
+  const from = s.findIndex((l) => l.includes('CALL systemd-run engine'))
+  const out = []
+  if (from < 0) return out
+  let to = s.findIndex((l) => l.includes('engine: exited'))
+  if (to < 0) to = s.length
+  for (let i = from + 1; i < to; i += 1) {
+    const m = /^status: state=running phase=(.*)$/.exec(s[i])
+    if (m && out[out.length - 1] !== m[1]) out.push(m[1])
+  }
+  return out
+}
 export const unitsRun = (ctx) => argvLines(ctx, 'systemd-run').map((a) => a.find((s) => s.startsWith('--unit='))?.slice(7))
 export const engineRuns = (ctx) => unitsRun(ctx).filter((u) => u === 'fleet-engine-7').length
 export const directCalls = (ctx) => stream(ctx).filter((l) => l.includes(' DIRECT '))

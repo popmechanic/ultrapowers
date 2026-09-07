@@ -90,6 +90,20 @@ EVIDENCE_DIR="$FLEET_HOME/evidence"
 # what the engine's argv carries.
 PLANS_DIR="$FLEET_HOME/plans"
 ENGINE_DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
+# The one lock the evidence worktree's two writers share. While the engine unit
+# runs, `phase_refresher` is a writer of its own — it commits the page at every
+# `engine:phase` it relays (#723) — and `run_engine` kills it the moment the
+# unit is done. A kill that landed INSIDE a commit would leave a half-made
+# `pull --rebase` behind for the `publishing` commit to trip over, so both sides
+# take this directory around their git work: `mkdir` is the atomic
+# test-and-set every filesystem has, and holding it is what makes the kill land
+# between commits rather than inside one.
+EVIDENCE_LOCK="$FLEET_HOME/.fleet-evidence-lock"
+# How many 0.1s tries either side waits for it before giving up (30s). The
+# refresher that gives up simply commits the phase on its next poll; the
+# foreground that gives up kills a refresher that is wedged, which is the one
+# case where a lost commit beats a hung run.
+EVIDENCE_LOCK_TRIES=300
 # `claude --version`, written by `log_auth_status` before the engine unit is
 # started and copied into the evidence by `collect_evidence` at every later
 # transition — so the branch says which engine binary the run actually ran on.
@@ -178,6 +192,11 @@ MERGE_RETRY=""
 # disposition AFTER the PR was opened, which is what makes the body PATCH
 # necessary.
 FOLD_ATTEMPTS=0
+# Set by `phase_refresher` around its own evidence commits: those are made in a
+# background subshell beside a running engine, where `fail` would write a
+# `failed` page and notify while the run is still perfectly alive. Soft means a
+# refused push gives up and leaves the commit LOCAL for the next push to carry.
+EVIDENCE_PUSH_SOFT=""
 ERROR=""
 
 # --- seams -------------------------------------------------------------------
@@ -562,12 +581,41 @@ last_phase() {
     sed -n 's/.*"phase":"\([^"]*\)".*/\1/p'
 }
 
+# ONE EVIDENCE COMMIT PER RELAYED PHASE (#723), made through the same
+# `collect_evidence`/`push_evidence` pair a state transition makes — so a reader
+# of `ultra/evidence-run-<N>` sees one commit per wave, per integration review
+# and per gate, not one per state. The page is still rewritten EVERY poll
+# (`updatedAt` is the heartbeat a watcher reads); only a phase the page did not
+# carry before earns a commit, which is what keeps the branch one commit per
+# phase instead of one per tick.
+#
+# The commit runs under `EVIDENCE_LOCK` so `run_engine`'s kill cannot land
+# inside it, and under `EVIDENCE_PUSH_SOFT` so a refused push leaves the commit
+# local instead of ending the run: this is a background subshell, and a `fail`
+# reached in here would write a `failed` page and notify for a run whose engine
+# is still working. `last` is committed only once the commit was actually made,
+# so a phase the lock cost us this poll is committed on the next one.
+commit_phase_evidence() { # $1 = the phase just relayed to the page
+  evidence_lock || return 1
+  EVIDENCE_PUSH_SOFT=1
+  collect_evidence || true
+  push_evidence "$RUN_ID: $1" || true
+  EVIDENCE_PUSH_SOFT=""
+  evidence_unlock
+  return 0
+}
+
 phase_refresher() {
-  local p
+  local p last=""
   while :; do
     sleep "$STATUS_INTERVAL"
     p="$(last_phase || true)"
-    [ -n "$p" ] && write_status running "$p"
+    if [ -n "$p" ]; then
+      write_status running "$p"
+      if [ "$p" != "$last" ] && commit_phase_evidence "$p"; then
+        last="$p"
+      fi
+    fi
   done
 }
 
@@ -635,8 +683,14 @@ run_engine() {
   # The ENGINE's status, not `tee`'s — a pipeline's exit code is its last
   # command's, and reading it would report every failed run as a success.
   code=${PIPESTATUS[0]}
+  # BETWEEN COMMITS, never inside one. The refresher holds `EVIDENCE_LOCK` for
+  # the whole of a phase commit, so taking it here is the whole of what makes
+  # this kill safe: an interrupted `pull --rebase` in the evidence worktree
+  # would be the `publishing` commit's problem, and it never happens.
+  evidence_lock || log "evidence: lock still held — killing the refresher anyway"
   kill "$refresher" 2>/dev/null
   wait "$refresher" 2>/dev/null
+  evidence_unlock
   set -e
 
   printf '%s\n' "$code" >"$ENGINE_DONE_MARKER"
@@ -674,6 +728,22 @@ await_engine_inactive() { # $1 = unit name, without the `.service` suffix
 }
 
 # --- evidence ----------------------------------------------------------------
+
+# The lock both writers of the evidence worktree take around their git work.
+# `mkdir` and not a flag file: creating a directory is the one test-and-set
+# every filesystem does atomically, so two processes never both believe they
+# hold it. Waiting is bounded — see `EVIDENCE_LOCK_TRIES`.
+evidence_lock() {
+  local n=0
+  while ! mkdir "$EVIDENCE_LOCK" 2>/dev/null; do
+    n=$(( n + 1 ))
+    if [ "$n" -ge "$EVIDENCE_LOCK_TRIES" ]; then return 1; fi
+    sleep 0.1
+  done
+  return 0
+}
+
+evidence_unlock() { rmdir "$EVIDENCE_LOCK" 2>/dev/null || true; }
 
 collect_evidence() {
   local dest receipt approve run_dir f
@@ -713,13 +783,27 @@ collect_evidence() {
   log "evidence: $(ls "$dest" | tr '\n' ' ')"
 }
 
-# ONE COMMIT PER TRANSITION, and every one of them made and pushed from the
-# worktree — the run directory is the only path ever staged, so nothing the
-# engine left under `.claude/` can ride along by accident.
+# ONE COMMIT PER TRANSITION and one per relayed phase (#723), every one of them
+# made and pushed from the worktree — the run directory is the only path ever
+# staged, so nothing the engine left under `.claude/` can ride along by accident.
+#
+# `EVIDENCE_PUSH_SOFT` is the phase commits' mode: fewer rebases before giving
+# up, and giving up means LEAVING THE COMMIT LOCAL rather than failing the run.
+# The commit is already made either way — the next push carries it — and a
+# phase that could not be published while the engine works is not a run that
+# failed. Every transition still pushes the hard way: five refusals there are a
+# branch this box cannot write, which is a failure with nothing left to say.
 push_evidence() { # $1 = commit subject
-  local n=0
+  local n=0 limit=5
+  if [ -n "$EVIDENCE_PUSH_SOFT" ]; then limit=3; fi
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_PATH"
-  fleet_git -C "$EVIDENCE_DIR" add -- "$EVIDENCE_PATH" || fail "evidence: add $EVIDENCE_PATH"
+  if ! fleet_git -C "$EVIDENCE_DIR" add -- "$EVIDENCE_PATH"; then
+    if [ -n "$EVIDENCE_PUSH_SOFT" ]; then
+      log "evidence: add $EVIDENCE_PATH failed — left for the next commit"
+      return 0
+    fi
+    fail "evidence: add $EVIDENCE_PATH"
+  fi
   ensure_git_identity
   if ! fleet_git -C "$EVIDENCE_DIR" commit -m "$1"; then
     log "evidence: nothing to commit"
@@ -730,7 +814,11 @@ push_evidence() { # $1 = commit subject
       return 0
     fi
     n=$(( n + 1 ))
-    if [ "$n" -ge 5 ]; then
+    if [ "$n" -ge "$limit" ]; then
+      if [ -n "$EVIDENCE_PUSH_SOFT" ]; then
+        log "evidence: push rejected $n times — the commit stays local"
+        return 0
+      fi
       # `FAILING` here and not only in `fail`: this IS the failing push, and a
       # `fail` that tried to push its own account would spend five more.
       FAILING=1

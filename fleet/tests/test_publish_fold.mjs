@@ -127,7 +127,7 @@ const write = (dir, name, text) => fs.writeFileSync(path.join(dir, name), text)
 const PNG = (tail) => Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 0, 0, 0, ...tail])
 
 // ── the template, built once and copied per case ─────────────────────────────
-// `tests/test_fleet_suite.py` gives this file 120 s and same-wave sims share
+// `tests/test_fleet_suite.py` gives this file 300 s and same-wave sims share
 // one machine, so the seeded origin and both clones are built once here and
 // copied per case (each case still gets its own temp directory and its own
 // origin — the copy's remotes are re-pointed at it).
