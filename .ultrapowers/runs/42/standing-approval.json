@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-42.md run-42 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/sandbox-boot.sh — collect_evidence copying <run dir>/acceptance.log onto ultra/evidence-run-<N> in a real sandbox (Task 2, M1/M2) — The evidence-branch exam drives the boot script over the shared rig's PATH shim, which stubs systemd-run, git, gh, curl and claude — no systemd, no network. The copy is proven against a stub engine that writes a 9000-byte acceptance.log (leg a) and against a run that writes none (leg b), and the driver ran both Proof Run: greps on the integrated tree, but a production boot where a real gate writes the log inside the sandbox cannot be executed in this environment. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:runtime",
+      "detail": "The ultra_gate.py -> run_acceptance.sh dispatch seam that makes Task 1's Claim true in production (fleet/run-main.mjs receipt rewrite reaching the frozen gate) — Both ends are executed here — leg (a) proves the receipt ultra_gate.py reads at call time carries acceptanceWrap(...), and legs (c)/(d) pass that same wrapper as --run to the real frozen skills/ultrapowers/scripts/run_acceptance.sh in a throwaway repo, confirming the complete log, the preserved exit status and the untouched 8000-char tail. The one link executed only by reading source (verified: ultra_gate.py gate mode passes run_receipt['testCmd'] verbatim as --run, and --approve never reads it) is the frozen gate's own subprocess dispatch, which the run must not modify or invoke for real. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

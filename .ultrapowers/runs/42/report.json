@@ -1,0 +1,149 @@
+{
+  "integrationBranch": "ultra/integration-run-42",
+  "baseSha": "9cd8190ffb5e68b1de0eb9eac44b116ab0631d28",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3e12f04dea0f1cc7c1b8417aa42915ce1c8fe5ad",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-42/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the shared literal `acceptance.log` is a cross-task agreement this patch cannot settle. Task 1 writes `path.join(runDir, 'acceptance.log')` into the gate's `receipt.json` testCmd; task 2's `collect_evidence` (fleet/sandbox-boot.sh, sibling FILES) has to copy that exact name out of `$TARGET_DIR/.claude/ultrapowers/run-$RUN_ID`. Nothing in this diff touches the boot script, so a divergence in spelling or directory between the two halves would still pass this exam. What would settle it: the integrated suite running both `fleet/tests/test_run_main.mjs` and `fleet/tests/test_sandbox_boot_approval_evidence.mjs` on the merged integration branch, where task 2's leg (a) asserts the collected `acceptance.log` is byte-equal to `<run dir>/acceptance.log`. Both halves independently use the lower-case name beside `gate-receipt.json`, so the agreement looks right \u2014 it is just not verifiable from this patch alone.; unverified: global-constraint reading \u2014 \"the full output lives only in `<run dir>/acceptance.log`\". The wrapper captures the gate's `--run` string only. `run_acceptance.sh` has a second output producer that ultra_gate.py always arms: it passes `--base run_receipt['baseBranch']` (ultra_gate.py ~136-139), which enables `run_js_sims` (run_acceptance.sh:85). When the branch touches `skills/ultrapowers/harnesses/*.js`, the emitted JSON is `\"$OUT\\n$J_OUTPUT\"` on the green path and `\"pytest passed; $J_OUTPUT\"` (dropping `$OUT` entirely) on the sim-red path. `$J_OUTPUT` is produced downstream of the `--run` eval, so it never reaches `acceptance.log` and remains visible only through the frozen 8000/4000-char tails. This is not a defect in the diff \u2014 no edit inside `fleet/run-main.mjs` can capture output the frozen script generates after the `--run` command exits; M1/M2/M3 never name the sim leg and the exam does not test it. Recorded so the operator knows the log is complete for the suite command, not for every byte `gate-receipt.json`'s `acceptance.output` tails. Nothing to change in this task's FILES.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "19ab49aa623bd379b37959507e04e1675304c444",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-42/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the shared literal `<run dir>/acceptance.log` is agreed between two tasks, and this diff cannot settle the other half. `collect_evidence` reads `$(run_dir_path)/acceptance.log` (fleet/sandbox-boot.sh, the copy loop), while the file is produced by sibling task 1's `acceptanceWrap(...)` in `fleet/run-main.mjs` \u2014 a path outside this task's FILES. The new legs write the fixture themselves via `STUB_ACCEPTANCE_BYTES`, so a green exam here would stay green even if the driver teed to a different name or directory. This is lawful for this task (the Context says explicitly it copies the file when present and does not need it to exist), so it blocks nothing. What would settle it: task 1's leg (a), which pins the gate-mode receipt's `acceptanceLog` to `path.join(runDir,'acceptance.log')` with `runDir = path.dirname(argsFile)` \u2014 i.e. the same `<toplevel>/.claude/ultrapowers/run-<stamp>` directory `run_dir_path()` prints \u2014 or one live run whose evidence branch carries the file.; Tautological assertion in the new leg (a) of fleet/tests/test_sandbox_boot_approval_evidence.mjs: `assert.equal(path.dirname(collected), path.dirname(path.join(evidenceRunDir(ctx), 'gate-receipt.json')), 'the acceptance log is collected BESIDE gate-receipt.json')` compares two paths both constructed from `evidenceRunDir(ctx)` in the test itself, so it cannot fail for any implementation \u2014 including one that never copies the log. It is harmless because the two `fs.existsSync` checks around it (the collected `acceptance.log` and the collected `gate-receipt.json`) are what actually establish the beside-ness, but the assertion's message claims a check it does not perform. Either drop it or replace it with something observable, e.g. assert that `fs.readdirSync(evidenceRunDir(ctx))` contains both `acceptance.log` and `gate-receipt.json`.; Tautological assertion in the new leg (a) test (fleet/tests/test_sandbox_boot_approval_evidence.mjs, `the acceptance log reaches the evidence worktree byte for byte  [#739 Task 2 / M1 / leg (a)]`): `assert.equal(path.dirname(collected), path.dirname(path.join(evidenceRunDir(ctx), 'gate-receipt.json')))` compares two paths both derived from `evidenceRunDir(ctx)`, so it holds no matter what `collect_evidence` does \u2014 it passes with the copy deleted. The M1 clause it names (\"`gate-receipt.json` sits in the same directory\") is genuinely verified by the `fs.existsSync(path.join(evidenceRunDir(ctx), 'gate-receipt.json'))` assertion two lines above, so nothing is left unverified; the line is dead weight and could be dropped or replaced with a `readdirSync(evidenceRunDir(ctx))` assertion that both names are present in the one listing.; unverified: the shared literal across the two halves of #739. This diff copies `$run_dir/acceptance.log` and the sim writes that file itself via `STUB_ACCEPTANCE_BYTES`, so nothing here shows that the driver (sibling task 1, `fleet/run-main.mjs`) actually tees the gate's acceptance run into the same lower-case name in the same `<toplevel>/.claude/ultrapowers/run-<stamp>` directory that `run_dir_path()` resolves to. The task's Context states the copy is correct whether or not the file exists, and M1/M2/M3 are all sim-verified, so this blocks nothing. What would settle it: the merged tree's `fleet/tests/test_run_main.mjs` leg (a) asserting `acceptanceLog === path.join(runDir, 'acceptance.log')` against this script's `run_dir_path()` layout \u2014 a cross-task fact only the integration suite can judge.; Cosmetic: ACCEPTANCE_BYTES's comment claims the body is \"the marker line, filler in the suite's own shape, and a closing line\", but `mid.slice(0, want)` truncates the last filler line mid-string (8954 filler bytes is not a multiple of the 52-byte line), so the closing marker is concatenated onto a partial line rather than starting one. Nothing in leg (a) reads the last line \u2014 it asserts length 9000 and the FIRST line only \u2014 so no criterion is affected; padding `want` to a line boundary, or asserting only what the comment claims, would make the two agree.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-42/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 328.51s (0:05:28) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "2",
+      "cmd": "sed -n '/^collect_evidence()/,/^}/p' fleet/sandbox-boot.sh | grep -c 'acceptance.log'",
+      "exit": 0,
+      "stdout": "2\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>/p' fleet/CONTRACT.md | grep -c 'acceptance.log'",
+      "exit": 0,
+      "stdout": "1\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 554403,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n...................................................s.................... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 339.68s (0:05:39) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 329.14s (0:05:29) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "09577d35dc70572aca51e27d72936fce63feb5a3",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-42/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-42/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.977,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 collect_evidence copying <run dir>/acceptance.log onto ultra/evidence-run-<N> in a real sandbox (Task 2, M1/M2)",
+      "reason": "runtime",
+      "why": "The evidence-branch exam drives the boot script over the shared rig's PATH shim, which stubs systemd-run, git, gh, curl and claude \u2014 no systemd, no network. The copy is proven against a stub engine that writes a 9000-byte acceptance.log (leg a) and against a run that writes none (leg b), and the driver ran both Proof Run: greps on the integrated tree, but a production boot where a real gate writes the log inside the sandbox cannot be executed in this environment."
+    },
+    {
+      "deliverable": "The ultra_gate.py -> run_acceptance.sh dispatch seam that makes Task 1's Claim true in production (fleet/run-main.mjs receipt rewrite reaching the frozen gate)",
+      "reason": "runtime",
+      "why": "Both ends are executed here \u2014 leg (a) proves the receipt ultra_gate.py reads at call time carries acceptanceWrap(...), and legs (c)/(d) pass that same wrapper as --run to the real frozen skills/ultrapowers/scripts/run_acceptance.sh in a throwaway repo, confirming the complete log, the preserved exit status and the untouched 8000-char tail. The one link executed only by reading source (verified: ultra_gate.py gate mode passes run_receipt['testCmd'] verbatim as --run, and --approve never reads it) is the frozen gate's own subprocess dispatch, which the run must not modify or invoke for real."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
