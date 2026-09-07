@@ -41,12 +41,17 @@
  *        beginning `repos/`, no `git` is run, every `ssh <ssh_dest>` is #607's
  *        unit or journal read at a live row's own destination, and nothing under
  *        `~/.ultrapowers/` but `fleet.json` is opened                 — leg (g)
+ *
+ * #724 Task 2 adds legs T2(a)–T2(f) at the foot of this file, and re-scopes one
+ * pin of leg (a): the result's key set gains one optional member, `branches`.
+ * Their clauses are that task's own M1–M5, and every message below them says so.
  */
 
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
   evidenceBranchFor, evidenceTagFor, planBranchFor, planTagFor
@@ -316,9 +321,17 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
     '(a)/M1 nothing here is stale: the three-hour-old booting (run 10) and publishing (run 11) rows are in neither stale nor actions')
   assert.deepEqual(unknownVms(result), [],
     '(a)/M1 every row here has a readable assignment')
-  assert.deepEqual(sorted(Object.keys(result)),
-    sorted(['dryRun', 'age', 'actions', 'stale', 'unknown', 'deaths']),
-    '(a)/M1 the result carries its six fields { dryRun, age, actions, stale, unknown, deaths }')
+  // #724 Task 2 re-scopes this pin: the result gains one key and one only,
+  // `branches`, and a fleet whose targets answer no integration head may carry
+  // it empty or not at all — the six BASE fields stand either way.
+  const BASE_KEYS = ['dryRun', 'age', 'actions', 'stale', 'unknown', 'deaths']
+  for (const key of BASE_KEYS) {
+    assert.equal(Object.hasOwn(result, key), true,
+      `(a)/M1 the result carries its six fields { dryRun, age, actions, stale, unknown, deaths } — ${key} is missing`)
+  }
+  assert.deepEqual(
+    sorted(Object.keys(result).filter((k) => !BASE_KEYS.includes(k) && k !== 'branches')), [],
+    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2')
 
   // ── (a)/M4 the unit read fires for a live page whichever ref served it ────
   assert.deepEqual(
@@ -821,6 +834,265 @@ const assertDeathWrites = (exec, n, label) => {
     staleRuns(result).includes(3) || unknownVms(result).includes(vm(3)), true,
     '(g)/M5 run 3 appears in stale or unknown — never in actions')
   cleanup(home)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #724 Task 2 — the janitor reports the closed-unmerged integration branch
+// beside the VMs it reaps.
+//
+// One fleet the legs share — the task fleet: two `acme/widgets` rows done two
+// hours ago (71, 72), one `beta/lib` row done two hours ago (5), one
+// `acme/widgets` row whose page says `running` seven hours ago and whose VM
+// answers nothing to the unit read (80, a stale row), and one row with no
+// comment (an unknown row). `acme/widgets`' heads listing answers four
+// integration branches — 32, 40, 41 and 42 — and only 32's highest-numbered
+// pull request is closed and not merged; `beta/lib`'s answers `[]`.
+//
+//   T2(a) [M1] one `git/matching-refs/heads/ultra/integration-run-` read per
+//              distinct target of a row with a readable assignment, after every
+//              row's reads, and none for the commentless row
+//   T2(b) [M1] one `pulls?state=all&head=<owner>:…` read per ref the listing
+//              answered, each after the listing that named it
+//   T2(c) [M2] `result.branches` and the report's last line: the highest
+//              `number` decides, and only closed-and-not-merged is reported
+//   T2(d) [M3] no `-X DELETE`, no `git`, and `--dry-run` reads and reports the
+//              same
+//   T2(e) [M4] `renderJanitor` of a result with no `branches` key is BASE's
+//   T2(f) [M5] the RUNBOOK's janitor paragraph
+// ═══════════════════════════════════════════════════════════════════════════
+
+const T2_BETA = 'beta/lib'
+const T2_OLD = hoursAgo(2)
+const T2_SILENT = hoursAgo(7)
+
+/** The three path literals M1 names, spelled out rather than built. */
+const T2_ACME_REFS = 'repos/acme/widgets/git/matching-refs/heads/ultra/integration-run-'
+const T2_BETA_REFS = 'repos/beta/lib/git/matching-refs/heads/ultra/integration-run-'
+const t2Pulls = (n) => `repos/acme/widgets/pulls?state=all&head=acme:ultra/integration-run-${n}`
+
+/** One row of `git/matching-refs/…`: the full ref and the head it points at. */
+const t2Ref = (n) => ({
+  ref: `refs/heads/ultra/integration-run-${n}`,
+  object: { type: 'commit', sha: String(n).repeat(20).slice(0, 40) }
+})
+/** One row of the pulls *list* endpoint: `merged_at`, and no `merged` boolean. */
+const t2Pr = (number, state, mergedAt) => ({ number, state, merged_at: mergedAt })
+
+const T2_CANNED = {
+  [T2_ACME_REFS]: [32, 40, 41, 42].map(t2Ref),
+  [T2_BETA_REFS]: [],
+  // run 32, older row first: the deciding row is #720, closed and not merged.
+  [t2Pulls(32)]: [t2Pr(463, 'closed', '2026-08-31T03:03:48Z'), t2Pr(720, 'closed', null)],
+  // run 40, older row first: the deciding row is #800, open.
+  [t2Pulls(40)]: [t2Pr(790, 'closed', null), t2Pr(800, 'open', null)],
+  // run 41, newer row first: the deciding row is #810, merged.
+  [t2Pulls(41)]: [t2Pr(810, 'closed', '2026-09-07T01:29:38Z'), t2Pr(805, 'closed', null)],
+  // run 42: no pull request at all.
+  [t2Pulls(42)]: []
+}
+
+/** The two new endpoints, canned; every other path of theirs is a 404. */
+const T2_RULE = {
+  when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' && argv.some((a) =>
+    typeof a === 'string' && (a.includes('/git/matching-refs/') || a.includes('/pulls?'))),
+  answer: (cmd, argv) => {
+    const p = argv.find((a) => typeof a === 'string' && a.startsWith('repos/'))
+    return p !== undefined && Object.hasOwn(T2_CANNED, p) ? answer(T2_CANNED[p]) : NOT_FOUND
+  }
+}
+
+const T2_UNKNOWN = 90
+const T2_ROWS = [row(71), row(72), row(5, { target: T2_BETA }), row(80), vmRow(vm(T2_UNKNOWN))]
+const T2_PAGES = {
+  ...pagesAt(tagPagePath, [
+    [71, { run: 71, state: 'done', updatedAt: T2_OLD }],
+    [72, { run: 72, state: 'done', updatedAt: T2_OLD }],
+    [80, { run: 80, state: 'running', updatedAt: T2_SILENT }]
+  ]),
+  ...pagesAt(tagPagePath, [[5, { run: 5, state: 'done', updatedAt: T2_OLD }]], { target: T2_BETA })
+}
+
+/** The task fleet, on a fresh seam. Run 80's VM answers nothing to the unit
+ *  read — the default of an unruled destination — so its unit is unreadable
+ *  and the row is stale, exactly as at BASE. */
+const t2Exec = () => newExec([...lsRules(T2_ROWS), T2_RULE, ghRule({ pages: T2_PAGES })])
+
+const t2RefReads = (exec) => ghPaths(exec).filter((p) => p.includes('matching-refs'))
+const t2PullReads = (exec) => ghPaths(exec).filter((p) => p.includes('pulls?'))
+const t2Deletes = (exec) => ghCalls(exec)
+  .filter((c) => {
+    const i = c.argv.indexOf('-X')
+    return i !== -1 && String(c.argv[i + 1]) === 'DELETE'
+  })
+  .map((c) => c.line)
+
+/** The one branch the rule retires, and the line the operator reads. */
+const T2_BRANCH = { target: TARGET, run: 32, branch: 'ultra/integration-run-32', pr: 720 }
+const T2_BRANCH_LINE =
+  'branch ultra/integration-run-32  target=acme/widgets PR #720 closed, not merged — node fleet/retire.mjs --target acme/widgets'
+
+const T2_EXEC = t2Exec()
+const T2_RESULT = await janitor({ argv: [], exec: T2_EXEC, config: CONFIG, now: () => NOW })
+
+// ── T2(a) one heads listing per distinct target, after every row's reads [M1] ─
+{
+  const exec = T2_EXEC
+  const paths = ghPaths(exec)
+
+  assert.deepEqual(sorted(t2RefReads(exec)), sorted([T2_ACME_REFS, T2_BETA_REFS]),
+    'T2(a)/M1 the gh paths containing matching-refs are exactly two — repos/acme/widgets/git/matching-refs/heads/ultra/integration-run- (three rows, one read) and repos/beta/lib/git/matching-refs/heads/ultra/integration-run-, in either order')
+  for (const bad of ['repos/undefined/', 'repos/null/', 'repos//']) {
+    assert.deepEqual(paths.filter((p) => p.includes(bad)), [],
+      `T2(a)/M1 the row with no comment draws no read: no gh path contains ${bad}`)
+  }
+  assert.deepEqual(paths.filter((p) => p.includes('gamma/x')), [],
+    'T2(a)/M1 and no read names gamma/x, a target no row carries')
+
+  const lastContents = paths.reduce((at, p, i) => (p.includes('/contents/') ? i : at), -1)
+  for (const p of [T2_ACME_REFS, T2_BETA_REFS]) {
+    assert.equal(paths.indexOf(p) > lastContents, true,
+      `T2(a)/M1 ${p} is issued after the last contents read — the listings come after every row's reads`)
+  }
+
+  for (const call of ghCalls(exec)) {
+    assert.deepEqual(call.argv.slice(0, 1), ['api'],
+      `T2(a)/M1 every gh call of this pass is a read: ['api', '<path>'], got ${JSON.stringify(call.argv)}`)
+    assert.equal(call.argv.length, 2,
+      `T2(a)/M1 exactly two argv words, got ${JSON.stringify(call.argv)}`)
+    assert.equal(String(call.argv[1]).startsWith('repos/'), true,
+      `T2(a)/M1 whose second is a path beginning repos/, got ${JSON.stringify(call.argv[1])}`)
+  }
+}
+
+// ── T2(b) one pulls read per ref the listing answered [M1] ──────────────────
+{
+  const exec = T2_EXEC
+  const paths = ghPaths(exec)
+
+  assert.deepEqual(sorted(t2PullReads(exec)), sorted([32, 40, 41, 42].map(t2Pulls)),
+    'T2(b)/M1 the gh paths containing pulls? are exactly four — one repos/acme/widgets/pulls?state=all&head=acme:ultra/integration-run-<N> for each of 32, 40, 41 and 42')
+  const listedAt = paths.indexOf(T2_ACME_REFS)
+  for (const n of [32, 40, 41, 42]) {
+    assert.equal(paths.indexOf(t2Pulls(n)) > listedAt, true,
+      `T2(b)/M1 run ${n}'s pulls read comes after the matching-refs read that named its ref`)
+  }
+  for (const n of [71, 72, 80, 5]) {
+    assert.deepEqual(t2PullReads(exec).filter((p) => p.endsWith(`integration-run-${n}`)), [],
+      `T2(b)/M1 no pulls read names run ${n} — the rows' own runs are not what the listing answered`)
+  }
+  assert.deepEqual(t2PullReads(exec).filter((p) => p.includes(T2_BETA)), [],
+    'T2(b)/M1 and beta/lib, whose refs answer was [], draws none')
+}
+
+// ── T2(c) the highest number decides, and the operator's line [M2] ──────────
+{
+  const result = T2_RESULT
+
+  assert.deepEqual(result.branches, [T2_BRANCH],
+    'T2(c)/M2 result.branches is exactly [{ target: \'acme/widgets\', run: 32, branch: \'ultra/integration-run-32\', pr: 720 }]: #720 is the highest-numbered row, closed with merged_at null — a janitor that takes the first row names #463, one that reports any closed-unmerged row adds 40 and 41')
+
+  const printed = renderJanitor(result)
+  const lines = printed.split('\n')
+  assert.equal(lines[lines.length - 1], T2_BRANCH_LINE,
+    `T2(c)/M2 the report's last line is exactly \`${T2_BRANCH_LINE}\``)
+  assert.deepEqual(lines, [
+    `rm ${vm(71)}  run=71 done since ${T2_OLD}`,
+    `rm ${vm(72)}  run=72 done since ${T2_OLD}`,
+    `rm ${vm(5)}  run=5 done since ${T2_OLD}`,
+    `stale ${vm(80)}  run=80 state=running last update ${T2_SILENT} (${evidenceTagFor(80)}) — look before you rm`,
+    `unknown ${vm(T2_UNKNOWN)}  no readable assignment — look before you rm`,
+    T2_BRANCH_LINE
+  ], 'T2(c)/M2 the branch line is printed after the three rm lines, the stale line for run 80 and the unknown line, in that order')
+
+  for (const n of [40, 41, 42]) {
+    assert.equal(printed.includes(`integration-run-${n}`), false,
+      `T2(c)/M2 no printed line names run ${n}: #800 is open, #810 is merged, and 42 has no pull request — an older closed-unmerged row is not the rule`)
+  }
+  assert.equal(printed.includes('#463'), false,
+    'T2(c)/M2 and none names #463, the older row of run 32')
+  assert.deepEqual(sorted(actionVms(result)), sorted([vm(71), vm(72), vm(5)]),
+    'T2(c)/M2 the three done rows are still reaped beside the report')
+}
+
+// ── T2(d) the janitor deletes nothing, and --dry-run reads the same [M3] ────
+{
+  const dry = t2Exec()
+  const dryResult = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
+
+  for (const [label, exec] of [['the pass', T2_EXEC], ['--dry-run', dry]]) {
+    assert.deepEqual(t2Deletes(exec), [],
+      `T2(d)/M3 ${label} issues no gh call carrying -X DELETE: the janitor deletes no branch`)
+    assert.deepEqual(exec.calls.filter((c) => c.cmd === 'git').map((c) => c.line), [],
+      `T2(d)/M3 ${label} runs no git`)
+  }
+
+  assert.deepEqual(ghPaths(dry), ghPaths(T2_EXEC),
+    'T2(d)/M3 --dry-run over the task fleet issues exactly the same gh paths')
+  assert.deepEqual(lsReads(dry), lsReads(T2_EXEC),
+    'T2(d)/M3 and exactly the same ls read')
+  assert.deepEqual(dry.mutating(), [],
+    'T2(d)/M3 and no rm')
+  assert.deepEqual(dryResult.branches, [T2_BRANCH],
+    'T2(d)/M3 while resolving the same result.branches — the branch report is reads, and it is printed either way')
+  const dryLines = renderJanitor(dryResult).split('\n')
+  assert.equal(dryLines[dryLines.length - 1], T2_BRANCH_LINE,
+    'T2(d)/M3 with the same last line')
+}
+
+// ── T2(e) the renderer without the key, and with nothing but the key [M4] ───
+{
+  assert.equal(
+    renderJanitor({ dryRun: false, age: '1h', actions: [], stale: [], unknown: [], deaths: [] }),
+    'nothing to do',
+    'T2(e)/M4 a result with no branches key and nothing in it still prints exactly `nothing to do`')
+
+  const oneRm = {
+    dryRun: false,
+    age: '1h',
+    actions: [{
+      kind: 'rm',
+      vm: vm(71),
+      run: 71,
+      state: 'done',
+      updatedAt: T2_OLD,
+      command: `rm ${vm(71)} --json`,
+      applied: true
+    }],
+    stale: [],
+    unknown: [],
+    deaths: []
+  }
+  assert.equal(renderJanitor(oneRm), `rm ${vm(71)}  run=71 done since ${T2_OLD}`,
+    'T2(e)/M4 a result of one action and no branches key renders exactly its BASE rm line')
+
+  assert.equal(
+    renderJanitor({
+      dryRun: false, age: '1h', actions: [], stale: [], unknown: [], deaths: [], branches: [T2_BRANCH]
+    }),
+    T2_BRANCH_LINE,
+    'T2(e)/M4 and a result whose only content is one branches entry renders exactly the one branch line')
+}
+
+// ── T2(f) what the RUNBOOK's janitor paragraph says [M5] ────────────────────
+{
+  const HERE = path.dirname(fileURLToPath(import.meta.url))
+  const RUNBOOK = path.resolve(HERE, '..', 'RUNBOOK.md')
+  const text = fs.readFileSync(RUNBOOK, 'utf8')
+  /** Wraps joined, so a sentence broken over two lines still reads as one. */
+  const joined = text.replace(/\s+/g, ' ')
+
+  assert.equal(joined.includes('It reaps VMs and nothing else'), false,
+    'T2(f)/M5 fleet/RUNBOOK.md no longer carries `It reaps VMs and nothing else: no branch and no tag on the target is its business.`')
+  assert.equal(joined.includes('no branch and no tag on the target is its business'), false,
+    'T2(f)/M5 nor the rest of that sentence')
+  assert.equal(joined.includes('closed and not merged'), true,
+    'T2(f)/M5 in its place a sentence carries the phrase `closed and not merged`')
+  assert.equal(joined.includes('deletes no branch'), true,
+    'T2(f)/M5 and says the janitor `deletes no branch`')
+  assert.equal(joined.includes('node fleet/retire.mjs --target'), true,
+    'T2(f)/M5 naming the sweep — `node fleet/retire.mjs --target <t>` — as what does delete it')
+  assert.equal(/ultra\/integration-run-/.test(text), true,
+    'T2(f)/M5 and the branch it reports, ultra/integration-run-<N>')
 }
 
 // ── (g) across every exec of every leg [M5] ─────────────────────────────────

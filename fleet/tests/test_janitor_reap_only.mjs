@@ -21,7 +21,9 @@
  *       updated two hours ago and one ten minutes ago: no `gh pr` command of any
  *       kind is issued, every `gh` call is two argv words — `api` and a path
  *       beginning `repos/` — so none carries `-X`, `--method`, `-f`, `-F`,
- *       `--input` or any other flag, every recorded action has `kind` `rm`, the
+ *       `--input` or any other flag — #724 Task 2's one
+ *       `git/matching-refs/heads/ultra/integration-run-` read per target rides
+ *       that same two-word shape — every recorded action has `kind` `rm`, the
  *       mutating lobby verbs are exactly one `rm <old vm> --json`, the young
  *       run's VM is in no action, `--dry-run` over the same fleet issues no
  *       `rm`, and the module exports no `PR_VIEW_JSON`;
@@ -146,8 +148,14 @@ const legAExec = () => makeExec({
 
   assert.deepEqual(
     sortedJson(ghArgvs(exec)),
-    sortedJson([['api', evidencePath(OLD)], ['api', evidencePath(YOUNG)]]),
-    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>'
+    sortedJson([['api', evidencePath(OLD)], ['api', evidencePath(YOUNG)]].concat([[
+      // #724 Task 2: the branch report's own read — one per distinct target
+      // among the rows, whatever the reap did. Both rows here carry the same
+      // `target=`, so it is issued once; nothing was canned for it, so the
+      // seam's 404 is "no branches" and it draws no `pulls?` read behind it.
+      'api', `repos/${TARGET}/git/matching-refs/heads/ultra/integration-run-`
+    ]])),
+    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>, plus #724\'s one matching-refs read per target'
   )
   for (const argv of ghArgvs(exec)) {
     assert.equal(argv.length, 2,

@@ -59,7 +59,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     branch's history reads wave by wave; append-only paths, `pull --rebase` and retry on
     non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
-    It goes with the merge (delete-on-merge); a `hold=1` run's stays while its PR is open.
+    It has three fates, decided by the pull request with the highest `number` on that head:
+    a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
+    and the retire sweep deletes one whose pull request is closed and not merged.
 - **The two tags** — a run's record, and the only refs that outlive it. At publish the sandbox tags
   the plan commit `ultra/plan/run-<N>` and the final evidence commit `ultra/evidence/run-<N>`, and the
   branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both
@@ -69,7 +71,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   reads each pair's `.ultrapowers/runs/<N>/status.json` on the run's evidence branch before it names
   that run's tags or branches: a run whose `state` is not one of `done`, `parked` or `failed`, or
   whose `ultra/integration-run-<N>` still has an open pull request, is a run in flight and prints
-  `run <N>: live (<why>) — skipped` instead — the same line under `--dry-run`. The record is
+  `run <N>: live (<why>) — skipped` instead — the same line under `--dry-run`. And
+  the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,
+  saying so on that run's line. The record is
   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
   `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
