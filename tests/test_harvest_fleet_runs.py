@@ -498,10 +498,11 @@ def test_a_run_that_carries_findings_is_never_reported_looked_empty(tmp_path, ca
 #                 tried, that same file is read once at the tag ref, and if that
 #                 read lands, every later file is read at the tag ref.
 #   M3 / leg (b)  a swept run — branch gone, tag holding all six — lands and
-#                 bundles in exactly seven `gh api` calls: one at the branch
-#                 ref, then six at the tag ref.
-#   M4 / leg (c)  a run present on the branch is read exactly as at BASE: six
-#                 calls, all at the branch ref, none at the tag ref.
+#                 bundles in one call at the branch ref, then six at the tag
+#                 ref (plus, since #702 Task 2, the transcripts listing at the
+#                 resolved ref: eight).
+#   M4 / leg (c)  a run present on the branch is read at the branch ref alone:
+#                 the six files and the listing, none at the tag ref.
 #   M5 / leg (d)  a run on neither ref is one `FAILED-LOOKUP:` line naming the
 #                 target, the run and both refs; and (the `Run:` leg) `--help`
 #                 names the tag.
@@ -613,6 +614,14 @@ if body is None:
     sys.stderr.write("gh: HTTP 404: Not Found (https://api.github.com/%s)\\n" % path)
     sys.exit(1)
 
+# #702 Task 2: the contents API answers a DIRECTORY path with a JSON ARRAY of
+# entries — `name`, `path`, `sha`, `size`, `type`, `download_url`, and no
+# `content`. An answer that is a list is printed as that list, unwrapped; every
+# file answer is still wrapped in the base64 envelope below.
+if isinstance(body, list):
+    sys.stdout.write(json.dumps(body) + "\\n")
+    sys.exit(0)
+
 raw = body.encode()
 sys.stdout.write(json.dumps({
     "name": path.rsplit("/", 1)[-1].split("?")[0],
@@ -675,14 +684,16 @@ def test_t6_evidence_tag_is_the_run_tag_and_the_branch_keeps_its_base_spelling()
     assert hfr.evidence_branch("run-7") == "ultra/evidence-run-7"
 
 
-def test_t6_a_swept_run_lands_from_the_tag_in_exactly_seven_calls(
+def test_t6_a_swept_run_lands_from_the_tag_in_exactly_eight_calls(
         tmp_path, monkeypatch, capsys):
     """M2/M3, leg (b): the branch is gone and the tag holds all six files. The
     harvest exits 0, writes `<cache>/runs/run-7/bundle.json` with `terminus`
-    from the fetched gate receipt, and makes exactly seven `gh api` calls: the
-    first at `…/status.json?ref=ultra/evidence-run-7`, the other six at
-    `?ref=ultra/evidence/run-7`, one per evidence file. A harvester that tries
-    the tag per missing file, or never, fails this leg."""
+    from the fetched gate receipt, and makes exactly EIGHT `gh api` calls: the
+    first at `…/status.json?ref=ultra/evidence-run-7`, the next six at
+    `?ref=ultra/evidence/run-7`, one per evidence file, and — #702 Task 2 — the
+    `transcripts` listing eighth, at the ref the loop resolved (the tag), which
+    this fixture answers 404. A harvester that tries the tag per missing file,
+    or never, still fails this leg."""
     log = _t6_install_gh(tmp_path, monkeypatch, _t6_answers(T6_TAG_REF))
     cache = tmp_path / "cache"
 
@@ -692,7 +703,8 @@ def test_t6_a_swept_run_lands_from_the_tag_in_exactly_seven_calls(
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert _t6_refs(log) == (
         [_t6_path("status.json", T6_BRANCH_REF)]
-        + [_t6_path(n, T6_TAG_REF) for n in T6_EVIDENCE_FILES]), _t6_refs(log)
+        + [_t6_path(n, T6_TAG_REF) for n in T6_EVIDENCE_FILES]
+        + [_t6_path(T6_TRANSCRIPTS, T6_TAG_REF)]), _t6_refs(log)
     # M2 spells the command exactly: `gh api <path>`, nothing else.
     assert [c for c in _t6_calls(log) if c != ["api", c[-1]]] == [], _t6_calls(log)
 
@@ -711,7 +723,8 @@ def test_t6_a_swept_run_lands_from_the_tag_in_exactly_seven_calls(
 def test_t6_a_run_on_the_branch_is_read_exactly_as_at_base(
         tmp_path, monkeypatch, capsys):
     """M2/M4, leg (c): the branch answers all six, so the tag is never probed —
-    exactly six `gh api` calls, all at `?ref=ultra/evidence-run-7`, none
+    the six file reads at `?ref=ultra/evidence-run-7` and, after them, #702
+    Task 2's one `transcripts` listing at the same ref: seven calls, none
     containing `ultra/evidence/run-7`. A harvester that probes the tag when the
     branch already answered fails this leg."""
     log = _t6_install_gh(tmp_path, monkeypatch, _t6_answers(T6_BRANCH_REF))
@@ -721,8 +734,9 @@ def test_t6_a_run_on_the_branch_is_read_exactly_as_at_base(
     cap = capsys.readouterr()
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
-    assert _t6_refs(log) == [_t6_path(n, T6_BRANCH_REF)
-                             for n in T6_EVIDENCE_FILES], _t6_refs(log)
+    assert _t6_refs(log) == ([_t6_path(n, T6_BRANCH_REF)
+                              for n in T6_EVIDENCE_FILES]
+                             + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]), _t6_refs(log)
     assert [p for p in _t6_refs(log) if T6_TAG_REF in p] == [], _t6_refs(log)
     assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
     assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
@@ -736,7 +750,11 @@ def test_t6_a_run_on_neither_ref_names_both_refs_and_probes_the_tag_once(
     the `status.json` read, issued second, directly after the `status.json`
     read at the branch ref — the other six being the six files at the branch
     ref in `EVIDENCE_FILES` order. A harvester that re-probes the tag for every
-    remaining file after the one tag miss, or that never tries it, fails."""
+    remaining file after the one tag miss, or that never tries it, fails.
+
+    #702 Task 2 leaves this count where it is: a run that lands nothing raises
+    `FailedLookup` before any listing is read, so no path here names
+    `transcripts`."""
     assert hfr.EVIDENCE_FILES == T6_EVIDENCE_FILES, hfr.EVIDENCE_FILES
     log = _t6_install_gh(tmp_path, monkeypatch, {})
     cache = tmp_path / "cache"
@@ -759,6 +777,7 @@ def test_t6_a_run_on_neither_ref_names_both_refs_and_probes_the_tag_once(
         _t6_path("status.json", T6_TAG_REF)], refs
     assert [p for p in refs if T6_TAG_REF not in p] == [
         _t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES], refs
+    assert [p for p in refs if T6_TRANSCRIPTS in p] == [], refs
 
 
 def test_t6_an_absence_after_a_file_has_landed_never_falls_back_to_the_tag(
@@ -767,7 +786,8 @@ def test_t6_an_absence_after_a_file_has_landed_never_falls_back_to_the_tag(
     `report.json` and `events.jsonl` — so the first read lands and
     `receipt.json` and `engine.log` are absent on the branch — while the tag
     holds all six. The harvest exits 0, writes the bundle, and makes exactly
-    six `gh api` calls, all at the branch ref and none containing
+    seven `gh api` calls (the six files and, #702 Task 2, the `transcripts`
+    listing seventh), all at the branch ref and none containing
     `ultra/evidence/run-7`: a harvester that falls back to the tag on an absent
     read after a file has already landed fails this leg, because the tag would
     have answered."""
@@ -782,11 +802,194 @@ def test_t6_an_absence_after_a_file_has_landed_never_falls_back_to_the_tag(
     cap = capsys.readouterr()
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
-    assert _t6_refs(log) == [_t6_path(n, T6_BRANCH_REF)
-                             for n in T6_EVIDENCE_FILES], _t6_refs(log)
+    assert _t6_refs(log) == ([_t6_path(n, T6_BRANCH_REF)
+                              for n in T6_EVIDENCE_FILES]
+                             + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]), _t6_refs(log)
     assert [p for p in _t6_refs(log) if T6_TAG_REF in p] == [], _t6_refs(log)
     assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
     assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
+
+
+# ---------- #702 Task 2: the record carries the slices, the harvester reads
+# ---------- them ----------
+#
+# The evidence branch never carried `claude/projects/`, so every worker of every
+# fetched run rendered `_no transcript found_`. The record now holds
+# `.ultrapowers/runs/<N>/transcripts/<sessionId>.jsonl`, and the harvester reads
+# that directory the way the contents API serves one: a LISTING read of the
+# directory path — a JSON array of `{name, path, type, …}` entries, no `content`
+# envelope — then one contents read per `type == "file"` entry, at the same ref.
+#
+#   M3 / legs (e)(f)  one listing read, issued after the six-file loop and after
+#                     the `events.jsonl` check, at the ref the loop resolved;
+#                     one read per `type == "file"` entry and none for any other
+#                     type; a 404 listing is one `harvest_fleet_runs:` line, no
+#                     `transcripts/` directory, no `FAILED-LOOKUP:`, exit 0.
+#   M4 / leg (e)      the fetched run directory's `transcripts/<sessionId>.jsonl`
+#                     renders that worker's slice section, so `slice.md` no
+#                     longer says `_no transcript found_`.
+
+#: The directory path segment, and the listing/entry reads spelled through
+#: `_t6_path` — the BASE contents path with `transcripts` in the file slot.
+T6_TRANSCRIPTS = "transcripts"
+#: The two `.jsonl` entries the listing names. The first is the fixture
+#: worker's session (`sess-1` in `worker:start`/`worker:end`), so the slice
+#: builder joins it to that worker by name.
+T6_SLICE_NAMES = ("sess-1.jsonl", "bbbb-2.jsonl")
+#: A string that exists nowhere but inside the fetched slice body [M4].
+T6_SLICE_MARK = "TRANSCRIPT-OFF-THE-RECORD"
+
+
+def _t6_slice_text(session_id, mark):
+    """A slice file's bytes: the transcript's own shape, one record per line —
+    a text turn, an assistant turn carrying a reduced `tool_use`, and the
+    elision marker. `_readers.records()` reads it unchanged."""
+    return "\n".join([
+        json.dumps({"type": "user", "uuid": "u-1", "parentUuid": None,
+                    "timestamp": "2026-09-06T00:00:00Z", "sessionId": session_id,
+                    "message": {"role": "user",
+                                "content": [{"type": "text", "text": mark}]}}),
+        json.dumps({"type": "assistant", "uuid": "u-2", "parentUuid": "u-1",
+                    "timestamp": "2026-09-06T00:00:01Z", "sessionId": session_id,
+                    "message": {"role": "assistant", "model": "claude-opus-5",
+                                "content": [
+                                    {"type": "text", "text": f"{session_id} reporting"},
+                                    {"type": "tool_use", "id": "toolu_1",
+                                     "name": "Read",
+                                     "input": {"file_path": "/clones/task-1/a.py"}}]}}),
+        json.dumps({"type": "system", "subtype": "elided", "records": 37}),
+    ]) + "\n"
+
+
+def _t6_listing_entries(names=T6_SLICE_NAMES):
+    """What the contents API answers a directory path with: one entry per file,
+    in the listing's own order, plus one `type: "dir"` entry the harvester must
+    NOT read — a directory is not a slice."""
+    entries = [{"name": n,
+                "path": f".ultrapowers/runs/{T6_RUN}/{T6_TRANSCRIPTS}/{n}",
+                "sha": "0" * 40, "size": 1, "type": "file",
+                "download_url": f"https://example.invalid/{n}"}
+               for n in names]
+    entries.append({"name": "nested",
+                    "path": f".ultrapowers/runs/{T6_RUN}/{T6_TRANSCRIPTS}/nested",
+                    "sha": "1" * 40, "size": 0, "type": "dir",
+                    "download_url": None})
+    return entries
+
+
+def _t6_slice_bodies(names=T6_SLICE_NAMES):
+    """`<name> -> bytes`, the first carrying the fixture worker's session id."""
+    return {n: _t6_slice_text(n[:-len(".jsonl")],
+                              T6_SLICE_MARK if i == 0 else f"the {n} body")
+            for i, n in enumerate(names)}
+
+
+def _t6_transcript_answers(ref, names=T6_SLICE_NAMES):
+    """The listing at `ref` (a JSON array, served unwrapped) plus one file
+    answer per listed `.jsonl`, at the same ref."""
+    answers = {_t6_path(T6_TRANSCRIPTS, ref): _t6_listing_entries(names)}
+    for name, body in _t6_slice_bodies(names).items():
+        answers[_t6_path(f"{T6_TRANSCRIPTS}/{name}", ref)] = body
+    return answers
+
+
+def _t6_warn_lines(err):
+    """The harvester's own advisory lines — `_warn`'s prefix, not #489's."""
+    return [ln for ln in err.splitlines()
+            if ln.startswith("harvest_fleet_runs:")]
+
+
+def test_t2_the_listing_and_every_listed_file_are_read_at_the_resolved_ref(
+        tmp_path, monkeypatch, capsys):
+    """M3/M4, leg (e): the six files answer on the branch, the listing answers
+    with a three-entry array (two `type: "file"` `.jsonl` entries and one
+    `type: "dir"`), and each listed file answers with a slice body. The harvest
+    exits 0 and the call log is exactly the six file paths, then the listing
+    path, then the two `.jsonl` file paths, in that order — nine calls, and no
+    path naming `nested`, because a directory entry is not read."""
+    answers = dict(_t6_answers(T6_BRANCH_REF),
+                   **_t6_transcript_answers(T6_BRANCH_REF))
+    log = _t6_install_gh(tmp_path, monkeypatch, answers)
+    cache = tmp_path / "cache"
+
+    rc = _t6_main(_t6_harvest(cache))
+    cap = capsys.readouterr()
+
+    assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
+    refs = _t6_refs(log)
+    assert refs == ([_t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES]
+                    + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]
+                    + [_t6_path(f"{T6_TRANSCRIPTS}/{n}", T6_BRANCH_REF)
+                       for n in T6_SLICE_NAMES]), refs
+    assert len(refs) == 9, refs
+    assert [p for p in refs if "nested" in p] == [], (
+        "a `type: \"dir\"` entry is not a slice and is never read: " + repr(refs))
+    # M2's spelling is unchanged: `gh api <path>`, nothing else.
+    assert [c for c in _t6_calls(log) if c != ["api", c[-1]]] == [], _t6_calls(log)
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
+
+    # M4: the worker's section is rendered from the fetched slice, so the string
+    # this harvest exists to remove is gone.
+    md = (cache / "runs" / "run-7" / "slice.md").read_text()
+    assert "## impl:1 (implementer, session sess-1)" in md, md
+    assert T6_SLICE_MARK in md, md
+    assert "_no transcript found_" not in md, md
+
+
+def test_t2_each_listed_file_lands_byte_equal_under_the_fetch_destination(
+        tmp_path, monkeypatch, capsys):
+    """M3, leg (e): `fetch_evidence` writes each listed file's decoded bytes to
+    `<dest>/transcripts/<name>`, byte for byte and under the same name — and
+    writes nothing for the `type: "dir"` entry. Read through `fetch_evidence`
+    itself because `main`'s destination is a `TemporaryDirectory` that is gone
+    by the time it returns."""
+    answers = dict(_t6_answers(T6_BRANCH_REF),
+                   **_t6_transcript_answers(T6_BRANCH_REF))
+    _t6_install_gh(tmp_path, monkeypatch, answers)
+
+    dest = hfr.fetch_evidence(T6_TARGET, T6_RUN, tmp_path / "evidence" / T6_RUN)
+    capsys.readouterr()
+
+    assert dest == tmp_path / "evidence" / T6_RUN
+    landed = dest / T6_TRANSCRIPTS
+    assert landed.is_dir(), f"no transcripts/ under {dest}: {sorted(p.name for p in dest.iterdir())}"
+    assert sorted(p.name for p in landed.iterdir()) == sorted(T6_SLICE_NAMES), (
+        sorted(p.name for p in landed.iterdir()))
+    for name, body in _t6_slice_bodies().items():
+        assert (landed / name).read_bytes() == body.encode(), name
+
+
+def test_t2_a_404_listing_is_one_advisory_line_and_no_transcripts_directory(
+        tmp_path, monkeypatch, capsys):
+    """M3, leg (f): the six files answer and the listing does not (a 404). The
+    harvest exits 0 and the bundle lands; the call log is exactly the six file
+    paths then the listing path — seven calls, no file reads; stderr carries
+    one `harvest_fleet_runs:` line naming `transcripts` and no `FAILED-LOOKUP:`;
+    and no `transcripts/` directory is created under the fetch destination. A
+    run whose engine wrote no slices is an absence, not a failure."""
+    log = _t6_install_gh(tmp_path, monkeypatch, _t6_answers(T6_BRANCH_REF))
+    cache = tmp_path / "cache"
+
+    rc = _t6_main(_t6_harvest(cache))
+    cap = capsys.readouterr()
+
+    assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
+    assert _t6_refs(log) == ([_t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES]
+                             + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]), _t6_refs(log)
+    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
+    warned = _t6_warn_lines(cap.err)
+    assert len(warned) == 1, f"expected one harvest_fleet_runs: line, got: {cap.err}"
+    assert T6_TRANSCRIPTS in warned[0], warned[0]
+
+    # The same absence, read through `fetch_evidence` so the destination
+    # outlives the call: no `transcripts/` directory at all.
+    log.unlink()
+    dest = hfr.fetch_evidence(T6_TARGET, T6_RUN, tmp_path / "evidence" / T6_RUN)
+    capsys.readouterr()
+    assert not (dest / T6_TRANSCRIPTS).exists(), (
+        "a 404 listing conjures no transcripts/ directory: "
+        + repr(sorted(p.name for p in dest.iterdir())))
 
 
 def test_t6_help_names_the_tag_as_well_as_the_branch():

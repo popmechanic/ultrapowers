@@ -530,6 +530,223 @@ export function recordEnvelopeDenials({ workersDir, label, role, envelope }) {
   } catch { return 0 }
 }
 
+// ── #702 Task 1: the per-worker transcript slice ─────────────────────────────
+// Beside the receipts, one small file per worker session: which tools it called
+// and on what paths, how big each result was, and what it said last — and never
+// the contents of any file it read or wrote.
+//
+// WHY AT THE WRITER, not the reader. `fleet_slice.WORKER_BUDGET` is 12,000
+// chars and the ultralearn slicer applies it when a lens reads a run. That is
+// too late for two reasons: the live transcripts live under the sandbox's
+// per-run CLAUDE_CONFIG_DIR and never leave it, and a run's 14 transcripts were
+// 564,293 chars on run-30. So the same number is applied HERE, once, and what
+// lands beside the run is already a slice. Head 8,000 + tail 4,000 is the
+// slicer's own rule — the brief is at the top, the conclusion at the bottom,
+// and the middle is the part a lens least often needs.
+//
+// WHAT THE SLICE MUST NOT CARRY, and why an allowlist is the only safe shape:
+// a `Read`'s file body rides in the `tool_result` block AND again in the user
+// record's top-level `toolUseResult`; `Write`/`Edit`/`MultiEdit` carry file
+// bodies in their tool_use `input` (`content`, `new_string`, `old_string`,
+// `edits`); `Agent` carries a whole prompt in `input.prompt`; a `thinking`
+// block carries the reasoning and its signature. Every one of those is a key
+// or a block type a denylist would have to enumerate — and the CLI adds record
+// types and input keys without asking us. So: records by allowlist
+// (`user`/`assistant`), blocks by allowlist (`text`/`tool_use`/`tool_result`),
+// tool_use inputs by allowlist (the six path-shaped scalars a lens needs to see
+// what a worker touched), and every tool_result body replaced by its size.
+//
+// The shape is a CONTRACT with the reading side: every line is an object and
+// `message.content` is either a string or a list of text/tool_use/tool_result
+// blocks, so `_readers.records()` and `_readers.iter_blocks_indexed()` in
+// skills/ultralearn/scripts/_readers.py read a slice exactly as they read a
+// live transcript. `<n> chars` is counted the way `_readers.block_text`
+// flattens (a string as-is, a list as its blocks' `text` joined by newlines),
+// so the number a lens reads means the same thing on both sides.
+const SLICE_MAX_BYTES = 12000
+const SLICE_HEAD_BYTES = 8000
+const SLICE_TAIL_BYTES = 4000
+// Text bounds resolve "the final message kept whole" against the byte cap: a
+// final assistant text longer than the tail budget would be the record the tail
+// cut drops, so the thing the brief most wants would be the one thing missing.
+// Bounded at 3,000 it always fits; the envelope's `result` still carries the
+// worker's whole final message beside it in the worker dir.
+const SLICE_TEXT_MAX = 2000
+const SLICE_FINAL_TEXT_MAX = 3000
+// A Bash `command` can carry a heredoc with a whole file body in it, which is
+// why even an allowlisted string is cut.
+const SLICE_INPUT_STR_MAX = 500
+// An error's first 200 characters are the part that says what went wrong.
+const SLICE_ERROR_TEXT_MAX = 200
+const SLICE_INPUT_KEYS = ['file_path', 'path', 'command', 'pattern', 'glob', 'description']
+const SLICE_RECORD_KEYS = ['type', 'uuid', 'parentUuid', 'timestamp', 'sessionId']
+const SLICE_MESSAGE_KEYS = ['role', 'model']
+
+// `…[truncated <k> chars]` — the marker is part of the contract, not decoration:
+// a lens that reads a cut text must be able to tell it was cut.
+function cutText(text, max) {
+  const s = typeof text === 'string' ? text : ''
+  if (s.length <= max) return s
+  return s.slice(0, max) + '…[truncated ' + (s.length - max) + ' chars]'
+}
+
+// `_readers.block_text`, transliterated: `text` if it is a string, else
+// `content` as a string, else `content`'s blocks' text joined by newlines. The
+// count in `[tool_result: <n> chars]` is this length, so the two sides agree.
+function blockText(block) {
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return ''
+  if (typeof block.text === 'string') return block.text
+  const c = block.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c)) return c.map(blockText).join('\n')
+  return ''
+}
+
+function reduceToolUse(block) {
+  const src = (block.input && typeof block.input === 'object') ? block.input : {}
+  const input = {}
+  for (const k of SLICE_INPUT_KEYS) {
+    const v = src[k]
+    if (typeof v === 'string') input[k] = v.slice(0, SLICE_INPUT_STR_MAX)
+    else if (typeof v === 'number' || typeof v === 'boolean') input[k] = v
+    // Anything else — an object, an array, a null — is dropped: `Edit`'s
+    // `edits` is an array of file bodies, and no path-shaped key is ever one.
+  }
+  return { type: 'tool_use', id: block.id, name: block.name, input }
+}
+
+function reduceToolResult(block) {
+  const flat = blockText(block)
+  const out = { type: 'tool_result', tool_use_id: block.tool_use_id }
+  if (block.is_error !== undefined) out.is_error = block.is_error
+  out.content = block.is_error === true
+    ? '[tool_result: ' + flat.length + ' chars, is_error] ' + flat.slice(0, SLICE_ERROR_TEXT_MAX)
+    : '[tool_result: ' + flat.length + ' chars]'
+  return out
+}
+
+function reduceRecord(rec, finalTextBlock) {
+  const out = {}
+  for (const k of SLICE_RECORD_KEYS) if (rec[k] !== undefined) out[k] = rec[k]
+  const msg = (rec.message && typeof rec.message === 'object' && !Array.isArray(rec.message)) ? rec.message : null
+  if (msg) {
+    const m = {}
+    for (const k of SLICE_MESSAGE_KEYS) if (msg[k] !== undefined) m[k] = msg[k]
+    const c = msg.content
+    if (typeof c === 'string') {
+      // #137's shape: a short CLI prompt arrives as plain string content, and
+      // `iter_blocks_indexed` reads it as a single text block. It stays a
+      // string here so it keeps reading as one.
+      m.content = cutText(c, SLICE_TEXT_MAX)
+    } else if (Array.isArray(c)) {
+      const blocks = []
+      for (const b of c) {
+        if (!b || typeof b !== 'object') continue
+        if (b.type === 'text') {
+          blocks.push({ type: 'text', text: cutText(b.text, b === finalTextBlock ? SLICE_FINAL_TEXT_MAX : SLICE_TEXT_MAX) })
+        } else if (b.type === 'tool_use') {
+          blocks.push(reduceToolUse(b))
+        } else if (b.type === 'tool_result') {
+          blocks.push(reduceToolResult(b))
+        }
+        // Every other block type — `thinking` above all — is dropped by the
+        // allowlist, so a block type the CLI adds tomorrow is dropped too.
+      }
+      m.content = blocks
+    }
+    out.message = m
+  }
+  return out
+}
+
+// jsonl in, jsonl out — the whole reduction, with no filesystem in it, so the
+// exam can drive it without a process.
+export function sliceTranscript(jsonl) {
+  const kept = []
+  for (const line of String(jsonl || '').split('\n')) {
+    const s = line.trim()
+    if (!s) continue
+    let rec
+    try { rec = JSON.parse(s) } catch { continue }   // a partial line is not a record
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec)) continue
+    if (rec.type !== 'user' && rec.type !== 'assistant') continue
+    kept.push(rec)
+  }
+
+  // The last text block of the last assistant record is the worker's final
+  // message — the one text worth 3,000 characters instead of 2,000.
+  let finalTextBlock = null
+  for (let i = kept.length - 1; i >= 0; i--) {
+    if (kept[i].type !== 'assistant') continue
+    const c = kept[i].message && kept[i].message.content
+    if (Array.isArray(c)) for (const b of c) if (b && b.type === 'text') finalTextBlock = b
+    break
+  }
+
+  const lines = kept.map((r) => JSON.stringify(reduceRecord(r, finalTextBlock)))
+  // Every line costs its own bytes plus the newline that separates it; the
+  // joined string is one byte shorter than this sum, so budgeting on it is
+  // conservative in the safe direction.
+  const size = (s) => Buffer.byteLength(s, 'utf8') + 1
+  const total = lines.reduce((n, l) => n + size(l), 0)
+  if (total <= SLICE_MAX_BYTES) return lines.join('\n')
+
+  const elisionLine = (n) => JSON.stringify({ type: 'system', subtype: 'elided', records: n })
+  // The elision line's own width depends on the count it carries, which is not
+  // known until the cut is made. Reserve the worst case (every record dropped)
+  // so the head budget never has to be revised downward after the fact.
+  let used = size(elisionLine(kept.length))
+  let head = 0
+  while (head < lines.length && used + size(lines[head]) <= SLICE_HEAD_BYTES) {
+    used += size(lines[head]); head++
+  }
+  let tailUsed = 0, tail = 0
+  while (tail < lines.length - head && tailUsed + size(lines[lines.length - 1 - tail]) <= SLICE_TAIL_BYTES) {
+    tailUsed += size(lines[lines.length - 1 - tail]); tail++
+  }
+  // head + tail can never cover every record here: their budgets sum to 12,000
+  // and the records total more than that, so at least one is always dropped.
+  return lines.slice(0, head)
+    .concat([elisionLine(lines.length - head - tail)], lines.slice(lines.length - tail))
+    .join('\n')
+}
+
+// The CLI writes each session to `<CLAUDE_CONFIG_DIR>/projects/<cwd-slug>/
+// <sessionId>.jsonl`, where the slug is the worker's cwd with `/` turned into
+// `-`. Recomputing that slug is a second place to get wrong (a realpath, a
+// trailing slash, a character class), and the session id is already unique — so
+// search every subdirectory of `projects/` instead, exactly as
+// `fleet_slice.find_transcript` does.
+function findTranscript(configDir, sessionId) {
+  const projects = path.join(configDir, 'projects')
+  let entries
+  try { entries = fs.readdirSync(projects, { withFileTypes: true }) } catch { return null }
+  const name = sessionId + '.jsonl'
+  for (const e of entries) {
+    if (!e.isDirectory()) continue
+    const p = path.join(projects, e.name, name)
+    if (fs.existsSync(p)) return p
+  }
+  return null
+}
+
+// Find, reduce, write `<runDir>/transcripts/<sessionId>.jsonl`. Returns
+// `{ bytes }`, or null when there is no transcript to slice. A read or write
+// that fails THROWS — the call site turns that into `transcript:missing` with a
+// detail, which is the difference between "this worker left no transcript" and
+// "this worker's transcript could not be read", and the two are worth telling
+// apart when a run comes back with nothing to look at.
+export function writeTranscriptSlice({ configDir, runDir, sessionId }) {
+  if (!configDir || !runDir || !sessionId) return null
+  const src = findTranscript(configDir, sessionId)
+  if (!src) return null
+  const sliced = sliceTranscript(fs.readFileSync(src, 'utf8'))
+  const outDir = path.join(runDir, 'transcripts')
+  fs.mkdirSync(outDir, { recursive: true })
+  fs.writeFileSync(path.join(outDir, sessionId + '.jsonl'), sliced)
+  return { bytes: Buffer.byteLength(sliced, 'utf8') }
+}
+
 export function createRunWorker(cfg) {
   const {
     runId, workersDir, cwdFor, promptFileFor, settingsFor, addDirsFor,
@@ -624,6 +841,29 @@ export function createRunWorker(cfg) {
     onEvent({ kind: 'worker:end', label: opts.label, role, sessionId, exitCode, timedOut,
       outcome: verdict.outcome, class: verdict.class, status: verdict.status || null,
       meter: envelope ? meterOf(envelope) : null })
+
+    // #702 Task 1 — the slice, after `worker:end` and before the verdict is
+    // acted on, so every outcome leaves one (a worker that failed is the one
+    // whose transcript is most worth reading). Best-effort exactly like
+    // `recordEnvelopeDenials`: a throw anywhere in finding, reading, reducing
+    // or writing becomes an event, never a change to what agent() returns —
+    // an evidence writer that can fail a worker is worse than no evidence.
+    // `workersDir` null is a caller without an evidence bundle: nothing to
+    // write beside, so nothing is written and nothing is emitted.
+    if (workersDir) {
+      try {
+        const slice = writeTranscriptSlice({
+          configDir: env && env.CLAUDE_CONFIG_DIR,
+          runDir: path.dirname(workersDir),
+          sessionId,
+        })
+        if (slice) onEvent({ kind: 'transcript:slice', label: opts.label, sessionId, bytes: slice.bytes })
+        else onEvent({ kind: 'transcript:missing', label: opts.label, sessionId })
+      } catch (e) {
+        onEvent({ kind: 'transcript:missing', label: opts.label, sessionId,
+          detail: String((e && e.message) || e) })
+      }
+    }
 
     switch (verdict.outcome) {
       case 'ok':

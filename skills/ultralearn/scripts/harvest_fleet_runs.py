@@ -140,6 +140,32 @@ def _gh_api(api_path):
     return base64.b64decode(content)
 
 
+def _gh_api_listing(api_path):
+    """The JSON array a contents read of a DIRECTORY answers, or None.
+
+    `_gh_api` cannot read this: it calls `.get("content")` on the parsed body,
+    and a directory answers a LIST of `{name, path, type, …}` entries with no
+    `content` at all. The absence rule is the file reader's — gh answering
+    non-zero is an *answer* (that directory is not on the ref, which is what a
+    run whose engine wrote no transcripts looks like), not a failure.
+    """
+    proc = subprocess.run(["gh", "api", api_path], capture_output=True,
+                          text=True, timeout=GH_TIMEOUT)
+    if proc.returncode != 0:
+        return None
+    try:
+        listing = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        swallow("gh api answered a non-JSON body for a directory; treating the "
+                "directory as absent", exc)
+        return None
+    if not isinstance(listing, list):
+        # A path that exists but is a FILE answers an envelope, not an array.
+        # Same standing as a 404: there is no directory here to walk.
+        return None
+    return listing
+
+
 def fetch_evidence(target: str, run: str, dest: Path) -> Path:
     """Pull one run's committed record off `ultra/evidence-run-<N>`, or off
     `ultra/evidence/run-<N>` once that branch is gone, into `dest`, and return
@@ -198,7 +224,50 @@ def fetch_evidence(target: str, run: str, dest: Path) -> Path:
         raise FailedLookup(
             f"{target} run {number}: no events.jsonl on {ref} "
             f"— a run with no timeline cannot bundle")
+
+    # The worker slices under `transcripts/` (#702), read LAST and at the ref
+    # the six files above resolved: a run that raised — nothing readable, or no
+    # timeline — never spends the call, and a swept run's listing goes to the
+    # tag with the rest of its record. One listing, then one contents read per
+    # entry the listing calls a file: the API answers a directory with an
+    # array, not with its files' bodies.
+    entries = _fetch_listing(target, run, ref, number)
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("type") != "file":
+            continue
+        name = entry.get("name")
+        # A listing is remote data: a name with a separator in it would write
+        # outside `dest/transcripts/`.
+        if not isinstance(name, str) or not name or "/" in name or name in (".", ".."):
+            continue
+        body = read(f"transcripts/{name}", ref)
+        if body is None:
+            _warn(f"{target} run {number}: no transcripts/{name} on {ref}; "
+                  f"skipping that transcript")
+            continue
+        (dest / "transcripts").mkdir(parents=True, exist_ok=True)
+        (dest / "transcripts" / name).write_bytes(body)
     return dest
+
+
+def _fetch_listing(target, run, ref, number):
+    """The `transcripts/` listing at `ref`, or `[]` when there is none.
+
+    An absent directory is the ordinary shape of a run whose engine wrote no
+    transcripts, so it is one line on stderr and no `transcripts/` directory —
+    never a `FailedLookup`, which would cost the whole run its bundle over
+    evidence the lenses treat as optional.
+    """
+    try:
+        entries = _gh_api_listing(_evidence_api_path(target, run, "transcripts", ref))
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise FailedLookup(
+            f"{target} run {number}: cannot read {ref} with gh ({exc})") from exc
+    if entries is None:
+        _warn(f"{target} run {number}: no transcripts/ on {ref}; "
+              f"the run bundles without worker slices")
+        return []
+    return entries
 
 
 def discover_run_dirs(path, workdir):
@@ -373,10 +442,14 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
     # #415: the worker's verdict is its envelope, not a transcript turn — pass
-    # the run dir's `workers/` so each slice section carries it.
+    # the run dir's `workers/` so each slice section carries it. #702: and the
+    # run dir itself, because a HARVESTED run has its transcripts under
+    # `<run dir>/transcripts/` and no `claude/projects/` — without it every
+    # fetched run's slice read `_no transcript found_`.
     (out / "slice.md").write_text(fleet_slice.build_slice(
         fleet_events.render_timeline(events), summary.get("workers") or [],
-        projects_root, budget, workers_root=run_dir / "workers"))
+        projects_root, budget, workers_root=run_dir / "workers",
+        run_dir=run_dir))
     return out
 
 

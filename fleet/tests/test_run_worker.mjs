@@ -30,6 +30,12 @@ import {
   createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES, recordEnvelopeDenials,
 } from '../run-worker.mjs'
 import { isSchemaTrip } from '../run-engine.mjs'
+// #702 Task 1 reads its two new exports off the NAMESPACE rather than adding
+// them to the named import above: a missing named export is a link-time
+// SyntaxError that would take the whole file down before a single existing
+// assertion runs, and "the module does not export it yet" deserves to be one
+// legible assertion, in its own section, next to the legs that need it.
+import * as runWorkerModule from '../run-worker.mjs'
 import { deadlineBudget } from './deadline-slack.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
@@ -588,6 +594,388 @@ setInterval(() => {}, 1000)
 await assert.rejects(
   () => createRunWorker({ runId: 'r', cwdFor: () => null, cli: fakeCli })('x', { label: 'impl:T1' }),
   /refusing to run a worker in an unknown directory/)
+
+// ── 9. #702 Task 1: the engine writes each worker's transcript slice ─────────
+//
+// The claim: beside the receipts, one small file per worker session showing
+// which tools the worker called and on what paths, how big each result was, and
+// what it said last — and never the contents of any file it read or wrote.
+//
+// Two pure pieces carry the whole reduction so the legs below can drive it
+// without a process (`sliceTranscript`, M2-M6) and without the CLI's own config
+// layout (`writeTranscriptSlice`, M1/M7); the dispatch legs (a) and (g) drive
+// the real `agent()` against the fake `claude` above, with a planted transcript
+// under a fresh CLAUDE_CONFIG_DIR.
+{
+  const { sliceTranscript, writeTranscriptSlice } = runWorkerModule
+  // The Produces contract, asserted before anything uses it — at BASE this is
+  // the one thing that fails, and it says why: the implementation is absent.
+  assert.equal(typeof sliceTranscript, 'function',
+    '#702 Task 1: run-worker.mjs must export sliceTranscript(jsonl: string) -> string [M2]')
+  assert.equal(typeof writeTranscriptSlice, 'function',
+    '#702 Task 1: run-worker.mjs must export writeTranscriptSlice({configDir, runDir, sessionId}) [M1]')
+
+  const lines = (s) => String(s).split('\n').filter((l) => l.trim() !== '')
+  const objs = (s) => lines(s).map((l) => JSON.parse(l))
+  const jsonl = (recs) => recs.map((r) => JSON.stringify(r)).join('\n') + '\n'
+  const stamp = '2026-09-06T12:00:00.000Z'
+  // The CLI writes each session to <CLAUDE_CONFIG_DIR>/projects/<cwd-slug>/<id>
+  // .jsonl, so the finder searches EVERY subdirectory of projects/ rather than
+  // computing a slug — every plant below uses a slug the exam never derives.
+  const plant = (configDir, slug, sessionId, text) => {
+    const d = path.join(configDir, 'projects', slug)
+    fs.mkdirSync(d, { recursive: true })
+    const f = path.join(d, sessionId + '.jsonl')
+    fs.writeFileSync(f, text)
+    return f
+  }
+  const mkEnv = (extra = {}) => ({
+    ...process.env, FAKE_SCENARIO: 'success', FAKE_ARGV_OUT: argvOut, FAKE_STDIN_OUT: stdinOut, ...extra,
+  })
+  // The run dir is path.dirname(workersDir) — the same derivation
+  // recordEnvelopeDenials uses for confine-denials.jsonl. Here that is `tmp`.
+  const runDir = path.dirname(workersDir)
+  const sliceFile = (sessionId) => path.join(runDir, 'transcripts', sessionId + '.jsonl')
+  const ok = { ok: true, cwd: fs.realpathSync(clone) }
+
+  // (a) [M1] the dispatch writes the file and announces it after worker:end.
+  {
+    const cfgDir = fs.mkdtempSync(path.join(tmp, 'cfg-a-'))
+    const sidA = sessionIdFor('run-24', 'impl:T7')
+    plant(cfgDir, '-home-worker-clones-task-T7', sidA, jsonl([
+      { type: 'user', uuid: 'a1', parentUuid: null, timestamp: stamp, sessionId: sidA,
+        message: { role: 'user', content: [{ type: 'text', text: 'do the thing' }] } },
+      { type: 'assistant', uuid: 'a2', parentUuid: 'a1', timestamp: stamp, sessionId: sidA,
+        message: { role: 'assistant', model: 'claude-opus-5', content: [
+          { type: 'text', text: 'reading it' },
+          { type: 'tool_use', id: 'toolu_a', name: 'Read', input: { file_path: '/src/x.py' } },
+        ] } },
+      { type: 'user', uuid: 'a3', parentUuid: 'a2', timestamp: stamp, sessionId: sidA,
+        message: { role: 'user', content: [
+          { type: 'tool_result', tool_use_id: 'toolu_a', content: 'the whole file body' },
+        ] } },
+    ]))
+    const evs = []
+    const agent = mkAgent('success', { env: mkEnv({ CLAUDE_CONFIG_DIR: cfgDir }), onEvent: (e) => evs.push(e) })
+
+    const out = await agent('x', { label: 'impl:T7', model: 'sonnet', schema: SCHEMA })
+    assert.deepEqual(out, ok, '(a) agent() still returns structured_output [M1]')
+    assert.ok(fs.existsSync(sliceFile(sidA)),
+      '(a) <dirname(workersDir)>/transcripts/<sessionId>.jsonl exists: ' + sliceFile(sidA) + ' [M1]')
+    const slices = evs.filter((e) => e.kind === 'transcript:slice' && e.label === 'impl:T7')
+    assert.equal(slices.length, 1, '(a) exactly one transcript:slice for the label [M1]')
+    assert.equal(slices[0].sessionId, sidA, '(a) the event names the session id it wrote [M1]')
+    assert.equal(slices[0].bytes, fs.statSync(sliceFile(sidA)).size,
+      "(a) the event's bytes is the written file's byte length [M1]")
+    const endAt = evs.findIndex((e) => e.kind === 'worker:end' && e.label === 'impl:T7')
+    assert.ok(endAt >= 0 && evs.indexOf(slices[0]) > endAt,
+      "(a) the slice event is emitted AFTER that worker's worker:end [M1]")
+
+    // A label dispatched twice writes a second file, named by the retry's id —
+    // the `impl:T9` shape already pinned above (run-55).
+    const sidA2 = sessionIdFor('run-24', 'impl:T7#2')
+    assert.notEqual(sidA2, sidA, '(a) sanity: the retry has its own session id')
+    plant(cfgDir, '-home-worker-clones-task-T7-retry', sidA2, jsonl([
+      { type: 'assistant', uuid: 'b1', parentUuid: null, timestamp: stamp, sessionId: sidA2,
+        message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: 'second attempt' }] } },
+    ]))
+    await agent('x again', { label: 'impl:T7', model: 'sonnet', schema: SCHEMA })
+    assert.ok(fs.existsSync(sliceFile(sidA2)),
+      '(a) the second dispatch writes sessionIdFor(runId, label + "#2") [M1]')
+    assert.equal(evs.filter((e) => e.kind === 'transcript:slice').length, 2,
+      '(a) one slice event per dispatch, not per label [M1]')
+  }
+
+  // (b) [M2] the allowlist: which records survive, which keys survive.
+  {
+    const ATTACH = 'ATTACHMENT-BODY-SENTINEL-' + 'q'.repeat(80)
+    const TUR = 'TOOLUSERESULT-BODY-SENTINEL-' + 'r'.repeat(80)
+    const src = jsonl([
+      { type: 'attachment', uuid: 'x1', timestamp: stamp, attachment: { kind: 'file', content: ATTACH } },
+      { type: 'system', uuid: 'x2', timestamp: stamp, subtype: 'init', content: 'boot' },
+      { type: 'user', uuid: 'x3', parentUuid: null, timestamp: stamp, sessionId: 's-b',
+        cwd: '/home/worker/clone', gitBranch: 'ultra/run-31',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+        toolUseResult: { stdout: TUR } },
+      { type: 'assistant', uuid: 'x4', parentUuid: 'x3', timestamp: stamp, sessionId: 's-b',
+        message: { role: 'assistant', model: 'claude-opus-5', content: [
+          { type: 'thinking', thinking: 'THINKING-SENTINEL-' + 'z'.repeat(60), signature: 'sig-abc' },
+          { type: 'text', text: 'answering' },
+          { type: 'tool_use', id: 'toolu_b', name: 'Read', input: { file_path: '/src/y.py' } },
+        ] } },
+    ])
+    const out = sliceTranscript(src)
+    const recs = objs(out)
+    assert.equal(recs.length, 2, '(b) only the user and assistant records survive [M2]')
+    assert.deepEqual(recs.map((r) => r.type), ['user', 'assistant'], '(b) in source order [M2]')
+    const RECORD_KEYS = ['type', 'uuid', 'parentUuid', 'timestamp', 'sessionId', 'message']
+    const MESSAGE_KEYS = ['role', 'model', 'content']
+    for (const r of recs) {
+      for (const k of Object.keys(r)) assert.ok(RECORD_KEYS.includes(k), '(b) unexpected top-level key ' + k + ' [M2]')
+      for (const k of Object.keys(r.message)) assert.ok(MESSAGE_KEYS.includes(k), '(b) unexpected message key ' + k + ' [M2]')
+    }
+    assert.ok(!out.includes('toolUseResult'), '(b) the toolUseResult key is dropped [M2]')
+    assert.ok(!out.includes(TUR), "(b) and so is the tool output riding on it [M2]")
+    assert.ok(!out.includes('gitBranch'), '(b) a non-allowlisted top-level key is dropped [M2]')
+    assert.ok(!out.includes('thinking'), '(b) a thinking block is dropped, text and signature both [M2]')
+    assert.ok(!out.includes(ATTACH), "(b) the attachment record's bytes are absent [M2]")
+    assert.ok(!out.includes('"cwd"'), '(b) cwd is not one of the six kept record keys [M2]')
+    // The blocks that survive keep their order, minus the thinking block.
+    assert.deepEqual(recs[1].message.content.map((b) => b.type), ['text', 'tool_use'], '(b) block order kept [M2]')
+
+    // A string content stays a string.
+    const yes = objs(sliceTranscript(jsonl([
+      { type: 'user', uuid: 'y1', parentUuid: null, timestamp: stamp, sessionId: 's-b',
+        message: { role: 'user', content: 'yes' } },
+    ])))
+    assert.equal(yes.length, 1)
+    assert.equal(yes[0].message.content, 'yes', '(b) a string content stays the string "yes" [M2]')
+  }
+
+  // (c) [M3] tool_use: exactly four keys, six path-shaped inputs, cut at 500.
+  {
+    const recs = objs(sliceTranscript(jsonl([
+      { type: 'assistant', uuid: 'c1', parentUuid: null, timestamp: stamp, sessionId: 's-c',
+        message: { role: 'assistant', model: 'claude-opus-5', content: [
+          { type: 'tool_use', id: 'toolu_c1', name: 'Edit', input: {
+            file_path: '/src/a.py', old_string: 'OLD-STRING-BODY', new_string: 'NEW-STRING-BODY' } },
+          { type: 'tool_use', id: 'toolu_c2', name: 'Bash', input: {
+            command: 'x'.repeat(900), description: 'd', timeout: 5 } },
+          { type: 'tool_use', id: 'toolu_c3', name: 'Agent', input: {
+            prompt: 'PROMPT-BODY-THAT-MUST-NOT-RIDE', description: 'd' } },
+        ] } },
+    ])))
+    const blocks = recs[0].message.content
+    assert.equal(blocks.length, 3, '(c) three tool_use blocks in, three out [M3]')
+    for (const b of blocks) {
+      assert.deepEqual(Object.keys(b).sort(), ['id', 'input', 'name', 'type'],
+        '(c) a tool_use block has exactly type, id, name, input [M3]')
+    }
+    assert.deepEqual(blocks[0].input, { file_path: '/src/a.py' },
+      '(c) Edit keeps file_path and neither old_string nor new_string [M3]')
+    assert.deepEqual(blocks[1].input, { command: 'x'.repeat(500), description: 'd' },
+      '(c) Bash keeps command cut to 500 chars and description; timeout is not allowlisted [M3]')
+    assert.equal(blocks[1].input.command.length, 500, '(c) 500 characters, not 900 [M3]')
+    assert.deepEqual(blocks[2].input, { description: 'd' },
+      "(c) Agent's prompt never rides; description does [M3]")
+  }
+
+  // (d) [M4] tool_result: the SIZE of the result, not the result.
+  {
+    const s1 = 'S1-' + 'a'.repeat(1231)                 // 1234 chars
+    const b1 = 'B1-' + 'b'.repeat(7)                    // 10 chars
+    const b2 = 'B2-' + 'c'.repeat(17)                   // 20 chars
+    const s3 = 'S3-' + 'd'.repeat(697)                  // 700 chars
+    assert.deepEqual([s1.length, b1.length, b2.length, s3.length], [1234, 10, 20, 700], '(d) fixture lengths')
+    const out = sliceTranscript(jsonl([
+      { type: 'user', uuid: 'd1', parentUuid: null, timestamp: stamp, sessionId: 's-d',
+        message: { role: 'user', content: [
+          { type: 'tool_result', tool_use_id: 'toolu_d1', content: s1 },
+          { type: 'tool_result', tool_use_id: 'toolu_d2', content: [
+            { type: 'text', text: b1 }, { type: 'text', text: b2 } ] },
+          { type: 'tool_result', tool_use_id: 'toolu_d3', is_error: true, content: s3 },
+        ] } },
+    ]))
+    const blocks = objs(out)[0].message.content
+    assert.equal(blocks.length, 3, '(d) three tool_result blocks in, three out [M4]')
+    assert.deepEqual(Object.keys(blocks[0]).sort(), ['content', 'tool_use_id', 'type'],
+      '(d) a plain tool_result has exactly type, tool_use_id, content [M4]')
+    assert.equal(blocks[0].content, '[tool_result: 1234 chars]', '(d) a string content becomes its length [M4]')
+    // _readers.block_text flattens a list as its blocks' text joined by "\n":
+    // 10 + 1 + 20 = 31.
+    assert.equal(blocks[1].content, '[tool_result: 31 chars]',
+      "(d) a list content is flattened as _readers.block_text flattens it [M4]")
+    assert.deepEqual(Object.keys(blocks[2]).sort(), ['content', 'is_error', 'tool_use_id', 'type'],
+      '(d) an error tool_result also keeps is_error [M4]')
+    assert.equal(blocks[2].is_error, true, '(d) is_error survives [M4]')
+    assert.equal(blocks[2].content, '[tool_result: 700 chars, is_error] ' + s3.slice(0, 200),
+      '(d) an error keeps its first 200 characters, after the count [M4]')
+    for (const [name, body] of [['s1', s1], ['b1', b1], ['b2', b2], ['s3', s3]]) {
+      assert.ok(!out.includes(body), '(d) the source content ' + name + ' is not retained [M4]')
+    }
+  }
+
+  // (e) [M5] text bounds: 3,000 for the last assistant text, 2,000 otherwise.
+  {
+    const t5000 = 'A'.repeat(5000)
+    const t3500 = 'B'.repeat(3500)
+    const recs = objs(sliceTranscript(jsonl([
+      { type: 'assistant', uuid: 'e1', parentUuid: null, timestamp: stamp, sessionId: 's-e',
+        message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: t5000 }] } },
+      { type: 'assistant', uuid: 'e2', parentUuid: 'e1', timestamp: stamp, sessionId: 's-e',
+        message: { role: 'assistant', model: 'claude-opus-5', content: [
+          { type: 'text', text: 'a middle text' }, { type: 'text', text: t3500 } ] } },
+    ])))
+    assert.equal(recs.length, 2, '(e) both records fit under the cap [M5]')
+    assert.equal(recs[0].message.content[0].text, 'A'.repeat(2000) + '…[truncated 3000 chars]',
+      '(e) a non-final assistant text is bounded at 2,000 [M5]')
+    assert.equal(recs[1].message.content[0].text, 'a middle text',
+      '(e) an untruncated text carries no marker [M5]')
+    assert.equal(recs[1].message.content[1].text, 'B'.repeat(3000) + '…[truncated 500 chars]',
+      "(e) the last assistant record's last text is bounded at 3,000 [M5]")
+
+    const u2500 = 'C'.repeat(2500)
+    const t1999 = 'D'.repeat(1999)
+    const recs2 = objs(sliceTranscript(jsonl([
+      { type: 'user', uuid: 'e3', parentUuid: null, timestamp: stamp, sessionId: 's-e',
+        message: { role: 'user', content: u2500 } },
+      { type: 'assistant', uuid: 'e4', parentUuid: 'e3', timestamp: stamp, sessionId: 's-e',
+        message: { role: 'assistant', model: 'claude-opus-5', content: [{ type: 'text', text: t1999 }] } },
+    ])))
+    assert.equal(recs2[0].message.content, 'C'.repeat(2000) + '…[truncated 500 chars]',
+      '(e) a string message.content is bounded at 2,000 [M5]')
+    assert.equal(recs2[1].message.content[0].text, t1999,
+      '(e) 1,999 characters is under every bound and is unchanged [M5]')
+  }
+
+  // (f) [M6] the 12,000-byte cap: head 8,000, tail 4,000, one elision between.
+  const bigRecs = []
+  for (let i = 0; i < 400; i++) {
+    bigRecs.push({
+      type: i % 2 === 0 ? 'user' : 'assistant',
+      uuid: 'r' + i, parentUuid: i === 0 ? null : 'r' + (i - 1), timestamp: stamp, sessionId: 's-f',
+      message: {
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        content: [{ type: 'text', text: 'record ' + i + ' ' + 'w'.repeat(140) }],
+      },
+    })
+  }
+  {
+    // The small end first: it doubles as the measurement that the 400-record
+    // reduced form really is over 40,000 bytes (20 records reduce whole).
+    const small = sliceTranscript(jsonl(bigRecs.slice(0, 20)))
+    assert.ok(Buffer.byteLength(small) < 12000, '(f) fixture: 20 records reduce to under the cap')
+    assert.ok(!lines(small).some((l) => JSON.parse(l).subtype === 'elided'),
+      '(f) a source under 12,000 bytes has no elided line [M6]')
+    assert.equal(lines(small).length, 20, '(f) and keeps every record [M6]')
+    const reducedTotal = Buffer.byteLength(small) * 20
+    assert.ok(reducedTotal > 40000,
+      '(f) fixture: the 400 records reduce to ' + reducedTotal + ' bytes, over 40,000 [M6]')
+
+    const out = sliceTranscript(jsonl(bigRecs))
+    assert.ok(Buffer.byteLength(out) <= 12000,
+      '(f) the output is at most 12,000 bytes, got ' + Buffer.byteLength(out) + ' [M6]')
+    const ls = lines(out)
+    const elisions = ls.filter((l) => {
+      const o = JSON.parse(l)
+      return o.type === 'system' && o.subtype === 'elided'
+    })
+    assert.equal(elisions.length, 1, '(f) exactly one elision line [M6]')
+    const marker = elisions[0]
+    const elided = JSON.parse(marker)
+    assert.equal(elided.records, 400 - (ls.length - 1),
+      '(f) <n> is the count dropped: 400 minus the other output lines [M6]')
+    assert.equal(JSON.parse(ls[0]).uuid, 'r0', "(f) the head starts at the source's first record [M6]")
+    assert.equal(JSON.parse(ls[ls.length - 1]).uuid, 'r399', "(f) the tail ends at the source's last record [M6]")
+    const at = out.indexOf(marker)
+    assert.ok(at >= 0, '(f) sanity: the elision line is in the output')
+    const cut = Math.min(at + marker.length + 1, out.length)   // through its newline
+    assert.ok(Buffer.byteLength(out.slice(0, cut)) <= 8000,
+      '(f) the head, including the elision line, is at most 8,000 bytes, got ' +
+      Buffer.byteLength(out.slice(0, cut)) + ' [M6]')
+    assert.ok(Buffer.byteLength(out.slice(cut)) <= 4000,
+      '(f) the tail is at most 4,000 bytes, got ' + Buffer.byteLength(out.slice(cut)) + ' [M6]')
+    // The middle is what went: a record from the interior must not survive.
+    assert.ok(!out.includes('"r200"'), '(f) whole records are dropped from the MIDDLE [M6]')
+  }
+  {
+    // 14 workers, each a 100 KB transcript: the whole directory stays small.
+    const bigSrc = jsonl(bigRecs)
+    assert.ok(Buffer.byteLength(bigSrc) >= 100000,
+      '(f) fixture: each planted transcript is 100 KB or more (' + Buffer.byteLength(bigSrc) + ')')
+    const cfgDir = fs.mkdtempSync(path.join(tmp, 'cfg-f-'))
+    const runDir14 = fs.mkdtempSync(path.join(tmp, 'run-f-'))
+    for (let i = 0; i < 14; i++) {
+      const sessionId = sessionIdFor('run-14w', 'impl:T' + i)
+      plant(cfgDir, '-home-worker-clones-task-' + i, sessionId, bigSrc)
+      const r = writeTranscriptSlice({ configDir: cfgDir, runDir: runDir14, sessionId })
+      assert.ok(r && typeof r.bytes === 'number', '(f) writeTranscriptSlice returns { bytes } [M6]')
+      assert.equal(r.bytes, fs.statSync(path.join(runDir14, 'transcripts', sessionId + '.jsonl')).size,
+        '(f) the reported bytes is the file it wrote [M6]')
+    }
+    const dir = path.join(runDir14, 'transcripts')
+    const files = fs.readdirSync(dir)
+    assert.equal(files.length, 14, '(f) 14 sessions leave 14 files [M6]')
+    const total = files.reduce((n, f) => n + fs.statSync(path.join(dir, f)).size, 0)
+    assert.ok(total < 200000, '(f) 14 x 100 KB of transcript costs ' + total + ' bytes, under 200,000 [M6]')
+  }
+
+  // (g) [M7] no transcript is not an error: the worker's result is untouched.
+  {
+    const dispatch = async (label, over) => {
+      const evs = []
+      const out = await mkAgent('success', { onEvent: (e) => evs.push(e), ...over })(
+        'x', { label, model: 'sonnet', schema: SCHEMA })
+      return { out, evs, sessionId: sessionIdFor('run-24', label) }
+    }
+    const expectMissing = (name, { out, evs, sessionId }) => {
+      assert.deepEqual(out, ok, '(' + name + ') agent() returns structured_output as at BASE [M7]')
+      assert.ok(!fs.existsSync(sliceFile(sessionId)), '(' + name + ') nothing is written under transcripts/ [M7]')
+      const miss = evs.filter((e) => e.kind === 'transcript:missing')
+      assert.equal(miss.length, 1, '(' + name + ') exactly one transcript:missing [M7]')
+      assert.equal(miss[0].sessionId, sessionId, '(' + name + ') naming the session id [M7]')
+      assert.equal(evs.filter((e) => e.kind === 'transcript:slice').length, 0,
+        '(' + name + ') and no transcript:slice [M7]')
+      const end = evs.find((e) => e.kind === 'worker:end')
+      assert.equal(end.outcome, 'ok', '(' + name + ') worker:end is what it was at BASE [M7]')
+      assert.equal(end.exitCode, 0)
+      return miss[0]
+    }
+
+    // g1: projects/ exists and holds no <sessionId>.jsonl.
+    const cfg1 = fs.mkdtempSync(path.join(tmp, 'cfg-g1-'))
+    fs.mkdirSync(path.join(cfg1, 'projects', '-some-other-clone'), { recursive: true })
+    const g1 = await dispatch('impl:G1', { env: mkEnv({ CLAUDE_CONFIG_DIR: cfg1 }) })
+    assert.equal(expectMissing('g1', g1).label, 'impl:G1')
+
+    // g2: projects/ itself is absent.
+    const cfg2 = fs.mkdtempSync(path.join(tmp, 'cfg-g2-'))
+    assert.equal(expectMissing('g2', await dispatch('impl:G2', { env: mkEnv({ CLAUDE_CONFIG_DIR: cfg2 }) })).label,
+      'impl:G2')
+
+    // g3: CLAUDE_CONFIG_DIR is not in the env at all.
+    const noCfg = mkEnv()
+    delete noCfg.CLAUDE_CONFIG_DIR
+    assert.equal(expectMissing('g3', await dispatch('impl:G3', { env: noCfg })).label, 'impl:G3')
+
+    // g4: the transcript is there but cannot be read. Best-effort means an
+    // event with a detail, never a rejection of agent().
+    const cfg4 = fs.mkdtempSync(path.join(tmp, 'cfg-g4-'))
+    const sid4 = sessionIdFor('run-24', 'impl:G4')
+    fs.mkdirSync(path.join(cfg4, 'projects', '-a-clone', sid4 + '.jsonl'), { recursive: true })
+    const g4 = await dispatch('impl:G4', { env: mkEnv({ CLAUDE_CONFIG_DIR: cfg4 }) })
+    const miss4 = expectMissing('g4', g4)
+    assert.equal(typeof miss4.detail, 'string',
+      '(g) a transcript that cannot be read is transcript:missing WITH a detail [M7]')
+  }
+
+  // (h) [M8] the claim's negative half, stated as a sentinel: no file body,
+  // from either channel, reaches the slice.
+  {
+    const WRITTEN = 'FILE-BODY-SENTINEL-A' + 'x'.repeat(2980)   // 3,000 chars, a Write input
+    const READ = 'FILE-BODY-SENTINEL-B' + 'y'.repeat(4980)      // 5,000 chars, a tool_result
+    assert.deepEqual([WRITTEN.length, READ.length], [3000, 5000], '(h) fixture lengths')
+    const out = sliceTranscript(jsonl([
+      { type: 'assistant', uuid: 'h1', parentUuid: null, timestamp: stamp, sessionId: 's-h',
+        message: { role: 'assistant', model: 'claude-opus-5', content: [
+          { type: 'tool_use', id: 'toolu_h1', name: 'Write', input: { file_path: '/src/z.py', content: WRITTEN } },
+        ] } },
+      { type: 'user', uuid: 'h2', parentUuid: 'h1', timestamp: stamp, sessionId: 's-h',
+        message: { role: 'user', content: [
+          { type: 'tool_result', tool_use_id: 'toolu_h1', content: READ },
+        ] } },
+    ]))
+    for (const [name, body] of [['the Write input', WRITTEN], ['the tool_result body', READ]]) {
+      assert.ok(!out.includes(body), '(h) ' + name + ' is absent from the slice [M8]')
+      assert.ok(!out.includes(body.slice(0, 40)),
+        '(h) not even the first 40 characters of ' + name + ' survive [M8]')
+    }
+    // The path DID survive — the slice is still evidence of what was touched.
+    assert.ok(out.includes('/src/z.py'), '(h) the path is what the slice keeps [M8/M3]')
+  }
+
+  console.log('ok - #702 Task 1: the worker transcript slice — paths and sizes, never bodies')
+}
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')
