@@ -1,0 +1,156 @@
+{
+  "ok": true,
+  "stamp": "run-36",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-36"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The boot writes its publish decisions as events",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`none`"
+          ],
+          "produces": [
+            "`none`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The boot writes its publish decisions as events",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`none`"
+            ],
+            "produces": [
+              "`none`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_selfmerge.mjs",
+          "proofRuns": [
+            "bash -c 'b=$(sed -n \"/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p\" fleet/CONTRACT.md); for w in publish:pr publish:hold publish:merge url number draft why left detail \"checks red\" \"checks pending\" refused; do printf \"%s\" \"$b\" | grep -q -- \"$w\" || exit 1; done'",
+            "bash -c 'diff <(git show $ULTRA_BASE:fleet/CONTRACT.md | sed \"/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/{/^- \\*\\*Integration naming/!d;}\") <(sed \"/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/{/^- \\*\\*Integration naming/!d;}\" fleet/CONTRACT.md)'",
+            "git diff --quiet $ULTRA_BASE -- skills/ultralearn/ fleet/run-waves.mjs fleet/run-engine.mjs fleet/run-main.mjs fleet/publish-fold.mjs",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py tests/test_fleet_events.py",
+            "bash -c 'for f in fleet/tests/test_sandbox_boot.mjs fleet/tests/test_sandbox_boot_edges.mjs fleet/tests/test_sandbox_boot_merge.mjs fleet/tests/test_sandbox_boot_approval_evidence.mjs fleet/tests/test_sandbox_boot_record.mjs; do node \"$f\" >/dev/null || exit 1; done'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The boot writes its publish decisions as events"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The event log is append-only: no line the engine or the folder wrote to `events.jsonl` is\n  changed or reordered, and every line the boot appends is one JSON object carrying `kind`,\n  `id` (a 26-character Crockford-base32 ULID) and `ts` (epoch milliseconds), the stamp\n  `makeEventLog` in `fleet/run-waves.mjs` puts on every engine event.\n- The boot script's `write_status`, `phase_refresher` and `last_phase` functions are the base's\n  bytes \u2014 a concurrent run edits them, and this plan touches only `publish`, `merge_pr`,\n  `do_boot` and what it adds beside them.\n- The boot script runs no `node` and no `gh` \u2014 the sims count a direct call of either as a\n  finding; `python3` is already the script's JSON reader and is on every sandbox.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      },
+      {
+        "cmd": "bash -c 'for f in write_status phase_refresher last_phase; do diff <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | sed -n \"/^$f() *{/,/^}/p\") <(sed -n \"/^$f() *{/,/^}/p\" fleet/sandbox-boot.sh) || exit 1; done'",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-36/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-36/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-36/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-36/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
