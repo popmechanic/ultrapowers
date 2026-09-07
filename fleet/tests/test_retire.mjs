@@ -1167,7 +1167,6 @@ for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target',
 
 // ── #706 (l) M7: the two documents each declare the skip ────────────────────
 
-const REPO_ROOT = path.resolve(FLEET_DIR, '..')
 const CONTRACT_MD = path.join(FLEET_DIR, 'CONTRACT.md')
 const RUNBOOK_MD = path.join(FLEET_DIR, 'RUNBOOK.md')
 
