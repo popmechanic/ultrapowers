@@ -38,3 +38,14 @@
 {"kind":"engine:phase","phase":"Depth-1 Leg","id":"01M1YSTBFB0000EXBXJSMX9BE8","ts":1788813848043}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M1YSTBFE0000CCXHSZB3KHCH","ts":1788813848046}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"a43e4d36-ef6b-498b-adfd-6e0d40fdcfd5","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-39/clones/integration","model":"opus","id":"01M1YSTBFE0001PJ92DWW1SHJ9","ts":1788813848046}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"a43e4d36-ef6b-498b-adfd-6e0d40fdcfd5","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3304,"output":6662,"cacheRead":533489,"cacheCreation":40566,"costUsd":0.8554745,"models":["claude-opus-5"]},"id":"01M1YSX4B10000HHQXF35AY7D8","ts":1788813939041}
+{"kind":"transcript:slice","label":"integration","sessionId":"a43e4d36-ef6b-498b-adfd-6e0d40fdcfd5","bytes":11365,"id":"01M1YSX4B400008TJY9M6HPAJJ","ts":1788813939044}
+{"kind":"engine:log","line":"depth-1 leg: green","id":"01M1YT50J500002BDAMQD3BRBB","ts":1788814197317}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M1YT50JC00004FBCAGE2MT55","ts":1788814197324}
+{"kind":"driver:stage","stage":"finalize","id":"01M1YT50JY00009X7TS5GYZXGF","ts":1788814197342}
+{"kind":"driver:stage","stage":"gate","id":"01M1YT50KW0000Q8YF56VT9HWM","ts":1788814197372}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M1YTFNRX00006T6CAQAQW1PT","ts":1788814546717}
+{"kind":"driver:ack-decision","approve":false,"reason":"non-pre-authorized ack(s): deferred:manual","id":"01M1YTFNRX0001PAD325RR80H2","ts":1788814546717}
+{"kind":"driver:fail","verdict":"needs-ack","detail":"non-pre-authorized ack(s): deferred:manual — gate receipt is the terminal artifact","id":"01M1YTFNRX0002M7YAZEDC1XX8","ts":1788814546717}
+{"kind":"run:open","runId":"run-39","base":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","source":"fleet/publish-fold.mjs","id":"01M1YTFNYT0000S25132S7019Q","ts":1788814546906}
+{"kind":"driver:publish-fold","run":"39","attempt":"1","base":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","tip":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","candidate":"db9a265388aad491d9278adeed126b2b8d77f1fe","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","id":"01M1YTFPTJ0000JYC73PH8CPJ8","ts":1788814547794}

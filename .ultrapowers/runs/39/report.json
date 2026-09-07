@@ -1,0 +1,130 @@
+{
+  "integrationBranch": "ultra/integration-run-39",
+  "baseSha": "9cd8190ffb5e68b1de0eb9eac44b116ab0631d28",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "f5109cae452101cb27878c5e987d91ec80f06455",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-39/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/retire.mjs header prose, the `--dry-run` paragraph: \"the one heads-and-tags listing, the same status read and open-PR read per pair, one closed-PR read per candidate that survives them\". The open-PR read is not made per pair \u2014 M5 and the exam's leg (j) both pin that a pair skipped on its status page (live state or no page) is asked no open-PR read at all (`[LIST_LINE, contentsLine(3), contentsLine(12), openPullsLine(12), pullsLine(12)]`). The code is right; only the sentence overstates. Suggest \"\u2026the one heads-and-tags listing, the status read per pair, the open-PR read of a terminal page, and one closed-PR read per candidate that survives them\u2026\". Nothing else in the diff depends on the wording, and the docs pin (`tests/test_docs_agree_with_code.py`) does not read this file, so it blocks nothing.; fleet/retire.mjs \u2014 the gate's two reads handle a degenerate answer asymmetrically, and the lenient side is the one that deletes branches. `readStatusPage` treats an unreadable answer as \"no page\" and skips the run (safe); `openPullNumber` builds `rows = Array.isArray(payload) ? payload : []`, so a `gh` that exits non-zero or answers anything that is not a JSON array \u2014 a rate-limit error, a network failure, an auth message \u2014 is read as \"no open pull request\" and the run proceeds to the two tag POSTs and the two branch DELETEs. Same site: a non-empty array whose first row carries no numeric `number` (`[{}]`) also falls through to the sweep, though M4 says a non-empty array answers \u2192 skipped. Neither path is exercised by the exam (the seam and the PATH shims always answer `[]` or a well-formed row), so nothing here fails a Machine clause \u2014 but for a gate whose whole purpose is not to delete a live run's branches, \"the read failed\" should read as live, not as clear. Suggested fix, entirely inside this task's FILES and safe against every existing pin (all seams and shims answer a real array): have `openPullNumber` distinguish three answers \u2014 `null` only for a genuine empty array; a number for a row with a numeric `number`; and a sentinel for `!Array.isArray(payload)` or a non-empty array with no numeric `number` \u2014 and at the call site in `retire()` skip on the sentinel too, with a `why` that names the reason (e.g. `no PR answer`). A related edge at the other read: a page whose `state` is the empty string is a string, so it passes the `typeof` test and `why = state ?? 'no status page'` yields `''`, printing `run <N>: live () \u2014 skipped`; `state.trim() === '' ? 'no status page' : state` closes it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-39/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 334.46s (0:05:34) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*The two tags\\*\\*/,/^- \\*\\*Comment\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q -- '\u2014 skipped'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Rollback/,$p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q -- '\u2014 skipped'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.07s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/janitor.mjs fleet/lobby.mjs fleet/sandbox-boot.sh fleet/launch.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 288837,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n....................................................................s... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 348.79s (0:05:48) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 327.42s (0:05:27) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "db9a265388aad491d9278adeed126b2b8d77f1fe",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-39/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-39/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.669,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/retire.mjs \u2014 the status read and open-PR gate against a real GitHub target (task 1, Claim/M1\u2013M6)",
+      "reason": "external",
+      "why": "Every leg of the gate is exercised through the `exec` seam or PATH `git`/`gh` shims (`fleet/tests/test_retire.mjs`, `passthrough: []`) \u2014 no real contents API read of `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>` and no real `pulls?state=open&head=<owner>:ultra/integration-run-<N>` is issued here, so GitHub's actual envelope shape and its retention of the head ref name after a branch delete are assumed, not observed. The plan's own Files list scopes this to the sim; the first live confirmation is the next real `node fleet/retire.mjs --target <owner>/<repo> --dry-run`."
+    },
+    {
+      "deliverable": "fleet/RUNBOOK.md \u00a7Rollback \u2014 the added sweep sentence (task 1, M7)",
+      "reason": "manual",
+      "why": "The runbook is a hand-executed record; the sentence's presence in the `## Rollback` section and the docs pins are settled by the driver's integrated Run evidence (both `sed | grep -q -- '\u2014 skipped'` commands and `tests/test_docs_agree_with_code.py`, all exit 0), but whether the rollback procedure as written reads correctly to the operator following it is human judgment, not executable here."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
