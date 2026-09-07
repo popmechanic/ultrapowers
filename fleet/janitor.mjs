@@ -62,8 +62,18 @@
  * times out, an empty answer — is left exactly as it was.
  *
  * The reap is the only removal. The janitor merges nothing — an approved run
- * merges its own pull request from the sandbox — so its `gh` surface is the
- * contents API and nothing else, and every action it records is an `rm`.
+ * merges its own pull request from the sandbox — and every action it records is
+ * an `rm`. Its `gh` surface is the contents API and two more reads:
+ *
+ *   gh api repos/<target>/git/matching-refs/heads/ultra/integration-run-
+ *   gh api repos/<target>/pulls?state=all&head=<owner>:ultra/integration-run-<N>
+ *
+ * — one `matching-refs` read per distinct target the rows named, issued after
+ * every row's reads, and one `pulls` read per ref it answers. A branch whose
+ * highest-numbered pull request is closed and not merged is reported, last,
+ * beside the VMs this pass reaped; it is never deleted. The sweep
+ * `node fleet/retire.mjs --target <t>` deletes it, and the report line names
+ * that command. #607's two `-X PUT` writes remain the only writes there are.
  *
  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, and it
  * is run by hand after the laptop has been asleep.
@@ -81,6 +91,7 @@ import {
   defaultExec,
   evidenceBranchFor,
   evidenceTagFor,
+  integrationBranchFor,
   isRunNumber,
   isSafeSha,
   isSafeTarget,
@@ -95,6 +106,7 @@ import {
   planBranchFor,
   planTagFor,
   runCli,
+  runOfBranch,
   runOfVmName
 } from './lobby.mjs'
 
@@ -218,6 +230,81 @@ function assignmentOf (row) {
   return { run, target }
 }
 
+// ── The branch report: which integration branches the sweep will retire ─────
+
+/**
+ * The rule both tools carry, verbatim: *the pull request with the highest
+ * `number` among the rows of
+ * `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>`
+ * decides; `state` `"open"` keeps the branch; `state` `"closed"` with
+ * `merged_at` `null` retires it; `merged_at` a string keeps it
+ * (delete-on-merge's); no rows keeps it; the rows' order is not the rule.*
+ *
+ * The rule lives in each tool and in no shared helper: `fleet/retire.mjs`
+ * carries the same words, and the two agree by literal, never by importing one
+ * another. Why the highest number and not the last row: run numbers restarted
+ * at 1, so one head name carries two runs' pull requests — the head
+ * `ultra/integration-run-32` answers #720 (closed, `merged_at` null) beside
+ * #463 (closed, merged in August), and the branch still on the remote is #720's.
+ *
+ * The answer is the deciding pull request's number, or null when the branch is
+ * not the sweep's to retire.
+ */
+function retiringPullOf (rows) {
+  let best = null
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (typeof row?.number !== 'number') continue
+    if (best === null || row.number > best.number) best = row
+  }
+  if (best === null || best.state !== 'closed') return null
+  // The list endpoint's rows carry `merged_at` and no `merged` boolean: a
+  // string is a merge, and delete-on-merge has already taken the branch.
+  return typeof best.merged_at === 'string' ? null : best.number
+}
+
+/**
+ * Every `ultra/integration-run-<N>` the target still carries, ascending. One
+ * read, whatever the target's run count: `git/matching-refs/heads/<prefix>`
+ * answers an array of `{ ref, object }` for every head under the prefix, and
+ * `[]` when there are none. A 404 or anything that is not an array is "no
+ * branches" — this is a report whose remedy is the sweep, so an answer nobody
+ * can read is nothing to say, not a refusal. GitHub pages it at thirty, and no
+ * `per_page` rides the literal for the same reason. The run is `runOfBranch`,
+ * so a prefix match that is no run branch (`ultra/integration-run-x`) draws no
+ * pulls read behind it.
+ */
+async function integrationRunsOn (exec, target) {
+  const refs = await ghApi(exec, `repos/${target}/git/matching-refs/heads/ultra/integration-run-`)
+  if (!Array.isArray(refs)) return []
+  const runs = new Set()
+  for (const entry of refs) {
+    const run = runOfBranch(entry?.ref)
+    if (run !== null) runs.add(run)
+  }
+  return [...runs].sort((a, b) => a - b)
+}
+
+/**
+ * The branches to report, ascending by target then run. The targets are the
+ * distinct ones the rows named — the janitor knows a target only from a row's
+ * assignment comment — so one `matching-refs` read per target, however many of
+ * its runs are in the fleet, and a branch whose every VM is already reaped is
+ * the sweep's to find, not the janitor's.
+ */
+async function branchesToReport (exec, targets) {
+  const found = []
+  for (const target of [...targets].sort()) {
+    const owner = String(target).split('/')[0]
+    for (const run of await integrationRunsOn(exec, target)) {
+      const branch = integrationBranchFor(run)
+      const rows = await ghApi(exec, `repos/${target}/pulls?state=all&head=${owner}:${branch}`)
+      const pr = retiringPullOf(rows)
+      if (pr !== null) found.push({ target, run, branch, pr })
+    }
+  }
+  return found
+}
+
 // ── The one VM read: is the run's unit still there? ─────────────────────────
 
 /** The systemd user unit one run is, on its own VM. */
@@ -339,6 +426,8 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
   const stale = []
   const unknown = []
   const deaths = []
+  /** The distinct targets the rows named: a row's comment is the only source. */
+  const targets = new Set()
   const nowIso = new Date(nowMs).toISOString()
   for (const row of rows) {
     const assignment = assignmentOf(row)
@@ -347,6 +436,7 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
       continue
     }
     const { run, target } = assignment
+    targets.add(target)
     const evidence = await readEvidence(exec, target, run)
 
     if (evidence === null) {
@@ -411,12 +501,20 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
     }
   }
 
+  // ── Then the branches, after every row's reads, so the read order above and
+  //    the `--dry-run` same-paths pin both hold. These are reads: the janitor
+  //    reports a closed-unmerged branch and deletes none.
+  const branches = await branchesToReport(exec, targets)
+
   // ── Then the one mutation there is: the reap, through the lobby. ──────────
   if (!dryRun) {
     for (const action of actions) await lobby(exec, action.command)
   }
 
-  return { dryRun, age, actions, stale, unknown, deaths }
+  // `branches` is the janitor's to add, and only when it has one to report: a
+  // pass that finds none answers the six fields it answered at BASE, and the
+  // renderer reads the key as optional for exactly that reason.
+  return { dryRun, age, actions, stale, unknown, deaths, ...(branches.length > 0 ? { branches } : {}) }
 }
 
 const renderAction = (a, dryRun) =>
@@ -426,12 +524,25 @@ const renderDeath = (d, dryRun) =>
   `${dryRun ? 'would write death' : 'death'} ${d.vm}  run=${d.run} ` +
   `${d.state} → failed: ${unitSummary(d.unit)} — ${evidenceBranchFor(d.run)}`
 
+/**
+ * The branch line, last in the report and shaped like every other: the token,
+ * two spaces, then the fields. It names the remedy, because the remedy is not
+ * the janitor's — the sweep deletes the branch, and this line is where the
+ * operator reads which command to run.
+ */
+const renderBranch = (b) =>
+  `branch ${b.branch}  target=${b.target} PR #${b.pr} closed, not merged — ` +
+  `node fleet/retire.mjs --target ${b.target}`
+
 export const renderJanitor = (result) => {
   const lines = [
     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),
-    ...result.actions.map((a) => renderAction(a, result.dryRun)),
-    ...result.stale.map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
-    ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`)
+    ...(result.actions ?? []).map((a) => renderAction(a, result.dryRun)),
+    ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
+    ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
+    // Optional to the renderer: a BASE-shaped result carries no `branches`, and
+    // still prints exactly what it printed at BASE.
+    ...(result.branches ?? []).map(renderBranch)
   ]
   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
 }

@@ -58,6 +58,12 @@
  *   (l) M7 — the two documents each declare the skip, carrying `— skipped`, and
  *       the docs-pin suite is green over both.
  *
+ * A third group, under the comment `#724 Task 1` further down, encodes that
+ * task's own Machine clauses over a listing it builds itself: the fate read
+ * `pulls?state=all&head=…`, the four line segments, the integration DELETE, and
+ * the two operator documents. Its clause numbering (M1–M6) is that task's, not
+ * this header's — every assertion there names both the leg and the clause.
+ *
  * Every call is driven through the `exec` seam with `makeExec({ passthrough: [] })`,
  * so no rule runs `git` or `gh` for real; the process legs run against shims the
  * exam writes into a temporary directory. Nothing here opens a socket and
@@ -74,7 +80,14 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { Refusal, evidenceBranchFor, evidenceTagFor, planBranchFor, planTagFor } from '../lobby.mjs'
+import {
+  Refusal,
+  evidenceBranchFor,
+  evidenceTagFor,
+  integrationBranchFor,
+  planBranchFor,
+  planTagFor
+} from '../lobby.mjs'
 import { retire } from '../retire.mjs'
 import { answer, cleanup, makeExec, tempDir } from './_lobby_helpers.mjs'
 
@@ -365,6 +378,9 @@ const namesRun = (line, run) => new RegExp(`run[-/]${run}(?![0-9])`).test(line)
 const SEAMS = []
 const seam = (options) => {
   const exec = makeSeam(options)
+  // #724 Task 1: BASE's fixture carries no integration head, so no fate read is
+  // ever answered for it and no integration DELETE is ever earned.
+  exec.integrationDeletesExpected = []
   SEAMS.push(exec)
   return exec
 }
@@ -465,14 +481,10 @@ for (const [what, tagVariant] of [
 assert.notEqual(base.exitCode, 1,
   '(d)/M4 where nothing is kept, process.exitCode is not set to 1')
 
-// M3: no command ever names an integration branch as something to delete.
-for (const [i, exec] of SEAMS.entries()) {
-  assert.deepEqual(
-    linesOf(exec, (l) => l.includes('ultra/integration-run') && l.includes('DELETE')), [],
-    `(c)/M3 seam ${i}: no command names an integration branch together with DELETE`)
-  assert.deepEqual(linesOf(exec, (l) => l.includes('refs/heads/ultra/integration-run')), [],
-    `(c)/M3 seam ${i}: no command names refs/heads/ultra/integration-run-N at all`)
-}
+// M3: which commands may name an integration branch as something to delete is
+// re-scoped by #724 Task 1 — the sweep over every seam now lives at the end of
+// this file, after the task's own seams exist, and grades the BASE fixture's
+// seams there too (where it still finds none).
 
 // ── (e) M5: the closed-PR read, and the body rewrite ────────────────────────
 
@@ -531,6 +543,415 @@ assert.ok(String(healthy.snapshots.beforeRun12Post ?? '').includes('run 3:'),
 for (const [i, exec] of SEAMS.entries()) {
   assert.deepEqual([...new Set(exec.calls.map((c) => c.cmd))].filter((c) => c !== 'git' && c !== 'gh'), [],
     `(h)/M7 seam ${i}: only git and gh are reached through the exec seam`)
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// #724 Task 1 — the sweep deletes the closed-unmerged integration branch
+//
+// The rule, verbatim from the task: the pull request with the highest `number`
+// among the rows of `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/
+// integration-run-<N>` decides; `state` `"open"` keeps the branch; `state`
+// `"closed"` with `merged_at` `null` retires it; `merged_at` a string keeps it;
+// no rows keeps it; the rows' order is not the rule.
+//
+//   (a) M1 — run 32, both row orders: one fate read, one integration DELETE,
+//       and the deleted line naming #720.
+//   (b)(c)(d) M2 — runs 40, 41 and 42: the three `stays` lines, one fate read
+//       each, and no DELETE.
+//   (e) M3 — `--dry-run` over the task listing: the exact call list, nothing
+//       carrying `-X`, `would delete` for the deletable case.
+//   (f) M4 — the pair sweep is unchanged: run 7's ordered calls and its joined
+//       line, run 9's lone-half line, and no fate read over BASE's own listing.
+//   (g) M5 — `kept`, `retired` and `process.exitCode`, and the re-scoped sweep
+//       over every seam this file built.
+//   (h) M6 — the two operator documents, and `tests/test_docs_agree_with_code.py`.
+//
+// Every seam below builds its OWN listing; `HEADS_LISTING` is untouched, so
+// every BASE leg above still grades the fixture it was written for.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Every seam built for a BASE leg, frozen before the task builds its own. */
+const BASE_SEAMS = [...SEAMS]
+
+// ── The task listing ────────────────────────────────────────────────────────
+
+/** M4: run 7 is a plan-and-evidence pair PLUS an integration branch; run 9 is a
+ *  lone plan half plus one; runs 32, 40, 41 and 42 carry the integration branch
+ *  alone. No run of BASE's fixture appears here. */
+const TASK_HEAD = {
+  7: { plan: sha('b7'), evidence: sha('c7'), integration: sha('d7') },
+  9: { plan: sha('b9'), integration: sha('d9') },
+  32: { integration: sha('d32') },
+  40: { integration: sha('d40') },
+  41: { integration: sha('d41') },
+  42: { integration: sha('d42') }
+}
+
+/** The task listing, deliberately not in ascending order — the tool sorts. */
+const TASK_LISTING = [
+  `${TASK_HEAD[40].integration}\trefs/heads/${integrationBranchFor(40)}`,
+  `${TASK_HEAD[9].plan}\trefs/heads/${planBranchFor(9)}`,
+  `${TASK_HEAD[32].integration}\trefs/heads/${integrationBranchFor(32)}`,
+  `${TASK_HEAD[7].evidence}\trefs/heads/${evidenceBranchFor(7)}`,
+  `${TASK_HEAD[42].integration}\trefs/heads/${integrationBranchFor(42)}`,
+  `${TASK_HEAD[7].plan}\trefs/heads/${planBranchFor(7)}`,
+  `${TASK_HEAD[9].integration}\trefs/heads/${integrationBranchFor(9)}`,
+  `${TASK_HEAD[41].integration}\trefs/heads/${integrationBranchFor(41)}`,
+  `${TASK_HEAD[7].integration}\trefs/heads/${integrationBranchFor(7)}`
+].map((line) => `${line}\n`).join('')
+
+const TASK_RUNS = [7, 9, 32, 40, 41, 42]
+
+// ── The rows the fate read answers, and the lines the legs pin ──────────────
+
+/** (a)/M1: one head name carries the PRs of two runs — run numbers restarted on
+ *  2026-09-04 — so the highest `number` decides, never the first row. */
+const ROW_463 = { number: 463, state: 'closed', merged_at: '2026-08-31T03:03:48Z' }
+const ROW_720 = { number: 720, state: 'closed', merged_at: null }
+const ROWS_32_OLDER_FIRST = [ROW_463, ROW_720]
+const ROWS_32_NEWER_FIRST = [ROW_720, ROW_463]
+
+const taskFates = (rows32) => ({
+  7: [{ number: 300, state: 'closed', merged_at: null }],
+  9: [{ number: 310, state: 'open', merged_at: null }],
+  32: rows32,
+  40: [
+    { number: 800, state: 'open', merged_at: null },
+    { number: 790, state: 'closed', merged_at: null }
+  ],
+  41: [
+    { number: 810, state: 'closed', merged_at: '2026-09-07T01:29:38Z' },
+    { number: 805, state: 'closed', merged_at: null }
+  ],
+  42: []
+})
+
+/** (f)/M4: run 7's closed-PR read answers one row whose body links neither
+ *  transient branch, so BASE's patch step still finds nothing to rewrite. */
+const BODY_7 = 'run 7 — integration. Nothing here is a /blob/ or /tree/ path on a transient branch.'
+const TASK_PULLS = { 7: [{ number: 300, body: BODY_7 }] }
+
+assert.ok(
+  !BODY_7.includes(`/blob/${planBranchFor(7)}/`) && !BODY_7.includes(`/tree/${evidenceBranchFor(7)}/`),
+  '#724 Task 1 fixture: run 7\'s closed PR body links neither transient branch')
+
+/** M1: the one fate read, verbatim — `state=all`, then the head filter. */
+const fateLine = (run) =>
+  `gh api repos/${TARGET}/pulls?state=all&head=${OWNER}:${integrationBranchFor(run)}`
+/** M1: the one integration DELETE, verbatim. */
+const integrationDeleteLine = (run) =>
+  `gh api -X DELETE repos/${TARGET}/git/refs/heads/${integrationBranchFor(run)}`
+
+/** M1/M2/M3: the five line segments, verbatim, `<k>` the deciding row's number. */
+const deletedSegment = (run, k) => `${integrationBranchFor(run)} deleted — PR #${k} closed, not merged`
+const wouldDeleteSegment = (run, k) => `would delete ${integrationBranchFor(run)} — PR #${k} closed, not merged`
+const openSegment = (run, k) => `${integrationBranchFor(run)} stays — PR #${k} open`
+const mergedSegment = (run, k) => `${integrationBranchFor(run)} stays — PR #${k} merged`
+const noPrSegment = (run) => `${integrationBranchFor(run)} stays — no pull request`
+
+/** M4: run 7's pair commands, at the task listing's heads. */
+const taskPostLine = (run, kind) => {
+  const tag = kind === 'plan' ? planTagFor(run) : evidenceTagFor(run)
+  return `gh api -X POST repos/${TARGET}/git/refs -f ref=refs/tags/${tag} -f sha=${TASK_HEAD[run][kind]}`
+}
+/** M4: BASE's pair line for run 7, with nothing patched. */
+const basePairLine = (run) =>
+  `run ${run}: retired ${planTagFor(run)}@${abbrev(TASK_HEAD[run].plan)} ` +
+  `${evidenceTagFor(run)}@${abbrev(TASK_HEAD[run].evidence)}, 2 branches deleted, 0 PR(s) patched`
+/** M3: BASE's dry-run pair line for run 7. */
+const baseDryPairLine = (run) =>
+  `run ${run}: would retire ${planTagFor(run)}@${abbrev(TASK_HEAD[run].plan)} ` +
+  `${evidenceTagFor(run)}@${abbrev(TASK_HEAD[run].evidence)}, delete 2 branches, patch 0 PR(s)`
+
+// ── The task's own seam ─────────────────────────────────────────────────────
+
+/** The rule itself, in the exam's own words — used only to say which runs of a
+ *  fixture may earn an integration DELETE (leg (g)'s re-scoped sweep). */
+function decidesDeletion (rows) {
+  const valid = (Array.isArray(rows) ? rows : []).filter((r) => typeof r?.number === 'number')
+  if (valid.length === 0) return false
+  const top = valid.reduce((a, b) => (b.number > a.number ? b : a))
+  return top.state === 'closed' && top.merged_at === null
+}
+
+/** Run 7's tag verify answers both tags at their heads — the pair is unchanged. */
+const taskTagListing = (run) => {
+  const head = TASK_HEAD[run]
+  if (!head?.plan || !head?.evidence) return ''
+  return [
+    `${head.plan}\trefs/tags/${planTagFor(run)}`,
+    `${head.evidence}\trefs/tags/${evidenceTagFor(run)}`
+  ].map((l) => `${l}\n`).join('')
+}
+
+/**
+ * The second seam factory: the task listing, the fate read (`state=all`) and
+ * BASE's closed-PR read (`state=closed`) told apart by the query, since run 7
+ * receives both.
+ */
+function taskSeam ({ rows32 = ROWS_32_OLDER_FIRST, dryRun = false } = {}) {
+  const fates = taskFates(rows32)
+  const runOfQuery = (argv) => {
+    const match = /ultra\/integration-run-([1-9][0-9]*)/.exec(String(argv[1] ?? ''))
+    return match ? Number(match[1]) : null
+  }
+  const isPulls = (c, argv) => c === 'gh' && argv[0] === 'api' && /\/pulls\?/.test(String(argv[1] ?? ''))
+  const rules = [
+    {
+      when: (c, argv) => c === 'git' && argv[0] === 'ls-remote' && argv.includes(HEADS_GLOB),
+      answer: answer(TASK_LISTING)
+    },
+    {
+      when: (c, argv) => c === 'git' && argv[0] === 'ls-remote' && argv.includes('--tags'),
+      answer: (c, argv) => {
+        const run = runOfTagRead(argv)
+        return answer(run === null ? '' : taskTagListing(run))
+      }
+    },
+    { when: (c, argv) => c === 'gh' && argv.includes('POST'), answer: answer({ ref: 'created' }) },
+    {
+      when: (c, argv) => isPulls(c, argv) && /state=all/.test(String(argv[1])),
+      answer: (c, argv) => {
+        const run = runOfQuery(argv)
+        return answer(run === null ? [] : (fates[run] ?? []))
+      }
+    },
+    {
+      when: isPulls,
+      answer: (c, argv) => {
+        const run = runOfQuery(argv)
+        return answer(run === null ? [] : (TASK_PULLS[run] ?? []))
+      }
+    },
+    { when: (c, argv) => c === 'gh' && argv.includes('PATCH'), answer: answer({ number: 0 }) },
+    { when: (c, argv) => c === 'gh' && argv.includes('DELETE'), answer: answer('') }
+  ]
+  const exec = makeExec({ rules, passthrough: [] })
+  // (g)/M5: an integration DELETE is earned only by a run whose fate read
+  // answered a highest-numbered row that is closed and unmerged — and a dry run
+  // earns none at all.
+  exec.integrationDeletesExpected = dryRun
+    ? []
+    : TASK_RUNS.filter((run) => decidesDeletion(fates[run]))
+  SEAMS.push(exec)
+  return exec
+}
+
+/** The runs an integration `DELETE` named, through a seam, ascending. */
+const integrationDeletesOf = (exec) => [...new Set(
+  lines(exec)
+    .filter((l) => l.includes('DELETE') && /refs\/heads\/ultra\/integration-run-[1-9][0-9]*/.test(l))
+    .map((l) => Number(/refs\/heads\/ultra\/integration-run-([1-9][0-9]*)/.exec(l)[1]))
+)].sort((a, b) => a - b)
+
+const countOf = (exec, line) => lines(exec).filter((l) => l === line).length
+
+// ── The two live sweeps over the task listing ───────────────────────────────
+
+const taskSweeps = []
+for (const [order, rows32] of [
+  ['older row first', ROWS_32_OLDER_FIRST],
+  ['newer row first', ROWS_32_NEWER_FIRST]
+]) {
+  const exec = taskSeam({ rows32 })
+  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
+  taskSweeps.push({ order, exec, out })
+}
+
+const live = taskSweeps[0]
+
+// ── (a) M1: run 32 — the highest number decides, whichever order arrives ────
+
+for (const { order, exec, out } of taskSweeps) {
+  assert.equal(countOf(exec, fateLine(32)), 1,
+    `(a)/M1 ${order}: exactly one \`${fateLine(32)}\` is issued; got ${JSON.stringify(linesOf(exec, (l) => namesRun(l, 32)))}`)
+  assert.equal(countOf(exec, integrationDeleteLine(32)), 1,
+    `(a)/M1 ${order}: exactly one \`${integrationDeleteLine(32)}\` is issued; got ${JSON.stringify(linesOf(exec, (l) => namesRun(l, 32)))}`)
+  assert.equal(runLine(out, 32), `run 32: ${deletedSegment(32, 720)}`,
+    `(a)/M1 ${order}: the deciding row is #720, not the first row and not #463; got ${JSON.stringify(runLine(out, 32))}`)
+}
+
+// ── (b)(c)(d) M2: the three `stays` cases ───────────────────────────────────
+
+for (const [leg, run, expected] of [
+  ['(b)', 40, openSegment(40, 800)],
+  ['(c)', 41, mergedSegment(41, 810)],
+  ['(d)', 42, noPrSegment(42)]
+]) {
+  assert.equal(runLine(live.out, run), `run ${run}: ${expected}`,
+    `${leg}/M2 run ${run}: the line is exactly \`run ${run}: ${expected}\`; got ${JSON.stringify(runLine(live.out, run))}`)
+  assert.equal(countOf(live.exec, fateLine(run)), 1,
+    `${leg}/M2 run ${run}: the fate read is issued exactly once; got ${JSON.stringify(linesOf(live.exec, (l) => namesRun(l, run)))}`)
+  assert.deepEqual(linesOf(live.exec, (l) => namesRun(l, run) && l.includes('DELETE')), [],
+    `${leg}/M2 run ${run}: no call naming it carries DELETE — an older closed-and-unmerged row is not the rule`)
+}
+
+// ── (f) M4: the pair sweep is unchanged ─────────────────────────────────────
+
+assert.deepEqual(
+  live.out.runLines.map((l) => Number(/^run ([0-9]+):/.exec(l)[1])), TASK_RUNS,
+  `(f)/M4 one line per run number, ascending N; got ${JSON.stringify(live.out.runLines)}`)
+
+assert.deepEqual(linesOf(live.exec, (l) => namesRun(l, 7)), [
+  taskPostLine(7, 'plan'),
+  taskPostLine(7, 'evidence'),
+  verifyLine(7),
+  deleteLine(7, 'plan'),
+  deleteLine(7, 'evidence'),
+  pullsLine(7),
+  fateLine(7),
+  integrationDeleteLine(7)
+], '(f)/M4 run 7: the pair\'s five commands in BASE\'s order, then the closed-PR read, then the fate read, with the integration DELETE last')
+
+assert.equal(runLine(live.out, 7), `${basePairLine(7)}; ${deletedSegment(7, 300)}`,
+  `(f)/M4 run 7: BASE's pair line followed by \`; \` and the integration segment; got ${JSON.stringify(runLine(live.out, 7))}`)
+
+assert.equal(runLine(live.out, 9), `run 9: skip — lone ${planBranchFor(9)}; ${openSegment(9, 310)}`,
+  `(f)/M4 run 9: a lone pair half plus an integration branch; got ${JSON.stringify(runLine(live.out, 9))}`)
+assert.deepEqual(linesOf(live.exec, (l) => namesRun(l, 9) && (l.includes('DELETE') || l.includes('POST'))), [],
+  '(f)/M4 run 9: no call naming it carries DELETE or POST')
+assert.ok(Array.isArray(live.out.result.skipped) && live.out.result.skipped.includes(planBranchFor(9)),
+  `(f)/M4 run 9: result.skipped names ${planBranchFor(9)}; got ${JSON.stringify(live.out.result.skipped)}`)
+assert.deepEqual((live.out.result.skipped ?? []).filter((b) => String(b).includes('ultra/integration-run')), [],
+  `(f)/M4 skipped names pair halves only — never the integration branch; got ${JSON.stringify(live.out.result.skipped)}`)
+
+// (f)/M4: BASE's own listing draws no fate read — runs 3, 5 and 12 carry no
+// integration head, so every BASE leg above grades unchanged.
+for (const [i, exec] of BASE_SEAMS.entries()) {
+  assert.deepEqual(linesOf(exec, (l) => l.includes('state=all')), [],
+    `(f)/M4 BASE seam ${i}: a listing with no integration branch issues no state=all read`)
+}
+
+// ── (e) M3: --dry-run over the task listing ─────────────────────────────────
+
+{
+  const exec = taskSeam({ dryRun: true })
+  const out = await captured(() => retire({ argv: ['--target', TARGET, '--dry-run'], exec }))
+  const expected = [LIST_LINE, pullsLine(7), ...TASK_RUNS.map(fateLine)]
+
+  assert.equal(lines(exec)[0], LIST_LINE,
+    `(e)/M3 the first call is the one heads-and-tags listing; got ${JSON.stringify(lines(exec)[0])}`)
+  assert.deepEqual([...lines(exec)].sort(), [...expected].sort(),
+    '(e)/M3 the calls through the seam are exactly the one listing, run 7\'s state=closed read, and one state=all read per run')
+  assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
+    '(e)/M3 no call under --dry-run carries -X')
+  assert.equal(runLine(out, 32), `run 32: ${wouldDeleteSegment(32, 720)}`,
+    `(e)/M3 run 32's dry line; got ${JSON.stringify(runLine(out, 32))}`)
+  assert.ok(runLine(out, 7).endsWith(`; ${wouldDeleteSegment(7, 300)}`),
+    `(e)/M3 run 7's dry line ends with \`; ${wouldDeleteSegment(7, 300)}\`; got ${JSON.stringify(runLine(out, 7))}`)
+  assert.equal(runLine(out, 7), `${baseDryPairLine(7)}; ${wouldDeleteSegment(7, 300)}`,
+    `(e)/M3, M4 run 7's dry line is BASE's dry pair line followed by \`; \` and the segment; got ${JSON.stringify(runLine(out, 7))}`)
+  for (const [run, expectedSegment] of [
+    [40, openSegment(40, 800)], [41, mergedSegment(41, 810)], [42, noPrSegment(42)]
+  ]) {
+    assert.equal(runLine(out, run), `run ${run}: ${expectedSegment}`,
+      `(e)/M3 run ${run} prints the same \`stays\` line under --dry-run; got ${JSON.stringify(runLine(out, run))}`)
+  }
+  assert.notEqual(out.exitCode, 1, '(e)/M3 a dry run does not set process.exitCode to 1')
+}
+
+// ── (g) M5: the arrays, the exit code, and the re-scoped sweep ──────────────
+
+assert.deepEqual(live.out.result.kept, [],
+  `(g)/M5 no integration-branch outcome puts a run in kept; got ${JSON.stringify(live.out.result.kept)}`)
+assert.deepEqual(live.out.result.retired, [7],
+  `(g)/M5 retired keeps its pair meaning — only run 7 had a pair to retire; got ${JSON.stringify(live.out.result.retired)}`)
+assert.notEqual(live.out.exitCode, 1,
+  '(g)/M5 a `stays` is the correct state, so nothing here sets process.exitCode to 1')
+
+// (g)/M5 re-scoped from BASE (c)/M3: a DELETE naming refs/heads/ultra/
+// integration-run-<N> appears only for a run whose fate read answered a
+// highest-numbered row that is closed and unmerged — over EVERY seam this file
+// built, the BASE fixture's included, where it still finds none.
+for (const [i, exec] of SEAMS.entries()) {
+  assert.deepEqual(integrationDeletesOf(exec), exec.integrationDeletesExpected,
+    `(g)/M5 seam ${i}: the runs an integration DELETE names are exactly the ones the rule retires; got ${JSON.stringify(linesOf(exec, (l) => l.includes('ultra/integration-run') && l.includes('DELETE')))}`)
+  assert.deepEqual([...new Set(exec.calls.map((c) => c.cmd))].filter((c) => c !== 'git' && c !== 'gh'), [],
+    `(g)/M5 seam ${i}: only git and gh are reached through the exec seam`)
+}
+
+// ── (h) M6: the two operator documents ──────────────────────────────────────
+
+const REPO_ROOT = path.resolve(FLEET_DIR, '..')
+const DOCS = {
+  'fleet/CONTRACT.md': fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8'),
+  'fleet/RUNBOOK.md': fs.readFileSync(path.join(FLEET_DIR, 'RUNBOOK.md'), 'utf8')
+}
+const PHRASE = 'closed and not merged'
+/** "the retire sweep's to delete", as the second `Run:`'s reader would see it. */
+const namesSweep = (line) => line.includes('retire.mjs') || /retire sweep/i.test(line)
+const docLines = (doc) => DOCS[doc].split('\n')
+const phraseLines = (doc) => docLines(doc).filter((l) => l.includes(PHRASE))
+
+// The second `Run:` — `grep -n 'closed and not merged' fleet/CONTRACT.md fleet/RUNBOOK.md`.
+for (const [doc, least] of [['fleet/CONTRACT.md', 1], ['fleet/RUNBOOK.md', 2]]) {
+  const hits = phraseLines(doc)
+  assert.ok(hits.length >= least,
+    `(h)/M6 the second Run: prints at least ${least} line(s) of ${doc} carrying \`${PHRASE}\`; got ${JSON.stringify(hits)}`)
+  for (const line of hits) {
+    assert.ok(namesSweep(line),
+      `(h)/M6 each printed line names the retire sweep (\`retire.mjs\` or "retire sweep") as what deletes the branch — the phrase and the sweep sit on one line, since grep prints lines; got ${JSON.stringify(line)}`)
+  }
+}
+
+// The first `Run:` — no line of either file still gives `ultra/integration-run-<N>`
+// only the merge and the open-PR fates. Graded at the three places BASE gives
+// them, so a rewrite that touches one and leaves another fails here.
+
+// CONTRACT: the `ultra/integration-run-<N>` bullet and its continuation lines.
+{
+  const all = docLines('fleet/CONTRACT.md')
+  const start = all.findIndex((l) => /^\s*- `ultra\/integration-run-<N>`/.test(l))
+  assert.notEqual(start, -1,
+    '(h)/M6 fixture: fleet/CONTRACT.md still carries the `ultra/integration-run-<N>` bullet')
+  const indent = /^\s*/.exec(all[start])[0].length
+  const bullet = [all[start]]
+  for (let i = start + 1; i < all.length; i += 1) {
+    if (all[i].trim() === '') break
+    if (/^\s*/.exec(all[i])[0].length <= indent) break
+    bullet.push(all[i])
+  }
+  assert.ok(bullet.some((l) => l.includes(PHRASE)),
+    `(h)/M6 CONTRACT's integration-branch bullet gains the third case and no longer gives only the merge and the open-PR fates; got ${JSON.stringify(bullet)}`)
+}
+
+// RUNBOOK: the "three branches" paragraph — the one block naming all three.
+{
+  const blocks = DOCS['fleet/RUNBOOK.md'].split(/\n[ \t]*\n/)
+  const three = blocks.filter((b) =>
+    b.includes(integrationBranchFor('<N>')) &&
+    b.includes(planBranchFor('<N>')) &&
+    b.includes(evidenceBranchFor('<N>')))
+  assert.equal(three.length, 1,
+    `(h)/M6 fixture: exactly one RUNBOOK paragraph is the "three branches" one; got ${three.length}`)
+  assert.ok(three[0].split('\n').some((l) => l.includes(PHRASE) && namesSweep(l)),
+    `(h)/M6 RUNBOOK's branch-lifecycle sentence carries \`${PHRASE}\` and says the retire sweep deletes such a branch; got ${JSON.stringify(three[0])}`)
+}
+
+// RUNBOOK: the rollback section's sweep sentence.
+{
+  const all = docLines('fleet/RUNBOOK.md')
+  const start = all.findIndex((l) => /^##\s+Rollback\b/i.test(l))
+  assert.notEqual(start, -1, '(h)/M6 fixture: fleet/RUNBOOK.md still carries a `## Rollback` section')
+  let end = all.length
+  for (let i = start + 1; i < all.length; i += 1) {
+    if (/^##\s/.test(all[i])) { end = i; break }
+  }
+  const section = all.slice(start, end)
+  assert.ok(section.some((l) => l.includes(PHRASE) && namesSweep(l)),
+    `(h)/M6 the rollback section's sweep sentence carries \`${PHRASE}\` and names the sweep — a rewrite that touches one RUNBOOK sentence and leaves the other fails here; got ${JSON.stringify(section)}`)
+}
+
+// The third `Run:` — the documents name no retired mechanism and no script that
+// is not there.
+{
+  const res = spawnSync('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    timeout: 300000
+  })
+  assert.equal(res.status, 0,
+    `(h)/M6 tests/test_docs_agree_with_code.py exits 0 — the rewrite names no mechanism that is not there; stdout: ${res.stdout} stderr: ${res.stderr}`)
 }
 
 // ════════════════════════════════════════════════════════════════════════════

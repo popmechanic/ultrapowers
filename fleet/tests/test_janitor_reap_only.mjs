@@ -21,7 +21,8 @@
  *       updated two hours ago and one ten minutes ago: no `gh pr` command of any
  *       kind is issued, every `gh` call is two argv words — `api` and a path
  *       beginning `repos/` — so none carries `-X`, `--method`, `-f`, `-F`,
- *       `--input` or any other flag, every recorded action has `kind` `rm`, the
+ *       `--input` or any other flag — the one per-target branch read #724 Task 2
+ *       adds is such a read too — every recorded action has `kind` `rm`, the
  *       mutating lobby verbs are exactly one `rm <old vm> --json`, the young
  *       run's VM is in no action, `--dry-run` over the same fleet issues no
  *       `rm`, and the module exports no `PR_VIEW_JSON`;
@@ -82,6 +83,15 @@ const donePage = (run, updatedAt) => ({
 
 const evidencePath = (run) =>
   `repos/${TARGET}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceTagFor(run)}`
+
+// #724 Task 2: the janitor also asks each target it read a row for which
+// `ultra/integration-run-<N>` branches it still carries — one read per target,
+// after every row's reads. This exam cans no such answer, so it is a 404, which
+// is "no branches": no `pulls?` read follows and the report gains no line. The
+// read is still a read, two argv words at a path beginning `repos/`, so every
+// clause below holds over it unchanged.
+const matchingRefsPath = (target = TARGET) =>
+  `repos/${target}/git/matching-refs/heads/ultra/integration-run-`
 
 /** What `gh api` prints for an absent file: exit 1, `HTTP 404` on stderr. */
 const NOT_FOUND = answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })
@@ -146,8 +156,13 @@ const legAExec = () => makeExec({
 
   assert.deepEqual(
     sortedJson(ghArgvs(exec)),
-    sortedJson([['api', evidencePath(OLD)], ['api', evidencePath(YOUNG)]]),
-    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>'
+    sortedJson([
+      ['api', evidencePath(OLD)],
+      ['api', evidencePath(YOUNG)],
+      // #724 Task 2: the one per-target branch read, behind the rows' reads.
+      ['api', matchingRefsPath()]
+    ]),
+    '(a)/M1 the janitor\'s only gh commands are gh api reads — one per row, at repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>, and one per target, at repos/<target>/git/matching-refs/heads/ultra/integration-run-'
   )
   for (const argv of ghArgvs(exec)) {
     assert.equal(argv.length, 2,

@@ -32,9 +32,11 @@ no approval step before it.
 The three branches are where a run works, not what it leaves. At publish the
 sandbox tags the plan commit `ultra/plan/run-<N>` and the final evidence commit
 `ultra/evidence/run-<N>`, verifies both against the remote, and deletes
-`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step;
-`ultra/integration-run-<N>` goes with the merge, and stays only while a `--hold`
-PR is open. What a run leaves on the repository it was about is those two tags.
+`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step. The third,
+`ultra/integration-run-<N>`, has three fates: it goes with the merge, it stays
+while a `--hold` PR is open, and when its PR is left
+closed and not merged the retire sweep deletes it. What a run leaves on the
+repository it was about is those two tags.
 
 There is no image to keep fresh, no state repository, no orchestrator, no
 control VM, and no token on any VM. The Claude subscription and the GitHub
@@ -206,14 +208,18 @@ node fleet/janitor.mjs
 
 It lists the fleet, reads each VM's comment for its run and its target, reads
 that run's status page off the target with `gh api`, and `rm`s every VM whose
-run has been `done`, `parked` or `failed` for over an hour. It reaps VMs and
-nothing else: no branch and no tag on the target is its business. It reads the
-page at the evidence tag `ultra/evidence/run-<N>` first, and at the branch
-`ultra/evidence-run-<N>` only while the run is in flight or its sweep is
-pending; a run with no page is aged from the plan tag `ultra/plan/run-<N>` and
-then the plan branch `ultra/plan-run-<N>`, and the stale line names the ref it
-read. It merges nothing: an approved run merges its own pull request from the
-sandbox.
+run has been `done`, `parked` or `failed` for over an hour. It also reports,
+last in its report, every `ultra/integration-run-<N>` on those targets whose
+highest-numbered pull request is closed and not merged — the retire sweep's to
+delete, not its own. It deletes no branch; each such line names the sweep
+(`node fleet/retire.mjs --target <t>`) that does.
+
+It reads the page at the evidence tag `ultra/evidence/run-<N>` first, and at
+the branch `ultra/evidence-run-<N>` only while the run is in flight or its
+sweep is pending; a run with no page is aged from the plan tag
+`ultra/plan/run-<N>` and then the plan branch `ultra/plan-run-<N>`, and the
+stale line names the ref it read. It merges nothing: an approved run merges its
+own pull request from the sandbox.
 For any fleet VM whose run has had no status update in six hours it prints a
 line, once. It never sshes into a VM. A VM that has to go now:
 `ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
@@ -448,5 +454,7 @@ by hand. The sweep reads a pair's `status.json` on the run's evidence branch
 first and touches nothing until it has: a run whose state is not terminal, or
 whose integration branch still has an open pull request, prints
 `run <N>: live (<why>) — skipped` and keeps its branches, so a run still in
-flight is never swept out from under itself. `fleet/CONTRACT.md` names the
-script it runs from.
+flight is never swept out from under itself. An `ultra/integration-run-<N>` is that sweep's too, in one case: it
+goes with its merge and stays while a `--hold` PR is open, but when the PR is
+closed and not merged the retire sweep deletes the branch.
+`fleet/CONTRACT.md` names the script it runs from.
