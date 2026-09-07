@@ -5,3 +5,7 @@
 {"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M1YDXREP00012V5CH2DXSFEX","ts":1788801376726}
 {"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 4","id":"01M1YDXRET0000CWYKDV247BQW","ts":1788801376730}
 {"kind":"engine:phase","phase":"Setup","id":"01M1YDXREV000042HQHS8AKWEX","ts":1788801376731}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-36 at 00fb22436c9fad7f6e37de3f11f73f709675ad35; baseline green","id":"01M1YE681J0000N9DSTHW6NC75","ts":1788801654834}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M1YE681J00015DT59YHSR8SD","ts":1788801654834}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"f97e1582-ef4c-4138-acb7-3474a8e30eb3","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-36/clones/exam-1","model":"opus","id":"01M1YE683R0000WQCASSE0FWKY","ts":1788801654904}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"60e0038a-41e7-4cf1-aa82-b96a38c6b098","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-36/clones/task-1","model":"opus","id":"01M1YE683S0000TGF95P228KKK","ts":1788801654905}
