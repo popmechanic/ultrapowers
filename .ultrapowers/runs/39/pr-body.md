@@ -1,0 +1,99 @@
+## fleet run-39 — parked
+
+| | |
+|---|---|
+| verdict | `NEEDS_ACK` |
+| target | `popmechanic/ultrapowers` at `9cd8190ffb5e68b1de0eb9eac44b116ab0631d28` |
+| engine | `9cd8190ffb5e68b1de0eb9eac44b116ab0631d28` |
+| plan | `.ultrapowers/plan.md` at `27ad1301ff0448777bc9581c1cd0c9e590af2f99` |
+| branch | `ultra/integration-run-39` |
+| vm | `fleet-r39-2609072014-ecdd` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-39",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-39/report.json",
+  "branch": "ultra/integration-run-39",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/retire.mjs \u2014 the status read and open-PR gate against a real GitHub target (task 1, Claim/M1\u2013M6) \u2014 Every leg of the gate is exercised through the `exec` seam or PATH `git`/`gh` shims (`fleet/tests/test_retire.mjs`, `passthrough: []`) \u2014 no real contents API read of `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>` and no real `pulls?state=open&head=<owner>:ultra/integration-run-<N>` is issued here, so GitHub's actual envelope shape and its retention of the head ref name after a branch delete are assumed, not observed. The plan's own Files list scopes this to the sim; the first live confirmation is the next real `node fleet/retire.mjs --target <owner>/<repo> --dry-run`. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:manual",
+        "detail": "fleet/RUNBOOK.md \u00a7Rollback \u2014 the added sweep sentence (task 1, M7) \u2014 The runbook is a hand-executed record; the sentence's presence in the `## Rollback` section and the docs pins are settled by the driver's integrated Run evidence (both `sed | grep -q -- '\u2014 skipped'` commands and `tests/test_docs_agree_with_code.py`, all exit 0), but whether the rollback procedure as written reads correctly to the operator following it is human judgment, not executable here."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.K8GFo6NxrA/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1666 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 12%]\\n........................................................................ [ 17%]\\n........................................................................ [ 21%]\\n........................................................................ [ 25%]\\n........................................................................ [ 30%]\\n........................................................................ [ 34%]\\n........................................................................ [ 38%]\\n........................................................................ [ 43%]\\n........................................................................ [ 47%]\\n........................................................................ [ 51%]\\n........................................................................ [ 56%]\\n........................................................................ [ 60%]\\n........................................................................ [ 64%]\\n........................................................................ [ 69%]\\n........................................................................ [ 73%]\\n........................................................................ [ 77%]\\n........................................................................ [ 82%]\\n........................................................................ [ 86%]\\n........................................................................ [ 90%]\\n........................................................................ [ 95%]\\n........................................................................ [ 99%]\\n..........                                                               [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1666 passed, 5 warnings in 348.92s (0:05:48) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-39/.ultrapowers/runs/39/
+
+- claude-version.txt
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- publish-fold
+- receipt.json
+- report.json
+- status.json
+- transcripts
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-39/.ultrapowers/plan.md
+Closes #706
