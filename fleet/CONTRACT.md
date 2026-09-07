@@ -45,6 +45,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
+    `acceptance.log` — the gate's acceptance run's full stdout+stderr — is there when the engine
+    wrote it, beside the receipt that quotes only its 4000-char tail.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
     The publish fold writes its own `publish-fold/` receipts directory beside them, holding
