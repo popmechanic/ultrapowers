@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-44.md run-44 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "The two new `gh api` reads and the integration-branch `DELETE` in fleet/retire.mjs (sweepIntegration, :266) and fleet/janitor.mjs (integrationRunsOn, :277; branchesToReport, :300) — Every git and gh call in the committed sims goes through the recording `exec` seam of fleet/tests/_lobby_helpers.mjs with `passthrough: []`, so no call reaches GitHub. The seams assert the exact argv and canned answers, which the driver's suite confirms; what they cannot exercise is the live endpoints — that `gh api` exits non-zero with HTTP 404 on a target with no matching refs (both tools read that as 'no branches'), that `git/matching-refs/heads/ultra/integration-run-` returns the `{ ref, object }` array shape assumed, and that the `-X DELETE` on `git/refs/heads/...` actually removes the branch. The endpoint shapes are corroborated by the operator's 2026-09-07 read recorded in both tasks' Context, but only a run against a real target proves the tools' own invocation. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

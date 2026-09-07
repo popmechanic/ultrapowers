@@ -1,0 +1,113 @@
+HUNK h1 lines 34-69
+--- context (read-only)
+  /**
+   * fleet/tests/test_retire.mjs — the one-time sweep: every plan-and-evidence
+   * branch pair on the target becomes the two tags, verified against the remote,
+   * and only then are the branches deleted.
+   *
+   * Every group below names the Machine clause and the Proof leg it encodes, so a
+   * reader can map an assertion back to the contract it came from.
+   *
+   *   (a) M1 — `retire({ argv, exec })` refuses without `--target` and with a
+   *       `--target` `isSafeTarget` rejects: a `Refusal`, `exitCode` 2, and
+   *       `exec.calls` empty — no `gh` call and no `git` call. `--dry-run` is a
+   *       valueless flag. Run as a process with no `--target`: exit 2, `--target`
+   *       on stderr, and neither shim started.
+   *   (b) M2, M7 — exactly one `git ls-remote <url> refs/heads/ultra/*
+   *       refs/tags/ultra/*`; a pair is a candidate, candidates ascend, a lone
+   *       half is skipped and never touched.
+   *   (c) M3 — per candidate: POST plan tag, POST evidence tag, `ls-remote
+   *       --tags`, DELETE plan branch, DELETE evidence branch, in that order; an
+   *       already-existing reference is not a failure; no integration branch is
+   *       ever named by a DELETE.
+   *   (d) M4 — a listing that omits a tag, or shows it at another sha, keeps that
+   *       run, issues no DELETE for it, continues with the next N, and sets
+   *       `process.exitCode` to 1.
+   *   (e)(f) M5 — the closed-PR read per candidate, and the body rewrite that
+   *       changes those two substrings and nothing else.
+   *   (g) M6 — `--dry-run`: the listing and one pulls read per candidate, and
+   *       nothing else, through the seam; every candidate's line says `would`.
+   *   (h) M7 — the lines are read from `process.stdout` as they are decided, never
+   *       from the resolved value.
+   *   (i) M1, M6, M7 — spawned as a process against `git` and `gh` shims first on
+   *       `PATH`: the entry hands `retire` the real exec and prints on the
+   *       process's stdout.
+   *
+--- conflict
+<<<<<<< begin added run-44
+ * A second group, under the comment `#724 Task 1` further down, encodes that
+ * task's own Machine clauses over a listing it builds itself: the fate read
+ * `pulls?state=all&head=…`, the four line segments, the integration DELETE, and
+ * the two operator documents. Its clause numbering (M1–M6) is that task's, not
+ * this header's — every assertion there names both the leg and the clause.
+ *
+======= begin added frontier
+ * Below those, in its own region, `#706 — the status read gates the sweep`: the
+ * sweep reads each pair's `.ultrapowers/runs/<N>/status.json` off the evidence
+ * branch before it touches the run, and skips a run whose state is not terminal
+ * or whose integration branch has an open pull request.
+ *
+ *   (a) M1 — exactly one contents read per pair, before that pair's first POST,
+ *       and none for a lone half.
+ *   (b) M1 — the terminal states are `REAPABLE_STATES` imported from
+ *       `./janitor.mjs`, never a list retyped in `fleet/retire.mjs`.
+ *   (c) M2 — a live page (`booting`, `running`, `publishing`, and `blocked`,
+ *       the word the boot never writes) prints one `live (<state>) — skipped`
+ *       line, touches nothing else, lands under `live`, and does not stop the
+ *       sweep or set exit 1.
+ *   (d) M2 — a read that answers non-zero, a non-envelope body, or a page with
+ *       no string `state` is skipped the same way, `why` `no status page`.
+ *   (e)(f)(g) M3 — `done`, `parked` and `failed` are swept exactly as before the
+ *       read existed: the read gates the sweep and replaces none of it.
+ *   (h)(i) M4 — the open-PR read per terminal pair, after its status read and
+ *       before its first POST; a non-empty answer skips the run as
+ *       `live (PR #<number> open)`, an empty one lets it through.
+ *   (j) M5 — `--dry-run`, in either flag order: the same skip lines byte for
+ *       byte, `would` only for a terminal pair with no open PR, and exactly the
+ *       listing, the status reads, the open-PR reads and the closed-PR reads.
+ *   (k) M6 — the same skip as a process against `PATH` shims.
+ *   (l) M7 — the two documents each declare the skip, carrying `— skipped`, and
+ *       the docs-pin suite is green over both.
+ *
+>>>>>>> end conflict
+--- context (read-only)
+   * Every call is driven through the `exec` seam with `makeExec({ passthrough: [] })`,
+   * so no rule runs `git` or `gh` for real; the process legs run against shims the
+   * exam writes into a temporary directory. Nothing here opens a socket and
+   * nothing outside the temporary directories is written.
+   *
+   * The graded lines are always the ones captured off `process.stdout.write` for
+   * the duration of the call. This exam never reads `result.lines` — M7 makes it
+   * optional, so a leg that fell back to it could not fail.
+   */
+  
+  import assert from 'node:assert/strict'
+  import fs from 'node:fs'
+  import path from 'node:path'
+  import { spawnSync } from 'node:child_process'
+  import { fileURLToPath } from 'node:url'
+  
+  import {
+    Refusal,
+    evidenceBranchFor,
+    evidenceTagFor,
+    integrationBranchFor,
+    planBranchFor,
+    planTagFor
+  } from '../lobby.mjs'
+  import { retire } from '../retire.mjs'
+  import { answer, cleanup, makeExec, tempDir } from './_lobby_helpers.mjs'
+  
+  const HERE = path.dirname(fileURLToPath(import.meta.url))
+  const FLEET_DIR = path.resolve(HERE, '..')
+  const RETIRE_SRC = path.join(FLEET_DIR, 'retire.mjs')
+  
+  // ── Shared literals ─────────────────────────────────────────────────────────
+  
+  const OWNER = 'o'
+  const REPO = 'r'
+  const TARGET = `${OWNER}/${REPO}`
+  const URL = `https://github.com/${OWNER}/${REPO}.git`
+  
+  /** A 40-hex object name from a hex seed, so every ref has its own sha. */
+  const sha = (seed) => seed + '0'.repeat(40 - seed.length)

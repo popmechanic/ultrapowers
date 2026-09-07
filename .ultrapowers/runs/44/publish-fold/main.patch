@@ -1,0 +1,1635 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index bef5aa8a4a4948856e3ff6e7c39f5c89d344ad15..9d644f8bc173af7d29d100916c38ee49eae6ad75 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -45,6 +45,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
+     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
+     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
++    `acceptance.log` — the gate's acceptance run's full stdout+stderr — is there when the engine
++    wrote it, beside the receipt that quotes only its 4000-char tail.
+     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
+     readers slice — is there on the same terms, present when the engine wrote them.
+     The publish fold writes its own `publish-fold/` receipts directory beside them, holding
+@@ -63,7 +65,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` are deleted in the same step, after both
+   tags are verified against the remote with `git ls-remote --tags`. A tag that does not verify keeps
+   both branches; a run that ends `failed` keeps them for the one-time sweep
+-  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The record is
++  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target). The sweep
++  reads each pair's `.ultrapowers/runs/<N>/status.json` on the run's evidence branch before it names
++  that run's tags or branches: a run whose `state` is not one of `done`, `parked` or `failed`, or
++  whose `ultra/integration-run-<N>` still has an open pull request, is a run in flight and prints
++  `run <N>: live (<why>) — skipped` instead — the same line under `--dry-run`. The record is
+   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
+   `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
+ - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index a9e2912ea3fcf37e550793a1a1af92dd5d5800d3..1392e88059fdd0e29c7222f56d8c7f758720bb4b 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -444,4 +444,9 @@ tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, and those are kept —
+ deleting them is deleting the run. Runs from before the tags, and runs that
+ ended `failed`, still have `ultra/*-run-<N>` branches on their target; the
+ one-time retire sweep is what clears those, never a `git push origin --delete`
+-by hand. `fleet/CONTRACT.md` names the script it runs from.
++by hand. The sweep reads a pair's `status.json` on the run's evidence branch
++first and touches nothing until it has: a run whose state is not terminal, or
++whose integration branch still has an open pull request, prints
++`run <N>: live (<why>) — skipped` and keeps its branches, so a run still in
++flight is never swept out from under itself. `fleet/CONTRACT.md` names the
++script it runs from.
+diff --git a/fleet/retire.mjs b/fleet/retire.mjs
+index 2b8cfc44fbd3975c8c7ff0e0f9aa57a7808e8275..6018bdbe0c0f337c884871d8b32c86034aded8cf 100644
+--- a/fleet/retire.mjs
++++ b/fleet/retire.mjs
+@@ -37,19 +37,31 @@
+  * is rewritten to the tag paths, so the links survive the deletion — and
+  * nothing else in the body is touched.
+  *
++ * A pair of branches is not on its own a finished run. Before anything names a
++ * run's tags or branches, the sweep reads that run's status page — the contents
++ * API at `.ultrapowers/runs/<N>/status.json`, on the run's evidence branch — and
++ * only a page whose `state` is one of `REAPABLE_STATES` earns the sweep. A live
++ * page, an unreadable one, or an open pull request on the run's integration
++ * branch prints `run <N>: live (<why>) — skipped` and the sweep moves to the
++ * next N. The states are imported from `./janitor.mjs`, which is the one place
++ * they are spelled: the test is membership, never a denylist of the live words,
++ * so a `state` the boot never writes is skipped rather than swept.
++ *
+  * Every run the listing carries prints one line as it is decided, on this
+  * process's stdout, in ascending N. Stdout is the record: the resolved value
+  * carries the same lines under `lines`, but the printing is what a reader of a
+  * long sweep actually sees, and it happens before the next run is started.
+  *
+- * `--dry-run` says what it would do: the one heads-and-tags listing and one
+- * closed-PR read per candidate, and no command that creates or deletes
+- * anything.
++ * `--dry-run` says what it would do: the one heads-and-tags listing, the status
++ * read per candidate, the open-PR read per terminal candidate and one closed-PR
++ * read per candidate that would be swept, and no command that creates or deletes
++ * anything. A skipped run prints the same line either way.
+  */
+ 
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
++import { REAPABLE_STATES } from './janitor.mjs'
+ import {
+   Refusal,
+   defaultExec,
+@@ -116,6 +128,52 @@ async function ghRead (exec, apiPath) {
+   return res.code === 0 ? parseJson(res.stdout) : null
+ }
+ 
++/**
++ * The run's status page, off its evidence branch. The answer is the contents
++ * envelope — base64 under `content` — and nothing else is accepted: a bare
++ * status document would mean `gh` answered something other than the contents
++ * API, and a pair swept on a payload nobody read is a live run deleted. An
++ * absent file is exit 1 with `HTTP 404`, which `ghRead` already turns into
++ * `null`; every other unreadable shape lands here as `null` too, and `null` is
++ * "no page", which is a skip and never a sweep.
++ */
++async function readStatusPage (exec, target, run) {
++  const payload = await ghRead(
++    exec,
++    `repos/${target}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
++  )
++  if (!payload || typeof payload.content !== 'string') return null
++  const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
++  return decoded && typeof decoded === 'object' ? decoded : null
++}
++
++/**
++ * Why this run is not the sweep's to take, or `null` when it is. The test is
++ * membership in `REAPABLE_STATES` — the terminal words are spelled once, in
++ * `janitor.mjs` — so a `state` nobody writes is live, not sweepable.
++ */
++function liveReason (page) {
++  const state = page === null ? null : page.state
++  if (typeof state !== 'string') return 'no status page'
++  return REAPABLE_STATES.includes(state) ? null : state
++}
++
++/**
++ * The run's open pull request, if it has one. `head=<owner>:<ref>` matches on
++ * the head ref's NAME; `state=open` is the only difference from the closed read
++ * below. A run whose integration PR is still open is a run somebody is still
++ * looking at, and its branches are what its links resolve through.
++ */
++async function openPullOf (exec, target, run) {
++  const owner = String(target).split('/')[0]
++  const payload = await ghRead(
++    exec,
++    `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
++  )
++  const rows = Array.isArray(payload) ? payload : []
++  return rows.length > 0 ? rows[0] : null
++}
++
+ /** Create one tag at one sha through the refs API. */
+ async function createTag (exec, target, tag, sha) {
+   const res = await exec('gh', [
+@@ -214,6 +272,7 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
+   const retired = []
+   const kept = []
+   const skipped = []
++  const live = []
+   const lines = []
+   const say = (line) => {
+     lines.push(line)
+@@ -232,6 +291,21 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
+       continue
+     }
+ 
++    // The gate, and the first thing that names this run: a pair whose page is
++    // not terminal, or whose integration PR is still open, is a run in flight.
++    // Skipping it is the same decision under `--dry-run` and without it — the
++    // sweep never asks what it would do to a run it is not going to touch.
++    let why = liveReason(await readStatusPage(exec, target, run))
++    if (why === null) {
++      const open = await openPullOf(exec, target, run)
++      if (open !== null) why = `PR #${open.number} open`
++    }
++    if (why !== null) {
++      live.push({ run, why })
++      say(`run ${run}: live (${why}) — skipped`)
++      continue
++    }
++
+     if (dryRun) {
+       const patches = await pullsToPatch(exec, target, run)
+       say(
+@@ -277,7 +351,7 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
+   // did what it could — but it is not a clean sweep either, so it is exit 1.
+   if (kept.length > 0) process.exitCode = 1
+ 
+-  return { target, dryRun, retired, kept, skipped, lines }
++  return { target, dryRun, retired, kept, skipped, live, lines }
+ }
+ 
+ async function main (argv) {
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index b182a5bf2c21fdf8a8cf025857abe1780c075fe2..97baef8790bac9a5d18f9ff96abaa8496e1c48e0 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -214,6 +214,36 @@ export function fillTiers(argsObj, tier) {
+   return filled
+ }
+ 
++// ── the gate's acceptance run, teed into the run directory (#739) ────────────
++// `ultra_gate.py` hands `receipt.json`'s `testCmd` verbatim to
++// `run_acceptance.sh --suite-gate --run`, which evaluates it inside a detached
++// worktree and keeps only `tail -c 8000` of the output; the gate receipt then
++// keeps only the last 4000 chars of THAT. Both scripts are frozen, so the full
++// output can only be preserved by the string the driver puts in the receipt.
++// This is that string. Each piece is load-bearing:
++//
++//   `set -o pipefail;`   the pipeline's status is the SUITE's, not tee's 0.
++//                        The evaluating shell already has it on; saying it
++//                        here keeps the literal self-contained.
++//   `{ <testCmd>; }`     a command carrying `&&` or `;`
++//                        (`bunx tsc --noEmit && bun test`) is grouped BEFORE
++//                        the redirection, so the whole of it is captured and
++//                        the group's status is the suite's.
++//   `2>&1 | tee '<log>'` both streams reach the file AND the pipe's stdout —
++//                        which is what run_acceptance.sh captures into $OUT,
++//                        so the receipt's tail is unchanged in content. `tee`
++//                        reads to EOF, so there is no SIGPIPE.
++//
++// The path is absolute and single-quoted: the eval runs with cwd = the exam
++// worktree under `mktemp -d`, never the run dir. (A repository toplevel
++// containing a single quote is out of scope — the run dir is
++// `<toplevel>/.claude/ultrapowers/run-<stamp>` and parseArgs already refuses a
++// stamp with a space.)
++export const acceptanceLogPath = (runDir) => path.join(runDir, 'acceptance.log')
++
++export const acceptanceWrap = (testCmd, runDir) =>
++  "set -o pipefail; { " + testCmd + "; } 2>&1 | tee '" + acceptanceLogPath(runDir) + "'"
++
+ // ── the two-move rule (SKILL.md step 5, made deterministic) ──────────────────
+ // NEEDS_ACK approves iff EVERY ack is a deferredVerification item with reason
+ // runtime or external (ack.type is "deferred:<reason>", gate_check.py:134).
+@@ -652,6 +682,33 @@ export async function runMain(parsed, deps = {}) {
+   if (fin.code !== 0) {
+     return fail('finalize-failed', (fin.stderr || fin.stdout).slice(-800))
+   }
++  // The acceptance capture (#739), and this is the one spot it can happen: the
++  // run dir is known (since step 1) and the gate has not yet read receipt.json.
++  // The wrapper goes into the RECEIPT and nowhere else — the engine and
++  // publish-fold read `args.json`'s testCmd (run-engine.mjs for the baseline,
++  // the proof runs and the integrated suite), and the knob the driver forwards
++  // to ultra_run.py is the operator's, unwrapped. Every other key ultra_run
++  // stamped (ok, baseBranch, argsFile, testCmdSource, compile, …) is carried
++  // through by value; `acceptanceLog` is added so a reader of the evidence
++  // branch's receipt sees where the full output went without parsing a shell
++  // command. A receipt with no testCmd is left alone: the gate has its own
++  // fail-closed message for that, and wrapping nothing would hide it.
++  const runReceiptPath = path.join(runDir, 'receipt.json')
++  try {
++    const runReceipt = readJson(runReceiptPath)
++    if (typeof runReceipt.testCmd === 'string' && runReceipt.testCmd) {
++      runReceipt.testCmd = acceptanceWrap(runReceipt.testCmd, runDir)
++      runReceipt.acceptanceLog = acceptanceLogPath(runDir)
++      fs.writeFileSync(runReceiptPath, JSON.stringify(runReceipt, null, 2))
++      stage('acceptance-capture', 'gate suite tees to ' + runReceipt.acceptanceLog)
++    } else {
++      stage('acceptance-capture', 'receipt carries no testCmd — nothing to wrap')
++    }
++  } catch (e) {
++    return fail('acceptance-capture-failed', 'could not rewrite ' + runReceiptPath +
++      ' with the acceptance-log wrapper: ' + String((e && e.message) || e))
++  }
++
+   stage('gate')
+   const gate = await exec(py, [path.join(scripts, 'ultra_gate.py'),
+     '--stamp', stamp, '--result', resultPath], { cwd: repoDir, env: pyEnv })
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 83806db630ce3b61aade00e8e5f74e2984478837..f2adff70d5eabc78e43499b18fe988665414e00c 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -356,8 +356,11 @@ read_assignment() {
+ }
+ 
+ is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
+-is_target() { printf '%s' "$1" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; }
+-is_run_n()  { printf '%s' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9-]*$'; }
++# The same two EREs `grep -qE` carried, read by bash itself: a BUILTIN writer
++# (`printf`) dies with its subshell on SIGPIPE before any `|| true` can run, so
++# a pipeline here has no guard available — and a test needs no pipeline at all.
++is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
++is_run_n()  { [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; }
+ 
+ parse_assignment() { # $1 = the comment line
+   local tok key val
+@@ -758,9 +761,12 @@ collect_evidence() {
+   [ -n "$approve" ] && cp "$approve" "$dest/approve-receipt.json"
+   run_dir="$(run_dir_path)"
+   # `standing-approval.json` is the pre-authorization record the engine writes
+-  # beside the receipts. Every name here is copied WHEN THE ENGINE WROTE IT — a
+-  # run that needed no approval commits none.
+-  for f in report.json events.jsonl receipt.json standing-approval.json; do
++  # beside the receipts. `acceptance.log` is the acceptance run's whole
++  # stdout+stderr, teed there by the driver's suite command — `gate-receipt.json`
++  # keeps only its 4000-char tail, so the log is the only full copy. Every name
++  # here is copied WHEN THE ENGINE WROTE IT — a run that needed no approval, or
++  # that died before the gate ran, commits none.
++  for f in report.json events.jsonl receipt.json standing-approval.json acceptance.log; do
+     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
+   done
+   # The engine's per-worker transcripts — the reduced records ultralearn's
+@@ -1102,7 +1108,9 @@ push_head() {
+ 
+ plan_title() {
+   [ -f "$PLAN_FILE" ] || return 0
+-  sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1
++  # `head -n 1` closes the pipe on a plan with a second `# ` line, and an
++  # EXTERNAL writer takes SIGPIPE for it — guarded exactly as `json_field` is.
++  { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1
+ }
+ 
+ # The issues this run's PR closes, one `Closes #<digits>` line each, in the
+@@ -1692,8 +1700,11 @@ record_tags() {
+   fi
+   # One listing, naming both tags, from the clone that owns `origin`.
+   listing="$(fleet_git -C "$TARGET_DIR" ls-remote --tags origin "$plan_tag" "$evidence_tag" 2>/dev/null || true)"
+-  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"
+-  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"
++  # No `exit` in either `awk`: the writer is a BUILTIN, which dies with its
++  # subshell on SIGPIPE, so the reader must consume the whole listing —
++  # `ls-remote` lists a ref once, so the output is the same either way.
++  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1 }')"
++  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1 }')"
+   # BOTH tags, each at its OWN sha. A listing missing one of them, or showing
+   # one at a commit this run did not put there, is not the record it claims.
+   if [ "$listed_plan" != "$PLAN_SHA" ] || [ "$listed_evidence" != "$head" ]; then
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index f9edfe648a449fdbfdf04c6ea6c917e8d1f3772e..8a50ef3b5707a8afe08c455d3faf629443f5e6f2 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -299,7 +299,12 @@ case "$verb" in
+       *--tags*)
+         [ -n "\${STUB_TAGS_MISSING:-}" ] && exit 0
+         printf '%s\\trefs/tags/ultra/plan/run-7\\n' "\${STUB_TAG_PLAN_SHA:-$STUB_PLAN_SHA}"
+-        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}" ;;
++        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}"
++        # A listing longer than any pipe holds, for the case that asks whether
++        # the boot's reader of it survives a writer still writing. \`cat\` is
++        # external, and the boot reads this answer whole, so neither end here
++        # can take SIGPIPE.
++        [ -f "$FLEET_HOME/stub/ls-remote-extra" ] && cat "$FLEET_HOME/stub/ls-remote-extra" ;;
+     esac
+     exit 0 ;;
+   symbolic-ref)
+@@ -315,6 +320,10 @@ case "$verb" in
+         # reaches the boot, so a reader of any other source sees none of it.
+         printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"
+         if [ -n "\${STUB_PLAN_EXTRA:-}" ]; then printf '%s\\n' "$STUB_PLAN_EXTRA"; fi
++        # Linux refuses an environment string past 128 KiB, so plan text big
++        # enough to outrun a pipe plus a reader's first read comes from a FILE
++        # beside the stub's counters, not from STUB_PLAN_EXTRA.
++        [ -f "$FLEET_HOME/stub/plan-extra" ] && cat "$FLEET_HOME/stub/plan-extra"
+         exit 0 ;;
+       *:.ultrapowers/gate-verdicts.json) printf '{"tasks":{"1":{"verdict":"pass"}},"tally":{"tasks":1}}\\n'; exit 0 ;;
+     esac
+diff --git a/fleet/tests/test_retire.mjs b/fleet/tests/test_retire.mjs
+index 843193897952203eaf4504785ff15259d549eabe..7b4d87dc418be5466cc538ee77ed52a4e3b4a1d6 100644
+--- a/fleet/tests/test_retire.mjs
++++ b/fleet/tests/test_retire.mjs
+@@ -31,6 +31,33 @@
+  *       `PATH`: the entry hands `retire` the real exec and prints on the
+  *       process's stdout.
+  *
++ * Below those, in its own region, `#706 — the status read gates the sweep`: the
++ * sweep reads each pair's `.ultrapowers/runs/<N>/status.json` off the evidence
++ * branch before it touches the run, and skips a run whose state is not terminal
++ * or whose integration branch has an open pull request.
++ *
++ *   (a) M1 — exactly one contents read per pair, before that pair's first POST,
++ *       and none for a lone half.
++ *   (b) M1 — the terminal states are `REAPABLE_STATES` imported from
++ *       `./janitor.mjs`, never a list retyped in `fleet/retire.mjs`.
++ *   (c) M2 — a live page (`booting`, `running`, `publishing`, and `blocked`,
++ *       the word the boot never writes) prints one `live (<state>) — skipped`
++ *       line, touches nothing else, lands under `live`, and does not stop the
++ *       sweep or set exit 1.
++ *   (d) M2 — a read that answers non-zero, a non-envelope body, or a page with
++ *       no string `state` is skipped the same way, `why` `no status page`.
++ *   (e)(f)(g) M3 — `done`, `parked` and `failed` are swept exactly as before the
++ *       read existed: the read gates the sweep and replaces none of it.
++ *   (h)(i) M4 — the open-PR read per terminal pair, after its status read and
++ *       before its first POST; a non-empty answer skips the run as
++ *       `live (PR #<number> open)`, an empty one lets it through.
++ *   (j) M5 — `--dry-run`, in either flag order: the same skip lines byte for
++ *       byte, `would` only for a terminal pair with no open PR, and exactly the
++ *       listing, the status reads, the open-PR reads and the closed-PR reads.
++ *   (k) M6 — the same skip as a process against `PATH` shims.
++ *   (l) M7 — the two documents each declare the skip, carrying `— skipped`, and
++ *       the docs-pin suite is green over both.
++ *
+  * Every call is driven through the `exec` seam with `makeExec({ passthrough: [] })`,
+  * so no rule runs `git` or `gh` for real; the process legs run against shims the
+  * exam writes into a temporary directory. Nothing here opens a socket and
+@@ -105,6 +132,14 @@ const deleteLine = (run, kind) => {
+ const pullsLine = (run) =>
+   `gh api repos/${TARGET}/pulls?state=closed&head=${OWNER}:ultra/integration-run-${run}`
+ 
++/** #706/M1: the one status read, off the pair's evidence BRANCH (the record is
++ *  read by tag elsewhere; a pair still carrying branches has no tag yet). */
++const contentsLine = (run) =>
++  `gh api repos/${TARGET}/contents/.ultrapowers/runs/${run}/status.json?ref=${evidenceBranchFor(run)}`
++/** #706/M4: the open-PR read, the same head filter with `state=open`. */
++const openPullsLine = (run) =>
++  `gh api repos/${TARGET}/pulls?state=open&head=${OWNER}:ultra/integration-run-${run}`
++
+ /** M3: the whole ordered sweep of one candidate, tags then verify then deletes. */
+ const sweepLines = (run) => [
+   postLine(run, 'plan'),
+@@ -223,14 +258,67 @@ const runOfTagRead = (argv) => {
+   return null
+ }
+ 
++/** #706/M1: the contents envelope a status read answers — base64 under
++ *  `content`, exactly as GitHub's contents API answers it. */
++const envelope = (page) => answer({
++  content: Buffer.from(JSON.stringify(page), 'utf8').toString('base64'),
++  sha: sha('b10b')
++})
++
++/** #706/M1: the pages the seam serves by default — both pairs terminal. */
++const DONE_PAGES = { 3: { state: 'done', run: 3 }, 12: { state: 'done', run: 12 } }
++
++/** The run a `gh api` call names in its path, off `runs/<N>/` or `run-<N>`. */
++const runOfApiCall = (argv) => {
++  const joined = argv.map(String).join(' ')
++  const match = /\/runs\/([1-9][0-9]*)\/|ultra\/integration-run-([1-9][0-9]*)/.exec(joined)
++  return match ? Number(match[1] ?? match[2]) : null
++}
++
+ /**
+  * The recording seam of leg (b): the one heads-and-tags listing, the per-run tag
+- * verify, the refs POST, the closed-PR read, the PATCH and the DELETE. Nothing
+- * runs for real (`passthrough: []`), so no `git` and no `gh` is started here.
++ * verify, the refs POST, the status read, the open- and closed-PR reads, the
++ * PATCH and the DELETE. Nothing runs for real (`passthrough: []`), so no `git`
++ * and no `gh` is started here.
++ *
++ * `pages` is the status page each run's contents read answers with (a run with
++ * no entry gets a 404, the answer GitHub gives for a file that is not there);
++ * `contentsAnswers` overrides a run's answer wholesale, for the three shapes
++ * that carry no page at all; `openPulls` is what the `state=open` read answers,
++ * empty for every run unless a leg says otherwise.
+  */
+-function makeSeam ({ tagVariant = {}, postAnswer = null, pulls = PULLS } = {}) {
++function makeSeam ({
++  tagVariant = {},
++  postAnswer = null,
++  pulls = PULLS,
++  pages = DONE_PAGES,
++  contentsAnswers = {},
++  openPulls = {}
++} = {}) {
+   const snapshots = {}
+   const rules = [
++    {
++      // #706/M1: `repos/<t>/contents/.ultrapowers/runs/<N>/status.json?ref=…`
++      when: (c, argv) => c === 'gh' && /\/contents\//.test(argv.map(String).join(' ')),
++      answer: (c, argv) => {
++        const run = runOfApiCall(argv)
++        if (run !== null && Object.prototype.hasOwnProperty.call(contentsAnswers, run)) {
++          return contentsAnswers[run]
++        }
++        const page = run === null ? undefined : pages[run]
++        return page === undefined
++          ? answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })
++          : envelope(page)
++      }
++    },
++    {
++      // #706/M4: the open-PR read, told from the closed one by `state=`.
++      when: (c, argv) => c === 'gh' && /\/pulls\?[^ ]*state=open/.test(argv.map(String).join(' ')),
++      answer: (c, argv) => {
++        const run = runOfApiCall(argv)
++        return answer(run === null ? [] : (openPulls[run] ?? []))
++      }
++    },
+     {
+       when: (c, argv) => c === 'git' && argv[0] === 'ls-remote' && argv.includes(HEADS_GLOB),
+       answer: answer(HEADS_LISTING)
+@@ -315,8 +403,11 @@ assert.deepEqual(linesOf(healthy, (l) => l.startsWith('gh ') && namesRun(l, 5)),
+ 
+ // ── (c) M3: the ordered sweep of a candidate ────────────────────────────────
+ 
++// The sweep proper: the reads that decide whether to sweep at all — the pulls
++// reads and (#706/M1) the status read — are not part of it and are filtered out,
++// so this stays the ordered sweep it pinned before the status read existed.
+ const sweepOf = (exec, run) =>
+-  linesOf(exec, (l) => namesRun(l, run) && !l.includes('/pulls'))
++  linesOf(exec, (l) => namesRun(l, run) && !l.includes('/pulls') && !l.includes('/contents/'))
+ 
+ assert.deepEqual(sweepOf(healthy, 3), sweepLines(3),
+   '(c)/M3 run 3: the two tag POSTs, then the ls-remote --tags verify, then the two branch DELETEs, in that order')
+@@ -385,7 +476,7 @@ for (const [i, exec] of SEAMS.entries()) {
+ 
+ // ── (e) M5: the closed-PR read, and the body rewrite ────────────────────────
+ 
+-assert.deepEqual(linesOf(healthy, (l) => l.includes('/pulls?')), [pullsLine(3), pullsLine(12)],
++assert.deepEqual(linesOf(healthy, (l) => l.includes('/pulls?state=closed')), [pullsLine(3), pullsLine(12)],
+   '(e)/M5 one closed-PR read per candidate, by the integration head ref')
+ 
+ const patches = healthy.calls.filter((c) => c.cmd === 'gh' && c.argv.includes('PATCH'))
+@@ -407,8 +498,14 @@ for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target',
+   const out = await captured(() => retire({ argv, exec }))
+   const spelling = JSON.stringify(argv)
+ 
+-  assert.deepEqual(lines(exec), [LIST_LINE, pullsLine(3), pullsLine(12)],
+-    `(g)/M6 ${spelling}: the calls through the seam are exactly the one listing and one pulls read per candidate`)
++  assert.deepEqual(
++    lines(exec),
++    [
++      LIST_LINE,
++      contentsLine(3), openPullsLine(3), pullsLine(3),
++      contentsLine(12), openPullsLine(12), pullsLine(12)
++    ],
++    `(g)/M6, #706/M5 ${spelling}: the calls through the seam are exactly the one listing, then per pair in ascending N its status read, its open-PR read and its closed-PR read`)
+   assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
+     `(g)/M6 ${spelling}: no gh api call carries -X`)
+   assert.deepEqual(linesOf(exec, (l) => l.startsWith('git ') && l !== LIST_LINE), [],
+@@ -436,6 +533,262 @@ for (const [i, exec] of SEAMS.entries()) {
+     `(h)/M7 seam ${i}: only git and gh are reached through the exec seam`)
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// #706 — the status read gates the sweep
++//
++// Every pair's `.ultrapowers/runs/<N>/status.json` is read off the evidence
++// branch before anything names that run's tags or branches; a page that is not
++// terminal, a page that cannot be read, and a run with an open integration PR
++// are each one printed line and nothing else.
++// ════════════════════════════════════════════════════════════════════════════
++
++/** The one line a skipped run prints, exact — the same with and without
++ *  `--dry-run` (#706/M2, M4, M5). */
++const liveSkip = (run, why) => `run ${run}: live (${why}) — skipped`
++
++/** The skip lines captured once and compared byte for byte under `--dry-run`. */
++const captured706 = {}
++
++// ── #706 (a) M1: one status read per pair, before that pair's first POST ────
++
++for (const run of [3, 12]) {
++  const reads = linesOf(healthy, (l) => namesRun(l, run) && l.includes('/contents/'))
++  assert.deepEqual(reads, [contentsLine(run)],
++    `#706 (a)/M1 run ${run}: exactly one contents read for the pair, the status page off its evidence branch; got ${JSON.stringify(reads)}`)
++
++  const all = lines(healthy)
++  const readAt = all.indexOf(contentsLine(run))
++  const postAt = all.findIndex((l) => l.includes('POST') && namesRun(l, run))
++  assert.ok(readAt !== -1 && postAt !== -1 && readAt < postAt,
++    `#706 (a)/M1 run ${run}: the status read comes before the first command naming the run's tags or branches — a tool that reads the page after tagging fails; read at ${readAt}, first POST at ${postAt}`)
++}
++assert.deepEqual(linesOf(healthy, (l) => namesRun(l, 5) && l.includes('/contents/')), [],
++  '#706 (a)/M1 a lone half is not a pair: no status page is read for run 5')
++
++// ── #706 (b) M1: the terminal states are imported, never retyped ────────────
++
++const RETIRE_SOURCE = fs.readFileSync(RETIRE_SRC, 'utf8')
++
++assert.match(RETIRE_SOURCE, /import\s*\{[^}]*\bREAPABLE_STATES\b[^}]*\}\s*from\s*'\.\/janitor\.mjs'/,
++  "#706 (b)/M1 fleet/retire.mjs imports REAPABLE_STATES from './janitor.mjs' — the one place the terminal states are spelled")
++assert.doesNotMatch(RETIRE_SOURCE, /['"]done['"]\s*,\s*['"]parked['"]\s*,\s*['"]failed['"]/,
++  '#706 (b)/M1 and retypes no `done, parked, failed` list of its own')
++
++// ── #706 (c) M2: a live page is one line, and the sweep goes on ─────────────
++
++/** The seam of the `running`-as-run-3 case, reused by (i) and (j). */
++let running3Seam = null
++
++for (const state of ['booting', 'running', 'publishing', 'blocked']) {
++  const exec = seam({ pages: { 3: { run: 3, state }, 12: { run: 12, state: 'done' } } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++  if (state === 'running') {
++    running3Seam = exec
++    captured706.running3 = runLine(out, 3)
++  }
++
++  assert.equal(runLine(out, 3), liveSkip(3, state),
++    `#706 (c)/M2 a page whose state is \`${state}\` prints exactly \`${liveSkip(3, state)}\` — the test is membership in REAPABLE_STATES, so a denylist of the three live states would sweep \`blocked\`; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3)), [contentsLine(3)],
++    `#706 (c)/M2 \`${state}\`: the status read is the only command naming run 3 — no POST, no --tags, no DELETE, no PATCH, no /pulls; got ${JSON.stringify(linesOf(exec, (l) => namesRun(l, 3)))}`)
++  assert.deepEqual(out.result.live, [{ run: 3, why: state }],
++    `#706 (c)/M2 \`${state}\`: the resolved value carries the run under \`live\` as { run, why }`)
++  assert.deepEqual(out.result.retired, [12],
++    `#706 (c)/M2 \`${state}\`: the sweep goes on to the next N — run 12 is still retired`)
++  assert.deepEqual(out.result.kept, [],
++    `#706 (c)/M2 \`${state}\`: a live run is not a kept run`)
++  assert.equal(Array.isArray(out.result.skipped) && out.result.skipped.length, 1,
++    `#706 (c)/M2 \`${state}\`: \`skipped\` stays the lone halves' branch names; got ${JSON.stringify(out.result.skipped)}`)
++  assert.ok(/(^|\D)5(\D|$)/.test(out.result.skipped.join(' ')),
++    `#706 (c)/M2 \`${state}\`: and names only run 5; got ${JSON.stringify(out.result.skipped)}`)
++  assert.deepEqual(sweepOf(exec, 12), sweepLines(12),
++    `#706 (c)/M2 \`${state}\`: the following pair is swept in full — two POSTs, the verify, two DELETEs`)
++  assert.ok(runLine(out, 12).includes('retired'),
++    `#706 (c)/M2 \`${state}\`: and its line says retired; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.ok(out.lines.indexOf(runLine(out, 3)) < out.lines.indexOf(runLine(out, 12)),
++    `#706 (c)/M2 \`${state}\`: the skip line is printed before the next run's line`)
++  assert.notEqual(out.exitCode, 1,
++    `#706 (c)/M2 \`${state}\`: a live run is not a kept run, so process.exitCode is not set to 1`)
++}
++
++// The mirror: the live pair is the LAST candidate, the terminal one first.
++{
++  const exec = seam({ pages: { 3: { run: 3, state: 'done' }, 12: { run: 12, state: 'running' } } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++  captured706.running12 = runLine(out, 12)
++
++  assert.equal(runLine(out, 12), liveSkip(12, 'running'),
++    `#706 (c)/M2 the mirror: run 12's line is exactly \`${liveSkip(12, 'running')}\`; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.deepEqual(out.result.retired, [3],
++    '#706 (c)/M2 the mirror: the terminal pair before it is retired')
++  assert.deepEqual(out.result.live, [{ run: 12, why: 'running' }],
++    '#706 (c)/M2 the mirror: `live` carries run 12')
++}
++
++// ── #706 (d) M2: a page that cannot be read is skipped the same way ─────────
++
++for (const [what, contents] of [
++  ['a read answering non-zero', answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' })],
++  ['a body that is not the contents envelope', answer([])],
++  ['an envelope whose page has no `state`', envelope({ run: '3' })]
++]) {
++  const exec = seam({ contentsAnswers: { 3: contents } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.equal(runLine(out, 3), liveSkip(3, 'no status page'),
++    `#706 (d)/M2 ${what}: run 3's line is exactly \`${liveSkip(3, 'no status page')}\`; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(
++    linesOf(exec, (l) => namesRun(l, 3) && (l.includes('POST') || l.includes('DELETE'))), [],
++    `#706 (d)/M2 ${what}: an unreadable page is never swept — no POST and no DELETE names run 3`)
++  assert.deepEqual(out.result.live, [{ run: 3, why: 'no status page' }],
++    `#706 (d)/M2 ${what}: \`live\` carries the run with why \`no status page\``)
++  assert.deepEqual(out.result.retired, [12],
++    `#706 (d)/M2 ${what}: the sweep goes on — run 12 is retired`)
++}
++
++// ── #706 (e)(f)(g) M3: a terminal page is swept exactly as before ───────────
++
++assert.deepEqual(sweepOf(healthy, 3), sweepLines(3),
++  '#706 (e)/M3 a `done` page is swept as before the read existed: the two POSTs, the verify, the two DELETEs, in that order')
++assert.ok(runLine(base, 3).includes('retired'),
++  `#706 (e)/M3 and the run's line says retired; got ${JSON.stringify(runLine(base, 3))}`)
++assert.deepEqual(base.result.live, [],
++  '#706 (e)/M3 nothing is live when both pages are terminal')
++
++for (const [leg, state] of [['(f)', 'parked'], ['(g)', 'failed']]) {
++  const exec = seam({ pages: { 3: { run: 3, state }, 12: { run: 12, state: 'done' } } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.deepEqual(sweepOf(exec, 3), sweepLines(3),
++    `#706 ${leg}/M3 a \`${state}\` run is swept — the read gates the sweep and replaces none of it`)
++  assert.ok(runLine(out, 3).includes('retired'),
++    `#706 ${leg}/M3 and its line says retired, not skipped; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(out.result.live, [],
++    `#706 ${leg}/M3 a \`${state}\` run is terminal, so nothing is live`)
++}
++
++// ── #706 (h)(i) M4: the open-PR read, after the status read, before the POST ─
++
++{
++  const exec = seam({ openPulls: { 3: [{ number: PR_3, body: '' }], 12: [] } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3)), [contentsLine(3), openPullsLine(3)],
++    `#706 (h)/M4 a terminal pair is asked once for its open PRs, after its status read and before anything else — and an open PR stops it there: no POST, no DELETE, no PATCH, no closed-PR read; got ${JSON.stringify(linesOf(exec, (l) => namesRun(l, 3)))}`)
++  assert.equal(runLine(out, 3), liveSkip(3, `PR #${PR_3} open`),
++    `#706 (h)/M4 the line names the first row's number; got ${JSON.stringify(runLine(out, 3))}`)
++  captured706.pr3 = runLine(out, 3)
++  assert.deepEqual(out.result.live, [{ run: 3, why: `PR #${PR_3} open` }],
++    '#706 (h)/M4 `live` carries the run with the same why the line printed')
++  assert.deepEqual(sweepOf(exec, 12), sweepLines(12),
++    '#706 (h)/M4 the pair with no open PR proceeds to the whole sweep')
++  assert.ok(runLine(out, 12).includes('retired'),
++    `#706 (h)/M4 and its line says retired; got ${JSON.stringify(runLine(out, 12))}`)
++
++  const all = lines(exec)
++  const readAt = all.indexOf(contentsLine(12))
++  const openAt = all.indexOf(openPullsLine(12))
++  const postAt = all.findIndex((l) => l.includes('POST') && namesRun(l, 12))
++  assert.ok(readAt !== -1 && openAt > readAt && postAt > openAt,
++    `#706 (h)/M4 run 12's open-PR read sits after its status read and before its first POST; status ${readAt}, open ${openAt}, POST ${postAt}`)
++}
++
++assert.deepEqual(linesOf(healthy, (l) => l.includes('/pulls?state=open')),
++  [openPullsLine(3), openPullsLine(12)],
++  '#706 (i)/M4 the control: each terminal pair is asked for its open PRs exactly once')
++assert.deepEqual(base.result.retired, [3, 12],
++  '#706 (i)/M4 the control: an empty open-PR answer lets both runs through to the sweep')
++assert.deepEqual(linesOf(running3Seam, (l) => l.includes('state=open') && namesRun(l, 3)), [],
++  '#706 (i)/M4 a pair skipped for a live page is asked no open-PR read')
++
++// ── #706 (j) M5: --dry-run says the same thing and asks the same reads ──────
++
++for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target', TARGET]]) {
++  const spelling = JSON.stringify(argv)
++
++  {
++    const exec = seam({ pages: { 3: { run: 3, state: 'running' }, 12: { run: 12, state: 'done' } } })
++    const out = await captured(() => retire({ argv, exec }))
++
++    assert.deepEqual(lines(exec),
++      [LIST_LINE, contentsLine(3), contentsLine(12), openPullsLine(12), pullsLine(12)],
++      `#706 (j)/M5 ${spelling}: the listing, then per pair the status read, the open-PR read for the terminal page only, and the closed-PR read behind an empty open answer; got ${JSON.stringify(lines(exec))}`)
++    assert.equal(runLine(out, 3), captured706.running3,
++      `#706 (j)/M5 ${spelling}: a live run prints the byte-identical line it prints without the flag; got ${JSON.stringify(runLine(out, 3))}`)
++    assert.ok(runLine(out, 12).includes('would'),
++      `#706 (j)/M5 ${spelling}: only a terminal pair with no open PR says what it would do; got ${JSON.stringify(runLine(out, 12))}`)
++    assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
++      `#706 (j)/M5 ${spelling}: no gh call carries -X`)
++    assert.deepEqual(linesOf(exec, (l) => l.startsWith('git ') && l !== LIST_LINE), [],
++      `#706 (j)/M5 ${spelling}: no git call but the one listing`)
++    assert.notEqual(out.exitCode, 1,
++      `#706 (j)/M5 ${spelling}: a dry run keeps nothing, so it does not set process.exitCode to 1`)
++  }
++
++  {
++    const exec = seam({
++      pages: { 3: { run: 3, state: 'done' }, 12: { run: 12, state: 'running' } },
++      openPulls: { 3: [{ number: PR_3 }] }
++    })
++    const out = await captured(() => retire({ argv, exec }))
++
++    assert.deepEqual(lines(exec),
++      [LIST_LINE, contentsLine(3), openPullsLine(3), contentsLine(12)],
++      `#706 (j)/M5 ${spelling}: an open PR ends the run's reads there, and a live page is never asked for its PRs; got ${JSON.stringify(lines(exec))}`)
++    assert.equal(runLine(out, 3), captured706.pr3,
++      `#706 (j)/M5 ${spelling}: the open-PR skip line is byte-identical to the one printed without the flag; got ${JSON.stringify(runLine(out, 3))}`)
++    assert.equal(runLine(out, 12), captured706.running12,
++      `#706 (j)/M5 ${spelling}: and so is the live-page skip line; got ${JSON.stringify(runLine(out, 12))}`)
++    assert.deepEqual(out.runLines.filter((l) => l.includes('would')), [],
++      `#706 (j)/M5 ${spelling}: a dry run says \`would\` for no skipped run; got ${JSON.stringify(out.runLines)}`)
++  }
++}
++
++// ── #706 (l) M7: the two documents each declare the skip ────────────────────
++
++const REPO_ROOT = path.resolve(FLEET_DIR, '..')
++const CONTRACT_MD = path.join(FLEET_DIR, 'CONTRACT.md')
++const RUNBOOK_MD = path.join(FLEET_DIR, 'RUNBOOK.md')
++
++/** The contract's `**The two tags**` bullet, from its own `- **` line to the
++ *  next one — the region the first `Run:` command spans. */
++const twoTagsBullet = (text) => {
++  const match = /^- \*\*The two tags[\s\S]*?(?=^- \*\*Comment\*\*)/m.exec(text)
++  assert.ok(match,
++    '#706 (l)/M7 fleet/CONTRACT.md still carries a `- **The two tags**` bullet ending at the `- **Comment**` bullet')
++  return match[0].split('\n').join(' ')
++}
++/** The runbook's `## Rollback` section, to the end of the file. */
++const rollbackSection = (text) => {
++  const at = text.indexOf('\n## Rollback')
++  assert.notEqual(at, -1, '#706 (l)/M7 fleet/RUNBOOK.md still carries a `## Rollback` section')
++  return text.slice(at).split('\n').join(' ')
++}
++
++const contractText = fs.readFileSync(CONTRACT_MD, 'utf8')
++const runbookText = fs.readFileSync(RUNBOOK_MD, 'utf8')
++
++assert.ok(twoTagsBullet(contractText).includes('— skipped'),
++  "#706 (l)/M7 the contract's `**The two tags**` bullet says the sweep reads a pair's status page first and skips a live run or one with an open PR, carrying the line's literal `— skipped`")
++assert.ok(rollbackSection(runbookText).includes('— skipped'),
++  "#706 (l)/M7 the runbook's `## Rollback` section says the same, carrying the line's literal `— skipped` — a skip declared in one document only fails this")
++
++for (const [name, text] of [['fleet/CONTRACT.md', contractText], ['fleet/RUNBOOK.md', runbookText]]) {
++  const branchRefs = [...text.matchAll(/\?ref=([^\s'"`)]*)/g)]
++    .map((m) => m[1])
++    .filter((ref) => ref.startsWith('ultra/evidence-run-'))
++  assert.deepEqual(branchRefs, [],
++    `#706 (l)/M7 ${name} shows no \`?ref=ultra/evidence-run-<N>\` read — the record is read by tag, and the sweep's read names the branch in prose; got ${JSON.stringify(branchRefs)}`)
++}
++
++{
++  const res = spawnSync('python3',
++    ['-m', 'pytest', 'tests/test_docs_agree_with_code.py', '-q', '-p', 'no:cacheprovider'],
++    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 120000 })
++  assert.equal(res.status, 0,
++    `#706 (l)/M7 the docs-pin suite is green over both edited documents; stdout: ${res.stdout} stderr: ${res.stderr}`)
++}
++
+ // ── (i) M1, M6, M7: the script as a process, against PATH shims ─────────────
+ 
+ const cliRoot = tempDir('retire-cli-')
+@@ -461,17 +814,26 @@ const runProcess = (args, dir) => spawnSync(process.execPath, [RETIRE_SRC, ...ar
+ })
+ 
+ /** A shim pair that logs and answers: git prints the two-line pair listing for
+- *  run 3, gh prints an empty PR array. */
+-const loggingShims = (name) => {
++ *  run 3, and gh answers a `contents/` call with run 3's status envelope
++ *  (#706/M1) and every other call with an empty PR array. */
++const loggingShims = (name, { state = 'done' } = {}) => {
+   const dir = shimDir(name, { git: '', gh: '' })
+   const gitLog = path.join(dir, 'git.log')
+   const ghLog = path.join(dir, 'gh.log')
+   const listing =
+     `${HEAD[3].plan}\\trefs/heads/${planBranchFor(3)}\\n${HEAD[3].evidence}\\trefs/heads/${evidenceBranchFor(3)}\\n`
++  // The contents envelope, as one JSON document with no single quote in it, so
++  // the shim can hold it in a single-quoted shell string.
++  const page = JSON.stringify({
++    content: Buffer.from(JSON.stringify({ run: 3, state }), 'utf8').toString('base64'),
++    sha: sha('b10b')
++  })
+   fs.writeFileSync(path.join(dir, 'git'),
+     `#!/bin/sh\nprintf '%s\\n' "$*" >> "${gitLog}"\nprintf '${listing}'\nexit 0\n`, { mode: 0o755 })
+   fs.writeFileSync(path.join(dir, 'gh'),
+-    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${ghLog}"\nprintf '[]\\n'\nexit 0\n`, { mode: 0o755 })
++    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${ghLog}"\n` +
++    `case "$*" in\n  *contents/*) printf '%s\\n' '${page}' ;;\n  *) printf '[]\\n' ;;\nesac\nexit 0\n`,
++    { mode: 0o755 })
+   fs.chmodSync(path.join(dir, 'git'), 0o755)
+   fs.chmodSync(path.join(dir, 'gh'), 0o755)
+   return { dir, gitLog, ghLog }
+@@ -490,10 +852,14 @@ const loggingShims = (name) => {
+   assert.equal(gitLogged.length, 1,
+     `(i)/M6 the real exec reaches git on PATH exactly once; got ${JSON.stringify(gitLogged)}`)
+   assert.ok(gitLogged[0].includes('ls-remote'), `(i)/M6 and that call is the listing; got ${gitLogged[0]}`)
+-  assert.equal(ghLogged.length, 1,
+-    `(i)/M6 the real exec reaches gh on PATH exactly once; got ${JSON.stringify(ghLogged)}`)
+-  assert.ok(ghLogged[0].includes(`api repos/${TARGET}/pulls`),
+-    `(i)/M6 and that call is the closed-PR read; got ${ghLogged[0]}`)
++  assert.equal(ghLogged.length, 3,
++    `(i)/M6, #706/M5 the real exec reaches gh on PATH three times — the status read, the open-PR read, the closed-PR read; got ${JSON.stringify(ghLogged)}`)
++  assert.ok(ghLogged[0].includes(`api repos/${TARGET}/contents/.ultrapowers/runs/3/status.json`),
++    `(i)/M6, #706/M1 and the first is the status read; got ${ghLogged[0]}`)
++  assert.ok(ghLogged[1].includes(`api repos/${TARGET}/pulls?state=open`),
++    `(i)/M6, #706/M4 then the open-PR read; got ${ghLogged[1]}`)
++  assert.ok(ghLogged[2].includes(`api repos/${TARGET}/pulls?state=closed`),
++    `(i)/M6 then the closed-PR read; got ${ghLogged[2]}`)
+   for (const line of [...gitLogged, ...ghLogged]) {
+     assert.ok(!line.includes('-X') && !line.includes('--delete'),
+       `(i)/M6 a dry run creates and deletes nothing through any command; got ${line}`)
+@@ -504,8 +870,27 @@ const loggingShims = (name) => {
+   const { dir, ghLog } = loggingShims('live')
+   const res = runProcess(['--target', TARGET], dir)
+   const ghLogged = logLines(ghLog)
+-  assert.equal(ghLogged[0], `api -X POST repos/${TARGET}/git/refs -f ref=refs/tags/${planTagFor(3)} -f sha=${HEAD[3].plan}`,
+-    `(i)/M1, M7 the script's entry calls retire with the real exec: the first gh call is the plan tag POST; stdout: ${res.stdout} stderr: ${res.stderr} log: ${JSON.stringify(ghLogged)}`)
++  const firstWrite = ghLogged.find((l) => l.includes('-X'))
++  assert.equal(firstWrite, `api -X POST repos/${TARGET}/git/refs -f ref=refs/tags/${planTagFor(3)} -f sha=${HEAD[3].plan}`,
++    `(i)/M1, M7 the script's entry calls retire with the real exec: the first gh call that writes anything is the plan tag POST; stdout: ${res.stdout} stderr: ${res.stderr} log: ${JSON.stringify(ghLogged)}`)
++  assert.ok(ghLogged[0]?.includes(`api repos/${TARGET}/contents/.ultrapowers/runs/3/status.json`),
++    `(i)/M1, #706/M1 and the read that gates it comes first; log: ${JSON.stringify(ghLogged)}`)
++}
++
++// ── #706 (k) M6: the skip as a process, against PATH shims ──────────────────
++
++{
++  const { dir, ghLog } = loggingShims('live-page', { state: 'running' })
++  const res = runProcess(['--target', TARGET], dir)
++
++  assert.equal(res.status, 0,
++    `#706 (k)/M6 a sweep that skips a live run exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
++  assert.ok(res.stdout.split('\n').map((l) => l.trimEnd()).includes(liveSkip(3, 'running')),
++    `#706 (k)/M6 and prints exactly \`${liveSkip(3, 'running')}\` on its own stdout; got ${JSON.stringify(res.stdout)}`)
++  for (const line of logLines(ghLog)) {
++    assert.ok(!line.includes('-X') && !line.includes('--delete'),
++      `#706 (k)/M6 a live run is tagged by nothing and deleted by nothing; got ${line}`)
++  }
+ }
+ 
+ // M1 as a process: no `--target` exits 2, names it on stderr, starts nothing.
+diff --git a/fleet/tests/test_run_main.mjs b/fleet/tests/test_run_main.mjs
+index 8335fb759206d3a00aa245521d551529d1cb5a40..20959b2f3350637690600daafce1442f42c51caf 100644
+--- a/fleet/tests/test_run_main.mjs
++++ b/fleet/tests/test_run_main.mjs
+@@ -14,11 +14,12 @@ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+ import { EventEmitter } from 'node:events'
+-import { execFileSync } from 'node:child_process'
++import { execFileSync, spawnSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
+ import {
+   parseArgs, fillTiers, ackDecision, acksOf, criticDecision, boundedParallel, provisionRunTree,
+   writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage, DEFAULTS,
+-  makeAddDirsFor,
++  makeAddDirsFor, acceptanceWrap,
+   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
+ } from '../run-main.mjs'
+ import { makeEventLog } from '../run-waves.mjs'
+@@ -287,6 +288,13 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
+   const runDir = path.join(repoDir, '.claude/ultrapowers', 'run-' + runId)
+   const argsFile = path.join(runDir, 'args.json')
+   const calls = []
++  // run-42 task 1: the receipt as each script SEES it, snapshotted at call
++  // time. `receipt.json` is the gate's acceptance command, so what matters is
++  // its value at the moment ultra_gate.py reads it — not at the end of the run.
++  const seen = { validateKnobs: null, gate: null }
++  const snapReceipt = () => {
++    try { return JSON.parse(fs.readFileSync(path.join(runDir, 'receipt.json'), 'utf8')) } catch { return null }
++  }
+   const exec = async (cmd, argv, opts) => {
+     calls.push([cmd, ...argv])
+     if (cmd === 'git') {
+@@ -298,6 +306,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
+     }
+     const script = path.basename(argv[0])
+     if (script === 'ultra_run.py' && argv.includes('--validate-knobs')) {
++      seen.validateKnobs = snapReceipt()
+       return { code: 0, stdout: '{"ok": true}', stderr: '' }
+     }
+     if (script === 'ultra_run.py') {
+@@ -311,7 +320,10 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
+       }))
+       // ultra_run prints the receipt to STDOUT on success (run-main derives the
+       // run dir from receipt.argsFile, never a reconstructed path).
+-      const receipt = { ok: true, baseBranch: 'fleet-base', argsFile, testCmd: 'true' }
++      const receipt = {
++        ok: true, baseBranch: 'fleet-base', argsFile,
++        testCmd: 'true', testCmdSource: 'plan',
++      }
+       fs.writeFileSync(path.join(runDir, 'receipt.json'), JSON.stringify(receipt))
+       return { code: 0, stdout: JSON.stringify(receipt), stderr: '' }
+     }
+@@ -320,6 +332,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
+       return { code: 0, stdout: JSON.stringify({ mode: 'suite', stamp: runId, branch: 'ultra/integration-' + runId }), stderr: '' }
+     }
+     if (script === 'ultra_gate.py') {
++      seen.gate = snapReceipt()
+       // The REAL gate-receipt shape (ultra_gate.py:107): acks are NESTED under
+       // gateCheck, never flat at the top. A flat {acks} stub is what let the
+       // two-move-rule bypass through review — the stub must match the script.
+@@ -335,7 +348,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
+     }
+     throw new Error('exec stub: unexpected ' + cmd + ' ' + argv.join(' '))
+   }
+-  return { exec, calls, runDir }
++  return { exec, calls, runDir, seen }
+ }
+ 
+ const WAVES = [[{ id: 'T1', title: 't', files: ['a.txt'], tier: null, review: 'lean', writes: ['a.txt'], commutes: [] }]]
+@@ -572,5 +585,153 @@ function freshRepo(name) {
+   assert.equal(given[given.indexOf('--bootstrap-cmd') + 1], 'bun install')
+ }
+ 
++// ── run-42 task 1 — the driver tees the gate's acceptance run into the run dir ─
++// Claim (#739): the gate's acceptance run writes its full stdout+stderr to
++// `<run dir>/acceptance.log`. `ultra_gate.py` and `run_acceptance.sh` are
++// FROZEN, so the only non-frozen writer of the gate's acceptance command is
++// this driver, and the only channel is `receipt.json`'s `testCmd` — the string
++// ultra_gate hands to run_acceptance.sh as its `--run`.
++
++// Legs (a) [M1] and (b) [M2] — one runMain drive, read at two points of the flow.
++{
++  const repoDir = freshRepo('flow-acceptance-log')
++  const runId = 'run-97'
++  const { exec, calls, runDir, seen } = makeExecStub({ repoDir, runId, gateExit: 0, waves: WAVES })
++  const out = await runMain(
++    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
++    {
++      exec, log: () => {},
++      runEngineFn: async () => ({ integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [] }),
++      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
++    },
++  )
++  assert.equal(out.code, 0, out.verdict + ': ' + out.detail)
++
++  // (a) [M1] The receipt as ultra_gate.py sees it AT CALL TIME — a snapshot the
++  // gate-mode stub took while it was being invoked, not the end-of-run file.
++  const snap = seen.gate
++  assert.ok(snap, 'leg (a) [M1]: the ultra_gate.py gate-mode stub read a receipt.json')
++  const argsFile = path.join(runDir, 'args.json')
++  const logPath = path.join(runDir, 'acceptance.log')
++  assert.equal(path.dirname(snap.argsFile), runDir,
++    'leg (a) [M1]: the run dir IS path.dirname of the receipt argsFile')
++  assert.equal(snap.testCmd, acceptanceWrap('true', runDir),
++    'leg (a) [M1]: the gate reads acceptanceWrap(<the stamped testCmd>, <run dir>)')
++  // Spelled out verbatim, so an acceptanceWrap that merely agrees with itself
++  // cannot pass this leg: the literal IS the contract.
++  assert.equal(snap.testCmd, "set -o pipefail; { true; } 2>&1 | tee '" + logPath + "'",
++    "leg (a) [M1]: the exact literal set -o pipefail; { <testCmd>; } 2>&1 | tee '<run dir>/acceptance.log'")
++  assert.equal(snap.acceptanceLog, logPath,
++    'leg (a) [M1]: acceptanceLog is <run dir>/acceptance.log — a reader of the evidence branch ' +
++    'sees where the output went without parsing the command')
++  assert.ok(path.isAbsolute(snap.acceptanceLog), 'leg (a) [M1]: acceptanceLog is an absolute path')
++  assert.equal(snap.ok, true, 'leg (a) [M1]: ok is the value ultra_run.py wrote')
++  assert.equal(snap.baseBranch, 'fleet-base', 'leg (a) [M1]: baseBranch is the value ultra_run.py wrote')
++  assert.equal(snap.argsFile, argsFile, 'leg (a) [M1]: argsFile is the value ultra_run.py wrote')
++  assert.equal(snap.testCmdSource, 'plan', 'leg (a) [M1]: testCmdSource is kept as stamped')
++  const { testCmd: _rewritten, acceptanceLog: _added, ...carried } = snap
++  assert.deepEqual(carried, { ok: true, baseBranch: 'fleet-base', argsFile, testCmdSource: 'plan' },
++    'leg (a) [M1]: testCmd is the only rewritten key and acceptanceLog the only added one — ' +
++    'every other key the receipt carried is unchanged in value')
++
++  // (b) [M2] The wrapper reaches the gate through the receipt and no reader before it.
++  const onDisk = JSON.parse(fs.readFileSync(argsFile, 'utf8'))
++  assert.equal(onDisk.testCmd, 'true',
++    "leg (b) [M2]: args.json keeps the engine's plain command — run-engine.mjs reads args.testCmd")
++  assert.ok(seen.validateKnobs, 'leg (b) [M2]: the --validate-knobs stub read a receipt.json')
++  assert.equal(seen.validateKnobs.testCmd, 'true',
++    'leg (b) [M2]: the rewrite lands AFTER --validate-knobs read the receipt, and before the gate')
++  const approveArgv = calls.find((c) => c.includes('--approve'))
++  assert.ok(approveArgv, 'leg (b) [M2]: the green flow reached ultra_gate.py --approve')
++  for (const c of calls) {
++    for (const el of c) {
++      assert.ok(!String(el).includes('acceptance.log'),
++        'leg (b) [M2]: no exec argv of the whole flow carries the log path — the receipt is the ' +
++        'only channel: ' + c.join(' '))
++    }
++  }
++}
++
++// Legs (c) and (d) [M3] — the wrapper evaluated exactly the way the frozen
++// run_acceptance.sh evaluates its --run in suite-gate mode: a REAL invocation
++// of that script against a throwaway repository. Both frozen tails (8000 in the
++// script's JSON, 4000 in the gate receipt) are shorter than either 10000-byte
++// stream, so a log holding only a tail cannot pass.
++{
++  const engineRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
++  const acceptanceSh = path.join(engineRoot, 'skills/ultrapowers/scripts/run_acceptance.sh')
++  assert.ok(fs.existsSync(acceptanceSh), 'the frozen run_acceptance.sh is where the gate calls it')
++
++  const wrapRepo = freshRepo('acceptance-wrap-repo')
++  const nonce = 'AW7QX'
++  const payloadDir = path.join(tmp, 'acceptance-wrap-payload')
++  fs.mkdirSync(payloadDir, { recursive: true })
++  const outPayload = path.join(payloadDir, 'stdout.txt')
++  const errPayload = path.join(payloadDir, 'stderr.txt')
++  fs.writeFileSync(outPayload, 'o'.repeat(10000) + '\n')
++  fs.writeFileSync(errPayload, 'e'.repeat(10000) + '\n')
++  const first = 'BEGIN-' + nonce
++  const last = 'END-' + nonce
++  // Bytes the command emits: marker line + 10000 on stdout + 10000 on stderr +
++  // marker line. Separate processes write in sequence, so the order is fixed.
++  const emitted = Buffer.byteLength(first + '\n') +
++    fs.statSync(outPayload).size + fs.statSync(errPayload).size +
++    Buffer.byteLength(last + '\n')
++
++  const driveAcceptance = (exitCode, label) => {
++    const runDir = path.join(tmp, 'acceptance-wrap-run-' + exitCode)
++    fs.mkdirSync(runDir, { recursive: true })
++    const cmd = "printf '" + first + "\\n'; cat '" + outPayload + "'; cat '" + errPayload +
++      "' >&2; printf '" + last + "\\n'; exit " + exitCode
++    const r = spawnSync('bash', [acceptanceSh, '--suite-gate', '--branch', 'fleet-base',
++      '--repo', wrapRepo, '--run', acceptanceWrap(cmd, runDir)], { encoding: 'utf8' })
++    let json
++    try {
++      json = JSON.parse(r.stdout)
++    } catch {
++      assert.fail(label + ': run_acceptance.sh did not emit one JSON object on stdout: ' +
++        JSON.stringify(r.stdout.slice(-500)) + ' / ' + JSON.stringify(String(r.stderr).slice(-500)))
++    }
++    const logPath = path.join(runDir, 'acceptance.log')
++    assert.ok(fs.existsSync(logPath), label + ': <run dir>/acceptance.log exists')
++    const buf = fs.readFileSync(logPath)
++    const text = buf.toString('utf8')
++    assert.equal(buf.length, emitted,
++      label + ': the log is exactly the bytes the command emitted (' + emitted + '), not a tail')
++    assert.equal(text.split('\n')[0], first, label + ': the opening marker is the log\'s first line')
++    assert.equal(text.replace(/\n$/, '').split('\n').at(-1), last,
++      label + ': the closing marker is the log\'s last line')
++    return { status: r.status, json }
++  }
++
++  // (c) [M3] A suite that passes: the script greens, the log is complete, and
++  // what tee forwarded on stdout is what the script captured into its JSON.
++  const green = driveAcceptance(0, 'leg (c) [M3] exit 0')
++  assert.equal(green.status, 0, 'leg (c) [M3]: the script exits 0 for a suite that exits 0')
++  assert.equal(green.json.passed, true, 'leg (c) [M3]: passed is true in the emitted JSON')
++  assert.equal(green.json.exitCode, 0, 'leg (c) [M3]: exitCode is the suite\'s 0')
++  assert.ok(green.json.output.length <= 8000,
++    'leg (c) [M3]: the frozen 8000-char tail is unchanged — the gate\'s capture is untouched')
++  assert.ok(green.json.output.includes(last),
++    'leg (c) [M3]: the JSON output carries the closing marker — tee forwards on stdout what the ' +
++    'script captures, so the receipt tail keeps its content')
++  assert.ok(!green.json.output.includes(first),
++    'leg (c) [M3]: the JSON output does NOT carry the opening marker — it is a tail, and only the ' +
++    'log holds the whole run')
++
++  // (d) [M3] The exit status crosses the pipe: pipefail, not tee's 0.
++  const red = driveAcceptance(3, 'leg (d) [M3] exit 3')
++  assert.equal(red.status, 1, 'leg (d) [M3]: the script exits 1 for a suite that exits 3')
++  assert.equal(red.json.exitCode, 3,
++    'leg (d) [M3]: exitCode is the suite\'s 3 — set -o pipefail, not tee\'s 0')
++  assert.equal(red.json.passed, false, 'leg (d) [M3]: passed is false')
++
++  const noTests = driveAcceptance(5, 'leg (d) [M3] exit 5')
++  assert.equal(noTests.json.exitCode, 5,
++    'leg (d) [M3]: exitCode 5 reaches the frozen no-tests guard — the pipeline did not launder ' +
++    'the code to tee\'s 0')
++  assert.equal(noTests.json.passed, false, 'leg (d) [M3]: the no-tests guard still refuses to green')
++}
++
+ fs.rmSync(tmp, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_approval_evidence.mjs b/fleet/tests/test_sandbox_boot_approval_evidence.mjs
+index 9fbb188a398902e343f579aed356f50b22b7ab21..fefa54a4ae3f9c979ad6aeace78c41c1cc9e4294 100644
+--- a/fleet/tests/test_sandbox_boot_approval_evidence.mjs
++++ b/fleet/tests/test_sandbox_boot_approval_evidence.mjs
+@@ -38,6 +38,18 @@
+  *                     `transcripts/<sessionId>.jsonl`, located by its unchanged
+  *                     opening line.
+  *
++ * #739 Task 2 extends it again, with the same question about a FOURTH thing —
++ * the gate's acceptance log, of which `gate-receipt.json` keeps only a
++ * 4000-char tail:
++ *
++ *   M1 / legs (a)(d)  `collect_evidence` copies `<run dir>/acceptance.log` into
++ *                     `.ultrapowers/runs/<N>/acceptance.log` byte for byte when
++ *                     it is present, beside `gate-receipt.json`.
++ *   M2 / leg (b)      a run whose engine wrote none commits none.
++ *   M3 / leg (c)      the same `ultra/evidence-run-<N>` bullet names
++ *                     `acceptance.log` as the acceptance run's full
++ *                     stdout+stderr.
++ *
+  * The rig is `_sandbox_boot_helpers.mjs` — the stub bin dir, `makeHome`,
+  * `boot`, `statusOf`, `evidenceDir` and `runTests` — shared with
+  * `test_sandbox_boot.mjs` and `test_sandbox_boot_approved.mjs`. The one thing
+@@ -132,6 +144,50 @@ const TRANSCRIPT_B =
+   '{"role":"assistant","model":"claude-opus-5","content":[{"type":"text",' +
+   '"text":"the second worker reports"}]}}\n'
+ 
++// ── #739 Task 2: the acceptance log rides beside the gate receipt ────────────
++//
++// M1: `collect_evidence` copies `<run dir>/acceptance.log` — the run dir being
++// `$TARGET_DIR/.claude/ultrapowers/run-$RUN_ID`, the same directory
++// `gate-receipt.json` is read from — to `.ultrapowers/runs/<N>/acceptance.log`
++// on the evidence worktree, BYTE FOR BYTE, when the file is present. The gate
++// receipt keeps only a 4000-char tail of the acceptance output as its summary,
++// so the full stdout+stderr survives the box only on the branch: the body below
++// is 9000 bytes with a distinct FIRST line, which a copy that carried a tail
++// would lose.
++// M2: a run whose engine wrote no `acceptance.log` commits none — the same
++// WHEN-PRESENT rule `standing-approval.json` is copied under.
++// M3: `fleet/CONTRACT.md`'s `ultra/evidence-run-<N>` bullet names the file as
++// the acceptance run's full stdout+stderr.
++
++/** The engine's acceptance log, written at the path `run-main.mjs` tees the
++ *  gate's acceptance run into — `path.join(runDir, 'acceptance.log')` — and
++ *  nowhere else. Same splice point and same shape as APPROVAL_SNIPPET. */
++const ACCEPTANCE_SNIPPET = `
++if [ -n "\${STUB_ACCEPTANCE_BYTES:-}" ]; then
++  printf '%s' "$STUB_ACCEPTANCE_BYTES" >"$run_dir/acceptance.log"
++fi
++`
++
++/** The log's first line: a distinct opening marker. A copy that carried the
++ *  receipt's 4000-char TAIL instead of the file does not begin with it. */
++const ACCEPTANCE_MARKER = 'ACCEPTANCE-BEGIN-7c3f19'
++/** Longer than the 4000-char tail `gate-receipt.json` keeps, by more than
++ *  double, so a tail and the file cannot be confused. */
++const ACCEPTANCE_SIZE = 9000
++
++/** 9000 bytes: the marker line, filler in the suite's own shape, and a closing
++ *  line — the whole of an acceptance run's stdout+stderr, as the engine left
++ *  it. */
++const ACCEPTANCE_BYTES = (() => {
++  const head = ACCEPTANCE_MARKER + '\n'
++  const foot = 'ACCEPTANCE-END-7c3f19\n'
++  const line = 'run_acceptance: fleet/tests/test_sandbox_boot.mjs ok\n'
++  const want = ACCEPTANCE_SIZE - head.length - foot.length
++  let mid = ''
++  while (mid.length < want) mid += line
++  return head + mid.slice(0, want) + foot
++})()
++
+ /** The engine's run directory — where both files are written and read back
+  *  from, so a green leg (a) cannot be a rig that quietly wrote nothing. */
+ const runDir = (ctx) => path.join(ctx.home, 'target', '.claude', 'ultrapowers', 'run-run-7')
+@@ -148,7 +204,8 @@ function approvalHome() {
+     `the shared engine stub no longer ends in '${ENGINE_EXIT}' — this sim's splice is stale`)
+   const file = path.join(ctx.bin, 'systemd-run')
+   fs.writeFileSync(file, PRELUDE + body.replace(
+-    ENGINE_EXIT, () => APPROVAL_SNIPPET + TRANSCRIPTS_SNIPPET + ENGINE_EXIT))
++    ENGINE_EXIT,
++    () => APPROVAL_SNIPPET + TRANSCRIPTS_SNIPPET + ACCEPTANCE_SNIPPET + ENGINE_EXIT))
+   fs.chmodSync(file, 0o755)
+   return ctx
+ }
+@@ -181,6 +238,9 @@ const transcriptsRun = () => run('transcripts', {
+   STUB_TRANSCRIPT_A: TRANSCRIPT_A,
+   STUB_TRANSCRIPT_B: TRANSCRIPT_B,
+ })
++/** #739 Task 2: PASS, with a 9000-byte `<run dir>/acceptance.log`. */
++const acceptanceRun = () =>
++  run('acceptance', { STUB_VERDICT: 'PASS', STUB_ACCEPTANCE_BYTES: ACCEPTANCE_BYTES })
+ 
+ const read = (file) => fs.readFileSync(file)
+ 
+@@ -391,4 +451,108 @@ test('CONTRACT.md\'s evidence-branch bullet names the worker slices  [#702 Task
+       bullet)
+ })
+ 
++// ── #739 Task 2, leg (a): the acceptance log rides to the worktree  [M1] ─────
++
++test('the acceptance log reaches the evidence worktree byte for byte  [#739 Task 2 / M1 / leg (a)]', () => {
++  const ctx = acceptanceRun()
++  const source = path.join(runDir(ctx), 'acceptance.log')
++  const collected = path.join(evidenceRunDir(ctx), 'acceptance.log')
++
++  // The rig left the log where the driver tees the gate's acceptance run:
++  // `<run dir>/acceptance.log`, beside the receipts, and nowhere else.
++  assert.ok(fs.existsSync(source), `the engine stub must write ${source}`)
++  assert.equal(read(source).toString(), ACCEPTANCE_BYTES, 'the rig wrote the bytes it meant to')
++  assert.equal(read(source).length, ACCEPTANCE_SIZE,
++    `the rig's acceptance log is ${ACCEPTANCE_SIZE} bytes — longer than the receipt's 4000-char tail`)
++
++  // M1: the file is on the record, under the same name, byte for byte.
++  assert.ok(fs.existsSync(collected),
++    'collect_evidence must copy acceptance.log into ' + RUN_PATH + ', got: ' +
++      fs.readdirSync(evidenceRunDir(ctx)).join(' '))
++  assert.deepEqual(read(collected), read(source),
++    'the collected acceptance.log must be byte-equal to the run directory\'s')
++  assert.equal(read(collected).toString(), ACCEPTANCE_BYTES)
++
++  // BYTE FOR BYTE, said the two ways a tail would fail: the whole length, and
++  // the FIRST line — the 4000-char tail `gate-receipt.json` keeps has neither.
++  assert.equal(read(collected).length, ACCEPTANCE_SIZE,
++    `the collected acceptance.log must be all ${ACCEPTANCE_SIZE} bytes, not a tail — got ` +
++      read(collected).length)
++  assert.equal(read(collected).toString().split('\n')[0], ACCEPTANCE_MARKER,
++    `the collected acceptance.log's first line must be ${ACCEPTANCE_MARKER} — a copy that ` +
++      'carried only the tail of the output does not begin with it')
++
++  // The record is the real one, and the log sits IN IT — the same directory the
++  // gate receipt is collected into, which is the receipt's own run directory.
++  assert.ok(fs.existsSync(path.join(evidenceRunDir(ctx), 'gate-receipt.json')),
++    `${RUN_PATH}/gate-receipt.json must be collected — otherwise this leg reads the wrong directory`)
++  assert.equal(path.dirname(collected), path.dirname(path.join(evidenceRunDir(ctx), 'gate-receipt.json')),
++    'the acceptance log is collected BESIDE gate-receipt.json')
++  assert.ok(fs.existsSync(path.join(runDir(ctx), 'gate-receipt.json')),
++    'the source directory is the run directory the gate receipt is read from')
++})
++
++// ── #739 Task 2, leg (b): a run that wrote none commits none  [M2] ───────────
++
++test('a PASS run whose engine wrote no acceptance.log commits none  [#739 Task 2 / M2 / leg (b)]', () => {
++  const ctx = bareRun()
++  const dir = evidenceRunDir(ctx)
++
++  assert.ok(!fs.existsSync(path.join(runDir(ctx), 'acceptance.log')),
++    'this run\'s engine wrote no acceptance.log')
++
++  // The evidence directory is the real one — the run's record is in it.
++  assert.ok(fs.existsSync(path.join(dir, 'gate-receipt.json')),
++    `${RUN_PATH}/gate-receipt.json must be collected — otherwise this leg reads the wrong directory`)
++  assert.ok(fs.existsSync(path.join(dir, 'status.json')), `${RUN_PATH}/status.json must be collected`)
++
++  assert.ok(!fs.existsSync(path.join(dir, 'acceptance.log')),
++    'acceptance.log must not appear on the evidence branch of a run that never wrote it, got: ' +
++      fs.readdirSync(dir).join(' '))
++})
++
++// ── #739 Task 2, leg (c): the contract names the log  [M3] ───────────────────
++
++/** The repository the Proof's two `Run:` lines are run from. */
++const ROOT = path.join(HERE, '..', '..')
++/** Run one of the Proof's `Run:` commands, verbatim, and return its count. */
++function grepCount(command) {
++  const r = spawnSync('bash', ['-c', command], { cwd: ROOT, encoding: 'utf8' })
++  // `grep -c` exits 1 on a count of zero, so the number on stdout is the answer.
++  return Number((r.stdout || '').trim() || '0')
++}
++
++test('CONTRACT.md\'s evidence-branch bullet names the acceptance log  [#739 Task 2 / M3 / leg (c)]', () => {
++  const bullet = evidenceBullet()
++  // The name, then ITS description, before any other backticked name: a bullet
++  // that omits the name, or names it with the description parked after some
++  // other backticked file, does not match.
++  assert.match(bullet, /`acceptance\.log`[^`]*full stdout\+stderr/,
++    'the `ultra/evidence-run-<N>` bullet must name `acceptance.log` and call it the ' +
++      'acceptance run\'s full stdout+stderr, before any other backticked name — got:\n' + bullet)
++
++  // The Proof's second `Run:`, over the same span of the same file.
++  const count = grepCount(
++    `sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>/p' ` +
++      `fleet/CONTRACT.md | grep -c 'acceptance.log'`)
++  assert.ok(count >= 1,
++    'the Proof\'s `sed`+`grep` over the evidence bullet must count at least one ' +
++      '`acceptance.log`, got: ' + count)
++})
++
++// ── #739 Task 2, leg (d): the copy is in collect_evidence itself  [M1] ───────
++
++test('collect_evidence\'s own body names acceptance.log  [#739 Task 2 / M1 / leg (d)]', () => {
++  // The Proof's first `Run:`: the FUNCTION BODY, not a comment elsewhere in the
++  // script. The rig's first test above is the other half of this leg — the
++  // script still parses under `bash -n`.
++  const count = grepCount(
++    `sed -n '/^collect_evidence()/,/^}/p' fleet/sandbox-boot.sh | grep -c 'acceptance.log'`)
++  assert.ok(count >= 1,
++    'the Proof\'s `sed`+`grep` over collect_evidence must count at least one ' +
++      '`acceptance.log`, got: ' + count)
++  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0,
++    'the boot script still parses with the copy in it')
++})
++
+ runTests(tests)
+diff --git a/fleet/tests/test_sandbox_boot_edges.mjs b/fleet/tests/test_sandbox_boot_edges.mjs
+index 3e8a29609207fdc04bd16628446548feb2226acb..ae34757503a6cbbcef7c1ed4816761e6d807e2b4 100644
+--- a/fleet/tests/test_sandbox_boot_edges.mjs
++++ b/fleet/tests/test_sandbox_boot_edges.mjs
+@@ -1,9 +1,10 @@
+ /**
+- * The other half of the `fleet/sandbox-boot.sh` exam: sections 3–10 — the
++ * The other half of the `fleet/sandbox-boot.sh` exam: sections 3–11 — the
+  * retired repository, parked runs, refusals, the public-target fallback, the
+- * engine's own words, failing before the clone, re-entry, and the deadman.
+- * Sections 1 and 2 stay in `test_sandbox_boot.mjs`; the rig both halves share
+- * is `_sandbox_boot_helpers.mjs`.
++ * engine's own words, failing before the clone, re-entry, the deadman, and the
++ * boot's pipelines under SIGPIPE. Sections 1 and 2 stay in
++ * `test_sandbox_boot.mjs`; the rig both halves share is
++ * `_sandbox_boot_helpers.mjs`.
+  *
+  * Every case here reads the same one log stream per run that the other half
+  * does, so its ordering assertions are index comparisons within a single case
+@@ -11,13 +12,14 @@
+  */
+ 
+ import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
+ import fs from 'node:fs'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
+ import {
+   SCRIPT, BASE_SHA, ENGINE_SHA, TARGET, VM_NAME, PR_URL, PR_AUTHOR, RUN_PATH,
+-  RETIRED_NAMES, ASSIGNMENT,
++  RETIRED_NAMES, ASSIGNMENT, PLAN_SHA, HEAD_SHA, OTHER_SHA, PLAN_H1,
+   makeHome, boot, green,
+   readLog, argvLines, stream, statusOf, states, notifies, committed, commitStates,
+   engineRuns, prPosts, indexOf,
+@@ -491,4 +493,332 @@ test('the deadman leaves a finished run alone', () => {
+   assert.equal(argvLines(ctx, 'systemctl').filter((a) => a[2] === 'stop').length, 0)
+ })
+ 
++// ── 11. boot pipelines survive SIGPIPE (Task 1) ──────────────────────────────
++//
++// A reader that closes its input early — `head`, a `grep` that stops at its
++// first match, an `awk`/`sed` that exits — sends SIGPIPE to whatever is still
++// writing above it, and under `set -o pipefail` that kills the boot with 141.
++// The rule the script has to keep is: every such reader either has an EXTERNAL
++// writer inside a `{ … || true; }` guard, or is not an early-closing reader at
++// all. A guard around a BUILTIN writer is no guard — the signal kills the
++// subshell the builtin runs in before `|| true` can be reached — so the census
++// below refuses `{ printf … || true; } | head` exactly as loudly as an
++// unguarded one.
++//
++// The two megabyte knobs the sim uses are FILES beside the stub's counters
++// (`$FLEET_HOME/stub/plan-extra`, `$FLEET_HOME/stub/ls-remote-extra`), because
++// a string long enough to outrun a 64 KiB pipe plus a reader's first read
++// cannot ride the stub's environment: Linux refuses to exec a process carrying
++// one environment string over `MAX_ARG_STRLEN`.
++
++/** True when a physical line continues into the next one — it ends in a single
++ *  `|`, never in `||`. */
++const continuesIntoNextLine = (text) => /(^|[^|])\|$/.test(text.trimEnd())
++
++/** M1's split: every `|` that is not part of a `||`. */
++const splitAtPipes = (text) => {
++  const out = []
++  let current = ''
++  for (let i = 0; i < text.length; i += 1) {
++    if (text[i] === '|' && text[i + 1] === '|') { current += '||'; i += 1; continue }
++    if (text[i] === '|') { out.push(current); current = ''; continue }
++    current += text[i]
++  }
++  out.push(current)
++  return out
++}
++
++const wordsOf = (segment) => segment.trim().split(/\s+/).filter(Boolean)
++
++/** The command word of a pipeline segment: the first word that is not one of
++ *  the openers a command can sit behind (`{`, `(`, `"$(`), a `VAR=value`
++ *  assignment, or a redirection. `{ grep -o … || true; }` answers `grep`;
++ *  `listed_plan="$(printf '%s\n' "$listing"` answers `printf`. */
++const commandWord = (segment) => {
++  let text = segment.trim()
++  let before
++  do {
++    before = text
++    text = text
++      .replace(/^[\s{(]+/, '')
++      .replace(/^"?\$\(\s*/, '')
++      .replace(/^[A-Za-z_][A-Za-z0-9_]*=/, '')
++      .replace(/^[0-9]*[<>]+&?[^\s]*\s*/, '')
++  } while (text !== before)
++  return text.split(/\s+/)[0] || ''
++}
++
++/** The `sed` commands a segment carries, as the pieces of its quoted scripts —
++ *  `-n 's/a/b/;q'` is two pieces, `s/a/b/` and `q`. */
++const sedCommands = (segment) => {
++  const pieces = []
++  const quoted = /'([^']*)'|"([^"]*)"/g
++  let m
++  while ((m = quoted.exec(segment))) pieces.push(m[1] === undefined ? m[2] : m[1])
++  for (const word of wordsOf(segment).slice(1)) {
++    if (!word.startsWith('-') && !/['"]/.test(word)) pieces.push(word)
++  }
++  return pieces.flatMap((piece) => piece.split(/[;\n]/)).map((piece) => piece.trim())
++}
++
++/** A `q` standing alone as a sed command, with or without an address or an
++ *  exit code (`q`, `2q`, `$q`, `/x/q`, `q1`) — never the `q` of a `s/a/q/`. */
++const hasBareQ = (segment) =>
++  sedCommands(segment).some((piece) => /^(\$|[0-9]+|\/(?:\\.|[^/])*\/)?\s*q[0-9]*$/.test(piece))
++
++/**
++ * Why this segment closes its input early, or '' when it reads to EOF. The
++ * four kinds M1 names, and nothing else: `tail`, `tr`, `sort`, `uniq`, `tee`,
++ * `python3`, `json_field`, `duplicate_repos`, `mergeable_field`, a `sed`
++ * without `q` and an `awk` without `exit` all consume what they are given.
++ */
++const closesEarly = (segment) => {
++  const command = commandWord(segment)
++  if (command === 'head') return 'head'
++  if (command === 'grep' && wordsOf(segment).some((w) => /^-[A-Za-z]*[qml][A-Za-z]*$/.test(w))) {
++    return 'grep with q/m/l in a flag cluster'
++  }
++  if (command === 'awk' && /(^|[^A-Za-z0-9_])exit([^A-Za-z0-9_]|$)/.test(segment)) return 'awk … exit'
++  if (command === 'sed' && hasBareQ(segment)) return 'sed … q'
++  return ''
++}
++
++/**
++ * M1's census, over any shell source: every early-closing reader segment whose
++ * writer is not an EXTERNAL command inside a `{ … || true; }` guard. Full-line
++ * comments are dropped, a line ending in a single `|` is joined with its
++ * successor, and each line is split at every `|` that is not part of a `||`.
++ */
++const unguardedEarlyReaders = (source) => {
++  const kept = source.split('\n').filter((line) => !/^\s*#/.test(line))
++  const joined = []
++  for (const line of kept) {
++    const last = joined.length - 1
++    if (last >= 0 && continuesIntoNextLine(joined[last])) joined[last] += ' ' + line
++    else joined.push(line)
++  }
++  const findings = []
++  for (const line of joined) {
++    const segments = splitAtPipes(line)
++    for (let i = 1; i < segments.length; i += 1) {
++      const why = closesEarly(segments[i])
++      if (!why) continue
++      const writer = segments[i - 1]
++      const guarded = /\|\|\s*true;\s*\}\s*$/.test(writer.trimEnd())
++      const writerCommand = commandWord(writer)
++      const builtin = writerCommand === 'printf' || writerCommand === 'echo'
++      if (guarded && !builtin) continue
++      findings.push({
++        why,
++        reader: segments[i].trim(),
++        writer: writer.trim(),
++        writerCommand,
++        guarded,
++        line: line.trim(),
++      })
++    }
++  }
++  return findings
++}
++
++const describeFindings = (findings) =>
++  findings
++    .map((f) => `  ${f.why}: reader '${f.reader}'\n    written by '${f.writer}'` +
++      `${f.guarded ? ` (guarded, but '${f.writerCommand}' is a shell builtin — the signal kills its subshell before '|| true' runs)` : ' (no { … || true; } guard)'}`)
++    .join('\n')
++
++/**
++ * BASE's five offending lines, verbatim, beside the two lines that must NOT be
++ * named the same way: `json_field`'s guarded `grep` (an external writer, so its
++ * `head` is safe) and a `grep -q` fed by a guarded `printf` (a builtin writer,
++ * so its guard is no guard). The census is shown rejecting and accepting these
++ * before it is trusted on the script itself.
++ */
++const CENSUS_FIXTURE = String.raw`is_target() { printf '%s' "$1" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; }
++is_run_n()  { printf '%s' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9-]*$'; }
++  sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1
++  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"
++  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"
++  { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 |
++    sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
++  { printf '%s' "$1" || true; } | grep -qE '^x$'
++`
++
++test('no reader in fleet/sandbox-boot.sh closes early over a writer that can be killed  [M1 / leg (a)]', () => {
++  // First the census is shown to work, on a fixture that holds the five lines
++  // BASE was killed by, the guarded line it must NOT name, and a builtin behind
++  // a guard, which it must name. A tokenizer that misses `grep -qE`, an
++  // `awk … exit` inside a `$( )`, or a builtin behind `|| true; }` fails here
++  // before it is trusted on the script.
++  const fixture = unguardedEarlyReaders(CENSUS_FIXTURE)
++  assert.deepEqual(fixture.map((f) => f.reader), [
++    String.raw`grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; }`,
++    String.raw`grep -qE '^[A-Za-z0-9][A-Za-z0-9-]*$'; }`,
++    'head -n 1',
++    String.raw`awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"`,
++    String.raw`awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"`,
++    String.raw`grep -qE '^x$'`,
++  ], `the census names the five offending shapes and the builtin-guarded one, and nothing else:\n${describeFindings(fixture)}`)
++  assert.equal(fixture.length, 6)
++  assert.ok(!fixture.some((f) => f.writer.includes('grep -o')),
++    `json_field's '{ grep -o … || true; } | head -n 1' is an EXTERNAL writer behind a guard, and is not a finding:\n${describeFindings(fixture)}`)
++  const builtinGuard = fixture[fixture.length - 1]
++  assert.equal(builtinGuard.guarded, true)
++  assert.equal(builtinGuard.writerCommand, 'printf',
++    'the sixth finding is the guarded builtin — a guard around printf is no guard')
++
++  // And now the script. Every pipeline in it, by the same algorithm.
++  const source = fs.readFileSync(SCRIPT, 'utf8')
++  const findings = unguardedEarlyReaders(source)
++  assert.equal(findings.length, 0,
++    `fleet/sandbox-boot.sh has ${findings.length} reader(s) that close early over a writer SIGPIPE can kill:\n${describeFindings(findings)}`)
++
++  // The census means nothing without the setting it is a census for: the
++  // script still fails on a pipeline's non-zero status, and never buys its way
++  // out of SIGPIPE by ignoring or trapping the signal.
++  assert.ok(/^set -euo pipefail$/m.test(source),
++    'the script still runs under `set -euo pipefail` for its whole length')
++  const code = source.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n')
++  assert.equal(/(^|[;&(]\s*)trap\s/m.test(code), false,
++    'the script traps no signal — SIGPIPE is survived by not being sent, never by being ignored')
++})
++
++const MIB = 1024 * 1024
++
++/** M2's two megabyte files: `count` lines of `line(i)`, and never fewer bytes
++ *  than 1 MiB — more than a 64 KiB pipe holds plus any reader's first read, so
++ *  the writer above an early-closing reader must still be writing when that
++ *  reader has gone. (The line counts leg (b) names land a few kilobytes short
++ *  of M2's 1 MiB on their own, so the fixture keeps writing lines of the same
++ *  shape until it is there.) Returns exactly the bytes it wrote. */
++const writeBigFile = (file, count, line) => {
++  let text = ''
++  for (let i = 1; i <= count || text.length < MIB; i += 1) text += `${line(i)}\n`
++  fs.writeFileSync(file, text)
++  return text
++}
++
++/** One answer out of the rig's `git` stub, without a boot: the stubs sit in
++ *  `ctx.bin` and answer with `FLEET_HOME=ctx.home` in their environment. */
++const stubGit = (ctx, args, env = {}) => {
++  const r = spawnSync(path.join(ctx.bin, 'git'), args, {
++    encoding: 'utf8',
++    env: {
++      PATH: process.env.PATH,
++      FLEET_HOME: ctx.home,
++      STUB_PLAN_H1: PLAN_H1,
++      STUB_PLAN_SHA: PLAN_SHA,
++      STUB_HEAD_SHA: HEAD_SHA,
++      ...env,
++    },
++    // The injected answers are megabytes; node's default is one.
++    maxBuffer: 64 * MIB,
++  })
++  assert.equal(r.status, 0, `the git stub answered ${r.status}: ${r.stderr}`)
++  return r.stdout
++}
++
++const PLAN_ANSWER = `# ${PLAN_H1}\n\nbody\n`
++const TAGS_ANSWER =
++  `${PLAN_SHA}\trefs/tags/ultra/plan/run-7\n${HEAD_SHA}\trefs/tags/ultra/evidence/run-7\n`
++
++test('a megabyte plan and a megabyte tag listing still boot to parked, and still make the record  [M2 / leg (b)]', () => {
++  // The parked publish path, driven under an injected EPIPE: `plan_title`'s
++  // `sed` and `record_tags`'s listing writer both have to keep writing long
++  // after a reader that quits on its first line would have gone.
++  const ctx = makeHome()
++  const planExtra = writeBigFile(path.join(ctx.home, 'stub', 'plan-extra'), 80000,
++    (i) => `# line ${i}`)
++  const listingExtra = writeBigFile(path.join(ctx.home, 'stub', 'ls-remote-extra'), 16000,
++    (i) => `${OTHER_SHA}\trefs/tags/other-${i}`)
++
++  const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK' })
++  assert.equal(r.status, 0,
++    `the boot exits 0, not 141: a pipeline took the script down\n${r.stdout}${r.stderr}`)
++
++  assert.deepEqual(states(ctx), ['booting', 'running', 'publishing', 'parked'],
++    'the run walks all four states — a boot whose `sed` dies stops at `publishing`')
++
++  // One draft PR, titled from the plan's H1 and not from any of the 80000
++  // injected `# ` lines.
++  assert.equal(prPosts(ctx).length, 1, 'exactly one POST /pulls')
++  assert.equal(prPosts(ctx)[0].draft, true, 'a parked run publishes a DRAFT PR')
++  assert.equal(prPosts(ctx)[0].title, 'fleet run-7: Smoke: the fleet proves itself',
++    "the title is the plan's H1, not an injected line")
++  assert.equal(statusOf(ctx).pr, PR_URL)
++
++  // The evidence is committed AFTER that POST: the last committed snapshot is
++  // the `parked` page, and it already carries the PR.
++  const pages = committed(ctx)
++  assert.equal(commitStates(ctx)[commitStates(ctx).length - 1], 'parked',
++    `the committed snapshots end at parked: ${JSON.stringify(commitStates(ctx))}`)
++  assert.equal(pages[pages.length - 1].pr, PR_URL,
++    'and that snapshot carries the PR URL, so it was committed after the POST')
++
++  // Both tag shas read out of a listing a million bytes long.
++  const recorded = `record: refs/tags/ultra/plan/run-7 at ${PLAN_SHA} and ` +
++    `refs/tags/ultra/evidence/run-7 at ${HEAD_SHA} — ` +
++    'ultra/plan-run-7 and ultra/evidence-run-7 deleted'
++  assert.ok(stream(ctx).includes(recorded),
++    `the boot log carries exactly this line:\n  ${recorded}\nrecord lines seen:\n` +
++    `${stream(ctx).filter((l) => l.startsWith('record:')).map((l) => `  ${l}`).join('\n') || '  <none>'}`)
++
++  // The leg's own premise, checked after the fact so nothing about it is part
++  // of the boot: the two files this case wrote are what the rig answered with,
++  // and each is past a 64 KiB pipe plus a reader's first read.
++  assert.ok(planExtra.length >= MIB && listingExtra.length >= MIB,
++    `both injected files are at least 1 MiB (${planExtra.length}, ${listingExtra.length})`)
++  assert.ok(stubGit(ctx, ['show', 'x:.ultrapowers/plan.md']).endsWith(planExtra),
++    'the plan the boot read carried the injected megabyte')
++  assert.ok(
++    stubGit(ctx, ['ls-remote', '--tags', 'origin',
++      'refs/tags/ultra/plan/run-7', 'refs/tags/ultra/evidence/run-7']).endsWith(listingExtra),
++    'and the listing it read carried the other one')
++})
++
++test('a target that is not owner/repo still fails before any clone  [M3 / leg (c)]', () => {
++  const ctx = makeHome()
++  const r = boot(ctx, ['boot'],
++    { FLEET_ASSIGNMENT: ASSIGNMENT.replace(`target=${TARGET}`, 'target=smoke') })
++  assert.notEqual(r.status, 0, 'a target with no `/` in it is refused')
++  assert.match(statusOf(ctx).error, /^assignment: target is not owner\/repo/, statusOf(ctx).error)
++  assert.equal(readLog(ctx, 'git.log'), '',
++    'nothing is cloned — a rewrite that accepted what `grep -qE` refused would clone')
++})
++
++test('a run id beginning with a dash still fails before any clone  [M3 / leg (c)]', () => {
++  const ctx = makeHome()
++  const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: ASSIGNMENT.replace('run=7', 'run=-7') })
++  assert.notEqual(r.status, 0, 'a run id beginning with `-` is refused')
++  assert.match(statusOf(ctx).error, /^assignment: bad run id/, statusOf(ctx).error)
++  assert.equal(readLog(ctx, 'git.log'), '', 'nothing is cloned')
++})
++
++test('the git stub appends its two injection files, and answers as it always did without them  [M4 / leg (d)]', () => {
++  const ctx = makeHome()
++  const show = ['show', 'x:.ultrapowers/plan.md']
++  const lsRemote = ['ls-remote', '--tags', 'origin',
++    'refs/tags/ultra/plan/run-7', 'refs/tags/ultra/evidence/run-7']
++
++  // With neither file, both answers are byte-for-byte what they were.
++  assert.equal(stubGit(ctx, show), PLAN_ANSWER)
++  assert.equal(stubGit(ctx, lsRemote), TAGS_ANSWER)
++
++  const planExtra = '# extra alpha\n# extra beta\n'
++  const listingExtra = `${OTHER_SHA}\trefs/tags/other-1\n`
++  fs.writeFileSync(path.join(ctx.home, 'stub', 'plan-extra'), planExtra)
++  fs.writeFileSync(path.join(ctx.home, 'stub', 'ls-remote-extra'), listingExtra)
++
++  assert.equal(stubGit(ctx, show), PLAN_ANSWER + planExtra,
++    'the plan answer is the plan text and then the file, whole')
++  assert.equal(stubGit(ctx, lsRemote), TAGS_ANSWER + listingExtra,
++    'the listing is the two tag lines and then the file, whole')
++
++  // And the file goes AFTER `STUB_PLAN_EXTRA`, which is the knob every other
++  // case in this exam reaches the plan through.
++  assert.equal(stubGit(ctx, show, { STUB_PLAN_EXTRA: '**Goal:** x' }),
++    `${PLAN_ANSWER}**Goal:** x\n${planExtra}`,
++    'the environment knob still answers first, and the file follows it')
++})
++
+ runTests(tests)

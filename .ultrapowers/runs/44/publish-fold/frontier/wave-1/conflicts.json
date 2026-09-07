@@ -1,0 +1,42 @@
+[
+  {
+    "i": 1,
+    "path": "fleet/CONTRACT.md",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-44/publish-fold/frontier/wave-1/conflict-1.hunks.txt",
+    "hunkCount": 1
+  },
+  {
+    "i": 2,
+    "path": "fleet/RUNBOOK.md",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-44/publish-fold/frontier/wave-1/conflict-2.hunks.txt",
+    "hunkCount": 1
+  },
+  {
+    "i": 3,
+    "path": "fleet/retire.mjs",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-44/publish-fold/frontier/wave-1/conflict-3.hunks.txt",
+    "hunkCount": 2
+  },
+  {
+    "i": 4,
+    "path": "fleet/tests/test_retire.mjs",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-44/publish-fold/frontier/wave-1/conflict-4.hunks.txt",
+    "hunkCount": 1
+  }
+]

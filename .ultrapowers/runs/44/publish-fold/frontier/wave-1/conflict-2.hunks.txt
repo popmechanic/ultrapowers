@@ -1,0 +1,59 @@
+HUNK h1 lines 453-467
+--- context (read-only)
+  
+  ## Capacity
+  
+  Read the meter, never sum the allocation: `billing usage --json --range=24h`
+  against `billing plan --json`. The plan meters `avg_cpu_cores` and
+  `disk_used_bytes`, and on 2026-08-28 both read under a tenth of their limits
+  while the summed allocations looked oversubscribed. RAM is the binding shared
+  pool — about 3 GB per busy implementer — and `MemoryMax=40G` on the engine
+  service turns an overrun into a killed run rather than a frozen VM. The
+  `capacity` doctor row reports rather than divides: the pool `billing plan
+  --json` answered, beside the `cpu` one run asks for in
+  `~/.ultrapowers/fleet.json`. Neither number is a width, and the row derives no
+  third one from them — contention bounds a wave of runs, and the doctor stands
+  behind only what it read.
+  
+  ## Trust
+  
+  The `publishing` state is the sandbox asserting about itself: the engine
+  service is inactive before anything is pushed. That guards against an
+  accident, not a hostile model. What bounds a hostile model is mechanical: one
+  repository, six hours, a pull request whose merge waits on the target's own
+  checks, and `--hold` to keep a human at the merge button. Credentials lapse on
+  wall clock with nothing to revoke. The
+  Claude token is on no VM and in no argv.
+  
+  ## Rollback
+  
+  The move onto the target is one release. If it does not hold:
+  
+  ```
+  /plugin marketplace update ultrapowers      # then pin 0.3.7
+  ```
+  
+  0.3.7 is the last release of the previous shape, and rolling the plugin back is
+  the whole of the rollback: nothing in the new path writes anywhere the old path
+  read. A new-path run leaves no branch behind to clean up: its record is the two
+  tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, and those are kept —
+  deleting them is deleting the run. Runs from before the tags, and runs that
+  ended `failed`, still have `ultra/*-run-<N>` branches on their target; the
+  one-time retire sweep is what clears those, never a `git push origin --delete`
+--- conflict
+<<<<<<< begin added run-44
+by hand. An `ultra/integration-run-<N>` is that sweep's too, in one case: it
+goes with its merge and stays while a `--hold` PR is open, but when the PR is
+closed and not merged the retire sweep deletes the branch.
+`fleet/CONTRACT.md` names the script it runs from.
+
+======= begin added frontier
+by hand. The sweep reads a pair's `status.json` on the run's evidence branch
+first and touches nothing until it has: a run whose state is not terminal, or
+whose integration branch still has an open pull request, prints
+`run <N>: live (<why>) — skipped` and keeps its branches, so a run still in
+flight is never swept out from under itself. `fleet/CONTRACT.md` names the
+script it runs from.
+
+>>>>>>> end conflict
+--- context (read-only)

@@ -1,0 +1,14 @@
+{
+  "engineHead": "c0df6be42b678212aadba8d9721fe113402bf61b",
+  "attempts": {
+    "1": {
+      "tip": "930a82051d89df183e7e683b93f926536a7548e1",
+      "candidate": "2da88a152e5d8d83ae928f68b9e12a93b5040ab7",
+      "disposition": "suite red",
+      "reason": "the candidate's suite exited 1",
+      "pathsJoined": 4,
+      "resolversDispatched": 4,
+      "suite": "fail"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+  both branches; a run that ends `failed` keeps them for the one-time retire sweep
+  (`node fleet/retire.mjs --target <owner>/<repo>`, for the runs already on a target), and that same
+  retire sweep also deletes an integration branch whose PR is closed and not merged. The sweep
+  reads each pair's `.ultrapowers/runs/<N>/status.json` on the run's evidence branch before it names
+  that run's tags or branches: a run whose `state` is not one of `done`, `parked` or `failed`, or
+  whose `ultra/integration-run-<N>` still has an open pull request, is a run in flight and prints
+  `run <N>: live (<why>) — skipped` instead — the same line under `--dry-run`. The record is

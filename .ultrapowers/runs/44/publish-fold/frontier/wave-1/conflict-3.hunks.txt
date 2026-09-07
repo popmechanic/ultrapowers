@@ -1,0 +1,202 @@
+HUNK h1 lines 69-78
+--- context (read-only)
+   *     two DELETEs; anything else keeps the run's branches and moves on.
+   *
+   * The integration branch has its own fate, decided by its pull request. For a
+   * run the listing carries `refs/heads/ultra/integration-run-<N>` for, one read
+   * — `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>` —
+   * answers the rule: the pull request with the highest `number` among the rows
+   * decides; `state` `"open"` keeps the branch; `state` `"closed"` with
+   * `merged_at` `null` retires it, and this sweep deletes it; `merged_at` a
+   * string keeps it (that branch is delete-on-merge's); no rows keeps it; the
+   * rows' order is not the rule. The highest number and not "any closed-unmerged
+   * row" because run numbers restarted on 2026-09-04, so one head name carries
+   * the pull requests of two runs. The list endpoint's rows carry `merged_at` and
+   * no `merged` boolean — `merged` belongs to the single-PR endpoint, which this
+   * tool does not read.
+   *
+   * The head ref name is read a second time, as the `head=` filter of the
+   * closed-PR list: GitHub keeps a pull request's head ref name after the branch
+   * is deleted, so `head=<owner>:ultra/integration-run-<N>` still finds the run's
+   * PR. Every such body that links `/blob/ultra/plan-run-<N>/` or
+   * `/tree/ultra/evidence-run-<N>/` is rewritten to the tag paths, so the links
+   * survive the deletion — and nothing else in the body is touched.
+   *
+   * A branch that stays is in the state it should be in: it is neither a `kept`
+   * nor an exit code, and the run's line is the whole record of it.
+   *
+   * A pair of branches is not on its own a finished run. Before anything names a
+   * run's tags or branches, the sweep reads that run's status page — the contents
+   * API at `.ultrapowers/runs/<N>/status.json`, on the run's evidence branch — and
+   * only a page whose `state` is one of `REAPABLE_STATES` earns the sweep. A live
+   * page, an unreadable one, or an open pull request on the run's integration
+   * branch prints `run <N>: live (<why>) — skipped` and the sweep moves to the
+   * next N. The states are imported from `./janitor.mjs`, which is the one place
+   * they are spelled: the test is membership, never a denylist of the live words,
+   * so a `state` the boot never writes is skipped rather than swept.
+   *
+   * Every run the listing carries prints one line as it is decided, on this
+   * process's stdout, in ascending N. Stdout is the record: the resolved value
+   * carries the same lines under `lines`, but the printing is what a reader of a
+   * long sweep actually sees, and it happens before the next run is started.
+   *
+--- conflict
+<<<<<<< begin added run-44
+ * `--dry-run` says what it would do: the one heads-and-tags listing, one
+ * closed-PR read per candidate, one fate read per integration branch, and no
+ * command that creates or deletes anything.
+======= begin added frontier
+ * `--dry-run` says what it would do: the one heads-and-tags listing, the status
+ * read per candidate, the open-PR read per terminal candidate and one closed-PR
+ * read per candidate that would be swept, and no command that creates or deletes
+ * anything. A skipped run prints the same line either way.
+>>>>>>> end conflict
+--- context (read-only)
+   */
+  
+  import path from 'node:path'
+  import { fileURLToPath } from 'node:url'
+  
+  import { REAPABLE_STATES } from './janitor.mjs'
+  import {
+    Refusal,
+    defaultExec,
+    evidenceBranchFor,
+    evidenceTagFor,
+    integrationBranchFor,
+    isSafeTarget,
+    output,
+    parseArgs,
+    parseJson,
+    planBranchFor,
+    planTagFor,
+    runCli,
+    runOfBranch
+  } from './lobby.mjs'
+  
+  export const USAGE = 'usage: node fleet/retire.mjs --target <owner>/<repo> [--dry-run]'
+  
+  export const usage = () => USAGE
+  
+  /** The clone URL a `ls-remote` is given — the only remote name this tool has. */
+  export const remoteUrlFor = (target) => `https://github.com/${target}.git`
+  
+  /** The `<sha>\t<ref>` listing as `{ ref: sha }`, peeled `^{}` lines included. */
+  export function parseLsRemote (stdout) {
+    const refs = new Map()
+    for (const line of String(stdout ?? '').split('\n')) {
+      const [sha, ref] = line.split('\t')
+      if (ref === undefined) continue
+      const name = ref.trim()
+      if (name === '') continue
+      refs.set(name, sha.trim())
+    }
+    return refs
+
+HUNK h2 lines 379-401
+--- context (read-only)
+  export async function retire ({ argv = [], exec = defaultExec } = {}) {
+    const { opts } = parseArgs(argv, { flags: ['dry-run'] })
+    const dryRun = opts['dry-run'] === true
+    const target = opts.target
+    if (!isSafeTarget(target)) {
+      throw new Refusal(
+        `retire: --target must be <owner>/<repo>, got ${JSON.stringify(target ?? null)}\n${usage()}`
+      )
+    }
+  
+    // ── One listing, for the whole target. Nothing lists the heads again. ─────
+    const listing = await exec('git', [
+      'ls-remote', remoteUrlFor(target), 'refs/heads/ultra/*', 'refs/tags/ultra/*'
+    ])
+    const refs = parseLsRemote(listing.stdout)
+  
+    const retired = []
+    const kept = []
+    const skipped = []
+    const live = []
+    const lines = []
+    const say = (line) => {
+      lines.push(line)
+      process.stdout.write(`${line}\n`)
+    }
+  
+    /**
+     * The pair half of a run's line, or null when the listing carries no half of
+     * the pair — then the run's line is the integration segment alone. Its
+     * commands and their order are what they have always been.
+     */
+    const sweepPair = async (entry) => {
+      const { run, plan, evidence } = entry
+      if (entry.branches.length === 0) return null
+  
+      // A half pair is not a record: tagging one side would claim the run's
+      // other side was recorded somewhere, and it is not.
+      if (plan === null || evidence === null) {
+        const lone = entry.branches.join(', ')
+        skipped.push(...entry.branches)
+--- conflict
+<<<<<<< begin added run-44
+      return `skip — lone ${lone}`
+======= begin deleted run-44
+      say(`run ${run}: skip — lone ${lone}`)
+======= begin added frontier
+      continue
+    }
+
+    // The gate, and the first thing that names this run: a pair whose page is
+    // not terminal, or whose integration PR is still open, is a run in flight.
+    // Skipping it is the same decision under `--dry-run` and without it — the
+    // sweep never asks what it would do to a run it is not going to touch.
+    let why = liveReason(await readStatusPage(exec, target, run))
+    if (why === null) {
+      const open = await openPullOf(exec, target, run)
+      if (open !== null) why = `PR #${open.number} open`
+    }
+    if (why !== null) {
+      live.push({ run, why })
+      say(`run ${run}: live (${why}) — skipped`)
+======= begin deleted run-44
+      continue
+>>>>>>> end conflict
+--- context (read-only)
+      }
+  
+      if (dryRun) {
+        const patches = await pullsToPatch(exec, target, run)
+        return (
+          `would retire ${planTagFor(run)}@${short(plan)} ` +
+          `${evidenceTagFor(run)}@${short(evidence)}, delete 2 branches, ` +
+          `patch ${patches.length} PR(s)`
+        )
+      }
+  
+      await createTag(exec, target, planTagFor(run), plan)
+      await createTag(exec, target, evidenceTagFor(run), evidence)
+  
+      const tags = await readTags(exec, target, run)
+      const planOk = tagIsAt(tags, planTagFor(run), plan)
+      const evidenceOk = tagIsAt(tags, evidenceTagFor(run), evidence)
+      if (!planOk || !evidenceOk) {
+        // The branches stay, so their links still resolve and nothing is
+        // rewritten. The sweep continues: one unverified run is not the target.
+        const why = !planOk
+          ? tagComplaint(tags, planTagFor(run), plan)
+          : tagComplaint(tags, evidenceTagFor(run), evidence)
+        kept.push(run)
+        return `kept — ${why}`
+      }
+  
+      await exec('gh', ['api', '-X', 'DELETE', `repos/${target}/git/refs/heads/${planBranchFor(run)}`])
+      await exec('gh', ['api', '-X', 'DELETE', `repos/${target}/git/refs/heads/${evidenceBranchFor(run)}`])
+  
+      const patches = await pullsToPatch(exec, target, run)
+      for (const patch of patches) await patchPull(exec, target, patch)
+  
+      retired.push(run)
+      return (
+        `retired ${planTagFor(run)}@${short(plan)} ` +
+        `${evidenceTagFor(run)}@${short(evidence)}, 2 branches deleted, ` +
+        `${patches.length} PR(s) patched`
+      )
+    }

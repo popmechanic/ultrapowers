@@ -1,0 +1,5 @@
+ * `--dry-run` says what it would do: the one heads-and-tags listing, the status
+ * read per candidate, the open-PR read per terminal candidate, one closed-PR
+ * read per candidate that would be swept, one fate read per integration branch,
+ * and no command that creates or deletes anything. A skipped run prints the
+ * same line either way.

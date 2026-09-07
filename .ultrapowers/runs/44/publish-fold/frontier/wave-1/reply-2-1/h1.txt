@@ -1,0 +1,8 @@
+by hand. The sweep reads a pair's `status.json` on the run's evidence branch
+first and touches nothing until it has: a run whose state is not terminal, or
+whose integration branch still has an open pull request, prints
+`run <N>: live (<why>) — skipped` and keeps its branches, so a run still in
+flight is never swept out from under itself. An `ultra/integration-run-<N>` is that sweep's too, in one case: it
+goes with its merge and stays while a `--hold` PR is open, but when the PR is
+closed and not merged the retire sweep deletes the branch.
+`fleet/CONTRACT.md` names the script it runs from.

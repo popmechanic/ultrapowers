@@ -1,0 +1,15 @@
+      return `skip — lone ${lone}`
+    }
+
+    // The gate, and the first thing that names this run: a pair whose page is
+    // not terminal, or whose integration PR is still open, is a run in flight.
+    // Skipping it is the same decision under `--dry-run` and without it — the
+    // sweep never asks what it would do to a run it is not going to touch.
+    let why = liveReason(await readStatusPage(exec, target, run))
+    if (why === null) {
+      const open = await openPullOf(exec, target, run)
+      if (open !== null) why = `PR #${open.number} open`
+    }
+    if (why !== null) {
+      live.push({ run, why })
+      return `live (${why}) — skipped`

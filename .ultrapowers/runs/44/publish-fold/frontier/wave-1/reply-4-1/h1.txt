@@ -1,0 +1,33 @@
+ * Below those, in its own region, `#706 — the status read gates the sweep`: the
+ * sweep reads each pair's `.ultrapowers/runs/<N>/status.json` off the evidence
+ * branch before it touches the run, and skips a run whose state is not terminal
+ * or whose integration branch has an open pull request.
+ *
+ *   (a) M1 — exactly one contents read per pair, before that pair's first POST,
+ *       and none for a lone half.
+ *   (b) M1 — the terminal states are `REAPABLE_STATES` imported from
+ *       `./janitor.mjs`, never a list retyped in `fleet/retire.mjs`.
+ *   (c) M2 — a live page (`booting`, `running`, `publishing`, and `blocked`,
+ *       the word the boot never writes) prints one `live (<state>) — skipped`
+ *       line, touches nothing else, lands under `live`, and does not stop the
+ *       sweep or set exit 1.
+ *   (d) M2 — a read that answers non-zero, a non-envelope body, or a page with
+ *       no string `state` is skipped the same way, `why` `no status page`.
+ *   (e)(f)(g) M3 — `done`, `parked` and `failed` are swept exactly as before the
+ *       read existed: the read gates the sweep and replaces none of it.
+ *   (h)(i) M4 — the open-PR read per terminal pair, after its status read and
+ *       before its first POST; a non-empty answer skips the run as
+ *       `live (PR #<number> open)`, an empty one lets it through.
+ *   (j) M5 — `--dry-run`, in either flag order: the same skip lines byte for
+ *       byte, `would` only for a terminal pair with no open PR, and exactly the
+ *       listing, the status reads, the open-PR reads and the closed-PR reads.
+ *   (k) M6 — the same skip as a process against `PATH` shims.
+ *   (l) M7 — the two documents each declare the skip, carrying `— skipped`, and
+ *       the docs-pin suite is green over both.
+ *
+ * A third group, under the comment `#724 Task 1` further down, encodes that
+ * task's own Machine clauses over a listing it builds itself: the fate read
+ * `pulls?state=all&head=…`, the four line segments, the integration DELETE, and
+ * the two operator documents. Its clause numbering (M1–M6) is that task's, not
+ * this header's — every assertion there names both the leg and the clause.
+ *
