@@ -7,7 +7,8 @@
       "disposition": "nothing to join",
       "pathsJoined": 0,
       "resolversDispatched": 0,
-      "suite": "none"
+      "suite": "none",
+      "pushedHead": "09577d35dc70572aca51e27d72936fce63feb5a3"
     }
   }
 }

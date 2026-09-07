@@ -1,0 +1,101 @@
+## fleet run-42 — gate-green
+
+| | |
+|---|---|
+| verdict | `NEEDS_ACK` |
+| target | `popmechanic/ultrapowers` at `9cd8190ffb5e68b1de0eb9eac44b116ab0631d28` |
+| engine | `9cd8190ffb5e68b1de0eb9eac44b116ab0631d28` |
+| plan | `.ultrapowers/plan.md` at `ddfda3ab35cfdbade32790fb0540427804ff82ae` |
+| branch | `ultra/integration-run-42` |
+| vm | `fleet-r42-2609072102-2bf6` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-42",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-42/report.json",
+  "branch": "ultra/integration-run-42",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/sandbox-boot.sh \u2014 collect_evidence copying <run dir>/acceptance.log onto ultra/evidence-run-<N> in a real sandbox (Task 2, M1/M2) \u2014 The evidence-branch exam drives the boot script over the shared rig's PATH shim, which stubs systemd-run, git, gh, curl and claude \u2014 no systemd, no network. The copy is proven against a stub engine that writes a 9000-byte acceptance.log (leg a) and against a run that writes none (leg b), and the driver ran both Proof Run: greps on the integrated tree, but a production boot where a real gate writes the log inside the sandbox cannot be executed in this environment. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "The ultra_gate.py -> run_acceptance.sh dispatch seam that makes Task 1's Claim true in production (fleet/run-main.mjs receipt rewrite reaching the frozen gate) \u2014 Both ends are executed here \u2014 leg (a) proves the receipt ultra_gate.py reads at call time carries acceptanceWrap(...), and legs (c)/(d) pass that same wrapper as --run to the real frozen skills/ultrapowers/scripts/run_acceptance.sh in a throwaway repo, confirming the complete log, the preserved exit status and the untouched 8000-char tail. The one link executed only by reading source (verified: ultra_gate.py gate mode passes run_receipt['testCmd'] verbatim as --run, and --approve never reads it) is the frozen gate's own subprocess dispatch, which the run must not modify or invoke for real. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.ZAREIxFUcj/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 4/4 workers\\n4 workers [1666 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 12%]\\n........................................................................ [ 17%]\\n........................................................................ [ 21%]\\n........................................................................ [ 25%]\\n........................................................................ [ 30%]\\n........................................................................ [ 34%]\\n........................................................................ [ 38%]\\n........................................................................ [ 43%]\\n........................................................................ [ 47%]\\n........................................................................ [ 51%]\\n........................................................................ [ 56%]\\n........................................................................ [ 60%]\\n........................................................................ [ 64%]\\n........................................................................ [ 69%]\\n........................................................................ [ 73%]\\n........................................................................ [ 77%]\\n........................................................................ [ 82%]\\n........................................................................ [ 86%]\\n........................................................................ [ 90%]\\n........................................................................ [ 95%]\\n........................................................................ [ 99%]\\n..........                                                               [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1666 passed, 5 warnings in 350.98s (0:05:50) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-42/.ultrapowers/runs/42/
+
+- approve-receipt.json
+- claude-version.txt
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- publish-fold
+- receipt.json
+- report.json
+- standing-approval.json
+- status.json
+- transcripts
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-42/.ultrapowers/plan.md
+Closes #739
