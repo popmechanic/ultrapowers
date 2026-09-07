@@ -1,0 +1,42 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "6e5cc7f6f8d7f88b6e5bdf34b3d17f2aed50f600271faf2ba6f521ad0c947bd4",
+   "verdict": "pass",
+   "reason": "Leg (a) is a falsifying census (validated on a fixture holding BASE's five offenders plus the builtin-guarded trap before it is trusted on the script) that goes red naming any head/grep -q/awk exit/sed q reader whose upstream is unguarded or guarded only behind a builtin, and leg (b) reaches the real mechanism rather than a proxy — oversize plan and tag listings force the actual sed | head -n 1 and listing→awk … exit writers to write after their readers have gone, so an unguarded script exits 141 or stops at publishing while the leg demands exit 0, the full state walk, one draft POST with the plan's own H1, a committed parked snapshot carrying the PR, and the tag-record line read out of the megabyte listing — with (c) pinning that the refusals survive the rewrite and (d) pinning that the injection actually reaches the stubs."
+  }
+ },
+ "tally": {
+  "dispatched": 3,
+  "rejected": 1,
+  "rounds": {
+   "1": { "dispatched": 1, "pass": 0, "fail": 1 },
+   "2": { "dispatched": 1, "pass": 1, "fail": 0 },
+   "3": { "dispatched": 1, "pass": 1, "fail": 0 }
+  },
+  "note": "Round 1 rejected on two grounds the author then measured on the rig and adopted: (i) `{ printf … || true; } | head -n 1` exits 141 under pipefail because the builtin's own subshell takes the signal (measured; an external writer in the same braces exits 0), so the builtin-writer sites changed shape — `is_target`/`is_run_n` to `[[ =~ ]]`, `record_tags` to an awk that reads to EOF — and the exam gained a second EPIPE injection through the listing writer plus a pin of the injection knobs; (ii) the grep census was a line-granular proxy, replaced by a tokenising census in the exam. Round 2 passed on hash 8a59b35f… naming one soft spot (the census had no positive control); the author added the seven-line fixture leg rather than bank it, which re-keyed the hash, and round 3 read the revised pair."
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "9838b0bd9d128c630ef3c014445ee6b47730e6ad0a5c75444ddeab0fdc1f942b",
+   "verdict": "fail",
+   "reason": "Every leg can pass while \"no boot pipeline can take the script down by SIGPIPE\" is false, because the guard's survival of SIGPIPE is only exercised for an external writer (`sed | head -n 1` under a 200 KB plan) while three of the five listed sites wrap the builtin `printf` — whose forked pipeline subshell is itself killed by SIGPIPE before `|| true` can run, and no leg drives EPIPE through a `printf` writer (the sim's tag listing is small) — and leg (a)'s census is a line-granular regex proxy for a universal (a second unguarded `| head` on a line already excused by one guarded pipeline, `| head)` with no trailing space, `grep -m`, `sed q` all pass it), so the \"every reader\" clause is mentioned, not falsified."
+  },
+  {
+   "round": 2,
+   "task": "1",
+   "hash": "8a59b35f0cb7ba164a2efc6c929acc4d7473342ac07dd6e98b4b7914d3f17be3",
+   "verdict": "pass",
+   "reason": "Leg (b) drives a real EPIPE through both writers that can actually outlive their reader (`plan_title`'s `sed | head -n 1` and `record_tags`'s listing writer, each fed more than a pipe holds so the reader is gone before the write finishes) and would go red on exit status, the missing POST, or the missing `record:` line if either guard were absent, leg (a) names every unguarded early-exiting reader and rejects the builtin-in-braces false guard so the universal clause has a named failure, leg (c) proves the `is_target`/`is_run_n` rewrite still refuses what `grep -qE` refused before any clone, and leg (d) validates the stub instrument before the readings — the only unproven thing is the census tokenizer's own detection power (no positive-control fixture), which the dynamic leg covers for every reader that can SIGPIPE in practice."
+  },
+  {
+   "round": 3,
+   "task": "1",
+   "hash": "6e5cc7f6f8d7f88b6e5bdf34b3d17f2aed50f600271faf2ba6f521ad0c947bd4",
+   "verdict": "pass",
+   "reason": "Leg (a) is a falsifying census (validated on a fixture holding BASE's five offenders plus the builtin-guarded trap before it is trusted on the script) that goes red naming any `head`/`grep -q`/`awk exit`/`sed q` reader whose upstream is unguarded or guarded only behind a builtin, and leg (b) reaches the real mechanism rather than a proxy — oversize plan and tag listings force the actual `sed | head -n 1` and listing→`awk … exit` writers to write after their readers have gone, so an unguarded script exits 141 or stops at `publishing` while the leg demands exit 0, the full state walk, one draft POST with the plan's own H1, a committed `parked` snapshot carrying the PR, and the tag-record line read out of the megabyte listing — with (c) pinning that the refusals survive the rewrite and (d) pinning that the injection actually reaches the stubs; the only slack is that the sentence's parenthetical \"stub reader\" is realised as real readers exiting on their first line, which is the same EPIPE at a truer layer, not a way for the legs to pass with the sentence false."
+  }
+ ]
+}
