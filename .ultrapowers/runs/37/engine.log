@@ -3,3 +3,14 @@ run-main: preflight
 run-main: tiers — 1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 9cd8190ffb5e68b1de0eb9eac44b116ab0631d28; 1 task clone(s) + integration
 run-main: engine — waves 1, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: approve
+run-main: approved — ultra/integration-run-37
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 40min 46.294s
+CPU time consumed: 50min 59.877s
+Memory peak: 768.0K
+Memory swap peak: 0B

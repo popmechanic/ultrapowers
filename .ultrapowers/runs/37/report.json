@@ -1,0 +1,114 @@
+{
+  "integrationBranch": "ultra/integration-run-37",
+  "baseSha": "9cd8190ffb5e68b1de0eb9eac44b116ab0631d28",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "6769b9d986a0a31b2a9820933102197ee5e7233c",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-37/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified-by-design gap in the M1 census detector (fleet/tests/test_sandbox_boot_edges.mjs:155 `flagClusters`, :163 `SED_QUITS`). `flagClusters` only accepts clusters matching `/^-[A-Za-z]+$/`, so a reader written `grep -m1 pat` (attached argument) is never tested for `q/m/l`; `SED_QUITS` requires the `q` to be preceded by start/whitespace/`;`/quote/`{`, so the two most common early-quit sed forms \u2014 `sed 5q` and `sed '/pat/q'` \u2014 are not recognised either. Neither shape exists in the script on this tree (the census correctly names none, and the fixture leg pins the six it must name), so the M1 claim holds as graded; the gap only means a future pipeline of those two shapes would pass the census unnamed. Suggested hardening, both inside this task's own FILES: widen the cluster test to `/^-[A-Za-z]/` and let a `q` also count when preceded by `/` or a digit. Worth re-running the fixture assertions after any such widening, since the fixture pins the count at exactly six.; plan-defect: the task's own text disagrees with itself on the size of the two injected knobs. M2 requires `$FLEET_HOME/stub/plan-extra` and `$FLEET_HOME/stub/ls-remote-extra` to be \"at least 1 MiB\" each, while Proof leg (b) prescribes 80000 lines `# line <i>` and 16000 lines `<40-hex>\\trefs/tags/other-<i>`. The diff follows leg (b) verbatim (test_sandbox_boot_edges.mjs:241-244), which yields 1,041,894 bytes and 996,894 bytes \u2014 both just under 1 MiB (1,048,576). The rationale M2 states (\"more than any pipe holds plus any reader's first read\") is met roughly sixteen times over by either file, so nothing about the leg's determinism or its result changes. Fix is one number in either place: raise the leg to ~90000 and ~17000 lines, or drop M2's \"at least 1 MiB\" to the threshold it actually argues for.; unverified: sibling boot exams are not settled by the evidence in hand. Acceptance is `suite`, but the driver ran only `node fleet/tests/test_sandbox_boot_edges.mjs`. The diff rewrites four functions (`is_target`, `is_run_n`, `plan_title`, `record_tags`) that every boot sim in `fleet/tests/` drives, and edits the shared rig `fleet/tests/_sandbox_boot_helpers.mjs` that they all import \u2014 in particular `test_sandbox_boot_merge.mjs` leg (j), which re-runs this exam inside itself. The rig edits are guarded on file existence and leg (d) pins both stub answers byte-for-byte when the files are absent, so a regression is unlikely; what would settle it is running the other `fleet/tests/test_sandbox_boot*.mjs` files (or `tests/test_fleet_suite.py`, which sweeps them under `-n auto`) on this tree.; plan-defect: M1's Machine declares `json_field` a reader that \"consumes to EOF and is never named\", and the census implemented at fleet/tests/test_sandbox_boot_edges.mjs:173 honours that by only classifying `head`/`grep -qml`/`awk exit`/`sed q` command words. But `json_field` (fleet/sandbox-boot.sh:226-229) is `{ grep -o \u2026 || true; } | head -n 1 | sed \u2026`: once `head` takes its one line and exits, `grep -o` dies on its NEXT match, closing json_field's own stdin. So json_field does close its input early, and it is fed by unguarded writers with no whole-pipeline `|| true` at three call sites \u2014 `printf '%s' \"$answer\" | sed '$d' | json_field sha` (:1258, external `sed`), and `printf '%s' \"$reply\" | json_field html_url` / `json_field login` / `json_field sha` (:1383, :1384, :1645, builtin `printf`, which per this task's own Context dies with its subshell). A document larger than a pipe buffer with two or more matches of the field name (a GitHub commit reply has several `\"sha\"`) still ends the boot with 141 there. The Claim's universal quantifier (\"every \u2026 reader either reads its whole input or has its upstream guarded\") is therefore not fully established by the census, though every leg the Proof slot names is satisfied. This is pre-existing at BASE and NOT introduced by this diff, and the fix \u2014 `{ sed '$d' || true; }` at :1258, `|| true` inside the substitutions at :1383/:1384/:1645, or a `head`-less json_field \u2014 lies outside the four functions the second GLOBAL CONSTRAINT fences this plan to, so the implementer cannot carry it. Recorded for the operator; nothing to change in this submission.; The plan is internally inconsistent about the injection sizes, and the diff followed the Proof leg rather than the Machine. M2 asks for `$FLEET_HOME/stub/plan-extra` and `$FLEET_HOME/stub/ls-remote-extra` of \"at least 1 MiB\" each; Proof leg (b) names \"80000 lines `# line <i>`\" and \"16000 lines `<sha>\\trefs/tags/other-<i>`\". fleet/tests/test_sandbox_boot_edges.mjs:241-244 writes exactly those counts, which come to ~1,028,894 and ~996,894 bytes \u2014 1.9% and 5.0% short of 1 MiB. No fix is warranted: the stated purpose is to exceed a 64 KiB pipe plus a reader's first 64 KiB read, and ~1 MB clears that by roughly 8x, which the passing M2 leg demonstrates (the boot exits 0 and logs the `record: \u2026` line, where BASE exits 141). Flagged only so the literal reading of M2 is not recorded as met.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-37/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 338.92s (0:05:38) =================\n"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -c 'comm -23 <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -oE \"^[a-z_]+\\(\\)\" | sort -u) <(grep -oE \"^[a-z_]+\\(\\)\" fleet/sandbox-boot.sh | sort -u) | { ! grep .; }'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -nE \"trap .*PIPE|set \\+o pipefail\" fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 395175,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": ".................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n...............................................................s......... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 350.93s (0:05:50) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 326.98s (0:05:26) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ac4a5d036443da9530ec0828030c77bb95616f1e",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-37/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-37/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.723,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: examiner: (b) [M2] \u2014 M2 asks for each injected file to be \"at least 1 MiB\" while leg (b) pins the exact shapes (80000 lines `# line <i>`, 16000 lines `<40-hex>\\trefs/tags/other-<i>`) \u2014 Those exact shapes come to 1,028,894 and 996,894 bytes \u2014 ~1.0 MB, just under 1 MiB (1,048,576). I encoded the leg's literal line counts rather than padding them, since both are ~8x past the 64 KiB pipe plus a reader's first read that the mechanism actually needs. Everything else in M2 and leg (b) is asserted as written."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
