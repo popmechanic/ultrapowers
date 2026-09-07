@@ -32,9 +32,11 @@ no approval step before it.
 The three branches are where a run works, not what it leaves. At publish the
 sandbox tags the plan commit `ultra/plan/run-<N>` and the final evidence commit
 `ultra/evidence/run-<N>`, verifies both against the remote, and deletes
-`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step;
-`ultra/integration-run-<N>` goes with the merge, and stays only while a `--hold`
-PR is open. What a run leaves on the repository it was about is those two tags.
+`ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
+`ultra/integration-run-<N>` has three fates: a merged PR's branch goes with the
+merge (delete-on-merge), a `--hold` run's stays while its PR is open, and
+the retire sweep deletes one whose pull request is closed and not merged.
+What a run leaves on the repository it was about is those two tags.
 
 There is no image to keep fresh, no state repository, no orchestrator, no
 control VM, and no token on any VM. The Claude subscription and the GitHub
@@ -206,10 +208,12 @@ node fleet/janitor.mjs
 
 It lists the fleet, reads each VM's comment for its run and its target, reads
 that run's status page off the target with `gh api`, and `rm`s every VM whose
-run has been `done`, `parked` or `failed` for over an hour. It reaps VMs and
-nothing else: no branch and no tag on the target is its business. It reads the
-page at the evidence tag `ultra/evidence/run-<N>` first, and at the branch
-`ultra/evidence-run-<N>` only while the run is in flight or its sweep is
+run has been `done`, `parked` or `failed` for over an hour. Last in its report
+it also names, for each target its rows carry, every `ultra/integration-run-<N>`
+whose highest-numbered pull request is closed and not merged. The janitor
+deletes no branch — the sweep (`node fleet/retire.mjs --target <t>`) does. It
+reads the page at the evidence tag `ultra/evidence/run-<N>` first, and at the
+branch `ultra/evidence-run-<N>` only while the run is in flight or its sweep is
 pending; a run with no page is aged from the plan tag `ultra/plan/run-<N>` and
 then the plan branch `ultra/plan-run-<N>`, and the stale line names the ref it
 read. It merges nothing: an approved run merges its own pull request from the
@@ -444,7 +448,11 @@ tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`, and those are kept —
 deleting them is deleting the run. Runs from before the tags, and runs that
 ended `failed`, still have `ultra/*-run-<N>` branches on their target; the
 one-time retire sweep is what clears those, never a `git push origin --delete`
-by hand. The sweep reads a pair's `status.json` on the run's evidence branch
+by hand. It clears an integration branch too:
+the retire sweep deletes one whose pull request is closed and not merged,
+so that branch is no more a hand deletion than the pair is. The `--hold` run's
+open PR keeps its branch, and a merged one is delete-on-merge's.
+The sweep reads a pair's `status.json` on the run's evidence branch
 first and touches nothing until it has: a run whose state is not terminal, or
 whose integration branch still has an open pull request, prints
 `run <N>: live (<why>) — skipped` and keeps its branches, so a run still in

@@ -62,8 +62,23 @@
  * times out, an empty answer — is left exactly as it was.
  *
  * The reap is the only removal. The janitor merges nothing — an approved run
- * merges its own pull request from the sandbox — so its `gh` surface is the
- * contents API and nothing else, and every action it records is an `rm`.
+ * merges its own pull request from the sandbox — and it deletes no branch and
+ * no tag, so every action it records is an `rm` and its two writes are the
+ * death's; the rest of its `gh` surface is reads: the contents API for the
+ * pages, `git/ref/tags/`, `commits/` and `branches/` for a missing page's age,
+ * and #724's two —
+ *
+ *   gh api repos/<target>/git/matching-refs/heads/ultra/integration-run-
+ *   gh api repos/<target>/pulls?state=all&head=<owner>:ultra/integration-run-<N>
+ *
+ * — one prefix match per distinct target the rows name, and one pull-request
+ * listing per head it answers. A branch whose highest-numbered pull request is
+ * closed and not merged is reported, last, beside the VMs this pass reaped:
+ * nothing merged it and nothing will, so it is the sweep's to delete
+ * (`node fleet/retire.mjs --target <t>`) and never the janitor's. The targets
+ * come from the rows' own `target=`, because that is the only place the janitor
+ * learns a target from — a branch whose every VM is already gone is the sweep's
+ * to find.
  *
  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, and it
  * is run by hand after the laptop has been asleep.
@@ -81,6 +96,7 @@ import {
   defaultExec,
   evidenceBranchFor,
   evidenceTagFor,
+  integrationBranchFor,
   isRunNumber,
   isSafeSha,
   isSafeTarget,
@@ -95,6 +111,7 @@ import {
   planBranchFor,
   planTagFor,
   runCli,
+  runOfBranch,
   runOfVmName
 } from './lobby.mjs'
 
@@ -318,6 +335,94 @@ async function writeDeath ({ exec, dryRun, row, run, target, state, page, sha, u
   return { ...death, error: `${res.stdout ?? ''}${res.stderr ?? ''}`.trim() }
 }
 
+// ── #724 Task 2: the branches beside them — reported, never deleted ─────────
+
+/**
+ * Every `ultra/integration-run-<N>` head on a target, in one read. The path's
+ * tail is `integrationBranchFor('')`, so the prefix cannot drift from the
+ * branch name the rest of the fleet builds. `git/matching-refs/heads/<prefix>`
+ * is a prefix match and answers an array of
+ * `{ ref: 'refs/heads/ultra/integration-run-<N>', object: { sha } }` — `[]`
+ * when the target has none. It is paged at GitHub's default of thirty, and no
+ * `per_page` rides the path: this is a report whose remedy is the sweep, not a
+ * ledger.
+ */
+const matchingRefsPath = (target) =>
+  `repos/${target}/git/matching-refs/heads/${integrationBranchFor('')}`
+
+/**
+ * The runs those heads name, ascending. A 404 or an answer that is not an
+ * array is no branches — an absence is an answer here, as everywhere else the
+ * janitor reads — and a ref `runOfBranch` cannot read a run out of is skipped
+ * rather than guessed at.
+ */
+async function integrationRunsOf (exec, target) {
+  const payload = await ghApi(exec, matchingRefsPath(target))
+  if (!Array.isArray(payload)) return []
+  const runs = []
+  for (const entry of payload) {
+    const run = runOfBranch(entry?.ref)
+    if (run !== null && !runs.includes(run)) runs.push(run)
+  }
+  return runs.sort((a, b) => a - b)
+}
+
+/**
+ * The pull request that speaks for one integration branch: the highest
+ * `number` among the rows of `pulls?state=all&head=<owner>:<branch>`, or null
+ * when there are none. `head=` matches on the head ref's NAME, which GitHub
+ * keeps after the branch is gone, and run numbers restarted at 1 on
+ * 2026-09-04 — so one head name carries two runs' pull requests and the rows'
+ * order is not the rule. Read on 2026-09-07, `ultra/integration-run-32` on
+ * `popmechanic/ultrapowers` answered `#720 closed, merged_at null` and
+ * `#463 closed, merged_at 2026-08-31T03:03:48Z`; only #720 is about the branch
+ * that is there now.
+ */
+async function decidingPull (exec, target, run) {
+  const owner = String(target).split('/')[0]
+  const payload = await ghApi(
+    exec,
+    `repos/${target}/pulls?state=all&head=${owner}:${integrationBranchFor(run)}`
+  )
+  const rows = Array.isArray(payload) ? payload : []
+  let decider = null
+  for (const row of rows) {
+    const number = Number(row?.number)
+    if (!Number.isFinite(number)) continue
+    if (decider === null || number > decider.number) decider = { number, state: row.state, mergedAt: row.merged_at ?? null }
+  }
+  return decider
+}
+
+/**
+ * The rule, carried here by literal and never by an import of the sweep — both
+ * tools spell it, neither owns it: the highest-numbered pull request decides;
+ * `state` `"open"` keeps the branch; `state` `"closed"` with `merged_at` `null`
+ * retires it; `merged_at` a string keeps it (delete-on-merge's own); no rows
+ * keeps it. The list endpoint's rows carry `merged_at` and no `merged` boolean,
+ * so the date is the only thing worth reading.
+ */
+const isClosedUnmerged = (pull) =>
+  pull !== null && pull.state === 'closed' && pull.mergedAt === null
+
+/**
+ * The branches to report, ascending by target then run. One `matching-refs`
+ * read per distinct target — however many of its runs are in the fleet — and
+ * one `pulls?` read per head that read answered. Nothing here mutates: the
+ * remedy is the sweep, and `--dry-run` issues exactly these same reads.
+ */
+async function closedUnmergedBranches (exec, targets) {
+  const branches = []
+  for (const target of [...targets].sort()) {
+    for (const run of await integrationRunsOf(exec, target)) {
+      const pull = await decidingPull(exec, target, run)
+      if (!isClosedUnmerged(pull)) continue
+      branches.push({ target, run, branch: integrationBranchFor(run), pr: pull.number })
+    }
+  }
+  return branches
+}
+
 /** Everything the janitor does, with the exec seam and the clock injected. */
 export async function janitor ({ argv = [], exec = defaultExec, config, now = () => new Date() }) {
   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json'] })
@@ -339,6 +444,9 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
   const stale = []
   const unknown = []
   const deaths = []
+  // The only targets there are: a row's assignment comment is where the
+  // janitor learns of one, so a target no row names is nobody's here.
+  const targets = new Set()
   const nowIso = new Date(nowMs).toISOString()
   for (const row of rows) {
     const assignment = assignmentOf(row)
@@ -347,6 +455,7 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
       continue
     }
     const { run, target } = assignment
+    targets.add(target)
     const evidence = await readEvidence(exec, target, run)
 
     if (evidence === null) {
@@ -411,12 +520,16 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
     }
   }
 
+  // ── #724 Task 2: the last of the reads — the branches nothing merged. ─────
+  //    They come after the row loop, so every read order above is unchanged.
+  const branches = await closedUnmergedBranches(exec, targets)
+
   // ── Then the one mutation there is: the reap, through the lobby. ──────────
   if (!dryRun) {
     for (const action of actions) await lobby(exec, action.command)
   }
 
-  return { dryRun, age, actions, stale, unknown, deaths }
+  return { dryRun, age, actions, stale, unknown, deaths, branches }
 }
 
 const renderAction = (a, dryRun) =>
@@ -426,12 +539,23 @@ const renderDeath = (d, dryRun) =>
   `${dryRun ? 'would write death' : 'death'} ${d.vm}  run=${d.run} ` +
   `${d.state} → failed: ${unitSummary(d.unit)} — ${evidenceBranchFor(d.run)}`
 
+/**
+ * #724 Task 2: a branch nothing merged, and where the operator goes for it.
+ * The janitor deletes nothing here, so the line ends in the sweep's command.
+ */
+const renderBranch = (b) =>
+  `branch ${b.branch}  target=${b.target} PR #${b.pr} closed, not merged — ` +
+  `node fleet/retire.mjs --target ${b.target}`
+
 export const renderJanitor = (result) => {
   const lines = [
     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),
-    ...result.actions.map((a) => renderAction(a, result.dryRun)),
-    ...result.stale.map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
-    ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`)
+    ...(result.actions ?? []).map((a) => renderAction(a, result.dryRun)),
+    ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
+    ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
+    // Last, after every rm, stale and unknown line: the reap is the pass's
+    // work, and the branch report is what the operator does next.
+    ...(result.branches ?? []).map(renderBranch)
   ]
   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
 }
