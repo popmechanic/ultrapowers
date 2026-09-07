@@ -1,0 +1,93 @@
+{
+  "integrationBranch": "ultra/integration-run-35",
+  "baseSha": "00fb22436c9fad7f6e37de3f11f73f709675ad35",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "fleet/tests/test_sandbox_boot_selfmerge.mjs freezes this run's BASE sha into the committed suite: `const BASE_SHA_ENV = process.env.ULTRA_BASE || '00fb22436c9fad7f6e37de3f11f73f709675ad35'`. Two of the new section-8 legs \u2014 \"the reader and the engine's event writer are BASE's [M6 / leg (j)]\" (`git diff --name-only BASE -- skills/ultralearn/ fleet/run-waves.mjs fleet/run-engine.mjs fleet/run-main.mjs fleet/publish-fold.mjs`) and \"every byte of CONTRACT.md outside that bullet is BASE's [M7 / leg (k)]\" (`withoutPublishBullet(read(CONTRACT)) === withoutPublishBullet(atBase('fleet/CONTRACT.md'))`) \u2014 run against that literal whenever `ULTRA_BASE` is unset, which is every ordinary `node fleet/tests/test_sandbox_boot_selfmerge.mjs`. 00fb224 stays resolvable in history, so the guarded skip never fires and the comparison really runs: the first later commit that touches anything under `skills/ultralearn/` or the four engine files, or any byte of `fleet/CONTRACT.md` outside the `- **Publish:**` bullet, turns this sim red for a change that has nothing to do with the publish record. The task's own Context names such a change as already in flight \u2014 \"`tests/test_docs_agree_with_code.py` pins the two-tags bullet and the state list; the concurrent run edits the state list\", and that state list is `fleet/CONTRACT.md`'s `- **status.json:**` line (CONTRACT.md:218) \u2014 so the breakage lands at the next integration, and Acceptance here is `suite`, the committed suite. Neither leg is required as a test: the Proof assigns both comparisons to `Run:` commands (the second and third `Run:`, both exit 0 in RUN EVIDENCE), where the driver supplies `$ULTRA_BASE` from the run's real base; `skills/ultrawrite/SKILL.md:321-325` states that convention (\"a `Check:` or `Run:` that compares the tree against BASE writes `$ULTRA_BASE`, which the driver sets\"). Gate both legs on the driver-supplied value \u2014 with `BASE_SHA_ENV` empty, `git cat-file -e '^{commit}'` fails and the two legs take their existing skip path, losing no grading \u2014 or delete them and leave the comparison to the `Run:` that owns it. Nothing else in section 8 is affected: legs (a)-(i) and the reader leg's `spawnSync(fleet_events.py)` half read only the rig's own homes.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "examEdited": [
+        "fleet/tests/test_sandbox_boot_selfmerge.mjs"
+      ]
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 890241,
+    "blockingFindings": 3,
+    "blockingPerReviewerMinute": 0.20219244002466746,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 2
+  },
+  "shallowSuite": null,
+  "acceptance": {
+    "mode": "suite",
+    "passed": false,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 279.29s (0:04:39) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "fleet/CONTRACT.md",
+        "fleet/sandbox-boot.sh",
+        "fleet/tests/_sandbox_boot_helpers.mjs",
+        "fleet/tests/test_sandbox_boot_selfmerge.mjs"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: the fix round edited the exam \u2014 fleet/tests/test_sandbox_boot_selfmerge.mjs no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included",
+    "suite acceptance did not pass (committed test suite failed) \u2014 gate must not Approve"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}
