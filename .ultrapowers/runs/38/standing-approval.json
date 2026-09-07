@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-38.md run-38 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Task 1 — the end-to-end gate-mode composition: the real frozen `skills/ultrapowers/scripts/ultra_gate.py` reading the driver-rewritten `<run dir>/receipt.json` and handing the wrapped `testCmd` to `run_acceptance.sh`, on a real sandbox box. — The composition is verified in two halves, not end to end: `fleet/tests/test_run_main.mjs` legs (a)/(b) stub `ultra_gate.py` (it only snapshots `receipt.json` at call time), while legs (c)/(d) invoke the real `run_acceptance.sh --suite-gate` directly with `acceptanceWrap(...)`. `ultra_gate.py` itself is never executed in this environment, so the seam between the two halves — the frozen gate actually passing that receipt string through as `--run` and keeping its 4000-char tail — rests on the frozen script being unchanged (which the `git diff --quiet $ULTRA_BASE` check confirms) rather than on an executed leg. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "Task 2 — publication of `.ultrapowers/runs/<N>/acceptance.log` onto the real `ultra/evidence-run-<N>` branch (the `push_evidence` add/commit/push path in `fleet/sandbox-boot.sh`). — `fleet/tests/_sandbox_boot_helpers.mjs` stubs `git`, `gh`, `curl`, `systemd-run`, `systemctl` and `claude` through a PATH shim, so the rig verifies that `collect_evidence` places the byte-identical 9000-byte log into the evidence worktree at `.ultrapowers/runs/7/acceptance.log` beside `gate-receipt.json`, but the subsequent staging, commit and push to a real remote are never executed here. No network or VM is available in this environment. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
