@@ -299,7 +299,12 @@ case "$verb" in
       *--tags*)
         [ -n "\${STUB_TAGS_MISSING:-}" ] && exit 0
         printf '%s\\trefs/tags/ultra/plan/run-7\\n' "\${STUB_TAG_PLAN_SHA:-$STUB_PLAN_SHA}"
-        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}" ;;
+        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}"
+        # A listing longer than any pipe holds, for the case that asks whether
+        # the boot's reader of it survives a writer still writing. \`cat\` is
+        # external, and the boot reads this answer whole, so neither end here
+        # can take SIGPIPE.
+        [ -f "$FLEET_HOME/stub/ls-remote-extra" ] && cat "$FLEET_HOME/stub/ls-remote-extra" ;;
     esac
     exit 0 ;;
   symbolic-ref)
@@ -315,6 +320,10 @@ case "$verb" in
         # reaches the boot, so a reader of any other source sees none of it.
         printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"
         if [ -n "\${STUB_PLAN_EXTRA:-}" ]; then printf '%s\\n' "$STUB_PLAN_EXTRA"; fi
+        # Linux refuses an environment string past 128 KiB, so plan text big
+        # enough to outrun a pipe plus a reader's first read comes from a FILE
+        # beside the stub's counters, not from STUB_PLAN_EXTRA.
+        [ -f "$FLEET_HOME/stub/plan-extra" ] && cat "$FLEET_HOME/stub/plan-extra"
         exit 0 ;;
       *:.ultrapowers/gate-verdicts.json) printf '{"tasks":{"1":{"verdict":"pass"}},"tally":{"tasks":1}}\\n'; exit 0 ;;
     esac

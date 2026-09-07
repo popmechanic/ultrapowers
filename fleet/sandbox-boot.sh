@@ -356,8 +356,11 @@ read_assignment() {
 }
 
 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
-is_target() { printf '%s' "$1" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; }
-is_run_n()  { printf '%s' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9-]*$'; }
+# The same two EREs `grep -qE` carried, read by bash itself: a BUILTIN writer
+# (`printf`) dies with its subshell on SIGPIPE before any `|| true` can run, so
+# a pipeline here has no guard available — and a test needs no pipeline at all.
+is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
+is_run_n()  { [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; }
 
 parse_assignment() { # $1 = the comment line
   local tok key val
@@ -1105,7 +1108,9 @@ push_head() {
 
 plan_title() {
   [ -f "$PLAN_FILE" ] || return 0
-  sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1
+  # `head -n 1` closes the pipe on a plan with a second `# ` line, and an
+  # EXTERNAL writer takes SIGPIPE for it — guarded exactly as `json_field` is.
+  { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1
 }
 
 # The issues this run's PR closes, one `Closes #<digits>` line each, in the
@@ -1695,8 +1700,11 @@ record_tags() {
   fi
   # One listing, naming both tags, from the clone that owns `origin`.
   listing="$(fleet_git -C "$TARGET_DIR" ls-remote --tags origin "$plan_tag" "$evidence_tag" 2>/dev/null || true)"
-  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"
-  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"
+  # No `exit` in either `awk`: the writer is a BUILTIN, which dies with its
+  # subshell on SIGPIPE, so the reader must consume the whole listing —
+  # `ls-remote` lists a ref once, so the output is the same either way.
+  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1 }')"
+  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1 }')"
   # BOTH tags, each at its OWN sha. A listing missing one of them, or showing
   # one at a commit this run did not put there, is not the record it claims.
   if [ "$listed_plan" != "$PLAN_SHA" ] || [ "$listed_evidence" != "$head" ]; then
