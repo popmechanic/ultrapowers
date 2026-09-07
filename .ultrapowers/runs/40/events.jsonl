@@ -61,3 +61,14 @@
 {"kind":"engine:phase","phase":"Depth-1 Leg","id":"01M1YSWV7T000074HR4RYQHP9F","ts":1788813929722}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M1YSWV7V00007GNTHFCFEMA1","ts":1788813929723}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"beda1cfa-c797-4f6b-988d-f981ab4fb140","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-40/clones/integration","model":"opus","id":"01M1YSWV7W0000Q4PJRY67J183","ts":1788813929724}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"beda1cfa-c797-4f6b-988d-f981ab4fb140","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4915,"output":13715,"cacheRead":982667,"cacheCreation":76645,"costUsd":1.6252334999999998,"models":["claude-opus-5"]},"id":"01M1YT2H4T00000DWTXPFXBN8X","ts":1788814115994}
+{"kind":"transcript:slice","label":"integration","sessionId":"beda1cfa-c797-4f6b-988d-f981ab4fb140","bytes":11530,"id":"01M1YT2H4Z0000ZPCHAXSF7KJY","ts":1788814115999}
+{"kind":"engine:log","line":"depth-1 leg: RED","id":"01M1YT7E8S00000H5PWW7SSHVF","ts":1788814276889}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M1YT7E9000003PJWTK62XC6Z","ts":1788814276896}
+{"kind":"driver:stage","stage":"finalize","id":"01M1YT7E9Y0000W0JRAJF58KY4","ts":1788814276926}
+{"kind":"driver:stage","stage":"gate","id":"01M1YT7EAX0000BPQNSE9KA0GK","ts":1788814276957}
+{"kind":"driver:critic-decision","approve":true,"reason":"2 completeness finding(s), none blocking","id":"01M1YTJ6QT000059NH8JAK3MC2","ts":1788814629626}
+{"kind":"driver:ack-decision","approve":false,"reason":"non-pre-authorized ack(s): deferred:manual","id":"01M1YTJ6QV0000N2G6X7HMZQYM","ts":1788814629627}
+{"kind":"driver:fail","verdict":"needs-ack","detail":"non-pre-authorized ack(s): deferred:manual — gate receipt is the terminal artifact","id":"01M1YTJ6QV00015XJ8W8E6E0R9","ts":1788814629627}
+{"kind":"run:open","runId":"run-40","base":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","source":"fleet/publish-fold.mjs","id":"01M1YTJ6XZ0000VEDM945YWKN6","ts":1788814629823}
+{"kind":"driver:publish-fold","run":"40","attempt":"1","base":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","tip":"9cd8190ffb5e68b1de0eb9eac44b116ab0631d28","candidate":"8f6cb456dc053aeed2b6745fe250545ddb1034c8","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","id":"01M1YTJ7YA0000HH9CXKHSMEGP","ts":1788814630858}

@@ -1,0 +1,174 @@
+{
+  "integrationBranch": "ultra/integration-run-40",
+  "baseSha": "9cd8190ffb5e68b1de0eb9eac44b116ab0631d28",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "7281fab05759ecd1b200f560830531966e10e05a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-40/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`decidingPull` (fleet/retire.mjs:215-228) cannot tell a failed read from an empty one: `ghRead` answers `null` when `gh` exits non-zero, and `Array.isArray(payload) ? payload : []` folds that into no rows, so `sweepIntegration` reports `ultra/integration-run-<N> stays \u2014 no pull request` and the sweep exits 0. A sweep run while `gh` is unauthenticated, rate-limited or offline therefore prints a clean bill for every integration branch it was asked about. The direction is the safe one (nothing is deleted) and it mirrors BASE's `pullsToPatch`, which is why this is minor rather than blocking \u2014 but the sweep's line is the operator's only record, and M2's three cases do not pin what a failed read says, so a fourth segment (or a non-zero exit) is available inside fleet/retire.mjs without disturbing any pinned literal. Suggested: have `decidingPull` distinguish `payload === null` from `[]` and let `sweepIntegration` say so.; unverified: the global constraint \"the two tools agree by literal, never by import of one another\" is half-settleable here. This diff carries the sweep's side \u2014 `PR #${pull.number} closed, not merged` at fleet/retire.mjs:341-343 \u2014 and imports nothing from fleet/janitor.mjs, which is all this patch can show. Whether Task 2's janitor renders the same substring in `branch ultra/integration-run-<N>  target=<t> PR #<k> closed, not merged \u2014 node fleet/retire.mjs --target <t>` is a sibling-owned file this patch does not touch. What would settle it: on the merged tree, run `node fleet/tests/test_janitor.mjs` alongside `node fleet/tests/test_retire.mjs` and confirm the `PR #<k> closed, not merged` fragment is character-identical in both rendered lines.; `decidingPull` cannot tell a failed read from an empty one. `ghRead` answers `null` when `gh` exits non-zero, `Array.isArray(null)` is false, so `rows` is `[]`, `top` stays `null`, and `sweepIntegration` prints `ultra/integration-run-<N> stays \u2014 no pull request`. The direction is safe (a failed read never earns a DELETE) and it mirrors BASE's `pullsToPatch`, but the line asserts a fact the sweep did not learn \u2014 an operator reading a long sweep cannot distinguish \"GitHub says there is no PR\" from \"the read failed\". M2 only defines the no-rows case, so this is advisory, not a gap in the claim. If you want it: have `decidingPull` answer a third value for the null payload and give it its own segment (e.g. `ultra/integration-run-<N> stays \u2014 fate unread`), or leave it and say so in the header comment's rule paragraph, which currently lists only the four answers the endpoint can give.; Markdown reflow in the two operator documents leaves two orphaned fragments. In `fleet/CONTRACT.md` the two-tags bullet now reads `\u2026already on a target).` / `That retire sweep also deletes\u2026` / `The record is` / `read by tag: \u2026` \u2014 `The record is` is a line of its own, mid-sentence. In `fleet/RUNBOOK.md` the rollback paragraph's final sentence `\\`fleet/CONTRACT.md\\` names the script it runs from.` was pushed onto its own line by the same edit. Both render fine (markdown soft-wraps) and both are a consequence of M6 requiring the phrase and the sweep's name on one physical line, which is what the second `Run:` counts \u2014 so the long sentences themselves are correct. Only the leftover fragments are worth rewrapping: join `The record is read by tag:` back onto one line in CONTRACT.md, and fold the `fleet/CONTRACT.md names the script it runs from.` sentence back onto the end of the preceding wrapped line in RUNBOOK.md. Neither touches a line the exam or the `grep` Run: counts.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "bee7bb4dbeeb62db44b22703ea27553e8028e11e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-40/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim's second half \u2014 \"so a sitting's hygiene pass finds none\" \u2014 is only half settled by this diff. This patch establishes the reporting half (M1\u2013M4, all pinned in fleet/tests/test_janitor.mjs and green in the exam evidence): the per-target `git/matching-refs/heads/ultra/integration-run-` read, the per-ref `pulls?state=all&head=<owner>:<branch>` read, the highest-`number` decision, `result.branches`, and the `branch \u2026 \u2014 node fleet/retire.mjs --target <t>` line. Whether a later hygiene pass then finds none depends on the sibling task making `fleet/retire.mjs` actually delete the closed-unmerged integration branch; no line of this diff can show that. What would settle it: Task 1's exam (`fleet/tests/test_retire.mjs`) passing with its #724 Task 1 legs. Nothing is wrong here \u2014 the remedy the janitor prints is real (`--target <owner>/<repo>` is retire.mjs's BASE flag, fleet/retire.mjs:69), and the two tools carry the rule as literals with no import between them, as the global constraint requires.; The task's Context grants exactly one exception to the \"every BASE assertion still holds\" global constraint \u2014 leg (a) of `fleet/tests/test_janitor_reap_only.mjs` \u2014 and it explicitly reasons that `readsFor`, `contentsReads` and the `mentions(p, n)` filters in the exam hold unchanged. It does not name the other BASE pin that M2 makes unsatisfiable: `fleet/tests/test_janitor.mjs` leg (a)/M1's `assert.deepEqual(sorted(Object.keys(result)), sorted(['dryRun','age','actions','stale','unknown','deaths']))`. Since M2 requires `result.branches`, no correct implementation can leave that six-field pin standing, so the gap is in the task text, not the diff. The implementer handled it the right way: the change is disclosed in the exam header (\"One BASE pin in this exam is re-scoped by the task and named here\"), carries an inline `// Re-scoped by #724 Task 2` comment, widens the pin to the six fields plus `branches` rather than deleting it, and adds `assert.deepEqual(result.branches, [])` so the new key is still pinned in the BASE fleet where nothing is in it. Recorded for the operator; no edit is needed.; Un-named re-scope of a BASE pin. Global constraint 4 says every BASE assertion in `fleet/tests/test_janitor.mjs` still holds \"except the ones a task's Context names as re-scoped\", and Task 2's Context names only one re-scope \u2014 leg (a) of `fleet/tests/test_janitor_reap_only.mjs`. But leg (a)/M1 of the exam itself asserts `sorted(Object.keys(result))` equals exactly the six fields `{ dryRun, age, actions, stale, unknown, deaths }`, and M2 requires the janitor's result to carry `branches`, so that pin cannot stand as written. The implementer changed it to the six fields plus `branches` and disclosed the change in the exam header (\"One BASE pin in this exam is re-scoped by the task and named here\") and at the assertion site (fleet/tests/test_janitor.mjs, `// Re-scoped by #724 Task 2: \u2026`), plus a new `assert.deepEqual(result.branches, [])` so the key is still pinned. The divergence is forced by M2, correct, and disclosed \u2014 lawful. The defect is in the task text, which should have listed this pin beside the reap_only one; no edit inside this task's FILES resolves the contradiction, so the actor is `plan`.; Small scope creep in `renderJanitor` (fleet/janitor.mjs). The task requires only that the new key be optional to the renderer (`result.branches ?? []`) so the BASE call with the six fields still prints `nothing to do`. The diff additionally made `result.actions` and `result.stale` optional (`...(result.actions ?? []).map(...)`, `...(result.stale ?? []).map(...)`). Nothing in M4 or the exam needs it \u2014 both M4 legs pass results carrying `actions` and `stale` \u2014 and it quietly turns a malformed result (missing `actions`) from a throw at BASE into a silently empty report. Harmless as it stands; if kept, it is two lines of behaviour change the task did not ask for.; unverified: the Claim's end state \u2014 \"so a sitting's hygiene pass finds none\" \u2014 is not settled by this diff. The janitor only reports and points the operator at `node fleet/retire.mjs --target <t>`; the branch is actually deleted by sibling Task 1's change to `fleet/retire.mjs`, which is outside this task's FILES and which this patch cannot exercise. At BASE `fleet/retire.mjs` does accept `--target <owner>/<repo>` (fleet/retire.mjs:69), so the printed remedy is a real invocation and nothing here is broken; it simply does not yet delete the integration branch. What would settle it: Task 1's exam (`fleet/tests/test_retire.mjs`) passing on the merged tree, after which a janitor `branch \u2026` line followed by that command leaves no closed-unmerged integration branch behind.; concern: suite-not-clean: `python3 -m pytest -n 2` ends 1 failed, 1665 passed. The single failure is BASE's `fleet/tests/test_janitor.mjs` leg (a) pin `sorted(Object.keys(result)) === ['dryRun','age','actions','stale','unknown','deaths']` \u2014 the six-field assertion the task's Context re-scopes when it names the new result key `branches`. That path is the Proof's `Test:` file, reserved for the peer's exam, so I did not edit it. Widening only that one array in a throwaway copy of the BASE exam makes it print ALL TESTS PASSED, so every other BASE leg (M1-M5, including `readsFor`, `contentsReads` and the `mentions(p, n)` filters) still holds unchanged; `node fleet/tests/test_janitor_reap_only.mjs` and `node fleet/tests/test_janitor_liveness.mjs` both pass.; concern: render-defensive: `renderJanitor` now reads `result.actions ?? []` and `result.stale ?? []` alongside the BASE `deaths ?? []`/`unknown ?? []`, so the Proof's leg (e) case 'a result whose only content is one `branches` entry' renders rather than throwing. No BASE assertion covers an absent `actions` or `stale`, and the two BASE-shaped calls in leg (e) are unaffected.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-40/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 336.64s (0:05:36) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "grep -n 'integration-run' fleet/CONTRACT.md fleet/RUNBOOK.md",
+      "exit": 0,
+      "stdout": "fleet/CONTRACT.md:23:`ultra/integration-run-N` and opens the PR over GitHub's REST API through the edge. The PR is the human\nfleet/CONTRACT.md:59:  - `ultra/integration-run-<N>` \u2014 the work. Pushed only when it is ahead of `base=`; the PR's head.\nfleet/CONTRACT.md:67:  That retire sweep also deletes the run's `ultra/integration-run-<N>` when its deciding pull request is closed and not merged; it deletes nothing else.\nfleet/CONTRACT.md:169:    ultra/integration-run-N --run N --run-dir <run dir> --evidence-dir\nfleet/CONTRACT.md:179:    --count <base>..ultra/integration-run-N`; `ahead == 0` \u2192 state `parked`, evidence committed, NO push,\nfleet/CONTRACT.md:183:    ultra/integration-run-N`) \u2192 one REST call, never `gh`: `curl -sS -X POST\nfleet/CONTRACT.md:185:    -d <json>` with `title` (`fleet run-N: <plan h1>`), `head` = `ultra/integration-run-N`, `base` = the\nfleet/CONTRACT.md:222:- **status.json:** `{\"run\":\"<N>\",\"state\":\"booting|running|publishing|done|parked|failed\",\"phase\":\"<text>\",\"pr\":\"<url or null>\",\"prAuthor\":\"<GitHub login or null>\",\"merged\":\"<40-hex or null>\",\"branch\":\"ultra/integration-run-<N>\",\"vm\":\"<vm_name>\",\"startedAt\":\"<iso>\",\"updatedAt\":\"<iso>\",\"error\":\"<string or null>\"}`\nfleet/RUNBOOK.md:28:there is something to publish \u2014 pushes `ultra/integration-run-<N>` and opens the\nfleet/RUNBOOK.md:36:`ultra/integration-run-<N>` has three fates, decided by the newest pull request on its head: it goes with the merge, it stays while a `--hold` PR is open, and when that pull request is closed and not merged the one-time retire sweep (`fleet/retire.mjs`) deletes it.\nfleet/RUNBOOK.md:185:`ultra/integration-run-<N>` and opens the PR itself, over one REST call\nfleet/RUNBOOK.md:445:ended `failed`, still have `ultra/*-run-<N>` branches on their target; the one-time retire sweep is what clears those \u2014 the plan-and-evidence pair, and an `ultra/integration-run-<N>` whose newest pull request is closed and not merged \u2014 never a `git push origin --delete` by hand.\n"
+    },
+    {
+      "task": "1",
+      "cmd": "grep -n 'closed and not merged' fleet/CONTRACT.md fleet/RUNBOOK.md",
+      "exit": 0,
+      "stdout": "fleet/CONTRACT.md:60:    It has three fates, and the pull request with the highest number on its head decides which: it goes with the merge (delete-on-merge); a `hold=1` run's stays while its PR is open; and one whose deciding pull request is closed and not merged is the retire sweep's to delete (`node fleet/retire.mjs --target <owner>/<repo>`).\nfleet/CONTRACT.md:67:  That retire sweep also deletes the run's `ultra/integration-run-<N>` when its deciding pull request is closed and not merged; it deletes nothing else.\nfleet/RUNBOOK.md:36:`ultra/integration-run-<N>` has three fates, decided by the newest pull request on its head: it goes with the merge, it stays while a `--hold` PR is open, and when that pull request is closed and not merged the one-time retire sweep (`fleet/retire.mjs`) deletes it.\nfleet/RUNBOOK.md:445:ended `failed`, still have `ultra/*-run-<N>` branches on their target; the one-time retire sweep is what clears those \u2014 the plan-and-evidence pair, and an `ultra/integration-run-<N>` whose newest pull request is closed and not merged \u2014 never a `git push origin --delete` by hand.\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor_reap_only.mjs",
+      "exit": 0,
+      "stdout": "ALL TESTS PASSED\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor_liveness.mjs",
+      "exit": 0,
+      "stdout": "ALL TESTS PASSED\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/lobby.mjs fleet/sandbox-boot.sh fleet/launch.mjs fleet/target.mjs fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 688914,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "4 ms) \u2014 test_sandbox_boot_record.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\nE         ok (3033 ms) \u2014 test_sandbox_boot_approved.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\nE         ok (4089 ms) \u2014 test_sandbox_boot_approval_evidence.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\nE         ok (4439 ms) \u2014 test_sandbox_boot_effort.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\nE         ok (30648 ms) \u2014 test_sandbox_boot_selfmerge.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\nE         1 FAILED\nE         \nE       assert 1 == 0\nE        +  where 1 = CompletedProcess(args=['node', '/home/exedev/target/.claude/ultrapowers/run-run-40/clones/shallow/tests/../fleet/tests... \u2014 test_sandbox_boot_selfmerge.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\\n1 FAILED\\n', stderr='').returncode\n\ntests/test_fleet_suite.py:65: AssertionError\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_merge.mjs]\n====== 1 failed, 1664 passed, 1 skipped, 5 warnings in 346.70s (0:05:46) =======\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 326.58s (0:05:26) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "8f6cb456dc053aeed2b6745fe250545ddb1034c8",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-40/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-40/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.947,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "The two GitHub endpoints both tools now depend on \u2014 `gh api repos/<t>/pulls?state=all&head=<owner>:ultra/integration-run-<N>` (fleet/retire.mjs:219, fleet/janitor.mjs:393) and `gh api repos/<t>/git/matching-refs/heads/ultra/integration-run-` (fleet/janitor.mjs:385) \u2014 plus the live `gh api -X DELETE repos/<t>/git/refs/heads/ultra/integration-run-<N>` at fleet/retire.mjs:342.",
+      "reason": "external",
+      "why": "By the plan's own Tech Stack every `git` and `gh` runs through the recording exec seam of fleet/tests/_lobby_helpers.mjs with `passthrough: []` \u2014 no network, nothing real runs. The suite therefore proves the tools issue the right paths and apply the right rule to canned rows, but not that GitHub's list endpoint really carries `merged_at` with no `merged` boolean, that `matching-refs` really prefix-matches into `{ ref, object.sha }` rows, or that the DELETE really removes the ref. Those shapes are grounded only on the operator's 2026-09-07 laptop read quoted in both Contexts. This is the intended design (Acceptance: suite), not a gap in the deliverable."
+    },
+    {
+      "deliverable": "depth-1 clone of ultra/integration-run-40",
+      "reason": "manual",
+      "why": "the suite passed on the full clone and failed on a depth-1 clone of ultra/integration-run-40 \u2014 CI checks out at fetch-depth 1, so the merge target will not reproduce this run's green. Either a test is coupled to repository history (fix the test) or the degradation is correct for a shallow consumer (ack it): rvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_merge.mjs]\n====== 1 failed, 1664 passed, 1 skipped, 5 warnings in 346.70s (0:05:46) =======\n"
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: suite-not-clean: `python3 -m pytest -n 2` ends 1 failed, 1665 passed. The single failure is BASE's `fleet/tests/test_janitor.mjs` leg (a) pin `sorted(Object.keys(result)) === ['dryRun','age','actions','stale','unknown','deaths']` \u2014 the six-field assertion the task's Context re-scopes when it names the new result key `branches`. That path is the Proof's `Test:` file, reserved for the peer's exam, so I did not edit it. Widening only that one array in a throwaway copy of the BASE exam makes it print ALL TESTS PASSED, so every other BASE leg (M1-M5, including `readsFor`, `contentsReads` and the `mentions(p, n)` filters) still holds unchanged; `node fleet/tests/test_janitor_reap_only.mjs` and `node fleet/tests/test_janitor_liveness.mjs` both pass.",
+    "task 2: render-defensive: `renderJanitor` now reads `result.actions ?? []` and `result.stale ?? []` alongside the BASE `deaths ?? []`/`unknown ?? []`, so the Proof's leg (e) case 'a result whose only content is one `branches` entry' renders rather than throwing. No BASE assertion covers an absent `actions` or `stale`, and the two BASE-shaped calls in leg (e) are unaffected.",
+    "depth-1 leg: the suite passed on the full clone and failed on a depth-1 clone of ultra/integration-run-40 \u2014 CI checks out at fetch-depth 1, so the merge target will not reproduce this run's green. Either a test is coupled to repository history (fix the test) or the degradation is correct for a shallow consumer (ack it): rvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_merge.mjs]\n====== 1 failed, 1664 passed, 1 skipped, 5 warnings in 346.70s (0:05:46) =======\n"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "fleet/RUNBOOK.md:210 \u2014 the janitor's operator description still reads \"It reaps VMs and nothing else: no branch and no tag on the target is its business.\" After Task 2 that sentence is false: fleet/janitor.mjs:381-398 reads `repos/<t>/git/matching-refs/heads/ultra/integration-run-` and `repos/<t>/pulls?state=all&head=<owner>:<branch>` per target, and fleet/janitor.mjs:522-524 prints a `branch ultra/integration-run-<N>  target=<t> PR #<k> closed, not merged \u2014 node fleet/retire.mjs --target <t>` line. Branches on the target are now precisely the janitor's business (reported, not deleted), which is Task 2's Claim. Neither task's Files block owns this sentence \u2014 Task 2 does not list RUNBOOK.md, and Task 1's M6 only pins the two branch-lifecycle sentences (RUNBOOK.md:36 and :445, both correctly rewritten) \u2014 so the contradiction falls between the two tasks and is only visible from the integrated tree. It breaks no signed slot and `tests/test_docs_agree_with_code.py` passes (the lens bans absent mechanisms, not stale descriptions), so it is an issue rather than a merge stopper."
+    },
+    {
+      "severity": "minor",
+      "detail": "fleet/CONTRACT.md:271-280 \u2014 the **Janitor (`fleet/janitor.mjs`)** bullet gives the tool's command surface as an arrow sequence (`ls 'fleet-r*' --json` \u2192 parse `comment` \u2192 `gh api repos/<owner>/<repo>/contents/\u2026?ref=\u2026` \u2192 `rm <vm> --json`) and does not name the two reads Task 2 added (`git/matching-refs/heads/ultra/integration-run-`, `pulls?state=all&head=\u2026`), the new `branch \u2026` report line, or the new `branches` key on the `--json` result (fleet/janitor.mjs:507). Task 2's Files list excludes CONTRACT.md and its Context locates the new documentation in the module header instead (fleet/janitor.mjs:70-88, which is correctly rewritten), so no slot is failed \u2014 but the contract document now understates an operator-visible surface the run added. Task 1's edits to the same file (lines 60 and 67) are correct and complete for its own M6."
+    }
+  ],
+  "blockedWaves": []
+}
