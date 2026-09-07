@@ -550,6 +550,134 @@ const stripUntrustedPatch = (r, patchPrefix) => {
   return r
 }
 
+// ── the resolver work list (spec §3.3) ───────────────────────────────────────
+// One JUDGMENT agent per narrated conflict, one at a time: hunk resolutions
+// arrive in the resolver's schema, the DRIVER writes the reply directory
+// (grammar unchanged: <hunk id>.txt per hunk + notes.txt) and drives `resolve`.
+// REJECTED (exit 4) is the one retryable status — one re-brief carrying the
+// kernel's reason, then the park.
+//
+// Lifted out of the wave loop verbatim so the publish fold can dispatch the
+// same loop with its own `common`, reply-directory root and label prefix:
+// nothing here may assume a wave number, the `.` repo path or the run tree's
+// layout. `runCli` is the caller's closure (its call/wall/autoResolved counts
+// are its own) and the park bookkeeping stays the caller's too — this returns
+// the reason string and its own fresh `transcripts`, and the caller's
+// `blocked()` writes the record.
+export async function resolveConflicts({
+  agent, runCli, roles, common, taskArgs = [], commutesArgs = [],
+  open, contendingBlock = '', waveDir, labelPrefix, onEvent,
+}) {
+  const transcripts = []
+  let selfChecks = ''
+  let outstanding = (Array.isArray(open) ? open : []).slice()
+  const park = (reason) => ({ ok: false, reason, transcripts, selfChecks })
+
+  worklist:
+  while (outstanding.length) {
+    const conflict = outstanding[0]
+    let rejection = ''
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const label = labelPrefix + ':' + conflict.i + ':' + attempt
+      let res
+      try {
+        res = await agent(
+          roles.resolver +
+            '\nHUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
+            (rejection ? ('\nPREVIOUS REPLY REJECTED: ' + rejection) : '') +
+            contendingBlock,
+          { label, schema: RESOLVER_SCHEMA })
+      } catch (e) {
+        // A run-fatal (credential/config) must surface as the engine crash
+        // it is — swallowing it here would misreport a dead credential as a
+        // merge CONFLICT (review finding 4).
+        if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
+        return park('resolver dispatch threw on ' + conflict.path + ': ' + String((e && e.message) || e))
+      }
+      if (!res) {
+        // A null reply is a transient process death (agent()'s documented
+        // condition), not a judgment about the conflict: spend the second
+        // attempt on it rather than blocking the wave on one API blip.
+        if (attempt === 1) { rejection = 'the previous resolver produced no reply (transient death) — resolve afresh'; continue }
+        return park('resolver dispatch returned no reply twice on ' + conflict.path)
+      }
+      const replyDir = path.join(waveDir, 'reply-' + conflict.i + '-' + attempt)
+      transcripts.push({ conflict: conflict.i, attempt, path: conflict.path,
+        epoch: conflict.epoch, hunksFile: conflict.hunksFile,
+        replyDir, status: res.status, notes: res.notes || '' })
+      // Optional reply counter for a caller that wants the tally without
+      // reading transcripts (the wave loop passes none).
+      if (onEvent) onEvent({ kind: 'resolver:reply', label, conflict: conflict.i, attempt, status: res.status })
+      if (res.status !== 'RESOLVED') {
+        return park('resolver reported ' + res.status + ' on ' + conflict.path)
+      }
+      // Driver writes the reply directory from the schema contents. Each
+      // hunk file is newline-terminated (the grammar's shape); an empty
+      // content is an empty file (the block resolves to nothing).
+      fs.mkdirSync(replyDir, { recursive: true })
+      for (const h of (res.hunks || [])) {
+        const c = String(h.content || '')
+        // The id rides the reply verbatim but the filename is driver-built:
+        // strip anything path-shaped so a hostile id cannot escape replyDir.
+        const safeId = String(h.id || '').replace(/[^A-Za-z0-9]/g, '')
+        if (!safeId) continue
+        fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
+          c === '' ? '' : (c.endsWith('\n') ? c : c + '\n'))
+      }
+      fs.writeFileSync(path.join(replyDir, 'notes.txt'), String(res.notes || '') + '\n')
+
+      const applied = await runCli(['resolve', ...common,
+        '--conflict', String(conflict.i), '--reply-dir', replyDir, ...taskArgs, ...commutesArgs])
+      const a = applied.parsed
+      if (applied.code === 4) {
+        const reason = (a && a.reason) || tail(applied.stderr, 200)
+        if (attempt === 1) { rejection = reason; continue }
+        return park('resolver reply rejected twice on ' + conflict.path + ': ' + reason)
+      }
+      if (!a || a.applied !== true) {
+        return park('resolution of ' + conflict.path + ' not applied (exit ' + applied.code +
+          '): ' + ((a && (a.reason || (a.stale ? 'stale' : ''))) || tail(applied.stderr, 300)))
+      }
+      if (Array.isArray(a.waiting) && a.waiting.length) {
+        // The stop has not drained: the engine's outstanding list minus the
+        // entry just applied must be exactly what the CLI says is waiting.
+        const expectWaiting = outstanding.slice(1).map((e) => e.i)
+        const sameIds = a.waiting.length === expectWaiting.length &&
+          a.waiting.slice().sort((x, y) => x - y).join(',') ===
+          expectWaiting.slice().sort((x, y) => x - y).join(',')
+        if (!sameIds) {
+          return park('resolve on ' + conflict.path + ' reported waiting [' +
+            a.waiting.join(', ') + '] but the engine was holding [' + expectWaiting.join(', ') + ']')
+        }
+        outstanding.shift()
+        continue worklist
+      }
+      if (Array.isArray(a.open) && a.open.length) {
+        if (typeof a.conflicts !== 'number') {
+          return park('continued fold reported open conflicts with no count to verify against')
+        }
+        if (a.dispatchable !== a.open.length) {
+          return park('continued fold named ' + a.open.length + ' open conflict(s) but counted ' +
+            a.dispatchable + ' still to resolve')
+        }
+        outstanding = a.open.slice()
+        continue worklist
+      }
+      if (a.complete === true) {
+        if (a.selfChecks !== 'ok') {
+          return park('fold self-checks did not pass: ' + (a.selfChecks || '(absent)'))
+        }
+        selfChecks = a.selfChecks
+        outstanding = []
+        continue worklist
+      }
+      return park('resolution of ' + conflict.path + ' left the wave in an unrecognized state')
+    }
+    return park('resolver attempts exhausted on ' + conflict.path)
+  }
+  return { ok: true, reason: '', transcripts, selfChecks }
+}
+
 // ── the engine ───────────────────────────────────────────────────────────────
 export async function runEngine({
   args, agent, parallel, exec,
@@ -1554,114 +1682,26 @@ export async function runEngine({
         (f.selfChecks || 'absent') + ')')
     }
 
-    // Resolver work list (ported semantics): one JUDGMENT agent per conflict —
-    // hunk resolutions arrive in its schema, the DRIVER writes the reply
-    // directory (grammar unchanged: h<n>.txt per hunk + notes.txt) and drives
-    // `resolve`. REJECTED (exit 4) is the one retryable status — one re-brief
-    // carrying the kernel's reason.
-    worklist:
-    while (outstanding.length) {
-      const conflict = outstanding[0]
-      let rejection = ''
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        let res
-        try {
-          res = await agent(
-            roles.resolver +
-              '\nHUNKS FILE: ' + conflict.hunksFile + ' (conflicted path: ' + conflict.path + ')' +
-              (rejection ? ('\nPREVIOUS REPLY REJECTED: ' + rejection) : '') +
-              '\nCONTENDING TASKS:' + waveTasks.map((t) =>
-                '\n- task ' + t.id + ': ' + (t.title || '') +
-                ((Array.isArray(t.files) && t.files.length) ? (' [files: ' + t.files.join(', ') + ']') : '')).join('') +
-              (wavesPath ? ('\nTheir full verbatim task text lives in the JSON file at ' + wavesPath +
-                ' — read the "tasks" array entry whose "id" matches.') : ''),
-            { label: 'resolve:wave' + waveNumber + ':' + conflict.i + ':' + attempt,
-              schema: RESOLVER_SCHEMA })
-        } catch (e) {
-          // A run-fatal (credential/config) must surface as the engine crash
-          // it is — swallowing it here would misreport a dead credential as a
-          // merge CONFLICT (review finding 4).
-          if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
-          return blocked('resolver dispatch threw on ' + conflict.path + ': ' + String((e && e.message) || e))
-        }
-        if (!res) {
-          // A null reply is a transient process death (agent()'s documented
-          // condition), not a judgment about the conflict: spend the second
-          // attempt on it rather than blocking the wave on one API blip.
-          if (attempt === 1) { rejection = 'the previous resolver produced no reply (transient death) — resolve afresh'; continue }
-          return blocked('resolver dispatch returned no reply twice on ' + conflict.path)
-        }
-        const replyDir = path.join(waveDirOf(waveNumber), 'reply-' + conflict.i + '-' + attempt)
-        transcripts.push({ conflict: conflict.i, attempt, path: conflict.path,
-          epoch: conflict.epoch, hunksFile: conflict.hunksFile,
-          replyDir, status: res.status, notes: res.notes || '' })
-        if (res.status !== 'RESOLVED') {
-          return blocked('resolver reported ' + res.status + ' on ' + conflict.path)
-        }
-        // Driver writes the reply directory from the schema contents. Each
-        // hunk file is newline-terminated (the grammar's shape); an empty
-        // content is an empty file (the block resolves to nothing).
-        fs.mkdirSync(replyDir, { recursive: true })
-        for (const h of (res.hunks || [])) {
-          const c = String(h.content || '')
-          // The id rides the reply verbatim but the filename is driver-built:
-          // strip anything path-shaped so a hostile id cannot escape replyDir.
-          const safeId = String(h.id || '').replace(/[^A-Za-z0-9]/g, '')
-          if (!safeId) continue
-          fs.writeFileSync(path.join(replyDir, safeId + '.txt'),
-            c === '' ? '' : (c.endsWith('\n') ? c : c + '\n'))
-        }
-        fs.writeFileSync(path.join(replyDir, 'notes.txt'), String(res.notes || '') + '\n')
-
-        const applied = await runCli(['resolve', ...common,
-          '--conflict', String(conflict.i), '--reply-dir', replyDir, ...taskArgs, ...commutesArgs])
-        const a = applied.parsed
-        if (applied.code === 4) {
-          const reason = (a && a.reason) || tail(applied.stderr, 200)
-          if (attempt === 1) { rejection = reason; continue }
-          return blocked('resolver reply rejected twice on ' + conflict.path + ': ' + reason)
-        }
-        if (!a || a.applied !== true) {
-          return blocked('resolution of ' + conflict.path + ' not applied (exit ' + applied.code +
-            '): ' + ((a && (a.reason || (a.stale ? 'stale' : ''))) || tail(applied.stderr, 300)))
-        }
-        if (Array.isArray(a.waiting) && a.waiting.length) {
-          // The stop has not drained: the engine's outstanding list minus the
-          // entry just applied must be exactly what the CLI says is waiting.
-          const expectWaiting = outstanding.slice(1).map((e) => e.i)
-          const sameIds = a.waiting.length === expectWaiting.length &&
-            a.waiting.slice().sort((x, y) => x - y).join(',') ===
-            expectWaiting.slice().sort((x, y) => x - y).join(',')
-          if (!sameIds) {
-            return blocked('resolve on ' + conflict.path + ' reported waiting [' +
-              a.waiting.join(', ') + '] but the engine was holding [' + expectWaiting.join(', ') + ']')
-          }
-          outstanding.shift()
-          continue worklist
-        }
-        if (Array.isArray(a.open) && a.open.length) {
-          if (typeof a.conflicts !== 'number') {
-            return blocked('continued fold reported open conflicts with no count to verify against')
-          }
-          if (a.dispatchable !== a.open.length) {
-            return blocked('continued fold named ' + a.open.length + ' open conflict(s) but counted ' +
-              a.dispatchable + ' still to resolve')
-          }
-          outstanding = a.open.slice()
-          continue worklist
-        }
-        if (a.complete === true) {
-          if (a.selfChecks !== 'ok') {
-            return blocked('fold self-checks did not pass: ' + (a.selfChecks || '(absent)'))
-          }
-          selfChecks = a.selfChecks
-          outstanding = []
-          continue worklist
-        }
-        return blocked('resolution of ' + conflict.path + ' left the wave in an unrecognized state')
-      }
-      return blocked('resolver attempts exhausted on ' + conflict.path)
-    }
+    // Resolver work list — the loop itself is `resolveConflicts` above; the
+    // wave loop supplies its own contending block, reply-directory root and
+    // label prefix, and keeps `blocked()` and the frontier entry to itself.
+    // The returned transcripts land in this wave's array BEFORE the park, so
+    // a reader of `resolverTranscripts` sees what it always saw.
+    const contendingBlock =
+      '\nCONTENDING TASKS:' + waveTasks.map((t) =>
+        '\n- task ' + t.id + ': ' + (t.title || '') +
+        ((Array.isArray(t.files) && t.files.length) ? (' [files: ' + t.files.join(', ') + ']') : '')).join('') +
+      (wavesPath ? ('\nTheir full verbatim task text lives in the JSON file at ' + wavesPath +
+        ' — read the "tasks" array entry whose "id" matches.') : '')
+    const resolution = await resolveConflicts({
+      agent, runCli, roles, common, taskArgs, commutesArgs,
+      open: outstanding, contendingBlock,
+      waveDir: waveDirOf(waveNumber),
+      labelPrefix: 'resolve:wave' + waveNumber,
+    })
+    transcripts.push(...resolution.transcripts)
+    if (resolution.selfChecks) selfChecks = resolution.selfChecks
+    if (!resolution.ok) return blocked(resolution.reason)
 
     // Materialize → candidate, then the adopt choreography the old ADOPT step
     // ordered in prose: test the candidate with the branch unmoved

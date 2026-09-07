@@ -89,8 +89,16 @@ test('the green path reads the head\'s check runs and squash-merges the PR  [M1 
   assert.equal(put[put.indexOf('-X') + 1], 'PUT', `the merge is a PUT: ${put.join(' ')}`)
   assert.deepEqual(mergeArgv(ctx), put, 'and it is the one argv whose URL ends /merge')
 
+  // run-32 (#715) added the fourth field: the squashed commit on the base
+  // names the run and the plan tag, which is where a reader of `git log` on
+  // the base starts. The other three are this case's original claim.
   assert.deepEqual(mergePuts(ctx), [
-    { merge_method: 'squash', commit_title: PLAN_H1, sha: HEAD_SHA },
+    {
+      merge_method: 'squash',
+      commit_title: PLAN_H1,
+      commit_message: 'Fleet-Run: 7\nPlan-Tag: ultra/plan/run-7',
+      sha: HEAD_SHA,
+    },
   ], 'a squash, titled from the plan\'s H1, pinned to the head whose checks were read')
 
   const status = statusOf(ctx)

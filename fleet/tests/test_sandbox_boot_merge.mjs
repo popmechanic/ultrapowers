@@ -47,6 +47,14 @@
  * No network, no systemd, no real `claude`: `FLEET_POLL_SECONDS=0` makes
  * `poll_attempts` count `timeout + 1` attempts and the whole poll runs in a
  * second.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE SECOND HALF of this file — everything below the `publish fold` banner —
+ * is the exam of a LATER task: "The boot script publishes the folded head and
+ * retries the merge once" (#715). Its clauses are numbered M1–M8 and its legs
+ * (a)–(j) of their own; every assertion down there names them with a
+ * `publish-fold` prefix so the two numberings never read as one. The legs
+ * above are unchanged and still pass — M8 of the later task says so.
  */
 
 import assert from 'node:assert/strict'
@@ -57,10 +65,12 @@ import { fileURLToPath } from 'node:url'
 
 import * as RIG from './_sandbox_boot_helpers.mjs'
 import {
-  SCRIPT, TARGET, HEAD_SHA, PR_URL, PLAN_H1, ASSIGNMENT,
+  SCRIPT, TARGET, HEAD_SHA, BASE_SHA, PR_URL, PR_AUTHOR, PLAN_H1, ASSIGNMENT,
+  INTEGRATION_BRANCH, VM_NAME,
   makeHome, boot, green,
-  readLog, argvLines, stream, statusOf, committed, commitStates, notifies,
-  prPosts, engineRuns,
+  readLog, lines, argvLines, stream, statusOf, committed, commitStates, notifies,
+  prPosts, engineRuns, unitsRun, gitLog, verbOf, dirOf, isIntegrationPush,
+  targetDir, checkReads, mergePuts,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
 
@@ -573,5 +583,826 @@ test("SKILL.md's step 4 says a ready PR merges itself and --hold keeps it open  
     `[M7] step 4 must say a ready PR merges itself once its checks are green, and that --hold ` +
       `on the launch line keeps it open:\n${text}`)
 })
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE PUBLISH FOLD — the exam of "The boot script publishes the folded head and
+// retries the merge once" (#715, spec §3.1, §3.4, §3.6, §4).
+//
+// Its Machine clauses, restated as this half asserts them:
+//
+//   M1  after the engine's exit, on ANY outcome with commits ahead of BASE, the
+//       script writes `running`/`publish fold`, makes the receipts directory,
+//       and starts `fleet-fold-<N>-1` — the folder's unit — with the engine's
+//       own bracket (`--pipe --wait --collect`, the memory caps, the working
+//       directory, `env -u CLAUDE_CONFIG_DIR` and the three variables), its
+//       output teed to `publish-fold/publish-fold-1.log`, no `phase_refresher`
+//       beside it and no `ENGINE_DONE_MARKER` write; then awaits the unit and
+//       writes `publishing`. Nothing ahead of BASE starts no fold unit.
+//   M2  the page is read BEFORE the exit code: a `parked` page is the deadman's
+//       and ends the run at 0 with no push and no PR; a non-zero exit with no
+//       `disposition` for the invoked attempt restores the branch ref
+//       (`engine-head` on attempt 1, attempt 1's `candidate` on attempt 2) and
+//       writes a `cannot fold` row carrying the exit code, the log's last line
+//       and that same sha as `candidate`; `do_deadman` stops the fold units too
+//       and carries `pr`, `prAuthor` and `merged` forward.
+//   M3  `push_head` pushes the branch plainly when no attempt names a
+//       `pushedHead` and with `--force-with-lease` on the highest one that does,
+//       then records the pushed sha as that attempt's `pushedHead`.
+//   M4  `render_card` reads the receipt: a `## Publish fold` section before
+//       `### Evidence` on every disposition but a resolver-less `folded` and
+//       `nothing to join`; the evidence listing names `publish-fold`; the
+//       `Closes` lines stay last; a disposition that lands after the POST is
+//       PATCHed onto the PR body.
+//   M5  `FOLD_HOLD` carries the disposition's note and `merge_pr` treats it
+//       exactly as `hold=1` — no check read, no PUT — while the draft flag
+//       still follows the gate's outcome.
+//   M6  the merge PUT carries `commit_message`.
+//   M7  a 405 saying the PR is not mergeable buys ONE retry: a second fold
+//       attempt, a leased push, and a second PUT after the checks and the
+//       mergeability poll; every other refusal keeps one PUT.
+//   M8  the shared rig answers the fold unit as its FIRST branch, and the seven
+//       sibling boot sims still pass.
+//
+// WHAT THIS HALF ASKS OF THE RIG (`_sandbox_boot_helpers.mjs`, the implementer's
+// file). The stubs are driven by environment knobs only, so nothing here links
+// against an export that may not exist yet:
+//
+//   `systemd-run`  a `fleet-fold-*` unit is its FIRST case (never the engine's):
+//                  it says a line naming its unit, says `fold dir present` when
+//                  `<evidence>/.ultrapowers/runs/7/publish-fold` already exists,
+//                  prints `fold stub speaking` on stdout, writes `engine-head`,
+//                  `receipt.json` and (on `suite red`) `suite-<attempt>.txt`,
+//                  and exits `STUB_FOLD_CODE` / `STUB_FOLD_CODE_2`.
+//   knobs          `STUB_FOLD_DISPOSITION` / `STUB_FOLD_DISPOSITION_2` (SET BUT
+//                  EMPTY is a folder that wrote no disposition — read them with
+//                  `${VAR-default}`, not `${VAR:-default}`), `STUB_FOLD_PATH`,
+//                  `STUB_FOLD_REASON`, `STUB_FOLD_RESOLVERS`, `STUB_FOLD_CODE`,
+//                  `STUB_FOLD_CODE_2`, `STUB_FOLD_PARK`, `STUB_FOLD_NO_HEAD`,
+//                  `STUB_FOLD_BAD_RECEIPT`, `STUB_FOLD_ACTIVE`,
+//                  `STUB_MERGE_MESSAGE`, `STUB_MERGE_CODE` (the FIRST PUT) and
+//                  `STUB_MERGE_CODE_2` (the second, default 200),
+//                  `STUB_MERGEABLE_NULL`, `STUB_INTEGRATION_PUSH_FAIL`.
+//   `git`          records `update-ref` and `--force-with-lease` argv the way it
+//                  records every other call, and refuses the integration push
+//                  under `STUB_INTEGRATION_PUSH_FAIL`.
+//   `curl`         answers `GET …/pulls/<n>` with a `mergeable` body
+//                  (`STUB_MERGEABLE_NULL` nulls the first N), appends each
+//                  `PATCH …/pulls/<n>` payload as one JSON line of `patch.log`,
+//                  and answers the merge PUT with `STUB_MERGE_MESSAGE`.
+//   `systemctl`    answers `is-active fleet-fold-*` with `STUB_FOLD_ACTIVE`,
+//                  `inactive` by default.
+//
+// The engine-head file and attempt 1's `candidate` are DISTINCT values in the
+// rig — leg (b) is the reason: an exam where they are equal cannot tell the two
+// restore targets apart, so it asserts they differ before it reads them.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const FOLD_UNIT_1 = 'fleet-fold-7-1'
+const FOLD_UNIT_2 = 'fleet-fold-7-2'
+const PULL_URL = `${API}/repos/${TARGET}/pulls/1`
+const checkUrlFor = (sha) => `${API}/repos/${TARGET}/commits/${sha}/check-runs`
+/** The plan header that gives `plan_closes` one ticket to print. */
+const CLOSES_EXTRA = '**Goal:** the smoke\n**Closes:** #12'
+
+// ── the fold's own files ─────────────────────────────────────────────────────
+
+const foldDir = (ctx) => path.join(ctx.home, 'evidence', '.ultrapowers', 'runs', '7', 'publish-fold')
+const foldPath = (ctx, name) => path.join(foldDir(ctx), name)
+const foldRead = (ctx, name, leg) => {
+  const f = foldPath(ctx, name)
+  assert.ok(fs.existsSync(f), `${leg} ${f} must exist${whyFold(ctx)}`)
+  return fs.readFileSync(f, 'utf8')
+}
+const receiptOf = (ctx, leg) => {
+  const raw = foldRead(ctx, 'receipt.json', leg)
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return assert.fail(`${leg} publish-fold/receipt.json must parse as JSON; it holds: ${raw}`)
+  }
+}
+const attemptOf = (ctx, n, leg) => {
+  const receipt = receiptOf(ctx, leg)
+  const row = (receipt.attempts || {})[String(n)]
+  assert.ok(row, `${leg} the receipt records attempt ${n}: ${JSON.stringify(receipt)}`)
+  return row
+}
+/** The last non-blank line of a file the boot's own `tee` wrote. */
+const tailLine = (text) => {
+  const ls = text.split('\n').filter((l) => l.trim() !== '')
+  return ls[ls.length - 1] || ''
+}
+
+/** The slice of the boot log a fold leg is about. */
+const whyFold = (ctx) => {
+  const kept = stream(ctx).filter((l) =>
+    l.startsWith('CALL curl') || l.startsWith('CALL systemd-run') ||
+    l.startsWith('CALL systemctl') || l.startsWith('CALL git') ||
+    l.startsWith('status:') || l.startsWith('engine:') || l.startsWith('publish:') ||
+    l.startsWith('merge:') || l.startsWith('outcome:') || l.startsWith('FAILED:') ||
+    l.includes('fold'))
+  return `\n--- fleet-boot.log (calls, states and fold lines) ---\n${kept.join('\n')}`
+}
+
+// ── reading the logs ─────────────────────────────────────────────────────────
+
+const at = (ctx, pred, what, leg) => {
+  const i = stream(ctx).findIndex(pred)
+  assert.ok(i >= 0, `${leg} the boot log must hold ${what}${whyFold(ctx)}`)
+  return i
+}
+const hasPair = (argv, a, b) => argv.some((w, i) => w === a && argv[i + 1] === b)
+const foldUnits = (ctx) => unitsRun(ctx).filter((u) => (u || '').startsWith('fleet-fold-'))
+const unitArgv = (ctx, unit, leg) => {
+  const argv = argvLines(ctx, 'systemd-run').find((a) => a.includes(`--unit=${unit}`))
+  assert.ok(argv, `${leg} a systemd-run of --unit=${unit}; the units run were ` +
+    `${JSON.stringify(unitsRun(ctx))}${whyFold(ctx)}`)
+  return argv
+}
+/** The stub's own line for a fold unit's start, which names the unit. */
+const foldRunLine = (unit) => (l) => l.startsWith('CALL systemd-run') && l.includes(unit)
+
+const updateRefs = (ctx) => gitLog(ctx).filter((a) => verbOf(a) === 'update-ref')
+const integrationPushes = (ctx) => gitLog(ctx).filter(isIntegrationPush)
+const leaseOf = (argv) => argv.find((w) => w.startsWith('--force-with-lease'))
+const isBranchRevParse = (a) => verbOf(a) === 'rev-parse' && a.includes(INTEGRATION_BRANCH)
+
+const curlCalls = (ctx) => argvLines(ctx, 'curl')
+const isMergePut = (a) => a.includes(MERGE_URL)
+const isPullGet = (a) => a.includes(PULL_URL) && !a.includes('-X')
+const isCheckRead = (a) => a.some((w) => w.startsWith(`${API}/repos/${TARGET}/commits/`) && w.endsWith('/check-runs'))
+const isPullPatch = (a) => a.includes(PULL_URL) && hasPair(a, '-X', 'PATCH')
+const indicesOf = (ctx, pred) => curlCalls(ctx).map((a, i) => (pred(a) ? i : -1)).filter((i) => i >= 0)
+/** Every PATCH the run sent, as the JSON payload `patch.log` recorded. */
+const patches = (ctx) =>
+  lines(readLog(ctx, 'patch.log')).map((l) => {
+    try {
+      return JSON.parse(l)
+    } catch {
+      return assert.fail(`each line of patch.log is the PATCH's JSON payload; got: ${l}`)
+    }
+  })
+
+// ── the runs this half reads ─────────────────────────────────────────────────
+//
+// One boot per shape, made on first use and read by every leg that asks about
+// it — the same economy `green()` is.
+
+const once = (make) => {
+  let ctx = null
+  return () => (ctx || (ctx = make()))
+}
+/** A boot with `env` on top of the rig's; `expect` null leaves the exit to the leg. */
+const bootWith = (env, expect = 0) => once(() => {
+  const ctx = makeHome()
+  ctx.result = boot(ctx, ['boot'], env)
+  if (expect !== null) assert.equal(ctx.result.status, expect, ctx.result.stdout + ctx.result.stderr)
+  return ctx
+})
+
+/** The one 405 that buys a retry (M7). */
+const NOT_MERGEABLE = { STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Pull Request is not mergeable' }
+
+const noCommits = bootWith({ STUB_NO_COMMITS: '1' })
+const foldCrash = bootWith({ STUB_FOLD_CODE: '3', STUB_FOLD_DISPOSITION: '' })
+const foldCrashNoHead = bootWith({ STUB_FOLD_CODE: '3', STUB_FOLD_DISPOSITION: '', STUB_FOLD_NO_HEAD: '1' })
+const foldCrashFolded = bootWith({ STUB_FOLD_CODE: '3', STUB_FOLD_DISPOSITION: 'folded' })
+const foldCrashBadReceipt = bootWith({ STUB_FOLD_CODE: '3', STUB_FOLD_DISPOSITION: '', STUB_FOLD_BAD_RECEIPT: '1' })
+const foldPark = bootWith({ STUB_FOLD_PARK: '1' }, null)
+const crashOnTwo = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_CODE_2: '3', STUB_FOLD_DISPOSITION_2: '' })
+const pushFail = bootWith({ STUB_INTEGRATION_PUSH_FAIL: '1' }, null)
+const suiteRed = bootWith({ STUB_FOLD_DISPOSITION: 'suite red', STUB_PLAN_EXTRA: CLOSES_EXTRA })
+const conflictParked = bootWith({ STUB_FOLD_DISPOSITION: 'conflict parked', STUB_FOLD_PATH: 'a.txt' })
+const foldedResolvers = bootWith({ STUB_FOLD_DISPOSITION: 'folded', STUB_FOLD_RESOLVERS: '1' })
+const foldedPlain = bootWith({ STUB_FOLD_DISPOSITION: 'folded', STUB_FOLD_RESOLVERS: '0' })
+const nothingToJoin = bootWith({ STUB_FOLD_DISPOSITION: 'nothing to join' })
+const cannotFold = bootWith({ STUB_FOLD_DISPOSITION: 'cannot fold', STUB_FOLD_REASON: 'base not an ancestor' })
+const suiteRedParked = bootWith({ STUB_FOLD_DISPOSITION: 'suite red', STUB_VERDICT: 'NEEDS_ACK' })
+const heldFolded = bootWith({ STUB_FOLD_DISPOSITION: 'folded', FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` })
+const retryMerged = bootWith({ ...NOT_MERGEABLE })
+const retry405Twice = bootWith({ ...NOT_MERGEABLE, STUB_MERGE_CODE_2: '405', STUB_FOLD_RESOLVERS: '1' })
+const retryTipUnmoved = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_DISPOSITION_2: 'tip unmoved' })
+const retrySuiteRed = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_DISPOSITION_2: 'suite red' })
+const mergeableLate = bootWith({ ...NOT_MERGEABLE, STUB_MERGEABLE_NULL: '2' })
+const merge405Other = bootWith({ STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Base branch was modified' })
+const merge409 = bootWith({ STUB_MERGE_CODE: '409' })
+const merge422 = bootWith({ STUB_MERGE_CODE: '422' })
+const merge500 = bootWith({ STUB_MERGE_CODE: '500' })
+const noGateReceipt = bootWith({ STUB_NO_RECEIPT: '1' })
+
+// ── (a) the fold unit, its argv and its place in the order  [M1] ─────────────
+
+test('the green boot runs the engine, then one fold unit  [publish-fold M1 / leg (a)]', () => {
+  const ctx = green()
+  const units = unitsRun(ctx)
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(a) [M1] exactly one fold unit, ${FOLD_UNIT_1}; the units run were ` +
+      `${JSON.stringify(units)}${whyFold(ctx)}`)
+  assert.ok(units.indexOf('fleet-engine-7') >= 0 &&
+    units.indexOf('fleet-engine-7') < units.indexOf(FOLD_UNIT_1),
+    `(a) [M1] the engine's unit comes first: ${JSON.stringify(units)}`)
+})
+
+test("the fold unit's argv is the engine's bracket, pointed at publish-fold.mjs  [publish-fold M1 / leg (a)]", () => {
+  const ctx = green()
+  const argv = unitArgv(ctx, FOLD_UNIT_1, '(a) [M1]')
+  const shown = argv.join(' ')
+  for (const word of [
+    '--pipe', '--wait', '--collect', 'env', '-u', 'CLAUDE_CONFIG_DIR',
+    `ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz`,
+    'CLAUDE_CODE_OAUTH_TOKEN=placeholder', 'ULTRAPOWERS_FLEET_RUN=run-7',
+  ]) {
+    assert.ok(argv.includes(word), `(a) [M1] the fold unit's argv carries '${word}': ${shown}`)
+  }
+  for (const [flag, value] of [
+    ['-p', 'MemoryMax=40G'],
+    ['-p', 'MemorySwapMax=0'],
+    ['-p', `WorkingDirectory=${targetDir(ctx)}`],
+    ['env', '-u'],
+    ['-u', 'CLAUDE_CONFIG_DIR'],
+    ['--repo', targetDir(ctx)],
+    ['--base', BASE_SHA],
+    ['--branch', INTEGRATION_BRANCH],
+    ['--run', '7'],
+    ['--attempt', '1'],
+    ['--evidence-dir', `${ctx.home}/evidence/.ultrapowers/runs/7`],
+    ['--run-dir', `${targetDir(ctx)}/.claude/ultrapowers/run-run-7`],
+  ]) {
+    assert.ok(hasPair(argv, flag, value),
+      `(a) [M1] '${flag}' and '${value}' are adjacent words of the fold unit's argv: ${shown}`)
+  }
+  assert.ok(argv.some((w) => w.endsWith('/fleet/publish-fold.mjs')),
+    `(a) [M1] the folder the unit runs is a word ending /fleet/publish-fold.mjs: ${shown}`)
+})
+
+test("the fold's output is teed into publish-fold/publish-fold-1.log  [publish-fold M1 / leg (a)]", () => {
+  const ctx = green()
+  const log = foldRead(ctx, 'publish-fold-1.log', '(a) [M1]')
+  assert.ok(log.includes('fold stub speaking'),
+    `(a) [M1] the boot's own tee wrote the unit's stdout into publish-fold-1.log; it holds:\n${log}`)
+  assert.ok(stream(ctx).some((l) => l.includes('fold dir present')),
+    `(a) [M1] the receipts directory is made BEFORE the bracket — tee -a needs it, and the ` +
+      `stub says so only when it already exists${whyFold(ctx)}`)
+})
+
+test('running/publish fold, the unit, its await and publishing are in that order  [publish-fold M1 / leg (a)]', () => {
+  const ctx = green()
+  const running = at(ctx, (l) => l.startsWith('status: state=running') && l.includes('phase=publish fold'),
+    'a `status: state=running phase=publish fold` line', '(a) [M1]')
+  const unit = at(ctx, foldRunLine(FOLD_UNIT_1), `the fold unit's systemd-run line`, '(a) [M1]')
+  const active = at(ctx, (l) => l.includes(`systemctl is-active ${FOLD_UNIT_1}.service`),
+    `an is-active read of ${FOLD_UNIT_1}.service`, '(a) [M1]')
+  const publishing = at(ctx, (l) => l.startsWith('status: state=publishing'),
+    'a `status: state=publishing` line', '(a) [M1]')
+  assert.ok(running < unit, `(a) [M1] the page says publish fold before the unit starts${whyFold(ctx)}`)
+  assert.ok(unit < active, `(a) [M1] the unit is awaited after it is started${whyFold(ctx)}`)
+  assert.ok(active < publishing,
+    `(a) [M1] publishing is claimed only after the fold unit is inactive${whyFold(ctx)}`)
+})
+
+test('no phase_refresher runs beside the fold unit  [publish-fold M1 / leg (a)]', () => {
+  const ctx = green()
+  const s = stream(ctx)
+  const exited = s.findIndex((l) => l.startsWith('engine: exited'))
+  assert.ok(exited >= 0, `(a) [M1] the engine's exit line is in the log${whyFold(ctx)}`)
+  const after = s.slice(exited).filter((l) => l.startsWith('status: state=running'))
+  assert.equal(after.length, 1,
+    `(a) [M1] exactly one running page is written after the engine exits — a refresher beside ` +
+      `the fold would write more, and would erase the deadman's page:\n${after.join('\n')}`)
+  assert.ok(after[0].includes('phase=publish fold'),
+    `(a) [M1] and that one is the fold's: ${after[0]}`)
+})
+
+test("the engine's done marker holds the engine's code, not the fold's  [publish-fold M1 / leg (a)]", () => {
+  for (const [label, ctx] of [['the green boot', green()], ['a fold that exited 3', foldCrash()]]) {
+    assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+      `(a) [M1] ${label} ran the fold unit${whyFold(ctx)}`)
+    const marker = path.join(ctx.home, '.fleet-engine-done')
+    assert.ok(fs.existsSync(marker), `(a) [M1] ${label} leaves the engine's marker`)
+    assert.equal(fs.readFileSync(marker, 'utf8').trim(), '0',
+      `(a) [M1] ${label}: the marker still holds the ENGINE's exit code — a fold that wrote ` +
+        `it would be read as an engine failure on re-entry`)
+  }
+})
+
+test('a parked outcome runs the fold unit too  [publish-fold M1 / leg (a)]', () => {
+  const ctx = parked()
+  assert.equal(statusOf(ctx).state, 'parked')
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(a) [M1] gate-green and parked alike fold, as long as there are commits ahead of BASE` +
+      `${whyFold(ctx)}`)
+})
+
+test('a branch with nothing ahead of BASE starts no fold unit  [publish-fold M1 / leg (a)]', () => {
+  const ctx = noCommits()
+  assert.equal(statusOf(ctx).state, 'parked')
+  assert.deepEqual(foldUnits(ctx), [],
+    `(a) [M1] nothing to publish is nothing to fold${whyFold(ctx)}`)
+  assert.ok(!fs.existsSync(foldDir(ctx)),
+    '(a) [M1] and no receipts directory is made for a fold that never runs')
+})
+
+// ── (b) the page first, the crash row, and the deadman  [M2] ─────────────────
+
+test('a fold that exits non-zero with no disposition restores the ref and writes a crash row  [publish-fold M2 / leg (b)]', () => {
+  const ctx = foldCrash()
+  const leg = '(b) [M2]'
+  const head = foldRead(ctx, 'engine-head', leg).trim()
+  const refs = updateRefs(ctx)
+  assert.equal(refs.length, 1, `${leg} exactly one update-ref: ${JSON.stringify(refs)}`)
+  assert.equal(dirOf(refs[0]), targetDir(ctx), `${leg} run in the target clone: ${refs[0].join(' ')}`)
+  assert.deepEqual(refs[0].slice(refs[0].indexOf('update-ref')),
+    ['update-ref', `refs/heads/${INTEGRATION_BRANCH}`, head],
+    `${leg} the ref goes back to the engine-head file's content (${head})`)
+
+  const row = attemptOf(ctx, 1, leg)
+  assert.equal(row.disposition, 'cannot fold', `${leg} the invoked attempt's disposition`)
+  assert.ok(String(row.reason).includes('exit 3'),
+    `${leg} the reason names the exit code; got: ${row.reason}`)
+  const last = tailLine(foldRead(ctx, 'publish-fold-1.log', leg))
+  assert.ok(last !== '' && String(row.reason).includes(last),
+    `${leg} and the log's last line ('${last}'); got: ${row.reason}`)
+  assert.equal(row.candidate, head, `${leg} the candidate is the restored sha`)
+
+  assert.equal(integrationPushes(ctx).length, 1, `${leg} the branch is still pushed${whyFold(ctx)}`)
+  assert.equal(prPosts(ctx).length, 1, `${leg} and the PR is still opened`)
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'done', `${leg} the run still ends done${whyFold(ctx)}`)
+  assert.ok(String(status.phase).includes('cannot fold'),
+    `${leg} whose phase carries the disposition; got: ${status.phase}`)
+})
+
+test('a crash before the folder wrote engine-head reads the branch first  [publish-fold M2 / leg (b)]', () => {
+  const ctx = foldCrashNoHead()
+  const leg = '(b) [M2]'
+  const git = gitLog(ctx)
+  const revParse = git.findIndex(isBranchRevParse)
+  const updateRef = git.findIndex((a) => verbOf(a) === 'update-ref')
+  assert.ok(revParse >= 0, `${leg} the branch is read with rev-parse when engine-head is absent`)
+  assert.ok(updateRef >= 0, `${leg} and the ref is restored${whyFold(ctx)}`)
+  assert.ok(revParse < updateRef,
+    `${leg} the rev-parse comes first — the file is written before it is read back`)
+  const receipt = receiptOf(ctx, leg)
+  assert.equal(receipt.engineHead, HEAD_SHA,
+    `${leg} the receipt is created from nothing with engineHead = the rev-parse answer`)
+  assert.equal(attemptOf(ctx, 1, leg).disposition, 'cannot fold', `${leg} and carries the crash row`)
+})
+
+test('a fold that wrote its disposition and then died keeps its row  [publish-fold M2 / leg (b)]', () => {
+  const ctx = foldCrashFolded()
+  const leg = '(b) [M2]'
+  assert.deepEqual(updateRefs(ctx), [],
+    `${leg} no ref is restored: the invoked attempt recorded a disposition${whyFold(ctx)}`)
+  const row = attemptOf(ctx, 1, leg)
+  assert.equal(row.disposition, 'folded',
+    `${leg} and the folder's own disposition is not overwritten by a crash row`)
+})
+
+test("attempt 2's crash restores attempt 1's candidate, not engine-head  [publish-fold M2 / leg (b)]", () => {
+  const ctx = crashOnTwo()
+  const leg = '(b) [M2]'
+  const head = foldRead(ctx, 'engine-head', leg).trim()
+  const first = attemptOf(ctx, 1, leg)
+  assert.notEqual(first.candidate, head,
+    `${leg} the rig writes engine-head and attempt 1's candidate distinct, or this leg proves nothing`)
+  const refs = updateRefs(ctx)
+  assert.equal(refs.length, 1, `${leg} one update-ref: ${JSON.stringify(refs)}`)
+  assert.deepEqual(refs[0].slice(refs[0].indexOf('update-ref')),
+    ['update-ref', `refs/heads/${INTEGRATION_BRANCH}`, first.candidate],
+    `${leg} attempt 2's restore target is attempt 1's candidate (${first.candidate})`)
+  const second = attemptOf(ctx, 2, leg)
+  assert.equal(second.disposition, 'cannot fold', `${leg} attempt 2's row`)
+  assert.equal(second.candidate, first.candidate, `${leg} carrying that same sha as its candidate`)
+  const pushes = integrationPushes(ctx)
+  assert.equal(pushes.length, 2, `${leg} two pushes of the integration branch${whyFold(ctx)}`)
+  assert.equal(leaseOf(pushes[1]), `--force-with-lease=${INTEGRATION_BRANCH}:${first.pushedHead}`,
+    `${leg} and the second carries the lease: ${pushes[1].join(' ')}`)
+})
+
+test('an unparsable receipt at crash time is replaced, not read  [publish-fold M2 / leg (b)]', () => {
+  const ctx = foldCrashBadReceipt()
+  const leg = '(b) [M2]'
+  const receipt = receiptOf(ctx, leg)
+  assert.equal(receipt.engineHead, HEAD_SHA,
+    `${leg} the crash row still lands, starting from { engineHead: <rev-parse>, attempts: {} }`)
+  assert.equal(attemptOf(ctx, 1, leg).disposition, 'cannot fold', `${leg} with attempt 1's row`)
+  const refs = updateRefs(ctx)
+  assert.equal(refs.length, 1, `${leg} one update-ref: ${JSON.stringify(refs)}`)
+  assert.equal(refs[0][refs[0].length - 1], HEAD_SHA, `${leg} carrying that same sha`)
+  const pushes = integrationPushes(ctx)
+  assert.equal(pushes.length, 1, `${leg} one push${whyFold(ctx)}`)
+  assert.equal(leaseOf(pushes[0]), undefined,
+    `${leg} and no attempt names a pushedHead, so the push is plain: ${pushes[0].join(' ')}`)
+})
+
+test("the deadman's parked page ends the run at 0 with no push and no PR  [publish-fold M2 / leg (b)]", () => {
+  const ctx = foldPark()
+  const leg = '(b) [M2]'
+  assert.equal(ctx.result.status, 0,
+    `${leg} the deadman's own exit is taken: ${ctx.result.stdout}${ctx.result.stderr}`)
+  assert.equal(statusOf(ctx).state, 'parked', `${leg} the page the deadman wrote stands${whyFold(ctx)}`)
+
+  const unit = at(ctx, foldRunLine(FOLD_UNIT_1), `the fold unit's systemd-run line`, leg)
+  const after = stream(ctx).slice(unit).filter((l) => l.startsWith('status: state='))
+  assert.deepEqual(after, [],
+    `${leg} the boot writes no status line of its own after the deadman's:\n${after.join('\n')}`)
+
+  assert.ok(gitLog(ctx).some((a) => verbOf(a) === 'commit' &&
+    a.some((w) => w.includes('parked — deadman'))),
+    `${leg} the evidence commit's subject is 'run-7: parked — deadman'${whyFold(ctx)}`)
+  assert.ok(gitLog(ctx).some((a) => verbOf(a) === 'ls-remote' && a.includes('--tags')),
+    `${leg} record_tags still runs${whyFold(ctx)}`)
+  assert.equal(integrationPushes(ctx).length, 0, `${leg} no branch push`)
+  assert.equal(prPosts(ctx).length, 0, `${leg} and no PR POST`)
+  assert.ok(!fs.existsSync(foldPath(ctx, 'receipt.json.tmp')),
+    `${leg} and the receipt's .tmp is removed`)
+})
+
+test('the deadman stops the fold units beside the engine and carries the PR cells forward  [publish-fold M2 / leg (i)]', () => {
+  const ctx = makeHome()
+  const page = {
+    run: '7', state: 'running', phase: 'publish fold', pr: PR_URL, prAuthor: PR_AUTHOR,
+    merged: mergeSha(), branch: INTEGRATION_BRANCH, vm: VM_NAME,
+    startedAt: '2026-09-06T00:00:00Z', updatedAt: '2026-09-06T00:00:01Z', error: null,
+  }
+  fs.mkdirSync(path.join(ctx.home, 'www'), { recursive: true })
+  fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'), JSON.stringify(page))
+
+  const dead = boot(ctx, ['deadman'], { STUB_ENGINE_ACTIVE: 'active', STUB_FOLD_ACTIVE: 'active' })
+  assert.equal(dead.status, 0, dead.stdout + dead.stderr)
+
+  const stops = argvLines(ctx, 'systemctl').filter((a) => a.includes('stop')).map((a) => a.join(' '))
+  assert.ok(stops.some((l) => l.endsWith('stop fleet-engine-7.service')),
+    `(i) [M2] the engine's unit is stopped:\n${stops.join('\n')}`)
+  assert.ok(stops.some((l) => l.endsWith(`stop ${FOLD_UNIT_1}.service`)),
+    `(i) [M2] and every active fleet-fold-7-* unit beside it:\n${stops.join('\n')}`)
+
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'parked', '(i) [M2] the page is parked')
+  assert.equal(status.pr, PR_URL, '(i) [M2] carrying the pr cell the page it overwrote held')
+  assert.equal(status.prAuthor, PR_AUTHOR, '(i) [M2] its prAuthor')
+  assert.equal(status.merged, mergeSha(), '(i) [M2] and its merged')
+})
+
+// ── (c) push_head  [M3] ──────────────────────────────────────────────────────
+
+test('the green boot pushes the branch plainly, then reads it back  [publish-fold M3 / leg (c)]', () => {
+  const ctx = green()
+  const leg = '(c) [M3]'
+  const pushes = integrationPushes(ctx)
+  assert.equal(pushes.length, 1, `${leg} exactly one push of ${INTEGRATION_BRANCH}${whyFold(ctx)}`)
+  assert.equal(leaseOf(pushes[0]), undefined,
+    `${leg} no attempt names a pushedHead yet, so no --force-with-lease: ${pushes[0].join(' ')}`)
+  const push = at(ctx, (l) => l.startsWith('CALL git') && l.includes('push') &&
+    l.includes(INTEGRATION_BRANCH), `the integration branch's push`, leg)
+  const visible = at(ctx, (l) => l.startsWith('CALL curl branches'),
+    `the branches read await_branch_visible makes`, leg)
+  assert.ok(push < visible, `${leg} await_branch_visible follows the push${whyFold(ctx)}`)
+  assert.equal(attemptOf(ctx, 1, leg).pushedHead, HEAD_SHA,
+    `${leg} and the pushed sha is recorded as attempt 1's pushedHead`)
+})
+
+test('a re-entry that already recorded a PR still pushes, and POSTs nothing  [publish-fold M3 / leg (c)]', () => {
+  const ctx = makeHome()
+  assert.equal(boot(ctx).status, 0)
+  const pushesBefore = integrationPushes(ctx).length
+  const postsBefore = prPosts(ctx).length
+  assert.equal(postsBefore, 1, '(c) [M3] the first pass opened the PR')
+  // The unit restarted with the PR already on the page: `publish` is guarded,
+  // `push_head` is not.
+  fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'),
+    JSON.stringify({ ...statusOf(ctx), state: 'running', merged: null }))
+
+  const again = boot(ctx)
+  assert.equal(again.status, 0, again.stdout + again.stderr)
+  assert.equal(prPosts(ctx).length, postsBefore,
+    `(c) [M3] publish keeps only the POST, and a recorded pr still skips it${whyFold(ctx)}`)
+  assert.ok(integrationPushes(ctx).length > pushesBefore,
+    `(c) [M3] but the head is pushed again — the push left publish with the re-entry${whyFold(ctx)}`)
+})
+
+test('a refused integration push fails the run before the PR  [publish-fold M3 / leg (c)]', () => {
+  const ctx = pushFail()
+  const leg = '(c) [M3]'
+  assert.notEqual(ctx.result.status, 0, `${leg} a refused push ends the run non-zero`)
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'failed', `${leg} the page is failed${whyFold(ctx)}`)
+  assert.match(String(status.error), /push/, `${leg} the error names the push; got: ${status.error}`)
+  assert.ok(String(status.error).includes(INTEGRATION_BRANCH),
+    `${leg} and the branch it refused; got: ${status.error}`)
+  assert.equal(curlCalls(ctx).filter((a) => a.some((w) => w.includes('/branches/'))).length, 0,
+    `${leg} nothing is read back${whyFold(ctx)}`)
+  assert.equal(prPosts(ctx).length, 0, `${leg} and no PR is opened`)
+})
+
+// ── (d) the PR body  [M4] ────────────────────────────────────────────────────
+
+const bodyOf = (ctx, leg) => {
+  const posts = prPosts(ctx)
+  assert.equal(posts.length, 1, `${leg} the run opened one PR${whyFold(ctx)}`)
+  return posts[0].body
+}
+
+test("a suite-red fold puts its section, its tail and publish-fold in the body  [publish-fold M4 / leg (d)]", () => {
+  const ctx = suiteRed()
+  const leg = '(d) [M4]'
+  const body = bodyOf(ctx, leg)
+  const section = body.indexOf('## Publish fold')
+  const evidence = body.indexOf('### Evidence')
+  assert.ok(section >= 0, `${leg} the body carries a '## Publish fold' section:\n${body}`)
+  assert.ok(evidence >= 0 && section < evidence,
+    `${leg} which sits before '### Evidence':\n${body}`)
+  assert.ok(body.includes('suite red'), `${leg} it names the disposition:\n${body}`)
+  const tail = tailLine(foldRead(ctx, 'suite-1.txt', leg))
+  assert.ok(tail !== '' && body.includes(tail),
+    `${leg} and the tail of publish-fold/suite-1.txt ('${tail}'):\n${body}`)
+  assert.ok(body.split('\n').some((l) => l.trim() === '- publish-fold'),
+    `${leg} the evidence listing names publish-fold, without a slash:\n${body}`)
+  assert.equal(tailLine(body), 'Closes #12',
+    `${leg} and plan_closes' lines are still the body's last:\n${body}`)
+})
+
+test('a conflict-parked fold names its path in the body  [publish-fold M4 / leg (d)]', () => {
+  const ctx = conflictParked()
+  const body = bodyOf(ctx, '(d) [M4]')
+  assert.ok(body.includes('## Publish fold'), `(d) [M4] the section is rendered:\n${body}`)
+  assert.ok(body.includes('conflict parked on a.txt'),
+    `(d) [M4] naming the disposition and the path:\n${body}`)
+})
+
+test('a folded run renders the section only when it dispatched a resolver  [publish-fold M4 / leg (d)]', () => {
+  const withResolver = bodyOf(foldedResolvers(), '(d) [M4] folded, one resolver:')
+  assert.ok(withResolver.includes('## Publish fold'),
+    `(d) [M4] a folded whose resolversDispatched is non-zero gets a section:\n${withResolver}`)
+  const plain = bodyOf(foldedPlain(), '(d) [M4] folded, no resolver:')
+  assert.ok(!plain.includes('## Publish fold'),
+    `(d) [M4] a folded with zero resolvers gets none — there is nothing to disclose:\n${plain}`)
+})
+
+test('nothing to join renders no section  [publish-fold M4 / leg (d)]', () => {
+  const ctx = nothingToJoin()
+  assert.equal(attemptOf(ctx, 1, '(d) [M4]').disposition, 'nothing to join',
+    '(d) [M4] the fold ran and recorded its disposition')
+  const body = bodyOf(ctx, '(d) [M4] nothing to join:')
+  assert.ok(!body.includes('## Publish fold'),
+    `(d) [M4] a run with nothing to join says nothing about the fold:\n${body}`)
+})
+
+// ── (e) FOLD_HOLD  [M5] ─────────────────────────────────────────────────────
+
+const phaseOf = (ctx) => String(statusOf(ctx).phase)
+
+test('a red suite holds the PR: no check read, no PUT, and the failure in the phase  [publish-fold M5 / leg (e)]', () => {
+  const ctx = suiteRed()
+  const leg = '(e) [M5]'
+  assert.equal(checkReads(ctx), 0,
+    `${leg} a non-empty FOLD_HOLD reads no check runs at all${whyFold(ctx)}`)
+  assert.deepEqual(mergePuts(ctx), [], `${leg} and issues no PUT`)
+  assert.equal(prPosts(ctx)[0].draft, false,
+    `${leg} a gate-green outcome still opens its PR non-draft`)
+  assert.ok(phaseOf(ctx).includes('left open: publish fold — suite red'),
+    `${leg} and the done phase is FOLD_HOLD's text; got: ${phaseOf(ctx)}`)
+})
+
+test('a parked conflict names its path in the phase  [publish-fold M5 / leg (e)]', () => {
+  const ctx = conflictParked()
+  assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, 'conflict parked',
+    '(e) [M5] the fold parked on a conflict')
+  assert.ok(phaseOf(ctx).includes('left open: publish fold — conflict parked on a.txt'),
+    `(e) [M5] got: ${phaseOf(ctx)}`)
+  assert.deepEqual(mergePuts(ctx), [], '(e) [M5] and no PUT was issued')
+})
+
+test('a cannot-fold names its reason in the phase  [publish-fold M5 / leg (e)]', () => {
+  const ctx = cannotFold()
+  assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, 'cannot fold',
+    '(e) [M5] the fold could not fold')
+  assert.ok(phaseOf(ctx).includes('left open: publish fold — cannot fold: base not an ancestor'),
+    `(e) [M5] got: ${phaseOf(ctx)}`)
+  assert.deepEqual(mergePuts(ctx), [], '(e) [M5] and no PUT was issued')
+})
+
+test('a held run under a fold hold still says hold=1  [publish-fold M5 / leg (e)]', () => {
+  const ctx = heldFolded()
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(e) [M5] a held run folds all the same${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes('left open: hold=1'),
+    `(e) [M5] hold=1 keeps its own note whatever the disposition; got: ${phaseOf(ctx)}`)
+  assert.deepEqual(mergePuts(ctx), [], '(e) [M5] and no PUT')
+})
+
+test('a red suite on a parked outcome still opens a draft  [publish-fold M5 / leg (e)]', () => {
+  const ctx = suiteRedParked()
+  assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, 'suite red',
+    '(e) [M5] the fold ran and its suite was red')
+  assert.equal(prPosts(ctx)[0].draft, true,
+    `(e) [M5] the draft flag follows the gate's outcome, not the fold's${whyFold(ctx)}`)
+})
+
+for (const [name, run] of [['folded', foldedPlain], ['nothing to join', nothingToJoin]]) {
+  test(`a ${name} fold merges the way the green path does  [publish-fold M5 / leg (e)]`, () => {
+    const ctx = run()
+    assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, name,
+      `(e) [M5] the fold ran and disposed of the join as '${name}'`)
+    assert.equal(mergePuts(ctx).length, 1,
+      `(e) [M5] '${name}' is an empty FOLD_HOLD, so the merge runs${whyFold(ctx)}`)
+    assert.equal(statusOf(ctx).merged, mergeSha(), `(e) [M5] and the PR is merged`)
+    assert.equal(statusOf(ctx).state, 'done')
+  })
+}
+
+// ── (f) the merge payload's commit_message  [M6] ─────────────────────────────
+
+test('the merge PUT carries the run and plan tag as its commit_message  [publish-fold M6 / leg (f)]', () => {
+  const ctx = green()
+  const puts = mergePuts(ctx)
+  assert.equal(puts.length, 1, '(f) [M6] the green path merges once')
+  assert.equal(puts[0].commit_message, 'Fleet-Run: 7\nPlan-Tag: ultra/plan/run-7',
+    '(f) [M6] the squash body names the run and the plan tag, exactly')
+  assert.equal(puts[0].commit_title, PLAN_H1, "(f) [M6] beside the unchanged commit_title")
+  assert.equal(puts[0].merge_method, 'squash', '(f) [M6] merge_method')
+  assert.equal(puts[0].sha, HEAD_SHA, '(f) [M6] and sha')
+})
+
+// ── (g) the one retry  [M7] ─────────────────────────────────────────────────
+
+test('a 405 saying "not mergeable" buys one more fold, one leased push and one more PUT  [publish-fold M7 / leg (g)]', () => {
+  const ctx = retryMerged()
+  const leg = '(g) [M7]'
+  assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'running', 'publishing', 'done'],
+    `${leg} the retry's evidence commits${whyFold(ctx)}`)
+  const units = foldUnits(ctx)
+  assert.deepEqual(units, [FOLD_UNIT_1, FOLD_UNIT_2],
+    `${leg} a second fold unit, after the first: ${JSON.stringify(unitsRun(ctx))}`)
+
+  const running2 = at(ctx, (l) => l.includes('phase=publish fold (attempt 2)'),
+    'a `running` page with phase `publish fold (attempt 2)`', leg)
+  const unit2 = at(ctx, foldRunLine(FOLD_UNIT_2), `the second fold unit's systemd-run line`, leg)
+  const active2 = at(ctx, (l) => l.includes(`systemctl is-active ${FOLD_UNIT_2}.service`),
+    `an is-active read of ${FOLD_UNIT_2}.service`, leg)
+  const lease = at(ctx, (l) => l.startsWith('CALL git') && l.includes('--force-with-lease'),
+    'the leased push', leg)
+  const s = stream(ctx)
+  const publishing2 = s.findIndex((l, i) => i > lease && l.startsWith('status: state=publishing'))
+  assert.ok(running2 < unit2 && unit2 < active2 && active2 < lease && lease < publishing2,
+    `${leg} running (attempt 2) → the unit → its await → push_head → publishing${whyFold(ctx)}`)
+
+  const puts = indicesOf(ctx, isMergePut)
+  assert.equal(puts.length, 2, `${leg} exactly two PUTs${whyFold(ctx)}`)
+  const second = attemptOf(ctx, 2, leg)
+  const reads = indicesOf(ctx, isCheckRead).filter((i) => i > puts[0])
+  assert.ok(reads.length >= 1, `${leg} the check-runs loop is re-entered after the first PUT`)
+  assert.ok(curlCalls(ctx)[reads[0]].includes(checkUrlFor(second.pushedHead)),
+    `${leg} on the new head (${second.pushedHead}): ${curlCalls(ctx)[reads[0]].join(' ')}`)
+  const gets = indicesOf(ctx, isPullGet)
+  assert.ok(gets.length >= 1, `${leg} the PR's mergeability is polled${whyFold(ctx)}`)
+  assert.ok(reads[0] < gets[0] && gets[gets.length - 1] < puts[1],
+    `${leg} the checks, then the mergeable poll, then the second PUT`)
+  assert.equal(mergePuts(ctx).length, 2, `${leg} two payloads were recorded`)
+  assert.ok(phaseOf(ctx).includes('merged'), `${leg} and the run merged; got: ${phaseOf(ctx)}`)
+})
+
+test('a second 405 is the end of it  [publish-fold M7 / leg (g)]', () => {
+  const ctx = retry405Twice()
+  assert.equal(mergePuts(ctx).length, 2,
+    `(g) [M7] exactly two PUTs — the retry is bought once${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 405 twice'),
+    `(g) [M7] got: ${phaseOf(ctx)}`)
+})
+
+test('a tip unmoved on attempt 2 skips the push and the merge  [publish-fold M7 / leg (g)]', () => {
+  const ctx = retryTipUnmoved()
+  const leg = '(g) [M7]'
+  assert.equal(attemptOf(ctx, 2, leg).disposition, 'tip unmoved',
+    `${leg} the retry ran and found the tip where it left it`)
+  assert.equal(integrationPushes(ctx).length, 1, `${leg} exactly one push${whyFold(ctx)}`)
+  assert.equal(mergePuts(ctx).length, 1, `${leg} exactly one PUT`)
+  assert.deepEqual(commitStates(ctx).slice(-2), ['publishing', 'done'],
+    `${leg} publishing is still written before done: ${JSON.stringify(commitStates(ctx))}`)
+  assert.ok(phaseOf(ctx).includes('405 twice'), `${leg} got: ${phaseOf(ctx)}`)
+})
+
+test('a 405 for any other reason keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', () => {
+  const ctx = merge405Other()
+  assert.equal(mergePuts(ctx).length, 1, `(g) [M7] one PUT${whyFold(ctx)}`)
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(g) [M7] and the run folded once and only once: ${JSON.stringify(unitsRun(ctx))}`)
+  assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 405'),
+    `(g) [M7] got: ${phaseOf(ctx)}`)
+  assert.ok(!phaseOf(ctx).includes('twice'), `(g) [M7] and not twice: ${phaseOf(ctx)}`)
+})
+
+test('a 409 keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', () => {
+  const ctx = merge409()
+  assert.equal(mergePuts(ctx).length, 1, `(g) [M7] one PUT${whyFold(ctx)}`)
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(g) [M7] and the run folded once and only once: ${JSON.stringify(unitsRun(ctx))}`)
+  assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 409'),
+    `(g) [M7] got: ${phaseOf(ctx)}`)
+})
+
+for (const [code, run] of [['422', merge422], ['500', merge500]]) {
+  test(`a ${code} keeps one PUT, three evidence commits and one note  [publish-fold M7 / leg (g)]`, () => {
+    const ctx = run()
+    assert.equal(mergePuts(ctx).length, 1, `(g) [M7] one PUT${whyFold(ctx)}`)
+    assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(g) [M7] and the run folded once and only once: ${JSON.stringify(unitsRun(ctx))}`)
+    assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'done'],
+      '(g) [M7] a run with no retry commits the three states it always did')
+    assert.ok(phaseOf(ctx).includes(`left open: merge PUT answered ${code}`),
+      `(g) [M7] got: ${phaseOf(ctx)}`)
+  })
+}
+
+test('the mergeable poll runs until GitHub answers something  [publish-fold M7 / leg (g)]', () => {
+  const ctx = mergeableLate()
+  const leg = '(g) [M7]'
+  const puts = indicesOf(ctx, isMergePut)
+  assert.equal(puts.length, 2, `${leg} the retry ran${whyFold(ctx)}`)
+  const gets = indicesOf(ctx, isPullGet).filter((i) => i < puts[1])
+  assert.equal(gets.length, 3,
+    `${leg} two null answers are waited on and the third is the one it goes on${whyFold(ctx)}`)
+})
+
+// ── (h) the body PATCH  [M4] ────────────────────────────────────────────────
+
+test("a disposition that lands after the POST is PATCHed onto the body  [publish-fold M4 / leg (h)]", () => {
+  const ctx = retrySuiteRed()
+  const leg = '(h) [M4]'
+  const sent = patches(ctx)
+  assert.equal(sent.length, 1, `${leg} exactly one PATCH${whyFold(ctx)}`)
+  assert.ok(String(sent[0].body).includes('## Publish fold'),
+    `${leg} carrying the re-rendered body:\n${sent[0].body}`)
+  assert.ok(String(sent[0].body).includes('suite red'),
+    `${leg} which names attempt 2's disposition:\n${sent[0].body}`)
+  assert.ok(phaseOf(ctx).includes('suite red'),
+    `${leg} and the done page's phase carries it too; got: ${phaseOf(ctx)}`)
+})
+
+test('a run refused twice PATCHes its body after the second PUT  [publish-fold M4 / leg (h)]', () => {
+  const ctx = retry405Twice()
+  const leg = '(h) [M4]'
+  const sent = patches(ctx)
+  assert.equal(sent.length, 1, `${leg} exactly one PATCH${whyFold(ctx)}`)
+  assert.ok(String(sent[0].body).includes('## Publish fold'),
+    `${leg} the re-rendered body:\n${sent[0].body}`)
+  assert.ok(String(sent[0].body).includes('merge PUT answered 405 twice'),
+    `${leg} naming what became of the merge:\n${sent[0].body}`)
+  const puts = indicesOf(ctx, isMergePut)
+  const patch = indicesOf(ctx, isPullPatch)
+  assert.equal(patch.length, 1, `${leg} one PATCH call in curl's own record`)
+  assert.ok(patch[0] > puts[1],
+    `${leg} sent after the second PUT, whose answer it discloses${whyFold(ctx)}`)
+})
+
+test('a one-attempt run sends no PATCH at all  [publish-fold M4 / leg (h)]', () => {
+  const ctx = green()
+  assert.deepEqual(Object.keys(receiptOf(ctx, '(h) [M4]').attempts || {}), ['1'],
+    '(h) [M4] the green run folded once')
+  assert.deepEqual(patches(ctx), [],
+    `(h) [M4] every disposition of a one-attempt run landed before the POST${whyFold(ctx)}`)
+})
+
+// ── (j) the rig itself  [M8] ────────────────────────────────────────────────
+
+test("the fold unit does not take the engine's branch of the stub  [publish-fold M8 / leg (j)]", () => {
+  const ctx = noGateReceipt()
+  const receipt = path.join(ctx.home, 'target', '.claude', 'ultrapowers', 'run-run-7', 'gate-receipt.json')
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+    `(j) [M8] the fold unit ran${whyFold(ctx)}`)
+  assert.ok(!fs.existsSync(receipt),
+    "(j) [M8] and wrote no gate-receipt.json — the fleet-fold-* case comes FIRST in the stub, " +
+      'so a fold never answers as the engine')
+})
+
+test('the systemctl stub answers a fold unit inactive  [publish-fold M8 / leg (j)]', () => {
+  const ctx = makeHome()
+  const r = spawnSync(path.join(ctx.bin, 'systemctl'), ['--user', 'is-active', `${FOLD_UNIT_1}.service`], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, FLEET_HOME: ctx.home },
+  })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.stdout.trim(), 'inactive',
+    '(j) [M8] a fold unit is inactive unless STUB_FOLD_ACTIVE says otherwise')
+})
+
+for (const sim of [
+  'test_sandbox_boot.mjs',
+  'test_sandbox_boot_edges.mjs',
+  'test_sandbox_boot_record.mjs',
+  'test_sandbox_boot_approved.mjs',
+  'test_sandbox_boot_approval_evidence.mjs',
+  'test_sandbox_boot_effort.mjs',
+  'test_sandbox_boot_selfmerge.mjs',
+]) {
+  test(`${sim} still passes on the shared rig  [publish-fold M8 / leg (j)]`, () => {
+    const r = spawnSync(process.execPath, [path.join(HERE, sim)], {
+      encoding: 'utf8',
+      timeout: 300000,
+    })
+    assert.ok(String(r.stdout).includes('ALL TESTS PASSED'),
+      `(j) [M8] the rig's fold half is additive — ${sim} reads it too:\n${r.stdout}${r.stderr}`)
+  })
+}
 
 runTests(tests)
