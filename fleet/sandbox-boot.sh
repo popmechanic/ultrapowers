@@ -356,8 +356,11 @@ read_assignment() {
 }
 
 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
-is_target() { printf '%s' "$1" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; }
-is_run_n()  { printf '%s' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9-]*$'; }
+# No pipeline: a builtin writer dies WITH its subshell when the reader exits
+# early, so `|| true` never runs and the test would take the script down. A
+# `[[ =~ ]]` on the same ERE has no reader to close on it.
+is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
+is_run_n()  { [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; }
 
 parse_assignment() { # $1 = the comment line
   local tok key val
@@ -1102,7 +1105,9 @@ push_head() {
 
 plan_title() {
   [ -f "$PLAN_FILE" ] || return 0
-  sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1
+  # `head` closes after the first heading; the guard keeps the `sed` still
+  # writing behind it from taking this script down with SIGPIPE.
+  { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1
 }
 
 # The issues this run's PR closes, one `Closes #<digits>` line each, in the
@@ -1692,8 +1697,11 @@ record_tags() {
   fi
   # One listing, naming both tags, from the clone that owns `origin`.
   listing="$(fleet_git -C "$TARGET_DIR" ls-remote --tags origin "$plan_tag" "$evidence_tag" 2>/dev/null || true)"
-  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"
-  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"
+  # `awk` reads the listing WHOLE: an `exit` after the match would close the
+  # pipe under `printf`, and a builtin writer dies with its subshell. `ls-remote`
+  # lists a ref once, so reading on past the match prints the same sha.
+  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1 }')"
+  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1 }')"
   # BOTH tags, each at its OWN sha. A listing missing one of them, or showing
   # one at a commit this run did not put there, is not the record it claims.
   if [ "$listed_plan" != "$PLAN_SHA" ] || [ "$listed_evidence" != "$head" ]; then

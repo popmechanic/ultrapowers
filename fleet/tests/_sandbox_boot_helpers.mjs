@@ -299,7 +299,10 @@ case "$verb" in
       *--tags*)
         [ -n "\${STUB_TAGS_MISSING:-}" ] && exit 0
         printf '%s\\trefs/tags/ultra/plan/run-7\\n' "\${STUB_TAG_PLAN_SHA:-$STUB_PLAN_SHA}"
-        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}" ;;
+        printf '%s\\trefs/tags/ultra/evidence/run-7\\n' "\${STUB_TAG_EVIDENCE_SHA:-$STUB_HEAD_SHA}"
+        # A listing too long for any pipe, when a case wants one: \`cat\` is
+        # external, so the stub itself cannot take SIGPIPE writing it.
+        [ -f "$FLEET_HOME/stub/ls-remote-extra" ] && cat "$FLEET_HOME/stub/ls-remote-extra" ;;
     esac
     exit 0 ;;
   symbolic-ref)
@@ -315,6 +318,10 @@ case "$verb" in
         # reaches the boot, so a reader of any other source sees none of it.
         printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"
         if [ -n "\${STUB_PLAN_EXTRA:-}" ]; then printf '%s\\n' "$STUB_PLAN_EXTRA"; fi
+        # A plan too long for any pipe rides a FILE, not the environment: Linux
+        # refuses to exec with one environment string past 128 KiB. \`cat\` is
+        # external, so the stub itself cannot take SIGPIPE writing it.
+        [ -f "$FLEET_HOME/stub/plan-extra" ] && cat "$FLEET_HOME/stub/plan-extra"
         exit 0 ;;
       *:.ultrapowers/gate-verdicts.json) printf '{"tasks":{"1":{"verdict":"pass"}},"tally":{"tasks":1}}\\n'; exit 0 ;;
     esac

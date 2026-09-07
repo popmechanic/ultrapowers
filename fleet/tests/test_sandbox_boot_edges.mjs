@@ -11,13 +11,14 @@
  */
 
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
   SCRIPT, BASE_SHA, ENGINE_SHA, TARGET, VM_NAME, PR_URL, PR_AUTHOR, RUN_PATH,
-  RETIRED_NAMES, ASSIGNMENT,
+  RETIRED_NAMES, ASSIGNMENT, PLAN_SHA, HEAD_SHA, OTHER_SHA, PLAN_H1, PLAN_BYTES,
   makeHome, boot, green,
   readLog, argvLines, stream, statusOf, states, notifies, committed, commitStates,
   engineRuns, prPosts, indexOf,
@@ -489,6 +490,246 @@ test('the deadman leaves a finished run alone', () => {
   assert.equal(statusOf(ctx).state, 'done')
   assert.equal(notifies(ctx).length, notesBefore, 'no notification for a done run')
   assert.equal(argvLines(ctx, 'systemctl').filter((a) => a[2] === 'stop').length, 0)
+})
+
+// ── 11. boot pipelines survive SIGPIPE (Task 1) ──────────────────────────────
+//
+// THE CLAIM: no boot pipeline can take the script down by SIGPIPE. Under
+// `set -o pipefail` a writer killed by SIGPIPE makes the whole pipeline exit
+// 141, and `set -e` then ends the run — so every reader that may close its
+// input EARLY (`head`, `grep -q/-m/-l`, an `awk` that `exit`s, a `sed` that
+// `q`s) must either be fed by a writer that cannot die under it, or be fed
+// through the guard the script already uses in `json_field`:
+// `{ writer || true; } | reader`.
+//
+// The guard only works on an EXTERNAL writer. A bash BUILTIN behind
+// `{ … || true; }` runs in the pipeline's own subshell, and the signal kills
+// that subshell before `|| true` is ever reached — so `{ printf … || true; }`
+// is no guard at all, and the census below says so.
+
+/**
+ * The tokeniser of M1, as a pure function of a script's source, so that leg (a)
+ * can run it over a fixture whose answer is known before it is trusted on
+ * `SCRIPT` itself.
+ *
+ *  - every line whose first non-blank character is not `#` is kept,
+ *  - a kept line ending in a `|` that is not part of `||` is joined with its
+ *    successor,
+ *  - each logical line is split at every `|` that is not part of `||`.
+ *
+ * Returns one finding per reader segment that reads from a pipe (index >= 1)
+ * and closes early, whose preceding segment is not a brace group ending
+ * `|| true; }` around an EXTERNAL writer.
+ */
+const splitPipes = (line) => {
+  const out = []
+  let cur = ''
+  for (let i = 0; i < line.length; i += 1) {
+    // `||` is one token and never a split point; it stays in the segment.
+    if (line[i] === '|' && line[i + 1] === '|') { cur += '||'; i += 1; continue }
+    if (line[i] === '|') { out.push(cur); cur = ''; continue }
+    cur += line[i]
+  }
+  out.push(cur)
+  return out
+}
+
+const logicalLines = (source) => {
+  const kept = source.split('\n').filter((l) => l.trim() !== '' && !l.trim().startsWith('#'))
+  const out = []
+  for (const line of kept) {
+    const last = out.length ? out[out.length - 1] : ''
+    if (out.length && /\|$/.test(last) && !/\|\|$/.test(last)) {
+      out[out.length - 1] = `${last} ${line.trim()}`
+    } else {
+      out.push(line)
+    }
+  }
+  return out
+}
+
+const wordsOf = (segment) => segment.trim().split(/\s+/).filter(Boolean)
+/** A segment's command word — `head` in ` head -n 1 `. */
+const commandWord = (segment) => wordsOf(segment)[0] || ''
+/** Its short-flag clusters — `-qE`, never `--tags` and never an operand. */
+const flagClusters = (segment) => wordsOf(segment).slice(1).filter((w) => /^-[A-Za-z]+$/.test(w))
+/** A bare `q` command in a sed script — `sed -n '/x/q'`, not a `q` inside a word. */
+const SED_QUITS = /(^|[\s;'"{])q(\s|;|'|"|\}|$)/
+/** Why this segment closes its input early, or null when it reads to EOF. */
+const closesEarly = (segment) => {
+  const cmd = commandWord(segment)
+  if (cmd === 'head') return 'head'
+  if (cmd === 'grep' && flagClusters(segment).some((f) => /[qml]/.test(f))) return 'grep with q/m/l'
+  if (cmd === 'awk' && /\bexit\b/.test(segment)) return 'awk with exit'
+  // The flags are stripped first so `-n` and friends cannot be read as a script.
+  if (cmd === 'sed' && SED_QUITS.test(segment.replace(/(^|\s)-[A-Za-z]+/g, ' '))) return 'sed with q'
+  return null
+}
+/** `{ … || true; }` — the guard, as the segment before a reader must end. */
+const GUARD_TAIL = /\|\|\s*true;\s*\}$/
+/** The first command word inside a brace group. */
+const guardedCommand = (segment) => (/\{\s*([^\s;{}]+)/.exec(segment) || [])[1] || ''
+
+const sigpipeCensus = (source) => {
+  const found = []
+  for (const line of logicalLines(source)) {
+    const segments = splitPipes(line)
+    // Index 0 writes into the pipe; every later segment reads from one.
+    for (let i = 1; i < segments.length; i += 1) {
+      const why = closesEarly(segments[i])
+      if (!why) continue
+      const writer = segments[i - 1].trim()
+      const reader = segments[i].trim()
+      if (!GUARD_TAIL.test(writer)) {
+        found.push(`${why}: '${reader}' is fed by an UNGUARDED writer '${writer}'`)
+        continue
+      }
+      const inner = guardedCommand(writer)
+      if (inner === 'printf' || inner === 'echo') {
+        found.push(`${why}: '${reader}' is fed by '${writer}' — a bash builtin ` +
+          `('${inner}') dies with its subshell before '|| true' can run, so that is no guard`)
+      }
+    }
+  }
+  return found
+}
+
+test('every early-closing reader in the boot script is fed by a writer that cannot be killed under it  [M1 / leg (a)]', () => {
+  // FIRST the fixture, so a tokeniser that cannot see these is not trusted on
+  // the script: BASE's five offending lines verbatim, `json_field`'s guarded
+  // `head` line joined with its `sed` successor, and a `grep -qE` behind a
+  // GUARDED BUILTIN — which is not guarded at all.
+  const FIXTURE = [
+    String.raw`is_target() { printf '%s' "$1" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; }`,
+    String.raw`is_run_n()  { printf '%s' "$1" | grep -qE '^[A-Za-z0-9][A-Za-z0-9-]*$'; }`,
+    String.raw`  sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" | head -n 1`,
+    String.raw`  listed_plan="$(printf '%s\n' "$listing" | awk -v ref="$plan_tag" '$2 == ref { print $1; exit }')"`,
+    String.raw`  listed_evidence="$(printf '%s\n' "$listing" | awk -v ref="$evidence_tag" '$2 == ref { print $1; exit }')"`,
+    String.raw`  { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 |`,
+    String.raw`    sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'`,
+    String.raw`  { printf '%s' "$1" || true; } | grep -qE '^x$'`,
+  ].join('\n')
+
+  const onFixture = sigpipeCensus(FIXTURE)
+  assert.equal(onFixture.length, 6,
+    'the census names the five BASE offenders and the builtin-guarded sixth, and nothing else:\n' +
+    onFixture.map((f) => `  - ${f}`).join('\n'))
+  assert.equal(onFixture.filter((f) => f.includes('grep with q/m/l')).length, 3,
+    `the two \`printf | grep -qE\` tests and the builtin-guarded \`grep -qE\`:\n${onFixture.join('\n')}`)
+  assert.equal(onFixture.filter((f) => f.includes('head')).length, 1,
+    `\`sed … | head -n 1\` is named and \`json_field\`'s guarded \`head\` is NOT:\n${onFixture.join('\n')}`)
+  assert.equal(onFixture.filter((f) => f.includes('awk with exit')).length, 2,
+    `both \`awk … { print $1; exit }\` substitutions are named:\n${onFixture.join('\n')}`)
+  assert.equal(onFixture.filter((f) => f.includes('grep -o')).length, 0,
+    `\`json_field\`'s \`{ grep -o … || true; } | head -n 1 | sed …\` is the model, not a finding:\n${onFixture.join('\n')}`)
+  assert.equal(onFixture.filter((f) => f.includes('no guard')).length, 1,
+    `a builtin behind \`|| true; }\` is named as no guard at all:\n${onFixture.join('\n')}`)
+
+  // …and THEN the script, which must name none.
+  const onScript = sigpipeCensus(fs.readFileSync(SCRIPT, 'utf8'))
+  assert.deepEqual(onScript, [],
+    'fleet/sandbox-boot.sh still pipes into a reader that closes early over a writer that ' +
+    'SIGPIPE can kill — under `pipefail` each of these ends the boot with 141:\n' +
+    onScript.map((f) => `  - ${f}`).join('\n'))
+})
+
+test('a boot whose plan and tag listing both outrun their readers still parks, publishes and records  [M2 / leg (b)]', () => {
+  const ctx = makeHome()
+  // Each knob is ~1 MB — an order of magnitude past a 64 KiB pipe plus a
+  // reader's first read, so `plan_title`'s `sed` and `record_tags`'s `printf`
+  // must BOTH still be writing after a reader that quit on line one has gone.
+  fs.writeFileSync(path.join(ctx.home, 'stub', 'plan-extra'),
+    `${Array.from({ length: 80000 }, (_, i) => `# line ${i + 1}`).join('\n')}\n`)
+  fs.writeFileSync(path.join(ctx.home, 'stub', 'ls-remote-extra'),
+    `${Array.from({ length: 16000 }, (_, i) => `${OTHER_SHA}\trefs/tags/other-${i + 1}`).join('\n')}\n`)
+
+  const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK' })
+  assert.equal(r.status, 0,
+    `the boot exits 0, not 141 — a pipeline died under a reader that closed early:\n${r.stdout}${r.stderr}`)
+  assert.deepEqual(states(ctx), ['booting', 'running', 'publishing', 'parked'],
+    'the run walks every state: a boot that dies at `plan_title` stops at `publishing`')
+
+  assert.equal(prPosts(ctx).length, 1, 'exactly one POST /pulls')
+  assert.equal(prPosts(ctx)[0].draft, true, 'the parked run publishes a DRAFT PR')
+  assert.equal(prPosts(ctx)[0].title, 'fleet run-7: Smoke: the fleet proves itself',
+    "the title is the plan's H1, not one of the 80000 injected `# ` lines behind it")
+  assert.equal(statusOf(ctx).pr, PR_URL)
+
+  // The evidence is committed AFTER the POST, so the last snapshot on the
+  // branch is a `parked` page that already carries the PR.
+  const snapshots = committed(ctx)
+  assert.equal(commitStates(ctx)[commitStates(ctx).length - 1], 'parked',
+    `the committed snapshots end at parked: ${JSON.stringify(commitStates(ctx))}`)
+  assert.equal(snapshots[snapshots.length - 1].pr, PR_URL,
+    'and that snapshot carries the PR URL, so the POST came before the commit')
+
+  // Both tag shas were read out of a listing a million bytes long.
+  const record = `record: refs/tags/ultra/plan/run-7 at ${PLAN_SHA} and ` +
+    `refs/tags/ultra/evidence/run-7 at ${HEAD_SHA} — ` +
+    'ultra/plan-run-7 and ultra/evidence-run-7 deleted'
+  assert.ok(stream(ctx).includes(record),
+    `the boot log carries exactly this line — a writer killed in \`record_tags\` never reaches it:\n` +
+    `  want: ${record}\n  got: ${JSON.stringify(stream(ctx).filter((l) => l.startsWith('record:')))}`)
+})
+
+test('a target with no slash is still refused before any clone  [M3 / leg (c)]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], {
+    FLEET_ASSIGNMENT: ASSIGNMENT.replace(`target=${TARGET}`, 'target=smoke'),
+  })
+  assert.notEqual(r.status, 0, 'a target that is not owner/repo must exit non-zero')
+  assert.match(statusOf(ctx).error, /^assignment: target is not owner\/repo/,
+    `the page names the refusal: ${statusOf(ctx).error}`)
+  assert.equal(readLog(ctx, 'git.log'), '',
+    'a rewrite of `is_target` that accepted what `grep -qE` refused would have cloned')
+})
+
+test('a run id beginning with a dash is still refused before any clone  [M3 / leg (c)]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: ASSIGNMENT.replace('run=7', 'run=-7') })
+  assert.notEqual(r.status, 0, 'a run id that does not begin alphanumeric must exit non-zero')
+  assert.match(statusOf(ctx).error, /^assignment: bad run id/,
+    `the page names the refusal: ${statusOf(ctx).error}`)
+  assert.equal(readLog(ctx, 'git.log'), '',
+    'a rewrite of `is_run_n` that accepted what `grep -qE` refused would have cloned')
+})
+
+test("the git stub's two answers are unchanged without the files, and carry them with  [M4 / leg (d)]", () => {
+  const ctx = makeHome()
+  const git = path.join(ctx.bin, 'git')
+  const env = {
+    PATH: process.env.PATH,
+    FLEET_HOME: ctx.home,
+    STUB_PLAN_H1: PLAN_H1,
+    STUB_PLAN_SHA: PLAN_SHA,
+    STUB_HEAD_SHA: HEAD_SHA,
+  }
+  const ask = (args) => {
+    const r = spawnSync(git, args, { encoding: 'utf8', env })
+    assert.equal(r.status, 0, `${args.join(' ')} exited ${r.status}: ${r.stderr}`)
+    return r.stdout
+  }
+
+  const plan = `# ${PLAN_H1}\n\nbody\n`
+  assert.equal(PLAN_BYTES, plan, 'PLAN_BYTES is what the stub answers, spelled once')
+  const tags = `${PLAN_SHA}\trefs/tags/ultra/plan/run-7\n${HEAD_SHA}\trefs/tags/ultra/evidence/run-7\n`
+  const lsRemote = ['ls-remote', '--tags', 'origin',
+    'refs/tags/ultra/plan/run-7', 'refs/tags/ultra/evidence/run-7']
+
+  // With neither file, byte for byte what the stub always answered — every
+  // other case in this exam and its sibling reads these two answers.
+  assert.equal(ask(['show', 'x:.ultrapowers/plan.md']), plan)
+  assert.equal(ask(lsRemote), tags)
+
+  // …and with them, the same answer followed by the file's bytes.
+  fs.writeFileSync(path.join(ctx.home, 'stub', 'plan-extra'), '# extra one\n# extra two\n')
+  fs.writeFileSync(path.join(ctx.home, 'stub', 'ls-remote-extra'),
+    `${OTHER_SHA}\trefs/tags/other-1\n${OTHER_SHA}\trefs/tags/other-2\n`)
+  assert.equal(ask(['show', 'x:.ultrapowers/plan.md']), `${plan}# extra one\n# extra two\n`,
+    'the plan answer gains the file, after the plan and never before it')
+  assert.equal(ask(lsRemote),
+    `${tags}${OTHER_SHA}\trefs/tags/other-1\n${OTHER_SHA}\trefs/tags/other-2\n`,
+    'the listing gains the file, after the two tag lines and never before them')
 })
 
 runTests(tests)
