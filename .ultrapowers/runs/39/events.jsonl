@@ -1,0 +1,7 @@
+{"kind":"run:open","runId":"run-39","base":"","source":"fleet/run-main.mjs","id":"01M1YR4K6R0000QDJ561KERW1E","ts":1788812086488}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M1YR4K6S0000ANXCRR8P9D8E","ts":1788812086489}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 9cd8190ffb5e68b1de0eb9eac44b116ab0631d28; 1 task clone(s) + integration","id":"01M1YREJFB0000KABPEY3K3YES","ts":1788812413419}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M1YREJTX0000M93SMPDHB7P7","ts":1788812413789}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M1YREJTY0000A18FFZMQ4DTP","ts":1788812413790}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 4","id":"01M1YREJV20000MTRPSRA9JDE5","ts":1788812413794}
+{"kind":"engine:phase","phase":"Setup","id":"01M1YREJV20001HW1G5HZ24RVE","ts":1788812413794}
