@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-43.md run-43 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/retire.mjs — the status read (`repos/<t>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>`) and the open-PR read (`repos/<t>/pulls?state=open&head=<owner>:ultra/integration-run-<N>`) against a real GitHub target — Both reads are exercised only through the `exec` seam (`fleet/tests/test_retire.mjs` makeSeam, `passthrough: []`) and the temporary PATH shims the process legs write; no network call is made, so the real contents envelope shape and GitHub's `head=` filter semantics are asserted against fixtures, not the service. The gate's logic, ordering, line literals and dry-run parity are fully covered by the committed sim, which the driver ran green. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

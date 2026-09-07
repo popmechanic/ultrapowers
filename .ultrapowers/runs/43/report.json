@@ -1,0 +1,128 @@
+{
+  "integrationBranch": "ultra/integration-run-43",
+  "baseSha": "9cd8190ffb5e68b1de0eb9eac44b116ab0631d28",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b82a130bdbb5875d32180a9d8f4db0276f0c2458",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-43/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale header comment in `fleet/retire.mjs` (lines 31\u201336, unchanged by this patch). The module docblock still says the integration branch name \"is still read once per run, as the `head=` filter of the closed-PR list\". After this change a terminal pair's integration branch name is read twice \u2014 the new `state=open` read in `openPullOf` (patch lines 114\u2013122) and `pullsToPatch`'s `state=closed` read \u2014 so the sentence is now false. The rest of the docblock was updated for the status read (the new paragraph at lines 40\u201351 and the `--dry-run` paragraph at 61\u201364), which makes this one paragraph the only stale line left. Nothing in the exam or the docs-pin suite catches it, and the fix is inside this task's own FILES.; Small duplication: `openPullOf` (patch lines 114\u2013122) repeats `pullsToPatch`'s owner derivation (`String(target).split('/')[0]`) and `pulls?state=\u2026&head=<owner>:<integration branch>` path construction, differing only in the `state=` value and in returning the first row rather than patch candidates. A shared `pullsOf(exec, target, run, state)` returning the row array, with `pullsToPatch` filtering it, would spell the head filter once. The added doc comment already flags that `state=open` is the only difference, so this is advisory only \u2014 the behaviour is exactly what M4 asks for and is pinned by legs (h)/(i).; Code quality (rule 5, copy-pasted logic): `openPullOf` in `fleet/retire.mjs` reproduces `pullsToPatch` line-for-line for the parts that matter \u2014 `const owner = String(target).split('/')[0]` and the `repos/${target}/pulls?state=<s>&head=${owner}:${integrationBranchFor(run)}` path \u2014 differing only in the literal `state=open` vs `state=closed` and in what it does with the rows. The comment on `openPullOf` even says so (\"`state=open` is the only difference from the closed read below\"). A single reader, e.g. `async function pullsHead (exec, target, run, state) { const owner = String(target).split('/')[0]; const payload = await ghRead(exec, `repos/${target}/pulls?state=${state}&head=${owner}:${integrationBranchFor(run)}`); return Array.isArray(payload) ? payload : [] }` with `openPullOf` returning `rows[0] ?? null` and `pullsToPatch` filtering it, would keep the two reads from drifting apart (the exam pins both call strings, so the refactor is safe). Behaviour is correct as written; this is advisory only.; Toolchain coupling in the exam: the new `#706 (l)/M7` block in `fleet/tests/test_retire.mjs` ends with `spawnSync('python3', ['-m','pytest','tests/test_docs_agree_with_code.py','-q','-p','no:cacheprovider'], { cwd: REPO_ROOT })` and asserts `status === 0`. That is the same command the Proof already carries as its third `Run:` (driver evidence: exit 0), so `node fleet/tests/test_retire.mjs` now fails on any machine without python3/pytest for a reason that has nothing to do with the sweep. The two in-file assertions above it \u2014 that the contract's `**The two tags**` bullet and the runbook's `## Rollback` section each carry the literal `\u2014 skipped`, and that neither document shows a `?ref=ultra/evidence-run-` \u2014 are the part of leg (l) worth keeping inside the node exam; the pytest spawn could be dropped and left to the `Run:` that already owns it. No requirement is left unverified either way, so this blocks nothing.; Explicit error path (rule 5): `openPullOf` returns `rows[0]` unconditionally and the caller builds `` `PR #${open.number} open` ``, so a pulls row without a numeric `number` would print `run <N>: live (PR #undefined open) \u2014 skipped` and land that string in `live[].why`. `pullsToPatch` directly above already guards this shape (`if (typeof number !== 'number') continue`). Selecting the first row whose `number` is a number \u2014 or falling back to a why of `open PR` \u2014 would match the neighbouring code's care. The exam's fixtures always carry `number`, and M4 only specifies the well-formed case, so this changes nothing that is graded.; concern: fleet/tests/test_retire.mjs is the Proof's Test: path (peer-owned), but the task's Files names it and its BASE version would have failed the TEST COMMAND once the status read existed (every pair would read as 'no status page'). I updated only the pins the task's Context names as moving \u2014 the makeSeam contents rule + a per-run PAGES map, the open/closed split in the /pulls? rule, sweepOf's filter, the (e) closed-PR pin, leg (g)'s dry-run call sequence, and loggingShims' gh dispatch/count \u2014 plus one process leg for the gated case. I wrote no new assertion legs for the peer's (a)-(l); expect the driver's overlay to replace this file wholesale.; concern: M4 formats the skip line from the first open-PR row's `number` verbatim (`PR #${row.number} open`); a non-empty array whose first row has no numeric `number` would render `PR #undefined open`. The Machine text specifies only 'the first row's number', so no guard was added.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-43/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 328.40s (0:05:28) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*The two tags\\*\\*/,/^- \\*\\*Comment\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q -- '\u2014 skipped'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Rollback/,$p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q -- '\u2014 skipped'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/janitor.mjs fleet/lobby.mjs fleet/sandbox-boot.sh fleet/launch.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 300047,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n......................................................s................. [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 345.65s (0:05:45) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 326.65s (0:05:26) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "c0dcb267e818c38f7c3bcd65706ce3441f9048fd",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-43/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-43/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.6,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/retire.mjs \u2014 the status read (`repos/<t>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>`) and the open-PR read (`repos/<t>/pulls?state=open&head=<owner>:ultra/integration-run-<N>`) against a real GitHub target",
+      "reason": "external",
+      "why": "Both reads are exercised only through the `exec` seam (`fleet/tests/test_retire.mjs` makeSeam, `passthrough: []`) and the temporary PATH shims the process legs write; no network call is made, so the real contents envelope shape and GitHub's `head=` filter semantics are asserted against fixtures, not the service. The gate's logic, ordering, line literals and dry-run parity are fully covered by the committed sim, which the driver ran green."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: fleet/tests/test_retire.mjs is the Proof's Test: path (peer-owned), but the task's Files names it and its BASE version would have failed the TEST COMMAND once the status read existed (every pair would read as 'no status page'). I updated only the pins the task's Context names as moving \u2014 the makeSeam contents rule + a per-run PAGES map, the open/closed split in the /pulls? rule, sweepOf's filter, the (e) closed-PR pin, leg (g)'s dry-run call sequence, and loggingShims' gh dispatch/count \u2014 plus one process leg for the gated case. I wrote no new assertion legs for the peer's (a)-(l); expect the driver's overlay to replace this file wholesale.",
+    "task 1: M4 formats the skip line from the first open-PR row's `number` verbatim (`PR #${row.number} open`); a non-empty array whose first row has no numeric `number` would render `PR #undefined open`. The Machine text specifies only 'the first row's number', so no guard was added."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
