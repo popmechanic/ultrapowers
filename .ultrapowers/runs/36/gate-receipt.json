@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-36",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-36/report.json",
+  "branch": "ultra/integration-run-36",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/sandbox-boot.sh \u2014 the publish:pr / publish:hold / publish:merge appends on a real target (task 1, Claim) \u2014 Every leg of fleet/tests/test_sandbox_boot_selfmerge.mjs drives the boot through the PATH-shim stubs for curl/git/gh/systemd-run: PR_URL, the PR number, MERGE_SHA, the 405 body and the check-runs payloads are all rig fixtures. The events' agreement with a live GitHub REST answer (html_url first-match, the merge PUT's sha, a 405 whose message really says 'not mergeable') and the presence of python3 on a production sandbox VM cannot be executed in this environment; the driver's suite and Run: evidence confirm only the stubbed path. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 1,
+    "output": "tra/integration-run-7 visible at the edge as d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4 after 0s\\nE         2026-09-07T18:39:29Z publish: https://github.com/popmechanic/smoke/pull/1 (base main, draft true)\\nE         2026-09-07T18:39:29Z publish: author popmechanic\\nE         2026-09-07T18:39:30Z status: state=parked phase=https://github.com/popmechanic/smoke/pull/1\\nE         2026-09-07T18:39:30Z evidence: claude-version.txt engine.log events.jsonl gate-receipt.json pr-body.md publish-fold receipt.json report.json status.json \\nE         2026-09-07T18:39:30Z evidence: pushed to ultra/evidence-run-7\\nE         \\nE         \\nE         141 !== 0\\nE         \\nE             at file:///tmp/tmp.ySDqae1E5Q/suite-gate/fleet/tests/test_sandbox_boot_approved.mjs:130:10\\nE             at runTests (file:///tmp/tmp.ySDqae1E5Q/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:805:7)\\nE             at file:///tmp/tmp.ySDqae1E5Q/suite-gate/fleet/tests/test_sandbox_boot_approved.mjs:201:1\\nE             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\\nE             at async node:internal/modules/esm/loader:647:26\\nE             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\\nE         ok (689 ms) \\u2014 a PASS receipt with no approve-receipt.json is gate-green, exactly as at BASE  [M3 / leg (c)]\\nE         ok (1 ms) \\u2014 CONTRACT.md's REST-call sentence carries both disjuncts  [M4]\\nE         ok (0 ms) \\u2014 CONTRACT.md's Publish bullet and RUNBOOK.md's publish paragraph name the two-move rule  [M4]\\nE         1 FAILED\\nE         \\nE             at file:///tmp/tmp.ySDqae1E5Q/suite-gate/fleet/tests/test_sandbox_boot_merge.mjs:1403:12\\nE             at runTests (file:///tmp/tmp.ySDqae1E5Q/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:805:7)\\nE             at file:///tmp/tmp.ySDqae1E5Q/suite-gate/fleet/tests/test_sandbox_boot_merge.mjs:1408:1\\nE             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\\nE             at async node:internal/modules/esm/loader:647:26\\nE             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\\nE         ok (2806 ms) \\u2014 test_sandbox_boot_approval_evidence.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\\nE         ok (3205 ms) \\u2014 test_sandbox_boot_effort.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\\nE         ok (32659 ms) \\u2014 test_sandbox_boot_selfmerge.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\\nE         1 FAILED\\nE         \\nE       assert 1 == 0\\nE        +  where 1 = CompletedProcess(args=['node', '/tmp/tmp.ySDqae1E5Q/suite-gate/tests/../fleet/tests/test_sandbox_boot_merge.mjs'], ret... \\u2014 test_sandbox_boot_selfmerge.mjs still passes on the shared rig  [publish-fold M8 / leg (j)]\\\\n1 FAILED\\\\n', stderr='').returncode\\n\\ntests/test_fleet_suite.py:62: AssertionError\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n=========================== short test summary info ============================\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_merge.mjs]\\n============ 1 failed, 1665 passed, 5 warnings in 313.92s (0:05:13) ============\", \"redKind\": \"assertion\"}\n"
+  },
+  "verdict": "BLOCKED"
+}

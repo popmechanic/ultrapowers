@@ -1,0 +1,6 @@
+    # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+    # contention, and that sim is now test_sandbox_boot_merge.mjs, which spends
+    # most of its own wall re-running seven siblings one after another. A wall
+    # only a little above that sim's honest runtime reports a slow box as a
+    # broken suite; this one is a deadlock catcher, not a budget.
+    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)

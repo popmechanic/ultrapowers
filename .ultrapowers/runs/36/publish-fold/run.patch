@@ -1,0 +1,734 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 9cbbeb8f301f3762e327dd4f227ae7f8911bce3d..2480f31258c9f0baf553273f848ac77c3922a698 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -238,6 +238,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   `left open: publish fold — <disposition text>`. The fold's record is that section, the
+   `publish-fold/` receipts directory and the `driver:publish-fold` event; `status.json` gains no cell
+   for it.
++  The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's
++  own and carrying the same `id`/`ts` stamp: `publish:pr` (`url`, `number`, `draft`) once the POST
++  answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
++  `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
++  merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
++  `checks red`, `checks pending` or `refused` and `detail` the account (`check <name> concluded
++  <conclusion>`, `still pending after <N>s`, `merge PUT answered <code>`). The LAST `publish:merge`
++  line is what became of the PR.
+ - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
+   `--act-as-user`, not readonly, created attached to nothing by `node fleet/target.mjs <owner>/<repo>`;
+   `new --integration claude-max,gh-<owner>-<repo>` binds both to the run's VM at creation. Never two
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 5f0576701578e7dc5e5c3b5944c8c395f88dc918..68dd585c3dca314b4173d1d7408d699314cc3567 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -1179,6 +1179,87 @@ await_branch_visible() {
+   return 0
+ }
+ 
++# --- the publish record ------------------------------------------------------
++#
++# The publish decisions used to survive only as prose: a `log` line that dies
++# with the box and a phase sentence on the `done` page. They are events too,
++# now, in the run's own `events.jsonl` — so a held run, a merged run and a
++# merge that failed are three different records a reader can tell apart
++# without parsing English.
++#
++# The shape is `makeEventLog`'s (`fleet/run-waves.mjs`), because this file is
++# the ENGINE'S log and the boot only ever appends to it: the event's own fields
++# first, then `id`, then `ts`. Nothing already in the file is read, rewritten or
++# reordered.
++#
++# THE ID IS THE SORT KEY. `fleet_events.read_events` orders a log by `id` as a
++# STRING and never by `ts`, so a line whose id is not the engine's ULID shape
++# sorts wherever its bytes happen to fall. So this mints the same shape: ten
++# characters of the millisecond clock in Crockford base 32, most significant
++# first, four of a sequence, twelve random. The clamp is the engine's too — a
++# `now` at or behind the last one keeps the timestamp and bumps the sequence —
++# so the boot's own lines strictly ascend even under a clock that steps
++# backwards, and the millisecond prefix puts every one of them after the
++# engine's.
++#
++# `python3` writes the line. `json_escape` escapes for a string cell and is not
++# an encoder, and neither `node` nor `gh` is a tool this script calls.
++EVENT_LAST_TS=0
++EVENT_SEQ=0
++append_event() { # $1 = kind, then `<name>=<tag>:<value>` — s string, i int, b bool, n null
++  local out
++  out="$(EVENT_FILE="$(run_dir_path)/events.jsonl" \
++    EVENT_LAST_TS="$EVENT_LAST_TS" EVENT_SEQ="$EVENT_SEQ" python3 -c '
++import json, os, secrets, sys, time
++B32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
++def b32(n, width):
++    out = ""
++    for _ in range(width):
++        out = B32[n % 32] + out
++        n //= 32
++    return out
++event = {"kind": sys.argv[1]}
++for arg in sys.argv[2:]:
++    name, _, rest = arg.partition("=")
++    tag, _, value = rest.partition(":")
++    if tag == "n":
++        event[name] = None
++    elif tag == "b":
++        event[name] = value == "true"
++    elif tag == "i":
++        try:
++            event[name] = int(value)
++        except ValueError:
++            event[name] = value
++    else:
++        event[name] = value
++last = int(os.environ["EVENT_LAST_TS"] or 0)
++seq = int(os.environ["EVENT_SEQ"] or 0)
++ts = int(time.time() * 1000)
++if ts <= last:
++    ts, seq = last, seq + 1
++else:
++    seq = 0
++event["id"] = b32(ts, 10) + b32(seq, 4) + "".join(secrets.choice(B32) for _ in range(12))
++event["ts"] = ts
++path = os.environ["EVENT_FILE"]
++os.makedirs(os.path.dirname(path), exist_ok=True)
++with open(path, "a", encoding="utf-8") as fh:
++    fh.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
++sys.stdout.write("%d %d\n" % (ts, seq))
++' "$@")" || out=""
++  # The record is a record, not a gate: a run whose event log could not be
++  # written still publishes and still merges, and says here that it could not.
++  case "$out" in
++    [0-9]*' '[0-9]*)
++      EVENT_LAST_TS="${out%% *}"
++      EVENT_SEQ="${out##* }" ;;
++    *)
++      log "event: could not append $1 to $(run_dir_path)/events.jsonl" ;;
++  esac
++  return 0
++}
++
+ # The PR is opened over GitHub's REST API through the edge, not with `gh`. `gh`
+ # decides for itself which token to present, and the aggregate host proxies
+ # only `/repos/<owner>/<repo>/…` — `/user`, which `gh` likes to ask first,
+@@ -1216,6 +1297,11 @@ publish() { # $1 = outcome (gate-green|parked)
+   [ -n "$PR_URL" ] || fail "publish: POST /repos/$TARGET_REPO/pulls answered $code with no html_url: $(printf '%s' "$reply" | tail -c 2000)"
+   log "publish: $PR_URL (base $base, draft $draft)"
+   log "publish: author ${PR_AUTHOR:-<unknown>}"
++  # The PR's own record, appended after the answer that made it real: the URL
++  # and the number GitHub gave back, and the `draft` this POST asked for — so a
++  # reader of the log can tell a parked run's draft from a ready PR without the
++  # page. A run that opens no PR reaches none of this and records none of it.
++  append_event publish:pr "url=s:$PR_URL" "number=i:$(pr_number)" "draft=b:$draft"
+ }
+ 
+ # A disposition that lands AFTER the PR was opened — a second attempt's, or the
+@@ -1337,6 +1423,9 @@ merge_pr() {
+   if [ "$HOLD" = "1" ]; then
+     log "merge: hold=1 — leaving $PR_URL open"
+     MERGE_NOTE="left open: hold=1"
++    # A hold's `why` is the phase's own text after `left open: `, so a reader of
++    # either record matches the other word for word.
++    append_event publish:hold "why=s:hold=1"
+     return 0
+   fi
+   # A fold that did not end clean is a hold, and exactly the same hold as
+@@ -1346,6 +1435,7 @@ merge_pr() {
+   if [ -n "$FOLD_HOLD" ]; then
+     log "merge: $FOLD_HOLD"
+     MERGE_NOTE="$FOLD_HOLD"
++    append_event publish:hold "why=s:${FOLD_HOLD#left open: }"
+     return 0
+   fi
+   # The head `await_branch_visible` already read, so the checks asked about are
+@@ -1390,10 +1480,16 @@ merge_pr() {
+       set -- $verdict
+       log "merge: check $2 concluded $3 — leaving $PR_URL open"
+       MERGE_NOTE="left open: check $2 concluded $3"
++      # A merge that did not happen is a `publish:merge` with a null `sha`:
++      # `left` names the class of the refusal and `detail` the account of it,
++      # so a reader counts the classes without parsing the account.
++      append_event publish:merge sha=n: "left=s:checks red" "detail=s:check $2 concluded $3"
+       return 0 ;;
+     *)
+       log "merge: checks still pending after ${MERGE_CHECK_WAIT}s — leaving $PR_URL open"
+       MERGE_NOTE="left open: checks still pending after ${MERGE_CHECK_WAIT}s"
++      append_event publish:merge sha=n: "left=s:checks pending" \
++        "detail=s:still pending after ${MERGE_CHECK_WAIT}s"
+       return 0 ;;
+   esac
+ 
+@@ -1434,6 +1530,8 @@ Plan-Tag: ultra/plan/$RUN_ID"
+       if [ "$code" = 405 ] && [ "$MERGE_RETRY" = "1" ]; then
+         log "merge: PUT answered 405 again after a second fold — leaving $PR_URL open"
+         MERGE_NOTE="left open: merge PUT answered 405 twice"
++        append_event publish:merge sha=n: "left=s:refused" \
++          "detail=s:merge PUT answered 405 twice"
+         return 0
+       fi
+       if [ "$code" = 405 ]; then
+@@ -1442,16 +1540,26 @@ Plan-Tag: ultra/plan/$RUN_ID"
+             log "merge: PUT answered 405 — GitHub does not call $PR_URL mergeable; folding again"
+             MERGE_RETRY=1
+             MERGE_NOTE="left open: merge PUT answered 405"
++            # The retry's first refusal is a record of its own: two
++            # `publish:merge` lines in order is what a retried merge looks like,
++            # and the LAST of them is what became of the PR.
++            append_event publish:merge sha=n: "left=s:refused" \
++              "detail=s:merge PUT answered 405"
+             return 0 ;;
+         esac
+       fi
+       log "merge: PUT answered $code — leaving $PR_URL open"
+       MERGE_NOTE="left open: merge PUT answered $code"
++      append_event publish:merge sha=n: "left=s:refused" \
++        "detail=s:merge PUT answered $code"
+       return 0 ;;
+   esac
+   MERGED_SHA="$(printf '%s' "$body" | json_field sha)"
+   log "merge: merged $PR_URL as ${MERGED_SHA:-<no sha>}"
+   MERGE_NOTE="merged ${MERGED_SHA:-<no sha>}"
++  # The merge that happened: a `sha` and nothing else — no `left`, no `detail`,
++  # so the one record that needs no reading to classify carries no excuse.
++  append_event publish:merge "sha=s:${MERGED_SHA:-<no sha>}"
+ }
+ 
+ # --- the record ---------------------------------------------------------------
+@@ -1694,6 +1802,11 @@ $(engine_tail)"
+     if [ "$(fold_field 2 disposition)" = "tip unmoved" ]; then
+       log "fold: attempt 2 moved the tip nowhere — there is nothing new to merge"
+       MERGE_NOTE="left open: merge PUT answered 405 twice"
++      # The one refusal `merge_pr` never gets to record, because this branch
++      # makes it without re-entering: the note is the same and so is the event,
++      # so the last `publish:merge` line is what became of the PR here too.
++      append_event publish:merge sha=n: "left=s:refused" \
++        "detail=s:merge PUT answered 405 twice"
+       write_status publishing "$PR_URL — the fold moved nothing"
+       collect_evidence
+       push_evidence "$RUN_ID: publish fold (attempt 2) — tip unmoved"
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index 72ce4f809928f56074aa7ef5347594c6064326ba..31b179d8b3dcbc63d4ff45ce8a617c03493cf092 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -54,6 +54,20 @@ export const EVIDENCE_BRANCH = 'ultra/evidence-run-7'
+ export const INTEGRATION_BRANCH = 'ultra/integration-run-7'
+ /** Where the evidence lives inside the evidence worktree. */
+ export const RUN_PATH = '.ultrapowers/runs/7'
++/** The run directory inside the target clone — where the engine writes its
++ *  `events.jsonl` and where the boot script appends its publish record. */
++export const RUN_DIR_PATH = '.claude/ultrapowers/run-run-7'
++/** The engine's id alphabet, Crockford base 32 (`fleet/run-waves.mjs`). */
++export const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
++/** The engine stub's one event id, in the shape the real `ulid()` mints: ten
++ *  characters of the millisecond clock — here a `ts` of 1 — then a sequence and
++ *  randomness, which the stub spends on zeros so the line is a literal. An id
++ *  of `x` would sort ABOVE every real ULID (lowercase is past `Z`), and the
++ *  readers order by id, so the stub would invert the production order. */
++export const ENGINE_EVENT_ID = '0000000001' + '0'.repeat(16)
++/** The one line the engine stub leaves in `events.jsonl`, newline included. */
++export const ENGINE_EVENT_LINE =
++  `{"kind":"engine:phase","phase":"gate","id":"${ENGINE_EVENT_ID}","ts":1}\n`
+ /** The plan's path inside the plan commit's tree. */
+ export const PLAN_PATH = '.ultrapowers/plan.md'
+ 
+@@ -462,7 +476,7 @@ env >"$FLEET_HOME/systemd-run.env"
+ say "systemd-run engine"
+ run_dir="$FLEET_HOME/target/.claude/ultrapowers/run-run-7"
+ mkdir -p "$run_dir"
+-printf '{"kind":"engine:phase","phase":"gate","id":"x","ts":1}\\n' >"$run_dir/events.jsonl"
++printf '%s\\n' '${ENGINE_EVENT_LINE.trimEnd()}' >"$run_dir/events.jsonl"
+ # The engine talks on stdout and stderr, and a run that dies before its gate
+ # leaves nothing else behind.
+ printf 'run-main: preflight\\n'
+@@ -657,6 +671,42 @@ export const foldUnits = (ctx) => unitsRun(ctx).filter((u) => u && u.startsWith(
+ /** The `systemd-run` argv of one fold attempt, or undefined. */
+ export const foldArgv = (ctx, attempt = 1) =>
+   argvLines(ctx, 'systemd-run').find((a) => a.includes(`--unit=fleet-fold-7-${attempt}`))
++// ── reading the run's event log ──────────────────────────────────────────────
++//
++// ONE file, two copies: the engine writes `events.jsonl` in the run directory
++// and the boot script appends its publish record there; `collect_evidence`
++// copies it onto the evidence branch at every transition. Both are read here,
++// so a sim can compare them and none has to spell either path itself.
++
++/** The run directory the engine and the boot script share. */
++export const runDir = (ctx) => path.join(ctx.home, 'target', RUN_DIR_PATH)
++/** The run directory's event log, or ''. */
++export const eventsRaw = (ctx) => {
++  const f = path.join(runDir(ctx), 'events.jsonl')
++  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
++}
++/** The evidence branch's copy of it, or ''. */
++export const evidenceEventsRaw = (ctx) => {
++  const f = path.join(ctx.home, 'evidence', RUN_PATH, 'events.jsonl')
++  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
++}
++/** Both files as paths, for a byte-for-byte comparison. */
++export const eventsFile = (ctx) => path.join(runDir(ctx), 'events.jsonl')
++export const evidenceEventsFile = (ctx) => path.join(ctx.home, 'evidence', RUN_PATH, 'events.jsonl')
++/** Every record in the run dir's log, IN FILE ORDER — never sorted, because
++ *  file order is what a reader of an append-only log has to be able to trust. */
++export const events = (ctx) => lines(eventsRaw(ctx)).map((l) => JSON.parse(l))
++/** The evidence copy's records, in file order. */
++export const evidenceEvents = (ctx) => lines(evidenceEventsRaw(ctx)).map((l) => JSON.parse(l))
++/** Only what the boot script appended: the publish record. */
++export const publishEvents = (ctx) => events(ctx).filter((e) => String(e.kind).startsWith('publish:'))
++/** Every event of one kind, in file order. */
++export const eventsOfKind = (ctx, kind) => events(ctx).filter((e) => e.kind === kind)
++/** The millisecond clock an id carries — its first ten characters read as
++ *  Crockford base 32, most significant first (the engine's `b32(ts, 10)`). */
++export const ulidTs = (id) =>
++  [...String(id).slice(0, 10)].reduce((n, c) => n * 32 + B32.indexOf(c), 0)
++
+ /** The PR body PATCHes the script sent, as parsed payloads. */
+ export const patches = (ctx) => lines(readLog(ctx, 'patch.log')).map((l) => JSON.parse(l))
+ /** How many times the PR document was read for its `mergeable`. */
+diff --git a/fleet/tests/test_sandbox_boot_selfmerge.mjs b/fleet/tests/test_sandbox_boot_selfmerge.mjs
+index 41a24b888139d5496a3c781493597e67f9c5b5e8..00ac21bd71e3e317953f6425fa230a28b267a1e6 100644
+--- a/fleet/tests/test_sandbox_boot_selfmerge.mjs
++++ b/fleet/tests/test_sandbox_boot_selfmerge.mjs
+@@ -37,13 +37,19 @@ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
+ import {
+-  SCRIPT, TARGET, HEAD_SHA, PR_URL, PLAN_H1, MERGE_SHA, ASSIGNMENT,
++  SCRIPT, TARGET, HEAD_SHA, PR_URL, PLAN_H1, MERGE_SHA, ASSIGNMENT, RUN_PATH,
+   makeHome, boot, green,
+   stream, statusOf, states, committed, commitStates, notifies, engineRuns,
+-  readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads,
++  readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads, directCalls,
++  targetDir, evidenceDir,
+   runTests,
+ } from './_sandbox_boot_helpers.mjs'
+ 
++// The clock before any boot of this process: leg (h) bounds every appended
++// `ts` between a `Date.now()` taken before its boot and one taken after it,
++// and the rig's `green()` is memoized, so its "before" is this.
++const SUITE_STARTED = Date.now()
++
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const CONTRACT = path.join(HERE, '..', 'CONTRACT.md')
+ const RUNBOOK = path.join(HERE, '..', 'RUNBOOK.md')
+@@ -364,4 +370,379 @@ test('SKILL.md step 4 says a ready PR merges itself  [M7]', () => {
+   assert.match(step, /A ready PR merges itself once its checks are green[\s\S]*--hold[\s\S]*on the launch line keeps it open/)
+ })
+ 
++// ═══ #703 Task 1 — the boot writes its publish decisions as events ═══════════
++//
++// The claim: the boot writes the publish decisions into the run's event log —
++// `publish:pr` (url, number, draft), `publish:hold` (why) and `publish:merge`
++// (sha, or the reason the PR was left open) — so a held run, a merged run and a
++// merge that failed are three different records. The page and the log lines the
++// legs above pin stay exactly as they are; these events are added BESIDE them.
++//
++//   M1  a POST'd PR appends exactly one `publish:pr`; a parked run's record is
++//       that line alone with `draft` true; a run with nothing ahead of base
++//       appends no `publish:` line at all.                        legs (a)
++//   M2  `hold=1` and each of the three fold holds append exactly one
++//       `publish:hold`, whose `why` is the phase's text after `left open: `,
++//       and no `publish:merge`; a green run holds none.            leg  (b)
++//   M3  one `publish:merge` per merge decision — the squash sha, `checks red`,
++//       `checks pending`, `refused` — and the retry's two, in order, the last
++//       being what became of the PR.                              legs (c)–(g)
++//   M4  the stamp: a ULID-shaped `id` whose first ten characters are `ts`,
++//       ascending in file order, sorting after every engine line, the engine's
++//       own line untouched, and no direct `node`/`gh` call.        leg  (h)
++//   M5  the evidence copy is byte-identical to the run dir's file. leg  (i)
++//   M6  ultralearn's own reader renders the three records.         leg  (j)
++//   M7  the `- **Publish:**` bullet names the three kinds and their fields;
++//       the rest of that document, the reader and the engine's writer are the
++//       `Run:` commands' business — they are the ones the driver hands the
++//       base commit to. This file reads no environment variable naming a
++//       commit and embeds no sha: a frozen base literal would go red on the
++//       first unrelated commit to the contract or the engine.      leg  (k)
++
++const HOME_TARGET_RUN = ['.claude', 'ultrapowers', 'run-run-7']
++/** The run directory the engine and the boot both write, `run_dir_path()`. */
++const runDirOf = (ctx) => path.join(targetDir(ctx), ...HOME_TARGET_RUN)
++const runEventsPath = (ctx) => path.join(runDirOf(ctx), 'events.jsonl')
++/** The copy `collect_evidence` commits with the terminal page. */
++const evidenceEventsPath = (ctx) => path.join(evidenceDir(ctx), RUN_PATH, 'events.jsonl')
++
++const eventLines = (file) =>
++  (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter((l) => l !== '') : [])
++/** One event log, parsed; a line that is not one JSON object is the failure. */
++const eventsAt = (file) =>
++  eventLines(file).map((line, i) => {
++    try {
++      const record = JSON.parse(line)
++      assert.ok(record && typeof record === 'object' && !Array.isArray(record),
++        `${file} line ${i + 1} is not a JSON object: ${line}`)
++      return record
++    } catch (error) {
++      throw new Error(`${file} line ${i + 1} is not one JSON object: ${line}\n${error}`)
++    }
++  })
++const events = (ctx) => eventsAt(runEventsPath(ctx))
++const evidenceEvents = (ctx) => eventsAt(evidenceEventsPath(ctx))
++const isPublish = (e) => typeof e.kind === 'string' && e.kind.startsWith('publish:')
++const publishOf = (list) => list.filter(isPublish)
++const publishIn = (ctx) => publishOf(events(ctx))
++const ofKind = (ctx, kind) => events(ctx).filter((e) => e.kind === kind)
++/** A record without the stamp, so a leg can assert its whole content at once. */
++const unstamped = (e) => {
++  const rest = { ...e }
++  delete rest.id
++  delete rest.ts
++  return rest
++}
++
++// The engine's line as the rig leaves it: `makeEventLog`'s shape, so the boot's
++// ids sort after it and ultralearn's reader orders the file the way production
++// orders it. `b32(1, 10)` is nine zeros and a one; the stub's own sixteen
++// characters are zeros.
++const ENGINE_EVENT = {
++  kind: 'engine:phase', phase: 'gate', id: `${'0'.repeat(9)}1${'0'.repeat(16)}`, ts: 1,
++}
++/** Crockford base 32, `B32` in `fleet/run-waves.mjs`. */
++const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
++const ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/
++/** An id's leading `b32(ts, 10)`, read back most-significant-first. */
++const tsOfId = (id) => {
++  let n = 0
++  for (const c of id.slice(0, 10)) n = n * 32 + B32.indexOf(c)
++  return n
++}
++
++const FLEET_EVENTS_PY = path.join(HERE, '..', '..', 'skills', 'ultralearn', 'scripts', 'fleet_events.py')
++
++// The eleven boots these legs read, one each, memoized: every assertion below
++// asks its questions of a run that was booted once. `green` is the rig's own
++// memoized green boot and costs nothing.
++const CASE_ENV = {
++  parked: { STUB_VERDICT: 'NEEDS_ACK' },
++  noCommits: { STUB_NO_COMMITS: '1' },
++  hold: { FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` },
++  suiteRed: { STUB_FOLD_DISPOSITION: 'suite red' },
++  conflict: { STUB_FOLD_DISPOSITION: 'conflict parked', STUB_FOLD_PATH: 'a.txt' },
++  cannotFold: { STUB_FOLD_DISPOSITION: 'cannot fold', STUB_FOLD_REASON: 'base not an ancestor' },
++  checksRed: { STUB_CHECKS: checksBody([completed('test', 'failure')]) },
++  pending: { STUB_CHECKS_PENDING: '50', FLEET_MERGE_CHECK_WAIT: '3' },
++  refused: { STUB_MERGE_CODE: '405' },
++  retry: { STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Pull Request is not mergeable' },
++}
++const BOXES = new Map()
++/** One case's boot, with the clock read either side of it — leg (h)'s bounds. */
++function box(key) {
++  if (key === 'green') return { ctx: green(), before: SUITE_STARTED, after: Date.now() }
++  if (!BOXES.has(key)) {
++    const before = Date.now()
++    const ctx = ran(CASE_ENV[key])
++    BOXES.set(key, { ctx, before, after: Date.now() })
++  }
++  return BOXES.get(key)
++}
++const ctxOf = (key) => box(key).ctx
++
++/** The one `publish:pr` a run that opened a PR appends. */
++const PR_EVENT = { kind: 'publish:pr', url: PR_URL, number: 1, draft: false }
++const DRAFT_PR_EVENT = { ...PR_EVENT, draft: true }
++/** What each case's LAST `publish:` line has to be — its outcome, one record. */
++const OUTCOME = {
++  green: { kind: 'publish:merge', sha: MERGE_SHA },
++  parked: DRAFT_PR_EVENT,
++  hold: { kind: 'publish:hold', why: 'hold=1' },
++  suiteRed: { kind: 'publish:hold', why: 'publish fold — suite red' },
++  conflict: { kind: 'publish:hold', why: 'publish fold — conflict parked on a.txt' },
++  cannotFold: { kind: 'publish:hold', why: 'publish fold — cannot fold: base not an ancestor' },
++  checksRed: {
++    kind: 'publish:merge', sha: null, left: 'checks red',
++    detail: 'check test concluded failure',
++  },
++  pending: {
++    kind: 'publish:merge', sha: null, left: 'checks pending',
++    detail: 'still pending after 3s',
++  },
++  refused: {
++    kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
++  },
++  retry: { kind: 'publish:merge', sha: MERGE_SHA },
++}
++/** Every case that opens a PR — `noCommits` opens none, which is its own leg. */
++const PUBLISHING_CASES = Object.keys(OUTCOME)
++
++/** A held run's `why` is the phase's own text after `left open: `. */
++const phaseHold = (ctx) => {
++  const phase = String(statusOf(ctx).phase || '')
++  const at = phase.indexOf('left open: ')
++  assert.ok(at >= 0, `the page's phase says nothing was left open: ${phase}`)
++  return phase.slice(at + 'left open: '.length)
++}
++
++// ── #703 (a) the PR record  [M1] ─────────────────────────────────────────────
++
++test('the POST\'d PR appends exactly one publish:pr, url number draft  [#703 M1 / leg (a)]', () => {
++  const ctx = ctxOf('green')
++  const prs = ofKind(ctx, 'publish:pr')
++  assert.equal(prs.length, 1, 'one line, after the POST\'s 2xx answer: '
++    + JSON.stringify(publishIn(ctx)))
++  assert.deepEqual(unstamped(prs[0]), PR_EVENT,
++    'the answer\'s html_url, its integer number, and the boolean the POST carried')
++  assert.equal(prPosts(ctx).length, 1, 'and one POST behind it')
++})
++
++test('a parked run\'s record is one draft publish:pr and nothing else  [#703 M1 / leg (a)]', () => {
++  const ctx = ctxOf('parked')
++  assert.equal(statusOf(ctx).state, 'parked')
++  assert.deepEqual(publishIn(ctx).map(unstamped), [DRAFT_PR_EVENT],
++    'one publish:pr with draft true, no publish:hold, no publish:merge')
++})
++
++test('a run with nothing ahead of base appends no publish: line  [#703 M1 / leg (a)]', () => {
++  const ctx = ctxOf('noCommits')
++  assert.deepEqual(prPosts(ctx), [], 'no PR was opened')
++  assert.deepEqual(publishIn(ctx), [], 'so nothing named its publication: '
++    + JSON.stringify(publishIn(ctx)))
++  assert.ok(events(ctx).length >= 1, 'the engine\'s own line is still there')
++})
++
++// ── #703 (b) the holds  [M2] ─────────────────────────────────────────────────
++
++test('hold=1 appends publish:pr then publish:hold why=hold=1, and no merge  [#703 M2 / leg (b)]', () => {
++  const ctx = ctxOf('hold')
++  assert.deepEqual(publishIn(ctx).map((e) => e.kind), ['publish:pr', 'publish:hold'],
++    'in file order')
++  const [, held] = publishIn(ctx)
++  assert.deepEqual(unstamped(held), { kind: 'publish:hold', why: 'hold=1' })
++  assert.equal(held.why, phaseHold(ctx), 'the same string the phase carries')
++  assert.deepEqual(mergePuts(ctx), [], 'no PUT')
++  assert.deepEqual(ofKind(ctx, 'publish:merge'), [], 'and no publish:merge')
++})
++
++for (const [key, why] of [
++  ['suiteRed', 'publish fold — suite red'],
++  ['conflict', 'publish fold — conflict parked on a.txt'],
++  ['cannotFold', 'publish fold — cannot fold: base not an ancestor'],
++]) {
++  test(`a publish fold ending "${why}" appends that hold  [#703 M2 / leg (b)]`, () => {
++    const ctx = ctxOf(key)
++    assert.deepEqual(publishIn(ctx).map((e) => e.kind), ['publish:pr', 'publish:hold'],
++      'a gate-green run held by its fold: the PR, then the hold')
++    const [, held] = publishIn(ctx)
++    assert.deepEqual(unstamped(held), { kind: 'publish:hold', why },
++      'the phrase `fold_phrase` renders for that attempt')
++    assert.equal(held.why, phaseHold(ctx),
++      'and it is the done page\'s phase text after `left open: `')
++    assert.deepEqual(mergePuts(ctx), [], 'no PUT')
++    assert.deepEqual(ofKind(ctx, 'publish:merge'), [], 'and no publish:merge')
++  })
++}
++
++test('a green run appends no publish:hold at all  [#703 M2 / leg (b)]', () => {
++  assert.deepEqual(ofKind(ctxOf('green'), 'publish:hold'), [])
++})
++
++// ── #703 (c)–(g) the merge decisions  [M3] ───────────────────────────────────
++
++test('a merged PR appends one publish:merge carrying the squash sha  [#703 M3 / leg (c)]', () => {
++  const ctx = ctxOf('green')
++  const merges = ofKind(ctx, 'publish:merge')
++  assert.equal(merges.length, 1)
++  assert.deepEqual(unstamped(merges[0]), { kind: 'publish:merge', sha: MERGE_SHA },
++    'the answer\'s sha, and no `left` and no `detail`')
++  assert.ok(!('left' in merges[0]) && !('detail' in merges[0]), 'a merge that happened leaves neither')
++  assert.equal(statusOf(ctx).merged, MERGE_SHA, 'the page says the same')
++})
++
++test('a red check run appends publish:merge left=checks red, and no PUT  [#703 M3 / leg (d)]', () => {
++  const ctx = ctxOf('checksRed')
++  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
++    kind: 'publish:merge', sha: null, left: 'checks red',
++    detail: 'check test concluded failure',
++  }])
++  assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
++})
++
++test('checks pending at the wait append publish:merge left=checks pending  [#703 M3 / leg (e)]', () => {
++  const ctx = ctxOf('pending')
++  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
++    kind: 'publish:merge', sha: null, left: 'checks pending',
++    detail: 'still pending after 3s',
++  }])
++  assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
++})
++
++test('a refused PUT appends publish:merge left=refused with the code  [#703 M3 / leg (f)]', () => {
++  const ctx = ctxOf('refused')
++  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
++    kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
++  }])
++  assert.equal(mergePuts(ctx).length, 1, 'the one PUT that was refused')
++})
++
++test('the one retry leaves two publish:merge lines, refusal then outcome  [#703 M3 / leg (g)]', () => {
++  const ctx = ctxOf('retry')
++  const merges = ofKind(ctx, 'publish:merge')
++  assert.equal(merges.length, 2, 'one per merge decision, in order: '
++    + JSON.stringify(merges.map(unstamped)))
++  assert.deepEqual(unstamped(merges[0]), {
++    kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
++  }, 'the 405 the second fold answered')
++  assert.deepEqual(unstamped(merges[1]), { kind: 'publish:merge', sha: MERGE_SHA },
++    'and the second PUT\'s outcome, with no `left`')
++  assert.equal(mergePuts(ctx).length, 2)
++  assert.equal(statusOf(ctx).merged, MERGE_SHA)
++})
++
++test('every publishing run holds one publish:pr, and its last publish: line is its outcome  [#703 M3 / leg (g)]', () => {
++  for (const key of PUBLISHING_CASES) {
++    const ctx = ctxOf(key)
++    const prs = ofKind(ctx, 'publish:pr')
++    assert.equal(prs.length, 1, `${key}: exactly one publish:pr`)
++    assert.deepEqual(unstamped(prs[0]), key === 'parked' ? DRAFT_PR_EVENT : PR_EVENT,
++      `${key}: the PR record`)
++    const lines = publishIn(ctx)
++    assert.deepEqual(unstamped(lines[lines.length - 1]), OUTCOME[key],
++      `${key}: the last publish: line is what became of the PR`)
++  }
++})
++
++// ── #703 (h) the stamp and the order  [M4] ───────────────────────────────────
++
++test('every appended line carries a ULID-shaped id encoding its own ts  [#703 M4 / leg (h)]', () => {
++  for (const key of [...PUBLISHING_CASES, 'noCommits']) {
++    const { ctx, before, after } = box(key)
++    const all = events(ctx)
++    const mine = publishOf(all)
++    for (const e of mine) {
++      assert.equal(typeof e.id, 'string', `${key}: ${e.kind} has no string id`)
++      assert.match(e.id, ID_RE, `${key}: ${e.kind}'s id is not 26 Crockford base-32 characters`)
++      assert.ok(Number.isInteger(e.ts), `${key}: ${e.kind}'s ts is not an integer: ${e.ts}`)
++      assert.equal(tsOfId(e.id), e.ts,
++        `${key}: ${e.kind}'s first ten id characters are not b32(ts, 10)`)
++      assert.ok(e.ts >= before && e.ts <= after,
++        `${key}: ${e.kind}'s ts ${e.ts} is outside the boot [${before}, ${after}]`)
++    }
++    for (let i = 1; i < mine.length; i += 1) {
++      assert.ok(mine[i].id > mine[i - 1].id,
++        `${key}: the ids do not ascend in file order: ${mine[i - 1].id} then ${mine[i].id}`)
++    }
++    // Sorted the way `fleet_events.read_events` sorts — by `id`, as strings —
++    // every boot line lands after every line the engine wrote.
++    const sorted = [...all].sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
++    const lastEngine = sorted.reduce((acc, e, i) => (isPublish(e) ? acc : i), -1)
++    const firstPublish = sorted.findIndex(isPublish)
++    if (firstPublish >= 0) {
++      assert.ok(firstPublish > lastEngine,
++        `${key}: sorted by id, a publish: line precedes an engine line`)
++    }
++    // The engine's own line is left exactly as it was written: the boot only
++    // appends. (The rig's engine writes one line; this is that line.)
++    assert.deepEqual(all[0], ENGINE_EVENT, `${key}: the first line is not the engine's`)
++    assert.ok(!eventLines(runEventsPath(ctx)).some((l) => l.includes('"id":"x"')),
++      `${key}: a line still carries the stub's un-ULID id`)
++    assert.deepEqual(directCalls(ctx), [],
++      `${key}: the boot minted its ids with a direct node or gh call`)
++  }
++})
++
++// ── #703 (i) the evidence copy  [M5] ─────────────────────────────────────────
++
++test('the committed events.jsonl is byte-identical to the run dir\'s  [#703 M5 / leg (i)]', () => {
++  for (const key of ['green', 'hold', 'refused']) {
++    const ctx = ctxOf(key)
++    const mine = fs.readFileSync(runEventsPath(ctx))
++    const committedCopy = fs.readFileSync(evidenceEventsPath(ctx))
++    assert.deepEqual(committedCopy, mine, `${key}: the evidence copy differs from the run dir's file`)
++    assert.deepEqual(publishOf(evidenceEvents(ctx)).map(unstamped),
++      publishIn(ctx).map(unstamped), `${key}: publish lines included`)
++    assert.ok(publishOf(evidenceEvents(ctx)).length > 0, `${key}: and there are some`)
++  }
++})
++
++// ── #703 (j) ultralearn's reader  [M6] ───────────────────────────────────────
++
++/** `fleet_events.py` over a run directory, as its non-empty stdout lines. */
++const timeline = (ctx) => {
++  const r = spawnSync('python3', [FLEET_EVENTS_PY, runDirOf(ctx)], { encoding: 'utf8' })
++  assert.equal(r.status, 0, `fleet_events.py exited ${r.status}: ${r.stderr}`)
++  return r.stdout.split('\n').filter((l) => l.trim() !== '')
++}
++
++test('fleet_events.py renders the merge, the hold and the refusal  [#703 M6 / leg (j)]', () => {
++  const merged = timeline(ctxOf('green'))
++  const last = merged[merged.length - 1]
++  assert.ok(last.includes('publish:merge') && last.includes(MERGE_SHA),
++    `the last line names the merge and the squash sha: ${last}`)
++  const before = merged[merged.length - 2]
++  assert.ok(before.includes('publish:pr') && before.includes(PR_URL),
++    `and the line before it carries the PR URL: ${before}`)
++
++  const held = timeline(ctxOf('hold'))
++  const heldLast = held[held.length - 1]
++  assert.ok(heldLast.includes('publish:hold') && heldLast.includes('hold=1'),
++    `a held run ends on its hold: ${heldLast}`)
++
++  const refused = timeline(ctxOf('refused'))
++  const refusedLast = refused[refused.length - 1]
++  assert.ok(refusedLast.includes('publish:merge') && refusedLast.includes('refused')
++    && refusedLast.includes('405'), `a refused merge names the code: ${refusedLast}`)
++})
++
++// ── #703 (k) the contract's Publish bullet  [M7] ─────────────────────────────
++//
++// The `- **Publish:**` bullet ALONE, the same range the first `Run:` cuts. What
++// the rest of that document, ultralearn's reader and the engine's event writer
++// still are is the `Run:` commands' business — the driver hands those the base
++// commit, and this file compares nothing to a commit.
++
++test('the Publish bullet names the three kinds and their fields  [#703 M7 / leg (k)]', () => {
++  const publish = section(CONTRACT, /^- \*\*Publish:\*\*/, /^- \*\*Integration naming/)
++  for (const word of [
++    'publish:pr', 'publish:hold', 'publish:merge',
++    'url', 'number', 'draft', 'why', 'left', 'detail',
++    'checks red', 'checks pending', 'refused',
++  ]) {
++    assert.ok(publish.includes(word),
++      `the Publish bullet does not name \`${word}\`: ${publish}`)
++  }
++})
++
+ runTests(tests)
+diff --git a/tests/test_fleet_suite.py b/tests/test_fleet_suite.py
+index d2ac6046e91998073a67cf5302a4886726828616..4a8bcd4c8b355773575208bbe0d2848789a360a3 100644
+--- a/tests/test_fleet_suite.py
++++ b/tests/test_fleet_suite.py
+@@ -5,9 +5,16 @@ FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
+ 
+ # Measured wall at 0.3.11: 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s. Under
+ # `--dist load` a worker that picks up an 83 s sim last holds the whole suite
+-# open, so the six longest go out first, longest first; the rest follow
++# open, so the longest go out first, longest first; the rest follow
+ # alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
+-SLOW_FIRST = ('test_run_engine_examiner.mjs', 'test_sandbox_boot.mjs',
++#
++# `test_sandbox_boot_merge.mjs` leads it because it is no longer a sim of its
++# own size: its last leg re-runs the seven sibling boot sims in-process to prove
++# the shared rig stayed additive, so its wall is its own plus all of theirs, and
++# every leg added to a sibling lands on it twice. It is the longest pole in the
++# suite, which is also why `timeout` below is what it is.
++SLOW_FIRST = ('test_sandbox_boot_merge.mjs',
++              'test_run_engine_examiner.mjs', 'test_sandbox_boot.mjs',
+               'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
+               'test_run_engine_proof_runs.mjs', 'test_deadline_slack.mjs')
+ 
+@@ -38,10 +45,20 @@ def _ensure_node_modules():
+                            cwd=FLEET, check=True, capture_output=True)
+ 
+ 
++# The cap is per sim, and it is a hang detector, not a budget: a sim that has
++# not spoken in this long is wedged, not slow. 120 s was a fit for a fleet whose
++# longest sim was 83.5 s, and it stopped being one when the nesting above made
++# `test_sandbox_boot_merge.mjs` the sum of eight sims — ~130 s of wall on an idle
++# four-core box, and every core busy with a peer worker under `-n auto` puts it
++# near 150 s. 300 s keeps roughly the margin over the longest pole that 120 s
++# had over 83.5 s.
++MJS_TIMEOUT = 300
++
++
+ @pytest.mark.parametrize("path", TESTS, ids=[os.path.basename(p) for p in TESTS])
+ def test_fleet_mjs(path):
+     _ensure_node_modules()
+-    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=120)
++    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+     assert r.returncode == 0, r.stdout + r.stderr
+     assert "ALL TESTS PASSED" in r.stdout
+ 

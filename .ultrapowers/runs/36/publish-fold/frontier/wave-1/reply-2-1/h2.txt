@@ -1,0 +1,7 @@
+# test_sandbox_boot_merge.mjs leads it because leg (j) re-runs seven sibling
+# sims inside itself: its wall is theirs plus its own, so it is the longest sim
+# there is and it grows whenever any of the seven does — every leg added to a
+# sibling lands on it twice, which is also why `timeout` below reads
+# MJS_TIMEOUT rather than a literal.
+SLOW_FIRST = ('test_sandbox_boot_merge.mjs', 'test_run_engine_examiner.mjs',
+              'test_sandbox_boot.mjs',

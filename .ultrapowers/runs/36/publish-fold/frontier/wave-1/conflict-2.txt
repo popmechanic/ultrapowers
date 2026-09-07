@@ -1,0 +1,92 @@
+import fcntl
+import glob, os, subprocess, pytest
+
+FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
+<<<<<<< begin added both
+
+======= begin added frontier
+# Measured wall at 0.3.18: 106 s, 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s.
+# Under `--dist load` a worker that picks up a 106 s sim last holds the whole
+# suite open, so the seven longest go out first, longest first; the rest follow
+======= begin deleted frontier
+# Measured wall at 0.3.11: 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s. Under
+# `--dist load` a worker that picks up an 83 s sim last holds the whole suite
+======= begin added run-36
+# open, so the longest go out first, longest first; the rest follow
+>>>>>>> end conflict
+# alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
+<<<<<<< begin added run-36
+#
+# `test_sandbox_boot_merge.mjs` leads it because it is no longer a sim of its
+# own size: its last leg re-runs the seven sibling boot sims in-process to prove
+# the shared rig stayed additive, so its wall is its own plus all of theirs, and
+# every leg added to a sibling lands on it twice. It is the longest pole in the
+# suite, which is also why `timeout` below is what it is.
+SLOW_FIRST = ('test_sandbox_boot_merge.mjs',
+              'test_run_engine_examiner.mjs', 'test_sandbox_boot.mjs',
+======= begin added frontier
+# test_sandbox_boot_merge.mjs leads it because leg (j) re-runs seven sibling
+# sims inside itself: its wall is theirs plus its own, so it is the longest sim
+# there is and it grows whenever any of the seven does.
+SLOW_FIRST = ('test_sandbox_boot_merge.mjs', 'test_run_engine_examiner.mjs',
+              'test_sandbox_boot.mjs',
+>>>>>>> end conflict
+              'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
+              'test_run_engine_proof_runs.mjs', 'test_deadline_slack.mjs')
+
+
+def _slowest_first(paths):
+    """`paths` ordered SLOW_FIRST-then-alphabetical by basename."""
+    by_name = {os.path.basename(p): p for p in paths}
+    ordered = [by_name[name] for name in SLOW_FIRST if name in by_name]
+    ordered += [by_name[name] for name in sorted(by_name) if name not in SLOW_FIRST]
+    return ordered
+
+
+TESTS = _slowest_first(glob.glob(os.path.join(FLEET, "tests", "test_*.mjs")))
+
+
+def _ensure_node_modules():
+    """Install fleet deps at most once even under pytest-xdist (#426): every
+    worker process runs this check-then-act, so the check must sit inside an
+    exclusive flock — otherwise a second worker sees the node_modules dir npm
+    creates first and runs node against a half-written tree. package.json is
+    the lock file: always present, never modified by flock (advisory only).
+    No unlocked fast path: npm creates node_modules early, so an isdir check
+    outside the lock would pass while a peer's install is still writing."""
+    with open(os.path.join(FLEET, "package.json")) as lockf:
+        fcntl.flock(lockf, fcntl.LOCK_EX)
+        if not os.path.isdir(os.path.join(FLEET, "node_modules")):
+            subprocess.run(["npm", "install", "--no-audit", "--no-fund"],
+                           cwd=FLEET, check=True, capture_output=True)
+
+
+# The cap is per sim, and it is a hang detector, not a budget: a sim that has
+# not spoken in this long is wedged, not slow. 120 s was a fit for a fleet whose
+# longest sim was 83.5 s, and it stopped being one when the nesting above made
+# `test_sandbox_boot_merge.mjs` the sum of eight sims — ~130 s of wall on an idle
+# four-core box, and every core busy with a peer worker under `-n auto` puts it
+# near 150 s. 300 s keeps roughly the margin over the longest pole that 120 s
+# had over 83.5 s.
+MJS_TIMEOUT = 300
+
+
+@pytest.mark.parametrize("path", TESTS, ids=[os.path.basename(p) for p in TESTS])
+def test_fleet_mjs(path):
+    _ensure_node_modules()
+<<<<<<< begin added frontier
+    # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+    # contention, and that sim is now test_sandbox_boot_merge.mjs, which spends
+    # most of its own wall re-running seven siblings one after another. A wall
+    # only a little above that sim's honest runtime reports a slow box as a
+    # broken suite; this one is a deadlock catcher, not a budget.
+    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=300)
+======= begin added run-36
+    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+>>>>>>> end conflict
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "ALL TESTS PASSED" in r.stdout
+
+
+def test_fleet_has_tests():
+    assert TESTS, "fleet/tests/ must contain at least one test_*.mjs"

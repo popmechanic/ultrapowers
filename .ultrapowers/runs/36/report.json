@@ -1,0 +1,147 @@
+{
+  "integrationBranch": "ultra/integration-run-36",
+  "baseSha": "00fb22436c9fad7f6e37de3f11f73f709675ad35",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "de766eee1b1c61316c62e1b8b8d7f5d32dae2f8b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-36/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Duplicated event-log readers: `fleet/tests/_sandbox_boot_helpers.mjs` exports `RUN_DIR_PATH`, `ENGINE_EVENT_ID`, `ENGINE_EVENT_LINE`, `B32`, `runDir`, `eventsRaw`, `evidenceEventsRaw`, `eventsFile`, `evidenceEventsFile`, `events`, `evidenceEvents`, `publishEvents`, `eventsOfKind` and `ulidTs` (the Context asks for exactly this, so the siblings can read the same record), but `fleet/tests/test_sandbox_boot_selfmerge.mjs` imports none of them and re-implements every one locally: `HOME_TARGET_RUN`/`runDirOf`/`runEventsPath` restate `RUN_DIR_PATH`+`runDir`, `evidenceEventsPath` restates `evidenceEventsFile`, `eventsAt`/`events`/`evidenceEvents`/`isPublish`/`publishOf`/`ofKind` restate `events`/`evidenceEvents`/`publishEvents`/`eventsOfKind`, and `B32`/`tsOfId`/`ENGINE_EVENT` restate `B32`/`ulidTs`/`ENGINE_EVENT_LINE`. The result is two sources of truth for the rig's run-dir path and for the engine stub's line, one of which (the helpers') has no call site anywhere in the tree and so is exercised by nothing. Fix inside this task's FILES: import `runDir`, `eventsFile`, `evidenceEventsFile`, `events`, `evidenceEvents`, `publishEvents`, `eventsOfKind`, `ulidTs` and `ENGINE_EVENT_LINE` from `./_sandbox_boot_helpers.mjs` and delete the local copies, deriving the leg's `ENGINE_EVENT` from `JSON.parse(ENGINE_EVENT_LINE)` so the stub line is pinned in one place. Nothing a criterion depends on is at risk today \u2014 the exam is green \u2014 so this is advisory.; Silent type fallback in `append_event`'s writer (`fleet/sandbox-boot.sh`): the `i` tag does `try: event[name] = int(value) / except ValueError: event[name] = value`, so a `number` that is not an integer is recorded as a JSON string instead of failing or logging. The contract sentence this task adds and M1 both fix `number` as the answer's integer, and the surrounding code otherwise has explicit error paths (the `case \"$out\"` arm that logs `event: could not append`). Suggest logging the coercion failure through the same `log` path rather than substituting a string cell. The green case is covered by leg (a), so this is defensive-path only.; Duplicated reader logic: `fleet/tests/_sandbox_boot_helpers.mjs` gains thirteen new exports for reading the event log \u2014 `RUN_DIR_PATH`, `B32`, `ENGINE_EVENT_ID`, `runDir`, `eventsRaw`, `evidenceEventsRaw`, `eventsFile`, `evidenceEventsFile`, `events`, `evidenceEvents`, `publishEvents`, `eventsOfKind`, `ulidTs` \u2014 and nothing in the tree imports any of them (only `ENGINE_EVENT_LINE` is used, inside the stub script). `fleet/tests/test_sandbox_boot_selfmerge.mjs` instead re-implements every one of them locally: `HOME_TARGET_RUN`/`runDirOf` re-spells the run-dir path the helper's `RUN_DIR_PATH`/`runDir` already spells, `evidenceEventsPath` re-spells `evidenceEventsFile`, `eventLines`/`eventsAt`/`events`/`evidenceEvents` re-spell `eventsRaw`+`events`/`evidenceEvents`, `isPublish`/`publishOf`/`publishIn` re-spell `publishEvents`, `ofKind` re-spells `eventsOfKind`, and `B32`/`tsOfId` re-spell `B32`/`ulidTs`. The task's Context asks for these readers in the helpers \"so the sibling sims can read the same record\"; as written there are two copies that can drift, and the shared one is dead code in a file a concurrent run is also editing. Fix: import `runDir`, `eventsFile`, `evidenceEventsFile`, `events`, `evidenceEvents`, `publishEvents`, `eventsOfKind`, `ulidTs`, `B32` from `./_sandbox_boot_helpers.mjs` and delete the local re-definitions, keeping only the sim-specific `unstamped`, `ID_RE` and the one-JSON-object-per-line assertion (which is worth folding into the helper's `events`). No exam leg changes behaviour.; M4/leg (h) requires \"the file's first line is byte-identical to the line the engine left\", and Global Constraint 1 requires that no line the engine wrote is changed. The submission checks this as `assert.deepEqual(all[0], ENGINE_EVENT)` (fleet/tests/test_sandbox_boot_selfmerge.mjs, leg (h)) \u2014 a comparison of the *parsed* object, which would still pass if the boot rewrote that line with different bytes (reordered keys, different spacing, `ensure_ascii` differences). The helpers already export `ENGINE_EVENT_LINE` for exactly this check and it is unused. The implementation itself is correct (`open(path, \"a\")` only appends), so no criterion is actually false; the exam clause is just verified in a weaker form than it names.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-36/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 311.08s (0:05:11) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "bash -c 'b=$(sed -n \"/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p\" fleet/CONTRACT.md); for w in publish:pr publish:hold publish:merge url number draft why left detail \"checks red\" \"checks pending\" refused; do printf \"%s\" \"$b\" | grep -q -- \"$w\" || exit 1; done'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'diff <(git show $ULTRA_BASE:fleet/CONTRACT.md | sed \"/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/{/^- \\*\\*Integration naming/!d;}\") <(sed \"/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/{/^- \\*\\*Integration naming/!d;}\" fleet/CONTRACT.md)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultralearn/ fleet/run-waves.mjs fleet/run-engine.mjs fleet/run-main.mjs fleet/publish-fold.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py tests/test_fleet_events.py",
+      "exit": 0,
+      "stdout": ".......................................                                  [100%]\n39 passed in 0.11s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'for f in fleet/tests/test_sandbox_boot.mjs fleet/tests/test_sandbox_boot_edges.mjs fleet/tests/test_sandbox_boot_merge.mjs fleet/tests/test_sandbox_boot_approval_evidence.mjs fleet/tests/test_sandbox_boot_record.mjs; do node \"$f\" >/dev/null || exit 1; done'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -c 'for f in write_status phase_refresher last_phase; do diff <(git show $ULTRA_BASE:fleet/sandbox-boot.sh | sed -n \"/^$f() *{/,/^}/p\") <(sed -n \"/^$f() *{/,/^}/p\" fleet/sandbox-boot.sh) || exit 1; done'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 316064,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................s............... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 315.73s (0:05:15) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 277.88s (0:04:37) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b38d3ef4f956239a2cfd99bce4bf64b9a117625c",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-36/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-36/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8039999999999999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 the publish:pr / publish:hold / publish:merge appends on a real target (task 1, Claim)",
+      "reason": "external",
+      "why": "Every leg of fleet/tests/test_sandbox_boot_selfmerge.mjs drives the boot through the PATH-shim stubs for curl/git/gh/systemd-run: PR_URL, the PR number, MERGE_SHA, the 405 body and the check-runs payloads are all rig fixtures. The events' agreement with a live GitHub REST answer (html_url first-match, the merge PUT's sha, a 405 whose message really says 'not mergeable') and the presence of python3 on a production sandbox VM cannot be executed in this environment; the driver's suite and Run: evidence confirm only the stubbed path."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: examiner: (j), its second half: `git diff --quiet $ULTRA_BASE -- skills/ultralearn/ fleet/run-waves.mjs fleet/run-engine.mjs fleet/run-main.mjs fleet/publish-fold.mjs` exits 0 \u2014 The task's HARD CONSTRAINT forbids the committed sim from comparing the tree to BASE, reading ULTRA_BASE or embedding a sha (that is how run-35 parked). Encoded instead by the third `Run:`, which the driver runs with the base commit supplied. The exam encodes leg (j)'s python3 half in full.",
+    "task 1: examiner: (k), the second, fourth and fifth `Run:` commands: the CONTRACT.md remainder diffed against BASE, the two pytest files, and the five sibling sandbox-boot sims \u2014 Same hard constraint \u2014 the BASE-relative diff cannot live in the suite, and re-running sibling node sims from inside this one would double the file's wall clock against a 120 s cap. The first `Run:`'s check (the `- **Publish:**` bullet alone naming publish:pr/publish:hold/publish:merge and url, number, draft, why, left, detail, `checks red`, `checks pending`, refused) IS encoded in-file, over the same line range and the same word list, so it can never be red where the `Run:` is green.",
+    "wave 1: candidate adopted after reconcile (a29d65d97718c2117676800c4bbcc081ed354081 + fixes \u2192 b38d3ef4f956239a2cfd99bce4bf64b9a117625c)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

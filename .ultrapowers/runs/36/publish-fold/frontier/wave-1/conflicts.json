@@ -1,0 +1,22 @@
+[
+  {
+    "i": 1,
+    "path": "fleet/tests/_sandbox_boot_helpers.mjs",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-36/publish-fold/frontier/wave-1/conflict-1.hunks.txt",
+    "hunkCount": 1
+  },
+  {
+    "i": 2,
+    "path": "tests/test_fleet_suite.py",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-36/publish-fold/frontier/wave-1/conflict-2.hunks.txt",
+    "hunkCount": 3
+  }
+]
