@@ -111,7 +111,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
 - **Label ontology (audit of 2026-09-04, 68 issues):** exactly one KIND
   (`wayfinder:map|grilling|research|prototype|task`, `bug`, `enhancement`, `experiment`,
   `watch-item`) plus at most one PROGRAM (`merge-frontier`, `experience-compiler`,
-  `verification-frontier`, `peer-review`, `fleet`). `one-driver`, `authoring-frontier` and
+  `verification-frontier`, `peer-review`, `fleet`, `determinism`). `one-driver`, `authoring-frontier` and
   `distill` are retired — off every open issue, kept on closed ones for history.
 - **Superpowers is HITL-only:** fleet sandboxes provision ultrapowers + engine only —
   superpowers never enters a sandbox. Revisit migrating off it only on a third
