@@ -16,15 +16,20 @@ runs inside Claude Code — no API key, no external calls.
    transcript on this machine — the driver runs in a sandbox, so nothing local
    ever sees one:
    `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --evidence <owner>/<repo> --run <N>`
-   reads each run's committed record off its `ultra/evidence-run-<N>` branch,
-   or pass an unpacked run directory as a positional argument. It writes
-   `bundle.json` + `slice.md` into the gitignored cache
+   reads each run's committed record off its `ultra/evidence/run-<N>` tag —
+   since #624 the tag is the record of every finished run — and falls back to
+   the `ultra/evidence-run-<N>` branch, which exists only while that run is in
+   flight. Or pass an unpacked run directory as a positional argument — the
+   positional `paths` also takes a tree holding several of them, or a
+   sandbox-logs tarball. It writes `bundle.json` + `slice.md` into the
+   gitignored cache
    `~/.claude/ultralearn/runs/run-<N>-<date>/` — the run id and its opening day
    in UTC (`run-30-2026-08-30`), so a restarted numbering never lands on an
-   older run's bundle. Step 2 and step 3 are unchanged. `--run` is repeatable
-   and restricts the pull; `--force` rebuilds a cached bundle. A fleet run
-   directory is one holding an `events.jsonl`; runs 10–23 predate it and are
-   the commissioned read's.
+   older run's bundle. `--run` is repeatable and restricts the pull; `--force`
+   rebuilds a cached bundle. `--engine-version <release>` stamps the bundle's
+   version explicitly; without it that version is a date guess, and the merge
+   will not stamp a finding from it. A fleet run directory is one holding an
+   `events.jsonl`.
    Incremental: a cached bundle is "already cached" only when the record's sha
    matches its `evidenceSha` — a record that has moved since (a re-publish, a
    re-tagged run) is rebuilt, not skipped.
@@ -40,39 +45,36 @@ runs inside Claude Code — no API key, no external calls.
    — accepted. Promote trigger for a drain detector: a sense pass where
    commissioned reads **miss or misread** drain evidence; record the miss as
    a ledger finding.
-   **Runs 10–23 only — fleet evidence bundles read the commissioned way**
-   (#292). Superseded for any run carrying an `events.jsonl` (24+), which
-   `harvest_fleet_runs.py` above harvests mechanically. For the older runs the
-   drive layer is invisible to every harvester, so the evidence dir is
-   first-class sense input, read the commissioned way. Layout (per run, under the repo's
-   `.claude/ultrapowers/fleet-runs-<date>/` or the orchestrator's
-   `<dbDir>-evidence/`): `gate-read-<runId>.json` (the §W1d read, verbatim) +
-   `gate-read-<runId>.detail.json` (triage detail), `stat-<runId>.json`
-   (the raw control-plane payload), and `sandbox-logs/<vm>-<stamp>/sandbox-logs.tgz`
-   holding `shim.log`, `fleet-run.json`, the engine transcripts under the
-   sandbox's Claude project dir, and the in-repo `run-*/` dirs. Dispatch one reader per
-   fleet run with the bundle contents; readers set `evidenceAbstracted: true`,
-   use the fleet `runId` as `runId`, and stamp `engineVersion` from the run's
-   version stamp. Pilot corpus: `.claude/ultrapowers/fleet-runs-2026-08-26/`
-   (four distinct drive failure modes + one green engine run) and
-   `fleet-runs-2026-08-27/` (run-13, green).
 2. **Read.** For each new bundle, dispatch a subagent with
    `references/reading-lenses.md` as its instructions plus the bundle's
    `bundle.json` and `slice.md`. The agent returns a JSON array of findings.
    Dispatch readers in parallel. Every reader applies all five lenses,
    including the open-ended `frontier` pass that catches emergent behavior.
 3. **Merge.** Collect the findings and merge them behind the redaction guard.
-   Build both bundle lookups once and pass them to `merge_findings`:
+   Build both bundle lookups once, read the released-version set, and pass all
+   three to `merge_findings`:
    `origin_lookup, engine_lookup = bundle_lookups("~/.claude/ultralearn")`, then
-   `merge_findings(findings, "docs/superpowers/observations/ledger.jsonl", origin_lookup, engine_lookup)`.
+   `released = released_versions()` (from `_readers`), then
+   `merge_findings(findings, "docs/superpowers/observations/ledger.jsonl", origin_lookup, engine_lookup, released=released)`.
    `origin_lookup(runId)` reads `origin` from the cached `bundle.json` (fail
    closed to `foreign`); `engine_lookup(runId)` reads `engineVersion.epoch`, so
    each ledger entry records the ultrapowers version the finding was observed
-   under — letting `distill` weigh whether a finding predates a fix. Then
+   under — letting `distill` weigh whether a finding predates a fix. A bundle
+   whose epoch was guessed from the run's date stamps no version at all, and a
+   finding stamped with a version this plugin never released is refused — never
+   written, and counted under the returned `refused`. Then
    `regenerate_digest(...)` rewrites `docs/superpowers/observations/ledger.md`
    (the version shows as `_(vX.Y.Z)_`). **Foreign verbatim evidence never
    lands** — the guard drops it.
    Script: `python3 skills/ultralearn/scripts/merge_ledger.py`
+
+**Historical corpus** — runs 10–23 predate `events.jsonl` (pre-#421), so no
+harvester reads them and no sense pass expects to. Their evidence survives as
+archaeology only, in `.claude/ultrapowers/fleet-evidence-archive/`: one
+`sandbox-logs/fleet-run-<N>-<stamp>/sandbox-logs.tgz` tarball per run (18 of
+them, run 10 onward), beside that era’s per-run gate reads and control-plane
+payloads. The archive is untracked and absent from every sandbox — read it on
+the laptop, or not at all.
 
 ## Verb 2 — `ultralearn distill` (propose)
 

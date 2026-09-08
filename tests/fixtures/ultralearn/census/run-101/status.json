@@ -1,0 +1,13 @@
+{
+  "run": "101",
+  "state": "done",
+  "phase": "merged",
+  "pr": "https://github.com/o/r/pull/1",
+  "prAuthor": "o",
+  "merged": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "branch": "ultra/integration-run-101",
+  "vm": "fleet-r101-x",
+  "startedAt": "2026-08-30T22:40:00Z",
+  "updatedAt": "2026-08-30T23:00:00Z",
+  "error": null
+}

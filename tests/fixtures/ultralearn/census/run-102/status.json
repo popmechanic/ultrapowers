@@ -1,0 +1,13 @@
+{
+  "run": "102",
+  "state": "parked",
+  "phase": "needs-ack",
+  "pr": null,
+  "prAuthor": null,
+  "merged": null,
+  "branch": "ultra/integration-run-102",
+  "vm": "fleet-r102-x",
+  "startedAt": "2026-08-30T23:10:00Z",
+  "updatedAt": "2026-08-30T23:25:00Z",
+  "error": null
+}

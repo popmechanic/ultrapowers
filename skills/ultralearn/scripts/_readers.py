@@ -129,6 +129,21 @@ def release_timeline():
         return ()
 
 
+def released_versions():
+    """The set of version strings this plugin actually released, read off
+    `release_timeline()` — or None when that history is not there to judge by
+    (no git, not a repo, a shallow clone whose log holds nothing).
+
+    None and the empty set are different answers: None means "cannot judge",
+    and a caller must not refuse a version merely because it cannot check.
+    Deliberately NOT cached — `release_timeline` carries the one cache, and a
+    caller that swaps the timeline must see the new answer here too."""
+    timeline = release_timeline()
+    if not timeline:
+        return None
+    return frozenset(ver for _, ver in timeline)
+
+
 def collapse_timeline(rows):
     """Collapse CONSECUTIVE runs of one version, keeping the first of each run.
 

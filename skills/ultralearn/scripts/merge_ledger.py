@@ -14,6 +14,16 @@ from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
 
 LENSES = ["friction", "routing", "operator", "cost", "frontier"]
 
+# #696: a bundle whose engineVersion.basis is one of these carries a version
+# GUESSED from the run's date, not read from anything. The guess dated whole
+# eras of findings to versions the plugin never released, so a date-basis
+# bundle now stamps no version at all: an absent stamp is honest, a wrong one
+# is not. The read bases — "explicit" (the harvester was told), and
+# "plugin-cache-path" (a foreign run's own cache directory named it) — stay
+# trusted, as does a bundle with no basis key (August's, written before the
+# field existed).
+DATE_GUESS_BASES = frozenset({"home-repo-date", "foreign-date-upper-bound"})
+
 
 def finding_id(finding):
     key = json.dumps({k: finding.get(k) for k in ("runId", "lens", "title")},
@@ -55,14 +65,30 @@ def _read_jsonl(path):
     return out
 
 
-def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None):
+def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None,
+                   released=None):
+    """Append the committable findings to the ledger; return counts.
+
+    `released` is the set of version strings this plugin actually released
+    (`_readers.released_versions()`). When it is given, a finding whose engine
+    lookup answers a version outside it is refused — not written, and counted
+    under `refused`. A lookup answering None is not refused on that ground:
+    an unknown version is a missing stamp, not a false one. When `released` is
+    None the history is not there to judge by, so nothing is refused for its
+    version. `skipped` stays `len(findings) - added`, so a refused finding is
+    skipped too."""
     ledger_path = Path(ledger_path)
     existing = _read_jsonl(ledger_path)
     seen = {f.get("id") for f in existing}
     added = []
+    refused = 0
     for f in findings:
         origin = origin_lookup(f.get("runId"))
         engine_version = engine_lookup(f.get("runId")) if engine_lookup else None
+        if (released is not None and isinstance(engine_version, str)
+                and engine_version not in released):
+            refused += 1
+            continue
         red = redact_finding(f, origin, engine_version)
         if red is None or red["id"] in seen:
             continue
@@ -73,7 +99,8 @@ def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None):
         with ledger_path.open("a") as fh:
             for f in added:
                 fh.write(json.dumps(f, sort_keys=True) + "\n")
-    return {"added": len(added), "skipped": len(findings) - len(added)}
+    return {"added": len(added), "skipped": len(findings) - len(added),
+            "refused": refused}
 
 
 def _redirect_rate_table(findings):
@@ -159,7 +186,9 @@ def _opened_at(bundle):
 def bundle_lookups(cache_dir):
     """Build (origin_lookup, engine_lookup) over the cached run bundles under
     <cache_dir>/runs/*/bundle.json. origin fails closed to 'foreign'; the engine
-    epoch is None when the bundle or field is missing. Each bundle is read at
+    epoch is None when the bundle or field is missing, and None again when the
+    bundle's `engineVersion.basis` says the epoch was guessed from a date
+    (DATE_GUESS_BASES) rather than read. Each bundle is read at
     most once. Pass both to merge_findings so ledger entries carry the
     ultrapowers version a finding was observed under, surfaced in the digest.
 
@@ -214,6 +243,10 @@ def bundle_lookups(cache_dir):
 
     def engine_lookup(run_id):
         ev = _bundle(run_id).get("engineVersion")
-        return ev.get("epoch") if isinstance(ev, dict) else None
+        if not isinstance(ev, dict):
+            return None
+        if ev.get("basis") in DATE_GUESS_BASES:
+            return None            # a date guess is not a version this reads
+        return ev.get("epoch")
 
     return origin_lookup, engine_lookup
