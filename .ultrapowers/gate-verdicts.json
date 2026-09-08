@@ -1,0 +1,109 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "7877924e780036f004fff248e559b175c90a2a3a742f7aa7585143341c000966",
+   "verdict": "pass",
+   "reason": "Every Machine clause has legs that would fail if it were false \u2014 each M1/M2/M3 example command has its own leg asserting the exact verdict polarity and reason substrings (including the regex-only, literal-fallback, and non-first-word cases), leg (t) proves the CLI output and denial-log at the CLI layer, and legs (u)\u2013(w) prove the worker's env wiring (first line wins, absent key when no TEST COMMAND) via a recorded spawn \u2014 matching the claim's hook-and-worker layers."
+  },
+  "2": {
+   "hash": "b8bdee9a0942f04a5ec1df4bd12eb06c674de2b791fe7b6f221c3233805db14e",
+   "verdict": "pass",
+   "reason": "Every Machine clause has a leg that would fail if the clause were false, the negative cases (M3, M5) pin the Claim's 'only when' to a kept DONE reply versus BLOCKED or a dead implementer, M1's dispatch counts plus the review-prompt hunk check pin 'keeping the captured patch', and all legs sit at the engine-sim layer where the driver's dispatch decisions live."
+  }
+ },
+ "tally": {
+  "dispatched": 7,
+  "rejected": 4,
+  "rounds": {
+   "1": {
+    "dispatched": 1,
+    "pass": 0,
+    "fail": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "pass": 0,
+    "fail": 1
+   },
+   "3": {
+    "dispatched": 2,
+    "pass": 0,
+    "fail": 2
+   },
+   "4": {
+    "dispatched": 2,
+    "pass": 2,
+    "fail": 0
+   },
+   "5": {
+    "dispatched": 1,
+    "pass": 1,
+    "fail": 0
+   }
+  },
+  "note": "Round 1 (task 1) rejected; its verdict text was not preserved in this session's record. Round 2 (task 1, hash 47c390de) rejected: the Claim's 'or any claude process' was only exercised with FLEET_TEST_CMD absent, while the live worker always sets it \u2014 an implementation denying claude patterns solely in the no-TEST-COMMAND branch would pass every leg; and legs (g)/(h) asserted deny without 'no allow'. Fix: M2 now covers both environments, legs (i)\u2013(k) deny pkill -f claude / pkill claude / killall claude with FLEET_TEST_CMD set, and every M2 leg asserts no allow. Round 3 rejected both tasks: task 1 because every deny leg had the kill as the command's first word (a first-token check would pass), task 2 because the Claim's 'only when the implementer ended success' had no falsifier for an implementer that returned a non-kept reply. Fix: task 1 gained M1/M2 non-leading kills (legs f, m, n); task 2 gained M5 + leg (e), a dead examiner beside a BLOCKED implementer takes the BASE pair lane. Round 4 passed both; task 1's reader named two adoptable findings (second Test file for the createRunWorker legs; leg (e) reason wording), the author adopted them and round 5 passed the result with no findings."
+ },
+ "history": [
+  {
+   "round": 2,
+   "task": "1",
+   "hash": "47c390de31d0fc3bbfb2f1474e67d29f366e0788119782f4e383dd233b197a03",
+   "verdict": "fail",
+   "reason": "M1\u2013M5 are each falsified by a leg at the right layer (unit decide(), CLI on stdin with the denials file, spawnFn stub for the env), but the Claim's 'or any `claude` process' is only exercised with FLEET_TEST_CMD absent (M2/legs f\u2013h); an implementation that denies `claude` patterns solely in the fallback branch when no TEST COMMAND is set would pass every leg while the claim is false in the live case, where createRunWorker always sets FLEET_TEST_CMD.",
+   "findings": [
+    "No leg (and no Machine clause) checks that `pkill -f claude` / `pkill claude` / `killall claude` is denied while FLEET_TEST_CMD is set \u2014 the configuration the worker actually spawns under (M5) \u2014 so the claim's 'or any claude process' can be false at the layer that matters.",
+    "Legs (g) and (h) assert `deny` but not 'no `allow`', unlike every other deny leg; a verdict carrying both would slip through for those two rows."
+   ]
+  },
+  {
+   "round": 3,
+   "task": "1",
+   "hash": "e921d6d933ce627233c97155822f6e0f7aa879ae754c091af904b0cda98b5390",
+   "verdict": "fail",
+   "reason": "Every deny leg places pkill/killall as the leading word, so an implementation that inspects only the first token of the command passes the whole exam while `echo x && pkill -f claude` or `cd /tmp; killall claude` sails through \u2014 the Claim's 'argv contains' is not falsified.",
+   "findings": [
+    "No leg expects `deny` for a kill command in a non-leading position (after `&&`, `;`, `|`, or a `cd`); leg (o) is the only compound command and it is an allow case with a non-matching pattern, so a first-token-only check is indistinguishable from an argv-contains check under this exam.",
+    "The Claim's parenthetical 'quoted from #762' is asserted by no clause or leg (minor; the machine clauses themselves are covered)."
+   ]
+  },
+  {
+   "round": 3,
+   "task": "2",
+   "hash": "21d707106be66ab200b0ff9c79cdb0e725e06267d8d73fcf4a04d835cc83284d",
+   "verdict": "fail",
+   "reason": "The Claim's restriction 'only when the implementer ended success with its patch captured' is falsified only for the both-reject case (M3); the exam would still pass if the driver re-dispatched the examiner alone after an implementer that returned non-success or DONE without a captured patch, so the 'only when' half of the sentence is not necessarily true.",
+   "findings": [
+    "No clause or leg covers a dead examiner paired with an implementer that returns (rather than rejects) without success or without a driver-captured patch \u2014 e.g. impl:<id> resolves FAILED/BLOCKED, or DONE with an empty patch.",
+    "M3/leg (c) only proves the both-SIGTERM branch falls back to the lane retry; it does not distinguish 'implementer ended success' from 'implementer returned at all' as the trigger condition."
+   ]
+  },
+  {
+   "round": 4,
+   "task": "1",
+   "hash": "7acaf9015c342e5366af4ec7ab20f8c8fef7c0c3ca8d10ad9a339e017b1dbb68",
+   "verdict": "pass",
+   "reason": "Every Machine clause has legs that would fail if it were false \u2014 regex match (d), literal fallback (e), non-head kill (f, m, n), the claude target with and without a TEST COMMAND (g\u2013n), the allow negatives including the quoted-data case (o\u2013s), the CLI/denials-file layer (t), and the worker-to-child env link at the spawn seam (u\u2013w).",
+   "findings": [
+    "Leg (e) checks only that the reason contains the pattern and not `TEST COMMAND`/`claude -p` (cosmetic).",
+    "Legs (u)\u2013(w) are listed under the single Test file test_confine_hook.mjs yet exercise createRunWorker, which the second Run line runs from test_run_worker.mjs; the Test line should name both."
+   ],
+   "note": "pass, but the author adopted both findings (second Test file named in Files and Proof; leg (e) reason tightened) and re-dispatched at the new hash"
+  },
+  {
+   "round": 4,
+   "task": "2",
+   "hash": "b8bdee9a0942f04a5ec1df4bd12eb06c674de2b791fe7b6f221c3233805db14e",
+   "verdict": "pass",
+   "reason": "Every Machine clause has a leg that would fail if the clause were false, the negative cases (M3, M5) pin the Claim's 'only when' to a kept DONE reply versus BLOCKED or a dead implementer, M1's dispatch counts plus the review-prompt hunk check pin 'keeping the captured patch', and all legs sit at the engine-sim layer where the driver's dispatch decisions live.",
+   "findings": []
+  },
+  {
+   "round": 5,
+   "task": "1",
+   "hash": "7877924e780036f004fff248e559b175c90a2a3a742f7aa7585143341c000966",
+   "verdict": "pass",
+   "reason": "Every Machine clause has legs that would fail if it were false \u2014 each M1/M2/M3 example command has its own leg asserting the exact verdict polarity and reason substrings (including the regex-only, literal-fallback, and non-first-word cases), leg (t) proves the CLI output and denial-log at the CLI layer, and legs (u)\u2013(w) prove the worker's env wiring (first line wins, absent key when no TEST COMMAND) via a recorded spawn \u2014 matching the claim's hook-and-worker layers.",
+   "findings": []
+  }
+ ]
+}
