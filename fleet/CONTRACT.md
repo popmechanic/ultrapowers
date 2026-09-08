@@ -51,8 +51,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     readers slice — is there on the same terms, present when the engine wrote them.
     The publish fold writes its own `publish-fold/` receipts directory beside them, holding
     `receipt.json` (the fold's record: `{ engineHead, attempts: { "1": { tip, candidate, pushedHead,
-    disposition, reason, path, pathsJoined, resolversDispatched, suite } } }`), `engine-head`,
-    `main.patch`, `run.patch`, `frontier/wave-<attempt>/`, `resolver-brief-<i>-<attempt>.txt`,
+    disposition, reason, path, pathsJoined, resolversDispatched, suite, checks, checkRetries } } }`,
+    where `checks` is the candidate checks the fold ran before the suite — one
+    `{ check, path, result }` per command, and `{ check, exam, path, result }` for an exam a joined
+    path's own task named — and `checkRetries` the number of resolvers a red check
+    sent back), `engine-head`, `main.patch`, `run.patch`, `frontier/wave-<attempt>/`,
+    `frontier/wave-<attempt>-retried/` (the wave a red check re-folded, kept whole),
+    `resolver-brief-<i>-<attempt>.txt`, `resolver-brief-<i>-<attempt>-retry.txt` (the re-brief a red
+    check earned), `exam-<attempt>-<n>.txt` (one per exam run, `n` from 1 in the order they ran),
     `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
     Committed from a detached worktree at every transition **and at every `engine:phase` the boot
     script relays to the page while the engine runs** — one commit per relayed phase, so the
@@ -75,7 +81,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,
   saying so on that run's line. The record is
   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
-  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
+  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`. The publish fold attributes a `Fleet-Run: <N>`
+  frontier commit to its run's tasks only when `ultra/plan/run-<N>` carries the
+  `.ultrapowers/gate-verdicts.json` its plan needs to compile — the record is laid beside the plan as
+  `<stem>.gate-verdicts.json`, a legacy-grammar plan needs none, and a claims-v1 tag without its
+  record compiles to nothing and its commit is a `no plan` line in the contending block.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
   optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`, `hold=1`.
@@ -179,8 +189,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     It folds, runs the suite, and pushes the head with `push_head` — a plain push on attempt 1,
     `--force-with-lease=<branch>:<pushedHead>` on attempt 2. Its disposition is one of `folded`,
     `nothing to join`, `tip unmoved`, `suite red`, `conflict parked` or `cannot fold`, and its receipt is
-    `.ultrapowers/runs/<N>/publish-fold/receipt.json`. A `hold=1` run still folds — only its merge is
-    skipped — and keeps `left open: hold=1`. Amendment 10 holds inside the fold: the only model it may
+    `.ultrapowers/runs/<N>/publish-fold/receipt.json`. The candidate checks it runs before the suite
+    are reasons under those words and never a seventh: a joined path that fails its parser is
+    `cannot fold` with `reason: <path> does not parse`, and a joined path whose own exam — a `- Test:`
+    bullet in the Proof of a task whose Files name that path, on either plan — goes red on the
+    candidate is `suite red` with `reason: <exam> red on <path>`, and the whole suite is not run.
+    A `hold=1` run still folds — only its merge is skipped — and keeps `left open: hold=1`. Amendment 10 holds inside the fold: the only model it may
     dispatch is the read-only `fleet/roles/resolver.md` role answering through `RESOLVER_SCHEMA`, and
     every git command, ref move and push is the script's.
   - after the engine: exit 1 WITH a gate receipt is a verdict (parked), not a failure. `ahead = git rev-list

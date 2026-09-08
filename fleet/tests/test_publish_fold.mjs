@@ -42,7 +42,15 @@ import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
 import { provisionRunTree, execSeam } from '../run-main.mjs'
-import { publishFold } from '../publish-fold.mjs'
+// #751 Task 1 — the parse check: `CANDIDATE_CHECKS` and `parseArgvFor` are the
+// two names the folder produces for this seam.
+import { publishFold, CANDIDATE_CHECKS, parseArgvFor } from '../publish-fold.mjs'
+// #754 Task 2 — exams first: the two names the folder produces for the exam
+// check, and the block module's ordered task list behind `contendingBlock`.
+// (An `import` is hoisted, so these stand with the imports above wherever they
+// are written; they sit here so this task's additions read as one region.)
+import { EXAM_CHECK, examArgvFor } from '../publish-fold.mjs'
+import { contendingBlock, contendingTasks } from '../publish-fold-block.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FOLDER_CLI = path.resolve(HERE, '../publish-fold.mjs')
@@ -123,6 +131,22 @@ const lines = (over = {}, extra = []) => {
   for (const [n, v] of Object.entries(over)) l[Number(n) - 1] = v
   return l.concat(extra).join('\n') + '\n'
 }
+// #751 Task 1 — the parse check: two more ten-line seeded files, whose
+// extensions the fold's parse check recognizes. Neither side of any leg above
+// touches them, so every case's patches, `pathsJoined` and dispositions are
+// what they were.
+const MJS_TEN =
+  Array.from({ length: 10 }, (_, i) => 'export const l' + (i + 1) + ' = ' + (i + 1)).join('\n') + '\n'
+const PY_TEN =
+  Array.from({ length: 10 }, (_, i) => 'l' + (i + 1) + ' = ' + (i + 1)).join('\n') + '\n'
+/** `lines`, over a different ten-line seed. */
+const overwrite = (ten) => (over = {}, extra = []) => {
+  const l = ten.split('\n').slice(0, 10)
+  for (const [n, v] of Object.entries(over)) l[Number(n) - 1] = v
+  return l.concat(extra).join('\n') + '\n'
+}
+const mjsLines = overwrite(MJS_TEN)
+const pyLines = overwrite(PY_TEN)
 const write = (dir, name, text) => fs.writeFileSync(path.join(dir, name), text)
 const PNG = (tail) => Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 0, 0, 0, ...tail])
 
@@ -145,6 +169,8 @@ function buildTemplate() {
   write(target, 'c.txt', TEN)
   write(target, 'd.txt', 'dee\n')
   write(target, 'tool.sh', '#!/bin/sh\necho tool\n')
+  write(target, 'mod.mjs', MJS_TEN)          // #751 Task 1 — the parse check
+  write(target, 'mod.py', PY_TEN)            // #751 Task 1 — the parse check
   fs.writeFileSync(path.join(target, 'logo.png'), PNG([1, 2, 3]))
   write(target, 'check.sh', 'echo the suite is green\nexit 0\n')
   git(['add', '-A'], target)
@@ -165,7 +191,8 @@ function buildTemplate() {
   git(['config', 'user.name', 'Fleet Bot'], maker)
   git(['checkout', '--quiet', '--orphan', 'plan-run-3'], maker)
   git(['rm', '-r', '--quiet', '--cached', '.'], maker)
-  for (const f of ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'tool.sh', 'logo.png', 'check.sh']) {
+  for (const f of ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'tool.sh', 'mod.mjs', 'mod.py',
+                   'logo.png', 'check.sh']) {
     fs.rmSync(path.join(maker, f), { force: true })
   }
   fs.mkdirSync(path.join(maker, '.ultrapowers'), { recursive: true })
@@ -439,6 +466,36 @@ const MOVES = {
     git(['commit', '--quiet', '-m', 'main marks the tool executable'], fx.maker)
     pushMain(fx)
   },
+  // ── #751 Task 1 — the parse check ─────────────────────────────────────────
+  // mod.mjs's second line, main's side.
+  conflictMjs: (fx) => {
+    write(fx.maker, 'mod.mjs', mjsLines({ 2: 'export const l2 = 20' }))
+    git(['add', '-A'], fx.maker)
+    git(['commit', '--quiet', '-m', 'main rewrites mod.mjs\'s second line'], fx.maker)
+    pushMain(fx)
+  },
+  // The same second line on TWO paths, in one commit: mod.mjs and tool.sh.
+  conflictMjsSh: (fx) => {
+    write(fx.maker, 'mod.mjs', mjsLines({ 2: 'export const l2 = 20' }))
+    write(fx.maker, 'tool.sh', '#!/bin/sh\necho tool from main\n')
+    git(['add', '-A'], fx.maker)
+    git(['commit', '--quiet', '-m', 'main rewrites the second line of mod.mjs and tool.sh'], fx.maker)
+    pushMain(fx)
+  },
+  // An eleventh line, far from line 1: no conflict, and a duplicate `l11`
+  // declaration once the run's own line 1 joins it.
+  appendMjs: (fx) => {
+    write(fx.maker, 'mod.mjs', mjsLines({}, ['export const l11 = 11']))
+    git(['add', '-A'], fx.maker)
+    git(['commit', '--quiet', '-m', 'main appends an eleventh line to mod.mjs'], fx.maker)
+    pushMain(fx)
+  },
+  conflictPy: (fx) => {
+    write(fx.maker, 'mod.py', pyLines({ 2: 'l2 = 20' }))
+    git(['add', '-A'], fx.maker)
+    git(['commit', '--quiet', '-m', 'main rewrites mod.py\'s second line'], fx.maker)
+    pushMain(fx)
+  },
 }
 const RUN_EDITS = {
   a2: (d) => write(d, 'a.txt', lines({ 2: 'line2 from run' })),
@@ -454,6 +511,14 @@ const RUN_EDITS = {
   binary: (d) => fs.writeFileSync(path.join(d, 'logo.png'), PNG([3, 3, 3])),
   d: (d) => write(d, 'd.txt', 'dee from run\n'),
   tool: (d) => write(d, 'tool.sh', '#!/bin/sh\necho tool from run\n'),
+  // ── #751 Task 1 — the parse check ─────────────────────────────────────────
+  mjs2: (d) => write(d, 'mod.mjs', mjsLines({ 2: 'export const l2 = 2000' })),
+  mjsTool2: (d) => {
+    write(d, 'mod.mjs', mjsLines({ 2: 'export const l2 = 2000' }))
+    write(d, 'tool.sh', '#!/bin/sh\necho tool from run\n')
+  },
+  mjs1: (d) => write(d, 'mod.mjs', mjsLines({ 1: 'export const l11 = 1111' })),
+  py2: (d) => write(d, 'mod.py', pyLines({ 2: 'l2 = 2000' })),
 }
 
 const RESOLVED_H1 = () => ({
@@ -1209,6 +1274,1138 @@ const plantReceipt = (fx, payload) => {
     'leg (i) [M4]: the candidate\'s c.txt carries the stub\'s h1 content at line 2')
   assert.equal(git(['show', a1.candidate + ':a.txt'], fx.target) + '\n', RESOLVED_A,
     'leg (i) [M4]: and a.txt the same, with main\'s eleventh line')
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// #751 Task 1 — the parse check
+// ═════════════════════════════════════════════════════════════════════════════
+// M1. After `materialize` and before any `bash -lc <testCmd>` suite, one parse
+//     command per joined path, in `run.patch`'s path order, in the integration
+//     clone laid on the candidate's tree; `parseArgvFor` is the argv table; one
+//     `{ check, path, result }` per command run lands in the row's `checks`.
+// M2. A red path with a conflicts-index entry, unretried this attempt, is
+//     re-dispatched exactly once — a refold from a fresh wave directory, every
+//     other reply replayed, the red path's resolver briefed with the parser's
+//     message — and a second candidate that parses goes on to the suite.
+// M3. A second failure, or a red path with no conflicts-index entry, is
+//     `cannot fold` / `<path> does not parse` / `suite: 'none'`, no suite is
+//     run, and the branch stays on the candidate.
+// M4. `fleet/CONTRACT.md` carries the four new literals in its receipts
+//     sentence and `does not parse` in its dispositions sentence.
+{
+  // ── the fixture's own task record: the three checkable seeded paths ────────
+  const TASK_MOD = {
+    id: 'F1', title: 'The folding task',
+    files: ['mod.mjs', 'mod.py', 'tool.sh'], body: TASK_BODY,
+  }
+
+  // The stub's replies, by name. `h1` is the kernel's own id for a single
+  // conflicting block (`hunks.derive`), the same id RESOLVED_H1 uses.
+  const KEEP_BOTH = () => ({
+    status: 'RESOLVED',
+    hunks: [{ id: 'h1', content: 'export const l2 = 20\nexport const l2 = 2000' }],
+    notes: 'both second lines, main\'s first',
+  })
+  const L2_2020 = () => ({
+    status: 'RESOLVED',
+    hunks: [{ id: 'h1', content: 'export const l2 = 2020' }],
+    notes: 'one line carrying both',
+  })
+  const SH_UNBALANCED = () => ({
+    status: 'RESOLVED',
+    hunks: [{ id: 'h1', content: 'if true; then echo tool' }],
+    notes: 'an if with no fi',
+  })
+
+  // ── reading the recorder ──────────────────────────────────────────────────
+  // Indices into the WHOLE call list, so the order clauses ("each after a
+  // materialize", "the first before the second fold", "one bash -lc after the
+  // second") are assertions about position and not about counts alone.
+  const withIndex = (rec) => rec.calls.map((c, n) => ({ ...norm(c), n }))
+  const isParse = (c) =>
+    (c.cmd === 'node' && c.argv[0] === '--check') ||
+    (c.cmd === 'bash' && c.argv[0] === '-n') ||
+    (c.cmd === 'python3' && c.argv[0] === '-m' && c.argv[1] === 'py_compile')
+  const word = (c) => [c.cmd, ...c.argv].join(' ')
+  const parseCalls = (rec) => withIndex(rec).filter(isParse)
+  const suiteCalls = (rec) => withIndex(rec).filter((c) => c.cmd === 'bash' && c.argv[0] === '-lc')
+  const verbCalls = (rec, verb) => withIndex(rec).filter((c) => {
+    const k = c.argv.findIndex((a) => String(a).endsWith('fold_wave.py'))
+    return k >= 0 && c.argv[k + 1] === verb
+  })
+  const indexAt = (fx, wave) => {
+    const f = path.join(fx.kernelWaves, wave, 'conflicts.json')
+    return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []
+  }
+  const parse = (p, result) => ({ check: 'parse', path: p, result })
+  const secondLine = (fx, sha, file) => git(['show', sha + ':' + file], fx.target).split('\n')[1]
+
+  // ═══ (a) the argv table ═════════════════════════════════════════════════
+  {
+    const table = [
+      ['x/a.mjs', ['node', '--check', 'x/a.mjs']],
+      ['x/a.js', ['node', '--check', 'x/a.js']],
+      ['x/a.sh', ['bash', '-n', 'x/a.sh']],
+      ['x/a.py', ['python3', '-m', 'py_compile', 'x/a.py']],
+    ]
+    for (const [p, argv] of table) {
+      assert.deepEqual(parseArgvFor(p), argv,
+        'leg (a) [M1]: parseArgvFor(' + JSON.stringify(p) + ') is exactly ' + JSON.stringify(argv))
+    }
+    for (const p of ['x/a.txt', 'x/a.md']) {
+      assert.equal(parseArgvFor(p), null,
+        'leg (a) [M1]: and exactly null for ' + JSON.stringify(p) + ', for which nothing is run')
+    }
+    // The seam itself: the ordered check list the folder runs per candidate.
+    assert.ok(Array.isArray(CANDIDATE_CHECKS) && CANDIDATE_CHECKS.length >= 1,
+      'leg (a) [M1]: CANDIDATE_CHECKS is a non-empty ordered array — got ' +
+      JSON.stringify(CANDIDATE_CHECKS))
+    for (const c of CANDIDATE_CHECKS) {
+      assert.equal(typeof (c && c.name), 'string',
+        'leg (a) [M1]: every CANDIDATE_CHECKS entry has a string `name`')
+      assert.equal(typeof (c && c.run), 'function',
+        'leg (a) [M1]: … and a `run` function')
+    }
+  }
+
+  // ═══ (b) the retried .mjs fold ══════════════════════════════════════════
+  {
+    const fx = newCase('t1-mjs-retry', {
+      mainMoves: MOVES.conflictMjs, runEdits: RUN_EDITS.mjs2, tasks: [TASK_MOD],
+    })
+    const stub = stubAgent((nth) => (nth === 1 ? KEEP_BOTH() : L2_2020()))
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const index = indexAt(fx, 'wave-1')
+    assert.deepEqual(index.map((e) => e.path), ['mod.mjs'],
+      'leg (b) [M2]: the refolded wave narrates the same one conflict, on mod.mjs')
+    const i = index[0].i
+
+    // The two dispatches, and the brief the second one carried.
+    assert.equal(stub.dispatches.length, 2,
+      'leg (b) [M2]: the stub was dispatched exactly twice — the red path is re-dispatched once')
+    const first = stub.dispatches[0].prompt
+    const second = stub.dispatches[1].prompt
+    assert.ok(second.startsWith(first),
+      'leg (b) [M2]: the second prompt starts with the first prompt\'s bytes')
+    const section = second.slice(first.length)
+    for (const s of ['PREVIOUS RESOLUTION FAILED A CHECK', 'mod.mjs', 'already been declared']) {
+      assert.ok(section.includes(s),
+        'leg (b) [M2]: and after the contending block it carries ' + JSON.stringify(s) +
+        ' — got ' + JSON.stringify(section))
+    }
+    assert.equal(fs.readFileSync(path.join(fx.pf, 'resolver-brief-' + i + '-1-retry.txt'), 'utf8'),
+      second, 'leg (b) [M2]: resolver-brief-' + i + '-1-retry.txt holds exactly the second prompt\'s bytes')
+    assert.equal(fs.readFileSync(path.join(fx.pf, 'resolver-brief-' + i + '-1.txt'), 'utf8'),
+      first, 'leg (b) [M2]: and resolver-brief-' + i + '-1.txt the first\'s')
+
+    // Where the parse commands ran, and when.
+    const parses = parseCalls(rec)
+    assert.deepEqual(parses.map(word), ['node --check mod.mjs', 'node --check mod.mjs'],
+      'leg (b) [M1]: exactly two `node --check mod.mjs` calls are recorded')
+    for (const c of parses) {
+      assert.equal(c.cwd, fx.integ,
+        'leg (b) [M1]: each with cwd the integration clone — got ' + String(c.cwd))
+    }
+    const mats = verbCalls(rec, 'materialize')
+    const folds = verbCalls(rec, 'fold')
+    assert.ok(mats.length >= 1 && mats[0].n < parses[0].n,
+      'leg (b) [M1]: the first parse ran after a materialize')
+    assert.ok(mats.some((m) => m.n > parses[0].n && m.n < parses[1].n),
+      'leg (b) [M1][M2]: and the second after a further materialize')
+    assert.equal(folds.length, 2,
+      'leg (b) [M2]: the wave was folded twice — the retry is a refold')
+    assert.ok(parses[0].n < folds[1].n,
+      'leg (b) [M2]: the first parse ran before the second fold')
+    const suites = suiteCalls(rec)
+    assert.equal(suites.length, 1, 'leg (b) [M1]: one bash -lc suite call')
+    assert.ok(suites[0].n > parses[1].n, 'leg (b) [M1]: and it ran after the second parse')
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.disposition, 'folded',
+      'leg (b) [M2]: a second candidate that parses goes on to the suite and ends `folded`')
+    assert.equal(a1.suite, 'pass', 'leg (b) [M2]: on a green one')
+    assert.equal(a1.checkRetries, 1, 'leg (b) [M2]: the row\'s `checkRetries` is 1')
+    assert.equal(a1.resolversDispatched, 2,
+      'leg (b) [M2]: `resolversDispatched` counts real dispatches only — 2')
+    assert.deepEqual(a1.checks, [parse('mod.mjs', 'fail'), parse('mod.mjs', 'pass')],
+      'leg (b) [M1]: `checks` is one entry per command run, in order — got ' +
+      JSON.stringify(a1.checks))
+    assert.equal(secondLine(fx, a1.candidate, 'mod.mjs'), 'export const l2 = 2020',
+      'leg (b) [M2]: the candidate\'s mod.mjs line 2 is the second resolution')
+    assert.deepEqual(
+      git(['rev-list', '--parents', '-n', '1', a1.candidate], fx.target).split(/\s+/).slice(1),
+      [fx.tip], 'leg (b) [M2]: and the candidate\'s only parent is TIP')
+
+    // Both waves are in the evidence tree, and they are different waves.
+    const retried = path.join(fx.pf, 'frontier', 'wave-1-retried')
+    assert.ok(fs.existsSync(path.join(retried, 'reply-' + i + '-1')),
+      'leg (b) [M2]: frontier/wave-1-retried/ in the evidence tree holds a reply-' + i + '-1/ directory')
+    assert.equal(fs.readFileSync(path.join(retried, 'reply-' + i + '-1', 'h1.txt'), 'utf8'),
+      'export const l2 = 20\nexport const l2 = 2000\n',
+      'leg (b) [M2]: … carrying the first pass\'s reply')
+    assert.equal(
+      fs.readFileSync(path.join(fx.pf, 'frontier', 'wave-1', 'reply-' + i + '-1', 'h1.txt'), 'utf8'),
+      'export const l2 = 2020\n',
+      'leg (b) [M2]: and frontier/wave-1/ holds the second pass\'s')
+  }
+
+  // ═══ (c) two failures: `cannot fold`, no suite ══════════════════════════
+  {
+    const fx = newCase('t1-mjs-red', {
+      mainMoves: MOVES.conflictMjs, runEdits: RUN_EDITS.mjs2, tasks: [TASK_MOD],
+    })
+    const stub = stubAgent(() => KEEP_BOTH())
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.disposition, 'cannot fold',
+      'leg (c) [M3]: a path that fails its parse command after a retry is `cannot fold`')
+    assert.equal(a1.reason, 'mod.mjs does not parse',
+      'leg (c) [M3]: with reason `<path> does not parse`')
+    assert.equal(a1.suite, 'none', 'leg (c) [M3]: and suite `none`')
+    assert.equal(a1.checkRetries, 1, 'leg (c) [M3]: `checkRetries` is 1 — the one retry was spent')
+    assert.equal(stub.dispatches.length, 2, 'leg (c) [M2]: two dispatches, and no third')
+    assert.deepEqual(suiteCalls(rec).map(word), [],
+      'leg (c) [M3]: no recorded call whose cmd is `bash` and whose first argument is `-lc`')
+
+    const ev = lastFoldEvent(fx)
+    assert.equal(ev.disposition, 'cannot fold',
+      'leg (c) [M3]: the last driver:publish-fold event carries the same disposition')
+    assert.equal(ev.reason, 'mod.mjs does not parse', 'leg (c) [M3]: … the same reason')
+    assert.equal(ev.suite, 'none', 'leg (c) [M3]: … the same suite')
+    assert.deepEqual(ev.checks, [parse('mod.mjs', 'fail'), parse('mod.mjs', 'fail')],
+      'leg (c) [M3]: … and a two-entry `checks` — got ' + JSON.stringify(ev.checks))
+    assert.equal(ev.checkRetries, 1, 'leg (c) [M3]: … beside `checkRetries`')
+    assert.equal(branchSha(fx), a1.candidate,
+      'leg (c) [M3]: refs/heads/' + BRANCH + ' stays on the candidate, so the PR shows the file that failed')
+  }
+
+  // ═══ (d) the no-resolver row ════════════════════════════════════════════
+  {
+    const fx = newCase('t1-noresolver', {
+      mainMoves: MOVES.appendMjs, runEdits: RUN_EDITS.mjs1, tasks: [TASK_MOD],
+    })
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
+
+    assert.deepEqual(indexAt(fx, 'wave-1'), [],
+      'leg (d) [M3]: the fold completes without a conflict — the conflicts index is empty')
+    assert.deepEqual(parseCalls(rec).map(word), ['node --check mod.mjs'],
+      'leg (d) [M1]: one `node --check mod.mjs` call is recorded')
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.disposition, 'cannot fold',
+      'leg (d) [M3]: a failing path with no conflicts-index entry is `cannot fold` at once')
+    assert.equal(a1.reason, 'mod.mjs does not parse', 'leg (d) [M3]: with `mod.mjs does not parse`')
+    assert.equal(a1.suite, 'none', 'leg (d) [M3]: and suite `none`')
+    assert.equal(a1.checkRetries, 0, 'leg (d) [M3]: `checkRetries` is 0 — there was nothing to re-dispatch')
+    assert.equal(a1.resolversDispatched, 0, 'leg (d) [M3]: and `resolversDispatched` 0')
+    assert.deepEqual(a1.checks, [parse('mod.mjs', 'fail')],
+      'leg (d) [M1]: `checks` is the one command that ran — got ' + JSON.stringify(a1.checks))
+    assert.deepEqual(suiteCalls(rec).map(word), [], 'leg (d) [M3]: and no bash -lc call is recorded')
+  }
+
+  // ═══ (e) the .sh row live, over two joined paths ════════════════════════
+  {
+    const fx = newCase('t1-two-paths', {
+      mainMoves: MOVES.conflictMjsSh, runEdits: RUN_EDITS.mjsTool2, tasks: [TASK_MOD],
+    })
+    const stub = stubAgent((nth, prompt) =>
+      (prompt.includes('conflicted path: tool.sh') ? SH_UNBALANCED() : L2_2020()))
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const index = indexAt(fx, 'wave-1')
+    assert.deepEqual(index.map((e) => e.path), ['mod.mjs', 'tool.sh'],
+      'leg (e) [M2]: the refolded wave narrates both paths, in that order')
+    const iMjs = index.find((e) => e.path === 'mod.mjs').i
+    const iSh = index.find((e) => e.path === 'tool.sh').i
+    assert.equal(att(fx, 1).pathsJoined, 2, 'fixture sanity: both patches touch mod.mjs and tool.sh')
+
+    const parses = parseCalls(rec)
+    assert.deepEqual(parses.map(word), [
+      'node --check mod.mjs', 'bash -n tool.sh', 'node --check mod.mjs', 'bash -n tool.sh',
+    ], 'leg (e) [M1]: one command per joined path, in run.patch\'s path order, both passes')
+    for (const c of parses) {
+      assert.equal(c.cwd, fx.integ,
+        'leg (e) [M1]: all with cwd the integration clone — got ' + String(c.cwd))
+    }
+    const a1 = att(fx, 1)
+    assert.deepEqual(a1.checks, [
+      parse('mod.mjs', 'pass'), parse('tool.sh', 'fail'),
+      parse('mod.mjs', 'pass'), parse('tool.sh', 'fail'),
+    ], 'leg (e) [M1]: `checks` names every joined path both times — a folder that checks only the ' +
+       'first records no tool.sh entry — got ' + JSON.stringify(a1.checks))
+
+    assert.equal(stub.dispatches.length, 3,
+      'leg (e) [M2]: the stub was dispatched exactly three times')
+    assert.deepEqual(stub.dispatches.map((d) => String(d.label).split(':')[3]),
+      [String(iMjs), String(iSh), String(iSh)],
+      'leg (e) [M2]: once with a label for mod.mjs\'s <i> and twice for tool.sh\'s — mod.mjs\'s ' +
+      'reply was replayed, not re-asked — got ' + stub.dispatches.map((d) => d.label).join(', '))
+    const retryPrompt = stub.dispatches[2].prompt
+    assert.ok(retryPrompt.startsWith(stub.dispatches[1].prompt),
+      'leg (e) [M2]: the retry prompt begins with tool.sh\'s first brief')
+    for (const s of ['PREVIOUS RESOLUTION FAILED A CHECK', 'tool.sh', 'syntax error']) {
+      assert.ok(retryPrompt.slice(stub.dispatches[1].prompt.length).includes(s),
+        'leg (e) [M2]: and its appended section carries ' + JSON.stringify(s) + ' — got ' +
+        JSON.stringify(retryPrompt.slice(stub.dispatches[1].prompt.length)))
+    }
+    assert.deepEqual(
+      fs.readFileSync(path.join(fx.pf, 'frontier', 'wave-1', 'reply-' + iMjs + '-1', 'notes.txt')),
+      fs.readFileSync(path.join(fx.pf, 'frontier', 'wave-1-retried', 'reply-' + iMjs + '-1', 'notes.txt')),
+      'leg (e) [M2]: the second pass\'s reply-' + iMjs + '-1/notes.txt equals the retried wave\'s')
+
+    assert.equal(a1.disposition, 'cannot fold', 'leg (e) [M3]: the second tool.sh failure is `cannot fold`')
+    assert.equal(a1.reason, 'tool.sh does not parse', 'leg (e) [M3]: with `tool.sh does not parse`')
+    assert.equal(a1.resolversDispatched, 3, 'leg (e) [M2]: `resolversDispatched` 3')
+    assert.equal(a1.checkRetries, 1, 'leg (e) [M2]: and `checkRetries` 1')
+  }
+
+  // ═══ (f) the .py row live ═══════════════════════════════════════════════
+  {
+    const fx = newCase('t1-py', {
+      mainMoves: MOVES.conflictPy, runEdits: RUN_EDITS.py2, tasks: [TASK_MOD],
+    })
+    const stub = stubAgent((nth) => (nth === 1
+      ? { status: 'RESOLVED', hunks: [{ id: 'h1', content: 'def f(:' }], notes: 'a broken def' }
+      : { status: 'RESOLVED', hunks: [{ id: 'h1', content: 'l2 = 2020' }], notes: 'one line carrying both' }))
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    assert.deepEqual(parseCalls(rec).map(word),
+      ['python3 -m py_compile mod.py', 'python3 -m py_compile mod.py'],
+      'leg (f) [M1]: `python3 -m py_compile mod.py` is recorded twice')
+    assert.equal(stub.dispatches.length, 2, 'leg (f) [M2]: the red path was re-dispatched once')
+    assert.ok(stub.dispatches[1].prompt.slice(stub.dispatches[0].prompt.length).includes('SyntaxError'),
+      'leg (f) [M2]: the retry prompt carries the parser\'s `SyntaxError` — got ' +
+      JSON.stringify(stub.dispatches[1].prompt.slice(stub.dispatches[0].prompt.length)))
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.disposition, 'folded', 'leg (f) [M2]: the second candidate parses and folds')
+    assert.equal(a1.checkRetries, 1, 'leg (f) [M2]: with `checkRetries` 1')
+    assert.deepEqual(a1.checks, [parse('mod.py', 'fail'), parse('mod.py', 'pass')],
+      'leg (f) [M1]: and `checks` one entry per command run — got ' + JSON.stringify(a1.checks))
+  }
+
+  // ═══ (g) a .txt joined path is not checked, and the suite still runs ════
+  {
+    const fx = newCase('t1-txt', { mainMoves: MOVES.conflictA, runEdits: RUN_EDITS.a2 })
+    const stub = stubAgent(() => RESOLVED_H1())
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
+    assert.deepEqual(a1.checks, [],
+      'leg (g) [M1]: `checks` is exactly [] — parseArgvFor returns null for .txt, so nothing is run')
+    assert.equal(a1.checkRetries, 0, 'leg (g) [M1]: and `checkRetries` 0')
+    assert.deepEqual(
+      withIndex(rec).filter((c) => c.cmd === 'node' && c.argv.includes('--check')).map(word), [],
+      'leg (g) [M1]: no call whose cmd is `node` with --check')
+    assert.deepEqual(suiteCalls(rec).map(word), ['bash -lc bash check.sh'],
+      'leg (g) [M1]: and its bash -lc suite call still runs')
+    assert.equal(a1.disposition, 'folded', 'leg (g) [M1]: the fold ends `folded`')
+    assert.equal(a1.suite, 'pass', 'leg (g) [M1]: on a green suite')
+  }
+
+  // ═══ (h) the contract's two sentences, and the Proof's two Run: legs ════
+  {
+    const REPO = path.resolve(HERE, '..', '..')
+    const CONTRACT = path.join(REPO, 'fleet', 'CONTRACT.md')
+    const LITERALS = ['does not parse', 'checkRetries', 'wave-<attempt>-retried',
+      'resolver-brief-<i>-<attempt>-retry.txt']
+    // The Proof's second `Run:`, verbatim.
+    const GREP =
+      'grep -q "does not parse" fleet/CONTRACT.md && grep -q checkRetries fleet/CONTRACT.md && ' +
+      'grep -q "wave-<attempt>-retried" fleet/CONTRACT.md && ' +
+      'grep -q "resolver-brief-<i>-<attempt>-retry.txt" fleet/CONTRACT.md'
+    const runIn = (cmd, argv, cwd) => {
+      try {
+        execFileSync(cmd, argv, { cwd, env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+        return { code: 0, out: '' }
+      } catch (e) {
+        return { code: typeof e.status === 'number' ? e.status : 1,
+          out: String(e.stdout || '') + String(e.stderr || '') }
+      }
+    }
+
+    const text = fs.readFileSync(CONTRACT, 'utf8')
+    // The two sentences M4 names, sliced on BASE anchors this plan does not move.
+    const sentence = (from, to, which) => {
+      const a = text.indexOf(from)
+      assert.ok(a >= 0, 'leg (h) [M4]: fleet/CONTRACT.md still opens its ' + which +
+        ' sentence with ' + JSON.stringify(from))
+      const b = text.indexOf(to, a)
+      assert.ok(b > a, 'leg (h) [M4]: … and still closes the region at ' + JSON.stringify(to))
+      return text.slice(a, b)
+    }
+    const receipts = sentence(
+      'The publish fold writes its own `publish-fold/` receipts directory',
+      '\n    Committed from a detached worktree', 'receipts')
+    for (const lit of ['checks', 'checkRetries', 'resolver-brief-<i>-<attempt>-retry.txt',
+                       'frontier/wave-<attempt>-retried/']) {
+      assert.ok(receipts.includes(lit),
+        'leg (h) [M4]: the `publish-fold/` receipts sentence names ' + JSON.stringify(lit) +
+        ' — got ' + JSON.stringify(receipts))
+    }
+    const dispositions = sentence(
+      'Its disposition is one of `folded`', 'A `hold=1` run still folds', 'dispositions')
+    assert.ok(dispositions.includes('does not parse'),
+      'leg (h) [M4]: and the dispositions sentence carries the phrase `does not parse` — got ' +
+      JSON.stringify(dispositions))
+
+    // The second `Run:` — 0 on this contract, non-zero with any one literal gone.
+    assert.equal(runIn('bash', ['-c', GREP], REPO).code, 0,
+      'leg (h) [M4]: the second `Run:` exits 0 against fleet/CONTRACT.md')
+    for (const lit of LITERALS) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-contract-'))
+      CASES.push(dir)
+      fs.mkdirSync(path.join(dir, 'fleet'), { recursive: true })
+      fs.writeFileSync(path.join(dir, 'fleet', 'CONTRACT.md'), text.split(lit).join(''))
+      assert.notEqual(runIn('bash', ['-c', GREP], dir).code, 0,
+        'leg (h) [M4]: … and non-zero on a contract with ' + JSON.stringify(lit) + ' removed')
+    }
+
+    // The first `Run:` — the docs pin reads this file's other literals, so the
+    // edit must leave them in the shape it reads.
+    const pin = runIn('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'], REPO)
+    assert.equal(pin.code, 0,
+      'leg (h) [M4]: `python3 -m pytest -q tests/test_docs_agree_with_code.py` passes — got ' +
+      pin.code + '\n' + pin.out)
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// #754 Task 2 — exams first
+// ═════════════════════════════════════════════════════════════════════════════
+// M1. `contendingTasks({ repo, base, tip, run, path, tasks })` resolves the
+//     ordered `{ run, task }` entries whose bodies `contendingBlock` renders for
+//     that path — the frontier plans' tasks read off their tags, oldest commit
+//     first, then this run's `tasks` in their order, each included exactly when
+//     its `files` name the path — and the block's string is what it was.
+// M2. `EXAM_CHECK`, the second entry of `CANDIDATE_CHECKS`, runs after the
+//     parse check on every candidate: for each joined path in order, for each
+//     contending task whose `files` name it, the `- Test:` bullets of the
+//     `**Proof:**` slot of the task's body (the slot ends at a later
+//     `**Stale-if:**` line), each exam once in first-seen order; `examArgvFor`
+//     is the runner table; each exam runs in the integration clone on the
+//     candidate's tree, its output written to `exam-<attempt>-<n>.txt` and
+//     recorded as `{ check: 'exam', exam, path, result }`; an exam with no
+//     runner is `skipped` and not run; the first red exam stops the pass.
+// M3. A red exam whose `path` has a conflicts-index entry unretried this
+//     attempt re-dispatches that path's resolver once, the retry brief naming
+//     the exam and carrying its output tail; `checkRetries` is 1 and a green
+//     second pass goes on to the suite.
+// M4. A red exam after a retry, or one whose path has no conflicts-index entry,
+//     is `suite red` / `<exam> red on <path>` / `suite: 'none'` in the row and
+//     the `driver:publish-fold` event, no `bash -lc` suite is run, and the
+//     branch stays on the candidate.
+// M5. `fleet/CONTRACT.md`'s receipts sentence names `exam-<attempt>-<n>.txt`
+//     and its dispositions sentence carries the phrase `red on`.
+{
+  // ── run 5's plan, as it lives on its tag ──────────────────────────────────
+  // Legacy grammar (no `**Grammar:**` line, so no gate record is needed). T1's
+  // Files name `a.txt` and its own exam — a `Test:` path is in `files` — and
+  // its Proof names the exam. BELOW a `**Stale-if:**` line sits a decoy
+  // `- Test:` bullet naming a file that does not exist: the Proof slot ends at
+  // that line, so the decoy is not an exam.
+  const PLAN_RUN5 = [
+    '# Plan: run five',
+    '',
+    '**Acceptance:** suite — the committed suite is the verification.',
+    '',
+    '### Task T1: The first task of run five',
+    '',
+    '**Type:** implementation',
+    '**Review:** lean',
+    '',
+    '**Files:**',
+    '- Modify: `a.txt`',
+    '- Test: `exam_main.mjs`',
+    '',
+    '**Claim:** the first task of run five rewrites the second line of a.txt.',
+    '',
+    '**Proof:**',
+    '- Test: `exam_main.mjs`',
+    '',
+    '**Stale-if:**',
+    '- path-absent: `a.txt`',
+    '- Test: `ghost.mjs`',
+    '',
+    '- [ ] rewrite the second line',
+    '',
+  ].join('\n')
+  // The same plan over the template's ten-line module.
+  const PLAN_RUN5_MOD = [
+    '# Plan: run five',
+    '',
+    '**Acceptance:** suite — the committed suite is the verification.',
+    '',
+    '### Task T1: The first task of run five',
+    '',
+    '**Type:** implementation',
+    '**Review:** lean',
+    '',
+    '**Files:**',
+    '- Modify: `mod.mjs`',
+    '- Test: `exam_mod.mjs`',
+    '',
+    '**Claim:** the first task of run five rewrites the second line of mod.mjs.',
+    '',
+    '**Proof:**',
+    '- Test: `exam_mod.mjs`',
+    '',
+    '- [ ] rewrite the second line',
+    '',
+  ].join('\n')
+  // Two tasks, one path each: T1 names only `a.txt`, T2 only `mod.mjs`.
+  const PLAN_RUN5_TWO = [
+    '# Plan: run five',
+    '',
+    '**Acceptance:** suite — the committed suite is the verification.',
+    '',
+    '### Task T1: The first task of run five',
+    '',
+    '**Type:** implementation',
+    '**Review:** lean',
+    '',
+    '**Files:**',
+    '- Modify: `a.txt`',
+    '- Test: `exam_main.mjs`',
+    '',
+    '**Claim:** the first task of run five rewrites the second line of a.txt.',
+    '',
+    '**Proof:**',
+    '- Test: `exam_main.mjs`',
+    '',
+    '- [ ] rewrite the second line',
+    '',
+    '### Task T2: The second task of run five',
+    '',
+    '**Type:** implementation',
+    '**Review:** lean',
+    '',
+    '**Files:**',
+    '- Modify: `mod.mjs`',
+    '- Test: `exam_mod.mjs`',
+    '',
+    '**Claim:** the second task of run five rewrites the second line of mod.mjs.',
+    '',
+    '**Proof:**',
+    '- Test: `exam_mod.mjs`',
+    '',
+    '- [ ] rewrite the second line',
+    '',
+  ].join('\n')
+
+  // ── the exams themselves: an exit code is the verdict ─────────────────────
+  // `exam_main.mjs` prints `exam_main: line 2 is <the line>` and exits 0
+  // exactly when a.txt's line 2 is `line2 from main` — the wrong resolution
+  // order puts the run's line there and it goes red.
+  const EXAM_MAIN_L2 = [
+    "import fs from 'node:fs'",
+    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[1]",
+    "console.log('exam_main: line 2 is ' + line)",
+    "process.exit(line === 'line2 from main' ? 0 : 1)",
+    '',
+  ].join('\n')
+  // The same exam over line 1, for the fold that has no conflict at all.
+  const EXAM_MAIN_L1 = [
+    "import fs from 'node:fs'",
+    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[0]",
+    "console.log('exam_main: line 1 is ' + line)",
+    "process.exit(line === 'line1 from main' ? 0 : 1)",
+    '',
+  ].join('\n')
+  // The run's own exam: 0 exactly when some line is `line2 from run`.
+  const EXAM_RUN_L2 = [
+    "import fs from 'node:fs'",
+    "const ls = fs.readFileSync('a.txt', 'utf8').split('\\n')",
+    "console.log('exam_run: a.txt has ' + ls.length + ' lines')",
+    "process.exit(ls.includes('line2 from run') ? 0 : 1)",
+    '',
+  ].join('\n')
+  // The run's exam for the no-resolver row: 1 whenever line 1 is not `line1`.
+  const EXAM_RUN_L1 = [
+    "import fs from 'node:fs'",
+    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[0]",
+    "console.log('exam_run: line 1 is ' + line)",
+    "process.exit(line === 'line1' ? 0 : 1)",
+    '',
+  ].join('\n')
+  // The module exam: it imports the joined module and reads its `l2`.
+  const EXAM_MOD = [
+    "import { l2 } from './mod.mjs'",
+    "console.log('exam_mod: l2 is ' + l2)",
+    "process.exit(l2 === 2020 ? 0 : 1)",
+    '',
+  ].join('\n')
+
+  // ── the fixtures' own main-side move ──────────────────────────────────────
+  /** Run 5's plan tag, pushed the way `buildTemplate` pushes run 3's. */
+  const tagRun5 = (maker, planText) => {
+    git(['checkout', '--quiet', '--orphan', 'plan-run-5'], maker)
+    git(['rm', '-r', '--quiet', '--cached', '.'], maker)
+    for (const f of fs.readdirSync(maker)) {
+      if (f !== '.git') fs.rmSync(path.join(maker, f), { recursive: true, force: true })
+    }
+    fs.mkdirSync(path.join(maker, '.ultrapowers'), { recursive: true })
+    write(path.join(maker, '.ultrapowers'), 'plan.md', planText)
+    git(['add', '-A'], maker)
+    git(['commit', '--quiet', '-m', 'the plan of run 5'], maker)
+    git(['tag', 'ultra/plan/run-5'], maker)
+    git(['push', '--quiet', 'origin', 'refs/tags/ultra/plan/run-5'], maker)
+    git(['checkout', '--quiet', '--force', 'main'], maker)
+  }
+  /**
+   * One `Fleet-Run: 5` commit writing `files`, an optional HUMAN commit after
+   * it (a.txt's eleventh line — the region `RESOLVED_A` carries), then main and
+   * run 5's plan tag pushed.
+   */
+  const run5Move = ({ files, plan, human = null }) => (fx) => {
+    for (const [name, text] of Object.entries(files)) write(fx.maker, name, text)
+    git(['add', '-A'], fx.maker)
+    git(['commit', '--quiet', '-m', 'run five rewrites the second line', '-m', 'Fleet-Run: 5'],
+      fx.maker)
+    if (human) {
+      write(fx.maker, 'a.txt', human)
+      git(['add', '-A'], fx.maker)
+      git(['-c', 'user.name=A Human', 'commit', '--quiet', '-m', 'tidy the tail'], fx.maker)
+    }
+    pushMain(fx)
+    tagRun5(fx.maker, plan)
+  }
+  /** `runEdits`: the named files, written on the integration branch. */
+  const runWrites = (files) => (d) => {
+    for (const [name, text] of Object.entries(files)) write(d, name, text)
+  }
+
+  // The a.txt fixture of the Context: main's `Fleet-Run: 5` rewrite of line 2
+  // beside `exam_main.mjs`, the human tail, and the run's `a2` beside its own
+  // `exam_run.mjs`.
+  const MAIN_A = run5Move({
+    files: { 'a.txt': lines({ 2: 'line2 from main' }), 'exam_main.mjs': EXAM_MAIN_L2 },
+    plan: PLAN_RUN5,
+    human: lines({ 2: 'line2 from main' }, ['line11 human']),
+  })
+  const RUN_A = runWrites({ 'a.txt': lines({ 2: 'line2 from run' }), 'exam_run.mjs': EXAM_RUN_L2 })
+
+  // ── this run's `launch.json` tasks ────────────────────────────────────────
+  // `TASK_A`-shaped, with a `**Proof:**` slot ending the body.
+  const EXAM_TASK_BODY = [
+    '### Task F1: The folding task',
+    '',
+    '**Claim:** the run rewrites the second line of a.txt.',
+    '',
+    '**Proof:**',
+    '- Test: `exam_run.mjs`',
+  ].join('\n')
+  const EXAM_TASK = {
+    id: 'F1', title: 'The folding task',
+    files: ['a.txt', 'exam_run.mjs'], body: EXAM_TASK_BODY,
+  }
+  // The same task, with a Proof bullet no runner answers.
+  const SKIP_TASK = {
+    id: 'F1', title: 'The folding task',
+    files: ['a.txt', 'exam_run.mjs', 'notes.txt'],
+    body: [
+      '### Task F1: The folding task',
+      '',
+      '**Claim:** the run rewrites the second line of a.txt.',
+      '',
+      '**Proof:**',
+      '- Test: `notes.txt`',
+      '- Test: `exam_run.mjs`',
+    ].join('\n'),
+  }
+  // The two-path task: one task, both joined paths, one exam.
+  const TWO_PATH_TASK = {
+    id: 'F1', title: 'The folding task',
+    files: ['a.txt', 'mod.mjs', 'exam_run.mjs'], body: EXAM_TASK_BODY,
+  }
+  // A body with no `**Proof:**` line contributes no exam.
+  const MOD_TASK = { id: 'F1', title: 'The folding task', files: ['mod.mjs'], body: TASK_BODY }
+  const TASK_B5 = { id: 'F2', title: 'The other task', files: ['b.txt'], body: TASK_BODY }
+
+  // ── the stub's replies ────────────────────────────────────────────────────
+  // The wrong order: the run's line first, which `exam_main.mjs` rejects.
+  const WRONG_ORDER = () => ({
+    status: 'RESOLVED',
+    hunks: [{ id: 'h1', content: 'line2 from run\nline2 from main' }],
+    notes: 'both second lines, the run\'s first',
+  })
+  const MOD_2000 = () => ({
+    status: 'RESOLVED',
+    hunks: [{ id: 'h1', content: 'export const l2 = 2000' }],
+    notes: 'the run\'s line',
+  })
+  const MOD_2020 = () => ({
+    status: 'RESOLVED',
+    hunks: [{ id: 'h1', content: 'export const l2 = 2020' }],
+    notes: 'one line carrying both',
+  })
+
+  // ── reading the recorder ──────────────────────────────────────────────────
+  const withIndex = (rec) => rec.calls.map((c, n) => ({ ...norm(c), n }))
+  const word = (c) => [c.cmd, ...c.argv].join(' ')
+  // An exam run: `node <file>`, which the parse check's `node --check <file>`
+  // is not.
+  const examCalls = (rec) => withIndex(rec)
+    .filter((c) => c.cmd === 'node' && !String(c.argv[0] || '').startsWith('-'))
+  const parseCalls = (rec) => withIndex(rec)
+    .filter((c) => c.cmd === 'node' && c.argv[0] === '--check')
+  const suiteCalls = (rec) => withIndex(rec).filter((c) => c.cmd === 'bash' && c.argv[0] === '-lc')
+  const verbCalls = (rec, verb) => withIndex(rec).filter((c) => {
+    const k = c.argv.findIndex((a) => String(a).endsWith('fold_wave.py'))
+    return k >= 0 && c.argv[k + 1] === verb
+  })
+  const named = (rec, needle) => rec.calls
+    .filter((c) => [c.cmd, ...c.argv].some((a) => String(a).includes(needle)))
+    .map((c) => word(norm(c)))
+  const indexAt = (fx, wave) => {
+    const f = path.join(fx.kernelWaves, wave, 'conflicts.json')
+    return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []
+  }
+  const parse = (p, result) => ({ check: 'parse', path: p, result })
+  const exam = (e, p, result) => ({ check: 'exam', exam: e, path: p, result })
+  const examFile = (fx, n) => path.join(fx.pf, 'exam-1-' + n + '.txt')
+  const secondLine = (fx, sha, file) => git(['show', sha + ':' + file], fx.target).split('\n')[1]
+
+  // ═══ (a) the runner table ═══════════════════════════════════════════════
+  {
+    const table = [
+      ['t/e.mjs', ['node', 't/e.mjs']],
+      ['t/e.js', ['node', 't/e.js']],
+      ['t/e.py', ['python3', '-m', 'pytest', '-q', 't/e.py']],
+      ['t/e.test.ts', ['bun', 'test', 't/e.test.ts']],
+    ]
+    for (const [p, argv] of table) {
+      assert.deepEqual(examArgvFor(p), argv,
+        'leg (a) [M2]: examArgvFor(' + JSON.stringify(p) + ') is exactly ' + JSON.stringify(argv))
+    }
+    for (const p of ['t/e.txt', 't/e.sh']) {
+      assert.equal(examArgvFor(p), null,
+        'leg (a) [M2]: and exactly null for ' + JSON.stringify(p) + ', which is recorded skipped')
+    }
+  }
+
+  // ═══ (b) the ordered contending tasks behind the block ══════════════════
+  {
+    const fx = newCase('t2-contending', {
+      // No human tail here: every frontier commit on a.txt is run 5's, so the
+      // block is the heading, the sentence and the two task entries.
+      mainMoves: run5Move({
+        files: { 'a.txt': lines({ 2: 'line2 from main' }), 'exam_main.mjs': EXAM_MAIN_L2 },
+        plan: PLAN_RUN5,
+      }),
+      runEdits: RUN_A, tasks: [EXAM_TASK, TASK_B5],
+    })
+    // This leg calls the export directly instead of through the folder, so it
+    // fetches TIP into the target clone itself.
+    git(['fetch', '--quiet', '--no-tags', 'origin', 'main'], fx.target)
+    const args = {
+      repo: fx.target, base: fx.base, tip: fx.tip, run: RUN, path: 'a.txt',
+      tasks: [EXAM_TASK, TASK_B5],
+    }
+
+    const pending = contendingTasks({ ...args })
+    assert.ok(pending && typeof pending.then === 'function',
+      'leg (b) [M1]: contendingTasks resolves — it answers a promise')
+    const entries = await pending
+    assert.ok(Array.isArray(entries), 'leg (b) [M1]: … of an array — got ' + JSON.stringify(entries))
+    assert.deepEqual(entries.map((e) => [String(e.run), e.task && e.task.id]),
+      [['5', 'T1'], ['7', EXAM_TASK.id]],
+      'leg (b) [M1]: the frontier plan\'s task first, then this run\'s, each included exactly ' +
+      'when its `files` name a.txt — got ' + JSON.stringify(entries.map((e) => [e.run, e.task])))
+
+    const T1_5 = compiledTask(PLAN_RUN5, 'T1')
+    for (const k of ['id', 'title', 'files', 'body']) {
+      assert.deepEqual(entries[0].task[k], T1_5[k],
+        'leg (b) [M1]: the frontier entry\'s task carries the plan\'s own `' + k + '`')
+      assert.deepEqual(entries[1].task[k], EXAM_TASK[k],
+        'leg (b) [M1]: and this run\'s entry carries launch.json\'s `' + k + '`')
+    }
+    assert.deepEqual(T1_5.files, ['a.txt', 'exam_main.mjs'],
+      'fixture sanity: a `Test:` path is in `files`, and the decoy below `**Stale-if:**` is not')
+
+    const block = await contendingBlock({ ...args })
+    assert.equal(block,
+      HEADING + '\n' + SIDE_SENTENCE + '\n' + taskEntry('5', T1_5) + '\n' + taskEntry(RUN, EXAM_TASK),
+      'leg (b) [M1]: contendingBlock\'s string for the same arguments is what it was — the ' +
+      'heading, the side sentence and those two entries, each body embedded verbatim')
+    assert.ok(block.includes('**Proof:**\n- Test: `exam_main.mjs`'),
+      'leg (b) [M1]: so the frontier task\'s Proof slot rides in the block — got ' +
+      JSON.stringify(block))
+  }
+
+  // ═══ (c) the retried fold: a red exam is re-dispatched once ═════════════
+  {
+    const fx = newCase('t2-exam-retry', {
+      mainMoves: MAIN_A, runEdits: RUN_A, tasks: [EXAM_TASK],
+    })
+    const stub = stubAgent((nth) => (nth === 1 ? WRONG_ORDER() : RESOLVED_H1()))
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
+
+    assert.equal(stub.dispatches.length, 2,
+      'leg (c) [M3]: the stub was dispatched exactly twice — the red exam\'s path is ' +
+      're-dispatched once')
+    const first = stub.dispatches[0].prompt
+    const second = stub.dispatches[1].prompt
+    assert.ok(second.startsWith(first),
+      'leg (c) [M3]: the second prompt starts with the first prompt\'s bytes')
+    const section = second.slice(first.length)
+    for (const s of ['PREVIOUS RESOLUTION FAILED A CHECK', 'exam_main.mjs',
+                     'exam_main: line 2 is line2 from run']) {
+      assert.ok(section.includes(s),
+        'leg (c) [M3]: and its appended section names the exam and carries its output tail — ' +
+        JSON.stringify(s) + ' is missing from ' + JSON.stringify(section))
+    }
+
+    const exams = examCalls(rec)
+    assert.deepEqual(exams.map(word),
+      ['node exam_main.mjs', 'node exam_main.mjs', 'node exam_run.mjs'],
+      'leg (c) [M2]: `node exam_main.mjs` once in the first pass — the first red exam stops it — ' +
+      'then `node exam_main.mjs` and `node exam_run.mjs` in the second')
+    for (const c of exams) {
+      assert.equal(c.cwd, fx.integ,
+        'leg (c) [M2]: each with cwd the integration clone — got ' + String(c.cwd))
+    }
+    const mats = verbCalls(rec, 'materialize')
+    assert.ok(mats.length >= 1 && mats[0].n < exams[0].n,
+      'leg (c) [M2]: the first exam ran after a materialize, on the candidate\'s tree')
+    assert.ok(mats.some((m) => m.n > exams[0].n && m.n < exams[1].n),
+      'leg (c) [M2][M3]: and the second pass\'s after a further materialize')
+    const suites = suiteCalls(rec)
+    assert.equal(suites.length, 1, 'leg (c) [M2]: one bash -lc suite call')
+    assert.ok(suites[0].n > exams[2].n,
+      'leg (c) [M2]: and it ran after every exam — the exams come before the whole suite')
+
+    assert.deepEqual(a1.checks, [
+      exam('exam_main.mjs', 'a.txt', 'fail'),
+      exam('exam_main.mjs', 'a.txt', 'pass'),
+      exam('exam_run.mjs', 'a.txt', 'pass'),
+    ], 'leg (c) [M2]: `checks` is one entry per exam, `path` the joined path that brought it, ' +
+       'both passes on the one row — got ' + JSON.stringify(a1.checks))
+
+    assert.ok(fs.readFileSync(examFile(fx, 1), 'utf8').includes('line2 from run'),
+      'leg (c) [M2]: exam-1-1.txt holds the red exam\'s output — got ' +
+      JSON.stringify(fs.readFileSync(examFile(fx, 1), 'utf8')))
+    for (const n of [2, 3]) {
+      assert.ok(fs.existsSync(examFile(fx, n)),
+        'leg (c) [M2]: and exam-1-' + n + '.txt exists — `n` counts every exam run in the attempt')
+    }
+
+    assert.deepEqual(a1.checks.filter((c) => c.exam === 'ghost.mjs'), [],
+      'leg (c) [M2]: no `checks` entry names ghost.mjs — the Proof slot ends at `**Stale-if:**`')
+    assert.deepEqual(named(rec, 'ghost.mjs'), [],
+      'leg (c) [M2]: and no recorded call names it — a reader that runs past the `**Stale-if:**` ' +
+      'line fails this leg')
+
+    assert.equal(a1.disposition, 'folded',
+      'leg (c) [M3]: a green second pass goes on to the suite and ends `folded`')
+    assert.equal(a1.suite, 'pass', 'leg (c) [M3]: on a green suite')
+    assert.equal(a1.checkRetries, 1, 'leg (c) [M3]: the row\'s `checkRetries` is 1')
+    assert.equal(git(['show', a1.candidate + ':a.txt'], fx.target) + '\n', RESOLVED_A,
+      'leg (c) [M3]: and the candidate\'s a.txt is the second resolution')
+  }
+
+  // ═══ (d) two red exams: `suite red`, no suite ═══════════════════════════
+  {
+    const fx = newCase('t2-exam-red', {
+      mainMoves: MAIN_A, runEdits: RUN_A, tasks: [EXAM_TASK],
+    })
+    const stub = stubAgent(() => WRONG_ORDER())
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.disposition, 'suite red',
+      'leg (d) [M4]: an exam still red after the retry is `suite red`')
+    assert.equal(a1.reason, 'exam_main.mjs red on a.txt',
+      'leg (d) [M4]: with reason `<exam> red on <path>`')
+    assert.equal(a1.suite, 'none', 'leg (d) [M4]: and suite `none`')
+    assert.equal(a1.checkRetries, 1, 'leg (d) [M4]: `checkRetries` is 1 — the one retry was spent')
+    assert.deepEqual(a1.checks, [
+      exam('exam_main.mjs', 'a.txt', 'fail'), exam('exam_main.mjs', 'a.txt', 'fail'),
+    ], 'leg (d) [M2]: `checks` carries the red exam from both passes — got ' +
+       JSON.stringify(a1.checks))
+    assert.deepEqual(suiteCalls(rec).map(word), [],
+      'leg (d) [M4]: no recorded call whose cmd is `bash` and whose first argument is `-lc`')
+
+    const ev = lastFoldEvent(fx)
+    assert.equal(ev.disposition, 'suite red',
+      'leg (d) [M4]: the last driver:publish-fold event carries the same disposition')
+    assert.equal(ev.reason, 'exam_main.mjs red on a.txt', 'leg (d) [M4]: … the same reason')
+    assert.equal(ev.suite, 'none', 'leg (d) [M4]: … and the same suite')
+    assert.equal(branchSha(fx), a1.candidate,
+      'leg (d) [M4]: refs/heads/' + BRANCH + ' stays on the candidate, so the PR shows the tree ' +
+      'the exam failed on')
+  }
+
+  // ═══ (e) the no-resolver row: a red exam with no conflict to re-ask ═════
+  {
+    const fx = newCase('t2-noresolver', {
+      mainMoves: run5Move({
+        files: { 'a.txt': lines({ 1: 'line1 from main' }), 'exam_main.mjs': EXAM_MAIN_L1 },
+        plan: PLAN_RUN5,
+      }),
+      runEdits: runWrites({ 'a.txt': lines({ 10: 'a10' }), 'exam_run.mjs': EXAM_RUN_L1 }),
+      tasks: [EXAM_TASK],
+    })
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
+
+    assert.deepEqual(indexAt(fx, 'wave-1'), [],
+      'leg (e) [M4]: the fold completes without a conflict — the conflicts index is empty, and ' +
+      'no resolver was dispatched')
+    const a1 = att(fx, 1)
+    assert.equal(a1.resolversDispatched, 0, 'leg (e) [M4]: `resolversDispatched` is 0')
+    assert.deepEqual(a1.checks, [
+      exam('exam_main.mjs', 'a.txt', 'pass'), exam('exam_run.mjs', 'a.txt', 'fail'),
+    ], 'leg (e) [M2]: both contending tasks\' exams ran, in first-seen order, and the red one ' +
+       'stopped the pass — got ' + JSON.stringify(a1.checks))
+    assert.equal(a1.disposition, 'suite red',
+      'leg (e) [M4]: a red exam whose path has no conflicts-index entry is `suite red` at once')
+    assert.equal(a1.reason, 'exam_run.mjs red on a.txt',
+      'leg (e) [M4]: with `exam_run.mjs red on a.txt`')
+    assert.equal(a1.suite, 'none', 'leg (e) [M4]: and suite `none`')
+    assert.equal(a1.checkRetries, 0,
+      'leg (e) [M4]: `checkRetries` is 0 — there was nothing to re-dispatch')
+    assert.deepEqual(suiteCalls(rec).map(word), [],
+      'leg (e) [M4]: and no bash -lc call is recorded')
+  }
+
+  // ═══ (f) an exam with no runner is recorded, not run ════════════════════
+  {
+    const fx = newCase('t2-skipped', {
+      mainMoves: MAIN_A, runEdits: RUN_A, tasks: [SKIP_TASK],
+    })
+    const stub = stubAgent(() => RESOLVED_H1())
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.deepEqual(a1.checks, [
+      exam('exam_main.mjs', 'a.txt', 'pass'),
+      exam('notes.txt', 'a.txt', 'skipped'),
+      exam('exam_run.mjs', 'a.txt', 'pass'),
+    ], 'leg (f) [M2]: `checks` carries the runner-less exam as `skipped`, in its Proof\'s own ' +
+       'place, and the exams after it still run — got ' + JSON.stringify(a1.checks))
+    assert.deepEqual(named(rec, 'notes.txt'), [],
+      'leg (f) [M2]: and no recorded call names notes.txt — a skipped exam is not run')
+    assert.equal(a1.disposition, 'folded', 'leg (f) [M2]: the row is `folded`')
+    assert.equal(a1.checkRetries, 0, 'leg (f) [M2]: with no retry spent')
+  }
+
+  // ═══ (g) a body with no `**Proof:**` contributes no exam ════════════════
+  {
+    const fx = newCase('t2-noproof', { mainMoves: MOVES.conflictA, runEdits: RUN_EDITS.a2 })
+    const stub = stubAgent(() => RESOLVED_H1())
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
+    assert.deepEqual((a1.checks || []).filter((c) => c.check === 'exam'), [],
+      'leg (g) [M2]: `checks` has no entry whose `check` is `exam` — neither PLAN_RUN3\'s T1 nor ' +
+      'TASK_A carries a `**Proof:**` line — got ' + JSON.stringify(a1.checks))
+    assert.deepEqual(
+      examCalls(rec).filter((c) => c.cwd === fx.integ &&
+        c.argv.some((a) => String(a).endsWith('.mjs'))).map(word), [],
+      'leg (g) [M2]: and no recorded `node <…>.mjs` call in the integration clone')
+    assert.deepEqual(suiteCalls(rec).map(word), ['bash -lc bash check.sh'],
+      'leg (g) [M2]: the whole suite still runs')
+    assert.equal(a1.disposition, 'folded', 'leg (g) [M2]: and the fold ends `folded`')
+    assert.equal(a1.suite, 'pass', 'leg (g) [M2]: on a green suite')
+  }
+
+  // ═══ (h) the contract's two sentences, and the Proof's `Run:` ═══════════
+  {
+    const REPO = path.resolve(HERE, '..', '..')
+    const CONTRACT = path.join(REPO, 'fleet', 'CONTRACT.md')
+    const LITERALS = ['exam-<attempt>-<n>.txt', 'red on <path>']
+    // The Proof's `Run:`, verbatim.
+    const GREP =
+      'grep -q "exam-<attempt>-<n>.txt" fleet/CONTRACT.md && ' +
+      'grep -q "red on <path>" fleet/CONTRACT.md'
+    const runIn = (cmd, argv, cwd) => {
+      try {
+        execFileSync(cmd, argv, { cwd, env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+        return { code: 0, out: '' }
+      } catch (e) {
+        return { code: typeof e.status === 'number' ? e.status : 1,
+          out: String(e.stdout || '') + String(e.stderr || '') }
+      }
+    }
+
+    const text = fs.readFileSync(CONTRACT, 'utf8')
+    // The two sentences M5 names, sliced on BASE anchors this plan does not move.
+    const sentence = (from, to, which) => {
+      const a = text.indexOf(from)
+      assert.ok(a >= 0, 'leg (h) [M5]: fleet/CONTRACT.md still opens its ' + which +
+        ' sentence with ' + JSON.stringify(from))
+      const b = text.indexOf(to, a)
+      assert.ok(b > a, 'leg (h) [M5]: … and still closes the region at ' + JSON.stringify(to))
+      return text.slice(a, b)
+    }
+    const receipts = sentence(
+      'The publish fold writes its own `publish-fold/` receipts directory',
+      '\n    Committed from a detached worktree', 'receipts')
+    assert.ok(receipts.includes('exam-<attempt>-<n>.txt'),
+      'leg (h) [M5]: the `publish-fold/` receipts sentence names `exam-<attempt>-<n>.txt` — got ' +
+      JSON.stringify(receipts))
+    const dispositions = sentence(
+      'Its disposition is one of `folded`', 'A `hold=1` run still folds', 'dispositions')
+    assert.ok(dispositions.includes('red on'),
+      'leg (h) [M5]: and the dispositions sentence carries the phrase `red on` — got ' +
+      JSON.stringify(dispositions))
+
+    assert.equal(runIn('bash', ['-c', GREP], REPO).code, 0,
+      'leg (h) [M5]: the Proof\'s `Run:` exits 0 against fleet/CONTRACT.md')
+    for (const lit of LITERALS) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-contract-t2-'))
+      CASES.push(dir)
+      fs.mkdirSync(path.join(dir, 'fleet'), { recursive: true })
+      fs.writeFileSync(path.join(dir, 'fleet', 'CONTRACT.md'), text.split(lit).join(''))
+      assert.notEqual(runIn('bash', ['-c', GREP], dir).code, 0,
+        'leg (h) [M5]: … and non-zero on a contract with ' + JSON.stringify(lit) + ' removed')
+    }
+  }
+
+  // ═══ (i) the parse check first, then the exam ═══════════════════════════
+  {
+    assert.deepEqual(CANDIDATE_CHECKS.map((c) => c.name), ['parse', 'exam'],
+      'leg (i) [M2]: CANDIDATE_CHECKS is exactly the parse check then the exam check — got ' +
+      JSON.stringify(CANDIDATE_CHECKS.map((c) => c && c.name)))
+    assert.equal(CANDIDATE_CHECKS[1], EXAM_CHECK,
+      'leg (i) [M2]: and its second entry is EXAM_CHECK itself')
+    assert.equal(typeof (EXAM_CHECK && EXAM_CHECK.run), 'function',
+      'leg (i) [M2]: which carries the `run` the folder calls')
+
+    const fx = newCase('t2-parse-then-exam', {
+      mainMoves: run5Move({
+        files: { 'mod.mjs': mjsLines({ 2: 'export const l2 = 20' }), 'exam_mod.mjs': EXAM_MOD },
+        plan: PLAN_RUN5_MOD,
+      }),
+      runEdits: runWrites({ 'mod.mjs': mjsLines({ 2: 'export const l2 = 2000' }) }),
+      tasks: [MOD_TASK],
+    })
+    const stub = stubAgent((nth) => (nth === 1
+      ? { status: 'RESOLVED',
+          hunks: [{ id: 'h1', content: 'export const l2 = 20\nexport const l2 = 2000' }],
+          notes: 'both second lines, main\'s first' }
+      : MOD_2020()))
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.deepEqual(a1.checks, [
+      parse('mod.mjs', 'fail'), parse('mod.mjs', 'pass'),
+      exam('exam_mod.mjs', 'mod.mjs', 'pass'),
+    ], 'leg (i) [M2]: the exam check runs after the parse check, so a candidate that does not ' +
+       'parse records no exam entry — got ' + JSON.stringify(a1.checks))
+    const parses = parseCalls(rec)
+    const exams = examCalls(rec)
+    assert.ok(parses.length >= 1, 'leg (i) [M2]: `node --check mod.mjs` was recorded')
+    assert.deepEqual(exams.map(word), ['node exam_mod.mjs'],
+      'leg (i) [M2]: exactly one `node exam_mod.mjs` call is recorded — the exam runs once, on ' +
+      'the candidate that parses')
+    assert.ok(parses[0].n < exams[0].n,
+      'leg (i) [M2]: the first `node --check mod.mjs` precedes every `node exam_mod.mjs`')
+    assert.equal(exams[0].cwd, fx.integ,
+      'leg (i) [M2]: which ran in the integration clone — got ' + String(exams[0].cwd))
+    assert.equal(a1.disposition, 'folded', 'leg (i) [M2]: the row is `folded`')
+    assert.equal(a1.checkRetries, 1, 'leg (i) [M2]: with `checkRetries` 1')
+    assert.equal(secondLine(fx, a1.candidate, 'mod.mjs'), 'export const l2 = 2020',
+      'leg (i) [M2]: on the candidate the second resolution wrote')
+  }
+
+  // ═══ (j) two joined paths, live ═════════════════════════════════════════
+  {
+    const fx = newCase('t2-two-paths', {
+      mainMoves: run5Move({
+        files: {
+          'a.txt': lines({ 2: 'line2 from main' }),
+          'mod.mjs': mjsLines({ 2: 'export const l2 = 20' }),
+          'exam_main.mjs': EXAM_MAIN_L2,
+          'exam_mod.mjs': EXAM_MOD,
+        },
+        plan: PLAN_RUN5_TWO,
+      }),
+      runEdits: runWrites({
+        'a.txt': lines({ 2: 'line2 from run' }),
+        'mod.mjs': mjsLines({ 2: 'export const l2 = 2000' }),
+        'exam_run.mjs': EXAM_RUN_L2,
+      }),
+      tasks: [TWO_PATH_TASK],
+    })
+    let mods = 0
+    const stub = stubAgent((nth, prompt) => {
+      if (!prompt.includes('conflicted path: mod.mjs')) return RESOLVED_H1()
+      mods += 1
+      return mods === 1 ? MOD_2000() : MOD_2020()
+    })
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.pathsJoined, 2, 'fixture sanity: a.txt and mod.mjs are both joined')
+    const index = indexAt(fx, 'wave-1')
+    assert.deepEqual(index.map((e) => e.path), ['a.txt', 'mod.mjs'],
+      'fixture sanity: two conflicts, a.txt first in run.patch')
+    const iA = index.find((e) => e.path === 'a.txt').i
+    const iMod = index.find((e) => e.path === 'mod.mjs').i
+
+    assert.equal(stub.dispatches.length, 3,
+      'leg (j) [M3]: the stub was dispatched exactly three times')
+    assert.deepEqual(stub.dispatches.map((d) => String(d.label).split(':')[3]),
+      [String(iA), String(iMod), String(iMod)],
+      'leg (j) [M3]: once for a.txt\'s <i> and twice for mod.mjs\'s — a.txt\'s reply was ' +
+      'replayed, not re-asked — got ' + stub.dispatches.map((d) => d.label).join(', '))
+    const retry = stub.dispatches[2].prompt.slice(stub.dispatches[1].prompt.length)
+    for (const s of ['exam_mod.mjs', 'mod.mjs']) {
+      assert.ok(retry.includes(s),
+        'leg (j) [M3]: the retry prompt names ' + JSON.stringify(s) + ' — got ' +
+        JSON.stringify(retry))
+    }
+
+    const exams = examCalls(rec)
+    assert.deepEqual(exams.map(word), [
+      'node exam_main.mjs', 'node exam_run.mjs', 'node exam_mod.mjs',
+      'node exam_main.mjs', 'node exam_run.mjs', 'node exam_mod.mjs',
+    ], 'leg (j) [M2]: every joined path\'s exams, in path order, once each per pass')
+    for (const c of exams) {
+      assert.equal(c.cwd, fx.integ,
+        'leg (j) [M2]: all with cwd the integration clone — got ' + String(c.cwd))
+    }
+    assert.deepEqual(a1.checks, [
+      parse('mod.mjs', 'pass'),
+      exam('exam_main.mjs', 'a.txt', 'pass'),
+      exam('exam_run.mjs', 'a.txt', 'pass'),
+      exam('exam_mod.mjs', 'mod.mjs', 'fail'),
+      parse('mod.mjs', 'pass'),
+      exam('exam_main.mjs', 'a.txt', 'pass'),
+      exam('exam_run.mjs', 'a.txt', 'pass'),
+      exam('exam_mod.mjs', 'mod.mjs', 'pass'),
+    ], 'leg (j) [M2]: a folder that examines only the first joined path records no exam_mod.mjs ' +
+       'entry, and one that runs exam_run.mjs once per path that names it records it twice in a ' +
+       'pass — got ' + JSON.stringify(a1.checks))
+
+    assert.equal(a1.disposition, 'folded', 'leg (j) [M3]: the second pass is green and folds')
+    assert.equal(a1.suite, 'pass', 'leg (j) [M3]: the whole suite ran and was green')
+    assert.equal(a1.checkRetries, 1, 'leg (j) [M3]: with `checkRetries` 1')
+    assert.equal(a1.resolversDispatched, 3, 'leg (j) [M3]: and `resolversDispatched` 3')
+    assert.equal(secondLine(fx, a1.candidate, 'mod.mjs'), 'export const l2 = 2020',
+      'leg (j) [M3]: the candidate\'s mod.mjs line 2 is the second resolution')
+  }
 }
 
 console.log('ALL TESTS PASSED')

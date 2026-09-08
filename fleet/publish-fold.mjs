@@ -40,7 +40,9 @@ import {
 } from './run-main.mjs'
 import { loadRoles, parseCliJson, resolveConflicts } from './run-engine.mjs'
 import { makeEventLog } from './run-waves.mjs'
-import { contendingBlock as buildContendingBlock } from './publish-fold-block.mjs'
+import {
+  contendingBlock as buildContendingBlock, contendingTasks,
+} from './publish-fold-block.mjs'
 
 // Resolved against the ENGINE checkout, exactly as `runEngine` resolves it:
 // the kernel ships with the code that is running, never with `--repo`.
@@ -64,6 +66,182 @@ const planTitleOf = (planPath) => {
   }
   return undefined
 }
+
+// ── the candidate's checks (#751) ────────────────────────────────────────────
+// A check is a function of the joined files alone: no model, and never the
+// whole suite. The folder runs the whole list, in order, on every candidate it
+// materializes — BEFORE it spends the suite — so a candidate that cannot even
+// be parsed costs a parser invocation rather than a full test run, and one whose
+// joined paths fail their own exams (#754) costs those exams rather than all of
+// them.
+//
+// `ctx` is
+//   { repo, base, tip, run, tasks, candidate, joined, conflicted, integ, exec,
+//     foldEvidence, attemptKey }
+// with `joined` the ordered joined paths, `conflicted` the paths carrying a
+// `conflicts.json` entry and `integ` the integration clone already laid on the
+// candidate's tree. `run(ctx)` resolves either
+//   { ok: true, checks }
+// or
+//   { ok: false, checks, path, message, disposition, reason }
+// — the folder appends `checks` to the receipt row either way, and on
+// `ok: false` either retries that path's resolver once (when the path is one a
+// resolver owns and has not been retried this attempt) or records the
+// disposition and the reason and runs no suite.
+
+/**
+ * The parse command for a joined path, by extension, as an argv — or `null`
+ * for a path no parser owns, for which nothing is run at all.
+ */
+export function parseArgvFor (p) {
+  const file = String(p == null ? '' : p)
+  const ext = (/\.[^./\\]*$/.exec(file) || [''])[0].toLowerCase()
+  if (ext === '.mjs' || ext === '.js') return ['node', '--check', file]
+  if (ext === '.sh') return ['bash', '-n', file]
+  if (ext === '.py') return ['python3', '-m', 'py_compile', file]
+  return null
+}
+
+export const PARSE_CHECK = {
+  name: 'parse',
+  run: async (ctx) => {
+    const checks = []
+    for (const p of ctx.joined) {
+      const argv = parseArgvFor(p)
+      if (!argv) continue
+      const r = await ctx.exec(argv[0], argv.slice(1), { cwd: ctx.integ })
+      const ok = Boolean(r) && r.code === 0
+      checks.push({ check: 'parse', path: p, result: ok ? 'pass' : 'fail' })
+      if (ok) continue
+      return {
+        ok: false,
+        checks,
+        path: p,
+        // What the parser said, which is what the re-briefed resolver is told.
+        message: tail(String((r && r.stderr) || '') + String((r && r.stdout) || '')),
+        disposition: 'cannot fold',
+        reason: p + ' does not parse',
+      }
+    }
+    return { ok: true, checks }
+  },
+}
+
+// ── the exam check (#754) ────────────────────────────────────────────────────
+// A joined path is a path two runs both wrote, and the run that wrote main's
+// side left behind the exam that stands for it: the `- Test:` bullets of the
+// Proof slot in the task whose Files name that path. Those exams are the
+// cheapest true measurement of the candidate there is — they are about the very
+// file the fold just joined — so they run after the parse check and before the
+// whole suite, and a red one is `suite red` without ever spending the suite.
+
+/**
+ * The exam paths a task body names: the `- Test:` bullets of its `**Proof:**`
+ * slot, in the body's own order, backticks stripped.
+ *
+ * The slot runs from the `**Proof:**` line to the line before the first later
+ * line beginning `**Stale-if:**`, or to the body's end. That boundary is the
+ * whole reason this is a reader and not a grep: a `Stale-if:` predicate may
+ * name a path in the same bullet shape, and it is a staleness condition rather
+ * than an exam. A body with no `**Proof:**` line names none.
+ */
+export function proofExams (body) {
+  const lines = String(body == null ? '' : body).split('\n')
+  const start = lines.findIndex((l) => l.startsWith('**Proof:**'))
+  if (start < 0) return []
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i].startsWith('**Stale-if:**')) { end = i; break }
+  }
+  const exams = []
+  for (const line of lines.slice(start, end)) {
+    const m = /^\s*-\s*Test:\s*(.+?)\s*$/.exec(line)
+    if (!m) continue
+    const exam = m[1].replace(/`/g, '').trim()
+    if (exam) exams.push(exam)
+  }
+  return exams
+}
+
+/**
+ * The command that runs one exam, as an argv — or `null` for an exam whose
+ * extension no runner owns, which is recorded and not run.
+ */
+export function examArgvFor (exam) {
+  const file = String(exam == null ? '' : exam)
+  if (/\.test\.ts$/i.test(file)) return ['bun', 'test', file]
+  const ext = (/\.[^./\\]*$/.exec(file) || [''])[0].toLowerCase()
+  if (ext === '.mjs' || ext === '.js') return ['node', file]
+  if (ext === '.py') return ['python3', '-m', 'pytest', '-q', file]
+  return null
+}
+
+// `n` counts every exam RUN in the attempt, across both passes of a retry, so
+// it is read off the evidence directory rather than kept in a closure the retry
+// rebuilds: the first pass's `exam-1-1.txt` is the red output a reader goes
+// looking for, and the second pass's runs continue the sequence.
+const nextExamIndex = (dir, attemptKey) => {
+  let names = []
+  try { names = fs.readdirSync(dir) } catch { return 1 }
+  const re = new RegExp('^exam-' + String(attemptKey).replace(/[^A-Za-z0-9_-]/g, '.') +
+    '-(\\d+)\\.txt$')
+  let max = 0
+  for (const name of names) {
+    const m = re.exec(name)
+    if (m && Number(m[1]) > max) max = Number(m[1])
+  }
+  return max + 1
+}
+
+export const EXAM_CHECK = {
+  name: 'exam',
+  run: async (ctx) => {
+    const checks = []
+    // Each exam ONCE per pass, in first-seen order, under the joined path that
+    // brought it: one task can name an exam for two joined paths, and running
+    // it twice would say nothing the first run did not.
+    const seen = new Set()
+    let n = nextExamIndex(ctx.foldEvidence, ctx.attemptKey)
+    for (const p of ctx.joined) {
+      const contenders = await contendingTasks({
+        repo: ctx.repo, base: ctx.base, tip: ctx.tip, run: ctx.run, path: p, tasks: ctx.tasks,
+      })
+      for (const { task } of contenders) {
+        for (const exam of proofExams(task && task.body)) {
+          if (seen.has(exam)) continue
+          seen.add(exam)
+          const argv = examArgvFor(exam)
+          if (!argv) {
+            checks.push({ check: 'exam', exam, path: p, result: 'skipped' })
+            continue
+          }
+          const r = await ctx.exec(argv[0], argv.slice(1), { cwd: ctx.integ })
+          const out = String((r && r.stdout) || '') + String((r && r.stderr) || '')
+          fs.writeFileSync(
+            path.join(ctx.foldEvidence, 'exam-' + ctx.attemptKey + '-' + n + '.txt'), out)
+          n += 1
+          const ok = Boolean(r) && r.code === 0
+          checks.push({ check: 'exam', exam, path: p, result: ok ? 'pass' : 'fail' })
+          if (ok) continue
+          // The first red exam stops the pass: the candidate has already been
+          // measured false, and the exams after it would measure the same one.
+          return {
+            ok: false,
+            checks,
+            path: p,
+            exam,
+            message: tail(out),
+            disposition: 'suite red',
+            reason: exam + ' red on ' + p,
+          }
+        }
+      }
+    }
+    return { ok: true, checks }
+  },
+}
+
+export const CANDIDATE_CHECKS = [PARSE_CHECK, EXAM_CHECK]
 
 /**
  * One attempt of the publish fold.
@@ -222,6 +400,7 @@ export async function publishFold (opts, deps = {}) {
       disposition, reason, conflictPath, candidate, pushedHead = '', suite = 'none',
       tip = '', pathsJoined = 0, pathsConflicted = 0,
       resolversDispatched = 0, resolverRetries = 0,
+      checks = [], checkRetries = 0,
     } = fields
     const row = rowOf(attemptKey)
     if (tip) row.tip = tip
@@ -235,13 +414,19 @@ export async function publishFold (opts, deps = {}) {
     row.pathsJoined = pathsJoined
     row.resolversDispatched = resolversDispatched
     row.suite = suite
+    // The candidate checks (#751): every entry every pass appended, in order,
+    // and the number of resolvers a red check sent back. Both stand on every
+    // row — `[]` and 0 on a fold with no joined path.
+    row.checks = checks
+    row.checkRetries = checkRetries
     writeReceipt()
     collectWave()
     eventLog.onEvent({
       kind: 'driver:publish-fold',
       run, attempt, base, tip, candidate,
+      ...(reason ? { reason } : {}),
       pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
-      suite, disposition,
+      suite, disposition, checks, checkRetries,
     })
     return receipt
   }
@@ -341,12 +526,17 @@ export async function publishFold (opts, deps = {}) {
         run, attempt, base,
         tip: row.tip || '',
         candidate: row.candidate || '',
+        ...(row.reason ? { reason: row.reason } : {}),
         pathsJoined: typeof row.pathsJoined === 'number' ? row.pathsJoined : 0,
         pathsConflicted: 0,
         resolversDispatched: typeof row.resolversDispatched === 'number' ? row.resolversDispatched : 0,
         resolverRetries: 0,
         suite: row.suite || 'none',
         disposition: row.disposition,
+        // Replayed, never recomputed: a re-entry re-reads the row it found, so
+        // a row written before #751 stays a row without these two.
+        ...(Array.isArray(row.checks) ? { checks: row.checks } : {}),
+        ...(typeof row.checkRetries === 'number' ? { checkRetries: row.checkRetries } : {}),
       })
       return receipt
     }
@@ -427,9 +617,10 @@ export async function publishFold (opts, deps = {}) {
     const mainPaths = await pathsOf(mainPatch)
     const runPaths = await pathsOf(runPatch)
     // Disjoint sides still fold: an empty intersection is a fact about the two
-    // patches, never a refusal.
-    let pathsJoined = 0
-    for (const p of runPaths) if (mainPaths.has(p)) pathsJoined += 1
+    // patches, never a refusal. `joined` keeps run.patch's own path order —
+    // the order the candidate's checks run in.
+    const joined = [...runPaths].filter((p) => mainPaths.has(p))
+    const pathsJoined = joined.length
 
     // ── step 3: the kernel ──────────────────────────────────────────────────
     const runCli = async (argv) => {
@@ -444,155 +635,292 @@ export async function publishFold (opts, deps = {}) {
     // declaration, and a cross-run frontier has no such declaration to read.
     const commutesArgs = []
 
-    const fold = await runCli(['fold', ...common, '--base', base, ...taskArgs])
-    const f = fold.parsed
-    const parked = (reason, conflictPath, extra = {}) => record({
-      disposition: 'conflict parked', reason, conflictPath, candidate: floor, tip,
-      pathsJoined, pathsConflicted: conflictsIndex().length, ...extra,
-    })
-    const cannot = (reason, extra = {}) => record({
-      disposition: 'cannot fold', reason, candidate: floor, tip,
-      pathsJoined, pathsConflicted: conflictsIndex().length, ...extra,
-    })
-
-    if (!f) {
-      return cannot('fold printed no verdict (exit ' + fold.code + '): ' + tail(fold.stderr))
-    }
-    if (typeof f.parked === 'number' && f.parked > 0) {
-      // The kernel narrated a stop no resolver can drain: two sides on one
-      // binary path, a delete/modify pairing, a kernel-limit park. The
-      // conflicted path is read off the index it wrote, never guessed.
-      const entry = conflictsIndex().find((e) => e && e.dispatchable === false) || conflictsIndex()[0]
-      return parked('fold parked ' + f.parked + ' conflict(s) — ' +
-        ((entry && entry.reason) || 'see the conflicts index'), entry && entry.path)
-    }
-    if (fold.code !== 0 && !(Array.isArray(f.open) && f.open.length)) {
-      return cannot('fold exited ' + fold.code + ': ' + (f.selfChecks || tail(fold.stderr)))
-    }
-    if (typeof f.conflicts !== 'number') {
-      return cannot('fold reported no conflicts count to verify against')
-    }
-    const open = Array.isArray(f.open) ? f.open.slice() : []
-    if (f.conflicts > 0 && open.length === 0) {
-      return cannot('fold counted ' + f.conflicts + ' conflict(s) but named none to resolve')
-    }
-    const expectOpen = (typeof f.dispatchable === 'number') ? f.dispatchable : f.conflicts
-    if (open.length !== expectOpen) {
-      return cannot('fold named ' + open.length + ' open conflict(s) but counted ' +
-        expectOpen + ' still to resolve')
-    }
-    if (open.length === 0 && f.complete !== true) {
-      return cannot('fold reported no conflicts but did not complete (selfChecks: ' +
-        (f.selfChecks || 'absent') + ')')
-    }
-
-    // ── step 4: the resolvers ───────────────────────────────────────────────
-    let resolversDispatched = 0
-    let resolverRetries = 0
-    if (open.length) {
-      // The brief, per conflicted path, concatenated in the kernel's own `open`
-      // order — `resolveConflicts` briefs every dispatch of a multi-path stop
-      // with ONE string, so a two-path stop's block is the two blocks whole,
-      // first path first. The folder prepends and appends nothing.
-      const launch = readJson(path.join(runDir, 'launch.json'))
-      const tasks = Array.isArray(launch && launch.tasks) ? launch.tasks : []
-      const blocks = []
-      for (const c of open) {
-        blocks.push(await buildContendingBlock({ repo, base, tip, run, path: c.path, tasks }))
-      }
-      const block = blocks.join('')
-
-      // TIP's tree, in the clone the resolver runs in: the frontier side of
-      // every hunk is main since BASE, so the tree a resolver can open has to
-      // be main's. `read-tree -u --reset` lays the tree down; the `reset --hard`
-      // that follows puts the clone's own head on it, so `HEAD^{tree}` in the
-      // resolver's cwd IS the tip's tree rather than the base it was cut at.
-      await borrowInteg()
-      await gitR(['fetch', repo, 'refs/remotes/origin/' + defaultBranch], integ)
-      await gitR(['read-tree', '-u', '--reset', tip + '^{tree}'], integ)
-      await gitR(['reset', '--hard', tip], integ)
-
-      const roles = loadRoles()
-      const dispatch = buildAgent()
-      // The brief a resolver was handed IS the record of what it was asked, so
-      // it is saved beside the reply directory it wrote, under the same `<i>`
-      // the kernel's index gave the conflict.
-      const agent = async (prompt, agentOpts) => {
-        const m = /:(\d+):(\d+)$/.exec(String((agentOpts && agentOpts.label) || ''))
-        if (m) {
-          fs.writeFileSync(
-            path.join(foldEvidence, 'resolver-brief-' + m[1] + '-' + attemptKey + '.txt'), prompt)
-        }
-        return dispatch(prompt, agentOpts)
-      }
-
-      const resolution = await resolveConflicts({
-        agent, runCli, roles, common, taskArgs, commutesArgs,
-        open, contendingBlock: block,
-        waveDir: waveDirOf(attemptKey),
-        labelPrefix: 'resolve:publish-fold:' + attemptKey,
-      })
-      resolversDispatched = resolution.transcripts.length
-      resolverRetries = resolution.transcripts.filter((t) => t.attempt === 2).length
-      if (!resolution.ok) {
-        const last = resolution.transcripts[resolution.transcripts.length - 1]
-        await restoreInteg()
-        return parked(resolution.reason, (last && last.path) || open[0].path,
-          { resolversDispatched, resolverRetries })
-      }
-      await restoreInteg()
-    }
-
-    // ── step 5: the candidate ───────────────────────────────────────────────
+    // Everything the pass below reads out of the run tree, read once.
+    const launch = readJson(path.join(runDir, 'launch.json'))
+    const tasks = Array.isArray(launch && launch.tasks) ? launch.tasks : []
     const args = readJson(path.join(runDir, 'args.json')) || {}
     const planTitle = planTitleOf(
       typeof args.planPath === 'string' && args.planPath.trim() ? args.planPath : undefined)
     const subjectArgs = planTitle ? ['--subject', planTitle] : []
-    const mat = await runCli(['materialize', ...common, '--prev-head', tip, ...taskArgs, ...subjectArgs])
-    const m = mat.parsed
-    const pathsConflicted = conflictsIndex().length
-    if (!m || !m.candidateSha) {
-      // A `park` here is the cross-run chmod shape: a path whose mode on main
-      // since BASE differs from the mode this run's side carries. The kernel's
-      // own reason is the reason, verbatim.
-      return record({
-        disposition: 'cannot fold',
-        reason: (m && (m.park || m.fallback)) || ('materialize refused (exit ' + mat.code +
-          '): ' + tail(mat.stderr)),
-        candidate: floor, tip, pathsJoined, pathsConflicted,
-        resolversDispatched, resolverRetries,
-      })
-    }
-    const candidate = m.candidateSha
-    // The branch moves BEFORE the suite: the suite measures the candidate, and
-    // a red suite leaves the branch on it so the PR shows what failed.
-    await gitR(['update-ref', 'refs/heads/' + branch, candidate])
-
-    // ── step 6: the suite, on the candidate, in the integration clone ───────
     const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) ? args.testCmd : ''
-    if (!testCmd) {
+
+    // The tallies a pass adds to. `resolversDispatched` counts REAL dispatches
+    // (a replayed reply is not one); `resolverRetries` keeps its meaning — the
+    // replies the kernel rejected; `checkRetries` is the new counter, the
+    // number of times a red check sent a resolver back.
+    let resolversDispatched = 0
+    let resolverRetries = 0
+    let checks = []
+    let checkRetries = 0
+    const retriedPaths = new Set()
+
+    const parked = (reason, conflictPath) => record({
+      disposition: 'conflict parked', reason, conflictPath, candidate: floor, tip,
+      pathsJoined, pathsConflicted: conflictsIndex().length,
+      resolversDispatched, resolverRetries, checks, checkRetries,
+    })
+    const cannot = (reason) => record({
+      disposition: 'cannot fold', reason, candidate: floor, tip,
+      pathsJoined, pathsConflicted: conflictsIndex().length,
+      resolversDispatched, resolverRetries, checks, checkRetries,
+    })
+
+    // ── the re-brief a red check writes ─────────────────────────────────────
+    // Appended AFTER the contending block, so the retry's prompt begins with
+    // the bytes of the brief the same resolver already answered.
+    // An exam check names the exam that went red as well as the path: the
+    // resolver's own file is the path, but what it has to satisfy is the exam,
+    // and `exam_main.mjs` is a name it can open in its own clone.
+    const failedCheckSection = (r) =>
+      '\n\nPREVIOUS RESOLUTION FAILED A CHECK\n' +
+      'Your previous resolution was folded into the candidate, and ' + r.path +
+      ' then failed the ' + r.check + ' check there' +
+      (r.exam ? ' — the exam ' + r.exam + ' exited non-zero on it' : '') +
+      '. The checker said:\n\n' +
+      r.message + '\n\n' +
+      'Resolve the same hunks again so that ' + r.path + ' passes that check. ' +
+      'Nothing else about this conflict has changed.\n'
+
+    // ── the reply a replayed conflict gives back ────────────────────────────
+    // A retry re-folds the WHOLE wave, so the kernel narrates every conflict
+    // again — but only the red path's resolver is asked again. Every other
+    // conflict answers out of the reply directory it already wrote, matched by
+    // path (never by `i`), with no dispatch.
+    const replayReply = (r, conflictPath) => {
+      const entry = (r.index || []).find((e) => e && e.path === conflictPath)
+      if (!entry) return null
+      let names = []
+      try { names = fs.readdirSync(r.waveDir) } catch { return null }
+      const re = new RegExp('^reply-' + entry.i + '-(\\d+)$')
+      let dir = ''
+      let best = -1
+      for (const name of names) {
+        const m = re.exec(name)
+        if (m && Number(m[1]) > best) { best = Number(m[1]); dir = path.join(r.waveDir, name) }
+      }
+      if (!dir) return null
+      const hunks = []
+      let notes = ''
+      for (const file of fs.readdirSync(dir).sort()) {
+        if (!file.endsWith('.txt')) continue
+        const content = fs.readFileSync(path.join(dir, file), 'utf8')
+        // `resolveConflicts` writes `notes.txt` as the notes plus one newline
+        // and each hunk file newline-terminated: the notes are handed back
+        // without that newline and the hunks with theirs, so the reply
+        // directory the replay produces is the one it was read from, byte for
+        // byte.
+        if (file === 'notes.txt') { notes = content.replace(/\n$/, ''); continue }
+        hunks.push({ id: file.slice(0, -'.txt'.length), content })
+      }
+      return { status: 'RESOLVED', hunks, notes }
+    }
+
+    // ── the pass: the kernel, the resolvers, the candidate, the checks ──────
+    // Run once, and once more when a check goes red on a path a resolver owns
+    // and has not already been sent back this attempt. A retry re-runs the
+    // check list from its first entry on the new candidate, so a candidate is
+    // only ever measured whole.
+    let retry = null   // { path, check, exam, message, index, waveDir }
+    for (;;) {
+      if (retry) {
+        // `cmd_fold` refuses a wave whose `fold_log.jsonl` exists and
+        // `cmd_resolve` refuses an applied conflict, so the fold is re-driven
+        // from a FRESH wave directory: the one that produced the red candidate
+        // is kept whole in the evidence tree and removed from the run tree.
+        const kept = evidenceWaveDirOf(attemptKey + '-retried')
+        fs.rmSync(kept, { recursive: true, force: true })
+        fs.mkdirSync(path.dirname(kept), { recursive: true })
+        fs.cpSync(waveDirOf(attemptKey), kept, { recursive: true })
+        fs.rmSync(waveDirOf(attemptKey), { recursive: true, force: true })
+        retry.waveDir = kept
+        checkRetries += 1
+        retriedPaths.add(retry.path)
+        await restoreInteg()
+      }
+
+      // ── step 3: the kernel ────────────────────────────────────────────────
+      const fold = await runCli(['fold', ...common, '--base', base, ...taskArgs])
+      const f = fold.parsed
+
+      if (!f) {
+        return cannot('fold printed no verdict (exit ' + fold.code + '): ' + tail(fold.stderr))
+      }
+      if (typeof f.parked === 'number' && f.parked > 0) {
+        // The kernel narrated a stop no resolver can drain: two sides on one
+        // binary path, a delete/modify pairing, a kernel-limit park. The
+        // conflicted path is read off the index it wrote, never guessed.
+        const entry = conflictsIndex().find((e) => e && e.dispatchable === false) || conflictsIndex()[0]
+        return parked('fold parked ' + f.parked + ' conflict(s) — ' +
+          ((entry && entry.reason) || 'see the conflicts index'), entry && entry.path)
+      }
+      if (fold.code !== 0 && !(Array.isArray(f.open) && f.open.length)) {
+        return cannot('fold exited ' + fold.code + ': ' + (f.selfChecks || tail(fold.stderr)))
+      }
+      if (typeof f.conflicts !== 'number') {
+        return cannot('fold reported no conflicts count to verify against')
+      }
+      const open = Array.isArray(f.open) ? f.open.slice() : []
+      if (f.conflicts > 0 && open.length === 0) {
+        return cannot('fold counted ' + f.conflicts + ' conflict(s) but named none to resolve')
+      }
+      const expectOpen = (typeof f.dispatchable === 'number') ? f.dispatchable : f.conflicts
+      if (open.length !== expectOpen) {
+        return cannot('fold named ' + open.length + ' open conflict(s) but counted ' +
+          expectOpen + ' still to resolve')
+      }
+      if (open.length === 0 && f.complete !== true) {
+        return cannot('fold reported no conflicts but did not complete (selfChecks: ' +
+          (f.selfChecks || 'absent') + ')')
+      }
+
+      // ── step 4: the resolvers ─────────────────────────────────────────────
+      if (open.length) {
+        // The brief, per conflicted path, concatenated in the kernel's own
+        // `open` order — `resolveConflicts` briefs every dispatch of a
+        // multi-path stop with ONE string, so a two-path stop's block is the
+        // two blocks whole, first path first. The folder prepends nothing, and
+        // appends only the re-brief a red check earned.
+        const blocks = []
+        for (const c of open) {
+          blocks.push(await buildContendingBlock({ repo, base, tip, run, path: c.path, tasks }))
+        }
+        const block = blocks.join('')
+
+        // TIP's tree, in the clone the resolver runs in: the frontier side of
+        // every hunk is main since BASE, so the tree a resolver can open has to
+        // be main's. `read-tree -u --reset` lays the tree down; the `reset --hard`
+        // that follows puts the clone's own head on it, so `HEAD^{tree}` in the
+        // resolver's cwd IS the tip's tree rather than the base it was cut at.
+        await borrowInteg()
+        await gitR(['fetch', repo, 'refs/remotes/origin/' + defaultBranch], integ)
+        await gitR(['read-tree', '-u', '--reset', tip + '^{tree}'], integ)
+        await gitR(['reset', '--hard', tip], integ)
+
+        const roles = loadRoles()
+        const dispatch = buildAgent()
+        // The brief a resolver was handed IS the record of what it was asked, so
+        // it is saved beside the reply directory it wrote, under the same `<i>`
+        // the kernel's index gave the conflict. On a retry only the red path is
+        // asked again, under `-retry`, so the first pass's brief stands.
+        const agent = async (prompt, agentOpts) => {
+          const m = /:(\d+):(\d+)$/.exec(String((agentOpts && agentOpts.label) || ''))
+          const i = m ? m[1] : ''
+          const entry = i ? conflictsIndex().find((e) => e && String(e.i) === i) : null
+          const conflictPath = (entry && entry.path) || ''
+          if (retry && conflictPath && conflictPath !== retry.path) {
+            const replayed = replayReply(retry, conflictPath)
+            if (replayed) return replayed
+          }
+          const text = (retry && conflictPath === retry.path)
+            ? prompt + failedCheckSection(retry)
+            : prompt
+          if (i) {
+            fs.writeFileSync(path.join(foldEvidence, 'resolver-brief-' + i + '-' + attemptKey +
+              (retry ? '-retry' : '') + '.txt'), text)
+          }
+          const reply = await dispatch(text, agentOpts)
+          if (reply) resolversDispatched += 1
+          return reply
+        }
+
+        const resolution = await resolveConflicts({
+          agent, runCli, roles, common, taskArgs, commutesArgs,
+          open, contendingBlock: block,
+          waveDir: waveDirOf(attemptKey),
+          labelPrefix: 'resolve:publish-fold:' + attemptKey,
+        })
+        resolverRetries += resolution.transcripts.filter((t) => t.attempt === 2).length
+        if (!resolution.ok) {
+          const last = resolution.transcripts[resolution.transcripts.length - 1]
+          await restoreInteg()
+          return parked(resolution.reason, (last && last.path) || open[0].path)
+        }
+        await restoreInteg()
+      }
+
+      // ── step 5: the candidate ─────────────────────────────────────────────
+      const mat = await runCli(['materialize', ...common, '--prev-head', tip, ...taskArgs, ...subjectArgs])
+      const m = mat.parsed
+      const pathsConflicted = conflictsIndex().length
+      if (!m || !m.candidateSha) {
+        // A `park` here is the cross-run chmod shape: a path whose mode on main
+        // since BASE differs from the mode this run's side carries. The kernel's
+        // own reason is the reason, verbatim.
+        return record({
+          disposition: 'cannot fold',
+          reason: (m && (m.park || m.fallback)) || ('materialize refused (exit ' + mat.code +
+            '): ' + tail(mat.stderr)),
+          candidate: floor, tip, pathsJoined, pathsConflicted,
+          resolversDispatched, resolverRetries, checks, checkRetries,
+        })
+      }
+      const candidate = m.candidateSha
+      // The branch moves BEFORE the checks and the suite: both measure the
+      // candidate, and a red one leaves the branch on it so the PR shows what
+      // failed.
+      await gitR(['update-ref', 'refs/heads/' + branch, candidate])
+
+      // ── step 6: the checks, on the candidate, in the integration clone ────
+      // By NAME, not by sha: the integration clone was cut `--local` at BASE and
+      // holds neither the tip nor the candidate, and a bare sha is not
+      // advertised under every protocol.
+      await borrowInteg()
+      await gitR(['fetch', '--no-tags', repo, 'refs/heads/' + branch], integ)
+      await gitR(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
+
+      const conflicted = conflictsIndex().map((e) => e && e.path).filter(Boolean)
+      const ctx = {
+        repo, base, tip, run, tasks, candidate, joined, conflicted, integ, exec,
+        foldEvidence, attemptKey,
+      }
+      let red = null
+      for (const check of CANDIDATE_CHECKS) {
+        const out = await check.run(ctx)
+        if (out && Array.isArray(out.checks)) checks = checks.concat(out.checks)
+        if (out && out.ok === false) { red = { ...out, check: check.name }; break }
+      }
+
+      if (red) {
+        // One retry per path per attempt, and only where a resolver owns the
+        // path: a red check on a path no resolver wrote has nobody to ask.
+        if (conflicted.includes(red.path) && !retriedPaths.has(red.path)) {
+          retry = {
+            path: red.path, check: red.check, message: red.message || '',
+            exam: red.exam || '', index: conflictsIndex(), waveDir: '',
+          }
+          continue
+        }
+        await restoreInteg()
+        return record({
+          disposition: red.disposition, reason: red.reason,
+          candidate, tip, suite: 'none',
+          pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+          checks, checkRetries,
+        })
+      }
+
+      // ── step 7: the suite ─────────────────────────────────────────────────
+      if (!testCmd) {
+        await restoreInteg()
+        return record({
+          disposition: 'folded', candidate, tip, suite: 'none',
+          pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+          checks, checkRetries,
+        })
+      }
+      const suite = await exec('bash', ['-lc', testCmd], { cwd: integ })
+      fs.writeFileSync(path.join(foldEvidence, 'suite-' + attemptKey + '.txt'),
+        String(suite.stdout || '') + String(suite.stderr || ''))
+      await restoreInteg()
+
       return record({
-        disposition: 'folded', candidate, tip, suite: 'none',
+        disposition: suite.code === 0 ? 'folded' : 'suite red',
+        ...(suite.code === 0 ? {} : { reason: 'the candidate\'s suite exited ' + suite.code }),
+        candidate, tip, suite: suite.code === 0 ? 'pass' : 'fail',
         pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+        checks, checkRetries,
       })
     }
-    await borrowInteg()
-    // By NAME, not by sha: the integration clone was cut `--local` at BASE and
-    // holds neither the tip nor the candidate, and a bare sha is not advertised
-    // under every protocol.
-    await gitR(['fetch', '--no-tags', repo, 'refs/heads/' + branch], integ)
-    await gitR(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
-    const suite = await exec('bash', ['-lc', testCmd], { cwd: integ })
-    fs.writeFileSync(path.join(foldEvidence, 'suite-' + attemptKey + '.txt'),
-      String(suite.stdout || '') + String(suite.stderr || ''))
-    await restoreInteg()
-
-    return record({
-      disposition: suite.code === 0 ? 'folded' : 'suite red',
-      ...(suite.code === 0 ? {} : { reason: 'the candidate\'s suite exited ' + suite.code }),
-      candidate, tip, suite: suite.code === 0 ? 'pass' : 'fail',
-      pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
-    })
   } finally {
     // Every exit, parked dispositions included: the integration clone is
     // borrowed, never kept.
