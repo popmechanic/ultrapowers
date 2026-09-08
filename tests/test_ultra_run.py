@@ -150,9 +150,18 @@ def test_uncompilable_plan_fails_compile_stage(tmp_path):
     assert receipt["stages"][-1]["stage"] == "compile"
 
 
-def run_validate_knobs(repo, args_path):
-    return sh([sys.executable, str(RUN), "--validate-knobs", str(args_path)],
-              cwd=repo, check=False)
+def run_validate_knobs(repo, args_path, *extra):
+    """The knob verb. `extra` carries the flags a case is pinning — #770's
+    `--no-baseline` is passed this way rather than through a second helper."""
+    return sh([sys.executable, str(RUN), "--validate-knobs", str(args_path),
+               *extra], cwd=repo, check=False)
+
+
+def assert_no_probe_left(repo):
+    """M5: after any invocation, flagged or not, no probe worktree survives."""
+    assert not list((repo / ".claude/ultrapowers").glob("wt-knob-*"))
+    assert len(sh(["git", "worktree", "list"], cwd=repo)
+               .stdout.strip().splitlines()) == 1
 
 
 def test_validate_knobs_blocks_a_tree_dirtying_bootstrap(tmp_path):
@@ -599,6 +608,10 @@ def test_validate_knobs_green_baseline_exits_0(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     out = json.loads(r.stdout)
     assert out["baseline"]["ok"] is True
+    # #770 leg (b) [M4]: the flagless verb keeps its BASE keys — the runner
+    # probe of the run-wide command belongs to --no-baseline alone.
+    assert "testCmdRunner" not in out
+    assert_no_probe_left(repo)                   # leg (f) [M5]
 
 
 def test_validate_knobs_red_baseline_exits_3(tmp_path):
@@ -611,6 +624,10 @@ def test_validate_knobs_red_baseline_exits_3(tmp_path):
     out = json.loads(r.stdout)
     assert out["baseline"]["ok"] is False
     assert "FAILING-SUITE" in out["baseline"]["output"]
+    # #770 leg (b) [M4]: exit 3 and the baseline verdict survive the flag's
+    # arrival, and the flagless line still carries no testCmdRunner.
+    assert "testCmdRunner" not in out
+    assert_no_probe_left(repo)                   # leg (f) [M5]
 
 
 def test_validate_knobs_no_testcmd_skips_baseline(tmp_path):
@@ -750,3 +767,65 @@ def test_unset_fleet_run_refuses_before_any_other_stage(tmp_path, value):
 def test_driver_carries_no_superpowers_coupling():
     # #390: the driver never resolves, checks, or invokes superpowers again.
     assert "superpowers" not in RUN.read_text()
+
+
+# --- Task 1 / #770: `--validate-knobs … --no-baseline` -----------------------
+# The knob verb validates the run-wide test command by its runner instead of
+# running it. Every case below passes the flag; the flagless verdicts stay
+# pinned by test_validate_knobs_{green,red}_baseline_exit_* above [M4].
+
+def test_no_baseline_never_executes_the_test_command(tmp_path):
+    """Leg (a) [M1]: `--no-baseline` finishes green without running testCmd —
+    a command that would print NEVER-RAN and exit 1 leaves neither trace."""
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true",
+                                     "testCmd": "echo NEVER-RAN; false"}))
+    r = run_validate_knobs(repo, args_path, "--no-baseline")
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["ok"] is True
+    assert "baseline" not in out
+    assert "NEVER-RAN" not in r.stdout
+    assert_no_probe_left(repo)                   # leg (f) [M5]
+
+
+def test_no_baseline_still_rejects_an_unknown_tier(tmp_path):
+    """Leg (c) [M3]: the tier/review shape check is the BASE check — it runs
+    before any worktree and the flag does not soften it."""
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": "opus", "review": "lean"}]]}))
+    r = run_validate_knobs(repo, args_path, "--no-baseline")
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["ok"] is False
+    assert "tier" in out["detail"]
+    assert_no_probe_left(repo)                   # leg (f) [M5]
+
+
+def test_no_baseline_still_blocks_a_tree_dirtying_bootstrap(tmp_path):
+    """Leg (d) [M3]: the bootstrap rehearsal keeps its treeClean verdict and
+    its exit 1 under the flag."""
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "touch dirt.txt"}))
+    r = run_validate_knobs(repo, args_path, "--no-baseline")
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["ok"] is False
+    assert out["treeClean"] is False
+    assert_no_probe_left(repo)                   # leg (f) [M5]
+
+
+def test_no_baseline_keeps_the_nothing_to_validate_early_return(tmp_path):
+    """Leg (e) [M3]: an empty args object still exits 0 on the early-return
+    line — the flag does not make an empty plan cut a worktree."""
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({}))
+    r = run_validate_knobs(repo, args_path, "--no-baseline")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "nothing to validate" in r.stdout
+    assert_no_probe_left(repo)                   # leg (f) [M5]
