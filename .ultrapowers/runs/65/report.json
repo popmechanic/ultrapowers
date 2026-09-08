@@ -1,0 +1,262 @@
+{
+  "integrationBranch": "ultra/integration-run-65",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "3"
+    ],
+    [
+      "2"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 2 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "56d35018b39f639147735f9d27d10cc644381fae",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-65/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`receipt_fence` (fleet/sandbox-boot.sh, new) changes an output the task never names: the `### Checks` fence, which at BASE was `cat \"$receipt\"` byte-for-byte, now re-serializes the receipt with `gateCheck.acks` removed. It is load-bearing \u2014 M1's exclusion clause is \"no line of the body contains `runtime-only-B`\", and the M1 receipt's runtime ack is inside the document the fence dumps, so leg (b) cannot pass while the fence is verbatim \u2014 and the divergence is disclosed in a long comment. But nothing in the new exam pins that behaviour, and it has an untested consequence: a run whose only acks are `deferred:runtime` now loses them from the fence AND renders no `### Residuals` section, so that ack appears on no rendered surface of the card at all (only in the linked evidence file). Add a leg to fleet/tests/test_sandbox_boot_residuals.mjs booting with a receipt carrying one `deferred:runtime` ack: assert the body has no `### Residuals` heading and no `- [ ] ` line, that the `### Checks` fence still parses as JSON with `verdict` intact, and that `acks` is gone \u2014 otherwise deleting `receipt_fence`'s filtering is caught only incidentally by leg (b) of the M1 case, and its no-residuals half is caught by nothing.; The task's M1 says \"no line of the body contains `runtime-only-B`\", while its Context describes `### Checks` as unchanged (\"the receipt it reads from `$dest/gate-receipt.json`\") and its Interfaces Produce only `residual_items`. Those cannot both hold: the runtime ack lives in the receipt the fence dumps verbatim, so satisfying M1 requires editing the fence, which the task neither authorizes nor declares. The implementer's resolution is the reasonable one, but the resulting literal \u2014 the card's `### Checks` fence no longer carries `gateCheck.acks` \u2014 belongs in `fleet/CONTRACT.md` \u00a7Literals `- **Publish:**` (\"the contract wins \u2014 every literal a task introduces is declared here\"), and sibling Task 3, which owns that file, has no sentence for it. The fix lies outside this task's FILES; name it for the operator so Task 3's text can cover the fence, or so M1's clause can be narrowed to the checklist lines.; unverified: `residual_items` is Produced for sibling Task 2, which consumes it to build the follow-up issue body byte-for-byte from the same lines and to count them. This diff pins the function only through the rendered PR body, so the contract Task 2 depends on \u2014 the exact bytes on stdout, one line per item, and a zero-line print for a run with no residuals \u2014 is not directly asserted anywhere. Task 2's own legs (b) and (c) would settle it; nothing in this patch can.; fleet/sandbox-boot.sh (~line 1224, `receipt_fence`): the function's own comment claims it prints the receipt \"byte for byte, except that a `gateCheck.acks` array is dropped\", but the acks-present path re-serializes the whole document with `json.dumps(doc)`. That is not byte-for-byte \u2014 it canonicalizes separators and, because `ensure_ascii` defaults to True, rewrites every non-ASCII byte as a `\\uXXXX` escape. The receipt's own ack details are written with `\u2014` (U+2014), and other receipt fields (`reportPath`, `branch`, `acceptance`) can carry non-ASCII too, so a real run's `### Checks` fence would show `\u2014` where the record has an em dash. Nothing in the exam covers this (the M1 receipt's surviving fields are pure ASCII), and the record on disk is untouched, so it is advisory rather than blocking \u2014 but the fence is the card's quotation of the record and should read as the record does. Fix: pass `ensure_ascii=False` and say in the comment that the acks-present path is re-serialized, not byte-preserved.; plan-defect: M1's exclusion clause (\"no line of the body contains `runtime-only-B`\") is unsatisfiable without changing the `### Checks` fence, which at BASE `cat`s the receipt whole \u2014 the runtime ack lives in that receipt. The task's Context describes only adding a `### Residuals` section between the `### Plan` link line and `plan_closes`; it never says the acks stop appearing in the fence. The implementer met the clause by adding `receipt_fence` (fleet/sandbox-boot.sh ~1224) and disclosing it in a comment, which is the lawful reading of a divergence, and it is covered by leg (b) \u2014 reverting it to `cat` fails the exam. But the resulting behaviour change is undeclared: sibling task 3 owns the `- **Publish:**` bullet of `fleet/CONTRACT.md` and its Machine clauses name only `### Residuals`, `deferred:external`, `Closes #`, the follow-up issue and `publish:followup` \u2014 nothing says the card's Checks fence now omits `gateCheck.acks`. Fix lies outside this task's FILES (fleet/CONTRACT.md, sibling-owned), so this blocks nothing here; flagging it so the operator can decide whether task 3's contract text should also declare that the fence drops the acks now that the checklist carries them.; concern: plan-defect: M1's last clause (\"no line of the body contains `runtime-only-B`\") contradicts the task's own Context, which describes `### Checks` as the receipt read from `$dest/gate-receipt.json` \u2014 `render_card` `cat`s that file whole, so the M1 receipt's `deferred:runtime` ack lands in the body's Checks fence and Proof leg (b) fails with the section-only change. I satisfied the Claim: a new `receipt_fence` prints the receipt byte for byte EXCEPT that a `gateCheck.acks` array is dropped, so a receipt with no acks (every existing sim's) renders exactly as at BASE and only an acks-carrying receipt is elided. Nothing is lost from the record \u2014 the file is unchanged and `### Evidence` links it \u2014 but the card no longer shows non-external ack details inline. If that trade is wrong, the alternative is to relax leg (b) to the checklist lines only.; concern: The Proof's `Test:` path `fleet/tests/test_sandbox_boot_residuals.mjs` is reserved for the peer's exam, so I wrote no test file; my verification harness was a scratch file deleted before the commit. The committed diff is the two implementation files only.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "f8eda264eb5d08951344197e7e3ec47185b0d774",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-65/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the same `- **Publish:**` range is also sliced and pinned by the sibling-owned `fleet/tests/test_sandbox_boot_selfmerge.mjs` M7 (task text, Authorized-by), which this task's Proof does not `Run:` and this diff does not touch. The new leg (d) test (`test_the_publish_bullet_keeps_the_literals_it_already_declared`) re-asserts exactly the twelve literals that sim reads \u2014 `publish:pr`, `publish:hold`, `publish:merge`, `url`, `number`, `draft`, `why`, `left`, `detail`, `checks red`, `checks pending`, `refused` \u2014 and the diff removes none of them, so the risk is small; what would settle it is `node fleet/tests/test_sandbox_boot_selfmerge.mjs`, which belongs to the sibling tasks' Run lists.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "7787c3a6beb1e04397b32eb01f821bb4eec33bfd",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-65/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "`file_followup` and `followup_labels` both send their `fleet_curl` calls with `2>/dev/null` (fleet/sandbox-boot.sh:1592, 1651), which the sibling POST in `publish` (1545\u20131547) does not. The stub rig is unaffected (`say`/`argv` write to files, the body rides on stdout), so no leg notices, but in production a transport failure \u2014 DNS, TLS, connection refused \u2014 loses curl's `-sS` diagnostic entirely and the only record left is `followup: POST /repos/<repo>/issues answered <no answer>`, which cannot be told apart from a truncated reply. The task's Context asks for one log line on failure, not for stderr to be discarded. Suggested fix: drop `2>/dev/null` from both calls and keep the `|| true`, so curl's reason still reaches the unit's stderr beside the log line; or capture stderr into the answer and append its tail to the `answered` log line the way `publish` appends `$(printf '%s' \"$answer\" | tail -c 2000)`.; unverified: \"one PR is one filing\" \u2014 the comment at fleet/sandbox-boot.sh:1567\u20131571 rests on `do_boot`'s re-entry guard (2150\u20132158), which skips `publish` (and therefore `file_followup`) when the status page already names a PR. That guard is real and correct on reading, and the `MERGE_RETRY` path re-enters `publish_fold`/`patch_pr_body` rather than `publish`, so no second POST is possible \u2014 but no Machine clause and no leg boots twice, so the diff itself does not settle it. What would settle it: a leg that boots once, then re-boots the same `makeHome()` with the published status page in place, and asserts `issuesLogLines` still holds exactly one line. Not required by the task's Proof; recorded for the operator, not for a fix round.; unverified: `one PR is one filing` \u2014 the Context's guarantee that a re-entry files no second issue rests entirely on `file_followup` being called from `publish` (fleet/sandbox-boot.sh:1572), which `do_boot`'s guard 2 skips when the status page already names a PR (fleet/sandbox-boot.sh:2154-2158). No leg boots that path, so the property is read off placement rather than observed. A second `boot(ctx, ['boot'], \u2026)` on the same home with the M1 knobs, asserting `issues.log` still holds exactly one line and `events.jsonl` still holds one `publish:followup`, would settle it. Not required by any M-clause, so it blocks nothing.; M5's `STUB_ISSUE_LABELS` default of `[]` is never exercised: the only case that leaves the knob unset (`followupNoCloses`, fleet/tests/test_sandbox_boot_residuals.mjs:288) is also the case with no `**Closes:**` line, so it makes no `/issues/<n>` read at all. A rig arm whose default array were malformed would pass this suite. The legs are exactly what the Proof asked for, so this is a coverage gap rather than a deviation; a case with M1's record, `STUB_PLAN_EXTRA: CLOSES_EXTRA` and the knob unset \u2014 asserting two reads and `labels` deep-equal `['watch-item']` \u2014 would close it.; The follow-up URL literal is written twice: `_sandbox_boot_helpers.mjs` exports `FOLLOWUP_URL` (line 48 of the new file) and the exam re-declares the same string as its own const (fleet/tests/test_sandbox_boot_residuals.mjs:240) instead of importing the exported one, while importing seven other names from the same module. A drift between rig and exam would surface as a confusing assertion failure rather than a single source of truth. Fix: add `FOLLOWUP_URL` to the import list and drop the local const.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-65/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1818 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..................                                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1818 passed, 5 warnings in 325.88s (0:05:25) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_residuals.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '### Residuals.*deferred:external.*Closes #'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'POST /repos/<owner>/<repo>/issues'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | grep -q 'watch-item'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'merge-frontier., .experience-compiler., .verification-frontier., .peer-review., .fleet., .determinism.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'never a gate'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'publish:followup.*url.*items'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'four event kinds'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "! sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'three event kinds'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": "...........................                                              [100%]\n27 passed in 0.06s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot_residuals.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -E 'gh (api|issue)' fleet/sandbox-boot.sh | grep -v '^ *#' | grep -q .",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 634971,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "40b9f0a6c4f45aefc92275ce4a68b917b0ede167",
+      "branches": [
+        "1",
+        "3"
+      ]
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "3b361b379e19b751092612474e122a667f1cc798",
+      "branches": [
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-65/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-65/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.0030000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-65/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-65/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8640000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 file_followup / followup_labels against the live GitHub edge (POST /repos/$TARGET_REPO/issues and GET /repos/$TARGET_REPO/issues/<n>)",
+      "reason": "external",
+      "why": "Every GitHub call is exercised only through the rig's stub curl arms in fleet/tests/_sandbox_boot_helpers.mjs:256-271, which synthesize the issue document and the 201/422/404 answers. Real-edge behavior \u2014 GitHub creating a label named on issue creation when the gh-<owner>-<repo> integration has push access (the plan's authoring notes record this as exercised by no sim), and the real /issues response shape the html_url is read from \u2014 cannot be executed here."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: plan-defect: M1's last clause (\"no line of the body contains `runtime-only-B`\") contradicts the task's own Context, which describes `### Checks` as the receipt read from `$dest/gate-receipt.json` \u2014 `render_card` `cat`s that file whole, so the M1 receipt's `deferred:runtime` ack lands in the body's Checks fence and Proof leg (b) fails with the section-only change. I satisfied the Claim: a new `receipt_fence` prints the receipt byte for byte EXCEPT that a `gateCheck.acks` array is dropped, so a receipt with no acks (every existing sim's) renders exactly as at BASE and only an acks-carrying receipt is elided. Nothing is lost from the record \u2014 the file is unchanged and `### Evidence` links it \u2014 but the card no longer shows non-external ack details inline. If that trade is wrong, the alternative is to relax leg (b) to the checklist lines only.",
+    "task 1: The Proof's `Test:` path `fleet/tests/test_sandbox_boot_residuals.mjs` is reserved for the peer's exam, so I wrote no test file; my verification harness was a scratch file deleted before the commit. The committed diff is the two implementation files only."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

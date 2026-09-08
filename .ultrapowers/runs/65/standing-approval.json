@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-65.md run-65 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/sandbox-boot.sh — file_followup / followup_labels against the live GitHub edge (POST /repos/$TARGET_REPO/issues and GET /repos/$TARGET_REPO/issues/<n>) — Every GitHub call is exercised only through the rig's stub curl arms in fleet/tests/_sandbox_boot_helpers.mjs:256-271, which synthesize the issue document and the 201/422/404 answers. Real-edge behavior — GitHub creating a label named on issue creation when the gh-<owner>-<repo> integration has push access (the plan's authoring notes record this as exercised by no sim), and the real /issues response shape the html_url is read from — cannot be executed here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
