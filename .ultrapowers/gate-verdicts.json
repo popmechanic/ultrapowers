@@ -1,0 +1,18 @@
+{
+  "plan": "2026-09-08-confine-denials-counted-once-run-54-redrive.md",
+  "shape": "re-drive of run-54 (PR #782, deferred:plan-defect) on ultra/integration-run-54; one task, width 1",
+  "base": "b3690485a734cd9c2fc4bfd094cc2707c406622e",
+  "tasks": {
+    "1": {
+      "hash": "014d4aa9692063222af38f1733b67d32d495725689b2b30c257bc6f0059cfc49",
+      "verdict": "pass",
+      "reason": "Each Machine clause has a leg whose oracle would fail if the clause were false: (a) pins the exactly-2 / one-per-source count that a concatenating harvester breaks, (b) adds a presence assertion for the no-envelope case, and the three Run: greps cannot pass on BASE (no 'counted once') and fail on either retained phrase."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": {"1": {"dispatched": 1, "rejected": 0}},
+    "notes": "reader: the M3 order-grep pins 'counted once' before 'drops'; 'envelope' and 'hook' already recur in the item, so the ordering of the last two parts is loosely pinned — accepted at the document layer"
+  }
+}
