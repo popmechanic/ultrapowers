@@ -211,21 +211,31 @@ const eventsOf = (runDir) => {
 }
 
 // ── a driver-minted red is not a reviewer's finding [M7] ─────────────────────
-// The Run: is green on the pre-review pass (so the patch reaches a referee) and
-// red on every review round after it — the reviewers return PASS throughout, so
-// every blocking issue in the run is the driver's own.
+// The Run: is green on the driver's pre-review pass (so the patch reaches a
+// referee) and red on the next execution. Since #713 Task 1 round 1 READS that
+// pass, so the next execution is round 2's, after `fix:A:1` — which round 1's
+// canned reviewer buys with one blocking issue of its own. Round 2's referee
+// returns PASS, the fresh `iter: 2` execution reads red, and the task dies on
+// that red: exactly one blocking finding in the run belongs to a reviewer.
 {
   const TOGGLE = "sh -c 'if [ -e seen.txt ]; then exit 1; else : > seen.txt; fi'"
   const repo = makeRepo(path.join(tmp, 'repo-g4'))
   const runDir = path.join(tmp, 'run-g4')
+  const calls = []
   const stub = (prompt, opts, cwd) => {
+    calls.push(opts.label)
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') {
       fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
       return doneImpl(cwd)
     }
     if (kind === 'fix') return doneImpl(cwd)
-    if (kind === 'review') return passReview()
+    if (kind === 'review') {
+      return opts.label === 'review:A:1'
+        ? { verdict: 'FIX_REQUIRED',
+            issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
+        : passReview()
+    }
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
@@ -233,16 +243,21 @@ const eventsOf = (runDir) => {
                         stub, stamp: 're4', extraArgs: { shallowLeg: false } })
   const report = await run()
   const row = report.tasks.find((r) => r.task === 'A')
-  assert.ok(eventsOf(runDir).some((e) => e.kind === 'driver:proof-run' && e.exit !== 0),
-    'the driver recorded a red Run: of its own (M1 ran the command once before review, so ' +
-    'every round after it reads red): ' + JSON.stringify(eventsOf(runDir).map((e) => [e.kind, e.iter, e.exit])))
+  const proofRuns = eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run' && e.task === 'A')
+  assert.deepEqual(proofRuns.map((e) => [e.iter, e.exit]), [[0, 0], [2, 1]],
+    'one green execution on the driver\'s pass, one red on the round the fix bought: ' +
+    JSON.stringify(proofRuns))
+  assert.deepEqual(calls.filter((l) => l !== 'integration'),
+    ['impl:A', 'review:A:1', 'fix:A:1', 'review:A:2'],
+    'sim precondition: the reviewer\'s blocking issue bought the one fix round: ' + calls.join(','))
   assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
-    'and that driver-minted red drove the fix loop by itself: ' + JSON.stringify(row))
+    'and that driver-minted red ended the task, whatever round 2\'s referee returned: ' +
+    JSON.stringify(row))
   assert.ok(report.reviewEconomy.reviewerMs >= 0,
     'the reviewers still ran and were still measured: ' + JSON.stringify(report.reviewEconomy))
-  assert.equal(report.reviewEconomy.blockingFindings, 0,
-    'a driver-minted Run:/Check: red is never counted as a reviewer\'s finding: ' +
-    JSON.stringify(report.reviewEconomy))
+  assert.equal(report.reviewEconomy.blockingFindings, 1,
+    'a driver-minted Run:/Check: red is never counted as a reviewer\'s finding — only ' +
+    'round 1\'s referee issue is: ' + JSON.stringify(report.reviewEconomy))
 }
 
 // ── leg (h): empty evidence changes nothing [M8] ─────────────────────────────

@@ -14,9 +14,9 @@
 // Machine clauses under test:
 //   M1 — for a task with a non-empty `testCmd` and at least one `proofTests`
 //        path, `testCmd` runs in the task's clone through the engine's `sh`
-//        seam after the implementer and before any referee (`iter: 0`) and
-//        again once per review round (`iter: 1`, and `iter: 2` for a second
-//        round); each execution is recorded as { cmd, exit, stdout } with
+//        seam after the implementer and before any referee (`iter: 0`) — which
+//        review round 1 then READS rather than re-executing (#713 Task 1) —
+//        and again after a review fix (`iter: 2`); each execution is recorded as { cmd, exit, stdout } with
 //        stdout and stderr combined and tail-truncated to 4,000 characters,
 //        and appended to events.jsonl as one `driver:exam-run` event carrying
 //        task, cmd, exit and iter.
@@ -181,29 +181,30 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
     orderFile,
   })
 
-  // [M1] the exam ran after the implementer and before the first review, twice:
-  // the driver's own pre-review pass and review round 1's fresh execution. The
-  // FIRST `exam-run` is wave 0's red-at-BASE probe, which M5 leaves as it was —
-  // and since #653 it lands after `impl:T1` rather than before it: the pair is
-  // dispatched together, so the verdict is read in the examiner's clone once
-  // BOTH have returned, not while the implementer is still working.
+  // [M1] the exam ran after the implementer and before the first review, once
+  // (#713 Task 1): the driver's own pre-review pass, whose evidence round 1
+  // reads rather than re-executing. The FIRST `exam-run` is wave 0's
+  // red-at-BASE probe, which M5 leaves as it was — and since #653 it lands
+  // after `impl:T1` rather than before it: the pair is dispatched together, so
+  // the verdict is read in the examiner's clone once BOTH have returned, not
+  // while the implementer is still working.
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
     .filter(Boolean).filter((l) => l !== 'integration')
   assert.deepEqual(order,
-    ['exam:T1', 'impl:T1', 'exam-run', 'exam-run', 'exam-run', 'review:T1:1'],
+    ['exam:T1', 'impl:T1', 'exam-run', 'exam-run', 'review:T1:1'],
     'the exam runs at BASE for the wave-0 verdict once the pair is back, then ' +
-    'twice on the patch — the pre-review pass and the review round — both before any referee')
+    'once on the patch — the driver\'s pre-review pass — before any referee')
 
   // [M1] one `driver:exam-run` record per post-patch execution, and only those.
-  assert.equal(events.length, 2,
-    'both post-patch executions are recorded, and the wave-0 BASE probe is not: ' +
+  assert.equal(events.length, 1,
+    'the one post-patch execution is recorded, and the wave-0 BASE probe is not: ' +
     JSON.stringify(events))
-  assert.deepEqual(events.map((e) => e.cmd), [EXAM_CMD, EXAM_CMD],
+  assert.deepEqual(events.map((e) => e.cmd), [EXAM_CMD],
     'the exam command is recorded verbatim')
-  assert.deepEqual(events.map((e) => e.exit), [0, 0])
-  assert.deepEqual(events.map((e) => e.task), ['T1', 'T1'])
-  assert.deepEqual(events.map((e) => e.iter), [0, 1],
-    'the driver\'s own pass is iter 0; the first review round is iter 1')
+  assert.deepEqual(events.map((e) => e.exit), [0])
+  assert.deepEqual(events.map((e) => e.task), ['T1'])
+  assert.deepEqual(events.map((e) => e.iter), [0],
+    'the driver\'s own pass is iter 0, and review round 1 reads it rather than re-running')
 
   // [M1] the recorded output: stdout AND stderr, from the task's own clone.
   const ev = examEvidenceOf(prompts['review:T1:1'])
@@ -229,8 +230,9 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
     tasks: [entry()],
     exams: { T1: bulkExamScript(5000) },
   })
-  assert.deepEqual(events.map((e) => e.iter), [0, 1])
-  assert.deepEqual(events.map((e) => e.exit), [0, 0])
+  // #713 Task 1: one post-patch execution, the driver's own pass.
+  assert.deepEqual(events.map((e) => e.iter), [0])
+  assert.deepEqual(events.map((e) => e.exit), [0])
   const runs = (prompts['review:T1:1'].match(/x+/g) || []).map((r) => r.length)
   assert.equal(Math.max(0, ...runs), 4000,
     'a 5,000-character exam output is tail-truncated to exactly 4,000 characters')
@@ -364,8 +366,10 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
   assert.ok(ev.includes('exit 0'), 'the referee reads a fresh, green execution: ' + ev.slice(0, 400))
   assert.ok(!ev.includes('exit 1'),
     'and the new evidence REPLACES the red one: ' + ev.slice(0, 400))
-  assert.deepEqual(events.map((e) => e.exit), [1, 0, 0])
-  assert.deepEqual(events.map((e) => e.iter), [0, 0, 1])
+  // #713 Task 1: the repeat of the pass is the last execution before review —
+  // round 1 reads it rather than executing a third time.
+  assert.deepEqual(events.map((e) => e.exit), [1, 0])
+  assert.deepEqual(events.map((e) => e.iter), [0, 0])
   assert.equal(row.status, 'done')
   assert.equal(row.reviewVerdict, 'clean')
   assert.equal(row.proofFixes, 1)
@@ -373,40 +377,47 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
 
 // ── leg (c): a red exam in a REVIEW ROUND outranks the reviewer's PASS [M3] ─
 // The exam passes the pre-review pass and then demands `round2.txt` from its
-// first green run onward — the tree is identical across those two executions,
-// so nothing but the exam's own state can tell them apart. Round 1 is therefore
-// red on a tree the driver already cleared, and the canned reviewer says PASS
-// to both rounds: the blocking issue is the driver's, not the referee's.
+// first green run onward. Round 1 reads that pass (#713 Task 1), so the round
+// that can differ from it is round 2 — the fresh execution after `fix:T1:1`,
+// which the reviewer's own blocking issue bought. The fix writes no
+// `round2.txt`, so round 2's execution is red on a tree round 2's referee
+// answers PASS on: the blocking issue is the driver's, not the referee's.
 {
   const stampFile = path.join(tmp, 'round2-stamp')
-  const { row, calls, prompts, events } = await scenario({
+  const { report, row, calls, prompts, events } = await scenario({
     tasks: [entry()],
     exams: { T1: examScript({ stampFile }) },
-    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'round2.txt'), 'from the fix round\n'),
-    review: () => passReview(),
+    review: (n) => (n === 1
+      ? { verdict: 'FIX_REQUIRED',
+          issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
+      : passReview()),
   })
   assert.ok(!calls.includes('fix:T1:0'),
     'the pre-review pass was green, so it bought no repair round: ' + calls.join(','))
-  assert.ok(calls.includes('fix:T1:1'),
-    'round 1 was FIX_REQUIRED although the reviewer answered PASS: ' + calls.join(','))
+  assert.deepEqual(calls.filter((l) => l !== 'integration'),
+    ['exam:T1', 'impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
+    'the referee\'s blocking issue bought the one fix round: ' + calls.join(','))
   assert.equal(row.proofFixes, 0)
 
-  const fixPrompt = prompts['fix:T1:1']
-  assert.ok(fixPrompt.includes(EXAM_CMD),
-    'the round-1 blocking issue names the exam command: ' + fixPrompt.slice(-600))
-  assert.ok(fixPrompt.includes('exit 1'),
-    'and its exit code: ' + fixPrompt.slice(-600))
-
-  // [M1] one execution per round, numbered by round: 0, then 1, then 2.
-  assert.deepEqual(events.map((e) => e.iter), [0, 1, 2],
-    'the pre-review pass and one fresh execution per review round')
-  assert.deepEqual(events.map((e) => e.exit), [0, 1, 0],
-    'green before review, red in round 1, green again in round 2')
-  assert.equal(examEvidenceOf(prompts['review:T1:2']).includes('exit 0'), true,
-    'round 2 reads the repaired execution')
-  assert.equal(row.status, 'done')
-  assert.equal(row.reviewVerdict, 'fixed')
+  // [M1] one execution for the driver's own pass, one for the round that
+  // follows a fix: 0, then 2. Round 1 reads the pass.
+  assert.deepEqual(events.map((e) => e.iter), [0, 2],
+    'the pre-review pass, then one fresh execution after the review fix')
+  assert.deepEqual(events.map((e) => e.exit), [0, 1],
+    'green before review, red on the execution the fix round bought')
+  assert.equal(examEvidenceOf(prompts['review:T1:2']).includes('exit 1'), true,
+    'round 2 reads the fresh, red execution: ' +
+    examEvidenceOf(prompts['review:T1:2']).slice(0, 400))
+  assert.equal(row.status, 'failed')
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
+    'the red exam blocks whatever round 2\'s referee returned: ' + JSON.stringify(row))
   assert.equal(row.fixIterations, 1)
+  assert.ok(String(row.notes).includes('the Proof\'s exam failed: ' + EXAM_CMD + ' — exit 1'),
+    'and the row names the exam and its exit code: ' + JSON.stringify(row.notes))
+  assert.ok(report.judgmentCalls.some((j) => String(j) === 'task T1: the Proof\'s exam `' +
+    EXAM_CMD + '` exited 1 in review round 2 — blocking, whatever the reviewer returned'),
+    'and the judgment call names the round it was read in: ' +
+    JSON.stringify(report.judgmentCalls))
 }
 
 // ── leg (d): the reviewer role's paragraph [M4] ─────────────────────────────

@@ -1296,15 +1296,26 @@ export async function runEngine({
     // A red exam is a red of the same standing as a red `Run:`: the Proof's
     // `Test:` paths are the task's contract just as its `Run:` commands are.
     const EXAM_FAIL = (e) => 'the Proof\'s exam failed: ' + e.cmd + ' — exit ' + e.exit
+    // #713 Task 1: the pass's evidence is KEPT, not discarded. Round 1 reads
+    // the tree the pass measured — no fix stands between them — so executing
+    // again would record the same commands twice and bill the clone for it.
+    // A task with no `Run:`, no `Check:` and no runnable exam leaves these
+    // empty, which is exactly what its round-1 blocks carried at BASE.
+    let preRuns = []
+    let preExam = null
+    let preChecks = []
     if (proofRuns.length || constraintChecks.length || examRunnable) {
       const prePass = async () => {
         const reds = []
-        for (const r of await runCommands(0)) {
+        preRuns = await runCommands(0)
+        for (const r of preRuns) {
           if (r.exit !== 0) reds.push({ line: RUN_FAIL(r), stdout: r.stdout })
         }
-        const e = await runExam(0)
+        preExam = await runExam(0)
+        const e = preExam
         if (e && e.exit !== 0) reds.push({ line: EXAM_FAIL(e), stdout: e.stdout })
-        for (const c of await runChecks(0)) {
+        preChecks = await runChecks(0)
+        for (const c of preChecks) {
           if (c.exit === 0) continue
           if (c.minor) { noteMinorCheck(c); continue }
           reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
@@ -1364,16 +1375,18 @@ export async function runEngine({
     const priorMinors = []
     for (let iter = 1; iter <= 2; iter++) {
       // ── the `Run:` proofs (#589) ─────────────────────────────────────────
-      // Once per review round, not once per task: a fix round is measured by a
-      // FRESH execution, so round 2's evidence replaces round 1's rather than
+      // Once per FIX, not once per round (#713 Task 1): round 1 reads the
+      // pre-review pass's evidence, because nothing edited the tree between
+      // that pass and this dispatch; round 2 follows `fix:<id>:1`, so it
+      // executes afresh and its evidence replaces round 1's rather than
       // re-quoting a run that predates the repair. Same `sh` seam as the
       // run-wide suite (`bash -lc`, SHELL_TIMEOUT_MS), same cwd the implementer
       // just wrote to, same tail-truncation the rest of the evidence uses.
-      const runEvidence = await runCommands(iter)
-      // The exam, freshly executed for this round on the same terms (#638):
-      // round 2 grades the repair, not the tree that predates it.
-      const examEvidence = await runExam(iter)
-      const checkEvidence = await runChecks(iter)
+      const runEvidence = iter === 1 ? preRuns : await runCommands(iter)
+      // The exam, on the same terms (#638): round 2 grades the repair, not the
+      // tree that predates it.
+      const examEvidence = iter === 1 ? preExam : await runExam(iter)
+      const checkEvidence = iter === 1 ? preChecks : await runChecks(iter)
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +

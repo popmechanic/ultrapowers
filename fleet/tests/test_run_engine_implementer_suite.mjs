@@ -17,13 +17,14 @@
 //        role text differ from the implementer's in that one line only: the
 //        examiner's tail with its `TEST COMMAND:` line replaced by the
 //        implementer's is byte-equal to the implementer's tail.
-//   M3 — the exam's command is `task.testCmd` at each of the four places the
+//   M3 — the exam's command is `task.testCmd` at each of the three places the
 //        driver or a referee touches it: the examiner's red-at-BASE run
 //        executes it in `<clonesDir>/exam-<id>`; the pre-review pass's
 //        `driver:exam-run` event (`iter: 0`) carries `cmd` equal to
-//        `task.testCmd`; the review-round `driver:exam-run` event (`iter: 1`)
-//        carries the same `cmd`; and the reviewer's prompt carries
-//        `EXAM EVIDENCE` with the line `$ <task.testCmd>`.
+//        `task.testCmd`, and it is the only post-patch execution before the
+//        first review (#713 Task 1 — round 1 reads that pass); and the
+//        reviewer's prompt carries `EXAM EVIDENCE` with the line
+//        `$ <task.testCmd>`.
 //   M4 — a task whose `testCmd` contains none of its `proofTests` paths keeps
 //        that `testCmd` as its implementer's `TEST COMMAND:` line, and a task
 //        with no `testCmd` receives `TEST COMMAND: <workerTestCmd>`, both as at
@@ -36,7 +37,7 @@
 //
 // Proof legs, and where each is asserted below: (a) the implementer's line is
 // the run-wide command [M1]; (b) the examiner's line, and the one-line
-// difference between the two tails [M2]; (c) the exam's command at all four
+// difference between the two tails [M2]; (c) the exam's command at all three
 // places the driver or a referee touches it [M3]; (d) the two rows that do not
 // move [M4]; (e) the two fix prompts [M5]; (f) the sharer count [M6]; (g) the
 // sentinel.
@@ -225,7 +226,7 @@ const AB = await scenario({ waves: [[T1()]] })
   assert.equal(examTail.startsWith('\nBASE: ' + AB.base), true, 'both tails open at the BASE block')
 }
 
-// ── (c) the exam's command at all four places [M3] ──────────────────────────
+// ── (c) the exam's command at all three places [M3] ──────────────────────────
 // The exam script appends `exam-run <pwd>` to a file outside every clone, so
 // only an execution of `bash t1_test.sh` can write a line there — the run-wide
 // `bash check.sh` cannot. It exits 0 only when `one.txt` exists, so it is red
@@ -246,16 +247,18 @@ const AB = await scenario({ waves: [[T1()]] })
     'the examiner\'s red-at-BASE run executed the task\'s own testCmd in ' + examDir +
     ' — saw ' + JSON.stringify(order))
 
-  // [M3] places two and three: the two driver:exam-run events.
+  // [M3] place two: the one driver:exam-run event. #713 Task 1 — the driver's
+  // pre-review pass is the only post-patch execution before the first review;
+  // round 1 reads it rather than running the command again.
   const examRuns = readEvents(runDir).filter((e) => e.kind === 'driver:exam-run' && e.task === 'T1')
   const pre = examRuns.filter((e) => e.iter === 0)
   const round1 = examRuns.filter((e) => e.iter === 1)
   assert.equal(pre.length, 1, 'one pre-review driver:exam-run: ' + JSON.stringify(examRuns))
   assert.equal(pre[0].cmd, T1_CMD, 'the pre-review pass ran the task\'s own testCmd')
-  assert.equal(round1.length, 1, 'one review-round driver:exam-run: ' + JSON.stringify(examRuns))
-  assert.equal(round1[0].cmd, T1_CMD, 'the review round ran the same command')
+  assert.equal(round1.length, 0,
+    'and no second execution for review round 1: ' + JSON.stringify(examRuns))
 
-  // [M3] place four: the reviewer's EXAM EVIDENCE block.
+  // [M3] place three: the reviewer's EXAM EVIDENCE block.
   const reviewPrompt = prompts['review:T1:1']
   assert.equal(typeof reviewPrompt, 'string', 'a referee read the patch')
   const at = reviewPrompt.indexOf('EXAM EVIDENCE')

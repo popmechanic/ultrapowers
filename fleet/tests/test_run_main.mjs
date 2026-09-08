@@ -733,5 +733,194 @@ function freshRepo(name) {
   assert.equal(noTests.json.passed, false, 'leg (d) [M3]: the no-tests guard still refuses to green')
 }
 
+// ── #753 Task 2 — a manual ack settled by the driver's own executed Run: ─────
+// Claim: the ack decision pre-authorizes a `deferred:manual` ack whose `detail`
+// cites `Run:` evidence the driver executed and that exited 0. Citing is the
+// critic's act; verifying is the driver's — the citation test is a verbatim
+// substring of an executed command carried in `report.integratedRuns`.
+const CMD_GREEN = "sh -c 'grep -q sweep fleet/RUNBOOK.md'"
+const CMD_RED = "sh -c 'grep -q nosuchtoken fleet/RUNBOOK.md'"
+const R = {
+  integratedRuns: [
+    { task: 'T1', cmd: CMD_GREEN, exit: 0, stdout: '' },
+    { task: 'T1', cmd: CMD_RED, exit: 2, stdout: '' },
+  ],
+}
+const CITING_ACK = {
+  type: 'deferred:manual',
+  detail: 'fleet/RUNBOOK.md §Rollback — settled by `' + CMD_GREEN +
+    '`; whether it reads well is judgment',
+}
+const NONCITING_ACK = {
+  type: 'deferred:manual',
+  detail: 'fleet/RUNBOOK.md §Rollback — whether it reads well is judgment',
+}
+const BOTH_ACK = {
+  type: 'deferred:manual',
+  detail: 'fleet/RUNBOOK.md §Rollback — settled by `' + CMD_GREEN + '` and `' + CMD_RED +
+    '`; whether it reads well is judgment',
+}
+const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
+
+// Leg (a) [M1] — pure: a citing manual ack against a report whose
+// `integratedRuns` carries that command green is pre-authorized, and the reason
+// names #753. BASE parks on any `deferred:manual` type, so BASE fails both rows.
+{
+  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
+  const d = ackDecision(gr([CITING_ACK]), R)
+  assert.equal(d.approve, true,
+    'leg (a) [M1]: a deferred:manual ack whose detail quotes a green integratedRuns cmd verbatim ' +
+    'is pre-authorized')
+  assert.match(d.reason, /#753/,
+    'leg (a) [M1]: the reason names #753 when a manual ack was pre-authorized this way')
+  const d2 = ackDecision(gr([CITING_ACK, { type: 'deferred:external' }]), R)
+  assert.equal(d2.approve, true,
+    'leg (a) [M1]: a citing manual ack beside a deferred:external ack still approves')
+  assert.match(d2.reason, /#753/,
+    'leg (a) [M1]: the reason still names #753 when a manual ack rode with an external one')
+}
+
+// Leg (b) [M1] — flow: runMain over a NEEDS_ACK gate carrying that manual ack,
+// with the engine's report supplying the integrated runs that settle it.
+{
+  const repoDir = freshRepo('flow-ack-manual-cited')
+  const runId = 'run-98'
+  const { exec, calls, runDir } = makeExecStub({
+    repoDir, runId, gateExit: 2, acks: [CITING_ACK], waves: WAVES,
+  })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => ({
+        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
+        integratedRuns: R.integratedRuns,
+      }),
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 0, 'leg (b) [M1]: exit code 0 — ' + out.verdict + ': ' + out.detail)
+  assert.equal(out.verdict, 'approved', 'leg (b) [M1]: the verdict is approved')
+  const saPath = path.join(runDir, 'standing-approval.json')
+  assert.ok(fs.existsSync(saPath),
+    'leg (b) [M1]: the pre-authorization record is written before the approve')
+  const sa = JSON.parse(fs.readFileSync(saPath, 'utf8'))
+  assert.equal(sa.ackList.length, 1, 'leg (b) [M1]: standing-approval.json holds the one ack')
+  assert.equal(sa.ackList[0].type, 'deferred:manual',
+    'leg (b) [M1]: the recorded ack is the deferred:manual one that was pre-authorized')
+  const ev = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8')
+    .trim().split('\n').map((l) => JSON.parse(l))
+  const dec = ev.find((e) => e.kind === 'driver:ack-decision')
+  assert.ok(dec, 'leg (b) [M1]: the ack decision is on the event log')
+  assert.equal(dec.approve, true, 'leg (b) [M1]: driver:ack-decision carries approve true')
+  assert.ok(calls.some((c) => c.includes('--approve')),
+    'leg (b) [M1]: the run reached ultra_gate.py --approve')
+}
+
+// Leg (c) [M2] — pure, four rows: what is NOT pre-authorized. Each parks with
+// the frozen reason literal, verbatim.
+{
+  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
+  const rows = [
+    ['a manual ack whose detail names no executed command',
+      ackDecision(gr([NONCITING_ACK]), R)],
+    ['the citing ack against a report with no integratedRuns',
+      ackDecision(gr([CITING_ACK]), {})],
+    ['the citing ack against a report whose integratedRuns is empty',
+      ackDecision(gr([CITING_ACK]), { integratedRuns: [] })],
+    ['the citing ack with no report at all — a receipt read with no report',
+      ackDecision(gr([CITING_ACK]))],
+    ['a manual ack citing a red entry as well as a green one',
+      ackDecision(gr([BOTH_ACK]), R)],
+  ]
+  for (const [what, d] of rows) {
+    assert.equal(d.approve, false, 'leg (c) [M2]: ' + what + ' is not pre-authorized')
+    assert.equal(d.reason, PARKED_REASON,
+      'leg (c) [M2]: ' + what + ' parks with the frozen literal ' + PARKED_REASON)
+  }
+}
+
+// Leg (d) [M2] — flow: the non-citing manual ack parks the run, whatever the
+// report's integratedRuns holds.
+{
+  const repoDir = freshRepo('flow-ack-manual-uncited')
+  const runId = 'run-99'
+  const { exec, calls, runDir } = makeExecStub({
+    repoDir, runId, gateExit: 2, acks: [NONCITING_ACK], waves: WAVES,
+  })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => ({
+        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
+        integratedRuns: R.integratedRuns,
+      }),
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 1, 'leg (d) [M2]: exit code 1')
+  assert.equal(out.verdict, 'needs-ack', 'leg (d) [M2]: the verdict is needs-ack')
+  assert.ok(!fs.existsSync(path.join(runDir, 'standing-approval.json')),
+    'leg (d) [M2]: a parked run writes no standing-approval.json')
+  assert.ok(!calls.some((c) => c.includes('--approve')),
+    'leg (d) [M2]: a parked run never calls --approve')
+}
+
+// Leg (e) [M3] — pure: BASE's approving branch and BASE's parking types are
+// untouched, and `acksOf` still reads `gateCheck.acks` only. A decision keyed on
+// the detail alone — rather than on the ack TYPE plus the citation — fails the
+// coverage and plan-defect rows.
+{
+  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
+  const d = ackDecision(gr([{ type: 'deferred:runtime' }, { type: 'deferred:external' }]), R)
+  assert.equal(d.approve, true, 'leg (e) [M3]: runtime + external still approve')
+  assert.equal(d.reason, '2 deferred runtime/external ack(s) — pre-authorized (#243)',
+    "leg (e) [M3]: BASE's reason literal is unchanged when no manual ack was pre-authorized")
+  assert.equal(ackDecision(gr([{ type: 'coverage', detail: CMD_GREEN }]), R).approve, false,
+    'leg (e) [M3]: a coverage ack parks whatever the report holds')
+  assert.equal(ackDecision(gr([{ type: 'deferred:plan-defect', detail: CMD_GREEN }]), R).approve, false,
+    'leg (e) [M3]: a deferred:plan-defect ack is never pre-authorized')
+  assert.deepEqual(acksOf({ acks: [{ type: 'coverage' }] }), [],
+    'leg (e) [M3]: acksOf reads gateCheck.acks only — a flat acks is not the ack channel')
+}
+
+// Leg (f) [M4] — the prose deliverables prove themselves with the Proof's own
+// `Run:` commands, executed here from the repo root.
+{
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: repoRoot, encoding: 'utf8' })
+
+  const peer = sh("node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'")
+  assert.equal(peer.status, 0,
+    'leg (f) [M4]: the first Run: — test_roles_peer.mjs still passes, so critic.md kept the shape ' +
+    'it pins (no `3. ` duty, no `checklist`): ' + String(peer.stdout + peer.stderr).slice(-500))
+
+  const patches = sh("node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'")
+  assert.equal(patches.status, 0,
+    'leg (f) [M4]: the second Run: — test_exam_edited_patches.mjs still passes, so the ' +
+    'report-format.md edit did not break the proposedPatches row: ' +
+    String(patches.stdout + patches.stderr).slice(-500))
+
+  const criticGrep = sh("grep -n 'verbatim' fleet/roles/critic.md")
+  const criticLines = criticGrep.stdout.split('\n').filter((l) => l.trim() !== '')
+  assert.ok(criticLines.some((l) => /manual/.test(l) && /verbatim/.test(l)),
+    'leg (f) [M4]: the third Run: prints a line of fleet/roles/critic.md naming `manual` on the ' +
+    'same line as `verbatim` — the critic is told to quote the settling command verbatim in the ' +
+    "item's why: " + JSON.stringify(criticLines))
+
+  const rfGrep = sh("grep -n 'deferred:manual' skills/ultrapowers/references/report-format.md")
+  const rfLines = rfGrep.stdout.split('\n').filter((l) => l.trim() !== '')
+  assert.ok(rfLines.some((l) => /deferred:manual/.test(l) && /verbatim/.test(l)),
+    'leg (f) [M4]: the fourth Run: prints a line of report-format.md naming `deferred:manual` and ' +
+    '`verbatim` — the rule says a manual ack quoting a green integrated Run: verbatim is ' +
+    'pre-authorized: ' + JSON.stringify(rfLines))
+
+  const events = sh('python3 -m pytest -q tests/test_fleet_events.py')
+  assert.equal(events.status, 0,
+    'leg (f) [M4]: the fifth Run: — tests/test_fleet_events.py still passes, so the parked reason ' +
+    'literal it pins is unchanged: ' + String(events.stdout + events.stderr).slice(-500))
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')
