@@ -220,5 +220,158 @@ const run = (input, env = {}) => spawnSync('node', [HOOK], {
   assert.match(JSON.parse(logged[0]).reason, /outside the writable roots/)
 }
 
+// ── #762: a kill whose pattern would match the worker's own `claude -p` ──────
+//
+// run-34's implementer ran `pkill -f <the TEST COMMAND it had just been given>`
+// to clear a stuck test. The worker's own argv IS `claude -p <prompt>` and the
+// prompt carries the `TEST COMMAND:` line verbatim, so the pattern matched the
+// process running the task and the worker killed itself.
+//
+// The hook cannot see the prompt — it reads the PreToolUse JSON and its own
+// environment. The worker is what tells it: `FLEET_TEST_CMD` (the three
+// `createRunWorker` legs live in fleet/tests/test_run_worker.mjs). Here: a kill
+// pattern that matches that value, or matches `claude`, is refused; a pattern
+// that matches neither, a kill by pid, and a quoted `pkill` are not.
+//
+// Every leg below names its Proof letter and its Machine clause. The verdict
+// shape is `decide()`'s: `{ deny: <string> }` or `{ allow: true }`, so "deny and
+// no allow" is asserted on both keys rather than on one.
+{
+  const TESTCMD = 'node fleet/tests/test_sandbox_boot.mjs'
+
+  // The `decide()` legs read FLEET_TEST_CMD off process.env, so each group
+  // toggles it inside a try/finally — the shape the FLEET_RUN_DIR block above
+  // uses. `undefined` means DELETE the key, which is leg (g)-(i)'s environment.
+  const withEnv = (vars, fn) => {
+    const prev = {}
+    for (const k of Object.keys(vars)) prev[k] = process.env[k]
+    try {
+      for (const [k, v] of Object.entries(vars)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      return fn()
+    } finally {
+      for (const k of Object.keys(vars)) {
+        if (prev[k] === undefined) delete process.env[k]
+        else process.env[k] = prev[k]
+      }
+    }
+  }
+
+  // A deny leg: the verdict denies, does not allow, and its reason CONTAINS
+  // each needle the leg names. Containment is what the legs specify (the deny
+  // string's wording is the implementer's), but the needles are exact — an
+  // offending pattern a reader cannot find in the reason is not this fix.
+  const denies = (leg, command, needles) => {
+    const v = decide({ tool_name: 'Bash', tool_input: { command }, cwd: clone })
+    assert.ok(v.deny, leg + ': ' + JSON.stringify(command) + ' must DENY — it would match the ' +
+      "worker's own claude -p process; got " + JSON.stringify(v))
+    assert.ok(!v.allow, leg + ': a denied kill must not also carry allow; got ' + JSON.stringify(v))
+    for (const n of needles) {
+      assert.ok(String(v.deny).includes(n),
+        leg + ': the reason must name ' + JSON.stringify(n) + '; reason was ' + JSON.stringify(v.deny))
+    }
+    return String(v.deny)
+  }
+  const allows = (leg, command) => {
+    const v = decide({ tool_name: 'Bash', tool_input: { command }, cwd: clone })
+    assert.ok(v.allow, leg + ': ' + JSON.stringify(command) + ' must be ALLOWED — it matches ' +
+      'neither the TEST COMMAND nor claude; got ' + JSON.stringify(v))
+    assert.ok(!v.deny, leg + ': ' + JSON.stringify(command) + ' must carry no deny; got ' + JSON.stringify(v))
+  }
+
+  // (a)-(f) [M1] — the pattern is tried against FLEET_TEST_CMD, as a regular
+  // expression or (when the constructor throws) as a literal substring, and the
+  // kill is found wherever it sits in the command. Each reason names the
+  // offending pattern, `TEST COMMAND` and `claude -p`, because the deny string
+  // is the whole of what the model reads back.
+  withEnv({ FLEET_TEST_CMD: TESTCMD }, () => {
+    denies('(a) [M1]', "pkill -f 'node fleet/tests/test_sandbox_boot.mjs'",
+      ['node fleet/tests/test_sandbox_boot.mjs', 'TEST COMMAND', 'claude -p'])
+    denies('(b) [M1]', 'pkill -9 -f test_sandbox_boot',
+      ['test_sandbox_boot', 'TEST COMMAND', 'claude -p'])
+    denies('(c) [M1]', 'killall -q test_sandbox_boot.mjs',
+      ['test_sandbox_boot.mjs', 'TEST COMMAND', 'claude -p'])
+    // A pattern that matches only as a REGULAR EXPRESSION — no literal
+    // substring of the TEST COMMAND looks like this.
+    denies('(d) [M1]', "pkill -f 'fleet/tests/.*\\.mjs'",
+      ['fleet/tests/.*\\.mjs', 'TEST COMMAND', 'claude -p'])
+    // (f) the kill is not the command's first word: `true; pkill …` is the same
+    // kill as `pkill …`.
+    denies('(f) [M1]', 'true; pkill -f test_sandbox_boot',
+      ['test_sandbox_boot', 'TEST COMMAND', 'claude -p'])
+  })
+  // (e) [M1] the other half of the same sentence: an unbalanced parenthesis is
+  // not a valid regular expression, so the LITERAL fallback is the only thing
+  // that can match here. A hook that only ever tried `new RegExp` would throw
+  // or allow; this leg is the one that fails if the fallback is missing.
+  withEnv({ FLEET_TEST_CMD: 'node test_sandbox_boot.mjs (x' }, () => {
+    denies('(e) [M1]', "pkill -f 'test_sandbox_boot.mjs (x'",
+      ['test_sandbox_boot.mjs (x', 'TEST COMMAND', 'claude -p'])
+  })
+
+  // (g)-(i) [M2] — with NO TEST COMMAND known, `claude` is still a target: the
+  // worker's process is `claude -p` whatever it was asked to run.
+  withEnv({ FLEET_TEST_CMD: undefined }, () => {
+    assert.equal(process.env.FLEET_TEST_CMD, undefined, 'sanity: (g)-(i) run with the key deleted')
+    denies('(g) [M2]', 'pkill -f claude', ['claude'])
+    denies('(h) [M2]', 'pkill claude', ['claude'])
+    denies('(i) [M2]', 'killall claude', ['claude'])
+  })
+  // (j)-(n) [M2] — and `claude` is tried on EVERY kill pattern, not only when
+  // no TEST COMMAND is known. `node fleet/tests/test_sandbox_boot.mjs` is the
+  // value the worker sets on every live dispatch, and `claude` does not match
+  // it — so a hook that stopped at the TEST COMMAND would allow all five.
+  withEnv({ FLEET_TEST_CMD: TESTCMD }, () => {
+    denies('(j) [M2]', 'pkill -f claude', ['claude'])
+    denies('(k) [M2]', 'pkill claude', ['claude'])
+    denies('(l) [M2]', 'killall claude', ['claude'])
+    denies('(m) [M2]', 'echo x && pkill -f claude', ['claude'])
+    denies('(n) [M2]', 'cd /tmp; killall claude', ['claude'])
+
+    // (o)-(s) [M3] — THE OTHER DIRECTION, and the reason this is a rule about
+    // self-match rather than a rule about `pkill`. A worker that started its own
+    // server must still be able to stop it, a kill BY PID is not the hook's
+    // business, and a quoted `pkill` is data (#475's masking rule).
+    allows('(o) [M3]', 'pkill -f my-proto-server')
+    allows('(p) [M3]', 'kill 1234')
+    allows('(q) [M3]', 'kill -TERM 1234')
+    allows('(r) [M3]', 'pkill -f prototype && echo done')
+    allows('(s) [M3]', 'echo "pkill -f claude"')
+  })
+
+  // (t) [M4] — the new reason rides the EXISTING deny path: the CLI prints it as
+  // `permissionDecisionReason` and appends one line naming it to the run's
+  // confine-denials.jsonl. The expected string is not spelled here — it is read
+  // from `decide()` under the same environment, so this leg pins that the two
+  // channels carry the SAME reason rather than pinning any wording.
+  {
+    const killRun = path.join(tmp, 'killrun')
+    fs.mkdirSync(killRun, { recursive: true })
+    const command = "pkill -f 'node fleet/tests/test_sandbox_boot.mjs'"
+    const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: clone })
+    const expected = withEnv({ FLEET_TEST_CMD: TESTCMD, FLEET_RUN_DIR: killRun },
+      () => decide({ tool_name: 'Bash', tool_input: { command }, cwd: clone }).deny)
+    assert.equal(typeof expected, 'string', '(t) [M4]: decide() must deny this input to begin with')
+
+    const r = run(input, { FLEET_TEST_CMD: TESTCMD, FLEET_RUN_DIR: killRun })
+    let out = null
+    try { out = JSON.parse(r.stdout).hookSpecificOutput } catch { /* asserted below */ }
+    assert.ok(out, '(t) [M4]: the CLI must print a decision envelope; stdout was ' +
+      JSON.stringify(r.stdout) + ' stderr ' + JSON.stringify(r.stderr))
+    assert.equal(out.permissionDecision, 'deny', '(t) [M4]: the CLI decision is deny')
+    assert.equal(out.permissionDecisionReason, expected,
+      '(t) [M4]: the printed reason is exactly the string decide() returns for the same input')
+
+    const logged = fs.readFileSync(path.join(killRun, 'confine-denials.jsonl'), 'utf8').trim().split('\n')
+    assert.equal(logged.length, 1, '(t) [M4]: exactly one line in the run dir ledger, got ' + logged.length)
+    assert.equal(JSON.parse(logged[0]).reason, expected,
+      '(t) [M4]: the logged reason is that same string')
+  }
+
+  console.log('ok - #762: a kill pattern matching the TEST COMMAND or `claude` is refused')
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

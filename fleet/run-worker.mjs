@@ -747,6 +747,25 @@ export function writeTranscriptSlice({ configDir, runDir, sessionId }) {
   return { bytes: Buffer.byteLength(sliced, 'utf8') }
 }
 
+// The one line of the prompt the confine hook is told about (#762). The hook
+// reads stdin and its own environment; it never sees the prompt, so the worker
+// hands it the TEST COMMAND line — the line run-34 died on, when a `pkill -f`
+// aimed at a stuck test matched the `claude -p` argv that carries that very
+// text. The FIRST such line wins: the engine writes one (`testCmdLine`,
+// run-engine.mjs), and a later occurrence is task body quoting it.
+//
+// A prompt with no such line DELETES the key rather than passing an empty
+// string: the run-wide env may carry one from the process that launched the
+// run, and a stale value in a reviewer's hook would deny by a command that
+// reviewer was never given.
+export function childEnvFor(env, prompt) {
+  const out = { ...env }
+  const m = /^TEST COMMAND:[ \t]*(.+)$/m.exec(String(prompt == null ? '' : prompt))
+  if (m && m[1].trim()) out.FLEET_TEST_CMD = m[1].trim()
+  else delete out.FLEET_TEST_CMD
+  return out
+}
+
 export function createRunWorker(cfg) {
   const {
     runId, workersDir, cwdFor, promptFileFor, settingsFor, addDirsFor,
@@ -826,7 +845,7 @@ export function createRunWorker(cfg) {
     onEvent({ kind: 'worker:start', label: opts.label, role, sessionId, cwd, model: opts.model || null })
 
     const { exitCode, stdout, stderr, timedOut } = await runProcess({
-      cli, argv, cwd, env, prompt,
+      cli, argv, cwd, env: childEnvFor(env, prompt), prompt,
       timeoutMs: (timeoutMsFor && timeoutMsFor(role)) || timeoutMs,
       graceMs, spawnFn,
     })

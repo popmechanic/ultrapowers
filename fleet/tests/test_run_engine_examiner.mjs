@@ -8,6 +8,12 @@
 // inputs minus the implementer's role, its exam is red or green at BASE, and a
 // blocked examiner still lets the run proceed. The recorded-edit half — legs
 // (d), (f) and (g) — lives in test_run_engine_exam_edits.mjs.
+//
+// The second half of this file (#762) pins what happens when the examiner of
+// that pair DIES — `agent()` leaves by a `WORKER_SIGTERM` throw — while the
+// implementer beside it is still running. Its Machine clauses are numbered M1
+// through M5 again, and they are #762's, not the ones above; each assertion
+// there names its own leg letter and clause.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -242,6 +248,288 @@ for (const [name, over] of [
   assert.ok('exam' in report.tasks[0], name + ': the task result carries the exam key')
   assert.equal(report.tasks[0].exam, null, name + ': and it is null')
   assert.equal(report.tasks[0].status, 'done')
+}
+
+// ══ #762: a dead examiner beside a finished implementer ════════════════════
+// The pair is dispatched with nothing awaited between the two calls, so a
+// worker that dies at exit 143 makes the EXAMINER's call reject while the
+// implementer's is still running. At BASE that rejection climbs out of
+// `runTaskInner` and the whole pair is re-run — a second implementer, a reset
+// task clone, and the finished implementer's work thrown away. These legs pin
+// the narrower lane: when the implementer of the same pair ended `success`
+// with its patch captured, only the examiner is dispatched again.
+//
+// #762's Machine clauses, restated:
+//   M1 — a run whose `exam:T1` rejects with `WORKER_SIGTERM` before `impl:T1`
+//        has returned, and whose `impl:T1` then resolves `DONE` with a
+//        driver-captured patch and headSha, dispatches `exam:T1` exactly twice
+//        and `impl:T1` exactly once; the second exam prompt equals the first,
+//        its clone holds nothing the first examiner left, the `review:T1:1`
+//        prompt's patch carries the one implementer's hunk, the graded clone's
+//        Proof path holds the second examiner's bytes, and the row ends `done`
+//        with `exam` `red`.
+//   M2 — a second rejection makes no third dispatch: `impl:T1` is still
+//        dispatched once, the row ends `done` with `exam` `blocked`, and a
+//        judgment call starts `task T1: examiner` and contains
+//        `proceeds unexamined`.
+//   M3 — when the implementer rejects too, the lane at BASE stands: each label
+//        dispatched twice, and a judgment call containing `retrying once at`.
+//   M4 — the record: exactly one judgment call starting `task T1: examiner
+//        died` and containing `re-dispatching the examiner alone`, and exactly
+//        one `driver:exam-redispatch` line in `<runDir>/events.jsonl` — none of
+//        either on a run whose examiner answers first time.
+//   M5 — an implementer that merely RETURNED (`BLOCKED`) is not a kept reply:
+//        the examiner-alone lane does not open, and the lane at BASE stands.
+
+// What the real worker throws when the CLI is killed with no envelope
+// (`fleet/run-worker.mjs`'s classify + the `WORKER_<CLASS>` throw): the message
+// the driver's catch classifies, with the verdict and label attached.
+const SIGTERM_MSG = 'WORKER_SIGTERM: SIGTERM: killed with no envelope (exit 143)'
+const sigterm = (label) => Object.assign(new Error(SIGTERM_MSG),
+  { workerVerdict: { outcome: 'retry', class: 'sigterm' }, label })
+
+const deferred = () => {
+  let resolve
+  const promise = new Promise((r) => { resolve = r })
+  return { promise, resolve }
+}
+// Unref'd so a race the deferred already won does not hold the process open.
+const sleep = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref() })
+const countOf = (labels, label) => labels.filter((l) => l === label).length
+// The driver's own append-only record. An absent file reads as no records, so
+// an engine that writes none fails an assertion rather than throwing ENOENT.
+const readEvents = (runDir) => {
+  const file = path.join(runDir, 'events.jsonl')
+  if (!fs.existsSync(file)) return []
+  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+    .map((l) => { try { return JSON.parse(l) } catch { return null } })
+    .filter(Boolean)
+}
+// A missing file is an answer here, not a crash: the leg reports what the
+// graded clone held rather than dying at the read.
+const readOr = (p) => {
+  try { return fs.readFileSync(p, 'utf8') } catch (e) { return 'ABSENT: ' + String((e && e.message) || e) }
+}
+
+// The second examiner's exam, distinguishable from the first attempt's byte
+// for byte, and red at BASE for the same reason RED_AT_BASE is.
+const SECOND_EXAM = '#!/bin/bash\n[ -f one.txt ] # written by the second examiner\n'
+const REDISPATCH = 're-dispatching the examiner alone'
+const REDISPATCH_EVENT = 'driver:exam-redispatch'
+
+// ── (a) the examiner dies, the implementer finishes: the examiner alone [M1] ─
+// The examiner throws before the implementer returns — the implementer's reply
+// is held behind the promise the examiner's throw resolves (or 3s, so a driver
+// that serializes the pair fails an assertion rather than hanging).
+let runA = null
+{
+  const labels = []
+  const examSeen = []
+  const prompts = {}
+  const examDied = deferred()
+  const stub = async (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') {
+      const attempt = countOf(labels, 'exam:T1')
+      examSeen.push({ prompt, cwd, leftBehind: fs.existsSync(path.join(cwd, 'left-behind')) })
+      if (attempt === 1) {
+        fs.writeFileSync(path.join(cwd, 'left-behind'), 'the dead examiner was here\n')
+        examDied.resolve()
+        throw sigterm(opts.label)
+      }
+      return examOk(cwd, { 't1_test.sh': SECOND_EXAM })
+    }
+    if (kind === 'impl') {
+      await Promise.race([examDied.promise, sleep(3000)])
+      writeOne(cwd)
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, runDir, clonesDir } = rig({ waves: [[entry()]], stub })
+  const report = await run()
+  runA = { report, runDir }
+  const row = report.tasks[0]
+
+  // [M1] the counts: the examiner again, the implementer never.
+  assert.equal(countOf(labels, 'exam:T1'), 2,
+    'the dead examiner is dispatched exactly twice: ' + labels.join(','))
+  assert.equal(countOf(labels, 'impl:T1'), 1,
+    'and the implementer that already finished is dispatched exactly once — its work is ' +
+    'kept, not re-run: ' + labels.join(','))
+
+  // [M1] the second dispatch is the same ask into a clone re-cut at BASE.
+  assert.equal(examSeen.length, 2, 'both exam dispatches were observed')
+  assert.equal(examSeen[1].prompt, examSeen[0].prompt,
+    'the re-dispatched examiner is handed the same prompt as the one that died')
+  assert.equal(examSeen[0].leftBehind, false,
+    'the first examiner started in a clone that did not hold left-behind')
+  assert.equal(examSeen[1].leftBehind, false,
+    'and the second starts in a clone holding no file the first examiner left')
+
+  // [M1] the one implementer's hunk reaches the referee.
+  assert.equal(typeof prompts['review:T1:1'], 'string',
+    'a referee read the patch: ' + labels.join(','))
+  assert.ok(prompts['review:T1:1'].includes('from T1'),
+    'the review:T1:1 prompt carries the hunk the one implementer wrote: ' +
+    String(prompts['review:T1:1']).slice(0, 400))
+
+  // [M1] the graded clone holds the SECOND examiner's exam, byte for byte.
+  assert.equal(readOr(path.join(clonesDir, 'task-T1', 't1_test.sh')), SECOND_EXAM,
+    'the handoff copied the second examiner\'s bytes into the graded clone')
+
+  // [M1] and the row.
+  assert.equal(row.status, 'done', 'the task ends done: ' + row.notes)
+  assert.equal(row.exam, 'red', 'with the second examiner\'s red-at-BASE verdict')
+}
+
+// ── (b) the second examiner dies too: no third, and unexamined [M2] ─────────
+{
+  const labels = []
+  const examDied = deferred()
+  const stub = async (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') { examDied.resolve(); throw sigterm(opts.label) }
+    if (kind === 'impl') {
+      await Promise.race([examDied.promise, sleep(3000)])
+      writeOne(cwd)
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({ waves: [[entry()]], stub })
+  const report = await run()
+  const row = report.tasks[0]
+
+  // [M2] two dispatches, never three.
+  assert.equal(countOf(labels, 'exam:T1'), 2,
+    'a second dead examiner buys no third dispatch: ' + labels.join(','))
+  assert.equal(countOf(labels, 'impl:T1'), 1,
+    'and the implementer is still dispatched exactly once: ' + labels.join(','))
+
+  // [M2] the run proceeds, unexamined, and says so.
+  assert.equal(row.status, 'done', 'the task still ends done: ' + row.notes)
+  assert.equal(row.exam, 'blocked', 'with no exam recorded')
+  const call = report.judgmentCalls.filter((j) => j.startsWith('task T1: examiner') &&
+    j.includes('proceeds unexamined'))
+  assert.equal(call.length, 1,
+    'one judgment call starts "task T1: examiner" and says the implementer proceeds ' +
+    'unexamined: ' + report.judgmentCalls.join(' | '))
+}
+
+// ── (c) both halves die: the whole-pair lane at BASE stands [M3] ────────────
+{
+  const labels = []
+  const stub = async (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') {
+      if (countOf(labels, 'exam:T1') === 1) throw sigterm(opts.label)
+      return examOk(cwd, { 't1_test.sh': SECOND_EXAM })
+    }
+    if (kind === 'impl') {
+      if (countOf(labels, 'impl:T1') === 1) throw sigterm(opts.label)
+      writeOne(cwd)
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({ waves: [[entry()]], stub })
+  const report = await run()
+
+  // [M3] a dead implementer is still the whole pair's retry — neither label is
+  // dispatched once, and neither three times.
+  assert.equal(countOf(labels, 'impl:T1'), 2,
+    'the implementer is dispatched exactly twice: ' + labels.join(','))
+  assert.equal(countOf(labels, 'exam:T1'), 2,
+    'and the examiner exactly twice: ' + labels.join(','))
+  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes(REDISPATCH)), [],
+    'no examiner-alone re-dispatch was taken: ' + report.judgmentCalls.join(' | '))
+  assert.ok(report.judgmentCalls.some((j) => j.includes('retrying once at')),
+    'the retry ladder at BASE is the one that ran: ' + report.judgmentCalls.join(' | '))
+}
+
+// ── (d) the record the operator reads [M4] ─────────────────────────────────
+{
+  const { report, runDir } = runA
+  const died = report.judgmentCalls.filter((j) => j.startsWith('task T1: examiner died'))
+  assert.equal(died.length, 1,
+    'exactly one judgment call starts "task T1: examiner died": ' +
+    report.judgmentCalls.join(' | '))
+  assert.deepEqual(died.filter((j) => j.includes(REDISPATCH)), died,
+    'and it names the decision: ' + died.join(' | '))
+  const marks = readEvents(runDir)
+    .filter((e) => e.kind === REDISPATCH_EVENT && e.task === 'T1')
+  assert.equal(marks.length, 1,
+    'exactly one driver:exam-redispatch line for T1 in events.jsonl: ' + JSON.stringify(marks))
+}
+// ...and none of either when the examiner answers first time.
+{
+  const labels = []
+  const stub = async (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') return examOk(cwd)
+    if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, runDir } = rig({ waves: [[entry()]], stub })
+  const report = await run()
+  assert.equal(countOf(labels, 'exam:T1'), 1, 'a live examiner is dispatched once')
+  assert.deepEqual(report.judgmentCalls.filter((j) => j.startsWith('task T1: examiner died')), [],
+    'a live examiner raises no examiner-died call: ' + report.judgmentCalls.join(' | '))
+  assert.deepEqual(readEvents(runDir).filter((e) => e.kind === REDISPATCH_EVENT), [],
+    'and appends no driver:exam-redispatch line')
+}
+
+// ── (e) an implementer that merely returned is not a kept reply [M5] ───────
+// The examiner dies before the implementer returns, as in (a) — but the reply
+// is `BLOCKED` with nothing written, so the examiner-alone lane must not open.
+{
+  const labels = []
+  const examDied = deferred()
+  const stub = async (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') {
+      if (countOf(labels, 'exam:T1') === 1) { examDied.resolve(); throw sigterm(opts.label) }
+      return examOk(cwd, { 't1_test.sh': SECOND_EXAM })
+    }
+    if (kind === 'impl') {
+      if (countOf(labels, 'impl:T1') === 1) {
+        await Promise.race([examDied.promise, sleep(3000)])
+        return { status: 'BLOCKED', summary: 'cannot', startHead: 'ignored' }
+      }
+      writeOne(cwd)
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, runDir } = rig({ waves: [[entry()]], stub })
+  const report = await run()
+
+  // [M5] the pair lane, as at BASE.
+  assert.equal(countOf(labels, 'impl:T1'), 2,
+    'the implementer is dispatched exactly twice: ' + labels.join(','))
+  assert.equal(countOf(labels, 'exam:T1'), 2,
+    'and the examiner exactly twice: ' + labels.join(','))
+  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes(REDISPATCH)), [],
+    'a BLOCKED implementer opens no examiner-alone lane: ' + report.judgmentCalls.join(' | '))
+  assert.deepEqual(readEvents(runDir).filter((e) => e.kind === REDISPATCH_EVENT), [],
+    'and no driver:exam-redispatch line is appended')
 }
 
 console.log('ALL TESTS PASSED')
