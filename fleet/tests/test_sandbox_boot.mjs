@@ -862,14 +862,13 @@ const PHASES = ['Wave 1', 'Wave 2', 'Integration Review', 'gate']
 /** M1's environment: four polls a second, the four phases, and an engine that
  *  outlives the last of them.
  *
- *  The interval is a QUARTER of a second and not a whole one because leg (j) of
- *  test_sandbox_boot_merge.mjs re-runs this whole exam inside its own, under the
- *  wall tests/test_fleet_suite.py puts on a sim: four phases relayed at a
- *  poll a second cost that chain four seconds per case for nothing the cases
- *  read. What they read is the ORDER of the commits, which a faster poll only
- *  reaches sooner. `STUB_ENGINE_SLEEP` is untouched — it is the margin the last
- *  phase's commit has to land in before the unit exits, which legs (b) and (f)
- *  assert on. */
+ *  The interval is a QUARTER of a second and not a whole one because this exam
+ *  is one of the longest poles of tests/test_fleet_suite.py, under the wall the
+ *  bridge puts on a sim: four phases relayed at a poll a second cost these
+ *  cases four seconds each for nothing they read. What they read is the ORDER
+ *  of the commits, which a faster poll only reaches sooner.
+ *  `STUB_ENGINE_SLEEP` is untouched — it is the margin the last phase's commit
+ *  has to land in before the unit exits, which legs (b) and (f) assert on. */
 const PHASE_ENV = {
   FLEET_STATUS_INTERVAL: '0.25',
   STUB_ENGINE_PHASES: PHASES.join('|'),
