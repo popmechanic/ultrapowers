@@ -1,0 +1,34 @@
+{
+  "plan": "2026-09-08-gotchas-into-ultrawrite.md",
+  "base": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "tasks": {
+    "1": {
+      "hash": "93489f029295fe8a2eeda45033d9a5d1f95ad0be945bc601fc58190eb81ac106",
+      "verdict": "pass",
+      "reason": "Every pinned literal (the eleven rows' phrases with their disambiguating commas, the grep -F for merge(main, branch), the '- **' count >= 11, the three compiler names, the heading-to-first-bullet cut for references/authoring-gotchas.md.*before.*dispatched, and 'skill ok') is a plain substring or count a conforming file can satisfy at once, each of M1-M5 has its own failing-at-BASE Run:, and the checks sit at the claim's layer, with M2/M3/M5 closing the obvious dodges (prose instead of bullets, restated rules without the compiler's names, a dangling reference path)."
+    },
+    "2": {
+      "hash": "26fca9f7e66b0515327b8a97f50b480cdb24585df3831c09bc69c4ef196057c1",
+      "verdict": "pass",
+      "reason": "Every literal (run_in_background: false, foreground, one call per task, written by the author ... never by the reader, Agent tool, re-extract, one reader, 13 of the 22 minutes) can coexist in the one paragraph opening 'Dispatch is **per task**', the sed ranges and BRE escapes are well-formed, line-wrap is neutralized by tr -s, and the 'skill ok' equality pins M4; the only softness is the section-wide regex verdict.*returns.*author, which paired with the paragraph-scoped legs still forces the sentence at the SKILL.md layer."
+    },
+    "3": {
+      "hash": "b12e404a00f3238b71905c6950d2935eb6368de4af3e44214fd1af318b4ca333",
+      "verdict": "pass",
+      "reason": "Each Run is at least as strong as its clause (M1's ordered-phrase grep over the text cut at the first 'revised.' equals the first-sentence claim, the awk last-bullet join computes M2 exactly, the test -n guard makes M3 unsatisfiable-vacuously rather than vacuously-true, exact-string equality is stricter than M4's 'prints'), and every pinned literal is computable and satisfiable by a plain prose edit plus no change to the extractor, the only external dependencies being that the driver exports ULTRA_BASE and that validate_skill.py emits 'skill ok' alone."
+    }
+  },
+  "tally": {
+    "dispatched": 6,
+    "rejected": 0,
+    "rounds": {
+      "1": {"dispatched": 3, "rejected": 0, "note": "three passes; each reader named a soft spot the author closed (run-4/run-2 pinned with commas so run-45 cannot satisfy them; ULTRA_BASE guarded with test -n; Agent tool given its own grep), which re-dispatched all three"},
+      "2": {"dispatched": 3, "rejected": 0}
+    }
+  },
+  "history": [
+    {"round": 1, "task": "1", "hash": "dc7509b36c2a5c646586dc80dda7c94641421f0f58c27cbafc807b91943ac91f", "verdict": "pass", "reason": "Every M1 phrase is grepped verbatim in a &&-joined Run: per row, the '- **' count, the three compiler-literal names, the cut-at-first-bullet Self-review paragraph check and the validator exit are each mechanically pinned and satisfiable; the loose regexes (run-4, run-2 also match run-45/run-25) weaken but do not falsify the pin."},
+    {"round": 1, "task": "2", "hash": "3ebf4b887f2f28e779f9b52a0d3316845b32f0e3fa81eef74a9b1e650be0f925", "verdict": "pass", "reason": "The eight Run: legs pin the section to the literals and tie the key literals plus the retained rule to the exact 'Dispatch is **per task**' paragraph; the only slack is that M1's 'Agent tool' and M2's <plan-stem>.gate-verdicts.json names have no leg of their own."},
+    {"round": 1, "task": "3", "hash": "a6a67681df26446eda028950c2025dc2d44f302e8d3ffa28db6d8dd318445413", "verdict": "pass", "reason": "Each Machine clause has a Run: that discriminates it and every pinned literal is satisfiable; the one soft spot is that leg (c) proves nothing if $ULTRA_BASE is unset in the worker (an empty ref makes git diff --quiet pass vacuously)."}
+  ]
+}
