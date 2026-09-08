@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-56.md run-56 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "The plan Claim's conjunction: the real `fleet/run-main.mjs` driver invoking the real `skills/ultrapowers/scripts/ultra_run.py --validate-knobs … --no-baseline` on a live fleet run, so a green run pays the committed suite exactly twice (the integrated pass and the frozen gate's) and the ~5.5 min preflight suite pass is gone. — The Node sim `fleet/tests/test_run_main.mjs` stubs `ultra_run.py` entirely (it answers any `--validate-knobs` argv from the stub, lines 316-319), so it establishes only that the driver asks for the flag; Task 1's pytest exams invoke the script directly and establish only what the flag does inside the script. No committed test — and no command in the run evidence — exercises the two halves together against a real driver process, and the wall-clock saving is observable only on the next live run. The plan states this explicitly (\"the live run is their conjunction\"). [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -77,7 +77,7 @@
             "none"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the `--no-baseline` argv is read by `ultra_run.py`, which a sibling task teaches the flag to"
+            "nothing a sibling consumes — the `--no-baseline` argv is read by `ultra_run.py`, which a sibling task teaches the flag to"
           ]
         }
       }
@@ -139,7 +139,7 @@
               "none"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the `--no-baseline` argv is read by `ultra_run.py`, which a sibling task teaches the flag to"
+              "nothing a sibling consumes — the `--no-baseline` argv is read by `ultra_run.py`, which a sibling task teaches the flag to"
             ]
           },
           "tier": null,
@@ -170,7 +170,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the first Check is its pin; the second keeps\n  this run off the three files concurrent runs are editing. What no command decides is the\n  meaning: the gate's own acceptance suite (`run_acceptance.sh --suite-gate`) still executes on\n  every run, the engine's lazy baseline (`fleet/run-engine.mjs`) is untouched and is now the only\n  reader of a red BASE, and `receipt.json`'s `testCmd` is still the plan's command.\n- `ultra_run.py --validate-knobs <argsFile>` **without** `--no-baseline` behaves as at BASE:\n  every exit code, JSON key and verdict the existing tests pin is kept, and every test that\n  stands at BASE in the files a task's Files names still holds.\n- The knob-validate JSON line stays one JSON object on stdout, `ok` and `stage` first as at\n  BASE; new keys are additive and appear only when the flag is given.\n- The four operator documents name no mechanism that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens); at BASE none of them describes the\n  preflight's suite pass, so this plan edits none of them.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the first Check is its pin; the second keeps\n  this run off the three files concurrent runs are editing. What no command decides is the\n  meaning: the gate's own acceptance suite (`run_acceptance.sh --suite-gate`) still executes on\n  every run, the engine's lazy baseline (`fleet/run-engine.mjs`) is untouched and is now the only\n  reader of a red BASE, and `receipt.json`'s `testCmd` is still the plan's command.\n- `ultra_run.py --validate-knobs <argsFile>` **without** `--no-baseline` behaves as at BASE:\n  every exit code, JSON key and verdict the existing tests pin is kept, and every test that\n  stands at BASE in the files a task's Files names still holds.\n- The knob-validate JSON line stays one JSON object on stdout, `ok` and `stage` first as at\n  BASE; new keys are additive and appear only when the flag is given.\n- The four operator documents name no mechanism that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens); at BASE none of them describes the\n  preflight's suite pass, so this plan edits none of them.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
@@ -189,11 +189,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-56/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-56/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-56/acceptance.log"
 }

@@ -1,0 +1,156 @@
+{
+  "integrationBranch": "ultra/integration-run-56",
+  "baseSha": "d26bbdc1c1603d9865390e9890440e5c4c77422c",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9c15daff7e52ef6e559c94a60aefb74211b8fdd8",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-56/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: M2 and Proof leg (a) cannot both be satisfied literally. M2 says a non-blank `testCmd` under `--no-baseline` is validated by its runner's probe \u2014 \"the `TASK_RUNNERS` row whose prefix it matches, else `command -v` of its first word\" \u2014 and reported as `testCmdRunner` `{cmd, runner, ok}`. Leg (a) uses `testCmd` = `echo NEVER-RAN; false` and asserts `\"NEVER-RAN\" not in r.stdout`. Since `testCmdRunner.cmd` is the command string verbatim (leg (g) pins exactly those three keys), any line carrying `testCmdRunner` for leg (a)'s command necessarily prints `NEVER-RAN` on stdout, so no implementation inside `skills/ultrapowers/scripts/ultra_run.py` can satisfy both. The implementer resolved this by adding `SHELL_OPERATORS` / `run_wide_runner_verdict` (patch lines 10-33): a command that matches no `TASK_RUNNERS` prefix and contains a shell control operator, redirection or substitution yields no verdict and no `testCmdRunner` key. The divergence is disclosed in `run_wide_runner_verdict`'s and `validate_knobs`'s docstrings and is the sane reading (`command -v cd` for `cd sub && npm test` says nothing about the suite), so it is lawful \u2014 but it is a narrowing of M2 that the plan text does not authorize, and the fix lies in the task text, not in this task's FILES. Reconcile by either (i) restating M2 to exempt shell-operator commands the runner table does not know, or (ii) rewriting leg (a) to use a `testCmd` whose non-execution sentinel is not echoed by the JSON line (e.g. a command whose side effect is a file the test asserts is absent, rather than a stdout marker), so M2 can be pinned literally.; The skipped run-wide runner probe is silent. In `run_wide_runner_verdict` (patch lines 30-33) a `testCmd` such as `cd sub && npm test` or `pytest -q > out.log` returns `None`, so `validate_knobs` emits no `testCmdRunner` key and exits 0 \u2014 indistinguishable, on the JSON line, from an args file that carries no run-wide `testCmd` at all (leg (j) pins that same shape). For a fail-closed preflight whose Claim is that it \"still refuses ... a test runner that is not there\", an operator reading the line cannot tell that the run-wide command went unvalidated. Making the skip visible is compatible with every leg and with the additive-keys constraint: nothing pins the absence of a note, leg (a) only forbids `NEVER-RAN` in stdout (a note naming no command text is safe), and leg (j) only forbids `testCmdRunner`. Suggest appending a fixed-text note to `result[\"output\"]` (or a boolean `testCmdRunnerSkipped` key) when `run_wide_runner_verdict` returns `None`, without echoing the command string. Advisory only \u2014 the exam is green as it stands.; Disclosed divergence from M2, forced by the plan's own leg (a). M2 says a non-blank `testCmd` under `--no-baseline` is validated by its runner's probe \u2014 a `TASK_RUNNERS` prefix row, \"else `command -v` of its first word\" \u2014 with no stated exception. The diff adds `run_wide_runner_verdict` (skills/ultrapowers/scripts/ultra_run.py, new `SHELL_OPERATORS` tuple) which returns `None`, emitting no `testCmdRunner` key and no verdict, whenever the command matches no table prefix and contains any of `; & | newline ` $( ( > <`. Such a run-wide command is therefore silently accepted: `cd sub && npm test` with npm absent passes the preflight green, which is the fail-open case #234's probe exists to close. This is not fixable inside this task's FILES: the plan's leg (a) uses `testCmd` `echo NEVER-RAN; false` and asserts `\"NEVER-RAN\" not in r.stdout`, while M2's `{cmd, runner, ok}` object echoes the command string verbatim \u2014 so no implementation can both emit the key for that command and keep the stdout clean. The implementer chose the only reading that satisfies both, and disclosed it in the `run_wide_runner_verdict` and `validate_knobs` docstrings, so it is lawful; recording it so the operator can settle the text. Fix in the plan: either restate M2 to exempt shell-operator commands the probe cannot read (matching what shipped), or change leg (a)'s `testCmd` to a marker-free command (e.g. `false`) and drop the stdout-marker assertion in favour of `\"baseline\" not in out`, so M2 can hold without exception.; Advisory, no change required to merge: a run-wide command that shares a runner with a per-task command is probed twice \u2014 `run_wide_runner_verdict` calls `probe_task_test_cmds([cmd], probe_wt)` with its own fresh `verdicts` cache, then the per-task block probes the same runner again a few lines later. `probe_task_test_cmds`'s stated contract is \"each distinct RUNNER is probed once\"; the separate-key requirement in the task Context (`testCmdRunner` is one object, never merged into `perTaskTestCmds`, whose item count existing tests pin exactly) makes the duplicate probe the simplest correct structure, and its cost is one extra `--version` call, so this is noted rather than asked for.; concern: plan-defect: M1 and M2 of the task text are jointly unsatisfiable as written. M2 says every non-blank `testCmd` under `--no-baseline` is `reported as testCmdRunner, an object {cmd, runner, ok}`; M1 says the same invocation on `testCmd` `echo NEVER-RAN; false` must leave `NEVER-RAN` nowhere in its stdout. Since `cmd` is the command string (leg (g) pins it byte-for-byte), any implementation that reports a verdict for that command prints the sentinel. The exam transcribes both legs faithfully, so the contradiction is in the plan, not the exam.; concern: plan-defect: my resolution narrows M2 \u2014 a run-wide `testCmd` that matches no `TASK_RUNNERS` prefix and contains a shell operator now carries no `testCmdRunner` key and no verdict, so such a command is not runner-validated (fail-open on that one shape) instead of being validated against a first word that is not its runner. This is a judgment call I made to keep the whole exam green; if the intended reading is 'always report the verdict', then leg (a)'s stdout assertion is the clause that has to give and the exam's leg (a) would need the `NEVER-RAN` check dropped.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "0ab6817a76e8487eab6eb2715f5574767c917313",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-56/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: no exam in this tree exercises the real `fleet/run-main.mjs` against the real `skills/ultrapowers/scripts/ultra_run.py` with `--no-baseline`. Both end-to-end sims stub the script by argv (`fleet/tests/test_run_main.mjs:308`, `fleet/tests/test_run_main_engine_dir.mjs:155`), so M1\u2013M3 only establish what the driver *asks for*; the plan splits the other half into sibling task 1's exam, and the two tasks sit in the same wave with `depends_on: []` and no interface edge. Consequence if the sibling does not land in the same integration merge: `argparse` rejects the unknown option and exits 2, and the reworded comment at fleet/run-main.mjs:606 (\"with --no-baseline the verb never runs the suite, so every non-zero exit here is the plan's own knobs failing validation\") becomes false \u2014 the operator reads an argparse usage string under the verdict `knob-validate-failed`. Nothing inside this task's FILES can settle this, which is why the actor is `plan`. What would settle it: an integration-level leg that runs `python3 skills/ultrapowers/scripts/ultra_run.py --validate-knobs <args> --no-baseline` for real once both halves are merged, or a `depends_on` edge / wave split making the ordering explicit.; unverified: cross-task runtime coupling. `fleet/run-main.mjs:601-603` now passes `--no-baseline` on every real `ultra_run.py --validate-knobs` invocation, but the flag is taught to the script by sibling task 1 (`skills/ultrapowers/scripts/ultra_run.py`), which is absent at BASE. This task's exam cannot settle it: `fleet/tests/test_run_main.mjs` stubs `ultra_run.py` at the argv layer (makeExecStub answers any argv containing `--validate-knobs`), which the task's own Context declares to be the right layer \u2014 so leg (a)/(b)/(c) all pass whether or not the real script accepts the flag. Nothing here is blocking: no criterion of this task is unsatisfiable, the plan places both tasks in the same wave (waves: [[\"1\",\"2\"]]), and the Interfaces slot explicitly says this task Produces nothing a sibling consumes. What would settle it: task 1's exam (`tests/test_ultra_run.py` legs (a)-(f), `tests/test_ultra_run_task_test_cmds.py` legs (g)-(l)) landing in the same integration, or one end-to-end drive of `run-main.mjs` against the unstubbed script. Recorded so the operator knows this leg of #770 rides on task 1 landing, not on this diff.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-56/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1746 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n..................                                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1746 passed, 5 warnings in 274.85s (0:04:34) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_ultra_run.py tests/test_ultra_run_task_test_cmds.py tests/test_ultra_run_bootstrap_cmd.py tests/test_ultra_run_exam_command.py tests/test_review_peer.py tests/test_deadline_slack.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 57%]\n.....................................................                    [100%]\n125 passed in 12.43s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_main.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "fatal: couldn't find remote ref ultra/integration-run-90\nfatal: couldn't find remote ref ultra/integration-run-91\nfatal: couldn't find remote ref ultra/integration-run-92\nfatal: couldn't find remote ref ultra/integration-run-94\nfatal: couldn't find remote ref ultra/integration-run-95\nfatal: couldn't find remote ref ultra/integration-run-96\nfatal: couldn't find remote ref ultra/integration-run-boot-unset\nfatal: couldn't find remote ref ultra/integration-run-boot-empty\nfatal: couldn't find remote ref ultra/integration-run-boot-given\nfatal: couldn't find remote ref ultra/integration-run-97\nfatal: couldn't find remote ref ultra/integration-run-98\nfatal: couldn't find remote ref ultra/integration-run-99\nfatal: couldn't find remote ref ultra/integration-run-100\n"
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_main_engine_dir.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "fatal: couldn't find remote ref ultra/integration-run-e1\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_finalize_wiring.py tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": "..........................                                               [100%]\n26 passed in 0.09s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/confine-hook.mjs skills/ultralearn/scripts/harvest_fleet_runs.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 401402,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ca2d5154365e57f97dc2fd3353826f0b503950e2",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-56/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-56/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.941,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "The plan Claim's conjunction: the real `fleet/run-main.mjs` driver invoking the real `skills/ultrapowers/scripts/ultra_run.py --validate-knobs \u2026 --no-baseline` on a live fleet run, so a green run pays the committed suite exactly twice (the integrated pass and the frozen gate's) and the ~5.5 min preflight suite pass is gone.",
+      "reason": "runtime",
+      "why": "The Node sim `fleet/tests/test_run_main.mjs` stubs `ultra_run.py` entirely (it answers any `--validate-knobs` argv from the stub, lines 316-319), so it establishes only that the driver asks for the flag; Task 1's pytest exams invoke the script directly and establish only what the flag does inside the script. No committed test \u2014 and no command in the run evidence \u2014 exercises the two halves together against a real driver process, and the wall-clock saving is observable only on the next live run. The plan states this explicitly (\"the live run is their conjunction\")."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: the driver's pre-review pass was red (the Proof's Run: command failed: python3 -m pytest -q tests/test_ultra_run.py tests/test_ultra_run_task_test_cmds.py tests/test_ultra_run_bootstrap_cmd.py tests/test_ultra_run_exam_command.py tests/test_review_peer.py tests/test_deadline_slack.py \u2014 exit 1; the Proof's exam failed: python3 -m pytest -q tests/test_ultra_run.py tests/test_ultra_run_task_test_cmds.py \u2014 exit 1) \u2014 one repair round before any referee read the patch",
+    "task 1: plan-defect: M1 and M2 of the task text are jointly unsatisfiable as written. M2 says every non-blank `testCmd` under `--no-baseline` is `reported as testCmdRunner, an object {cmd, runner, ok}`; M1 says the same invocation on `testCmd` `echo NEVER-RAN; false` must leave `NEVER-RAN` nowhere in its stdout. Since `cmd` is the command string (leg (g) pins it byte-for-byte), any implementation that reports a verdict for that command prints the sentinel. The exam transcribes both legs faithfully, so the contradiction is in the plan, not the exam.",
+    "task 1: plan-defect: my resolution narrows M2 \u2014 a run-wide `testCmd` that matches no `TASK_RUNNERS` prefix and contains a shell operator now carries no `testCmdRunner` key and no verdict, so such a command is not runner-validated (fail-open on that one shape) instead of being validated against a first word that is not its runner. This is a judgment call I made to keep the whole exam green; if the intended reading is 'always report the verdict', then leg (a)'s stdout assertion is the clause that has to give and the exam's leg (a) would need the `NEVER-RAN` check dropped."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, Claim/M2 slot: `skills/ultrapowers/scripts/ultra_run.py:295-313` (`run_wide_runner_verdict`, consumed at line 427-432) narrows the flag's contract below its Claim. M2 states the run-wide `testCmd` is validated by \"the `TASK_RUNNERS` row whose prefix it matches, else `command -v` of its first word\", and the Claim's sentence is that the check \"still refuses ... a test runner that is not there\". The implementation adds a carve-out (`SHELL_OPERATORS`, line 292): a command that matches no table prefix and contains any of `; & | newline ` $( ( > <` returns `None`, so no `testCmdRunner` key is emitted, `ok` stays true and the verb exits 0 \u2014 that class of run-wide command receives no runner validation at all under `--no-baseline`, where at BASE the baseline run would have caught a missing runner (exit 3). E.g. `no-such-runner-770 tests/ > out.log` passes the preflight green. Graded minor, not blocking: the carve-out is deliberate and documented in the docstring (a `command -v cd` verdict for `cd sub && npm test` would be meaningless), this repo's own run-wide command `python3 -m pytest` matches a table prefix and is probed, the flagless path is unchanged, and the engine's lazy baseline (`fleet/run-engine.mjs`) still surfaces a broken runner at wave time \u2014 the defect is that the failure moves later, not that it disappears. No exam leg in `tests/test_ultra_run_task_test_cmds.py` (legs g-l, lines 334-429) covers a shell-operator run-wide command, so the behavior is unpinned as well as unspecified."
+    }
+  ],
+  "blockedWaves": []
+}

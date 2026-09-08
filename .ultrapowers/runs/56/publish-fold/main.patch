@@ -1,0 +1,1906 @@
+diff --git a/fleet/confine-hook.mjs b/fleet/confine-hook.mjs
+index e0cd408d1ee9bc40c9da544651442b68d0c2ebd2..cb77dc8f78e12aa836c9133fd9a9319ef03af2b5 100644
+--- a/fleet/confine-hook.mjs
++++ b/fleet/confine-hook.mjs
+@@ -199,6 +199,77 @@ export function bashWriteTargets(command) {
+   return targets.filter(Boolean)
+ }
+ 
++// #762 — A KILL PATTERN CAN NAME THE WORKER ITSELF. The worker is a
++// `claude -p <prompt>` process, so its argv carries the whole prompt — the
++// role text, the FILES line, the TEST COMMAND line. A `pkill -f` whose pattern
++// matches any of that matches the worker, and run-34 spent a task learning it:
++// a worker that reached for `pkill -f <the test command>` to clear a stuck test
++// killed the process that was running the test. `kill <pid>` never has this
++// property, which is why the deny says so.
++//
++// The check is the same shape as the write denylist above and is closed the
++// same way: `pkill`/`killall` (or a path tail of either), found WHEREVER it
++// sits — a kill after `&&`, `;`, `|` or a leading `cd` is the same kill — with
++// the command token read from the MASKED text (so a quoted `pkill` is data,
++// the #475 rule) and the pattern from the ORIGINAL. `pkill` without `-f`
++// matches process NAMES, so its pattern is tried against `claude` alone;
++// `pkill -f` and `killall` are tried against `claude` and the TEST COMMAND.
++const KILLS = ['pkill', 'killall']
++const isKill = (t) => KILLS.some((k) => t === k || t.endsWith('/' + k))
++// `-f`, `-af`, `-9 -f`, `--full`: the flag that makes pkill match the full
++// argv rather than the process name.
++const matchesFullArgv = (flag) => /^-{1,2}[A-Za-z]*f/.test(flag)
++
++export function bashKillPatterns(command) {
++  const raw = String(command)
++  const masked = maskData(raw)
++  const tok = []
++  for (let m, re = /\S+/g; (m = re.exec(masked)); ) {
++    tok.push({ m: strip(m[0]), o: strip(raw.slice(m.index, m.index + m[0].length)) })
++  }
++  const kills = []
++  for (let i = 0; i < tok.length; i++) {
++    if (!isKill(tok[i].m)) continue
++    // killall's only mode is a name match against every process of that name;
++    // pkill needs the flag. Collected first, emitted after, so a flag written
++    // behind its pattern (`pkill claude -f`) still counts.
++    let full = tok[i].m.endsWith('killall')
++    const patterns = []
++    for (let j = i + 1; j < tok.length; j++) {
++      // A separator ends this command's argument list. Quoted text is NUL in
++      // the masked copy, so a `;` inside a pattern is not read as one, and the
++      // two strings stay index-aligned (masking never changes a length).
++      const sep = /[|;&]/.exec(tok[j].m)
++      if (sep && sep.index === 0) break
++      const flag = sep ? tok[j].m.slice(0, sep.index) : tok[j].m
++      const pattern = sep ? tok[j].o.slice(0, sep.index) : tok[j].o
++      if (flag.startsWith('-')) { if (matchesFullArgv(flag)) full = true }
++      else if (pattern) patterns.push(pattern)
++      if (sep) break
++    }
++    for (const pattern of patterns) kills.push({ kill: tok[i].m, pattern, full })
++  }
++  return kills
++}
++
++// A pattern "matches" as pkill would read it: a regular expression against the
++// target, or — when the pattern is not one the constructor accepts — the
++// literal substring test, so an unparseable pattern is never a silent pass.
++const killPatternMatches = (pattern, target) => {
++  if (!target) return false
++  let re = null
++  try { re = new RegExp(pattern) } catch { /* not a regexp: fall back to literal */ }
++  return re ? re.test(target) : target.includes(pattern)
++}
++
++// The deny string is what the model reads back, so it names the self-match
++// rather than the rule: the pattern it wrote, the process it would have hit,
++// and the form that does not have this problem.
++const killDeny = (kill, pattern, testCmd) =>
++  'confine-hook: ' + kill + " '" + pattern + "' would match this worker's own claude -p " +
++  'process — its argv carries the prompt, TEST COMMAND included' +
++  (testCmd ? ' (' + testCmd + ')' : '') + '. Kill by pid (kill <pid>) instead.'
++
+ // The file-path input keys of the write-capable tools. MultiEdit/NotebookEdit
+ // are covered even though the driver's matcher may not dispatch them — a
+ // matcher tightened later must not silently widen the boundary.
+@@ -222,6 +293,19 @@ export function decide(input) {
+ 
+   if (tool === 'Bash') {
+     const cmd = String(ti.command || '')
++    // The hook cannot see the prompt — it reads stdin and its own environment,
++    // which Claude Code inherits from the worker. `FLEET_TEST_CMD` is the one
++    // line of the prompt the worker can name (run-worker.mjs sets it per
++    // dispatch); the conceded residual is the rest of the argv — a pattern
++    // matching a FILES path or a word of the task body still matches the
++    // worker and is not caught here, and the VM is the backstop for it.
++    const testCmd = process.env.FLEET_TEST_CMD || ''
++    for (const k of bashKillPatterns(cmd)) {
++      const targets = k.full ? ['claude', testCmd] : ['claude']
++      if (targets.some((t) => killPatternMatches(k.pattern, t))) {
++        return { deny: killDeny(k.kill, k.pattern, testCmd) }
++      }
++    }
+     for (const raw of bashWriteTargets(cmd)) {
+       const abs = path.resolve(cwd, raw)
+       // /dev/* is a sink, not storage: `2>/dev/null` rides half the
+diff --git a/fleet/failing-block.mjs b/fleet/failing-block.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4516d376d5f29f67193ec87870618f3536b1c9c5
+--- /dev/null
++++ b/fleet/failing-block.mjs
+@@ -0,0 +1,73 @@
++// fleet/failing-block.mjs — the failing test's own block, cut out of a red
++// suite's output (#763 part 2, on #739's ground).
++//
++// A red suite's output is read twice: once by the record, which keeps all of it
++// (`<run dir>/acceptance.log`, `publish-fold/suite-<attempt>.txt`), and once by
++// a reader — a judgment call, a brief, a wave detail, a pull-request body — who
++// wants the failure. A fixed tail is the wrong cut for the second reader: the
++// interesting lines are wherever the failing test printed them, and a tail of N
++// characters keeps the summary and drops the assertion whenever the block runs
++// long. So the excerpt is a BLOCK: it begins at the failing test's own first
++// failure line and stops where that test's block stops. Nothing is dropped from
++// the record; only the quotation is narrowed.
++//
++// The cut is line-based and shape-agnostic on purpose. Three shapes reach it,
++// measured 2026-09-08 on this machine:
++//
++//   pytest    a preamble, `=== FAILURES ===`, `___ test_fleet_mjs[test_red.mjs] ___`,
++//             a `[gw1]` line, the source excerpt, the `E   …` lines (which is
++//             where a bridged sim's own AssertionError sits), then
++//             `=== short test summary info ===`, `FAILED …` and `1 failed, …`
++//   TAP       `ok 1 - …`, `not ok 2 - …`, an indented YAML diagnostic closed by
++//             `  ...`, then `ok 3 - …` or a `# fail 1` summary
++//   bare node the sim's own lines, Node's internal frames, then
++//             `AssertionError [ERR_ASSERTION]: …`, the diff, the stack and
++//             `Node.js v24.16.0`
++//
++// One marker rule covers all three, and it is the ONE literal this module
++// shares with the awk cut in `fleet/sandbox-boot.sh` — the two must agree line
++// for line, so they are written to the same two patterns:
++//
++//   start  the first line that opens a failure
++//   end    the line before the first LATER line that opens the next thing
++//          (another test's header, a pytest rule line, another TAP result), or
++//          the last line of the text when nothing later matches
++//
++// A text with no start line is not a failure this rule can find, so it is
++// returned WHOLE rather than guessed at — a green summary, a bare exit code and
++// the empty string all come back byte for byte.
++//
++// There is no length argument and no default cap. The block's size is whatever
++// the failing test printed, and the whole output is on the record beside it.
++
++/** The first line of a failing test's block. */
++export const START = /^(_{3,} .+ _{3,}$|FAILED |FAIL[: ]|not ok |AssertionError)/
++
++/** The first line AFTER a failing test's block; the block ends on the line before it. */
++export const END = /^(_{3,} .+ _{3,}$|={3,} |(not )?ok \d)/
++
++/**
++ * The failing test's own block, quoted out of a red suite's output.
++ *
++ *   text  a suite's stdout+stderr, whatever shape printed it
++ *
++ * Returns the lines from the first START line through the line before the first
++ * later END line — or through the last line when no later line ends it — joined
++ * with `\n`. When no line matches START the text is returned unchanged.
++ */
++export function failingBlock (text) {
++  const source = String(text ?? '')
++  const lines = source.split('\n')
++
++  const start = lines.findIndex((line) => START.test(line))
++  if (start === -1) return source
++
++  let end = lines.length - 1
++  for (let i = start + 1; i < lines.length; i++) {
++    if (END.test(lines[i])) { end = i - 1; break }
++  }
++
++  return lines.slice(start, end + 1).join('\n')
++}
++
++export default failingBlock
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 31482527107f7d27777bb0debfe6e93189bbbbe4..e45a4ec44115f5696472522a44996a785c3f8667 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -43,6 +43,15 @@ import { fileURLToPath } from 'node:url'
+ // clone is cut at dispatch time (only the engine knows which tasks have an
+ // exam), and the implementer's capture is retaken after the handoff.
+ import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
++// A red suite's output is quoted, not tailed (#763 part 2): every reader below
++// who is handed a failing suite's text — a judgment call, the critic's brief,
++// the reconcile agent's brief, a blocked wave's detail — gets the failing
++// test's own block, so the assertion that named the failing leg survives however
++// long the trailing summary runs. `tail` stays for everything that is not a red
++// suite: git and fold stderr, bootstrap failures, and the Run:/Check:/exam
++// evidence records. The record itself is untouched — the whole output is still
++// on disk beside the excerpt.
++import { failingBlock } from './failing-block.mjs'
+ 
+ // ── model tiers (waves.js parity) ────────────────────────────────────────────
+ export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
+@@ -404,7 +413,10 @@ export const suiteLine = (suite, cmd) => {
+     'do not re-derive it by reading tests.' +
+     '\ncommand: ' + (cmd || '(unknown)') +
+     '\npassed: ' + Boolean(suite.passed) +
+-    (suite.passed === false ? '\noutput: ' + tail(suite.output, 500) : '')
++    // A red suite's output arrives here already narrowed to the failing block,
++    // so it is carried whole: re-tailing it would cut the very lines the block
++    // was chosen to keep.
++    (suite.passed === false ? '\noutput: ' + suite.output : '')
+ }
+ const siblingLine = (task, wave) => {
+   const sibs = wave
+@@ -924,11 +936,17 @@ export async function runEngine({
+     await git(['read-tree', '-u', '--reset', baseSha + '^{tree}'], integ)
+     const r = await sh(testCmd, integ)
+     await git(['read-tree', '-u', '--reset', restoreTree + '^{tree}'], integ)
+-    baseline = { passed: r.code === 0, output: tail(r.stdout + r.stderr, 2000) }
++    // A green baseline keeps BASE's record — a tail of the summary. A red one
++    // records the failing test's own block, which is what every reader of
++    // `baseline.output` below is quoting.
++    baseline = { passed: r.code === 0,
++                 output: r.code === 0
++                   ? tail(r.stdout + r.stderr, 2000)
++                   : failingBlock(r.stdout + r.stderr) }
+     log('baseline: ' + (baseline.passed ? 'green' : 'RED') + ' on ' + baseSha)
+     if (!baseline.passed) {
+       judgmentCalls.push('baseline: the suite is RED on BASE (' +
+-        tail(baseline.output, 500) + ') — this wave\'s red is inherited, not the diff\'s')
++        baseline.output + ') — this wave\'s red is inherited, not the diff\'s')
+     }
+   }
+ 
+@@ -1068,14 +1086,32 @@ export async function runEngine({
+     // the examiner needs before it can be dispatched — the clone and the
+     // bootstrap its red-at-BASE run reads — is awaited HERE, so the dispatch
+     // itself is one unawaited call beside the implementer's.
++    // Cutting the clone is its own step because it happens twice: once here,
++    // and once again when a dead examiner is re-dispatched alone beside an
++    // implementer that already finished (#762) — the second examiner must open
++    // its eyes on a tree at BASE, not on whatever the first one left behind.
++    const cutExamClone = async () => {
++      // A barrier retry re-enters runTaskInner; the clone is re-cut from
++      // scratch rather than reused, the same posture resetTaskClone takes.
++      fs.rmSync(examDir, { recursive: true, force: true })
++      cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
++                    base: baseShaForTask })
++    }
++    const bootstrapExamClone = async () => {
++      if (!bootstrapCmd) return
++      // The setup loop bootstrapped every clone that existed then; this one
++      // did not, and its red-at-BASE run needs the same tree.
++      const b = await sh(bootstrapCmd, examDir)
++      if (b.code !== 0) {
++        judgmentCalls.push('bootstrap failed in ' + path.basename(examDir) + ' (exit ' + b.code +
++          ') — the suite may be unrunnable there: ' + tail(b.stderr || b.stdout, 300))
++        log('bootstrap failed in ' + path.basename(examDir))
++      }
++    }
+     const examReady = await (async () => {
+       if (!(proofTests.length && examTestCmd)) return false
+       try {
+-        // A barrier retry re-enters runTaskInner; the clone is re-cut from
+-        // scratch rather than reused, the same posture resetTaskClone takes.
+-        fs.rmSync(examDir, { recursive: true, force: true })
+-        cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
+-                      base: baseShaForTask })
++        await cutExamClone()
+       } catch (e) {
+         // No clone, no exam — and no reason to fail a task over it: the same
+         // standing a BLOCKED examiner has.
+@@ -1085,16 +1121,7 @@ export async function runEngine({
+           ') — no exam recorded; the implementer proceeds unexamined')
+         return false
+       }
+-      if (bootstrapCmd) {
+-        // The setup loop bootstrapped every clone that existed then; this one
+-        // did not, and its red-at-BASE run needs the same tree.
+-        const b = await sh(bootstrapCmd, examDir)
+-        if (b.code !== 0) {
+-          judgmentCalls.push('bootstrap failed in ' + path.basename(examDir) + ' (exit ' + b.code +
+-            ') — the suite may be unrunnable there: ' + tail(b.stderr || b.stdout, 300))
+-          log('bootstrap failed in ' + path.basename(examDir))
+-        }
+-      }
++      await bootstrapExamClone()
+       return true
+     })()
+     // The Proof paths whose blob no longer matches what the examiner left.
+@@ -1138,18 +1165,61 @@ export async function runEngine({
+     // neither before the other. Deliberately NOT the `parallel` seam: that one
+     // is bounded by the caller and this code already runs inside one of its
+     // slots, so nesting it could hand the wave a width it does not have.
+-    const examCall = examReady
+-      ? agent(roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs,
+-          { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
+-            schema: EXAMINER_SCHEMA })
+-      : null
++    const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs
++    const examOpts = { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
++                       schema: EXAMINER_SCHEMA }
++    const examCall = examReady ? agent(examPrompt, examOpts) : null
+     const implCall = agent(
+       roles.implementer + '\nBASE: ' + baseShaForTask + implementerInputs,
+       { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
+-    const [ex, implReply] = await Promise.all([examCall, implCall])
+-    let impl = implReply
++    // Both halves are SETTLED before either is judged (#762). `Promise.all`
++    // rejected the moment the examiner died — with the implementer still
++    // running, un-awaited — and that rejection climbed to runTask, which reset
++    // the task clone and re-entered runTaskInner whole: a second implementer
++    // redoing work the first one had already finished (run-34's lost 746 s).
++    // Settling first costs nothing (the pair is dispatched exactly as before,
++    // neither awaited before the other) and lets the driver see what it
++    // actually has: a dead examiner beside a finished implementer.
++    const [examSettled, implSettled] = await Promise.allSettled([examCall, implCall])
++    // An implementer that died is the pair lane unchanged: its error is the one
++    // that climbs, runTask resets the clone and re-dispatches both. There is no
++    // work to keep.
++    if (implSettled.status === 'rejected') throw implSettled.reason
++    let ex = examSettled.status === 'fulfilled' ? examSettled.value : null
++    let impl = implSettled.value
+     if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
++    // Before the kept-reply question is asked, so `hasCoordinates` reads the
++    // driver's own capture and never a model-typed path.
+     stripUntrustedPatch(impl, patchPrefix)
++    if (examSettled.status === 'rejected') {
++      const examErr = String((examSettled.reason && examSettled.reason.message) || examSettled.reason)
++      // A KEPT reply — success with coordinates — is the whole condition. Only
++      // then is there something a whole-pair retry would throw away; an
++      // implementer that merely returned (BLOCKED, NEEDS_CONTEXT, a capture
++      // failure) has nothing worth keeping, so the examiner's error climbs and
++      // the lane at BASE runs.
++      const kept = (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && hasCoordinates(impl)
++      if (!kept) throw examSettled.reason
++      judgmentCalls.push('task ' + task.id + ': examiner died (' + examErr +
++        ') — the implementer ended success with its patch captured; re-dispatching the examiner alone')
++      appendEvent({ kind: 'driver:exam-redispatch', task: task.id, detail: examErr })
++      log('task ' + task.id + ' examiner died — re-dispatching the examiner alone')
++      try {
++        // The graded clone is NOT reset and the implementer is NOT re-dispatched:
++        // `impl.patch` is the driver's own capture and stays exactly as taken.
++        // The examiner's clone is re-cut at BASE so the second attempt sees the
++        // tree the first one was given, not the tree it left.
++        await cutExamClone()
++        await bootstrapExamClone()
++        ex = await agent(examPrompt, examOpts)
++      } catch (e2) {
++        // One re-dispatch, never two. A second death leaves `ex` null, which the
++        // verdict block below already reads as an examiner that returned no
++        // reply: exam `blocked`, the implementer proceeds unexamined.
++        ex = null
++        log('task ' + task.id + ' examiner died again — proceeding unexamined')
++      }
++    }
+     noteConcerns(impl)
+     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
+     // construction, so a mismatch here is a check on a thing that cannot
+@@ -1786,7 +1856,7 @@ export async function runEngine({
+       try {
+         rec = await agent(
+           roles.reconcile + '\nTEST COMMAND: ' + testCmd +
+-            '\n\nFailing output:\n' + tail(suite.stdout + suite.stderr, 3000),
++            '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr),
+           { label: 'reconcile:wave' + waveNumber + ':' + attempt,
+             model: TIER.mostCapable, schema: RECONCILE_SCHEMA })
+       } catch (e) {
+@@ -1841,7 +1911,7 @@ export async function runEngine({
+     frontier.push(entry())
+     return { status: 'TEST_FAILED',
+              detail: 'candidate suite failed after reconcile attempts: ' +
+-               tail(suite.stdout + suite.stderr, 800) }
++               failingBlock(suite.stdout + suite.stderr) }
+   }
+ 
+   // ── wave loop (ported: chunking, lost sweep, barrier retry, cascade) ───────
+@@ -2106,7 +2176,7 @@ export async function runEngine({
+           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+           suiteLine(lastSuite, testCmd) +
+           (baseline && baseline.passed === false
+-            ? '\nBaseline: the suite is RED on BASE — ' + tail(baseline.output, 500)
++            ? '\nBaseline: the suite is RED on BASE — ' + baseline.output
+             : '') +
+           integratedRunEvidenceBlock(integratedRuns) +
+           integratedCheckEvidenceBlock(integratedChecks),
+diff --git a/fleet/run-worker.mjs b/fleet/run-worker.mjs
+index da08fc773d8660915372460a578f1e7174e5d0b7..360698253ceb56c2e4be335c79e9423935ac9ea8 100644
+--- a/fleet/run-worker.mjs
++++ b/fleet/run-worker.mjs
+@@ -747,6 +747,25 @@ export function writeTranscriptSlice({ configDir, runDir, sessionId }) {
+   return { bytes: Buffer.byteLength(sliced, 'utf8') }
+ }
+ 
++// The one line of the prompt the confine hook is told about (#762). The hook
++// reads stdin and its own environment; it never sees the prompt, so the worker
++// hands it the TEST COMMAND line — the line run-34 died on, when a `pkill -f`
++// aimed at a stuck test matched the `claude -p` argv that carries that very
++// text. The FIRST such line wins: the engine writes one (`testCmdLine`,
++// run-engine.mjs), and a later occurrence is task body quoting it.
++//
++// A prompt with no such line DELETES the key rather than passing an empty
++// string: the run-wide env may carry one from the process that launched the
++// run, and a stale value in a reviewer's hook would deny by a command that
++// reviewer was never given.
++export function childEnvFor(env, prompt) {
++  const out = { ...env }
++  const m = /^TEST COMMAND:[ \t]*(.+)$/m.exec(String(prompt == null ? '' : prompt))
++  if (m && m[1].trim()) out.FLEET_TEST_CMD = m[1].trim()
++  else delete out.FLEET_TEST_CMD
++  return out
++}
++
+ export function createRunWorker(cfg) {
+   const {
+     runId, workersDir, cwdFor, promptFileFor, settingsFor, addDirsFor,
+@@ -826,7 +845,7 @@ export function createRunWorker(cfg) {
+     onEvent({ kind: 'worker:start', label: opts.label, role, sessionId, cwd, model: opts.model || null })
+ 
+     const { exitCode, stdout, stderr, timedOut } = await runProcess({
+-      cli, argv, cwd, env, prompt,
++      cli, argv, cwd, env: childEnvFor(env, prompt), prompt,
+       timeoutMs: (timeoutMsFor && timeoutMsFor(role)) || timeoutMs,
+       graceMs, spawnFn,
+     })
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index f2adff70d5eabc78e43499b18fe988665414e00c..dd1b447a2743823ce59cf631b5f1e49242711bd6 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -1138,6 +1138,36 @@ plan_closes() {
+   ' "$PLAN_FILE"
+ }
+ 
++# The failing test's own block of a suite file, printed to stdout.
++#
++# A fixed-length tail is the wrong excerpt: a suite whose failing leg is early
++# and whose diagnostics are long puts the one line a reader needs above the
++# window, and the reader is shown a run is held without being told by what. So
++# the block is found by its markers instead of by its length:
++#
++#   start — the first line matching /^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)/
++#   end   — the line before the first LATER line matching
++#           /^(___+ .+ ___+$|===+ |(not )?ok [0-9])/, or the file's last line
++#   fallback — a file with no start line is printed whole
++#
++# The same rule, literal for literal, is `fleet/failing-block.mjs`'s: the two
++# must agree line for line on the same file. POSIX awk only — the sandbox is
++# Ubuntu's mawk and the boot sims run on BSD awk — so no `{n,m}` intervals, no
++# `\d`, and no gawk-only functions. `node` is never called here: on the sandbox
++# `node` is argv to `systemd-run` and nothing else.
++failing_block() { # $1 = the suite file
++  awk '
++    { line[NR] = $0 }
++    !start && /^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)/ { start = NR; next }
++    start && !stop && /^(___+ .+ ___+$|===+ |(not )?ok [0-9])/ { stop = NR - 1 }
++    END {
++      if (!start) { start = 1; stop = NR }
++      if (!stop) stop = NR
++      for (i = start; i <= stop; i++) print line[i]
++    }
++  ' "$1"
++}
++
+ # The fold's section of the PR body, or nothing at all. It is the reader's only
+ # account of what happened between the engine's commit and the head this PR
+ # carries, so it appears whenever that account is not "it just folded": on any
+@@ -1176,11 +1206,13 @@ fold_section() {
+   case "$MERGE_NOTE" in "left open:"*) printf -- '- merge: %s\n' "$MERGE_NOTE" ;; esac
+   printf '\n'
+   # The suite the fold ran on the folded head is the whole of a `suite red`:
+-  # without its tail the section says a run is held and not by what.
++  # without the failing test's own block the section says a run is held and not
++  # by what. The whole file stays on the evidence branch either way; this is
++  # only what the reader is shown.
+   suite="$(fold_dir)/suite-$a.txt"
+   if [ "$d" = "suite red" ] && [ -f "$suite" ]; then
+     printf '```\n'
+-    tail -n 20 "$suite"
++    failing_block "$suite"
+     printf '```\n\n'
+   fi
+   printf 'https://github.com/%s/tree/ultra/evidence/%s/%s/publish-fold/receipt.json\n\n' \
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index bcf373443ddb4c45b1d0908c28d73e54f2f2997b..7654fff9d141e6f96fc5e9d82588756e7bed35eb 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -101,10 +101,20 @@ export const HEAD_SHA_2 = FOLD_CANDIDATE_2
+ /** The one line the fold stub prints, which is therefore the last line of
+  *  `publish-fold/publish-fold-<attempt>.log`. */
+ export const FOLD_STUB_LINE = 'fold stub speaking'
+-/** What the stub writes to `publish-fold/suite-<attempt>.txt` on `suite red`. */
+-export const FOLD_SUITE_TEXT = 'FAIL fleet/tests/test_fold.py::test_join\n1 failed, 12 passed in 3.10s'
++/** What the stub writes to `publish-fold/suite-<attempt>.txt` on `suite red`:
++ *  twenty-eight TAP-shaped lines whose failing leg is the SECOND, buried under
++ *  twenty-six diagnostic lines. A fixed-length tail of this file cannot carry
++ *  the `not ok 2` line, so the excerpt the PR body quotes has to be the
++ *  failing test's own block. */
++export const FOLD_SUITE_TEXT = [
++  'ok 1 - join',
++  'not ok 2 - the recorded text names the failing leg',
++  ...Array.from({ length: 24 }, (_, i) => `  diagnostic line ${i + 1}`),
++  '  ...',
++  '# fail 1',
++].join('\n')
+ /** Its last line — the one the PR body has to carry. */
+-export const FOLD_SUITE_LAST = '1 failed, 12 passed in 3.10s'
++export const FOLD_SUITE_LAST = '# fail 1'
+ /** Where the fold's receipts live inside the evidence worktree. */
+ export const FOLD_PATH = `${RUN_PATH}/publish-fold`
+ /** The link the `## Publish fold` section points a reader at. */
+diff --git a/fleet/tests/test_confine_hook.mjs b/fleet/tests/test_confine_hook.mjs
+index 05bbf3e994a1842ce85ad9636a235cb281008880..a99fd418b3e19bf2c4ed5ffd3fdd04838cbc0e88 100644
+--- a/fleet/tests/test_confine_hook.mjs
++++ b/fleet/tests/test_confine_hook.mjs
+@@ -220,5 +220,158 @@ const run = (input, env = {}) => spawnSync('node', [HOOK], {
+   assert.match(JSON.parse(logged[0]).reason, /outside the writable roots/)
+ }
+ 
++// ── #762: a kill whose pattern would match the worker's own `claude -p` ──────
++//
++// run-34's implementer ran `pkill -f <the TEST COMMAND it had just been given>`
++// to clear a stuck test. The worker's own argv IS `claude -p <prompt>` and the
++// prompt carries the `TEST COMMAND:` line verbatim, so the pattern matched the
++// process running the task and the worker killed itself.
++//
++// The hook cannot see the prompt — it reads the PreToolUse JSON and its own
++// environment. The worker is what tells it: `FLEET_TEST_CMD` (the three
++// `createRunWorker` legs live in fleet/tests/test_run_worker.mjs). Here: a kill
++// pattern that matches that value, or matches `claude`, is refused; a pattern
++// that matches neither, a kill by pid, and a quoted `pkill` are not.
++//
++// Every leg below names its Proof letter and its Machine clause. The verdict
++// shape is `decide()`'s: `{ deny: <string> }` or `{ allow: true }`, so "deny and
++// no allow" is asserted on both keys rather than on one.
++{
++  const TESTCMD = 'node fleet/tests/test_sandbox_boot.mjs'
++
++  // The `decide()` legs read FLEET_TEST_CMD off process.env, so each group
++  // toggles it inside a try/finally — the shape the FLEET_RUN_DIR block above
++  // uses. `undefined` means DELETE the key, which is leg (g)-(i)'s environment.
++  const withEnv = (vars, fn) => {
++    const prev = {}
++    for (const k of Object.keys(vars)) prev[k] = process.env[k]
++    try {
++      for (const [k, v] of Object.entries(vars)) {
++        if (v === undefined) delete process.env[k]
++        else process.env[k] = v
++      }
++      return fn()
++    } finally {
++      for (const k of Object.keys(vars)) {
++        if (prev[k] === undefined) delete process.env[k]
++        else process.env[k] = prev[k]
++      }
++    }
++  }
++
++  // A deny leg: the verdict denies, does not allow, and its reason CONTAINS
++  // each needle the leg names. Containment is what the legs specify (the deny
++  // string's wording is the implementer's), but the needles are exact — an
++  // offending pattern a reader cannot find in the reason is not this fix.
++  const denies = (leg, command, needles) => {
++    const v = decide({ tool_name: 'Bash', tool_input: { command }, cwd: clone })
++    assert.ok(v.deny, leg + ': ' + JSON.stringify(command) + ' must DENY — it would match the ' +
++      "worker's own claude -p process; got " + JSON.stringify(v))
++    assert.ok(!v.allow, leg + ': a denied kill must not also carry allow; got ' + JSON.stringify(v))
++    for (const n of needles) {
++      assert.ok(String(v.deny).includes(n),
++        leg + ': the reason must name ' + JSON.stringify(n) + '; reason was ' + JSON.stringify(v.deny))
++    }
++    return String(v.deny)
++  }
++  const allows = (leg, command) => {
++    const v = decide({ tool_name: 'Bash', tool_input: { command }, cwd: clone })
++    assert.ok(v.allow, leg + ': ' + JSON.stringify(command) + ' must be ALLOWED — it matches ' +
++      'neither the TEST COMMAND nor claude; got ' + JSON.stringify(v))
++    assert.ok(!v.deny, leg + ': ' + JSON.stringify(command) + ' must carry no deny; got ' + JSON.stringify(v))
++  }
++
++  // (a)-(f) [M1] — the pattern is tried against FLEET_TEST_CMD, as a regular
++  // expression or (when the constructor throws) as a literal substring, and the
++  // kill is found wherever it sits in the command. Each reason names the
++  // offending pattern, `TEST COMMAND` and `claude -p`, because the deny string
++  // is the whole of what the model reads back.
++  withEnv({ FLEET_TEST_CMD: TESTCMD }, () => {
++    denies('(a) [M1]', "pkill -f 'node fleet/tests/test_sandbox_boot.mjs'",
++      ['node fleet/tests/test_sandbox_boot.mjs', 'TEST COMMAND', 'claude -p'])
++    denies('(b) [M1]', 'pkill -9 -f test_sandbox_boot',
++      ['test_sandbox_boot', 'TEST COMMAND', 'claude -p'])
++    denies('(c) [M1]', 'killall -q test_sandbox_boot.mjs',
++      ['test_sandbox_boot.mjs', 'TEST COMMAND', 'claude -p'])
++    // A pattern that matches only as a REGULAR EXPRESSION — no literal
++    // substring of the TEST COMMAND looks like this.
++    denies('(d) [M1]', "pkill -f 'fleet/tests/.*\\.mjs'",
++      ['fleet/tests/.*\\.mjs', 'TEST COMMAND', 'claude -p'])
++    // (f) the kill is not the command's first word: `true; pkill …` is the same
++    // kill as `pkill …`.
++    denies('(f) [M1]', 'true; pkill -f test_sandbox_boot',
++      ['test_sandbox_boot', 'TEST COMMAND', 'claude -p'])
++  })
++  // (e) [M1] the other half of the same sentence: an unbalanced parenthesis is
++  // not a valid regular expression, so the LITERAL fallback is the only thing
++  // that can match here. A hook that only ever tried `new RegExp` would throw
++  // or allow; this leg is the one that fails if the fallback is missing.
++  withEnv({ FLEET_TEST_CMD: 'node test_sandbox_boot.mjs (x' }, () => {
++    denies('(e) [M1]', "pkill -f 'test_sandbox_boot.mjs (x'",
++      ['test_sandbox_boot.mjs (x', 'TEST COMMAND', 'claude -p'])
++  })
++
++  // (g)-(i) [M2] — with NO TEST COMMAND known, `claude` is still a target: the
++  // worker's process is `claude -p` whatever it was asked to run.
++  withEnv({ FLEET_TEST_CMD: undefined }, () => {
++    assert.equal(process.env.FLEET_TEST_CMD, undefined, 'sanity: (g)-(i) run with the key deleted')
++    denies('(g) [M2]', 'pkill -f claude', ['claude'])
++    denies('(h) [M2]', 'pkill claude', ['claude'])
++    denies('(i) [M2]', 'killall claude', ['claude'])
++  })
++  // (j)-(n) [M2] — and `claude` is tried on EVERY kill pattern, not only when
++  // no TEST COMMAND is known. `node fleet/tests/test_sandbox_boot.mjs` is the
++  // value the worker sets on every live dispatch, and `claude` does not match
++  // it — so a hook that stopped at the TEST COMMAND would allow all five.
++  withEnv({ FLEET_TEST_CMD: TESTCMD }, () => {
++    denies('(j) [M2]', 'pkill -f claude', ['claude'])
++    denies('(k) [M2]', 'pkill claude', ['claude'])
++    denies('(l) [M2]', 'killall claude', ['claude'])
++    denies('(m) [M2]', 'echo x && pkill -f claude', ['claude'])
++    denies('(n) [M2]', 'cd /tmp; killall claude', ['claude'])
++
++    // (o)-(s) [M3] — THE OTHER DIRECTION, and the reason this is a rule about
++    // self-match rather than a rule about `pkill`. A worker that started its own
++    // server must still be able to stop it, a kill BY PID is not the hook's
++    // business, and a quoted `pkill` is data (#475's masking rule).
++    allows('(o) [M3]', 'pkill -f my-proto-server')
++    allows('(p) [M3]', 'kill 1234')
++    allows('(q) [M3]', 'kill -TERM 1234')
++    allows('(r) [M3]', 'pkill -f prototype && echo done')
++    allows('(s) [M3]', 'echo "pkill -f claude"')
++  })
++
++  // (t) [M4] — the new reason rides the EXISTING deny path: the CLI prints it as
++  // `permissionDecisionReason` and appends one line naming it to the run's
++  // confine-denials.jsonl. The expected string is not spelled here — it is read
++  // from `decide()` under the same environment, so this leg pins that the two
++  // channels carry the SAME reason rather than pinning any wording.
++  {
++    const killRun = path.join(tmp, 'killrun')
++    fs.mkdirSync(killRun, { recursive: true })
++    const command = "pkill -f 'node fleet/tests/test_sandbox_boot.mjs'"
++    const input = JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: clone })
++    const expected = withEnv({ FLEET_TEST_CMD: TESTCMD, FLEET_RUN_DIR: killRun },
++      () => decide({ tool_name: 'Bash', tool_input: { command }, cwd: clone }).deny)
++    assert.equal(typeof expected, 'string', '(t) [M4]: decide() must deny this input to begin with')
++
++    const r = run(input, { FLEET_TEST_CMD: TESTCMD, FLEET_RUN_DIR: killRun })
++    let out = null
++    try { out = JSON.parse(r.stdout).hookSpecificOutput } catch { /* asserted below */ }
++    assert.ok(out, '(t) [M4]: the CLI must print a decision envelope; stdout was ' +
++      JSON.stringify(r.stdout) + ' stderr ' + JSON.stringify(r.stderr))
++    assert.equal(out.permissionDecision, 'deny', '(t) [M4]: the CLI decision is deny')
++    assert.equal(out.permissionDecisionReason, expected,
++      '(t) [M4]: the printed reason is exactly the string decide() returns for the same input')
++
++    const logged = fs.readFileSync(path.join(killRun, 'confine-denials.jsonl'), 'utf8').trim().split('\n')
++    assert.equal(logged.length, 1, '(t) [M4]: exactly one line in the run dir ledger, got ' + logged.length)
++    assert.equal(JSON.parse(logged[0]).reason, expected,
++      '(t) [M4]: the logged reason is that same string')
++  }
++
++  console.log('ok - #762: a kill pattern matching the TEST COMMAND or `claude` is refused')
++}
++
+ fs.rmSync(tmp, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_failing_block.mjs b/fleet/tests/test_failing_block.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..50ccc96e081c498dca0675ed0c230f51ba73144f
+--- /dev/null
++++ b/fleet/tests/test_failing_block.mjs
+@@ -0,0 +1,255 @@
++// fleet/tests/test_failing_block.mjs — the exam for task 1, "The failing
++// test's own block, as one function": `failingBlock(text)` from
++// `fleet/failing-block.mjs`.
++//
++// The claim: whatever shape a red suite prints — a pytest run that bridged a
++// sim, a TAP run, a bare node sim — the text quoted from it begins at the
++// failing test's own first failure line and stops where that test's block
++// stops, and an output with no such line is quoted whole.
++//
++// The marker rule the clauses are read through (the ONE literal this plan
++// shares with task 3's awk function — the two must agree line for line):
++//   start — the first line matching
++//           /^(_{3,} .+ _{3,}$|FAILED |FAIL[: ]|not ok |AssertionError)/
++//   end   — the line before the first LATER line matching
++//           /^(_{3,} .+ _{3,}$|={3,} |(not )?ok \d)/, or the last line of the
++//           text when no later line matches
++//   fallback — when no line matches the start rule, the whole text unchanged.
++// The block is lines start..end joined with `\n`, with no trailing newline
++// added or removed beyond what joining gives.
++//
++// What each clause asserts, and the leg that carries it:
++//   M1 / (a) pytest-shaped: preamble, a `___ name ___` header, `E` lines one
++//            of which names the leg, a `=== …` rule line, a FAILED line, a
++//            summed summary and trailing padding → exactly the header line
++//            through the line before the rule line.
++//   M2 / (b) TAP-shaped: `not ok 2` through the line before `ok 3`; and when
++//            the `not ok` line is followed only by diagnostics and a
++//            `# fail 1` last line, through that last line inclusive.
++//   M3 / (c) bare node sim: the `AssertionError [ERR_ASSERTION]:` line through
++//            the last line (`Node.js v24.16.0`), the sim's own earlier lines
++//            excluded.
++//   M4 / (d) no line matches the start rule → the text back, byte for byte.
++//   M5 / (e) a block over 8000 characters comes back whole — its length is the
++//            block's, so no length-bounded excerpt satisfies it.
++//
++// Every fixture is a string literal built here: no subprocess, no pytest, so
++// the exam is concurrency-safe and runs in well under a second. Each expected
++// value is a slice of the same line array the fixture is built from, with the
++// start and end lines named by index, so a reader can check the marker rule
++// against the fixture by eye.
++
++import assert from 'node:assert/strict'
++
++import { failingBlock } from '../failing-block.mjs'
++
++assert.equal(typeof failingBlock, 'function',
++  '`fleet/failing-block.mjs` must export a named function `failingBlock`')
++
++// ── (a) the pytest shape [M1] ───────────────────────────────────────────────
++// The sim's own `AssertionError [ERR_ASSERTION]: leg (b) [M2]: …` line is what
++// pytest quotes back one `E` line at a time; that inner leg name is the string
++// the block must carry, and the preamble, the FAILED line, the summed summary
++// and the trailing padding are what it must not.
++
++const PYTEST = [
++  /*  0 */ 'bringing up nodes...',
++  /*  1 */ '..F                                                                      [100%]',
++  /*  2 */ '=================================== FAILURES ===================================',
++  /*  3 */ '_________________________ test_fleet_mjs[test_red.mjs] _________________________', // start
++  /*  4 */ '[gw1] darwin -- Python 3.12.4 /usr/bin/python3',
++  /*  5 */ '',
++  /*  6 */ '    def test_fleet_mjs(script):',
++  /*  7 */ '>       assert proc.returncode == 0, proc.stdout + proc.stderr',
++  /*  8 */ 'E       AssertionError: leg (b) [M2]: expected the not ok block, got the whole file',
++  /*  9 */ 'E       assert 1 == 0',
++  /* 10 */ '',
++  /* 11 */ 'tests/test_fleet.py:41: AssertionError', // end — the line before the rule
++  /* 12 */ '=========================== short test summary info ============================', // rule
++  /* 13 */ 'FAILED tests/test_fleet.py::test_fleet_mjs[test_red.mjs] - AssertionErr...',
++  /* 14 */ '1 failed, 2 passed in 0.24s',
++  /* 15 */ '',
++  /* 16 */ 'PADDING after the summary, which no block may reach',
++]
++const PYTEST_HEADER = PYTEST[3]
++const PYTEST_BLOCK = PYTEST.slice(3, 12).join('\n')
++
++const pytestGot = failingBlock(PYTEST.join('\n'))
++assert.equal(pytestGot, PYTEST_BLOCK,
++  'leg (a) [M1]: the pytest-shaped output returns exactly the header line through the line ' +
++  'before the rule line, joined with \\n')
++assert.ok(pytestGot.startsWith(PYTEST_HEADER + '\n'),
++  'leg (a) [M1]: … beginning at the `___ test_fleet_mjs[test_red.mjs] ___` header line')
++assert.ok(pytestGot.includes('leg (b) [M2]'),
++  'leg (a) [M1]: … carrying the E line that names the leg')
++for (const absent of [PYTEST[0], PYTEST[12], PYTEST[13], PYTEST[14], PYTEST[16]]) {
++  assert.ok(!pytestGot.includes(absent),
++    'leg (a) [M1]: … and neither the preamble, the rule line, the FAILED line, the summed ' +
++    `summary nor the trailing padding: found ${JSON.stringify(absent)}`)
++}
++console.log('ok - (a) [M1] pytest-shaped: header through the line before the rule, leg name in, padding out')
++
++// ── (b) the TAP shape [M2] ──────────────────────────────────────────────────
++// `ok 1` is not a start (only `not ok ` is); `ok 3` is a later end-rule match,
++// so the block stops at the line before it.
++
++const TAP_FOLLOWED = [
++  /*  0 */ 'TAP version 13',
++  /*  1 */ '# Subtest: the first sim',
++  /*  2 */ 'ok 1 - the first sim',
++  /*  3 */ '  ---',
++  /*  4 */ '  duration_ms: 1.203',
++  /*  5 */ '  ...',
++  /*  6 */ 'not ok 2 - leg (b) [M2]: the failing sim', // start
++  /*  7 */ '  ---',
++  /*  8 */ "  error: 'the block must start at the not ok line'",
++  /*  9 */ "  code: 'ERR_ASSERTION'",
++  /* 10 */ '  ...', // end — the line before `ok 3`
++  /* 11 */ 'ok 3 - the third sim',
++  /* 12 */ '1..3',
++  /* 13 */ '# fail 1',
++]
++const TAP_FOLLOWED_BLOCK = TAP_FOLLOWED.slice(6, 11).join('\n')
++
++const tapFollowedGot = failingBlock(TAP_FOLLOWED.join('\n'))
++assert.equal(tapFollowedGot, TAP_FOLLOWED_BLOCK,
++  'leg (b) [M2]: the TAP output with a following `ok 3` returns exactly the `not ok 2` line ' +
++  'through the line before `ok 3`')
++assert.ok(!tapFollowedGot.includes('ok 1 - the first sim') &&
++  !tapFollowedGot.includes('ok 3 - the third sim'),
++  'leg (b) [M2]: … so neither the passing subtest before it nor the one after it is in the block')
++console.log('ok - (b) [M2] TAP with a following `ok 3`: not ok 2 through the line before it')
++
++const TAP_LAST = [
++  /* 0 */ 'TAP version 13',
++  /* 1 */ 'ok 1 - the first sim',
++  /* 2 */ 'not ok 2 - leg (b) [M2]: the failing sim', // start
++  /* 3 */ '  ---',
++  /* 4 */ "  error: 'the block runs to the last line'",
++  /* 5 */ "  code: 'ERR_ASSERTION'",
++  /* 6 */ '  ...',
++  /* 7 */ '# fail 1', // end — the last line of the text
++]
++const TAP_LAST_BLOCK = TAP_LAST.slice(2, 8).join('\n')
++
++const tapLastGot = failingBlock(TAP_LAST.join('\n'))
++assert.equal(tapLastGot, TAP_LAST_BLOCK,
++  'leg (b) [M2]: the TAP output whose `not ok` line is followed only by diagnostics and a ' +
++  '`# fail 1` last line returns from the `not ok` line through that last line inclusive')
++assert.ok(tapLastGot.endsWith('\n# fail 1'),
++  'leg (b) [M2]: … ending on the `# fail 1` line itself')
++console.log('ok - (b) [M2] TAP ending in `# fail 1`: not ok 2 through that last line')
++
++// ── (c) the bare node sim [M3] ──────────────────────────────────────────────
++
++const NODE_SIM = [
++  /*  0 */ 'sim line one: probing the marker rule',
++  /*  1 */ 'sim line two: still fine',
++  /*  2 */ 'node:internal/modules/run_main:123',
++  /*  3 */ '      triggerUncaughtException(',
++  /*  4 */ '      ^',
++  /*  5 */ '',
++  /*  6 */ 'AssertionError [ERR_ASSERTION]: leg (b) [M2]: expected the block, got the whole text', // start
++  /*  7 */ '    + actual - expected',
++  /*  8 */ '',
++  /*  9 */ "    + 'the whole text'",
++  /* 10 */ "    - 'the block'",
++  /* 11 */ '    at file:///tmp/test_red.mjs:12:8',
++  /* 12 */ '    at ModuleJob.run (node:internal/modules/esm/module_job:274:25) {',
++  /* 13 */ '  generatedMessage: false,',
++  /* 14 */ "  code: 'ERR_ASSERTION',",
++  /* 15 */ "  actual: 'the whole text',",
++  /* 16 */ "  expected: 'the block',",
++  /* 17 */ "  operator: 'strictEqual'",
++  /* 18 */ '}',
++  /* 19 */ '',
++  /* 20 */ 'Node.js v24.16.0', // end — the last line of the text
++]
++const NODE_SIM_BLOCK = NODE_SIM.slice(6, 21).join('\n')
++
++const nodeGot = failingBlock(NODE_SIM.join('\n'))
++assert.equal(nodeGot, NODE_SIM_BLOCK,
++  'leg (c) [M3]: the bare node sim returns from the `AssertionError [ERR_ASSERTION]:` line ' +
++  'through `Node.js v24.16.0` inclusive')
++assert.ok(nodeGot.startsWith('AssertionError [ERR_ASSERTION]: leg (b) [M2]:') &&
++  nodeGot.endsWith('Node.js v24.16.0'),
++  'leg (c) [M3]: … starting on the AssertionError line and ending on the `Node.js v…` line')
++for (const absent of [NODE_SIM[0], NODE_SIM[1], NODE_SIM[2], NODE_SIM[3]]) {
++  assert.ok(!nodeGot.includes(absent),
++    "leg (c) [M3]: … and the sim's own pre-assertion lines are absent from it: found " +
++    JSON.stringify(absent))
++}
++console.log('ok - (c) [M3] bare node sim: AssertionError line through `Node.js v24.16.0`')
++
++// ── (d) no start line at all [M4] ───────────────────────────────────────────
++
++const GREEN = [
++  'bringing up nodes...',
++  '............                                                             [100%]',
++  '',
++  '28 passed in 1.02s',
++].join('\n')
++
++for (const [what, text] of [
++  ['a green pytest summary', GREEN],
++  ['its summary line alone', '28 passed in 1.02s'],
++  ['the one-character text `1`', '1'],
++  ['the empty string', ''],
++]) {
++  const got = failingBlock(text)
++  assert.ok(got === text,
++    `leg (d) [M4]: ${what} has no line matching the start rule, so it comes back unchanged, ` +
++    `byte for byte — got ${JSON.stringify(got)}`)
++}
++console.log('ok - (d) [M4] no start line: green summary, `1` and the empty string come back unchanged')
++
++// ── (e) the block is not length-bounded [M5] ────────────────────────────────
++// A pytest-shaped fixture whose header-through-pre-rule block is longer than
++// 8000 characters. The leg-naming line sits at the TOP of the block and the
++// filler runs to the bottom, so an implementation that keeps a fixed head or a
++// fixed tail of it fails on length, and one that keeps a tail fails on the
++// header and the leg line too.
++
++const BIG_HEADER = '________________________ test_fleet_mjs[test_big.mjs] ________________________'
++const BIG_GW = '[gw1] darwin -- Python 3.12.4 /usr/bin/python3'
++const BIG_LEG = 'E       AssertionError: leg (e) [M5]: the block is whatever the failing test printed'
++const BIG_RULE = '=========================== short test summary info ============================'
++
++const bigFiller = []
++const bigLength = () => [BIG_HEADER, BIG_GW, BIG_LEG, ...bigFiller].join('\n').length
++while (bigLength() <= 8000) {
++  bigFiller.push('E       sim stdout line ' + String(bigFiller.length).padStart(4, '0') + ': ' +
++    'the whole output is on the record, so the excerpt can be a block')
++}
++
++const BIG = [
++  'bringing up nodes...',
++  '=================================== FAILURES ===================================',
++  BIG_HEADER, // start, index 2
++  BIG_GW,
++  BIG_LEG,
++  ...bigFiller, // end — the last filler line, the line before the rule
++  BIG_RULE,
++  'FAILED tests/test_fleet.py::test_fleet_mjs[test_big.mjs] - AssertionErr...',
++  '1 failed, 2 passed in 0.24s',
++  'PADDING after the summary, which no block may reach',
++]
++const BIG_BLOCK = BIG.slice(2, 5 + bigFiller.length).join('\n')
++assert.ok(BIG_BLOCK.length > 8000,
++  `leg (e) [M5]: the fixture's own block must exceed 8000 characters, built ${BIG_BLOCK.length}`)
++
++const bigGot = failingBlock(BIG.join('\n'))
++assert.equal(bigGot.length, BIG_BLOCK.length,
++  'leg (e) [M5]: the returned string is the whole block — its length equals the block\'s ' +
++  `(${BIG_BLOCK.length}), so no length-bounded excerpt satisfies it`)
++assert.equal(bigGot.split('\n')[0], BIG_HEADER,
++  'leg (e) [M5]: … and its first line is the header, so no tail of the block satisfies it')
++assert.ok(bigGot.includes(BIG_LEG),
++  'leg (e) [M5]: … and it contains the leg-naming line')
++assert.ok(bigGot.endsWith(bigFiller[bigFiller.length - 1]),
++  'leg (e) [M5]: … and it runs to the line before the rule, so no head of the block satisfies it')
++assert.ok(bigGot === BIG_BLOCK,
++  'leg (e) [M5]: … and it is that block exactly, character for character')
++console.log(`ok - (e) [M5] a ${BIG_BLOCK.length}-character block comes back whole`)
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_critic_inputs.mjs b/fleet/tests/test_run_engine_critic_inputs.mjs
+index 211f41927914220803cd170fd7d3205740f4cd47..c6080be1b76bea06370ad87d9394d96fa57e0018 100644
+--- a/fleet/tests/test_run_engine_critic_inputs.mjs
++++ b/fleet/tests/test_run_engine_critic_inputs.mjs
+@@ -81,12 +81,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
+     '\npassed: true',
+     'a green suite states the verdict without pasting output')
+ 
+-  // A red output is tailed, not pasted whole: the last 500 chars, which is
+-  // where a pytest summary lives.
++  // A red output reaches `suiteLine` already narrowed to the failing test's
++  // own block (#763 part 2), so the section carries it whole — a second cut
++  // here would drop the assertion the block was chosen to keep.
+   const long = 'x'.repeat(600) + 'TAIL-MARKER'
+   const rendered = suiteLine({ passed: false, output: long }, 'bash check.sh')
+   assert.match(rendered, /TAIL-MARKER$/, 'the tail of the output must survive')
+-  assert.equal(rendered.split('\noutput: ')[1].length, 500, 'the output is tailed to 500 chars')
++  assert.equal(rendered.split('\noutput: ')[1], long, 'the output is carried whole')
+ 
+   assert.equal(suiteLine(null, 'bash check.sh'), '', 'no suite result renders nothing')
+   assert.equal(suiteLine({ passed: true, output: 'ok' }, ''),
+diff --git a/fleet/tests/test_run_engine_examiner.mjs b/fleet/tests/test_run_engine_examiner.mjs
+index 11dea88734fd8b8bb99f9e77c93fd4519968fa4e..6657d2e0e683066c755c9da33efba57dbc592eee 100644
+--- a/fleet/tests/test_run_engine_examiner.mjs
++++ b/fleet/tests/test_run_engine_examiner.mjs
+@@ -8,6 +8,12 @@
+ // inputs minus the implementer's role, its exam is red or green at BASE, and a
+ // blocked examiner still lets the run proceed. The recorded-edit half — legs
+ // (d), (f) and (g) — lives in test_run_engine_exam_edits.mjs.
++//
++// The second half of this file (#762) pins what happens when the examiner of
++// that pair DIES — `agent()` leaves by a `WORKER_SIGTERM` throw — while the
++// implementer beside it is still running. Its Machine clauses are numbered M1
++// through M5 again, and they are #762's, not the ones above; each assertion
++// there names its own leg letter and clause.
+ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+@@ -244,4 +250,286 @@ for (const [name, over] of [
+   assert.equal(report.tasks[0].status, 'done')
+ }
+ 
++// ══ #762: a dead examiner beside a finished implementer ════════════════════
++// The pair is dispatched with nothing awaited between the two calls, so a
++// worker that dies at exit 143 makes the EXAMINER's call reject while the
++// implementer's is still running. At BASE that rejection climbs out of
++// `runTaskInner` and the whole pair is re-run — a second implementer, a reset
++// task clone, and the finished implementer's work thrown away. These legs pin
++// the narrower lane: when the implementer of the same pair ended `success`
++// with its patch captured, only the examiner is dispatched again.
++//
++// #762's Machine clauses, restated:
++//   M1 — a run whose `exam:T1` rejects with `WORKER_SIGTERM` before `impl:T1`
++//        has returned, and whose `impl:T1` then resolves `DONE` with a
++//        driver-captured patch and headSha, dispatches `exam:T1` exactly twice
++//        and `impl:T1` exactly once; the second exam prompt equals the first,
++//        its clone holds nothing the first examiner left, the `review:T1:1`
++//        prompt's patch carries the one implementer's hunk, the graded clone's
++//        Proof path holds the second examiner's bytes, and the row ends `done`
++//        with `exam` `red`.
++//   M2 — a second rejection makes no third dispatch: `impl:T1` is still
++//        dispatched once, the row ends `done` with `exam` `blocked`, and a
++//        judgment call starts `task T1: examiner` and contains
++//        `proceeds unexamined`.
++//   M3 — when the implementer rejects too, the lane at BASE stands: each label
++//        dispatched twice, and a judgment call containing `retrying once at`.
++//   M4 — the record: exactly one judgment call starting `task T1: examiner
++//        died` and containing `re-dispatching the examiner alone`, and exactly
++//        one `driver:exam-redispatch` line in `<runDir>/events.jsonl` — none of
++//        either on a run whose examiner answers first time.
++//   M5 — an implementer that merely RETURNED (`BLOCKED`) is not a kept reply:
++//        the examiner-alone lane does not open, and the lane at BASE stands.
++
++// What the real worker throws when the CLI is killed with no envelope
++// (`fleet/run-worker.mjs`'s classify + the `WORKER_<CLASS>` throw): the message
++// the driver's catch classifies, with the verdict and label attached.
++const SIGTERM_MSG = 'WORKER_SIGTERM: SIGTERM: killed with no envelope (exit 143)'
++const sigterm = (label) => Object.assign(new Error(SIGTERM_MSG),
++  { workerVerdict: { outcome: 'retry', class: 'sigterm' }, label })
++
++const deferred = () => {
++  let resolve
++  const promise = new Promise((r) => { resolve = r })
++  return { promise, resolve }
++}
++// Unref'd so a race the deferred already won does not hold the process open.
++const sleep = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref() })
++const countOf = (labels, label) => labels.filter((l) => l === label).length
++// The driver's own append-only record. An absent file reads as no records, so
++// an engine that writes none fails an assertion rather than throwing ENOENT.
++const readEvents = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++// A missing file is an answer here, not a crash: the leg reports what the
++// graded clone held rather than dying at the read.
++const readOr = (p) => {
++  try { return fs.readFileSync(p, 'utf8') } catch (e) { return 'ABSENT: ' + String((e && e.message) || e) }
++}
++
++// The second examiner's exam, distinguishable from the first attempt's byte
++// for byte, and red at BASE for the same reason RED_AT_BASE is.
++const SECOND_EXAM = '#!/bin/bash\n[ -f one.txt ] # written by the second examiner\n'
++const REDISPATCH = 're-dispatching the examiner alone'
++const REDISPATCH_EVENT = 'driver:exam-redispatch'
++
++// ── (a) the examiner dies, the implementer finishes: the examiner alone [M1] ─
++// The examiner throws before the implementer returns — the implementer's reply
++// is held behind the promise the examiner's throw resolves (or 3s, so a driver
++// that serializes the pair fails an assertion rather than hanging).
++let runA = null
++{
++  const labels = []
++  const examSeen = []
++  const prompts = {}
++  const examDied = deferred()
++  const stub = async (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      const attempt = countOf(labels, 'exam:T1')
++      examSeen.push({ prompt, cwd, leftBehind: fs.existsSync(path.join(cwd, 'left-behind')) })
++      if (attempt === 1) {
++        fs.writeFileSync(path.join(cwd, 'left-behind'), 'the dead examiner was here\n')
++        examDied.resolve()
++        throw sigterm(opts.label)
++      }
++      return examOk(cwd, { 't1_test.sh': SECOND_EXAM })
++    }
++    if (kind === 'impl') {
++      await Promise.race([examDied.promise, sleep(3000)])
++      writeOne(cwd)
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, runDir, clonesDir } = rig({ waves: [[entry()]], stub })
++  const report = await run()
++  runA = { report, runDir }
++  const row = report.tasks[0]
++
++  // [M1] the counts: the examiner again, the implementer never.
++  assert.equal(countOf(labels, 'exam:T1'), 2,
++    'the dead examiner is dispatched exactly twice: ' + labels.join(','))
++  assert.equal(countOf(labels, 'impl:T1'), 1,
++    'and the implementer that already finished is dispatched exactly once — its work is ' +
++    'kept, not re-run: ' + labels.join(','))
++
++  // [M1] the second dispatch is the same ask into a clone re-cut at BASE.
++  assert.equal(examSeen.length, 2, 'both exam dispatches were observed')
++  assert.equal(examSeen[1].prompt, examSeen[0].prompt,
++    'the re-dispatched examiner is handed the same prompt as the one that died')
++  assert.equal(examSeen[0].leftBehind, false,
++    'the first examiner started in a clone that did not hold left-behind')
++  assert.equal(examSeen[1].leftBehind, false,
++    'and the second starts in a clone holding no file the first examiner left')
++
++  // [M1] the one implementer's hunk reaches the referee.
++  assert.equal(typeof prompts['review:T1:1'], 'string',
++    'a referee read the patch: ' + labels.join(','))
++  assert.ok(prompts['review:T1:1'].includes('from T1'),
++    'the review:T1:1 prompt carries the hunk the one implementer wrote: ' +
++    String(prompts['review:T1:1']).slice(0, 400))
++
++  // [M1] the graded clone holds the SECOND examiner's exam, byte for byte.
++  assert.equal(readOr(path.join(clonesDir, 'task-T1', 't1_test.sh')), SECOND_EXAM,
++    'the handoff copied the second examiner\'s bytes into the graded clone')
++
++  // [M1] and the row.
++  assert.equal(row.status, 'done', 'the task ends done: ' + row.notes)
++  assert.equal(row.exam, 'red', 'with the second examiner\'s red-at-BASE verdict')
++}
++
++// ── (b) the second examiner dies too: no third, and unexamined [M2] ─────────
++{
++  const labels = []
++  const examDied = deferred()
++  const stub = async (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') { examDied.resolve(); throw sigterm(opts.label) }
++    if (kind === 'impl') {
++      await Promise.race([examDied.promise, sleep(3000)])
++      writeOne(cwd)
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({ waves: [[entry()]], stub })
++  const report = await run()
++  const row = report.tasks[0]
++
++  // [M2] two dispatches, never three.
++  assert.equal(countOf(labels, 'exam:T1'), 2,
++    'a second dead examiner buys no third dispatch: ' + labels.join(','))
++  assert.equal(countOf(labels, 'impl:T1'), 1,
++    'and the implementer is still dispatched exactly once: ' + labels.join(','))
++
++  // [M2] the run proceeds, unexamined, and says so.
++  assert.equal(row.status, 'done', 'the task still ends done: ' + row.notes)
++  assert.equal(row.exam, 'blocked', 'with no exam recorded')
++  const call = report.judgmentCalls.filter((j) => j.startsWith('task T1: examiner') &&
++    j.includes('proceeds unexamined'))
++  assert.equal(call.length, 1,
++    'one judgment call starts "task T1: examiner" and says the implementer proceeds ' +
++    'unexamined: ' + report.judgmentCalls.join(' | '))
++}
++
++// ── (c) both halves die: the whole-pair lane at BASE stands [M3] ────────────
++{
++  const labels = []
++  const stub = async (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      if (countOf(labels, 'exam:T1') === 1) throw sigterm(opts.label)
++      return examOk(cwd, { 't1_test.sh': SECOND_EXAM })
++    }
++    if (kind === 'impl') {
++      if (countOf(labels, 'impl:T1') === 1) throw sigterm(opts.label)
++      writeOne(cwd)
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({ waves: [[entry()]], stub })
++  const report = await run()
++
++  // [M3] a dead implementer is still the whole pair's retry — neither label is
++  // dispatched once, and neither three times.
++  assert.equal(countOf(labels, 'impl:T1'), 2,
++    'the implementer is dispatched exactly twice: ' + labels.join(','))
++  assert.equal(countOf(labels, 'exam:T1'), 2,
++    'and the examiner exactly twice: ' + labels.join(','))
++  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes(REDISPATCH)), [],
++    'no examiner-alone re-dispatch was taken: ' + report.judgmentCalls.join(' | '))
++  assert.ok(report.judgmentCalls.some((j) => j.includes('retrying once at')),
++    'the retry ladder at BASE is the one that ran: ' + report.judgmentCalls.join(' | '))
++}
++
++// ── (d) the record the operator reads [M4] ─────────────────────────────────
++{
++  const { report, runDir } = runA
++  const died = report.judgmentCalls.filter((j) => j.startsWith('task T1: examiner died'))
++  assert.equal(died.length, 1,
++    'exactly one judgment call starts "task T1: examiner died": ' +
++    report.judgmentCalls.join(' | '))
++  assert.deepEqual(died.filter((j) => j.includes(REDISPATCH)), died,
++    'and it names the decision: ' + died.join(' | '))
++  const marks = readEvents(runDir)
++    .filter((e) => e.kind === REDISPATCH_EVENT && e.task === 'T1')
++  assert.equal(marks.length, 1,
++    'exactly one driver:exam-redispatch line for T1 in events.jsonl: ' + JSON.stringify(marks))
++}
++// ...and none of either when the examiner answers first time.
++{
++  const labels = []
++  const stub = async (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') return examOk(cwd)
++    if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, runDir } = rig({ waves: [[entry()]], stub })
++  const report = await run()
++  assert.equal(countOf(labels, 'exam:T1'), 1, 'a live examiner is dispatched once')
++  assert.deepEqual(report.judgmentCalls.filter((j) => j.startsWith('task T1: examiner died')), [],
++    'a live examiner raises no examiner-died call: ' + report.judgmentCalls.join(' | '))
++  assert.deepEqual(readEvents(runDir).filter((e) => e.kind === REDISPATCH_EVENT), [],
++    'and appends no driver:exam-redispatch line')
++}
++
++// ── (e) an implementer that merely returned is not a kept reply [M5] ───────
++// The examiner dies before the implementer returns, as in (a) — but the reply
++// is `BLOCKED` with nothing written, so the examiner-alone lane must not open.
++{
++  const labels = []
++  const examDied = deferred()
++  const stub = async (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      if (countOf(labels, 'exam:T1') === 1) { examDied.resolve(); throw sigterm(opts.label) }
++      return examOk(cwd, { 't1_test.sh': SECOND_EXAM })
++    }
++    if (kind === 'impl') {
++      if (countOf(labels, 'impl:T1') === 1) {
++        await Promise.race([examDied.promise, sleep(3000)])
++        return { status: 'BLOCKED', summary: 'cannot', startHead: 'ignored' }
++      }
++      writeOne(cwd)
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, runDir } = rig({ waves: [[entry()]], stub })
++  const report = await run()
++
++  // [M5] the pair lane, as at BASE.
++  assert.equal(countOf(labels, 'impl:T1'), 2,
++    'the implementer is dispatched exactly twice: ' + labels.join(','))
++  assert.equal(countOf(labels, 'exam:T1'), 2,
++    'and the examiner exactly twice: ' + labels.join(','))
++  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes(REDISPATCH)), [],
++    'a BLOCKED implementer opens no examiner-alone lane: ' + report.judgmentCalls.join(' | '))
++  assert.deepEqual(readEvents(runDir).filter((e) => e.kind === REDISPATCH_EVENT), [],
++    'and no driver:exam-redispatch line is appended')
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_red_suite_record.mjs b/fleet/tests/test_run_engine_red_suite_record.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..977c9f9dbce23b58d1383b25b3a1dad7673825e2
+--- /dev/null
++++ b/fleet/tests/test_run_engine_red_suite_record.mjs
+@@ -0,0 +1,323 @@
++// fleet/tests/test_run_engine_red_suite_record.mjs — #763 part (2), Task 2:
++// the engine quotes the failing test's own BLOCK wherever it quoted a tail.
++//
++// The claim: after a run whose suite went red — on BASE, or on a wave's folded
++// candidate — the judgment call, the critic's brief, the reconcile agent's
++// brief and a blocked wave's detail each quote the failing test's own block and
++// so name the failing leg; and a run whose suite stayed green records exactly
++// what it recorded before.
++//
++// How every leg tells a block from a tail, without knowing how the engine cut
++// it: the rig's `check.sh` prints a pytest-shaped failure and then PADS. The
++// failure block is ~190 characters near the TOP of the output; the padding is
++// forty lines of `PADDING-` + one hundred `x` (4,300+ characters) at the
++// BOTTOM. Every tail the engine took at BASE — 2000 for the baseline record,
++// 3000 for the reconcile brief, 800 for the blocked wave's detail, 500 for the
++// judgment call, the critic brief and `suiteLine` — is SHORTER than the
++// padding, so a tail is all padding: it carries `PADDING-` and cannot carry the
++// leg-naming line. A block carries the leg-naming line and no `PADDING-`. The
++// two are therefore distinguishable by content alone, at every site, without
++// the exam pinning a cut length or naming `failingBlock`.
++//
++// The leg-naming line the legs search for is the literal
++// `the recorded text names the failing leg`; the padding marker is `PADDING-`.
++//
++// Pattern and rig are `test_run_engine_baseline.mjs`'s: `makeRepo(dir, {
++// 'check.sh': … })` replaces the helper's plain BROKEN-rule script, the agent
++// seam is stubbed, everything below it is real. Each scenario gets its own
++// `mkdtemp` directory and its own `stamp`; no ports, no shared fixtures.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { suiteLine } from '../run-engine.mjs'
++
++// ── the fixture: one red suite output, pytest-shaped, with a padded tail ─────
++
++// The FAILURES header of the failing test's own block — the `___ name ___` line
++// pytest prints under `=== FAILURES ===` for each failure, and the line
++// `failing-block.mjs`'s START matches (the section rule `=== FAILURES ===` is
++// not a failure opener, so a block begins here).
++const FAILURE_HEADER = '___ test_fleet_mjs[test_sim.mjs] ___'
++// The line that names the failing leg — inside the block, far from the tail.
++const LEG_LINE = 'the recorded text names the failing leg'
++// The marker every fixed-length tail of this output keeps.
++const PADDING_MARKER = 'PADDING-'
++
++const RED_BODY = [
++  'bringing up nodes...',
++  '..F',
++  '=== FAILURES ===',
++  FAILURE_HEADER,
++  '[gw1] linux -- Python 3.12',
++  'E   AssertionError: scenario a ran',
++  'E     AssertionError [ERR_ASSERTION]: leg (b) [M2]: ' + LEG_LINE,
++  '=== short test summary info ===',
++  'FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sim.mjs] - AssertionError',
++  '1 failed, 2 passed in 0.24s',
++]
++const PADDING_LINES = Array.from({ length: 40 }, () => PADDING_MARKER + 'x'.repeat(100))
++const RED_OUTPUT = RED_BODY.concat(PADDING_LINES).join('\n')
++const GREEN_OUTPUT = 'green suite output\n'
++
++// Red by the BROKEN rule, printing the shape above; green otherwise, printing
++// one known line. The heredoc delimiter is quoted, so the body is emitted byte
++// for byte with no shell expansion.
++const CHECK_SH =
++  '#!/bin/bash\n' +
++  'if [ -f BROKEN ]; then\n' +
++  "  cat <<'RED_EOF'\n" +
++  RED_OUTPUT + '\n' +
++  'RED_EOF\n' +
++  '  exit 1\n' +
++  'fi\n' +
++  "echo 'green suite output'\n"
++
++// The fixture's own premise, asserted rather than asserted-about: every tail
++// the engine took at BASE lands strictly inside the padding. If this block ever
++// fails, the legs below are measuring nothing and must be re-cut.
++{
++  const padding = PADDING_LINES.join('\n')
++  assert.ok(padding.length > 3000,
++    'fixture: the padding (' + padding.length + ' chars) is longer than every tail the ' +
++    'engine took at BASE (2000, 3000, 800, 500) — otherwise a tail could still carry the block')
++  for (const n of [2000, 3000, 800, 500]) {
++    const t = RED_OUTPUT.slice(-n)
++    assert.ok(t.includes(PADDING_MARKER),
++      'fixture: a ' + n + '-char tail of the red output carries ' + PADDING_MARKER)
++    assert.ok(!t.includes(LEG_LINE),
++      'fixture: a ' + n + '-char tail of the red output has LOST the leg-naming line')
++  }
++  assert.ok(RED_OUTPUT.includes(LEG_LINE) && RED_OUTPUT.includes(FAILURE_HEADER),
++    'fixture: the whole red output carries both the header and the leg-naming line')
++}
++
++const tmpDirs = []
++const scenario = (name, files = {}) => {
++  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-red-record-' + name + '-'))
++  tmpDirs.push(dir)
++  const repo = makeRepo(path.join(dir, 'repo'), { 'check.sh': CHECK_SH, ...files })
++  return { repo, runDir: path.join(dir, 'run') }
++}
++
++const task = (id) => ({
++  id, title: 'task ' + id, files: [id + '.txt'], tier: 'standard', review: 'lean',
++  writes: [id + '.txt'], commutes: [], body: 'sim task ' + id,
++})
++
++// ── (i) BASE itself red, reconciled green → legs (a) and (b) [M1, M2] ────────
++// `BROKEN` is committed at BASE, so the wave's candidate is red and so is the
++// baseline the driver then runs. The reconcile stub removes the marker and
++// reports FIXED, so the wave still ends MERGED — the run under test is a red
++// BASELINE, not a blocked wave.
++{
++  const { repo, runDir } = scenario('i', { BROKEN: 'red at BASE\n' })
++  let criticPrompt = null
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      fs.rmSync(path.join(cwd, 'BROKEN'))
++      return { status: 'FIXED', summary: 'removed the BROKEN marker' }
++    }
++    if (opts.label === 'integration') { criticPrompt = prompt; return cleanCritic() }
++    throw new Error('scenario (i): unexpected dispatch ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves: [[task('T1')]], stub, stamp: 'rr-i' })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'scenario (i) precondition: FIXED → MERGED — ' + JSON.stringify(report.judgmentCalls))
++  assert.ok(report.baseline && report.baseline.passed === false,
++    'scenario (i) precondition: the baseline ran and BASE was RED — ' +
++    JSON.stringify(report.baseline))
++
++  // ── leg (a): the baseline record is the block [M1] ────────────────────────
++  const out = report.baseline.output
++  assert.ok(out.startsWith(FAILURE_HEADER),
++    'leg (a) [M1]: report.baseline.output BEGINS with the FAILURES header line ' +
++    JSON.stringify(FAILURE_HEADER) + ' — an engine that records a 2000-character tail begins ' +
++    'mid-padding instead. Got: ' + JSON.stringify(out.slice(0, 120)))
++  assert.ok(out.includes(LEG_LINE),
++    'leg (a) [M1]: report.baseline.output CONTAINS the leg-naming line ' +
++    JSON.stringify(LEG_LINE) + ' — a 2000-character tail of this output has lost it')
++  assert.ok(!out.includes(PADDING_MARKER),
++    'leg (a) [M1]: report.baseline.output contains no ' + JSON.stringify(PADDING_MARKER) +
++    ' — a tail of any length the engine took at BASE is all padding')
++
++  // ── leg (b): the judgment call and the critic's brief [M2] ────────────────
++  const redCalls = report.judgmentCalls.filter(
++    (j) => String(j).startsWith('baseline: the suite is RED on BASE ('))
++  assert.equal(redCalls.length, 1,
++    'leg (b) [M2]: exactly one judgmentCalls entry starts with "baseline: the suite is RED ' +
++    'on BASE (" — ' + JSON.stringify(report.judgmentCalls))
++  assert.ok(redCalls[0].includes(LEG_LINE),
++    'leg (b) [M2]: that judgment call CONTAINS the leg-naming line — ' +
++    JSON.stringify(redCalls[0]))
++  assert.ok(!redCalls[0].includes(PADDING_MARKER),
++    'leg (b) [M2]: that judgment call contains no ' + JSON.stringify(PADDING_MARKER) + ' — ' +
++    JSON.stringify(redCalls[0]))
++
++  assert.ok(criticPrompt !== null, 'leg (b) [M2]: the completeness critic was dispatched')
++  const criticPrefix = 'Baseline: the suite is RED on BASE — '
++  const criticLines = criticPrompt.split('\n').filter((l) => l.startsWith(criticPrefix))
++  assert.equal(criticLines.length, 1,
++    'leg (b) [M2]: exactly one line of the critic\'s brief starts ' +
++    JSON.stringify(criticPrefix))
++  // The excerpt the brief carries after that prefix runs to the end of the
++  // brief: a block is several lines, so the quotation is a region, not one
++  // physical line. What the leg asserts is what the region carries.
++  const briefExcerpt = criticPrompt.slice(
++    criticPrompt.indexOf(criticPrefix) + criticPrefix.length)
++  assert.ok(briefExcerpt.includes(LEG_LINE),
++    'leg (b) [M2]: the critic\'s Baseline excerpt CONTAINS the leg-naming line — ' +
++    JSON.stringify(briefExcerpt.slice(0, 200)))
++  assert.ok(!criticPrompt.includes(PADDING_MARKER),
++    'leg (b) [M2]: the critic\'s brief contains no ' + JSON.stringify(PADDING_MARKER) +
++    ' anywhere — an engine that hands it a tail pastes padding into the brief')
++}
++
++// ── (ii) a red wave candidate, reconciled green → leg (c) [M3] ───────────────
++// BASE is green; the implementer stub plants `BROKEN` in its own clone, so the
++// folded candidate is red. The reconcile stub captures its brief, then removes
++// the marker and reports FIXED.
++{
++  const { repo, runDir } = scenario('ii')
++  let reconcilePrompt = null
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      fs.writeFileSync(path.join(cwd, 'BROKEN'), 'oops\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      reconcilePrompt = prompt
++      fs.rmSync(path.join(cwd, 'BROKEN'))
++      return { status: 'FIXED', summary: 'removed the BROKEN marker' }
++    }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('scenario (ii): unexpected dispatch ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves: [[task('T1')]], stub, stamp: 'rr-ii' })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'leg (c) [M3]: the wave ends MERGED — ' + JSON.stringify(report.judgmentCalls))
++  assert.ok(reconcilePrompt !== null, 'leg (c) [M3]: the reconcile agent was dispatched')
++
++  const marker = 'Failing output:\n'
++  const at = reconcilePrompt.indexOf(marker)
++  assert.ok(at >= 0,
++    'leg (c) [M3]: the reconcile brief carries a "Failing output:" section — ' +
++    JSON.stringify(reconcilePrompt.slice(-200)))
++  const failing = reconcilePrompt.slice(at + marker.length)
++  assert.ok(failing.includes(LEG_LINE),
++    'leg (c) [M3]: the text after "Failing output:\\n" CONTAINS the leg-naming line ' +
++    JSON.stringify(LEG_LINE) + ' — a 3000-character tail of this output has lost it. Got: ' +
++    JSON.stringify(failing.slice(0, 200)))
++  assert.ok(!failing.includes(PADDING_MARKER),
++    'leg (c) [M3]: the text after "Failing output:\\n" contains no ' +
++    JSON.stringify(PADDING_MARKER))
++}
++
++// ── (iii) the reconcile agent BLOCKED → leg (d) [M4] ─────────────────────────
++// As (ii), but the reconcile stub refuses: the wave is TEST_FAILED and its
++// detail is the only place a reader is told what failed.
++{
++  const { repo, runDir } = scenario('iii')
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      fs.writeFileSync(path.join(cwd, 'BROKEN'), 'oops\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') return { status: 'BLOCKED', summary: 'not fixable here' }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('scenario (iii): unexpected dispatch ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves: [[task('T1')]], stub, stamp: 'rr-iii' })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'TEST_FAILED',
++    'leg (d) [M4]: BLOCKED → TEST_FAILED — ' + JSON.stringify(report.judgmentCalls))
++  const detail = String(report.waveMerges[0].detail)
++  const prefix = 'candidate suite failed after reconcile attempts: '
++  assert.ok(detail.startsWith(prefix),
++    'leg (d) [M4]: the detail begins ' + JSON.stringify(prefix) + ' — got ' +
++    JSON.stringify(detail.slice(0, 120)))
++  assert.ok(detail.includes(LEG_LINE),
++    'leg (d) [M4]: the detail CONTAINS the leg-naming line ' + JSON.stringify(LEG_LINE) +
++    ' — an 800-character tail of this output has lost it. Got: ' +
++    JSON.stringify(detail.slice(0, 200)))
++  assert.ok(!detail.includes(PADDING_MARKER),
++    'leg (d) [M4]: the detail contains no ' + JSON.stringify(PADDING_MARKER))
++}
++
++// ── (e) suiteLine carries a red output whole [M5] ────────────────────────────
++// Called directly: the section the completeness critic reads must not re-tail
++// an excerpt the engine already cut. `long` is over 8000 characters — more than
++// twice the largest tail anywhere in the engine — so an equality here cannot
++// pass against any fixed-length cut.
++{
++  const long = RED_OUTPUT + '\n' + 'y'.repeat(8000) + '\nEND-OF-LONG-OUTPUT'
++  assert.ok(long.length > 8000, 'leg (e) [M5]: the fixture output is over 8000 characters')
++
++  const rendered = suiteLine({ passed: false, output: long }, 'bash check.sh')
++  const at = rendered.indexOf('\noutput: ')
++  assert.ok(at >= 0, 'leg (e) [M5]: a red suite renders an "output: " line')
++  assert.equal(rendered.slice(at + '\noutput: '.length), long,
++    'leg (e) [M5]: the text after "\\noutput: " equals the output WHOLE — an engine that ' +
++    'renders tail(output, 500) carries only its last 500 characters')
++
++  const green = suiteLine({ passed: true, output: long }, 'bash check.sh')
++  assert.ok(!green.includes('output: '),
++    'leg (e) [M5]: a green suite renders no "output:" line — ' + JSON.stringify(green))
++  assert.equal(green,
++    '\nSUITE (driver-run, post-fold) — this is the authoritative result; ' +
++    'do not re-derive it by reading tests.' +
++    '\ncommand: bash check.sh' +
++    '\npassed: true',
++    'leg (e) [M5]: the green branch is BASE\'s, verdict without output')
++}
++
++// ── (iv) every wave green: the record is BASE's, unchanged → leg (f) [M6] ────
++{
++  const { repo, runDir } = scenario('iv')
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('scenario (iv): unexpected dispatch ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves: [[task('T1')]], stub, stamp: 'rr-iv' })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'scenario (iv) precondition: the wave merged — ' + JSON.stringify(report.judgmentCalls))
++  assert.strictEqual(report.baseline, null,
++    'leg (f) [M6]: report.baseline is strictly null on an all-green run — ' +
++    JSON.stringify(report.baseline))
++  assert.ok(!report.judgmentCalls.some((j) => String(j).startsWith('baseline:')),
++    'leg (f) [M6]: no judgmentCalls entry starts with "baseline:" — ' +
++    JSON.stringify(report.judgmentCalls))
++  assert.equal(report.tests.passed, true, 'leg (f) [M6]: report.tests.passed is true')
++  assert.equal(report.tests.output, GREEN_OUTPUT,
++    'leg (f) [M6]: report.tests.output equals the suite\'s own printed stdout+stderr for ' +
++    'that execution — ' + JSON.stringify(report.tests.output))
++}
++
++for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true })
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_worker.mjs b/fleet/tests/test_run_worker.mjs
+index f5f6a6171aa1fb5f4a4500ed0238106ca337e601..a59244c7cd77af6db0ad57b4c9387d51426e625c 100644
+--- a/fleet/tests/test_run_worker.mjs
++++ b/fleet/tests/test_run_worker.mjs
+@@ -25,6 +25,7 @@ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
++import { EventEmitter } from 'node:events'
+ import {
+   ROLES, roleForLabel, sessionIdFor, buildArgs, lastResult, classify, meterOf,
+   createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES, recordEnvelopeDenials,
+@@ -977,5 +978,94 @@ await assert.rejects(
+   console.log('ok - #702 Task 1: the worker transcript slice — paths and sizes, never bodies')
+ }
+ 
++// ── 10. #762 [M5]: the worker names the TEST COMMAND to its own hook ─────────
++//
++// The confine hook cannot see the prompt — it reads the PreToolUse JSON on
++// stdin and its own environment, which Claude Code inherits from this process.
++// So the worker is what tells it which command the task was handed:
++// `FLEET_TEST_CMD`, read out of the prompt's `TEST COMMAND:` line (the engine
++// writes exactly one, `'\nTEST COMMAND: ' + cmd`, value to end of line). The
++// hook's half of the claim is fleet/tests/test_confine_hook.mjs legs (a)-(t).
++//
++// A `spawnFn` stub is how a leg reads the child environment without a real CLI:
++// it records `options.env` and answers with a success envelope.
++{
++  const TESTCMD = 'node fleet/tests/test_sandbox_boot.mjs'
++  const spawned = []
++  const okEnvelope = JSON.stringify({
++    type: 'result', subtype: 'success', is_error: false, terminal_reason: 'completed',
++    api_error_status: null, structured_output: { ok: true }, total_cost_usd: 0, modelUsage: {},
++  })
++  const recordingSpawn = (cliArg, argv, options) => {
++    spawned.push({ cli: cliArg, argv, options })
++    const child = new EventEmitter()
++    child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {}
++    child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {}
++    child.kill = () => {}
++    setImmediate(() => { child.stdout.emit('data', okEnvelope); child.emit('close', 0, null) })
++    return child
++  }
++  // A SMALL run-wide env, so "one variable is added and nothing else" is a
++  // legible equality rather than a scan of the ambient environment.
++  const baseChildEnv = { PATH: process.env.PATH || '/usr/bin:/bin', FLEET_MARKER: 'kept' }
++  const tcWorkers = path.join(tmp, 'testcmd-workers')
++  const mkTcAgent = (workerEnv) => createRunWorker({
++    runId: 'run-762', workersDir: tcWorkers, cwdFor: () => clone, cli: 'claude',
++    env: workerEnv, spawnFn: recordingSpawn, onEvent: () => {},
++  })
++  const lastEnv = () => {
++    assert.ok(spawned.length, 'a dispatch must have reached spawnFn at all')
++    const o = spawned[spawned.length - 1].options
++    assert.ok(o && o.env, "spawnFn's third argument must carry an env")
++    return o.env
++  }
++
++  // (u) [M5] — the prompt's TEST COMMAND line becomes the child's
++  // FLEET_TEST_CMD. Without this the hook has nothing to compare a kill pattern
++  // against and #762's whole self-match check is inert on every live dispatch.
++  {
++    const prompt = 'Task 7: do the thing\n\nFILES: fleet/a.mjs\nTEST COMMAND: ' + TESTCMD +
++      '\n\nReturn your verdict.\n'
++    const out = await mkTcAgent({ ...baseChildEnv })(prompt, { label: 'impl:TC1', model: 'sonnet', schema: SCHEMA })
++    assert.deepEqual(out, { ok: true }, '(u) [M5] the dispatch still returns structured_output')
++    assert.equal(lastEnv().FLEET_TEST_CMD, TESTCMD,
++      "(u) [M5] the child's FLEET_TEST_CMD is the prompt's TEST COMMAND value, to end of line")
++    // ONE variable is added; every other key is what the caller passed.
++    assert.deepEqual(lastEnv(), { ...baseChildEnv, FLEET_TEST_CMD: TESTCMD },
++      '(u) [M5] the child env gains FLEET_TEST_CMD and nothing else')
++  }
++
++  // (v) [M5] — the FIRST `TEST COMMAND:` line. A prompt can quote a second one
++  // (a task body, a Proof `Run:` block); the engine appends its own, and the
++  // one the worker was told to run is the one that wins.
++  {
++    const prompt = 'preamble\nTEST COMMAND: bash first.sh\nsome task body\n' +
++      'TEST COMMAND: bash second.sh\ntrailer\n'
++    await mkTcAgent({ ...baseChildEnv })(prompt, { label: 'impl:TC2', model: 'sonnet', schema: SCHEMA })
++    assert.equal(lastEnv().FLEET_TEST_CMD, 'bash first.sh',
++      '(v) [M5] the FIRST TEST COMMAND line is the value, not the last')
++  }
++
++  // (w) [M5] — no TEST COMMAND line means the KEY IS ABSENT, not empty. The
++  // run-wide env is shared by every dispatch, so a stale value left in place
++  // would reach a role that was never given that command — and the hook would
++  // then refuse a kill on a pattern this worker has no relation to.
++  {
++    const stale = { ...baseChildEnv, FLEET_TEST_CMD: 'stale' }
++    await mkTcAgent(stale)('a prompt with no test command line at all\nFILES: fleet/a.mjs\n',
++      { label: 'impl:TC3', model: 'sonnet', schema: SCHEMA })
++    const childEnv = lastEnv()
++    assert.equal(Object.prototype.hasOwnProperty.call(childEnv, 'FLEET_TEST_CMD'), false,
++      '(w) [M5] the key is DELETED, not set to an empty string; got ' +
++      JSON.stringify(childEnv.FLEET_TEST_CMD))
++    assert.deepEqual(childEnv, { ...baseChildEnv },
++      '(w) [M5] and nothing else about the child env changed')
++    assert.equal(stale.FLEET_TEST_CMD, 'stale',
++      "(w) [M5] the run-wide env object itself is not mutated — the next dispatch reads it too")
++  }
++
++  console.log('ok - #762 [M5]: the worker passes the prompt\'s TEST COMMAND to its child as FLEET_TEST_CMD')
++}
++
+ fs.rmSync(tmp, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_merge.mjs b/fleet/tests/test_sandbox_boot_merge.mjs
+index 6c66277e1983b8a5b4c074b7edfe6f89146e593c..05089c62e6e7b47280e1df9e5dafdd0d314c6ab5 100644
+--- a/fleet/tests/test_sandbox_boot_merge.mjs
++++ b/fleet/tests/test_sandbox_boot_merge.mjs
+@@ -1457,4 +1457,207 @@ test('the systemctl stub answers a fold unit inactive  [publish-fold M8 / leg (j
+     '(j) [M8] a fold unit is inactive unless STUB_FOLD_ACTIVE says otherwise')
+ })
+ 
++// ═════════════════════════════════════════════════════════════════════════════
++// THE PULL REQUEST QUOTES THE FOLD SUITE'S FAILING BLOCK
++//
++// A THIRD numbering, belonging to a third task (#763 narrowed to part (2), on
++// top of #715's `suite red` section). Its clauses are M1–M5 and its legs (a)–(e)
++// of their own, and every assertion below names them with a `failing-block`
++// prefix so none of the three numberings in this file reads as another.
++//
++//   M1  on a `suite red` fold whose `publish-fold/suite-1.txt` is TAP-shaped —
++//       `ok 1 - join`, then `not ok 2 - the recorded text names the failing
++//       leg`, then more than twenty indented diagnostic lines, then `# fail 1`
++//       as the last line — the PR body's fenced block contains the `not ok 2`
++//       line.
++//   M2  that fenced block's lines are exactly `suite-1.txt`'s lines from the
++//       `not ok 2` line through its last line, `# fail 1` included, in order,
++//       and the `ok 1 - join` line is not in the body.
++//   M3  `publish-fold/suite-1.txt` on the evidence worktree is still the whole
++//       text — twenty-eight lines, the first `ok 1 - join`, the last
++//       `# fail 1` — not the excerpt.
++//   M4  on a `suite red` fold whose `suite-1.txt` has no line matching the
++//       start rule — three plain lines — the fenced block is those three lines
++//       whole.
++//   M5  the boot log of the `suite red` run carries no `node DIRECT` line: the
++//       excerpt is produced by the boot script's own shell and awk.
++//
++// What the excerpt rule is, spelled once, because these legs read it and not an
++// implementation of it: START is the first line matching the ERE
++// `^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)`; END is the line
++// before the first LATER line matching `^(___+ .+ ___+$|===+ |(not )?ok [0-9])`,
++// or the file's last line when no later line matches; a file with NO start line
++// is printed whole.
++//
++// Every leg below reads the fixture's own file off the evidence worktree and
++// compares the body against THAT, so what is pinned is the rule and not a
++// particular way of writing it. The one thing pinned as a literal is the
++// fixture itself, because leg (a) only discriminates while the `not ok` line
++// sits further from the end of the file than twenty lines.
++// ═════════════════════════════════════════════════════════════════════════════
++
++/**
++ * `FOLD_SUITE_TEXT`'s twenty-eight lines, as the task spells them: `ok 1 -
++ * join`, the `not ok 2` line, twenty-four two-space-indented `diagnostic line
++ * N` lines for N from 1 to 24, `  ...`, and `# fail 1` last.
++ */
++const TAP_FIXTURE = [
++  'ok 1 - join',
++  'not ok 2 - the recorded text names the failing leg',
++  ...Array.from({ length: 24 }, (_, i) => `  diagnostic line ${i + 1}`),
++  '  ...',
++  '# fail 1',
++]
++/** The line M1 and M2 name, verbatim. */
++const NOT_OK_LINE = 'not ok 2 - the recorded text names the failing leg'
++/** The first line, which M2 says the body does not carry. */
++const OK_LINE = 'ok 1 - join'
++/** The last line, which M3 says the record still ends on. */
++const FAIL_LINE = '# fail 1'
++/** What BASE's `tail -n 20` would have shown, as a number of lines. */
++const BASE_TAIL = 20
++
++/** A file's lines, one trailing newline dropped — the stub's `printf '%s\n'`
++ *  leaves exactly one, and a blank line inside an excerpt is still a line. */
++const fileLines = (text) => text.replace(/\n$/, '').split('\n')
++
++/** `<evidence>/.ultrapowers/runs/7/publish-fold/suite-1.txt`, spelled out the
++ *  way leg (c) spells it, read off the evidence worktree. */
++const suiteRecord = (ctx, leg) => {
++  const p = path.join(ctx.home, 'evidence', '.ultrapowers', 'runs', '7', 'publish-fold', 'suite-1.txt')
++  assert.ok(fs.existsSync(p), `${leg} the fold's suite file is on the evidence worktree at ${p}${whyFold(ctx)}`)
++  return fs.readFileSync(p, 'utf8')
++}
++
++/**
++ * The fenced block of the `## Publish fold` section: the lines between the
++ * first line that is exactly three backticks AFTER `## Publish fold` and the
++ * next such line. The anchor matters — the `### Checks` section above carries a
++ * ```json fence of its own, whose closing line is also three backticks.
++ */
++const foldFence = (body, leg) => {
++  const ls = body.split('\n')
++  const head = ls.findIndex((l) => l.trim() === '## Publish fold')
++  assert.ok(head >= 0, `${leg} the body carries a '## Publish fold' section:\n${body}`)
++  const open = ls.findIndex((l, i) => i > head && l === '```')
++  assert.ok(open > head,
++    `${leg} and a fenced block inside it — a line of exactly three backticks after the ` +
++      `heading:\n${body}`)
++  const close = ls.findIndex((l, i) => i > open && l === '```')
++  assert.ok(close > open, `${leg} and that fence is closed by another such line:\n${body}`)
++  return ls.slice(open + 1, close)
++}
++
++/** M4's fixture: a suite file with no line matching the start rule. */
++const PLAIN_SUITE = ['first line', 'second line', 'third line']
++const suiteRedPlain = bootWith({
++  STUB_FOLD_DISPOSITION: 'suite red',
++  STUB_FOLD_SUITE: PLAIN_SUITE.join('\n'),
++})
++
++// ── the fixture M1 describes  [failing-block M1] ─────────────────────────────
++
++test("the rig's FOLD_SUITE_TEXT is the TAP shape, its last line FOLD_SUITE_LAST  [failing-block M1 / leg (a)]", () => {
++  const leg = '(a) [failing-block M1]'
++  assert.deepEqual(fileLines(String(rig('FOLD_SUITE_TEXT'))), TAP_FIXTURE,
++    `${leg} FOLD_SUITE_TEXT is M1's TAP-shaped suite: '${OK_LINE}', the '${NOT_OK_LINE}' line, ` +
++      `twenty-four indented 'diagnostic line N' lines, '  ...', and '${FAIL_LINE}' last — ` +
++      `twenty-eight lines in all, so the '${NOT_OK_LINE}' line sits further than ${BASE_TAIL} ` +
++      `lines from the end and a tail of ${BASE_TAIL} cannot reach it`)
++  assert.equal(rig('FOLD_SUITE_LAST'), FAIL_LINE,
++    `${leg} FOLD_SUITE_LAST is still that text's last line, which the body still has to carry`)
++})
++
++// ── (a) the failing leg's name is in the fenced block  [M1] ──────────────────
++
++test("the fenced block of a suite-red body carries the not-ok line  [failing-block M1 / leg (a)]", async () => {
++  const ctx = await suiteRed()
++  const leg = '(a) [failing-block M1]'
++  const recorded = fileLines(suiteRecord(ctx, leg))
++  // The discriminator, asserted before the block is read: this fixture's
++  // `not ok` line is OUTSIDE the last twenty lines, so a `tail -n 20` of it
++  // cannot be what the body shows.
++  assert.ok(!recorded.slice(-BASE_TAIL).includes(NOT_OK_LINE),
++    `${leg} the fixture puts the '${NOT_OK_LINE}' line outside suite-1.txt's last ${BASE_TAIL} ` +
++      `lines; the file's ${recorded.length} lines are:\n${recorded.join('\n')}`)
++  const block = foldFence(bodyOf(ctx, leg), leg)
++  assert.ok(block.includes(NOT_OK_LINE),
++    `${leg} [M1] the fenced block names the failing leg — it holds the line\n  ${NOT_OK_LINE}\n` +
++      `even though that line is the second of the file's ${recorded.length}; a tail of ` +
++      `${BASE_TAIL} lacks it. The block is:\n${block.join('\n')}`)
++})
++
++// ── (b) the block is the failing test's own block, start to end of file  [M2] ─
++
++test("the fenced block is suite-1.txt's lines from not-ok through its last  [failing-block M2 / leg (b)]", async () => {
++  const ctx = await suiteRed()
++  const leg = '(b) [failing-block M2]'
++  const recorded = fileLines(suiteRecord(ctx, leg))
++  const start = recorded.indexOf(NOT_OK_LINE)
++  assert.ok(start >= 0, `${leg} the recorded suite holds the '${NOT_OK_LINE}' line:\n${recorded.join('\n')}`)
++  assert.equal(recorded[recorded.length - 1], FAIL_LINE,
++    `${leg} and ends on '${FAIL_LINE}' — with no later boundary line, the block runs to there`)
++  const expected = recorded.slice(start)
++  const body = bodyOf(ctx, leg)
++  const block = foldFence(body, leg)
++  assert.deepEqual(block, expected,
++    `${leg} [M2] the block's lines are EXACTLY suite-1.txt's lines from its '${NOT_OK_LINE}' ` +
++      `line through '${FAIL_LINE}', in order — ${expected.length} lines, no more and no fewer.\n` +
++      `--- the block in the body (${block.length} lines) ---\n${block.join('\n')}\n` +
++      `--- suite-1.txt from the not-ok line (${expected.length} lines) ---\n${expected.join('\n')}`)
++  assert.ok(!body.includes(OK_LINE),
++    `${leg} [M2] and the '${OK_LINE}' line above the start is nowhere in the body — the block ` +
++      `begins at the marker, it does not begin at the file:\n${body}`)
++})
++
++// ── (c) the record on the evidence branch is still whole  [M3] ───────────────
++
++test('the suite file on the evidence worktree is the whole text, not the excerpt  [failing-block M3 / leg (c)]', async () => {
++  const ctx = await suiteRed()
++  const leg = '(c) [failing-block M3]'
++  const recorded = fileLines(suiteRecord(ctx, leg))
++  assert.equal(recorded.length, 28,
++    `${leg} [M3] <evidence>/.ultrapowers/runs/7/publish-fold/suite-1.txt has twenty-eight ` +
++      `lines; it has ${recorded.length}:\n${recorded.join('\n')}`)
++  assert.equal(recorded[0], OK_LINE,
++    `${leg} [M3] the first of them is '${OK_LINE}' — the record keeps the lines the body's ` +
++      `excerpt drops; got: ${JSON.stringify(recorded[0])}`)
++  assert.equal(recorded[recorded.length - 1], FAIL_LINE,
++    `${leg} [M3] and the last is '${FAIL_LINE}'; got: ${JSON.stringify(recorded[recorded.length - 1])}`)
++  assert.deepEqual(recorded, TAP_FIXTURE,
++    `${leg} [M3] the record is the whole of what the fold's suite wrote and nothing the ` +
++      `excerpting touched:\n${recorded.join('\n')}`)
++  const block = foldFence(bodyOf(ctx, leg), leg)
++  assert.ok(block.length < recorded.length,
++    `${leg} [M3] the body's block is an EXCERPT of that record, not the record — ` +
++      `${block.length} lines against ${recorded.length}`)
++})
++
++// ── (d) a file with no start line is printed whole  [M4] ─────────────────────
++
++test('a suite with no marker line is quoted whole  [failing-block M4 / leg (d)]', async () => {
++  const ctx = await suiteRedPlain()
++  const leg = '(d) [failing-block M4]'
++  assert.deepEqual(fileLines(suiteRecord(ctx, leg)), PLAIN_SUITE,
++    `${leg} the fixture's suite-1.txt is the three plain lines`)
++  const block = foldFence(bodyOf(ctx, leg), leg)
++  assert.deepEqual(block, PLAIN_SUITE,
++    `${leg} [M4] no line of '${PLAIN_SUITE.join("', '")}' matches the start rule, so the ` +
++      `fallback prints the file whole — the fenced block is exactly those three lines.\n` +
++      `--- the block (${block.length} lines) ---\n${block.join('\n')}`)
++})
++
++// ── (e) the excerpt is shell and awk, never node  [M5] ──────────────────────
++
++test("the suite-red boot calls node directly not once  [failing-block M5 / leg (e)]", async () => {
++  const ctx = await suiteRed()
++  const leg = '(e) [failing-block M5]'
++  const log = lines(readLog(ctx, 'fleet-boot.log'))
++  const direct = log.filter((l) => l.includes('node DIRECT'))
++  assert.deepEqual(direct, [],
++    `${leg} [M5] the stub \`node\` logs 'node DIRECT' whenever the boot script runs it as a ` +
++      `command of its own, and the excerpt is the script's own shell and awk — on the sandbox ` +
++      `\`node\` is argv to systemd-run only. The direct calls logged were:\n${direct.join('\n')}`)
++})
++
+ runTests(tests)
