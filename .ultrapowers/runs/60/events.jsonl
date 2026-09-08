@@ -1,0 +1,12 @@
+{"kind":"run:open","runId":"run-60","base":"","source":"fleet/run-main.mjs","id":"01M2187J9B000007EXP5BAT350","ts":1788896069931}
+{"kind":"driver:stage","stage":"tiers","detail":"3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2187J9E0000JHTBKPJ0PVHB","ts":1788896069934}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 1c97ba442c65d882354953d16590b1f8eb0c7a7a; 3 task clone(s) + integration","id":"01M2187JM60000GVZV91QSBW4K","ts":1788896070278}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2187K560000C60G3R59NJCT","ts":1788896070822}
+{"kind":"driver:stage","stage":"engine","detail":"waves 3, width bound 12, patch input armed","id":"01M2187K560001VKF0Q6H3CD20","ts":1788896070822}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 2","id":"01M2187K5B0000YNZB45EA2GCZ","ts":1788896070827}
+{"kind":"engine:phase","phase":"Setup","id":"01M2187K5B0001JX41EF4EXVAR","ts":1788896070827}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-60 at 1c97ba442c65d882354953d16590b1f8eb0c7a7a","id":"01M2187K7K0000TAPDK57NX8BR","ts":1788896070899}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2187K7M0000R39J4VPP0SAG","ts":1788896070900}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"c90da2f0-6b40-4555-ad11-c4c66efccb00","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-60/clones/task-1","model":"opus","id":"01M2187K7S0000P2BWC9VGWCV3","ts":1788896070905}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"b27ac12f-7252-4ea7-9570-c0271232c4ce","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-60/clones/task-2","model":"opus","id":"01M2187K7W0000CF0WFWEYXVZC","ts":1788896070908}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"6fb0a338-bbe2-45a9-a59e-f1a3077ed843","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-60/clones/task-3","model":"opus","id":"01M2187K7Y0000SCX0XMBWMH88","ts":1788896070910}

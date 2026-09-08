@@ -1,0 +1,263 @@
+{
+  "ok": true,
+  "stamp": "run-60",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-60"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The authoring gotchas are a reference the self-review step loads",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md",
+          "skills/ultrawrite/references/authoring-gotchas.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`skills/ultrawrite/references/authoring-gotchas.md`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The gate readers run in the foreground and the author writes the record",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The reader computes every pinned literal",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The authoring gotchas are a reference the self-review step loads",
+          "files": [
+            "skills/ultrawrite/SKILL.md",
+            "skills/ultrawrite/references/authoring-gotchas.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`skills/ultrawrite/references/authoring-gotchas.md`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrawrite/SKILL.md",
+            "skills/ultrawrite/references/authoring-gotchas.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test -f skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'folded tree' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-72' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'backtick' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'command substitution' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-74' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'never see Context' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-75' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'one leg per row' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'named exclusions' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'ALL TESTS PASSED' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'decorator' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'for each of' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'sed -n' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'two triggers' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'negative row' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'existing fixture' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'collect-only' skills/ultrawrite/references/authoring-gotchas.md && grep -q '__pycache__' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-4,' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'own Files' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'fix round' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-2,' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'plan-level Claim' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'authorship' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'git grep' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'fleet/tests/' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-8' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'frozen sim' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'byte-pins' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'field name' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-10' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -F -q 'merge(main, branch)' skills/ultrawrite/references/authoring-gotchas.md",
+            "grep -q 'rejection rounds' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'whitespace' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'verbatim substring' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'asterisks' skills/ultrawrite/references/authoring-gotchas.md",
+            "test \"$(grep -c '^- \\*\\*' skills/ultrawrite/references/authoring-gotchas.md)\" -ge 11",
+            "grep -q 'suite-total-pin' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'directory-absence-pin' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'command carries a backtick' skills/ultrawrite/references/authoring-gotchas.md",
+            "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | sed '/^- /,$d' | tr -s '[:space:]' ' ' | grep -q 'references/authoring-gotchas.md.*before.*dispatched'",
+            "test \"$(python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite)\" = \"skill ok\""
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The gate readers run in the foreground and the author writes the record",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -F -q 'run_in_background: false'",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'foreground'",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one call per task'",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'verdict.*returns.*author'",
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'written by the author.*never by the reader'",
+            "sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Agent tool' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -F -q 'run_in_background: false' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'never by the reader'",
+            "sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 're-extract' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one reader' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q '13 of the 22 minutes'",
+            "test \"$(python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite)\" = \"skill ok\""
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The reader computes every pinned literal",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | sed 's/revised\\..*//' | grep -q 'necessarily true.*at the right layer.*every concrete literal.*satisfiable.*compute it'",
+            "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | awk '/^- /{n++} {b[n]=b[n] \" \" $0} END{print b[n]}' | tr -s '[:space:]' ' ' | grep -q 'every pinned literal was computed, not assumed'",
+            "test -n \"$ULTRA_BASE\" && git diff --quiet \"$ULTRA_BASE\" -- skills/ultrawrite/scripts/extract_gate_input.py",
+            "test \"$(python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite)\" = \"skill ok\""
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "skills/ultrawrite \u00b7 3 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The skill addresses the authoring agent in the register it already has: rules, each with the\n  reason that makes it a rule, never a shouted imperative \u2014 `tests/test_ultrawrite_surface_rules_implementer_check.py`\n  pins the three shouted words at zero in `SKILL.md`, and the reference keeps the same voice.\n- Every lesson in `references/authoring-gotchas.md` is a rule with its one-line reason, naming\n  the run or sitting that cost it; a lesson the compiler already enforces names the advisory\n  species or refusal it became, so an author learns to read the compiler's line rather than\n  re-learning the rule.\n- `skills/ultrawrite/SKILL.md` keeps every section heading it has at BASE, in order, and every\n  sentence a test already pins: the `**Claim:**`-line paragraph opening `Above the first\n  task:`, the six-slot Proof bullet, rule 4 of \u00a7Decomposition judgment, the species sentence\n  and the compile line of \u00a7The proof gate, and \u00a7Self-review's `(derived)` and `plan-level\n  Claim` words.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/ tests/ skills/ultrapowers/",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(grep -c -w -e NEVER -e ALWAYS -e MUST skills/ultrawrite/SKILL.md)\" = 0",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-60/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-60/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-60/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-60/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
