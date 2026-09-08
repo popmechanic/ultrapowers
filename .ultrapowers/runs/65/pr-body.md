@@ -74,6 +74,14 @@
 }
 ```
 
+## Publish fold
+
+- attempt 1: folded
+- attempt 2: folded
+- merge: left open: merge PUT answered 405 twice
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-65/.ultrapowers/runs/65/publish-fold/receipt.json
+
 ### Evidence
 
 https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-65/.ultrapowers/runs/65/
