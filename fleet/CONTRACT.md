@@ -228,8 +228,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `MERGE_CHECKS_GRACE` (120 s) and is then merged as having nothing to wait for; a failed run, 30
     minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null.
     The merge is retried exactly once, and only for a moved tip:
-    a 405 whose `message` says the pull request is not mergeable
-    means the target moved between the fold and the PUT, so the script writes
+    a 405 whose `message` says the pull request is not mergeable,
+    or that the base branch was modified, or that a required status check is expected
+    (the match ignores case), means the target moved between the fold and the PUT, so the script writes
     `running "publish fold (attempt 2)"` (an evidence commit),
     re-folds onto the new tip, pushes with the lease, writes `publishing` (an evidence commit),
     re-enters its check-runs loop on the new head, polls `GET /pulls/<n>` until `mergeable` is

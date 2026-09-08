@@ -184,7 +184,8 @@ MERGE_NOTE=""
 FOLD_HOLD=""
 # The merge's retry signal. Every path of `merge_pr` returns 0 under `set -e`,
 # so the one outcome that earns a second fold (a 405 whose body says the PR is
-# not mergeable) is carried in a variable. `do_boot` tests it exactly once,
+# not mergeable, that the base branch was modified, or that a required status
+# check is expected) is carried in a variable. `do_boot` tests it exactly once,
 # between its two `merge_pr` calls, and never clears it — which is also how
 # `merge_pr` knows, on entry, that it is the second call.
 MERGE_RETRY=""
@@ -1538,7 +1539,7 @@ print("null" if value is None else "answered")
 }
 
 merge_pr() {
-  local head number attempts grace n=1 t0 answer code body verdict payload heading message
+  local head number attempts grace n=1 t0 answer code body lower verdict payload heading message
   MERGE_NOTE=""
   # Nothing to merge without a PR, and a re-entry that already recorded a merge
   # sha has one behind it — the same record that makes `publish` idempotent.
@@ -1622,10 +1623,12 @@ merge_pr() {
   esac
 
   # THE SECOND CALL waits for GitHub before it asks again. A 405 whose body
-  # says the PR is not mergeable is an index that has not caught up with the
-  # head just pushed: `mergeable` reads null while GitHub recomputes it, and a
-  # PUT made in that window is refused for a reason that is gone a moment
-  # later. The first call makes no such read — nothing has moved under it.
+  # says the PR is not mergeable — or that the base branch was modified, or
+  # that a required status check is expected — is an index that has not caught
+  # up with the head just pushed: `mergeable` reads null while GitHub
+  # recomputes it, and a PUT made in that window is refused for a reason that
+  # is gone a moment later. The first call makes no such read — nothing has
+  # moved under it.
   if [ "$MERGE_RETRY" = "1" ]; then await_mergeable "$number"; fi
 
   # The plan's H1 as the commit title, because the fold commits under it are
@@ -1650,11 +1653,14 @@ Plan-Tag: ultra/plan/$RUN_ID"
       # ONE PUT PER FOLD. GitHub refuses a merge for reasons that do not change
       # on a retry — a protected base, a conflict, a review it wants — and each
       # blind retry is another chance to merge something a human meant to look
-      # at. The single exception is the one refusal that says so in the answer:
-      # a 405 whose message reads `not mergeable` is the base having moved, and
-      # the answer to that is not another PUT but another FOLD. `do_boot` runs
-      # it; this function only raises the signal, because every path here
-      # returns 0 under `set -e` and a return code could not carry it.
+      # at. The exceptions are the refusals that say so in the answer: a 405
+      # whose message reads `not mergeable`, `base branch was modified` or
+      # `required status check` is the base having moved under the PUT — the
+      # first is GitHub's own word for it, and the other two are what a base
+      # under strict-mode protection says when the tip it required has moved
+      # on. The answer to any of the three is not another PUT but another FOLD.
+      # `do_boot` runs it; this function only raises the signal, because every
+      # path here returns 0 under `set -e` and a return code could not carry it.
       if [ "$code" = 405 ] && [ "$MERGE_RETRY" = "1" ]; then
         log "merge: PUT answered 405 again after a second fold — leaving $PR_URL open"
         MERGE_NOTE="left open: merge PUT answered 405 twice"
@@ -1663,8 +1669,12 @@ Plan-Tag: ultra/plan/$RUN_ID"
         return 0
       fi
       if [ "$code" = 405 ]; then
-        case "$body" in
-          *"not mergeable"*)
+        # GitHub capitalises these messages as sentences and `case` in POSIX sh
+        # is case-sensitive, so the body is lowercased once and the three arms
+        # are one `case` over lowercase patterns.
+        lower="$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]')"
+        case "$lower" in
+          *"not mergeable"*|*"base branch was modified"*|*"required status check"*)
             log "merge: PUT answered 405 — GitHub does not call $PR_URL mergeable; folding again"
             MERGE_RETRY=1
             MERGE_NOTE="left open: merge PUT answered 405"

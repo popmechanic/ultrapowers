@@ -66,7 +66,7 @@ import { fileURLToPath } from 'node:url'
 import * as RIG from './_sandbox_boot_helpers.mjs'
 import {
   SCRIPT, TARGET, HEAD_SHA, BASE_SHA, PR_URL, PR_AUTHOR, PLAN_H1, ASSIGNMENT,
-  INTEGRATION_BRANCH, VM_NAME,
+  INTEGRATION_BRANCH, VM_NAME, HEAD_SHA_2,
   makeHome, boot, bootAsync, greenAsync as green,
   readLog, lines, argvLines, stream, statusOf, committed, commitStates, notifies,
   prPosts, engineRuns, unitsRun, gitLog, verbOf, dirOf, isIntegrationPush,
@@ -683,9 +683,12 @@ test("SKILL.md's step 4 says a ready PR merges itself and --hold keeps it open  
 //       exactly as `hold=1` — no check read, no PUT — while the draft flag
 //       still follows the gate's outcome.
 //   M6  the merge PUT carries `commit_message`.
-//   M7  a 405 saying the PR is not mergeable buys ONE retry: a second fold
-//       attempt, a leased push, and a second PUT after the checks and the
-//       mergeability poll; every other refusal keeps one PUT.
+//   M7  a 405 whose message says the PR is not mergeable, that the base branch
+//       was modified, or that a required status check is expected buys ONE
+//       retry: a second fold attempt, a leased push, and a second PUT after the
+//       checks and the mergeability poll; every other refusal keeps one PUT.
+//       (The two strict-mode bodies are #784's; the fourth banner below is
+//       their exam, and the three-body reading of this clause is its.)
 //   M8  the shared rig answers the fold unit as its FIRST branch. That the rig's
 //       other sims still pass on it is the SUITE's sentence, not a leg of this
 //       file: every one of them is a sim of tests/test_fleet_suite.py already,
@@ -848,7 +851,14 @@ const retry405Twice = bootWith({ ...NOT_MERGEABLE, STUB_MERGE_CODE_2: '405', STU
 const retryTipUnmoved = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_DISPOSITION_2: 'tip unmoved' })
 const retrySuiteRed = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_DISPOSITION_2: 'suite red' })
 const mergeableLate = bootWith({ ...NOT_MERGEABLE, STUB_MERGEABLE_NULL: '2' })
-const merge405Other = bootWith({ STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Base branch was modified' })
+// A 405 for a reason NO arm matches. `Base branch was modified` stood here
+// until #784 made it one of the three that buy the retry; the body GitHub sends
+// for a missing review names none of the three, so the scenario keeps its legs
+// and only its body moved. (#784's own banner reads this boot as its leg (e).)
+const merge405Other = bootWith({
+  STUB_MERGE_CODE: '405',
+  STUB_MERGE_MESSAGE: 'At least 1 approving review is required by reviewers with write access.',
+})
 const merge409 = bootWith({ STUB_MERGE_CODE: '409' })
 const merge422 = bootWith({ STUB_MERGE_CODE: '422' })
 const merge500 = bootWith({ STUB_MERGE_CODE: '500' })
@@ -1658,6 +1668,176 @@ test("the suite-red boot calls node directly not once  [failing-block M5 / leg (
     `${leg} [M5] the stub \`node\` logs 'node DIRECT' whenever the boot script runs it as a ` +
       `command of its own, and the excerpt is the script's own shell and awk — on the sandbox ` +
       `\`node\` is argv to systemd-run only. The direct calls logged were:\n${direct.join('\n')}`)
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE STRICT-MODE 405 BODIES BUY THE SECOND FOLD
+//
+// A FOURTH numbering, belonging to a fourth task (#784, on top of #715's merge
+// retry). Its clauses are M1–M6 and its legs (a)–(f) of their own, and every
+// assertion below names them with a `strict-405` prefix so none of the four
+// numberings in this file reads as another.
+//
+//   M1  for each of `Base branch was modified` and
+//       `Required status check "test" is expected.`, a first merge PUT answered
+//       405 with that body in its `message` buys the one retry exactly as
+//       `Pull Request is not mergeable` does: the evidence commits are
+//       `running, publishing, running, publishing, done`, the fold units are
+//       `fleet-fold-7-1` then `fleet-fold-7-2`, the branch is pushed once more
+//       under `--force-with-lease`, exactly two merge PUTs are made, and the
+//       `done` phase says `merged`.
+//   M2  for each of those bodies, the check-runs GET re-entered after the first
+//       PUT is on attempt 2's `pushedHead` — not the head the first PUT named —
+//       and it is followed by at least one `GET /pulls/<n>` mergeability read
+//       and then by the second PUT, in that order.
+//   M3  the match ignores letter case: `base branch was modified` and
+//       `2 of 2 REQUIRED STATUS CHECKS are expected.` each buy the retry —
+//       two PUTs, two fold units, a `done` phase saying `merged`.
+//   M4  a 405 whose body names none of the three phrases —
+//       `At least 1 approving review is required by reviewers with write
+//       access.` — is left where #715 leaves it: one PUT, one fold unit, and a
+//       `done` phase saying `left open: merge PUT answered 405` and not `twice`.
+//   M5  the `Pull Request is not mergeable` body still buys the retry exactly as
+//       before: #715's own scenario for it passes with its assertions as they
+//       stand.
+//   M6  `fleet/CONTRACT.md`'s merge bullet — the text from `- merge:` to
+//       `- record:` — names all three bodies as the refusal that earns the
+//       second fold.
+//
+// WHERE EACH LEG LIVES. (a)–(d) and M6 are the tests under this banner. Legs
+// (e) and (f) are tests that already stood in this file and still do, so they
+// are read here rather than written twice:
+//
+//   (e) [M4]  `a 405 for any other reason keeps one PUT and starts no second
+//             fold`, on the `merge405Other` boot — its assertions are #715's,
+//             unchanged; only the boot's body moved, to the one M4 names.
+//   (f) [M5]  `a 405 saying "not mergeable" buys one more fold, one leased push
+//             and one more PUT`, on `retryMerged` — untouched, `checkUrlFor
+//             (second.pushedHead)` read included.
+//
+// The bodies below are GitHub's own strict-mode answers, spelled as the task
+// spells them. The stub prints the body it is given inside
+// `{"sha":"…","merged":true,"message":"<msg>"}`, so what the script matches is
+// the phrase inside that JSON text — which is what GitHub gives it too.
+//
+// Each scenario is ONE `bootWith` boot of the shared rig, started at module load
+// beside the others and read by its legs: the retry shape needs only
+// `STUB_MERGE_CODE: '405'` and the body, because the second PUT defaults to 200.
+// No leg here spawns a sim of its own.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** GitHub's answer when the base moved under a strict-mode branch. */
+const BASE_MODIFIED = 'Base branch was modified'
+/** GitHub's answer when a required check has not reported on the head. */
+const CHECK_EXPECTED = 'Required status check "test" is expected.'
+/** The same two, as GitHub also spells them — the case the match must ignore. */
+const BASE_MODIFIED_LOWER = 'base branch was modified'
+const CHECKS_EXPECTED_UPPER = '2 of 2 REQUIRED STATUS CHECKS are expected.'
+
+/** A first PUT answered 405 with `message`, and a second left to default to 200. */
+const refusedWith = (message, env = {}) =>
+  bootWith({ STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: message, ...env })
+
+// M2 is an inequality — the second merge waits on the head the SECOND fold
+// pushed, not the one the first PUT named — so the two boots it reads move the
+// tip: `STUB_HEAD_SHA_2` is the rig's knob for a branch whose head differs once
+// attempt 2 has run, and both the `rev-parse` and the branches-endpoint stubs
+// answer with it, which is what a moved tip is. Without it every read answers
+// `HEAD_SHA` and the inequality could not tell a fold that re-read the branch
+// from one that reused the first PUT's sha.
+const strictBaseModified = refusedWith(BASE_MODIFIED, { STUB_HEAD_SHA_2: HEAD_SHA_2 })
+const strictCheckExpected = refusedWith(CHECK_EXPECTED, { STUB_HEAD_SHA_2: HEAD_SHA_2 })
+const strictBaseModifiedLower = refusedWith(BASE_MODIFIED_LOWER)
+const strictChecksExpectedUpper = refusedWith(CHECKS_EXPECTED_UPPER)
+
+/** The one shape M1 and M3 both read: the retry ran and the PR merged. */
+const assertRetriedAndMerged = (ctx, leg, body) => {
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1, FOLD_UNIT_2],
+    `${leg} a 405 saying '${body}' buys the second fold, so the run's fold units are ` +
+      `${FOLD_UNIT_1} then ${FOLD_UNIT_2}; the units run were ` +
+      `${JSON.stringify(unitsRun(ctx))}${whyFold(ctx)}`)
+  assert.equal(mergePuts(ctx).length, 2,
+    `${leg} and exactly two merge PUTs were recorded — the retry is bought once${whyFold(ctx)}`)
+  assert.equal(indicesOf(ctx, isMergePut).length, 2,
+    `${leg} two PUT calls in curl's own record${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes('merged'),
+    `${leg} and the second PUT merged the PR; the done phase was: ${phaseOf(ctx)}`)
+}
+
+// ── (a) and (b) the two strict-mode bodies  [M1] [M2] ────────────────────────
+
+for (const [body, refused, leg] of [
+  [BASE_MODIFIED, strictBaseModified, '(a) [strict-405 M1]'],
+  [CHECK_EXPECTED, strictCheckExpected, '(b) [strict-405 M1]'],
+]) {
+  test(`a 405 saying '${body}' buys one more fold, one leased push and one more PUT  [strict-405 M1 / legs (a)(b)]`, async () => {
+    const ctx = await refused()
+    assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'running', 'publishing', 'done'],
+      `${leg} the retry's evidence commits, exactly as the 'not mergeable' body's are: ` +
+        `${JSON.stringify(commitStates(ctx))}${whyFold(ctx)}`)
+    assertRetriedAndMerged(ctx, leg, body)
+    const pushes = integrationPushes(ctx)
+    assert.equal(pushes.length, 2,
+      `${leg} the branch is pushed once more for the second fold; the pushes were ` +
+        `${JSON.stringify(pushes)}${whyFold(ctx)}`)
+    assert.ok(leaseOf(pushes[1]),
+      `${leg} and that second push carries --force-with-lease: ${pushes[1].join(' ')}`)
+  })
+}
+
+for (const [body, refused, leg] of [
+  [BASE_MODIFIED, strictBaseModified, '(a) [strict-405 M2]'],
+  [CHECK_EXPECTED, strictCheckExpected, '(b) [strict-405 M2]'],
+]) {
+  test(`the retry a '${body}' 405 buys waits on the head the second fold pushed  [strict-405 M2 / legs (a)(b)]`, async () => {
+    const ctx = await refused()
+    const puts = indicesOf(ctx, isMergePut)
+    assert.equal(puts.length, 2, `${leg} the retry ran${whyFold(ctx)}`)
+    const second = attemptOf(ctx, 2, leg)
+    const reads = indicesOf(ctx, isCheckRead).filter((i) => i > puts[0])
+    assert.ok(reads.length >= 1,
+      `${leg} the check-runs loop is re-entered after the first PUT${whyFold(ctx)}`)
+    assert.ok(curlCalls(ctx)[reads[0]].includes(checkUrlFor(second.pushedHead)),
+      `${leg} on attempt 2's pushedHead (${second.pushedHead}), which is what the second fold ` +
+        `pushed: ${curlCalls(ctx)[reads[0]].join(' ')}`)
+    assert.notEqual(second.pushedHead, mergePuts(ctx)[0].sha,
+      `${leg} and that is not the head the first PUT named (${mergePuts(ctx)[0].sha}) — the ` +
+        `second merge waits on the checks of the head the second fold pushed`)
+    const gets = indicesOf(ctx, isPullGet).filter((i) => i > puts[0])
+    assert.ok(gets.length >= 1,
+      `${leg} the PR's mergeability is polled after those checks${whyFold(ctx)}`)
+    assert.ok(reads[0] < gets[0] && gets[gets.length - 1] < puts[1],
+      `${leg} in that order: the check-runs read, then the GET /pulls/<n> mergeability read, ` +
+        `then the second PUT${whyFold(ctx)}`)
+  })
+}
+
+// ── (c) and (d) the match ignores letter case  [M3] ──────────────────────────
+
+for (const [body, refused, leg] of [
+  [BASE_MODIFIED_LOWER, strictBaseModifiedLower, '(c) [strict-405 M3]'],
+  [CHECKS_EXPECTED_UPPER, strictChecksExpectedUpper, '(d) [strict-405 M3]'],
+]) {
+  test(`a 405 saying '${body}' buys the retry too — the phrases are matched whatever their case  [strict-405 M3 / legs (c)(d)]`, async () => {
+    const ctx = await refused()
+    assertRetriedAndMerged(ctx, leg, body)
+  })
+}
+
+// ── (f) M6: the contract names all three bodies ──────────────────────────────
+
+test("CONTRACT.md's merge bullet names all three bodies that earn the second fold  [strict-405 M6]", () => {
+  const text = slice(CONTRACT, /^ *- merge:/, /^ *- record:/)
+  for (const [phrase, what] of [
+    [/not mergeable/i, 'the pull request not being mergeable'],
+    [/base branch was modified/i, 'the base branch having been modified'],
+    [/required status check/i, 'a required status check being expected'],
+  ]) {
+    assert.match(text, phrase,
+      `[strict-405 M6] the merge bullet — the text from '- merge:' to '- record:' — names ` +
+        `${what} as a refusal that earns the second fold, and says it in words matching ` +
+        `${phrase}:\n${text}`)
+  }
 })
 
 runTests(tests)
