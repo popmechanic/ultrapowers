@@ -204,3 +204,4 @@
 {"kind":"publish:merge","sha":null,"left":"refused","detail":"merge PUT answered 405","id":"01M21C3HZQ0000K82834WX16YQ","ts":1788900132855}
 {"kind":"run:open","runId":"run-67","base":"1c97ba442c65d882354953d16590b1f8eb0c7a7a","source":"fleet/publish-fold.mjs","id":"01M21C3M420000SG2HT2KY6CHH","ts":1788900135042}
 {"kind":"driver:publish-fold","run":"67","attempt":"2","base":"1c97ba442c65d882354953d16590b1f8eb0c7a7a","tip":"5f3870560e00a72e13f0a19c7a00a7e8dc1be5ee","candidate":"a1ab1c42f81d64556155a8838c368319f242a92c","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M21CDR8N0000NY877TM3NFA1","ts":1788900466965}
+{"kind":"publish:merge","sha":null,"left":"refused","detail":"merge PUT answered 405 twice","id":"01M21CSQC00000QRJD5X3DEH7Q","ts":1788900859264}
