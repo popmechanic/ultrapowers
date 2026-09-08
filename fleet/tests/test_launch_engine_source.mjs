@@ -71,7 +71,11 @@ const MAIN_TIP = 'a1b2c3d4'.repeat(5)
 const PINNED = '9f'.repeat(20)
 const NOW = new Date('2026-09-03T22:15:00.000Z')
 const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
+/** `pytest.ini` is the first rung of the sandbox's test-command ladder, which
+ *  the launcher reads off `--base`: a base matching no rung is refused. */
+const SEED = {
+  'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n'
+}
 const CONFIG = { ...FLEET_DEFAULTS }
 /** `billing plan --json`, as measured 2026-09-04. */
 const BILLING_OK = {

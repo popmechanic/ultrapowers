@@ -106,7 +106,11 @@ const rulesFor = (repo) => [
 
 function workspace () {
   const root = tempDir('fleet-launch-effort-')
-  const repo = makeTargetRepo({ root, files: { 'README.md': '# target\n' } })
+  // `pytest.ini` is the first rung of the sandbox's test-command ladder, which
+  // the launcher reads off `--base`: a base matching no rung is refused.
+  const repo = makeTargetRepo({
+    root, files: { 'README.md': '# target\n', 'pytest.ini': '[pytest]\n' }
+  })
   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
   const planDir = path.join(root, 'plans-src')
   fs.mkdirSync(planDir)
