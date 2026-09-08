@@ -81,12 +81,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
     '\npassed: true',
     'a green suite states the verdict without pasting output')
 
-  // A red output is tailed, not pasted whole: the last 500 chars, which is
-  // where a pytest summary lives.
+  // A red output reaches `suiteLine` already narrowed to the failing test's
+  // own block (#763 part 2), so the section carries it whole — a second cut
+  // here would drop the assertion the block was chosen to keep.
   const long = 'x'.repeat(600) + 'TAIL-MARKER'
   const rendered = suiteLine({ passed: false, output: long }, 'bash check.sh')
   assert.match(rendered, /TAIL-MARKER$/, 'the tail of the output must survive')
-  assert.equal(rendered.split('\noutput: ')[1].length, 500, 'the output is tailed to 500 chars')
+  assert.equal(rendered.split('\noutput: ')[1], long, 'the output is carried whole')
 
   assert.equal(suiteLine(null, 'bash check.sh'), '', 'no suite result renders nothing')
   assert.equal(suiteLine({ passed: true, output: 'ok' }, ''),
