@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -1344,7 +1344,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The Check above is the scope pin: this run touches only `.gitignore`, `CLAUDE.md`, the new\n  `evals/frontier/README.md` and the 388 paths under `evals/frontier/corpus/` and\n  `evals/frontier/results/` that leave the index. `evals/fixtures/` stays tracked, the nine\n  frontier scripts stay tracked, and no test file changes.\n- The deletion keeps history: files leave the index, no commit is rewritten, and the stub names\n  the paths so `git log -- evals/frontier/corpus` remains the way to read them.\n- No Markdown written by this run names a mechanism that is not in the tree: the stub and the\n  CLAUDE.md sentence name `corpus_extract.py`, `synth_corpus.py`, `corpuslib.make_fixture_corpus`\n  and `tests/conftest.py`, all present at BASE.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The Check above is the scope pin: this run touches only `.gitignore`, `CLAUDE.md`, the new\n  `evals/frontier/README.md` and the 388 paths under `evals/frontier/corpus/` and\n  `evals/frontier/results/` that leave the index. `evals/fixtures/` stays tracked, the nine\n  frontier scripts stay tracked, and no test file changes.\n- The deletion keeps history: files leave the index, no commit is rewritten, and the stub names\n  the paths so `git log -- evals/frontier/corpus` remains the way to read them.\n- No Markdown written by this run names a mechanism that is not in the tree: the stub and the\n  CLAUDE.md sentence name `corpus_extract.py`, `synth_corpus.py`, `corpuslib.make_fixture_corpus`\n  and `tests/conftest.py`, all present at BASE.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- evals/fixtures evals/results evals/ab_auth.py evals/ab_lib.py evals/ab_runner.py evals/check_renders_ab.py evals/judge.py evals/judge-prompt.md evals/frontier/arm_git.py evals/frontier/arm_weave.py evals/frontier/classify.py evals/frontier/corpus_extract.py evals/frontier/corpuslib.py evals/frontier/replay_corpus.py evals/frontier/run_eval.py evals/frontier/schedule_model.py evals/frontier/synth_corpus.py tests fleet skills pytest.ini",
@@ -1359,11 +1359,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-62/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-62/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-62/acceptance.log"
 }

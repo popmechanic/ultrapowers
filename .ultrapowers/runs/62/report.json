@@ -1,0 +1,223 @@
+{
+  "integrationBranch": "ultra/integration-run-62",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "a81de8513e3ec120e4529cc4b6ececeb3e6091ba",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-62/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: `evals/frontier/README.md:5` says the untracked set includes \"the eighty-one `results/` readings\". The 81 tracked paths under `evals/frontier/results/` that this patch deletes include `evals/frontier/results/.gitkeep`, which is a directory placeholder, not a reading \u2014 so the count of actual readings is 80. The figure is transcribed faithfully from the task's own Context (\"`results/` is 81 readings from 2026-08-10 to 2026-08-31\"), so the defect is the plan's text, not the implementation; the M3 pin does not test the number and nothing else depends on it. Fix, if wanted, is a one-word edit inside this task's FILES (`evals/frontier/README.md`): \"the eighty-one `results/` readings\" \u2192 \"the `results/` readings\".",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "384f6d1a174456265c42f0c81153dc649a28692e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-62/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the new CLAUDE.md sentence asserts two facts this patch cannot establish \u2014 that `.gitignore` carries the ignore rule for `evals/frontier/corpus/` and `evals/frontier/results/`, and that `evals/frontier/README.md` is a tracked stub. Both are produced by sibling Task 1 (FILES `.gitignore`, `evals/frontier/README.md`), not by this diff. This task's own Proof correctly does not test them, and the task Context explicitly says \"this task does not read the stub or depend on its content\", so nothing here is wrong \u2014 but the sentence is only true once Task 1's patch lands in the same weave. What would settle it: Task 1's exam (`grep -c '^evals/frontier/corpus/$' .gitignore`, `grep -c '^evals/frontier/results/$' .gitignore`, and `git ls-files evals/frontier` listing `evals/frontier/README.md`) passing on the folded tree.; The three added lines in CLAUDE.md:65-67 run ~155 characters each, against the ~95-column wrap of every surrounding bullet in `## Layout` (the precedent `docs/superpowers/` bullet at lines 51\u201356 wraps at that width). This is forced by the plan, not chosen by the implementer: the prescribed sentence is ~380 characters and the Proof's third `Run:` bounds the diff to at most 3 added lines (`$1 <= 3`), so wrapping at the file's own width would need ~5 added lines and fail the exam. No edit inside CLAUDE.md can satisfy both, which is why the actor is `plan`. If the wrap matters, the fix is to the task's numstat bound (raise `$1 <= 3` to `$1 <= 6`), after which the sentence can be rewrapped to column 95 with no change to its wording or to any other bullet.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-62/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1813 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 330.33s (0:05:30) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test \"$(git ls-files evals/frontier | LC_ALL=C sort | tr '\\n' ' ')\" = 'evals/frontier/README.md evals/frontier/arm_git.py evals/frontier/arm_weave.py evals/frontier/classify.py evals/frontier/corpus_extract.py evals/frontier/corpuslib.py evals/frontier/replay_corpus.py evals/frontier/run_eval.py evals/frontier/schedule_model.py evals/frontier/synth_corpus.py '",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(git ls-files evals/frontier/corpus evals/frontier/results | wc -l | tr -d ' ')\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test ! -e evals/frontier/corpus/corpus-index.json",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test ! -e evals/frontier/results/2026-08-20-phase2-migration.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "git check-ignore -q evals/frontier/corpus/corpus-index.json",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "git check-ignore -q evals/frontier/results/2026-08-20-phase2-migration.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! git check-ignore -q evals/frontier/README.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! git check-ignore -q evals/frontier/corpuslib.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -c '^evals/frontier/corpus/$' .gitignore | grep -qx 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -c '^evals/frontier/results/$' .gitignore | grep -qx 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^# /,$p' evals/frontier/README.md | tr '\\n' ' ' | grep -q 'untracked on purpose.*#544.*corpus-index.json.*wave-<n>.*results.*laptop.*corpus_extract.py.*make_fixture_corpus'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_replay_corpus.py tests/test_corpus_extract.py tests/test_arm_weave.py tests/test_corpuslib.py tests/test_classify.py tests/test_frontier_run_eval.py tests/test_frontier_schedule.py tests/test_frontier_track_c.py 2>&1 | tail -1 | grep -E '^[0-9]+ passed(, [0-9]+ warnings?)? in [0-9.]+s'",
+      "exit": 0,
+      "stdout": "99 passed in 19.50s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^def fixture_corpus/,/^def /p' tests/conftest.py | grep -q 'corpuslib.make_fixture_corpus'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q '^def replayed(fixture_corpus)' tests/test_replay_corpus.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Layout/,/^## Wayfinding/p' CLAUDE.md | tr '\\n' ' ' | grep -q 'Untracked since #544 step 4 (2026-09-08).*evals/frontier/corpus/.*evals/frontier/results/.*\\.gitignore.*evals/frontier/README\\.md.*laptop.*make_fixture_corpus.*tests/conftest\\.py'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## Layout/,/^## Wayfinding/p' CLAUDE.md | tr '\\n' ' ' | grep -q '14 sample plan repos.*pytest\\.ini. keeps pytest from collecting them\\..*Untracked since #544 step 4'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "git diff $ULTRA_BASE --numstat -- CLAUDE.md | awk '{ exit !($1 <= 3 && $2 <= 1) }'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "git diff $ULTRA_BASE -U0 -- CLAUDE.md | grep '^@@' | wc -l | tr -d ' ' | grep -qx 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "git diff $ULTRA_BASE -- CLAUDE.md | grep '^-' | grep -v '^---' | grep -q 'keeps pytest from collecting them'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- evals/fixtures evals/results evals/ab_auth.py evals/ab_lib.py evals/ab_runner.py evals/check_renders_ab.py evals/judge.py evals/judge-prompt.md evals/frontier/arm_git.py evals/frontier/arm_weave.py evals/frontier/classify.py evals/frontier/corpus_extract.py evals/frontier/corpuslib.py evals/frontier/replay_corpus.py evals/frontier/run_eval.py evals/frontier/schedule_model.py evals/frontier/synth_corpus.py tests fleet skills pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 233144,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "1aaedec1ce02678a1e79bec6c56e37c6d48bd919",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-62/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-62/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 9.367,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
