@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "3a06341644753a564b77f8c3381aff775cf1bf2499d369011f1a36c375583d89",
+      "verdict": "pass",
+      "reason": "Every literal computes (LC_ALL=C order with the trailing space matches the joined listing; the -q summary regex admits only `<N> passed[, N warnings] in <t>s`; the sed ranges and ordered README phrases pin M3/M5), and the ignore + absence + tracked-listing legs together make the corpus off-repo with the tests provably reading make_fixture_corpus, which is the claim at the repo/test layer."
+    },
+    "2": {
+      "hash": "9db541d12c8a17fc77ff8a1461a59cbc7f332f6543b8f0b0bd7a10225bbcf2bd",
+      "verdict": "pass",
+      "reason": "Within ## Layout the exam pins every operative literal in order after the evals/fixtures/ bullet's closing text, and the one-hunk / <=3+ / <=1- bound with the deleted line named as that bullet's closing line confines the change to that spot; the literals are jointly satisfiable by replacing that single line with one to three lines carrying the prefix, both paths, .gitignore, the stub, laptop, make_fixture_corpus and tests/conftest.py in order."
+    }
+  },
+  "tally": {"dispatched": 3, "rejected": 1, "rounds": {"1": {"dispatched": 2, "rejected": 1}, "2": {"dispatched": 1, "rejected": 0}}},
+  "history": [
+    {"task": "1", "round": 1, "hash": "4379a3e57e2c7dfc309c161ba052acebbf2e0d8e1caa27837f6290ea9978a3cb", "verdict": "fail", "reason": "M1 pinned the nine scripts by name but the proof only counted .py files, and M4's exit 0 did not distinguish tests that read a fixture from tests that skip when the corpus is absent."}
+  ]
+}
