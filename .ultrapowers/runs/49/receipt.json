@@ -1,0 +1,272 @@
+{
+  "ok": true,
+  "stamp": "run-49",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-49"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The fold checks each joined path parses before it spends the suite",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/publish-fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`CANDIDATE_CHECKS`",
+            "`parseArgvFor(path: string) -> string[] | null`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The fold runs the joined paths' own exams before the whole suite",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/publish-fold-block.mjs",
+          "fleet/publish-fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`CANDIDATE_CHECKS`"
+          ],
+          "produces": [
+            "`contendingTasks({ repo, base, tip, run, path, tasks }) -> Promise<Array<{ run, task }>>`",
+            "`examArgvFor(exam: string) -> string[] | null`",
+            "`EXAM_CHECK`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The resolver brief carries the frontier sibling's body \u2014 the tag's record laid beside its plan",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/publish-fold-block.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "2",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "3"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The fold checks each joined path parses before it spends the suite",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold.mjs",
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`CANDIDATE_CHECKS`",
+              "`parseArgvFor(path: string) -> string[] | null`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold.mjs",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+            "bash -c 'grep -q \"does not parse\" fleet/CONTRACT.md && grep -q checkRetries fleet/CONTRACT.md && grep -q \"wave-<attempt>-retried\" fleet/CONTRACT.md && grep -q \"resolver-brief-<i>-<attempt>-retry.txt\" fleet/CONTRACT.md'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The resolver brief carries the frontier sibling's body \u2014 the tag's record laid beside its plan",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold-block.mjs",
+            "fleet/tests/test_publish_fold_block.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold-block.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold_block.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold_block.mjs",
+          "proofRuns": [
+            "bash -c \"sed -n '/^- \\*\\*The two tags\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'gate-verdicts.json.*no plan'\""
+          ]
+        }
+      ],
+      [
+        {
+          "id": "2",
+          "title": "The fold runs the joined paths' own exams before the whole suite",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold-block.mjs",
+            "fleet/publish-fold.mjs",
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_publish_fold_block.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`CANDIDATE_CHECKS`"
+            ],
+            "produces": [
+              "`contendingTasks({ repo, base, tip, run, path, tasks }) -> Promise<Array<{ run, task }>>`",
+              "`examArgvFor(exam: string) -> string[] | null`",
+              "`EXAM_CHECK`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/publish-fold-block.mjs",
+            "fleet/publish-fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_publish_fold_block.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold.mjs fleet/tests/test_publish_fold_block.mjs",
+          "proofRuns": [
+            "bash -c 'grep -q \"exam-<attempt>-<n>.txt\" fleet/CONTRACT.md && grep -q \"red on <path>\" fleet/CONTRACT.md'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 2 tasks",
+      "The fold runs the joined paths' own exams before the wh\u2026"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The kernel, the boot script, the resolver role and the wave loop are unchanged (the Check\n  above): the fold's CLI argv is BASE's, `resolveConflicts` is called, never edited, and every\n  new command \u2014 `node --check`, `bash -n`, `python3 -m py_compile`, `node <exam>`, the refold \u2014\n  is the driver's own `exec`. Amendment 10 holds: the only model the fold dispatches is the\n  read-only resolver role answering through `RESOLVER_SCHEMA`.\n- The receipt's disposition vocabulary is still the six words of BASE (`folded`, `nothing to\n  join`, `tip unmoved`, `suite red`, `conflict parked`, `cannot fold`); the new outcomes are\n  reasons under two of them, never a seventh word, so `fold_phrase` and `fold_hold_note` in the\n  boot script read them without change.\n- No committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a 40-hex commit sha.\n- Every assertion that stands at BASE in `fleet/tests/test_publish_fold.mjs` and\n  `fleet/tests/test_publish_fold_block.mjs` still holds, except the ones a task's Context names as\n  re-scoped with what replaces them; the new legs sit under a comment naming their task, in the\n  region the task's Context names.\n- `fleet/CONTRACT.md` is the authority for every literal: a receipt field, a file name or a reason\n  text this plan adds is written there by the task that adds it, and no other document names a\n  mechanism that is not there (`tests/test_docs_agree_with_code.py` is the lens; Task 1 runs it).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/run-engine.mjs fleet/run-waves.mjs fleet/roles skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-49/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-49/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-49/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-49/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
