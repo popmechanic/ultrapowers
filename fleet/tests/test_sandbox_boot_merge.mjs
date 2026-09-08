@@ -58,7 +58,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -91,9 +91,19 @@ const test = (name, fn) => tests.push([name, fn])
 // a rejection sitting unread while another leg is on the clock would otherwise
 // tear the process down before the failing leg had its say.
 
+/**
+ * Every boot this file starts, as its reader — the fold-again banner's leg (g)
+ * asks a question of ALL of them at once ("no `done` phase says `405 twice`"),
+ * and a list built here is the only way to ask it of a scenario declared five
+ * hundred lines away.
+ */
+const ALL_BOOTS = []
+
 const started = (make) => {
   const settled = make().then((value) => () => value, (error) => () => { throw error })
-  return () => settled.then((read) => read())
+  const read = () => settled.then((r) => r())
+  ALL_BOOTS.push(read)
+  return read
 }
 
 /**
@@ -847,7 +857,14 @@ const cannotFold = bootWith({ STUB_FOLD_DISPOSITION: 'cannot fold', STUB_FOLD_RE
 const suiteRedParked = bootWith({ STUB_FOLD_DISPOSITION: 'suite red', STUB_VERDICT: 'NEEDS_ACK' })
 const heldFolded = bootWith({ STUB_FOLD_DISPOSITION: 'folded', FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` })
 const retryMerged = bootWith({ ...NOT_MERGEABLE })
-const retry405Twice = bootWith({ ...NOT_MERGEABLE, STUB_MERGE_CODE_2: '405', STUB_FOLD_RESOLVERS: '1' })
+// A merge stub that refuses EVERY PUT. Under the default `FOLD_AGAIN_WAIT` such
+// a run folds again for an hour (the fold-again banner at the foot of this file
+// is why), so this scenario pins the window shut: `FLEET_FOLD_AGAIN_WAIT: '0'`
+// leaves the first base-moved 405 its one fold-again and refuses a third.
+const retry405Twice = bootWith({
+  ...NOT_MERGEABLE, STUB_MERGE_CODE_2: '405', STUB_FOLD_RESOLVERS: '1',
+  FLEET_FOLD_AGAIN_WAIT: '0',
+})
 const retryTipUnmoved = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_DISPOSITION_2: 'tip unmoved' })
 const retrySuiteRed = bootWith({ ...NOT_MERGEABLE, STUB_FOLD_DISPOSITION_2: 'suite red' })
 const mergeableLate = bootWith({ ...NOT_MERGEABLE, STUB_MERGEABLE_NULL: '2' })
@@ -1343,11 +1360,12 @@ test('a 405 saying "not mergeable" buys one more fold, one leased push and one m
   assert.ok(phaseOf(ctx).includes('merged'), `${leg} and the run merged; got: ${phaseOf(ctx)}`)
 })
 
-test('a second 405 is the end of it  [publish-fold M7 / leg (g)]', async () => {
+test('a second 405 with the window shut is the end of it  [publish-fold M7 / leg (g)]', async () => {
   const ctx = await retry405Twice()
   assert.equal(mergePuts(ctx).length, 2,
-    `(g) [M7] exactly two PUTs — the retry is bought once${whyFold(ctx)}`)
-  assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 405 twice'),
+    `(g) [M7] exactly two PUTs — with FLEET_FOLD_AGAIN_WAIT at 0 the first base-moved 405 ` +
+      `still buys its one fold-again and the second buys none${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 405 after 0s of folding again'),
     `(g) [M7] got: ${phaseOf(ctx)}`)
 })
 
@@ -1360,7 +1378,8 @@ test('a tip unmoved on attempt 2 skips the push and the merge  [publish-fold M7 
   assert.equal(mergePuts(ctx).length, 1, `${leg} exactly one PUT`)
   assert.deepEqual(commitStates(ctx).slice(-2), ['publishing', 'done'],
     `${leg} publishing is still written before done: ${JSON.stringify(commitStates(ctx))}`)
-  assert.ok(phaseOf(ctx).includes('405 twice'), `${leg} got: ${phaseOf(ctx)}`)
+  assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 405 and the fold moved nothing'),
+    `${leg} got: ${phaseOf(ctx)}`)
 })
 
 test('a 405 for any other reason keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', async () => {
@@ -1427,8 +1446,8 @@ test('a run refused twice PATCHes its body after the second PUT  [publish-fold M
   assert.equal(sent.length, 1, `${leg} exactly one PATCH${whyFold(ctx)}`)
   assert.ok(String(sent[0].body).includes('## Publish fold'),
     `${leg} the re-rendered body:\n${sent[0].body}`)
-  assert.ok(String(sent[0].body).includes('merge PUT answered 405 twice'),
-    `${leg} naming what became of the merge:\n${sent[0].body}`)
+  assert.ok(String(sent[0].body).includes('merge PUT answered 405 after 0s of folding again'),
+    `${leg} naming what became of the merge — this boot's note, whichever one it earns:\n${sent[0].body}`)
   const puts = indicesOf(ctx, isMergePut)
   const patch = indicesOf(ctx, isPullPatch)
   assert.equal(patch.length, 1, `${leg} one PATCH call in curl's own record`)
@@ -1839,5 +1858,431 @@ test("CONTRACT.md's merge bullet names all three bodies that earn the second fol
         `${phrase}:\n${text}`)
   }
 })
+
+// ═════════════════════════════════════════════════════════════════════════════
+// A BASE-MOVED 405 FOLDS AGAIN UNTIL THE PUT IS ACCEPTED, BOUNDED BY
+// FOLD_AGAIN_WAIT
+//
+// A FIFTH numbering, belonging to a fifth task (#798, on top of #715's one
+// retry and #784's three bodies). Its clauses are M1–M6 and its legs (a)–(j) of
+// their own, and every assertion below names them with a `fold-again` prefix so
+// none of the five numberings in this file reads as another.
+//
+// What the claim is, in the task's own words: a merge refused with the
+// base-moved 405 folds again for as long as each fold is clean and the suite is
+// green, bounded by wall clock rather than by a count of two. A fold that is not
+// clean, or a suite that goes red on the joined tree, is the hold it is today.
+//
+//   M1  a gate-green boot whose merge PUT stub answers the base-moved 405
+//       (`STUB_MERGE_MESSAGE` `Base branch was modified`) three times and then
+//       200 — `STUB_MERGE_CODE` `405 405 405 200` — under the DEFAULT
+//       `FLEET_FOLD_AGAIN_WAIT` runs exactly four fold units, `fleet-fold-7-1`
+//       … `fleet-fold-7-4`, in that order; issues exactly four merge PUTs, each
+//       after the first preceded by at least one `check-runs` read and at least
+//       one `GET /pulls/1` mergeability read made after the previous PUT;
+//       writes evidence commits `running, publishing` four times over and then
+//       `done`; appends no `publish:hold` line; and ends `done` with a phase
+//       that says `merged`.                                        leg  (a)
+//   M2  on that same boot the receipt carries `attempts` rows `1`–`4`, each
+//       `folded`; exactly one PR-body PATCH is sent, after the fourth PUT, and
+//       its body lists `- attempt 1:` … `- attempt 4:`; and the run's
+//       `publish:merge` lines are three refusals with `detail` `merge PUT
+//       answered 405` and then the merge sha, carrying neither `left` nor
+//       `detail`.                                                  leg  (b)
+//   M3  each of the three unclean dispositions as attempt 2's disposition under
+//       the same stub — `suite red`, `conflict parked` on `a.txt`, `cannot
+//       fold` for `base not an ancestor` — runs exactly two fold units, issues
+//       exactly one merge PUT, writes five evidence commits, appends exactly
+//       one `publish:hold` whose `why` is exactly that row's hold text, and
+//       ends `done` with `left open: ` followed by that same text.
+//                                                            legs (c)(d)(e)
+//   M4  the boot script defines the knob as the line
+//       `FOLD_AGAIN_WAIT="${FLEET_FOLD_AGAIN_WAIT:-3600}"`; the FIRST
+//       base-moved 405 always earns a second fold and each later one earns
+//       another only while fewer than `FOLD_AGAIN_WAIT` seconds have passed
+//       since the first — so with the window at `0` and a stub refusing every
+//       PUT the run makes two folds, two PUTs and the
+//       `after 0s of folding again` note; and a fold-again that records
+//       `tip unmoved` ends after one push and one PUT with the
+//       `the fold moved nothing` note.                       legs (f)(g)
+//   M5  `405 twice` is in neither `fleet/sandbox-boot.sh` nor
+//       `fleet/CONTRACT.md`; the contract's merge bullet names
+//       `FOLD_AGAIN_WAIT`, `3600` and both new notes; its status.json bullet
+//       describes one `running → publishing` pair per fold and names
+//       `FOLD_AGAIN_WAIT`; and `retried exactly once` is nowhere in the
+//       contract.                                                  leg  (h)
+//   M6  `fleet/tests/test_sandbox_boot_exams.mjs` and
+//       `fleet/tests/test_sandbox_boot_selfmerge.mjs` — the two other boot sims
+//       that drive the merge retry — each print the line `ALL TESTS PASSED` on
+//       the changed rig.                                       legs (i)(j)
+//
+// WHAT THIS BANNER ASKS OF THE RIG (`_sandbox_boot_helpers.mjs`, the
+// implementer's file), driven by environment knobs only so nothing here links
+// against an export that may not exist yet: `STUB_MERGE_CODE` as a list answers
+// PUT n with its n-th entry whenever the list has at least n entries, and
+// `STUB_MERGE_CODE_2` / `STUB_MERGE_MESSAGE_2` apply to PUT n ≥ 2 only when the
+// list has fewer than n entries — so a one-entry list plus `STUB_MERGE_CODE_2`,
+// which is every case above this banner, answers exactly what it answers today.
+//
+// WHY EVERY REFUSING CASE HERE CARRIES `FLEET_FOLD_AGAIN_WAIT: '0'`. Under the
+// default 3600 a stub that answers 405 to every PUT would fold again for an
+// hour. The `405 405 405 200` stub stops itself on the fourth PUT and therefore
+// runs under the default, which is what M1 asks about; a stub that keeps
+// refusing runs with the window shut, where the shape is deterministic whatever
+// the box's speed: the first 405 always earns its fold, and the second is
+// checked against `fewer than 0 seconds`.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const FOLD_UNIT_3 = 'fleet-fold-7-3'
+const FOLD_UNIT_4 = 'fleet-fold-7-4'
+
+/** The stub of M1: three base-moved 405s, then the 200 that merges. */
+const FOUR_PUTS = { STUB_MERGE_CODE: '405 405 405 200', STUB_MERGE_MESSAGE: BASE_MODIFIED }
+
+/** The two notes this task adds, spelled once — the phase carries them after
+ *  `left open: `, the `publish:merge` line as its `detail`. */
+const WINDOW_CLOSED = 'merge PUT answered 405 after 0s of folding again'
+const MOVED_NOTHING = 'merge PUT answered 405 and the fold moved nothing'
+/** The note this task retires, which no `done` phase may carry. */
+const RETIRED_NOTE = '405 twice'
+/** The knob line M4 names, as `grep -F` reads it. */
+const KNOB_LINE = 'FOLD_AGAIN_WAIT="${FLEET_FOLD_AGAIN_WAIT:-3600}"'
+
+// ── the run's own event log ─────────────────────────────────────────────────
+//
+// The boot appends its publish record to the engine's `events.jsonl` in the run
+// directory; the readers are this file's own, so no leg here depends on an
+// export the rig may not have. `unstamped` drops `id` and `ts`, which are the
+// only other keys `append_event` writes.
+
+const runEventsPath = (ctx) => path.join(targetDir(ctx), '.claude', 'ultrapowers', 'run-run-7', 'events.jsonl')
+const runEvents = (ctx) => {
+  const f = runEventsPath(ctx)
+  if (!fs.existsSync(f)) return []
+  return fs.readFileSync(f, 'utf8').split('\n').filter((l) => l !== '').map((line, i) => {
+    try {
+      return JSON.parse(line)
+    } catch (error) {
+      return assert.fail(`${f} line ${i + 1} is not one JSON object: ${line}\n${error}`)
+    }
+  })
+}
+const ofKind = (ctx, kind) => runEvents(ctx).filter((e) => e.kind === kind)
+const unstamped = (e) => {
+  const rest = { ...e }
+  delete rest.id
+  delete rest.ts
+  return rest
+}
+/** A refusal line, as M2 and M4 spell one. */
+const refusal = (detail) => ({ kind: 'publish:merge', sha: null, left: 'refused', detail })
+
+// ── the boots this banner reads ─────────────────────────────────────────────
+
+/** M1 and M2's boot: the stub stops itself, so it runs under the default window. */
+const foldAgainFour = bootWith({ ...FOUR_PUTS })
+/** M3's three, each an unclean attempt 2 under that same stub. */
+const foldAgainSuiteRed = bootWith({ ...FOUR_PUTS, STUB_FOLD_DISPOSITION_2: 'suite red' })
+const foldAgainConflict = bootWith({
+  ...FOUR_PUTS, STUB_FOLD_DISPOSITION_2: 'conflict parked', STUB_FOLD_PATH: 'a.txt',
+})
+const foldAgainCannotFold = bootWith({
+  ...FOUR_PUTS, STUB_FOLD_DISPOSITION_2: 'cannot fold', STUB_FOLD_REASON: 'base not an ancestor',
+})
+/** M4's window, shut: every PUT is refused and the clock allows no second one. */
+const foldAgainWindowClosed = bootWith({
+  STUB_MERGE_CODE: '405', STUB_MERGE_CODE_2: '405', STUB_MERGE_MESSAGE: BASE_MODIFIED,
+  FLEET_FOLD_AGAIN_WAIT: '0',
+})
+/** M4's other half: the fold-again that moved nothing. */
+const foldAgainTipUnmoved = bootWith({
+  STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: BASE_MODIFIED,
+  STUB_FOLD_DISPOSITION_2: 'tip unmoved',
+})
+
+// ── (a) four folds, four PUTs, and the merge  [M1] ──────────────────────────
+
+test('three base-moved 405s and then a 200 run four folds and four PUTs  [fold-again M1 / leg (a)]', async () => {
+  const ctx = await foldAgainFour()
+  const leg = '(a) [fold-again M1]'
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1, FOLD_UNIT_2, FOLD_UNIT_3, FOLD_UNIT_4],
+    `${leg} a base-moved 405 folds again for as long as the fold is clean, so a stub that ` +
+      `answers 405 three times and then 200 runs FOUR fold units in order — ${FOLD_UNIT_1}, ` +
+      `${FOLD_UNIT_2}, ${FOLD_UNIT_3}, ${FOLD_UNIT_4}. The units run were ` +
+      `${JSON.stringify(unitsRun(ctx))}${whyFold(ctx)}`)
+
+  const puts = indicesOf(ctx, isMergePut)
+  assert.equal(puts.length, 4,
+    `${leg} and exactly four merge PUTs in curl's own record${whyFold(ctx)}`)
+  assert.equal(mergePuts(ctx).length, 4, `${leg} four payloads were recorded`)
+
+  // Each PUT after the first waits on the head the fold before it pushed: the
+  // check-runs loop is re-entered and the PR's mergeability is polled, both
+  // AFTER the PUT that was refused.
+  for (let n = 2; n <= 4; n += 1) {
+    const previous = puts[n - 2]
+    const reads = indicesOf(ctx, isCheckRead).filter((i) => i > previous && i < puts[n - 1])
+    const gets = indicesOf(ctx, isPullGet).filter((i) => i > previous && i < puts[n - 1])
+    assert.ok(reads.length >= 1,
+      `${leg} PUT ${n} is preceded by at least one check-runs read made after PUT ` +
+        `${n - 1}${whyFold(ctx)}`)
+    assert.ok(gets.length >= 1,
+      `${leg} and by at least one GET /pulls/1 mergeability read made after PUT ` +
+        `${n - 1}${whyFold(ctx)}`)
+  }
+
+  assert.deepEqual(commitStates(ctx), [
+    'running', 'publishing', 'running', 'publishing',
+    'running', 'publishing', 'running', 'publishing', 'done',
+  ], `${leg} one running → publishing pair per fold, then done — four pairs for four ` +
+    `folds${whyFold(ctx)}`)
+  assert.deepEqual(ofKind(ctx, 'publish:hold').map(unstamped), [],
+    `${leg} a run whose folds were all clean holds nothing${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes('merged'),
+    `${leg} and the fourth PUT merged the PR; the done phase was: ${phaseOf(ctx)}`)
+})
+
+// ── (b) the receipt, the one PATCH and the four merge lines  [M2] ───────────
+
+test('the four-fold run records four attempts, one PATCH and four merge lines  [fold-again M2 / leg (b)]', async () => {
+  const ctx = await foldAgainFour()
+  const leg = '(b) [fold-again M2]'
+  const receipt = receiptOf(ctx, leg)
+  assert.deepEqual(Object.keys(receipt.attempts || {}), ['1', '2', '3', '4'],
+    `${leg} the receipt carries a row per attempt: ${JSON.stringify(receipt)}`)
+  for (const n of [1, 2, 3, 4]) {
+    assert.equal(attemptOf(ctx, n, leg).disposition, 'folded',
+      `${leg} attempt ${n} folded clean — every fold-again this run made was one`)
+  }
+
+  const sent = patches(ctx)
+  assert.equal(sent.length, 1,
+    `${leg} exactly one PR-body PATCH, however many attempts there were${whyFold(ctx)}`)
+  const body = String(sent[0].body)
+  for (const row of ['- attempt 1:', '- attempt 2:', '- attempt 3:', '- attempt 4:']) {
+    assert.ok(body.includes(row),
+      `${leg} whose body lists '${row}' — the reader opening the PR sees every ` +
+        `attempt:\n${body}`)
+  }
+  const puts = indicesOf(ctx, isMergePut)
+  const patch = indicesOf(ctx, isPullPatch)
+  assert.equal(puts.length, 4, `${leg} the four PUTs${whyFold(ctx)}`)
+  assert.equal(patch.length, 1, `${leg} one PATCH call in curl's own record`)
+  assert.ok(patch[0] > puts[3],
+    `${leg} sent after the FOURTH PUT, whose answer it discloses — the PATCH is at curl ` +
+      `call ${patch[0]} and the last PUT at ${puts[3]}${whyFold(ctx)}`)
+
+  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [
+    refusal('merge PUT answered 405'),
+    refusal('merge PUT answered 405'),
+    refusal('merge PUT answered 405'),
+    { kind: 'publish:merge', sha: mergeSha() },
+  ], `${leg} one publish:merge per PUT, in order: three refusals keeping today's detail, ` +
+    `then the merge sha carrying NEITHER left NOR detail — the last line is what became of the ` +
+    `PR${whyFold(ctx)}`)
+})
+
+// ── (c)(d)(e) an unclean fold-again is the hold it is today  [M3] ───────────
+
+for (const [tag, refused, disposition, hold] of [
+  ['(c)', foldAgainSuiteRed, 'suite red', 'publish fold — suite red'],
+  ['(d)', foldAgainConflict, 'conflict parked', 'publish fold — conflict parked on a.txt'],
+  ['(e)', foldAgainCannotFold, 'cannot fold', 'publish fold — cannot fold: base not an ancestor'],
+]) {
+  test(`an attempt 2 that dispositions '${disposition}' holds the PR and folds no more  [fold-again M3 / leg ${tag}]`, async () => {
+    const ctx = await refused()
+    const leg = `${tag} [fold-again M3]`
+    assert.equal(attemptOf(ctx, 2, leg).disposition, disposition,
+      `${leg} the fold-again ran and recorded '${disposition}'`)
+    assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1, FOLD_UNIT_2],
+      `${leg} an unclean fold ends the folding, whatever the merge stub would have ` +
+        `answered next: exactly two fold units. The units run were ` +
+        `${JSON.stringify(unitsRun(ctx))}${whyFold(ctx)}`)
+    assert.equal(mergePuts(ctx).length, 1,
+      `${leg} and exactly one merge PUT — the held head is never PUT${whyFold(ctx)}`)
+    assert.equal(indicesOf(ctx, isMergePut).length, 1,
+      `${leg} one PUT call in curl's own record${whyFold(ctx)}`)
+    assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'running', 'publishing', 'done'],
+      `${leg} two folds are two running → publishing pairs, then done${whyFold(ctx)}`)
+    const holdLines = ofKind(ctx, 'publish:hold').map(unstamped)
+    assert.equal(holdLines.length, 1,
+      `${leg} exactly one publish:hold: ${JSON.stringify(holdLines)}${whyFold(ctx)}`)
+    assert.equal(holdLines[0].why, hold,
+      `${leg} whose why is exactly '${hold}' — a hold's why is the phase's text after ` +
+        `'left open: ', word for word`)
+    assert.ok(phaseOf(ctx).includes(`left open: ${hold}`),
+      `${leg} and the done page's phase carries 'left open: ${hold}'; got: ${phaseOf(ctx)}`)
+    assert.equal(statusOf(ctx).state, 'done', `${leg} the run still ends done`)
+  })
+}
+
+// ── (f) the window, and the knob that bounds it  [M4] ───────────────────────
+
+test('sandbox-boot.sh defines the fold-again window as one line  [fold-again M4 / leg (f)]', () => {
+  assert.ok(linesOf(SCRIPT).some((l) => l.includes(KNOB_LINE)),
+    `(f) [fold-again M4] fleet/sandbox-boot.sh must carry the knob line, byte for byte:\n  ` +
+      `${KNOB_LINE}\nIt is the shape every other knob in that file is written in ` +
+      `(MERGE_CHECK_WAIT="\${FLEET_MERGE_CHECK_WAIT:-1800}"), and it is what this task ` +
+      `Produces — a later reader looks for that name and that default.`)
+})
+
+test('with the window at 0 a refusing stub folds again once and stops  [fold-again M4 / leg (f)]', async () => {
+  const ctx = await foldAgainWindowClosed()
+  const leg = '(f) [fold-again M4]'
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1, FOLD_UNIT_2],
+    `${leg} the FIRST base-moved 405 always earns its fold-again, and a later one earns ` +
+      `another only while fewer than FOLD_AGAIN_WAIT seconds have passed since the first — at ` +
+      `0 that is none, so the run folds exactly twice. The units run were ` +
+      `${JSON.stringify(unitsRun(ctx))}${whyFold(ctx)}`)
+  assert.equal(mergePuts(ctx).length, 2, `${leg} and exactly two PUTs${whyFold(ctx)}`)
+  assert.equal(indicesOf(ctx, isMergePut).length, 2,
+    `${leg} two PUT calls in curl's own record${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes(`left open: ${WINDOW_CLOSED}`),
+    `${leg} the clock's end leaves the PR open with 'left open: ${WINDOW_CLOSED}'; the ` +
+      `done phase was: ${phaseOf(ctx)}`)
+  const merges = ofKind(ctx, 'publish:merge').map(unstamped)
+  assert.ok(merges.length >= 1, `${leg} the run recorded its merge decisions${whyFold(ctx)}`)
+  assert.deepEqual(merges[merges.length - 1], refusal(WINDOW_CLOSED),
+    `${leg} and the LAST publish:merge line — what became of the PR — is the refusal ` +
+      `carrying that same account as its detail. The lines were ` +
+      `${JSON.stringify(merges)}${whyFold(ctx)}`)
+})
+
+// ── (g) a fold-again that moved nothing  [M4] ───────────────────────────────
+
+test('a fold-again that records tip unmoved skips the push and the PUT  [fold-again M4 / leg (g)]', async () => {
+  const ctx = await foldAgainTipUnmoved()
+  const leg = '(g) [fold-again M4]'
+  assert.equal(attemptOf(ctx, 2, leg).disposition, 'tip unmoved',
+    `${leg} the fold-again ran and found the tip where it left it`)
+  assert.equal(integrationPushes(ctx).length, 1,
+    `${leg} exactly one integration push — there is no new head to push${whyFold(ctx)}`)
+  assert.equal(mergePuts(ctx).length, 1,
+    `${leg} and exactly one PUT — nothing new to merge${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes(`left open: ${MOVED_NOTHING}`),
+    `${leg} the run ends done with 'left open: ${MOVED_NOTHING}'; the done phase was: ` +
+      `${phaseOf(ctx)}`)
+  const merges = ofKind(ctx, 'publish:merge').map(unstamped)
+  assert.ok(merges.length >= 1, `${leg} the run recorded its merge decisions${whyFold(ctx)}`)
+  assert.equal(merges[merges.length - 1].detail, MOVED_NOTHING,
+    `${leg} and the last publish:merge line's detail is that same account. The lines were ` +
+      `${JSON.stringify(merges)}${whyFold(ctx)}`)
+})
+
+test(`no done phase of any boot in this file says '${RETIRED_NOTE}'  [fold-again M4 / leg (g)]`, async () => {
+  const phases = []
+  for (const read of [...ALL_BOOTS, green]) {
+    let ctx
+    try {
+      ctx = await read()
+    } catch {
+      // A boot whose own leg fails is that leg's to report, not this one's.
+      continue
+    }
+    let status
+    try {
+      status = statusOf(ctx)
+    } catch {
+      continue
+    }
+    if (status.state !== 'done') continue
+    phases.push(String(status.phase))
+  }
+  assert.ok(phases.length > 0,
+    `(g) [fold-again M4] this file boots the script many times; at least one of them ends done`)
+  assert.deepEqual(phases.filter((p) => p.includes(RETIRED_NOTE)), [],
+    `(g) [fold-again M4] the count of two is gone and so is its note: no run in this file ends ` +
+      `done with a phase carrying '${RETIRED_NOTE}'. The ${phases.length} done phases were:\n` +
+      `${phases.join('\n')}`)
+})
+
+// ── (h) the contract and the script say so  [M5] ────────────────────────────
+
+test(`'${RETIRED_NOTE}' is in neither the boot script nor the contract  [fold-again M5 / leg (h)]`, () => {
+  for (const file of [SCRIPT, CONTRACT]) {
+    const hits = linesOf(file)
+      .map((l, i) => [i + 1, l])
+      .filter(([, l]) => l.includes(RETIRED_NOTE))
+    assert.deepEqual(hits, [],
+      `(h) [fold-again M5] ${path.basename(file)} must not carry '${RETIRED_NOTE}' anywhere — ` +
+        `the bound is a wall clock now, not a count of two. The lines carrying it are:\n` +
+        `${hits.map(([n, l]) => `${n}: ${l}`).join('\n')}`)
+  }
+})
+
+test("CONTRACT.md's merge bullet names FOLD_AGAIN_WAIT, its default and both notes  [fold-again M5 / leg (h)]", () => {
+  const text = slice(CONTRACT, /^ *- merge:/, /^ *- record:/)
+  assert.match(text, /FOLD_AGAIN_WAIT.*3600/,
+    `(h) [fold-again M5] the merge bullet — the lines from '- merge:' to '- record:' — must ` +
+      `name FOLD_AGAIN_WAIT and then its default 3600:\n${text}`)
+  for (const phrase of ['of folding again', 'the fold moved nothing']) {
+    assert.ok(text.includes(phrase),
+      `(h) [fold-again M5] and must name the new note '${phrase}':\n${text}`)
+  }
+})
+
+test("CONTRACT.md's status.json bullet is one running → publishing pair per fold  [fold-again M5 / leg (h)]", () => {
+  const text = slice(CONTRACT, /^- \*\*status\.json:\*\*/, /^- \*\*Publish:\*\*/)
+  assert.ok(text.includes('FOLD_AGAIN_WAIT'),
+    `(h) [fold-again M5] the status.json bullet — the lines from '- **status.json:**' to ` +
+      `'- **Publish:**' — must name FOLD_AGAIN_WAIT, because the state sequence it describes is ` +
+      `bounded by it:\n${text}`)
+  assert.ok(!text.includes('no third'),
+    `(h) [fold-again M5] and must not still promise there is 'no third' publishing — a run that ` +
+      `folds again three times writes four:\n${text}`)
+})
+
+test("'retried exactly once' is nowhere in CONTRACT.md  [fold-again M5 / leg (h)]", () => {
+  const hits = linesOf(CONTRACT)
+    .map((l, i) => [i + 1, l])
+    .filter(([, l]) => l.includes('retried exactly once'))
+  assert.deepEqual(hits, [],
+    `(h) [fold-again M5] the contract must not say the merge is 'retried exactly once' — it is ` +
+      `retried for as long as each fold is clean and the window is open. The lines saying it ` +
+      `are:\n${hits.map(([n, l]) => `${n}: ${l}`).join('\n')}`)
+})
+
+// ── (i)(j) the two other boot sims still pass on the changed rig  [M6] ──────
+//
+// These are the ninth and tenth `Run:` lines of the Proof, run here too because
+// the rig they share is this task's to change: a `STUB_MERGE_CODE` list that
+// answered PUT 2 differently would break both of them and neither would be read
+// from inside this file otherwise. They are the LAST two cases in registration
+// order, so every boot above has been awaited before either sim starts and the
+// three of them never contend for the same cores.
+
+const PASSED = 'ALL TESTS PASSED'
+
+/** One sim of the rig, run to completion; `{ status, out }`. */
+const runSim = (file) => new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, [path.join(HERE, file)], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let out = ''
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => { out += chunk })
+  child.stderr.on('data', (chunk) => { out += chunk })
+  child.on('error', reject)
+  child.on('close', (status) => resolve({ status, out }))
+})
+
+const assertSimPassed = (file, result, leg) => {
+  const printed = result.out.split('\n')
+  assert.ok(printed.includes(PASSED),
+    `${leg} [fold-again M6] \`node ${file}\` must print the line '${PASSED}', exactly so — it ` +
+      `is one of the two other boot sims that drive the merge retry, and the rig they share ` +
+      `with this file is this task's to change. It exited ${result.status} and printed:\n` +
+      `${printed.slice(-40).join('\n')}`)
+}
+
+for (const [tag, file] of [
+  ['(i)', 'test_sandbox_boot_exams.mjs'],
+  ['(j)', 'test_sandbox_boot_selfmerge.mjs'],
+]) {
+  test(`${file} passes on the changed rig  [fold-again M6 / leg ${tag}]`, async () => {
+    assertSimPassed(file, await runSim(file), tag)
+  })
+}
 
 runTests(tests)

@@ -140,6 +140,13 @@ ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the serv
 PUBLISH_BRANCH_WAIT="${PUBLISH_BRANCH_WAIT:-60}"             # for the pushed branch to show at the edge
 MERGE_CHECK_WAIT="${FLEET_MERGE_CHECK_WAIT:-1800}"           # 30 min for the PR head's checks to conclude
 MERGE_CHECKS_GRACE="${FLEET_MERGE_CHECKS_GRACE:-120}"        # before "no check runs" means "none are coming"
+# How long a base-moved 405 keeps buying another fold. The bound is a WALL
+# CLOCK and not a count: the base moves as often as the target's own traffic
+# says it does, and a run that can still fold cleanly onto it and still green
+# its suite has no reason to stop after two. Measured from the FIRST base-moved
+# 405 of the run, so a run that has been folding again for an hour stops rather
+# than chasing a branch it will never catch.
+FOLD_AGAIN_WAIT="${FLEET_FOLD_AGAIN_WAIT:-3600}"             # 1 h of folding onto a moving base
 
 # Run identity, filled by `parse_assignment`. `RUN_N` is the bare number (the
 # `runs/<N>/` path); `RUN_ID` is `run-<N>` (the engine's runId, its run dir and
@@ -188,13 +195,17 @@ MERGE_NOTE=""
 # Set by `publish_fold`, read by `merge_pr`, which treats a non-empty value
 # exactly as `hold=1` — no check runs read, no PUT issued.
 FOLD_HOLD=""
-# The merge's retry signal. Every path of `merge_pr` returns 0 under `set -e`,
-# so the one outcome that earns a second fold (a 405 whose body says the PR is
-# not mergeable, that the base branch was modified, or that a required status
-# check is expected) is carried in a variable. `do_boot` tests it exactly once,
-# between its two `merge_pr` calls, and never clears it — which is also how
-# `merge_pr` knows, on entry, that it is the second call.
-MERGE_RETRY=""
+# The merge's fold-again signal. Every path of `merge_pr` returns 0 under
+# `set -e`, so the one outcome that earns another fold (a 405 whose body says
+# the PR is not mergeable, that the base branch was modified, or that a
+# required status check is expected) is carried in a variable. `merge_pr`
+# clears it on entry and raises it on that refusal; `do_boot` loops on it.
+FOLD_AGAIN=""
+# When the FIRST base-moved 405 of this run landed, as `date +%s`. Empty until
+# one has: it is both the clock `FOLD_AGAIN_WAIT` is measured against and how
+# `merge_pr` knows, on entry, that it is not the first PUT — the call that
+# follows a fold-again waits for GitHub's mergeability before it asks again.
+FOLD_AGAIN_SINCE=""
 # How many fold attempts this run has started. A second attempt lands its
 # disposition AFTER the PR was opened, which is what makes the body PATCH
 # necessary.
@@ -965,13 +976,15 @@ os.replace(tmp, path)
 # restores the head the ENGINE left, which the folder records in `engine-head`
 # before it touches anything — and which this script writes itself when the
 # folder died before writing it, since a rewind with no floor is worse than a
-# rewind to where the branch already is. Attempt 2 restores attempt 1's
-# candidate: the folded head that was pushed and opened the PR.
+# rewind to where the branch already is. Every fold-again restores the attempt
+# BEFORE it: attempt N's floor is attempt N−1's candidate, the folded head that
+# was pushed — which is the floor `publish-fold.mjs` folds onto on its own side.
 fold_restore() { # $1 = attempt
-  local dir head
+  local dir head prior
   dir="$(fold_dir)"
-  if [ "$1" = "2" ]; then
-    head="$(fold_field 1 candidate)"
+  if [ "$1" -gt 1 ] 2>/dev/null; then
+    prior=$(( $1 - 1 ))
+    head="$(fold_field "$prior" candidate)"
     [ -n "$head" ] && { printf '%s\n' "$head"; return 0; }
   fi
   if [ ! -f "$dir/engine-head" ]; then
@@ -1686,10 +1699,10 @@ file_followup() {
   return 0
 }
 
-# A disposition that lands AFTER the PR was opened — a second attempt's, or the
-# note a PR that answered 405 twice earns — reaches the reader only if the body
-# is rewritten, so it is: one PATCH with the re-rendered card, sent after the
-# merge that produced the note, never before.
+# A disposition that lands AFTER the PR was opened — every fold-again's, and
+# the note a PR whose last PUT was still refused earns — reaches the reader only
+# if the body is rewritten, so it is: ONE PATCH with the re-rendered card,
+# carrying every attempt, sent after the last merge of the run, never before.
 patch_pr_body() { # $1 = outcome
   local number body answer code
   [ -n "$PR_URL" ] || return 0
@@ -1794,6 +1807,9 @@ print("null" if value is None else "answered")
 merge_pr() {
   local head number attempts grace n=1 t0 answer code body lower verdict payload heading message
   MERGE_NOTE=""
+  # Raised again only by this call's own refusal: `do_boot` loops while it is
+  # set, so a stale 1 would fold the run forever.
+  FOLD_AGAIN=""
   # Nothing to merge without a PR, and a re-entry that already recorded a merge
   # sha has one behind it — the same record that makes `publish` idempotent.
   [ -n "$PR_URL" ] || return 0
@@ -1875,14 +1891,14 @@ merge_pr() {
       return 0 ;;
   esac
 
-  # THE SECOND CALL waits for GitHub before it asks again. A 405 whose body
-  # says the PR is not mergeable — or that the base branch was modified, or
-  # that a required status check is expected — is an index that has not caught
-  # up with the head just pushed: `mergeable` reads null while GitHub
-  # recomputes it, and a PUT made in that window is refused for a reason that
-  # is gone a moment later. The first call makes no such read — nothing has
-  # moved under it.
-  if [ "$MERGE_RETRY" = "1" ]; then await_mergeable "$number"; fi
+  # EVERY CALL AFTER A FOLD-AGAIN waits for GitHub before it asks again. A 405
+  # whose body says the PR is not mergeable — or that the base branch was
+  # modified, or that a required status check is expected — is an index that
+  # has not caught up with the head just pushed: `mergeable` reads null while
+  # GitHub recomputes it, and a PUT made in that window is refused for a reason
+  # that is gone a moment later. The first call makes no such read — nothing
+  # has moved under it, and nothing has folded again since.
+  if [ -n "$FOLD_AGAIN_SINCE" ]; then await_mergeable "$number"; fi
 
   # The plan's H1 as the commit title, because the fold commits under it are
   # titled from the same line; `sha` pins the merge to the head whose checks
@@ -1914,13 +1930,13 @@ Plan-Tag: ultra/plan/$RUN_ID"
       # on. The answer to any of the three is not another PUT but another FOLD.
       # `do_boot` runs it; this function only raises the signal, because every
       # path here returns 0 under `set -e` and a return code could not carry it.
-      if [ "$code" = 405 ] && [ "$MERGE_RETRY" = "1" ]; then
-        log "merge: PUT answered 405 again after a second fold — leaving $PR_URL open"
-        MERGE_NOTE="left open: merge PUT answered 405 twice"
-        append_event publish:merge sha=n: "left=s:refused" \
-          "detail=s:merge PUT answered 405 twice"
-        return 0
-      fi
+      #
+      # HOW MANY TIMES IS A CLOCK, NOT A COUNT. A base that moved twice is a
+      # base that may move a third time, and a run that still folds cleanly and
+      # still greens its suite on the joined tree has lost nothing by trying
+      # again. What it can lose is the day, so the first base-moved 405 always
+      # earns its fold and every later one earns another only while fewer than
+      # `FOLD_AGAIN_WAIT` seconds have passed since that first one.
       if [ "$code" = 405 ]; then
         # GitHub capitalises these messages as sentences and `case` in POSIX sh
         # is case-sensitive, so the body is lowercased once and the three arms
@@ -1928,12 +1944,21 @@ Plan-Tag: ultra/plan/$RUN_ID"
         lower="$(printf '%s' "$body" | tr '[:upper:]' '[:lower:]')"
         case "$lower" in
           *"not mergeable"*|*"base branch was modified"*|*"required status check"*)
+            if [ -z "$FOLD_AGAIN_SINCE" ]; then
+              FOLD_AGAIN_SINCE="$(date +%s)"
+            elif [ "$(( $(date +%s) - FOLD_AGAIN_SINCE ))" -ge "$FOLD_AGAIN_WAIT" ]; then
+              log "merge: PUT answered 405 after ${FOLD_AGAIN_WAIT}s of folding again — leaving $PR_URL open"
+              MERGE_NOTE="left open: merge PUT answered 405 after ${FOLD_AGAIN_WAIT}s of folding again"
+              append_event publish:merge sha=n: "left=s:refused" \
+                "detail=s:merge PUT answered 405 after ${FOLD_AGAIN_WAIT}s of folding again"
+              return 0
+            fi
             log "merge: PUT answered 405 — GitHub does not call $PR_URL mergeable; folding again"
-            MERGE_RETRY=1
+            FOLD_AGAIN=1
             MERGE_NOTE="left open: merge PUT answered 405"
-            # The retry's first refusal is a record of its own: two
-            # `publish:merge` lines in order is what a retried merge looks like,
-            # and the LAST of them is what became of the PR.
+            # Every refusal is a record of its own: one `publish:merge` line per
+            # PUT, in order, is what a merge that folded again looks like, and
+            # the LAST of them is what became of the PR.
             append_event publish:merge sha=n: "left=s:refused" \
               "detail=s:merge PUT answered 405"
             return 0 ;;
@@ -2182,37 +2207,45 @@ $(engine_tail)"
     merge_pr
   fi
 
-  # THE ONE RETRY, tested exactly once. GitHub refused the merge because the
-  # base moved under the head this run pushed, so the answer is a second fold
-  # onto the base as it is now, a leased push of what it produces and one more
-  # PUT — and nothing else in this script loops on it. A second attempt that
-  # moved nothing has no new head to offer and no second PUT to make.
-  local fold_tail=""
-  if [ "$MERGE_RETRY" = "1" ]; then
-    write_status running "publish fold (attempt 2)"
+  # FOLDING AGAIN, for as long as the clock and the folds allow. GitHub refused
+  # the merge because the base moved under the head this run pushed, so the
+  # answer is another fold onto the base as it is now, a leased push of what it
+  # produces and one more PUT. The base can move again while that runs, and the
+  # answer to that is the same answer — so this is a loop, and the only thing in
+  # this script that is one. `merge_pr` bounds it: it raises `FOLD_AGAIN` only
+  # for a base-moved 405 inside `FOLD_AGAIN_WAIT` of the first one, and an
+  # unclean fold takes the loop out through `FOLD_HOLD` without a PUT at all.
+  # An attempt that moved nothing has no new head to offer and no PUT to make.
+  local fold_tail="" attempt=1
+  while [ "$FOLD_AGAIN" = "1" ]; do
+    attempt=$(( attempt + 1 ))
+    write_status running "publish fold (attempt $attempt)"
     collect_evidence
-    push_evidence "$RUN_ID: publish fold (attempt 2)"
-    publish_fold 2
-    if [ "$(fold_field 2 disposition)" = "tip unmoved" ]; then
-      log "fold: attempt 2 moved the tip nowhere — there is nothing new to merge"
-      MERGE_NOTE="left open: merge PUT answered 405 twice"
+    push_evidence "$RUN_ID: publish fold (attempt $attempt)"
+    publish_fold "$attempt"
+    if [ "$(fold_field "$attempt" disposition)" = "tip unmoved" ]; then
+      log "fold: attempt $attempt moved the tip nowhere — there is nothing new to merge"
+      MERGE_NOTE="left open: merge PUT answered 405 and the fold moved nothing"
       # The one refusal `merge_pr` never gets to record, because this branch
       # makes it without re-entering: the note is the same and so is the event,
       # so the last `publish:merge` line is what became of the PR here too.
       append_event publish:merge sha=n: "left=s:refused" \
-        "detail=s:merge PUT answered 405 twice"
+        "detail=s:merge PUT answered 405 and the fold moved nothing"
       write_status publishing "$PR_URL — the fold moved nothing"
       collect_evidence
-      push_evidence "$RUN_ID: publish fold (attempt 2) — tip unmoved"
-    else
-      push_head
-      write_status publishing "$PR_URL — awaiting checks on the folded head"
-      collect_evidence
-      push_evidence "$RUN_ID: publish fold (attempt 2) receipts"
-      merge_pr
+      push_evidence "$RUN_ID: publish fold (attempt $attempt) — tip unmoved"
+      break
     fi
-    # What attempt 2 decided landed after the POST, so the body a reader opens
-    # is rewritten with it before the run is called done.
+    push_head
+    write_status publishing "$PR_URL — awaiting checks on the folded head"
+    collect_evidence
+    push_evidence "$RUN_ID: publish fold (attempt $attempt) receipts"
+    merge_pr
+  done
+  if [ "$attempt" -gt 1 ]; then
+    # What the folds after the first decided landed after the POST, so the body
+    # a reader opens is rewritten with all of them — once — before the run is
+    # called done.
     patch_pr_body "$outcome"
     if [ -n "$(fold_receipt top)" ]; then
       fold_tail=" — publish fold: $(fold_phrase "$(fold_receipt top)")"
@@ -2246,13 +2279,25 @@ do_deadman() {
   :
   STARTED_AT="$(read_status_field startedAt)"
   VM_NAME="$(read_status_field vm)"
-  local state
+  local state phase_now folds=2
   state="$(read_status_field state)"
   case "$state" in
     done|parked|failed)
       log "deadman: already $state — nothing to do"
       exit 0 ;;
   esac
+  # WHICH FOLD UNITS TO STOP, read off the page BEFORE this function overwrites
+  # it. A run folds again for as long as `FOLD_AGAIN_WAIT` allows, so the units
+  # are not a fixed pair: the phase a fold writes is `publish fold (attempt <n>)`
+  # and that `<n>` is the highest unit this run can have started. Two is the
+  # floor, so a page caught between attempts still names both.
+  phase_now="$(read_status_field phase)"
+  case "$phase_now" in
+    "publish fold (attempt "*")")
+      folds="${phase_now#publish fold (attempt }"
+      folds="${folds%)}" ;;
+  esac
+  [ "$folds" -ge 2 ] 2>/dev/null || folds=2
   # A run parked during the publish fold already has its PR: the page this one
   # overwrites carries it, and a `parked` page that dropped those three cells
   # would tell the janitor and the operator that a PR which exists does not.
@@ -2266,8 +2311,13 @@ do_deadman() {
   # runs as its own unit, and a deadman that stopped the engine and left a
   # folder rebasing would leave a model working under a `parked` page.
   if [ -n "$RUN_N" ]; then
-    local unit
-    for unit in "fleet-engine-$RUN_N" "fleet-fold-$RUN_N-1" "fleet-fold-$RUN_N-2"; do
+    local unit units n=1
+    units="fleet-engine-$RUN_N"
+    while [ "$n" -le "$folds" ]; do
+      units="$units fleet-fold-$RUN_N-$n"
+      n=$(( n + 1 ))
+    done
+    for unit in $units; do
       case "$(fleet_systemctl --user is-active "$unit.service" 2>&1 || true)" in
         active*) fleet_systemctl --user stop "$unit.service" || true ;;
       esac
