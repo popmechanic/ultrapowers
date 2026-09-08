@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-63.md run-63 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "skills/ultralearn/scripts/_readers.py — `released_versions()` against the real `.claude-plugin/plugin.json` history — Proof leg (e) exercises it only with `release_timeline` monkeypatched to a 3-row tuple and to `()`. Whether the live function actually yields the released set (0.0.6 … 0.3.21) depends on a full git history of `.claude-plugin/plugin.json`, which this sandbox clone does not carry; nothing in the tree executes the unmocked path. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:manual",
+      "detail": "skills/ultralearn/SKILL.md §Verb 1 steps 1 and 3 — the operator-facing harvest→read→merge procedure — The driver settled the text's presence and shape: `$ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn | grep -q 'skill ok'` and `$ python3 -m pytest -q tests/test_ultralearn_docs.py -p no:cacheprovider` both exit 0, and each of Task 3's eleven `sed`/`grep` Run: lines exits 0. What remains is human judgment on whether the rewritten prose reads correctly to an operator running the verb by hand — not a command."
+    }
+  ]
+}

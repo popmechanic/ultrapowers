@@ -1,0 +1,246 @@
+{
+  "integrationBranch": "ultra/integration-run-63",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e6da7f59526b3598942abf1d244b81694dba9dd1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-63/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`_iso` (skills/ultralearn/scripts/census_many.py:104-110) calls `datetime.fromtimestamp` unguarded. The module's own docstring promises \"an unreadable record costs its own columns, not the table\", but an out-of-range `ts` in one run's `events.jsonl` (a value beyond year 9999, or negative past the platform's floor) raises OverflowError/OSError/ValueError out of `census_row` and aborts the whole census \u2014 every other run's row is lost with it. Every other read path in the file already degrades to the empty string. Not pinned by any Machine clause and not reachable from the fixtures, so advisory only.; unverified: `_is_wave_phase` (skills/ultralearn/scripts/census_many.py:263-266) counts `Depth-1 Leg` as a wave phase alongside `Wave*`. The Context's rule says only \"first `Wave` phase ts\", though the same Context does list `Depth-1 Leg` as the pre-#712 spelling of that phase, so the reading is lawful and it is disclosed in the function's docstring. No fixture carries a `Depth-1 Leg` event, so the branch is unexercised: deleting it leaves all 12 tests green, and on a pre-#712 run it silently changes `setup_min`/`wave_min` from the empty string to a number. What would settle it: a fourth fixture run whose log spells the phase `Depth-1 Leg`, asserting the two spans it produces.; `markdown_table` (skills/ultralearn/scripts/census_many.py:403-413) joins raw cell values with ` | ` without escaping a literal `|`. Every pinned column value is pipe-free, so no Machine clause or Proof leg is affected, but `--label run-101=lift|era` (M5 accepts arbitrary TEXT) emits a row with 32 cells and silently corrupts the M4 pipe table. Suggested fix: render each cell through a helper that replaces `|` with `\\|` in `markdown_table` only (the CSV path is already quoted correctly by `csv.DictWriter`).",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "3f31703e7955df22bbc19d3dab4f9e3e1d11977a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-63/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: `skills/ultralearn/SKILL.md` is both this task's FILES entry and a SIBLING FILES path of task 3, which the body says rewrites step 1 and appends a `**Historical corpus**` paragraph after step 3. This diff respects the partition it was given \u2014 the only +/- lines fall inside the `3. **Merge.**` bullet (steps 1 and 2 appear as unchanged context, and none of the forbidden literals `ultralearn/runs/`, `10\u201323`, `Historical corpus` are written) \u2014 so nothing here needs fixing. What this diff cannot settle is the textual merge with task 3: the hunk's trailing context (lines 72\u201377, ending at `## Verb 2`) covers exactly the region task 3 inserts into. What would settle it: applying both wave patches to the same tree and re-running the two `sed \u2026 | grep -q` Run: commands plus task 3's own step-1 checks.; Exam coupling nit (advisory, nothing unverified): `tests/test_ledger_engine_stamp.py::test_leg_f_merge_ledger_date_basis_pin_is_rescoped` loads `tests/test_merge_ledger.py` with `importlib.util.spec_from_file_location` + `exec_module` and calls `test_bundle_lookups_reads_cache_and_fails_closed` by name, with `import tempfile` buried in the function body. The first Proof `Run:` (`python3 -m pytest -q tests/test_merge_ledger.py`) already establishes that leg and exited 0 in the driver's evidence, so this test adds no coverage while binding the exam to a peer file's private test-function name \u2014 a rename in `test_merge_ledger.py` breaks this exam with an `AttributeError` rather than a meaningful failure. Consider dropping the test (M5's first half is the `Run:` line) or, if it stays, moving `import tempfile` to the module header and using the `tmp_path` fixture instead of a hand-rolled `TemporaryDirectory`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "db2b7e2be82c1407636a8a4583089d428c2c208a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-63/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: step 1's new sentence \"`--engine-version <release>` stamps the bundle's version explicitly; without it that version is a date guess, and the merge will not stamp a finding from it\" asserts merge behaviour that does not exist at BASE \u2014 at 1c97ba44 `bundle_lookups`'s `engine_lookup` returns the epoch regardless of `engineVersion.basis`, so a date-basis bundle still stamps. The sentence is exactly what this task's Context directs, and the code that makes it true is sibling Task 2's (`skills/ultralearn/scripts/merge_ledger.py`, `skills/ultralearn/scripts/_readers.py`), outside this task's FILES; this patch cannot settle it. Settled at integration by `tests/test_ledger_engine_stamp.py` leg (d) green (engine_lookup answers None for `home-repo-date` / `foreign-date-upper-bound`). No exam of this task depends on it, so it is not a missing dependency edge \u2014 only a prose claim that lands true only once Task 2 merges.; unverified: the new **Historical corpus** paragraph's concrete inventory \u2014 \"one `sandbox-logs/fleet-run-<N>-<stamp>/sandbox-logs.tgz` tarball per run (18 of them, run 10 onward)\" under `.claude/ultrapowers/fleet-evidence-archive/` \u2014 describes a directory the paragraph itself says is untracked and absent from every sandbox, so nothing in this tree or in the exams can check the count or the tarball naming; it is transcribed verbatim from the task Context's 2026-09-08 laptop observation. Settled only by an operator listing that directory on the laptop. The exams that do bear on the paragraph (the eighth through eleventh `Run:` \u2014 exactly one `**Historical corpus` line, naming the archive path and `10\u201323`, and every `10\u201323` in the file inside it) are all exit 0 in RUN EVIDENCE.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-63/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1835 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 54%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n......................................................................... [ 74%]\n......................................................................... [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n.................................                                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1835 passed, 5 warnings in 291.39s (0:04:51) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_merge_ledger.py -p no:cacheprovider",
+      "exit": 0,
+      "stdout": "...........................                                              [100%]\n27 passed in 0.05s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^3\\. \\*\\*Merge/,/^## Verb 2/p' skills/ultralearn/SKILL.md | grep -q 'released_versions'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^3\\. \\*\\*Merge/,/^## Verb 2/p' skills/ultralearn/SKILL.md | grep -q 'released='",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^1\\. \\*\\*Harvest/,/^2\\. \\*\\*Read/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'ultra/evidence/run-<N>.*ultra/evidence-run-<N>'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(sed -n '/^1\\. \\*\\*Harvest/,/^2\\. \\*\\*Read/p' skills/ultralearn/SKILL.md | grep -o 'ultralearn/runs/' | grep -c .)\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^1\\. \\*\\*Harvest/,/^2\\. \\*\\*Read/p' skills/ultralearn/SKILL.md | grep -q -- '--run'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^1\\. \\*\\*Harvest/,/^2\\. \\*\\*Read/p' skills/ultralearn/SKILL.md | grep -q -- '--force'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^1\\. \\*\\*Harvest/,/^2\\. \\*\\*Read/p' skills/ultralearn/SKILL.md | grep -q -- '--engine-version'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^1\\. \\*\\*Harvest/,/^2\\. \\*\\*Read/p' skills/ultralearn/SKILL.md | grep -q 'positional'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "bash -c '! grep -q -e \"commissioned way\" -e \"fleet-runs-2026-08-26\" -e \"fleet-runs-2026-08-27\" -e \"dbDir\" -e \"shim.log\" -e \"fleet-run.json\" -e \"gate-read-\" -e \"stat-<runId>\" skills/ultralearn/SKILL.md'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c '^\\*\\*Historical corpus' skills/ultralearn/SKILL.md)\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -q '\\.claude/ultrapowers/fleet-evidence-archive/'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -q '10\u201323'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c '10\u201323' skills/ultralearn/SKILL.md)\" = \"$(sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -c '10\u201323')\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn | grep -q 'skill ok'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q tests/test_ultralearn_docs.py -p no:cacheprovider",
+      "exit": 0,
+      "stdout": "..                                                                       [100%]\n2 passed in 0.08s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 671232,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": ".................................................... [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n......................................................................... [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n............                                                             [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 304.37s (0:05:04) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "27e5fb5995689d05e2ff45a1deefe0a48321bc25",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-63/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-63/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.226,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "skills/ultralearn/scripts/_readers.py \u2014 `released_versions()` against the real `.claude-plugin/plugin.json` history",
+      "reason": "runtime",
+      "why": "Proof leg (e) exercises it only with `release_timeline` monkeypatched to a 3-row tuple and to `()`. Whether the live function actually yields the released set (0.0.6 \u2026 0.3.21) depends on a full git history of `.claude-plugin/plugin.json`, which this sandbox clone does not carry; nothing in the tree executes the unmocked path."
+    },
+    {
+      "deliverable": "skills/ultralearn/SKILL.md \u00a7Verb 1 steps 1 and 3 \u2014 the operator-facing harvest\u2192read\u2192merge procedure",
+      "reason": "manual",
+      "why": "The driver settled the text's presence and shape: `$ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn | grep -q 'skill ok'` and `$ python3 -m pytest -q tests/test_ultralearn_docs.py -p no:cacheprovider` both exit 0, and each of Task 3's eleven `sed`/`grep` Run: lines exits 0. What remains is human judgment on whether the rewritten prose reads correctly to an operator running the verb by hand \u2014 not a command."
+    }
+  ],
+  "judgmentCalls": [
+    "wave 1: candidate adopted after reconcile (fd48c84dcb1b9bb0936f57741fcdfe1d5573aa08 + fixes \u2192 27e5fb5995689d05e2ff45a1deefe0a48321bc25)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2 (`skills/ultralearn/scripts/_readers.py:132` `released_versions`, consumed by `skills/ultralearn/scripts/merge_ledger.py:88`) \u2014 Claim slot, over-refusal in a truncated clone. The Claim is that the merge \"turns away a finding stamped with a version this plugin never released\". `released_versions()` returns `None` only when `release_timeline()` is exactly empty; the task's own Context names the other degraded case \u2014 \"a one-row timeline in a depth-1 clone\" \u2014 and that case yields a one-element frozenset, not `None`, so `merge_findings` would refuse every finding stamped with a genuinely released version other than that one row, silently counting them under `refused` rather than answering \"cannot judge\". This is inside the contract (M4 pins `None` on `()` only) and the merge is documented to run on the operator's full clone, so it does not block the merge, but the refusal rule's failure mode in a shallow clone is the opposite of fail-open and is worth an issue."
+    }
+  ],
+  "blockedWaves": []
+}

@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -239,8 +239,8 @@
             "bash -c '! grep -q -e \"commissioned way\" -e \"fleet-runs-2026-08-26\" -e \"fleet-runs-2026-08-27\" -e \"dbDir\" -e \"shim.log\" -e \"fleet-run.json\" -e \"gate-read-\" -e \"stat-<runId>\" skills/ultralearn/SKILL.md'",
             "test \"$(grep -c '^\\*\\*Historical corpus' skills/ultralearn/SKILL.md)\" = 1",
             "sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -q '\\.claude/ultrapowers/fleet-evidence-archive/'",
-            "sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -q '10\u201323'",
-            "test \"$(grep -c '10\u201323' skills/ultralearn/SKILL.md)\" = \"$(sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -c '10\u201323')\"",
+            "sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -q '10–23'",
+            "test \"$(grep -c '10–23' skills/ultralearn/SKILL.md)\" = \"$(sed -n '/^\\*\\*Historical corpus/,/^$/p' skills/ultralearn/SKILL.md | grep -c '10–23')\"",
             "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn | grep -q 'skill ok'",
             "python3 -m pytest -q tests/test_ultralearn_docs.py -p no:cacheprovider"
           ]
@@ -257,7 +257,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The verification periphery is frozen (0.1.0); the Check above is its pin.\n- No script under `skills/ultralearn/scripts/` imports a third-party package, reads the network,\n  or calls an LLM; every `except` handler in a new or edited script raises or calls\n  `swallow(\"<non-empty literal>\")` \u2014 `tests/test_ultralearn_swallows.py` is the lens and it\n  enumerates the directory by glob.\n- The harvester's bundle keeps its BASE key set (`tests/test_harvest_evidence.py` pins it): no\n  task adds or removes a `bundle.json` key.\n- Every file the exams read is tracked; no exam reads `docs/superpowers/`, `~/.claude/`, or\n  `.claude/`, which are absent from the sandbox.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The verification periphery is frozen (0.1.0); the Check above is its pin.\n- No script under `skills/ultralearn/scripts/` imports a third-party package, reads the network,\n  or calls an LLM; every `except` handler in a new or edited script raises or calls\n  `swallow(\"<non-empty literal>\")` — `tests/test_ultralearn_swallows.py` is the lens and it\n  enumerates the directory by glob.\n- The harvester's bundle keeps its BASE key set (`tests/test_harvest_evidence.py` pins it): no\n  task adds or removes a `bundle.json` key.\n- Every file the exams read is tracked; no exam reads `docs/superpowers/`, `~/.claude/`, or\n  `.claude/`, which are absent from the sandbox.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
@@ -272,11 +272,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-63/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-63/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-63/acceptance.log"
 }
