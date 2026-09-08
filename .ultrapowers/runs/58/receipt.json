@@ -1,0 +1,149 @@
+{
+  "ok": true,
+  "stamp": "run-58",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-58"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The strict-mode 405 bodies buy the second fold",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`merge_pr()` (the 405 arm that sets `MERGE_RETRY=1` now matches three bodies)"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The strict-mode 405 bodies buy the second fold",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`merge_pr()` (the 405 arm that sets `MERGE_RETRY=1` now matches three bodies)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_merge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_merge.mjs 2>&1 | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^  - merge:/,/^  - record:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -qi 'not mergeable'",
+            "sed -n '/^  - merge:/,/^  - record:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -qi 'base branch was modified'",
+            "sed -n '/^  - merge:/,/^  - record:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -qi 'required status check'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The strict-mode 405 bodies buy the second fold"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- `fleet/run-engine.mjs`, `fleet/tests/_sandbox_boot_helpers.mjs` and\n  `fleet/tests/test_sandbox_boot_selfmerge.mjs` are byte-identical to BASE \u2014 the rig's knobs\n  already express every scenario, and the self-merge sim's `retry` case keeps its body (the\n  `Check:` beside this compares them against `$ULTRA_BASE`).\n- ONE PUT PER FOLD stands: the retry is bought once, by the first PUT's body, and nothing in\n  `fleet/sandbox-boot.sh` loops on a merge refusal; a second 405 is still\n  `left open: merge PUT answered 405 twice`, and every non-405 refusal keeps the one PUT it made.\n- The sim stays one process over the shared rig: every new scenario is one `bootWith(env)` boot\n  memoized at module load, read by its legs, and no leg spawns another sim or re-runs a sibling\n  file (#768's shape).\n- Every assertion that stands at BASE in `fleet/tests/test_sandbox_boot_merge.mjs` still holds as\n  written, except the one scenario whose body this task promotes from \"any other reason\" to a\n  retry \u2014 that scenario keeps its assertions and changes only its body.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/tests/_sandbox_boot_helpers.mjs fleet/tests/test_sandbox_boot_selfmerge.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-58/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-58/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-58/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-58/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
