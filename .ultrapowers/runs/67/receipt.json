@@ -1,0 +1,627 @@
+{
+  "ok": true,
+  "stamp": "run-67",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-67"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "10 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "test_review_peer.py stops reading a sibling's source and asserts adversarial's absence once",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_review_peer.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The harvest tests stop reading sibling test sources",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_harvest_evidence.py",
+          "tests/test_harvest_fleet_runs_publish_fold.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "test_roles_run_evidence.py stops sweeping the role files and re-running the role sims",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_roles_run_evidence.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "test_ultrawrite_surface_rules_implementer_check.py sheds its shout count, its eight-file re-run and its validator run",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_ultrawrite_surface_rules_implementer_check.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The compiler and ultralearn tests stop re-running sibling suites",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_compile_plan_engine_self_change.py",
+          "tests/test_compile_plan_one_sided.py",
+          "tests/test_compile_plan_sha_unguarded.py",
+          "tests/test_compile_plan_wide_files.py",
+          "tests/test_ultralearn_swallows.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The header-Claim count and the validator runs are held once",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_compile_plan_check_cost.py",
+          "tests/test_plan_level_claim.py",
+          "tests/test_proof_modes_documented.py",
+          "tests/test_skill_setup_section.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "7",
+        "title": "test_run_engine.mjs stops pinning reviewer.md's rules and the role files' register",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_run_engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "8",
+        "title": "test_run_engine_critic_inputs.mjs stops pinning critic.md's slot list",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_run_engine_critic_inputs.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "9",
+        "title": "test_retire.mjs stops sweeping the two documents for ?ref= and re-running the docs pin",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_retire.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "10",
+        "title": "Four fleet sims stop re-running sibling suites and sims",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_publish_fold.mjs",
+          "fleet/tests/test_run_engine_suite_passes.mjs",
+          "fleet/tests/test_run_main.mjs",
+          "fleet/tests/test_sandbox_boot.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "test_review_peer.py stops reading a sibling's source and asserts adversarial's absence once",
+          "files": [
+            "tests/test_review_peer.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_review_peer.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'def test_the_base_compile_plan_pin_now_expects_peer' tests/test_review_peer.py && ! grep -q 'def test_authoring_docs_carry_no_adversarial' tests/test_review_peer.py && ! grep -q 'def test_ultrawrite_skill_still_validates' tests/test_review_peer.py && ! grep -q 'COMPILE_PLAN_TESTS' tests/test_review_peer.py && ! grep -q 'VALIDATE_SKILL' tests/test_review_peer.py && ! grep -q 'tests/test_' tests/test_review_peer.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_review_peer.py 2>/dev/null | grep -c '::')\" = 12",
+            "! grep -q 'hits == \\[\\]' tests/test_review_peer.py && ! grep -q 're.findall(\"adversarial\"' tests/test_review_peer.py && test \"$(grep -c 're.search(\"adversarial\"' tests/test_review_peer.py)\" = 1 && grep -q 'def test_report_format_review_row_documents_lean_and_peer' tests/test_review_peer.py && grep -q '(one pass)' tests/test_review_peer.py && grep -q 'def test_dependency_analysis_review_knob_example_says_peer' tests/test_review_peer.py && grep -q 'review: { T1: peer, default: lean }' tests/test_review_peer.py && grep -q 'def test_ultradocket_skill_marks_review_peer' tests/test_review_peer.py && grep -q 'Review:\\*\\* peer' tests/test_review_peer.py",
+            "grep -q 'review\"\\] == \"peer\"' tests/test_compile_plan.py && python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan.py::test_review_marker_emits_adversarial_slot && grep -q 'def test_ultrawrite_skill_validates' tests/test_validate_skill.py && grep -q 'def test_only_the_two_code_sites_under_skills_say_adversarial' tests/test_review_peer.py && grep -q 'SKILLS_DIR.rglob' tests/test_review_peer.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_review_peer.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The harvest tests stop reading sibling test sources",
+          "files": [
+            "tests/test_harvest_evidence.py",
+            "tests/test_harvest_fleet_runs_publish_fold.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_harvest_evidence.py",
+            "tests/test_harvest_fleet_runs_publish_fold.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'def test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone' tests/test_harvest_evidence.py && ! grep -q 'def test_the_docs_flag_allowlist_names_evidence_and_not_remote' tests/test_harvest_evidence.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_harvest_evidence.py 2>/dev/null | grep -c '::')\" = 14",
+            "! grep -q 'def test_base_bundle_keys_names_publish_fold' tests/test_harvest_fleet_runs_publish_fold.py && ! grep -q '_base_bundle_keys' tests/test_harvest_fleet_runs_publish_fold.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_harvest_fleet_runs_publish_fold.py 2>/dev/null | grep -c '::')\" = 8",
+            "! grep -q 'tests/test_.*\\.py\").read_text()' tests/test_harvest_evidence.py tests/test_harvest_fleet_runs_publish_fold.py",
+            "grep -q 'def test_the_ssh_fetcher_and_its_test_no_longer_exist' tests/test_harvest_evidence.py && grep -q '\"fleet_fetch\" not in HARVEST.read_text()' tests/test_harvest_evidence.py && grep -q 'def test_help_names_evidence_and_never_remote' tests/test_harvest_evidence.py && grep -q 'assert set(b) == set(BASE_BUNDLE_KEYS)' tests/test_harvest_evidence.py && grep -q '\"publishFold\"' tests/test_harvest_evidence.py && grep -q 'def test_every_flag_the_skill_advertises_exists' tests/test_ultralearn_docs.py && grep -q '\"--evidence\"' tests/test_ultralearn_docs.py",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_harvest_evidence.py tests/test_harvest_fleet_runs_publish_fold.py"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "test_roles_run_evidence.py stops sweeping the role files and re-running the role sims",
+          "files": [
+            "tests/test_roles_run_evidence.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_roles_run_evidence.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'def test_the_two_role_files_keep_their_register' tests/test_roles_run_evidence.py && ! grep -q 'def test_both_role_exams_still_pass_with_their_verbatim_pins' tests/test_roles_run_evidence.py && ! grep -q 'ALL TESTS PASSED' tests/test_roles_run_evidence.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_roles_run_evidence.py 2>/dev/null | grep -c '::')\" = 7",
+            "grep -c 'NEVER|ALWAYS|MUST' fleet/tests/test_roles_peer.mjs | grep -qx 1 && grep -q 'roleFiles' fleet/tests/test_roles_peer.mjs && python3 -m pytest --co -q -p no:cacheprovider tests/test_fleet_suite.py | grep -q 'test_fleet_mjs\\[test_roles_peer.mjs\\]' && python3 -m pytest --co -q -p no:cacheprovider tests/test_fleet_suite.py | grep -q 'test_fleet_mjs\\[test_roles_examiner.mjs\\]'",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_roles_run_evidence.py"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "test_ultrawrite_surface_rules_implementer_check.py sheds its shout count, its eight-file re-run and its validator run",
+          "files": [
+            "tests/test_ultrawrite_surface_rules_implementer_check.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_ultrawrite_surface_rules_implementer_check.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'def test_m5_shouted_word_counts_stay_at_bases_zeros' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q 'def test_m5_the_tests_that_read_the_skill_still_pass' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q 'def test_m5_validate_skill_prints_skill_ok' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q '\"-m\", \"pytest\"' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q 'validate_skill.py' tests/test_ultrawrite_surface_rules_implementer_check.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_ultrawrite_surface_rules_implementer_check.py 2>/dev/null | grep -c '::')\" = 9",
+            "grep -q 'def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files' tests/test_proof_modes_documented.py && grep -q 'SKILL_PATH, EXAMINER_PATH, MARKERS_PATH' tests/test_proof_modes_documented.py && grep -q 'BASE_SHOUT_COUNTS' tests/test_proof_modes_documented.py && grep -q 'def test_ultrawrite_skill_validates' tests/test_validate_skill.py && grep -q 'def test_validate_skill_accepts_it' tests/test_ultrawrite_skill.py && test -f tests/test_ultrawrite_skill.py && test -f tests/test_plan_level_claim.py && test -f tests/test_review_peer.py && test -f tests/test_proof_modes_documented.py && test -f tests/test_compile_plan_check_cost.py && test -f tests/test_compile_plan_prose_check.py && test -f tests/test_compile_plan_integration_hostile.py && test -f tests/test_marker_contract.py && grep -q 'testpaths = tests' pytest.ini",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_surface_rules_implementer_check.py"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "The compiler and ultralearn tests stop re-running sibling suites",
+          "files": [
+            "tests/test_compile_plan_engine_self_change.py",
+            "tests/test_compile_plan_one_sided.py",
+            "tests/test_compile_plan_sha_unguarded.py",
+            "tests/test_compile_plan_wide_files.py",
+            "tests/test_ultralearn_swallows.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_compile_plan_engine_self_change.py",
+            "tests/test_compile_plan_one_sided.py",
+            "tests/test_compile_plan_sha_unguarded.py",
+            "tests/test_compile_plan_wide_files.py",
+            "tests/test_ultralearn_swallows.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'def test_the_existing_species_exam_still_passes' tests/test_compile_plan_engine_self_change.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_engine_self_change.py 2>/dev/null | grep -c '::')\" = 15",
+            "! grep -q 'def test_the_existing_species_exam_still_passes' tests/test_compile_plan_one_sided.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_one_sided.py 2>/dev/null | grep -c '::')\" = 31",
+            "! grep -q 'def test_the_five_species_exam_still_passes' tests/test_compile_plan_sha_unguarded.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_sha_unguarded.py 2>/dev/null | grep -c '::')\" = 36",
+            "! grep -q 'def test_the_five_species_exam_still_passes' tests/test_compile_plan_wide_files.py && ! grep -q 'def test_666_the_species_vocabulary_and_five_species_exams_still_pass' tests/test_compile_plan_wide_files.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_wide_files.py 2>/dev/null | grep -c '::')\" = 26",
+            "! grep -q 'def test_healthy_paths_unchanged' tests/test_ultralearn_swallows.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_ultralearn_swallows.py 2>/dev/null | grep -c '::')\" = 8",
+            "! grep -q '\"-m\", \"pytest\"' tests/test_compile_plan_engine_self_change.py tests/test_compile_plan_one_sided.py tests/test_compile_plan_sha_unguarded.py tests/test_compile_plan_wide_files.py tests/test_ultralearn_swallows.py",
+            "test -f tests/test_compile_plan_proof_species.py && test -f tests/test_compile_plan_check_cost.py && test -f tests/test_readers.py && test -f tests/test_fleet_slice.py && test -f tests/test_merge_ledger.py && grep -q 'testpaths = tests' pytest.ini",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_engine_self_change.py tests/test_compile_plan_one_sided.py tests/test_compile_plan_sha_unguarded.py tests/test_compile_plan_wide_files.py tests/test_ultralearn_swallows.py"
+          ]
+        },
+        {
+          "id": "6",
+          "title": "The header-Claim count and the validator runs are held once",
+          "files": [
+            "tests/test_compile_plan_check_cost.py",
+            "tests/test_plan_level_claim.py",
+            "tests/test_proof_modes_documented.py",
+            "tests/test_skill_setup_section.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_compile_plan_check_cost.py",
+            "tests/test_plan_level_claim.py",
+            "tests/test_proof_modes_documented.py",
+            "tests/test_skill_setup_section.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'def test_755_skill_the_document_names_the_header_claim_line_exactly_once' tests/test_plan_level_claim.py && ! grep -q 'def test_skill_still_validates' tests/test_plan_level_claim.py && grep -c 'para.count(\"\\*\\*Claim:\\*\\*\") == 1' tests/test_plan_level_claim.py | grep -qx 1 && grep -q 'def test_skill_the_document_names_the_header_claim_line' tests/test_plan_level_claim.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_plan_level_claim.py 2>/dev/null | grep -c '::')\" = 33",
+            "! grep -q 'def test_leg_e_m5_validate_skill_prints_skill_ok' tests/test_proof_modes_documented.py && grep -q 'def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files' tests/test_proof_modes_documented.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_proof_modes_documented.py 2>/dev/null | grep -c '::')\" = 1",
+            "! grep -q 'def test_the_skill_still_validates' tests/test_compile_plan_check_cost.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_check_cost.py 2>/dev/null | grep -c '::')\" = 11",
+            "! grep -q 'def test_validate_skill_accepts_the_ultrapowers_skill' tests/test_skill_setup_section.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_skill_setup_section.py 2>/dev/null | grep -c '::')\" = 33",
+            "grep -q 'def test_ultrawrite_skill_validates' tests/test_validate_skill.py && grep -q 'def test_validate_skill_accepts_it' tests/test_ultrawrite_skill.py && grep -q 'def test_validate_skill_accepts_the_ultrapowers_skill' tests/test_docs_agree_with_code.py && grep -q 'validate_skill.py \"${s%/}\"' .github/workflows/ci.yml",
+            "python3 -m pytest -q -p no:cacheprovider tests/test_plan_level_claim.py tests/test_proof_modes_documented.py tests/test_compile_plan_check_cost.py tests/test_skill_setup_section.py"
+          ]
+        },
+        {
+          "id": "7",
+          "title": "test_run_engine.mjs stops pinning reviewer.md's rules and the role files' register",
+          "files": [
+            "fleet/tests/test_run_engine.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_run_engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'red-then-green' fleet/tests/test_run_engine.mjs && ! grep -q 'is not a finding' fleet/tests/test_run_engine.mjs && ! grep -q 'roles/reviewer.md' fleet/tests/test_run_engine.mjs",
+            "! grep -q 'NEVER|ALWAYS|MUST' fleet/tests/test_run_engine.mjs && grep -q 'role prose size' fleet/tests/test_run_engine.mjs && grep -q 'readdirSync(rolesDir)' fleet/tests/test_run_engine.mjs",
+            "grep -q 'plan-defect:' fleet/tests/test_roles_peer.mjs && grep -q '{0,80}blocking' fleet/tests/test_roles_peer.mjs && grep -q '/red-then-green/' fleet/tests/test_roles_peer.mjs && grep -q 'test(fix)' fleet/tests/test_roles_peer.mjs && grep -c 'NEVER|ALWAYS|MUST' fleet/tests/test_roles_peer.mjs | grep -qx 1 && grep -q 'roleFiles' fleet/tests/test_roles_peer.mjs",
+            "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine.mjs]'"
+          ]
+        },
+        {
+          "id": "8",
+          "title": "test_run_engine_critic_inputs.mjs stops pinning critic.md's slot list",
+          "files": [
+            "fleet/tests/test_run_engine_critic_inputs.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_run_engine_critic_inputs.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q \"'Claim', 'Context'\" fleet/tests/test_run_engine_critic_inputs.mjs && ! grep -q \"slot + ':'\" fleet/tests/test_run_engine_critic_inputs.mjs && test \"$(grep -c 'Stale-if and Authorized-by are not yours to judge' fleet/tests/test_run_engine_critic_inputs.mjs)\" = 2",
+            "grep -q \"'1. Claim', '2. Context'\" fleet/tests/test_roles_peer.mjs && grep -q '\\^\\[345\\]\\\\. ' fleet/tests/test_roles_peer.mjs",
+            "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_critic_inputs.mjs]'"
+          ]
+        },
+        {
+          "id": "9",
+          "title": "test_retire.mjs stops sweeping the two documents for ?ref= and re-running the docs pin",
+          "files": [
+            "fleet/tests/test_retire.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_retire.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'branchRefs' fleet/tests/test_retire.mjs && ! grep -q 'matchAll(/\\\\?ref=' fleet/tests/test_retire.mjs && ! grep -q \"startsWith('ultra/evidence-run-')\" fleet/tests/test_retire.mjs && ! grep -q \"spawnSync('python3'\" fleet/tests/test_retire.mjs && ! grep -q \"'-m', 'pytest'\" fleet/tests/test_retire.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_retire.mjs && grep -q \"twoTagsBullet(contractText).includes('\u2014 skipped')\" fleet/tests/test_retire.mjs && grep -q \"rollbackSection(runbookText).includes('\u2014 skipped')\" fleet/tests/test_retire.mjs",
+            "grep -q 'def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag' tests/test_docs_agree_with_code.py && grep -q 'refs_named(RUNBOOK) + refs_named(CONTRACT)' tests/test_docs_agree_with_code.py && test -f tests/test_docs_agree_with_code.py && grep -q 'testpaths = tests' pytest.ini",
+            "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_retire.mjs]'"
+          ]
+        },
+        {
+          "id": "10",
+          "title": "Four fleet sims stop re-running sibling suites and sims",
+          "files": [
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "fleet/tests/test_sandbox_boot.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "fleet/tests/test_sandbox_boot.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "! grep -q 'test_docs_agree_with_code' fleet/tests/test_publish_fold.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_run_engine_suite_passes.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_sandbox_boot.mjs && ! grep -q 'test_run_engine_integrated_clean' fleet/tests/test_run_engine_suite_passes.mjs && ! grep -q 'test_fleet_events' fleet/tests/test_run_main.mjs",
+            "test \"$(grep -c \"grep -q 'engine:phase'\" fleet/tests/test_sandbox_boot.mjs)\" = 2 && grep -q 'verbatim/.test(l)' fleet/tests/test_run_main.mjs",
+            "test -f tests/test_docs_agree_with_code.py && test -f tests/test_fleet_events.py && grep -q 'testpaths = tests' pytest.ini && python3 -m pytest --co -q -p no:cacheprovider tests/test_fleet_suite.py | grep -q 'test_fleet_mjs\\[test_run_engine_integrated_clean.mjs\\]'",
+            "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_publish_fold.mjs]' 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_suite_passes.mjs]' 'tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot.mjs]' 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_main.mjs]'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "10 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The pass deletes tests and nothing else: no shipped document, role file, skill, engine\n  module or workflow changes.\n- The surviving guards the deletions lean on are untouched: `tests/test_docs_agree_with_code.py`\n  and `tests/test_recommendation_rubric.py` (kept by design, CLAUDE.md), the subject-owning\n  files each task names, and the fleet bridge.\n- A deletion is a whole test function, a whole assertion block, or a whole assertion line\n  the task names \u2014 never an assertion loosened in place, and never a survivor's positive\n  half. A helper, import or constant that served only a deleted test goes with it; one that\n  a kept test still uses stays.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-67/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-67/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-67/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-67/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
