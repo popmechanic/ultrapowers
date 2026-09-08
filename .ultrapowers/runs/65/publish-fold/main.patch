@@ -58213,6 +58213,737 @@ index 846ee631ea00d0a6a97914fe7edeacd04ae7eaec..00000000000000000000000000000000
 -- `c-1a58ed29`: reconciliation commit ebc522a8403777aaf3280826916602155951ffc8 on integration chain
 -- `c-31339f70`: reconciliation commit 60b02846b1f6268c61a6716c30af074a05ccfbac on integration chain
 -- `c-13e97401`: reconciliation commit c92a3d03423e7e8b0e526d4e5cc30e00094380c7 on integration chain
+diff --git a/fleet/roles/implementer.md b/fleet/roles/implementer.md
+index 582a6b6f9fbdd6b5eb9c66c349443fac3775649a..4a389e84561690902b0ab5c4dde67ea76428ccc4 100644
+--- a/fleet/roles/implementer.md
++++ b/fleet/roles/implementer.md
+@@ -41,7 +41,12 @@ outside it that the task genuinely requires is fine, but disclose it as a
+ delete a file outside FILES. You may fix a genuinely defective piece of
+ plan-supplied code when the fix is task-local — disclose it as a `concerns`
+ entry prefixed `plan-defect:`; when in doubt, implement as written and report
+-the defect. Verify your footprint with `git diff --stat <BASE> HEAD` before
++the defect. A Proof leg no implementation can satisfy — one that reads state
++your own code creates, or asserts a shape a sibling's contract forbids — is
++reported, not worked around: say so in a `concerns` entry
++`plan-defect: leg (x) …`, naming the leg by its label, and the driver parks the
++task for the plan instead of buying you a fix round that would land where you
++started. Verify your footprint with `git diff --stat <BASE> HEAD` before
+ reporting.
+ 
+ Return a single JSON object conforming to the schema. No prose outside the
+diff --git a/fleet/roles/reviewer.md b/fleet/roles/reviewer.md
+index 5e35f6d2569e5e8de68c0617156b91de2e669420..a1e35d827e34b49278bc9388cdf5a3714ceff692 100644
+--- a/fleet/roles/reviewer.md
++++ b/fleet/roles/reviewer.md
+@@ -33,10 +33,18 @@ implementer report, or modify anything; output only your verdict.
+    commit cadence — is not a finding, even when the task or a global constraint
+    states it.
+ 8. EXAM EDITED, when present, names the Proof `Test:` paths the submission
+-   changed after a peer wrote them. The exam is the submission's grading, so
+-   such a hunk is blocking unless the exam itself was wrong — a pin no correct
+-   implementation could satisfy, a bad import, a fixture it never created —
+-   and the hunk changes only that. Say which.
++   changed after a peer wrote them; the change itself is the block the driver
++   appends under that line, `EXAM EDITED DIFF <path>:` — one block per edited
++   path, a unified diff from the peer's bytes to the submission's — read there
++   rather than in PATCH, which shows the exam only as a whole-file add against
++   BASE; where no such block was appended, PATCH is what you have. An edit that
++   only strengthens the exam (every original assertion kept, new ones added
++   — any tree that passes the edited exam passes the peer's) is
++   recorded and accepted, not blocked, and named in the review. An edit that
++   drops or loosens an assertion the peer wrote is blocking, naming the
++   assertion, unless the exam itself was wrong — a pin that
++   no correct implementation could satisfy, a bad import, or a
++   fixture it never created — and the hunk changes only that. Say which.
+ 
+ Every issue names its `actor`: who can act on it. `implementer` when the fix
+ lies inside this task's own `FILES` and the diff can carry it — the ordinary
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index e45a4ec44115f5696472522a44996a785c3f8667..740b9bd78340341669c6c03a0052949b5d84f6d8 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -358,6 +358,44 @@ export const integratedCheckEvidenceBlock = (checks) => {
+     checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
+       '\n' + c.stdout).join('')
+ }
++// #700 — the hunks behind an EXAM EDITED line. Naming the edited paths is not
++// showing them, and the PATCH cannot: `patchAgainstBase` diffs the graded clone
++// against BASE, where the Proof path does not exist, so an edited exam reads
++// there as a whole-file add and the peer's own lines are nowhere in it. The
++// referee is then deciding on OWNERSHIP — the graded party touched the exam —
++// when the only question worth asking is what the edit did: an edit that only
++// strengthens the exam can be accepted and recorded, one that drops an
++// assertion blocked, and both verdicts live in the hunks.
++// One block per edited path, each beginning `EXAM EDITED DIFF <path>:` — a
++// literal shared with the reviewer's own exam-edit rule, so changing it here
++// changes what `fleet/roles/reviewer.md` tells the referee to look for —
++// followed by a unified diff from the bytes the PEER left at that path to the
++// bytes in the graded tree.
++// Empty renders nothing at all (the run-51 rule), so a task whose exam nobody
++// touched keeps the reviewer prompt it had before this existed, byte for byte.
++export const examEditedDiffBlock = (diffs) => {
++  if (!Array.isArray(diffs) || diffs.length === 0) return ''
++  return diffs.map((d) => '\nEXAM EDITED DIFF ' + d.path + ':\n' + d.diff).join('')
++}
++// git's own preamble names the two clones by absolute path — `diff --git`,
++// `index`, `new file mode` — which tells a referee nothing the block header did
++// not already say, and invites it to read the filenames instead of the hunks.
++// So the preamble is dropped and the file headers are rewritten to `peer/` and
++// `graded/`, which is what the two sides ARE. What remains is the unified diff
++// itself: `---`/`+++`, `@@` hunk headers, `-`/`+` content lines.
++const hunksOnly = (p, stdout, stderr) => {
++  const header = '--- peer/' + p + '\n+++ graded/' + p
++  const lines = String(stdout || '').split('\n')
++  const at = lines.findIndex((l) => l.startsWith('@@'))
++  // No hunks at all: a binary blob, or git itself failed. Say which — an empty
++  // block would read as "nothing changed", which is the one thing it is not
++  // (the path is on the EXAM EDITED line because its blob moved).
++  if (at < 0) {
++    return header + '\n(no textual hunks — ' +
++      (String(stdout || '').trim() || String(stderr || '').trim() || 'git printed nothing') + ')'
++  }
++  return header + '\n' + lines.slice(at).join('\n').replace(/\n+$/, '')
++}
+ export const priorAdvisoriesBlock = (minors) => {
+   if (!Array.isArray(minors) || minors.length === 0) return ''
+   return '\nPRIOR-ROUND ADVISORIES (minor findings from the previous review round, already ' +
+@@ -845,6 +883,11 @@ export async function runEngine({
+   // the reviews raised them. They drive no fix round — they become gate
+   // deferrals once the run knows which tasks finished `done`.
+   const planDefects = []
++  // Tasks the implementer's own leg-labelled `plan-defect:` concern parked
++  // before any fix round: `{ task, why }`, one per parked task. They are the
++  // one FAILED row that still carries a plan question, so they reach the gate
++  // beside `planDefects` rather than through it (#722).
++  const parkedForPlan = []
+   // ── what a reviewer-minute bought ──────────────────────────────────────────
+   // The run spends most of its wall clock in referees, and until now the report
+   // said how many rounds ran but never what they returned per minute spent —
+@@ -1156,6 +1199,28 @@ export async function runEngine({
+           'reads the patch, exam hunks included')
+       }
+     }
++    // The hunks the referee reads (#700). The peer's bytes survive in the
++    // examiner's own clone — nothing removes `examDir` during the task — at the
++    // same relative path they were copied from at the handoff, so the two sides
++    // of the diff are files on disk: `<examDir>/<p>` and `<cloneDir>/<p>`. A
++    // side the examiner never wrote (a path it left absent) or the graded party
++    // deleted is `/dev/null`, which is how an added or removed exam file diffs
++    // from empty. `git diff --no-index` exits 1 when the files differ, which is
++    // the expected exit here rather than an error — so its code is not branched
++    // on at all; what it printed is what the block carries.
++    const examEditedDiffs = async () => {
++      if (!(examEdited && examEdited.length)) return []
++      const diffs = []
++      for (const p of examEdited) {
++        const peer = path.resolve(examDir, p)
++        const graded = path.resolve(cloneDir, p)
++        const r = await exec('git', ['diff', '--no-index', '--no-color', '--',
++          fs.existsSync(peer) ? peer : '/dev/null',
++          fs.existsSync(graded) ? graded : '/dev/null'], { cwd: cloneDir })
++        diffs.push({ path: p, diff: hunksOnly(p, r.stdout, r.stderr) })
++      }
++      return diffs
++    }
+ 
+     let baseCorrected = null
+     // The pair (#653). Both dispatches are made here with nothing awaited
+@@ -1421,6 +1486,37 @@ export async function runEngine({
+       }
+       let reds = await prePass()
+       if (reds.length) {
++        // ── the implementer's own plan-defect against a Proof leg (#722) ────
++        // The actor question the reviews already answer (`routeToPlan`) is
++        // asked one round earlier here, by the one agent that read the leg and
++        // the tree together. A leg no implementation can satisfy — one that
++        // reads state the patch creates, or asserts a shape a sibling's
++        // contract forbids — is not a red the implementer can clear: it may
++        // not edit the exam (#663), so a fix round buys a second agent that
++        // lands exactly where the first did. When the reply names the leg by
++        // its label in a `plan-defect:` concern AND the pass found that same
++        // exam red, the task is parked for the plan instead of billed for the
++        // round: `failed`, actor `plan`, and the concern travels to the gate
++        // as a `deferred:plan-defect` item. A red `Run:` or `Check:` beside
++        // the red exam does not change the answer — the exam's red plus the
++        // leg-naming concern is the whole condition.
++        const examRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
++        const examIsRed = Boolean(examRedLine) && reds.some((r) => r.line === examRedLine)
++        const legDefects = (examIsRed && impl.status === 'DONE_WITH_CONCERNS' &&
++          Array.isArray(impl.concerns))
++          ? impl.concerns.map(String).filter((c) => /^plan-defect:[\s\S]*\([a-z]\)/.test(c))
++          : []
++        if (legDefects.length) {
++          const notes = legDefects.join('; ')
++          parkedForPlan.push({ task: task.id, why: notes })
++          judgmentCalls.push('task ' + task.id + ': plan-defect against a Proof leg named by ' +
++            'the implementer — no fix round dispatched; failed with actor plan — ' + notes)
++          log('task ' + task.id + ' parked for the plan — ' + notes)
++          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
++                   reviewVerdict: 'plan-defect', notes, actor: 'plan',
++                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
++                   ...examEditedField() }
++        }
+         proofFixes = 1
+         judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
+           reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
+@@ -1484,12 +1580,17 @@ export async function runEngine({
+       // tree that predates it.
+       const examEvidence = iter === 1 ? preExam : await runExam(iter)
+       const checkEvidence = iter === 1 ? preChecks : await runChecks(iter)
++      // Recomputed per round, because the round that edits the exam is usually
++      // the fix round between them: round 2's blocks are the hunks of the tree
++      // round 2 is reading, never round 1's.
++      const editedDiffs = await examEditedDiffs()
+       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
+         '\nPATCH: ' + impl.patch +
+         '\nHEAD: ' + impl.headSha +
+         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
+         globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
+         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
++        examEditedDiffBlock(editedDiffs) +
+         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
+         checkEvidenceBlock(checkEvidence)
+       const reviewOpts = (pass) => ({
+@@ -2268,6 +2369,13 @@ export async function runEngine({
+     planDeferred.push({ deliverable: p.task, reason: 'plan-defect', why: p.detail })
+     judgmentCalls.push('task ' + p.task + ': plan-defect deferred to the gate — ' + p.detail)
+   }
++  // The parked rows are the exception the loop above is right to exclude: they
++  // failed, but they failed BECAUSE of a plan question, and their files are
++  // already under missingDeliverables. Their judgment call was pushed at the
++  // park, so only the item is added here (#722).
++  for (const p of parkedForPlan) {
++    planDeferred.push({ deliverable: p.task, reason: 'plan-defect', why: p.why })
++  }
+   const deferredVerification = (Array.isArray(review.deferredVerification)
+     ? review.deferredVerification : [])
+     .concat(planDeferred)
+diff --git a/fleet/tests/test_run_engine_actor_routing.mjs b/fleet/tests/test_run_engine_actor_routing.mjs
+index 28c731e38a2bd098a9562a5c4f4d495ff0da60c7..531971e24f39b2ad5e596bac0e90edd7cb5860d7 100644
+--- a/fleet/tests/test_run_engine_actor_routing.mjs
++++ b/fleet/tests/test_run_engine_actor_routing.mjs
+@@ -33,7 +33,7 @@ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { ackDecision } from '../run-main.mjs'
+ import { REVIEWER_SCHEMA } from '../run-engine.mjs'
+-import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { rig, makeRepo, passReview, cleanCritic, doneImpl, gitSync } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-actor-routing-'))
+ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
+@@ -235,4 +235,310 @@ const oneTaskRun = ({ name, files = ['a.txt'], reviews, fixWrites = false }) =>
+     JSON.stringify(report.deferredVerification))
+ }
+ 
++// ═══════════════════════════════════════════════════════════════════════════
++// #722 Task 1 — the implementer's plan-defect against a Proof leg parks the
++// task for the plan.
++//
++// A referee is not the only reader who can find a defect in the plan. The
++// implementer holds the same task text, and when the Proof's own exam asserts
++// something no implementation of the task can produce, the fix round that red
++// buys is a round against a wall: the one agent forbidden from editing the exam
++// (#663), handed the exam's red as its instructions. So a first exam-red reply
++// whose `concerns` carry a `plan-defect:` naming a Proof leg by its label parks
++// the task for the plan instead — no `fix:<id>:0`, no referee, a `failed` row
++// with actor `plan`, the wave still merging around it, and the leg travelling
++// to the gate as a deferral the operator reads. The block below is the same
++// actor question this file already asks of a reviewer's finding, asked of the
++// implementer's own reply. Machine clauses M1–M8, Proof legs (a)–(h).
++// ═══════════════════════════════════════════════════════════════════════════
++
++const T1_TEST = 't1_test.sh'
++// The exam that "asserts a value the fixture cannot produce": red at BASE
++// (`makeRepo` writes `a.txt` as line1/line2/line3) and red after an
++// implementer that writes `implemented\n`. That impossibility is the leg the
++// implementer's concern names.
++const IMPOSSIBLE_EXAM = '#!/bin/bash\n[ "$(cat a.txt)" = "impossible" ]\n'
++// The ordinary exam beside it: red at BASE, green once the implementer wrote.
++const REACHABLE_EXAM = '#!/bin/bash\n[ "$(cat a.txt)" = "implemented" ]\n'
++// The Context's parking concern, verbatim — it matches
++// /^plan-defect:[\s\S]*\([a-z]\)/ because it names its leg by label.
++const PARK_CONCERN = 'plan-defect: leg (a) asserts a.txt reads "impossible", ' +
++  'which no implementation of this task can produce'
++// The same prefix with no leg label anywhere in it [M5].
++const UNLABELLED_CONCERN = 'plan-defect: the exam cannot pass on this fixture'
++const PARK_CALL = 'task T1: plan-defect against a Proof leg named by the implementer' +
++  ' — no fix round dispatched; failed with actor plan — ' + PARK_CONCERN
++
++const concernsImpl = (cwd, concerns) => ({
++  status: 'DONE_WITH_CONCERNS', summary: 'sim work done',
++  startHead: gitSync(['rev-parse', 'HEAD'], cwd), concerns,
++})
++
++// A sibling of `oneTaskRun` rather than a widening of it (`oneTaskRun` is one
++// task with no Proof `Test:` by construction). T1 carries a Proof exam — a
++// `proofTests`/`testCmd` pair, so the real `examiner.md` role is dispatched
++// beside the implementer — and an implementer that returns DONE_WITH_CONCERNS.
++// `sibling: true` adds T2: files `b.txt`, no exam, a PASS review — the
++// ordinary task the wave still merges around the parked one.
++// `fix` and `review` are the dispatches the leg PERMITS; null means the leg
++// forbids that dispatch, and the stub throws on it rather than serving it.
++const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, review = null }) => {
++  const repo = makeRepo(path.join(tmp, 'repo-' + name))
++  const runDir = path.join(tmp, 'run-' + name)
++  const calls = []
++  const t1 = mkTask('T1', ['a.txt'], { testCmd: 'bash ' + T1_TEST, proofTests: [T1_TEST] })
++  const t2 = mkTask('T2', ['b.txt'], { writes: ['b.txt'] })
++  const stub = (prompt, opts, cwd) => {
++    calls.push(opts.label)
++    if (opts.label === 'integration') return cleanCritic()
++    const [kind, id] = String(opts.label).split(':')
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, T1_TEST), exam)
++      return { status: 'DONE', summary: 'exam written', startHead: 'ignored' }
++    }
++    if (kind === 'impl' && id === 'T2') {
++      fs.writeFileSync(path.join(cwd, 'b.txt'), 'from T2\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'a.txt'), 'implemented\n')
++      return concernsImpl(cwd, concerns)
++    }
++    if (kind === 'review' && id === 'T2') return passReview()
++    if (kind === 'fix' && id === 'T1' && fix) { fix(cwd); return doneImpl(cwd) }
++    if (kind === 'review' && id === 'T1' && review) return review()
++    throw new Error('dispatch this leg forbids: ' + opts.label +
++      ' — a plan-defect against a Proof leg buys neither a fix round nor a referee')
++  }
++  const { run, integ } = rig({ repo, runDir, waves: [sibling ? [t1, t2] : [t1]], stub,
++                               stamp: name })
++  // Only the labels that belong to T1: the sibling's dispatches interleave.
++  const forT1 = () => calls.filter((l) => /^(?:exam|impl|fix|review):T1(?::|$)/.test(l))
++  return { run, calls, forT1, runDir, integ, branch: 'ultra/integration-' + name }
++}
++
++// ── (a)–(d): the park, its row, the wave around it, and the gate ────────────
++{
++  const r = examConcernRun({
++    name: 'ar7', exam: IMPOSSIBLE_EXAM, concerns: [PARK_CONCERN], sibling: true,
++  })
++  const report = await r.run()
++
++  // (a) [M1] the pre-review pass is red on the exam and the reply names a leg:
++  // the labels T1 bought are the pair and nothing else. The stub throws on any
++  // `fix:T1:*` or `review:T1:*`, so a dispatched fix round fails this leg here.
++  assert.deepEqual(r.forT1(), ['exam:T1', 'impl:T1'],
++    '(a)/M1: a leg-labelled plan-defect on a red exam dispatches exactly ' +
++    '`exam:T1` and `impl:T1` — no fix round, no referee. Dispatched: ' + r.calls.join(','))
++
++  const row = report.tasks.find((t) => t.task === 'T1')
++  // (b) [M2] the row the park returns.
++  assert.equal(row.status, 'failed', '(b)/M2: the parked task is `failed`: ' + JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'plan-defect',
++    '(b)/M2: with reviewVerdict `plan-defect`: ' + JSON.stringify(row))
++  assert.equal(row.actor, 'plan', '(b)/M2: and actor `plan`: ' + JSON.stringify(row))
++  assert.equal(row.fixIterations, 0, '(b)/M2: no fix iterations: ' + JSON.stringify(row))
++  assert.equal(row.proofFixes, 0,
++    '(b)/M2: and no pre-review repair round was bought either — proofFixes is 0, ' +
++    'so the park precedes the `fix:T1:0` dispatch rather than following it: ' + JSON.stringify(row))
++  assert.equal(row.exam, 'red',
++    '(b)/M2: the exam was recorded red at BASE: ' + JSON.stringify(row))
++  assert.equal(row.notes, PARK_CONCERN,
++    '(b)/M2: `notes` is the matching concern entries joined by `; ` — one here, so the ' +
++    'leg label and the concern\'s own text are both in it: ' + JSON.stringify(row.notes))
++
++  // (c) [M3] the wave keeps moving: the sibling merges as at BASE.
++  const sib = report.tasks.find((t) => t.task === 'T2')
++  assert.equal(sib.status, 'done', '(c)/M3: the sibling merges as at BASE: ' + JSON.stringify(sib))
++  assert.equal('actor' in sib, false,
++    '(c)/M3: and carries no `actor` key — the key is present only on a parked row: ' +
++    JSON.stringify(sib))
++  assert.equal(report.coverage.tasks_merged, 1,
++    '(c)/M3: one of the wave\'s two tasks merged: ' + JSON.stringify(report.coverage))
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    '(c)/M3: and the wave\'s merge is MERGED: ' + JSON.stringify(report.waveMerges[0]))
++
++  // (d) [M4] the deferral the gate reads, the gate's own verdict, and the one
++  // judgment call that announces the park.
++  assert.deepEqual(report.deferredVerification,
++    [{ deliverable: 'T1', reason: 'plan-defect', why: PARK_CONCERN }],
++    '(d)/M4: exactly one deferredVerification item for the parked task, its `why` the ' +
++    'concern verbatim: ' + JSON.stringify(report.deferredVerification))
++  assert.equal(report.judgmentCalls.filter((j) => j === PARK_CALL).length, 1,
++    '(d)/M4: exactly one judgment call equal to `' + PARK_CALL + '`: ' +
++    JSON.stringify(report.judgmentCalls))
++
++  // The FROZEN gate on that report. The parked task is `failed` with declared
++  // files, so `missingDeliverables` carries it and the `deliverables` check
++  // fails — BLOCKED, exit 1 — and the deferral still becomes its typed ack,
++  // because `emit()` prints every ack whatever the verdict.
++  const reportPath = path.join(r.runDir, 'workflow-result.json')
++  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
++  const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
++    '--run-id', 'sim', '--branch', r.branch, '--report', reportPath, '--repo', r.integ],
++    { encoding: 'utf8' })
++  assert.equal(gate.status, 1,
++    '(d)/M4: the frozen gate exits 1 on the parked task: ' + gate.stdout + gate.stderr)
++  const verdict = JSON.parse(gate.stdout)
++  assert.equal(verdict.verdict, 'BLOCKED', '(d)/M4: verdict BLOCKED: ' + gate.stdout)
++  const deliverables = (verdict.checks || []).find((c) => c.name === 'deliverables')
++  assert.equal(deliverables && deliverables.ok, false,
++    '(d)/M4: the failing check is `deliverables`: ' + gate.stdout)
++  assert.ok(String(deliverables.detail).includes('"task": "T1"') &&
++            String(deliverables.detail).includes('a.txt'),
++    '(d)/M4: and it fails on the parked task\'s own files: ' + deliverables.detail)
++  const deferredAcks = (verdict.acks || []).filter((a) => a.type === 'deferred:plan-defect')
++  assert.equal(deferredAcks.length, 1,
++    '(d)/M4: exactly one ack typed `deferred:plan-defect`: ' + gate.stdout)
++  assert.ok(String(deferredAcks[0].detail).includes(PARK_CONCERN),
++    '(d)/M4: whose detail carries the concern\'s text: ' + deferredAcks[0].detail)
++  // The leg reads `acks` deep-equal to ['deferred:plan-defect']; the frozen
++  // gate also acks `coverage` here, because M3's own numbers (1 of 2 tasks
++  // merged) make `coverage.complete` false and gate_check.py's coverage ack is
++  // unconditional on that. The full list is asserted as it must be, rather
++  // than the leg's literal one, so the check stays live and honest.
++  assert.deepEqual((verdict.acks || []).map((a) => a.type), ['coverage', 'deferred:plan-defect'],
++    '(d)/M4: the ack list is the coverage ack M3\'s numbers force plus the park\'s: ' + gate.stdout)
++}
++
++// ── (e) [M5] a `plan-defect:` naming no leg label buys the fix round, as at BASE
++{
++  const r = examConcernRun({
++    name: 'ar8', exam: IMPOSSIBLE_EXAM, concerns: [UNLABELLED_CONCERN],
++    // The repair round runs; the exam it cannot satisfy stays red.
++    fix: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'repaired\n'),
++  })
++  const report = await r.run()
++  assert.deepEqual(r.calls.filter((l) => l.startsWith('fix:')), ['fix:T1:0'],
++    '(e)/M5: a `plan-defect:` with no `(<letter>)` in it is not a leg — the pre-review ' +
++    'repair round is dispatched exactly as at BASE: ' + r.calls.join(','))
++  const row = report.tasks.find((t) => t.task === 'T1')
++  assert.equal('actor' in row, false,
++    '(e)/M5: and the row carries no `actor` key at all: ' + JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'proof-red',
++    '(e)/M5: the BASE lane runs to its end — still red after the repair round: ' +
++    JSON.stringify(row))
++}
++
++// ── (f) [M6] the same leg-labelled concern over a GREEN pre-review pass is not
++// a park: the exam the implementer called impossible passed, so the reply is a
++// concern like any other and the task is reviewed and merged.
++{
++  const r = examConcernRun({
++    name: 'ar9', exam: REACHABLE_EXAM, concerns: [PARK_CONCERN], review: passReview,
++  })
++  const report = await r.run()
++  assert.deepEqual(r.calls.filter((l) => l.startsWith('fix:')), [],
++    '(f)/M6: a green pre-review pass dispatches no `fix:T1:0`: ' + r.calls.join(','))
++  assert.deepEqual(r.calls.filter((l) => l.startsWith('review:')), ['review:T1:1'],
++    '(f)/M6: it proceeds to `review:T1:1`: ' + r.calls.join(','))
++  const row = report.tasks.find((t) => t.task === 'T1')
++  assert.equal(row.status, 'done', '(f)/M6: a PASS review ends `done`: ' + JSON.stringify(row))
++  assert.equal('actor' in row, false,
++    '(f)/M6: with no `actor` key — the park fires on the red exam, not on the prefix: ' +
++    JSON.stringify(row))
++  assert.deepEqual(report.deferredVerification, [],
++    '(f)/M6: and nothing is deferred to the gate: ' + JSON.stringify(report.deferredVerification))
++}
++
++// ── (g) [M7] the `ar6` block above is unchanged and still holds: a task that
++// ended `fix-loop-exhausted` contributes no deferredVerification item. The new
++// lane records its own parked task beside that loop rather than widening it.
++
++// ── (h) [M8] the two documents the park is written into ──────────────────────
++{
++  const ROOT = fileURLToPath(new URL('../..', import.meta.url))
++  const IMPL_MD = path.join(ROOT, 'fleet/roles/implementer.md')
++  const RF_MD = path.join(ROOT, 'skills/ultrapowers/references/report-format.md')
++  const implText = fs.readFileSync(IMPL_MD, 'utf8')
++  const rfText = fs.readFileSync(RF_MD, 'utf8')
++
++  // implementer.md: the shape lives in the judgment-rules paragraph, beside the
++  // `plan-defect:` disclosure rule it extends — not merely somewhere in the file.
++  const judgment = implText.split(/\n\s*\n/).filter((p) => p.startsWith('Judgment rules:'))
++  assert.equal(judgment.length, 1,
++    '(h)/M8: implementer.md has exactly one `Judgment rules:` paragraph: ' + judgment.length)
++  assert.ok(judgment[0].includes('plan-defect: leg ('),
++    '(h)/M8: which names the concern\'s shape with the literal `plan-defect: leg (`: ' +
++    judgment[0])
++  assert.ok(judgment[0].includes('naming the leg by its label'),
++    '(h)/M8: and carries the phrase `naming the leg by its label`: ' + judgment[0])
++
++  const rows = (prefix) => rfText.split('\n').filter((l) => l.startsWith(prefix))
++  // report-format.md: still exactly ONE reviewVerdict row (the pin
++  // test_run_engine_exam_fix_edit.mjs leg (f) reads), now naming the verdict,
++  // and still carrying the 2026-09-02 sentence a lost edit would drop.
++  const verdictRows = rows('| `tasks[].reviewVerdict` |')
++  assert.equal(verdictRows.length, 1,
++    '(h)/M8: exactly one `| `tasks[].reviewVerdict` |` row: ' + verdictRows.length)
++  assert.ok(verdictRows[0].includes('plan-defect'),
++    '(h)/M8: which names the `plan-defect` verdict: ' + verdictRows[0])
++  assert.ok(verdictRows[0].includes(
++    'An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02).'),
++    '(h)/M8: and still carries the 2026-09-02 sentence verbatim: ' + verdictRows[0])
++  // The one new row key.
++  const actorRows = rows('| `tasks[].actor` |')
++  assert.equal(actorRows.length, 1,
++    '(h)/M8: exactly one `| `tasks[].actor` |` row: ' + actorRows.length)
++  assert.ok(actorRows[0].includes('plan'),
++    '(h)/M8: which names `plan`: ' + actorRows[0])
++  // The deferredVerification row names the parked task's item — until now it
++  // said a plan-defect item sits on tasks whose final `status` is `done`, which
++  // the parked row is the one exception to.
++  const dvRows = rows('| `deferredVerification` |')
++  assert.equal(dvRows.length, 1,
++    '(h)/M8: exactly one `| `deferredVerification` |` row: ' + dvRows.length)
++  assert.ok(/park|failed/i.test(dvRows[0]) && dvRows[0].includes('actor'),
++    '(h)/M8: which names the parked task\'s item — the `done`-only clause no longer ' +
++    'reads as the whole rule: ' + dvRows[0])
++
++  // The Proof's two `Run:` greps, run as the Proof runs them: exit 0 on the
++  // documents as written, and non-zero on a document that lost any one pin.
++  const q = (p) => JSON.stringify(p)
++  const IMPL_GREP = (p) => 'grep -q \'plan-defect: leg (\' ' + q(p) +
++    ' && grep -q \'naming the leg by its label\' ' + q(p)
++  const RF_GREP = (p) => [
++    'test "$(grep -c \'tasks\\[\\]\\.reviewVerdict\' ' + q(p) + ')" = 1',
++    'grep \'tasks\\[\\]\\.reviewVerdict\' ' + q(p) + ' | grep -q \'plan-defect\'',
++    'grep \'tasks\\[\\]\\.actor\' ' + q(p) + ' | grep -q \'plan\'',
++    'grep \'deferredVerification. | no |\' ' + q(p) + ' | grep -q \'actor\'',
++  ].join(' && ')
++  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8' }).status
++  assert.equal(sh(IMPL_GREP(IMPL_MD)), 0,
++    '(h)/M8: the implementer.md grep exits 0 on the document as written')
++  assert.equal(sh(RF_GREP(RF_MD)), 0,
++    '(h)/M8: the report-format.md grep chain exits 0 on the document as written')
++
++  // The negatives: each grep is discriminating, so a document that lost a pin
++  // fails the Proof rather than passing it quietly.
++  const docs = path.join(tmp, 'docs-h')
++  fs.mkdirSync(docs, { recursive: true })
++  const mutate = (base, name, fn) => {
++    const p = path.join(docs, name)
++    fs.writeFileSync(p, fn(fs.readFileSync(base, 'utf8')))
++    return p
++  }
++  const lines = (t) => t.split('\n')
++  assert.notEqual(sh(IMPL_GREP(mutate(IMPL_MD, 'impl-no-shape.md',
++    (t) => t.split('plan-defect: leg (').join('plan-defect: leg ')))), 0,
++    '(h)/M8: an implementer.md without `plan-defect: leg (` exits non-zero')
++  assert.notEqual(sh(IMPL_GREP(mutate(IMPL_MD, 'impl-no-phrase.md',
++    (t) => t.split('naming the leg by its label').join('named somehow')))), 0,
++    '(h)/M8: an implementer.md without `naming the leg by its label` exits non-zero')
++  assert.notEqual(sh(RF_GREP(mutate(RF_MD, 'rf-two-verdict-rows.md', (t) =>
++    lines(t).flatMap((l) => (l.startsWith('| `tasks[].reviewVerdict` |') ? [l, l] : [l])).join('\n')))), 0,
++    '(h)/M8: a report-format.md with two reviewVerdict rows exits non-zero')
++  assert.notEqual(sh(RF_GREP(mutate(RF_MD, 'rf-no-verdict-name.md', (t) =>
++    lines(t).map((l) => (l.startsWith('| `tasks[].reviewVerdict` |')
++      ? l.split('plan-defect').join('plan-issue') : l)).join('\n')))), 0,
++    '(h)/M8: a reviewVerdict row that does not name `plan-defect` exits non-zero')
++  assert.notEqual(sh(RF_GREP(mutate(RF_MD, 'rf-no-actor-row.md', (t) =>
++    lines(t).filter((l) => !l.includes('tasks[].actor')).join('\n')))), 0,
++    '(h)/M8: a report-format.md with no actor row exits non-zero')
++  assert.notEqual(sh(RF_GREP(mutate(RF_MD, 'rf-dv-no-actor.md', (t) =>
++    lines(t).map((l) => (l.startsWith('| `deferredVerification` |')
++      ? l.split('actor').join('owner') : l)).join('\n')))), 0,
++    '(h)/M8: a deferredVerification row that does not say `actor` exits non-zero')
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_exam_edits.mjs b/fleet/tests/test_run_engine_exam_edits.mjs
+index eedad9fd3c6c03845e5b1df598384f07da8db693..1ea05ee9e3c0cc861d39dad943647ad5dff0bdfe 100644
+--- a/fleet/tests/test_run_engine_exam_edits.mjs
++++ b/fleet/tests/test_run_engine_exam_edits.mjs
+@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
+ import { execSeam } from '../run-main.mjs'
+ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+ import { runEngine } from '../run-engine.mjs'
+-import { makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-edits-'))
+ const REAL_ROLES = fileURLToPath(new URL('../roles/', import.meta.url))
+@@ -63,7 +63,9 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
+     rolesDir,
+     patchBase,
+   })
+-  return { run, base, repo, runDir, clonesDir, patchesDir, integ }
++  // `stamp` rides along so a sim can read the integration branch this run
++  // folded onto (`ultra/integration-<stamp>`) in the `integ` clone.
++  return { run, base, repo, runDir, clonesDir, patchesDir, integ, stamp }
+ }
+ 
+ // One wave entry, six-slot shaped: a Machine line and Proof legs in the body,
+@@ -132,6 +134,13 @@ const editExam = (cwd) =>
+   // driver appends to the inputs, not on the two words.
+   assert.ok(!prompts['review:T1:1'].includes('\nEXAM EDITED: '),
+     'and the referee is handed no EXAM EDITED line')
++  // Task 2, leg (f) [M4]: with no edit there is no block to show either. Same
++  // reason as above — rule 8 quotes `EXAM EDITED DIFF <path>:` mid-sentence
++  // when it tells the referee where to read the hunks, so the two words are in
++  // every review prompt. The pin is on the block HEADER LINE the driver
++  // appends, which is the thing that must be absent.
++  assert.ok(!prompts['review:T1:1'].split('\n').some((l) => l.startsWith('EXAM EDITED DIFF ')),
++    'and no EXAM EDITED DIFF block')
+   assert.equal(report.coverage.tasks_merged, 1)
+   assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_test.sh')), [])
+ }
+@@ -265,4 +274,163 @@ const twoPathScenario = async (fixFn, paths = ['t1_test.sh', 't1_extra.sh'],
+   assert.ok(!named[0].includes('t1_test.sh'), 'and it does not name the untouched one: ' + named[0])
+ }
+ 
++// ── Task 2: the referee sees what an exam edit changed against the peer's
++// bytes (#700 option (a), #556, #551) ───────────────────────────────────────
++// `examEdited` names the path and reviewer.md rule 8 asks the referee to judge
++// the edit — but PATCH diffs the graded clone against BASE, where the Proof
++// path does not exist, so an edited exam reads there as a whole-file add and
++// the referee cannot see which lines the peer wrote. These legs pin the other
++// half: one `EXAM EDITED DIFF <path>:` block per edited path, carrying the
++// unified diff from the bytes the examiner left at that path (empty, when it
++// left the path absent) to the bytes in the graded tree [M1]. On those hunks a
++// strengthening edit can be accepted and a weakening one blocked.
++
++// The strengthening edit: the peer's line kept, one more appended. Green on
++// the tree `writeOne` made, so round 2's exam evidence is green.
++const APPENDED = '[ "$(cat one.txt)" = "from T1" ]'
++const STRENGTHENED = RED_AT_BASE + APPENDED + '\n'
++
++// One block of a review prompt: from its `EXAM EDITED DIFF <path>:` header
++// line up to the next block, the RUN EVIDENCE text, or the end of the prompt.
++const diffBlock = (prompt, p) => {
++  const header = 'EXAM EDITED DIFF ' + p + ':'
++  const at = prompt.indexOf('\n' + header + '\n')
++  if (at < 0) return null
++  const rest = prompt.slice(at + 1)
++  const ends = ['\nEXAM EDITED DIFF ', '\n\nRUN EVIDENCE:', '\n\nEXAM EVIDENCE:']
++    .map((s) => rest.indexOf(s, header.length))
++    .filter((i) => i >= 0)
++  return ends.length ? rest.slice(0, Math.min(...ends)) : rest
++}
++
++// A first review that blocks buys the fix round — the only round that holds
++// the exam (#653) — and `review:T1:2` is the prompt these legs read. A
++// `Run:` proof rides along so the prompt really carries the RUN EVIDENCE text
++// leg (a) orders the block against.
++const fixRoundScenario = async ({ fixFn, review2 = passReview,
++                                  paths = ['t1_test.sh'],
++                                  examFiles = { 't1_test.sh': RED_AT_BASE } }) => {
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') return examOk(cwd, examFiles)
++    if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
++    if (opts.label === 'review:T1:1') {
++      return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'not yet' }] }
++    }
++    if (opts.label === 'review:T1:2') return review2()
++    if (kind === 'review') return passReview()
++    if (kind === 'fix') { fixFn(cwd); return doneImpl(cwd) }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, integ, stamp } = rig({
++    waves: [[entry({ proofTests: paths, proofRuns: ['true'] })]], stub,
++  })
++  const report = await run()
++  return { report, prompts, labels, integ, stamp }
++}
++
++{
++  // (a)+(b)+(c) — a fix round that only STRENGTHENS the exam: the peer's line
++  // survives, one line is appended, the referee sees exactly that and passes.
++  const { report, prompts, labels, integ, stamp } = await fixRoundScenario({
++    fixFn: (cwd) => fs.writeFileSync(path.join(cwd, 't1_test.sh'), STRENGTHENED),
++  })
++  assert.deepEqual(labels.filter((l) => l !== 'integration'),
++    ['exam:T1', 'impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
++    'the fix round proceeds to its re-review: ' + labels.join(','))
++
++  // (a) [M1] the EXAM EDITED line, then the block header, then a @@ hunk
++  // header — all of it before the RUN EVIDENCE text.
++  const prompt = prompts['review:T1:2']
++  const lines = prompt.split('\n')
++  const iEdited = lines.indexOf('EXAM EDITED: t1_test.sh')
++  const iBlock = lines.indexOf('EXAM EDITED DIFF t1_test.sh:')
++  const iRun = lines.findIndex((l) => l.startsWith('RUN EVIDENCE:'))
++  assert.ok(iEdited >= 0, '(a)[M1] the re-review prompt carries the line `EXAM EDITED: t1_test.sh`')
++  assert.ok(iRun >= 0, '(a)[M1] the re-review prompt carries the RUN EVIDENCE text the block precedes')
++  assert.ok(iBlock > iEdited,
++    '(a)[M1] a line `EXAM EDITED DIFF t1_test.sh:` follows the EXAM EDITED line (at ' +
++    iBlock + ' vs ' + iEdited + ')')
++  assert.ok(iBlock < iRun,
++    '(a)[M1] and it comes before the RUN EVIDENCE text (at ' + iBlock + ' vs ' + iRun + ')')
++  const block = diffBlock(prompt, 't1_test.sh')
++  assert.ok(block, '(a)[M1] the block is delimited')
++  const blockLines = block.split('\n')
++  assert.ok(blockLines.some((l) => l.startsWith('@@')),
++    '(a)[M1] and then a @@ hunk header: ' + JSON.stringify(block))
++  assert.ok(blockLines.some((l) => l.startsWith('---')) && blockLines.some((l) => l.startsWith('+++')),
++    '(a)[M1] the block carries the ---/+++ header lines of a unified diff: ' + JSON.stringify(block))
++
++  // (b) [M2] the appended line is a `+` content line, and nothing was removed:
++  // no line of the block begins `-` other than the `---` header.
++  assert.ok(blockLines.includes('+' + APPENDED),
++    '(b)[M2] the block carries the content line `+' + APPENDED + '`: ' + JSON.stringify(block))
++  assert.ok(!/\n-(?!--)/.test(block),
++    '(b)[M2] and no `-` content line — the peer\'s bytes all survive: ' + JSON.stringify(block))
++  const afterPlusPlus = blockLines.slice(blockLines.findIndex((l) => l.startsWith('+++')) + 1)
++  assert.ok(!afterPlusPlus.some((l) => l.startsWith('-')),
++    '(b)[M2] nothing beginning `-` after the +++ header: ' + JSON.stringify(afterPlusPlus))
++
++  // (c) [M2] the strengthened exam is accepted, recorded, and folded.
++  assert.equal(report.tasks[0].status, 'done', '(c)[M2] the row is done: ' + report.tasks[0].notes)
++  assert.equal(report.tasks[0].reviewVerdict, 'fixed', '(c)[M2] reviewVerdict')
++  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'], '(c)[M2] examEdited')
++  assert.equal(report.tasks[0].exam, 'red', '(c)[M2] the value read in the examiner\'s clone at BASE')
++  assert.equal(report.coverage.tasks_merged, 1, '(c)[M2] tasks_merged')
++  const merged = gitSync(['show', 'ultra/integration-' + stamp + ':t1_test.sh'], integ)
++  assert.ok(merged.includes('[ -f one.txt ]'),
++    '(c)[M2] the integration branch keeps the peer\'s line: ' + JSON.stringify(merged))
++  assert.ok(merged.includes(APPENDED),
++    '(c)[M2] and holds the appended one: ' + JSON.stringify(merged))
++}
++
++{
++  // (d) [M3] the same round WEAKENS the exam: the peer's line is gone, the
++  // block shows it as a `-` content line, and the referee blocks on that.
++  const { report, prompts } = await fixRoundScenario({
++    fixFn: editExam,
++    review2: () => ({
++      verdict: 'FIX_REQUIRED',
++      issues: [{ severity: 'blocking',
++                 detail: 'the exam was weakened — the peer\'s [ -f one.txt ] is gone',
++                 actor: 'implementer' }],
++    }),
++  })
++  const block = diffBlock(prompts['review:T1:2'], 't1_test.sh')
++  assert.ok(block, '(d)[M3] the re-review prompt carries the block for the edited path')
++  assert.ok(block.split('\n').includes('-[ -f one.txt ]'),
++    '(d)[M3] whose content line `-[ -f one.txt ]` is the dropped assertion: ' + JSON.stringify(block))
++  assert.equal(report.tasks[0].status, 'failed', '(d)[M3] the row is failed')
++  assert.equal(report.tasks[0].reviewVerdict, 'fix-loop-exhausted', '(d)[M3] reviewVerdict')
++  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'], '(d)[M3] examEdited')
++  assert.equal(report.coverage.tasks_merged, 0, '(d)[M3] nothing merges')
++}
++
++{
++  // (e) [M1] a Proof path the examiner left ABSENT that the fix round creates:
++  // the block diffs from empty, so every content line is an addition.
++  const { report, prompts } = await fixRoundScenario({
++    fixFn: (cwd) => fs.writeFileSync(path.join(cwd, 't1_extra.sh'), 'x\n'),
++    paths: ['t1_test.sh', 't1_extra.sh'],
++  })
++  assert.deepEqual(report.tasks[0].examEdited, ['t1_extra.sh'], '(e)[M1] the created path is the edit')
++  const block = diffBlock(prompts['review:T1:2'], 't1_extra.sh')
++  assert.ok(block, '(e)[M1] a block `EXAM EDITED DIFF t1_extra.sh:` is carried')
++  const blockLines = block.split('\n')
++  const content = blockLines.slice(blockLines.findIndex((l) => l.startsWith('+++')) + 1)
++    .filter((l) => l !== '' && !l.startsWith('@@') && !l.startsWith('\\'))
++  assert.ok(content.length > 0, '(e)[M1] the block has content lines: ' + JSON.stringify(block))
++  for (const l of content) {
++    assert.ok(l.startsWith('+'),
++      '(e)[M1] every content line of an absent-path block begins `+`: ' + JSON.stringify(l))
++  }
++  assert.ok(!diffBlock(prompts['review:T1:2'], 't1_test.sh'),
++    '(e)[M1] and the untouched path gets no block')
++}
++
+ console.log('ALL TESTS PASSED')
 diff --git a/skills/ultralearn/SKILL.md b/skills/ultralearn/SKILL.md
 index 63f9ad4b4f0bfbe6da983d0af18d1d5d28b9e42f..9232914c8a96d902ed49fcf1124181aa7c27a563 100644
 --- a/skills/ultralearn/SKILL.md
@@ -58893,6 +59624,37 @@ index 5db7a06e2472eb3ca0ddf78bbb28fa99c7fa4679..b3c4ae5696609efa5ba8c435319e45ab
 +        return ev.get("epoch")
  
      return origin_lookup, engine_lookup
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 0180ae969beec1e4399951bf4635725c9adb7f47..4ab481fa470458d2743d42e297392ac2be08a976 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -18,6 +18,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+       "required": ["task", "status"],
+       "properties": { "task": {"type":"string"}, "status": {"type":"string"}, "branch": {"type":"string"}, "headSha": {"type":"string"},
+         "commit": {"type":"string"}, "reviewVerdict": {"type":"string"}, "notes": {"type":"string"},
++        "actor": {"type":"string"},
+         "tier": {"type":"string"}, "review": {"type":"string"}, "fixIterations": {"type":"integer"},
+         "exam": {"type":["string","null"]}, "proposedPatches": {"type":"integer"},
+         "proofFixes": {"type":"integer"},
+@@ -80,7 +81,8 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].headSha` | no | The implementer's final worktree HEAD (what the merge agent merges); distinct from `commit` below |
+ | `tasks[].commit` | no | The implementer's final commit on the task's worktree branch (self-reported); the integration merge SHA lives in `waveMerges[].headSha` |
+ | `headSha` provenance | — | headSha values are derived at finalization from git ancestry by `finalize_report.py --report <file> --repo <path> --branch <integrationBranch>` (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §3): each merged task's `headSha` is its branch tip (`git rev-parse <branch>`), asserted to be an ancestor of the integration branch tip; the final MERGED `waveMerges` entry's `headSha` is the integration branch tip itself. finalize_report.py rewrites the saved result envelope's `result.*` headSha fields in place before ultra_gate.py runs. Intermediate (non-final) `waveMerges[].headSha` values are left as model-recorded — context, not authority; no mechanical consumer reads them. The `<runDir>/heads/` sidecars no longer exist. |
+-| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` (passed first review) or `fixed` (passed after the fix round). Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues after the capped fix round), `blocked-after-fix` (implementer blocked during the fix round), `agent-error` (the agent call itself failed), `lost-coordinates` (reported done without driver-captured coordinates — downgraded to failed; see the matching judgmentCalls entry), `reanchor-failed` (0.3.0 engine: a later wave's clone could not be re-anchored onto the adopted head — failed closed before dispatch, since a mis-anchored patch would silently revert the prior wave), `proof-red` (the driver's own `Run:`/`Check:` pass was still red after its one pre-review repair round — no referee was ever dispatched, because a patch whose own proof fails is not a patch a referee can grade). An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02). |
++| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` (passed first review) or `fixed` (passed after the fix round). Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues after the capped fix round), `blocked-after-fix` (implementer blocked during the fix round), `agent-error` (the agent call itself failed), `lost-coordinates` (reported done without driver-captured coordinates — downgraded to failed; see the matching judgmentCalls entry), `reanchor-failed` (0.3.0 engine: a later wave's clone could not be re-anchored onto the adopted head — failed closed before dispatch, since a mis-anchored patch would silently revert the prior wave), `proof-red` (the driver's own `Run:`/`Check:` pass was still red after its one pre-review repair round — no referee was ever dispatched, because a patch whose own proof fails is not a patch a referee can grade), `plan-defect` (#722 — the implementer's own reply named a `plan-defect:` concern against a Proof leg, by the leg's label, while the driver's pre-review pass had that task's exam red; the implementer may not edit the exam, so no fix round could close it and none was dispatched — the task is parked for the plan, carries `actor` below, and the concern travels to the gate under `deferredVerification`). An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02). |
++| `tasks[].actor` | no | Who a failed row's question belongs to. Present only on a row the driver parked for the **plan** (#722), where it reads `plan`: the implementer reported a leg-labelled `plan-defect:` concern against a Proof leg whose exam the pre-review pass found red, so the driver spent no `fix:<id>:0` round and dispatched no referee (`reviewVerdict: 'plan-defect'`, `fixIterations: 0`, `proofFixes: 0`, `notes` = the matching concerns joined by `; `). Absent from every other row — a row without the key is a row whose findings the implementer owned. Not the same field as a reviewer issue's `actor`, which routes a finding inside a review round rather than ending the task |
+ | `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent (minor review findings and implementer concerns) |
+ | `tasks[].tier` | no | Resolved model alias the implementer ran at (`haiku`/`sonnet`/`opus`) |
+ | `tasks[].review` | no | Review depth applied: `lean` (one pass) or `peer` (two) |
+@@ -102,7 +104,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `coverage` | no | Structural completeness signal: `{ tasks_merged, tasks_planned, complete }`. `tasks_planned` = total tasks across all waves; `tasks_merged` = count of distinct task branches that landed via a `MERGED` wave; `complete` = `tasks_merged >= tasks_planned`. A `complete: false` with a green `tests.passed` is the false-green the gate must catch — only existing tests can fail, so a dropped/never-merged task leaves the suite green. The engine reports the *count* it can observe; confirming each merged task's files are actually present is the completeness critic's git tree-diff |
+ | `missingDeliverables` | no | One entry per `failed` (or cascade-blocked) task whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The completeness critic reads this list to target its git presence check; the gate renders it under unfinished |
+ | `gitVerified` | no | Boolean: did the completeness critic confirm it reviewed the tree at the integration branch tip it derives itself — `git rev-parse HEAD` inside the integration worktree (already required to be on the integration branch), then `git checkout --detach` and a re-confirm — rather than a recorded slot (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §2)? The model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority — a mismatch against the critic's derived tip also fails the check. True only when the critic returned `onIntegrationHead: true`; false when it returned `onIntegrationHead: false` (it could not confirm — possible checkout drift or a failing detach, #29) or when the critic died/degraded (no flag). A false value also pushes a checkout-drift judgment call. **Step-5 gating:** `gitVerified` MUST be true to Approve — a false value makes the completeness review unverified and is treated as `BLOCKED` pending a manual integration-tree check. This is the report-driven hardening of the gate's `git rev-parse <integrationBranch>` == `waveMerges[last].headSha` check. **Patch-input engine note (Amendment 10, `fleet/run-engine.mjs`):** on the driver path the critic performs no detach and records no `onIntegrationHead` — `gitVerified` is DRIVER-derived instead: true iff at least one wave merged, the integration branch tip equals the last adopt receipt's sha, every task reported merged has a fold event in its wave's fold log (the receipt-based #70 check, surfaced as `ancestryMisses`), AND the completeness critic actually returned a result (a dead critic withholds it, preserving the fail-closed gate invariant). Same Step-5 gating either way |
+-| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task referee returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no referee can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`; `deliverable` is the task id and `why` is the reviewer's detail verbatim. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |
++| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task referee returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no referee can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`, plus one item for each task the driver parked for the plan before any fix round (#722): the row that carries `actor: plan`, whose `why` is the implementer's own leg-naming `plan-defect:` concern verbatim rather than a reviewer's detail. A parked task is the one `failed` row that still asks the plan a question, and its files are also listed under `missingDeliverables`; `deliverable` is the task id. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |
+ | `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314)); **degradation** — verify the affected slice (budget-deferred, integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo (endpoint not in run, dependent before prerequisite, endpoints share a wave). New cases slot into an existing kind rather than lengthening this reference. |
+ | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
+ | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic derives its own detach target — `git rev-parse HEAD` inside the integration worktree — then runs `git checkout --detach` and re-confirms `git rev-parse HEAD` still matches; the model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority, and a mismatch against the derived tip also blocks. If it cannot (an unresolvable branch/HEAD, or the detach itself fails — e.g. a dirty/conflicted integration worktree) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). Each finding is an object `{severity, detail}` (#474): **`blocking`** means the critic found a named defect that must not be merged as-is — an unmet plan requirement, a missing deliverable, a claim the integrated tree contradicts; **`minor`** means everything the operator should see but that does not stop the run. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
 diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
 index b86897b9a8d63058885a17b27202d9d978067cd3..5bd97145af75755d2ecaf901cbdc934cfbf3d5a6 100644
 --- a/skills/ultrawrite/SKILL.md
