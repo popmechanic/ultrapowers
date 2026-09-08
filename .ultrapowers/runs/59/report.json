@@ -1,0 +1,122 @@
+{
+  "integrationBranch": "ultra/integration-run-59",
+  "baseSha": "1c83b61ecbeb29f722dfba90198336f1dbc08296",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "f6123be5a7e5c4a621553980c5a07b1d20bb3093",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-59/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`skills/ultrapowers/scripts/compile_plan.py:2515-2521` \u2014 the ADVISORY_RENDERS contract comment, which is the authoritative description of what every render receives, still reads `ctx` is {\"base\": Path, \u2026, \"tracked\": set[str] (git ls-files under base), \u2026}. After this patch `ctx[\"base\"]` is a `BaseTree` (built at `render_advisories`, and a bare path is wrapped there), and `ctx[\"tracked\"]` is `base.tracked(exclude)` \u2014 `ls-files` only for the directory reader, `ls-tree -r --name-only <sha>` for a sha reader. This is the one seam the task rewires and the comment now misdescribes both of its fields; a future render author reading it would reach for `ctx[\"base\"] / path`, which is exactly the `open()`-under-a-sha the second Global Constraint forbids. No test asserts on this comment, so nothing fails \u2014 it is a doc defect, not a behavior one.; `tests/test_compile_plan_base_message.py:1` \u2014 the module docstring's title line still reads \"`--base` says it wants a checkout directory (#637).\" The patch correctly rewrites the body of that docstring to say #725 retired that sentence, and deletes the three leg-(c) sha tests plus `SHA_SKIP`, so the title now contradicts the file it heads twenty lines later. The exam still grades correctly (the surviving legs are the `--help` entry and the directory skip line); this is the first line a reader of the exam sees.; unverified: the task's Acceptance is `suite \u2014 the committed suite is the verification`, but the Proof's `Run:` bullet and the exam command together cover only 5 of the repository's test files. The patch narrows `claims_grammar_advisories`, `build_edges` and every `ctx[\"base\"]` render from \"a path\" to \"a `BaseTree`\", which is a signature change on library seams other exams reach directly (`tests/test_compile_plan_claims_edges.py:646` and `tests/test_check_renders.py:216` call `render_advisories(plan, <Path>)`; `tests/test_compile_plan_claims_edges.py:410-414` calls `compile_plan.is_binary(<Path>, \u2026)`). I read every caller in the tree and each is covered \u2014 `render_advisories` wraps a bare path via `isinstance`, `BaseTree.__eq__` keeps `ctx[\"base\"] == repo` true for the directory reader, module-level `is_binary` is preserved, no test passes `tree_root=`, and no other file references `_resolves_as_commit`, `base_sha` or the deleted `wants a checkout directory` sentence \u2014 but static reading is not the suite. What would settle it: `python3 -m pytest -q tests/` in this clone.; concern: out-of-FILES: none \u2014 all four changed paths are inside FILES.; concern: I edited the peer-owned exam file tests/test_compile_plan_base_message.py, which the driver will overlay. The task text explicitly retires the #637 leg-(c) behavior, and its six parametrized tests (test_a_forty_hex_base_says_it_wants_a_checkout_directory / _prints_no_is_not_a_git_checkout_line / _still_exits_zero) asserted exactly the sentence the task removes, so they failed after the change. I deleted those four test functions and their SHA_SKIP/ZEROS/DEADBEEF/SHAS fixtures and marked the M3 docstring paragraph RETIRED by #725; the other 6 tests in the file are untouched and pass. No test file of my own was authored \u2014 in particular tests/test_compile_plan_base_tree.py and tests/test_pin_base_facts.py are left for the peer's exam.; concern: plan-defect: the task says a directory `--base` gives a reader whose `repo` is 'its toplevel'. Implementing that literally breaks M2's byte-identity requirement: the five canonical fixtures are invoked as evals/fixtures/<name>/project (a subdirectory of this repo) and tests/test_compile_plan_claims_edges.py passes non-checkout tmp dirs, and all reads there have always been relative to the directory as given. Peeling to the toplevel changes the tracked set and the blast-radius/referent output and the fixtures stop printing `PLAN OK`. So BaseTree.repo holds the directory exactly as handed for the directory form, and only the sha form resolves the plan's toplevel. Documented in the class docstring.; concern: BaseTree carries three members beyond the literal method list in the task: commit_sha() and is_checkout() (pin_base_facts.py's stamp and render_advisories' 'is not a git checkout' skip need them, and both are tree reads that must go through the one reader per the global constraint), plus __eq__/__hash__ so a directory reader still compares equal to the path it was handed \u2014 tests/test_check_renders.py::test_render_context_shape asserts ctx['base'] == repo and must keep passing untouched.; concern: The `_git(base, *args)` name and signature are preserved (pin_base_facts.py imports it); the actual subprocess now happens in one new `_git_run`, which also has a bytes mode so `git show` of a binary blob does not raise. The module-level `_git_tracked`/`_git_word_files`/`_git_literal_in_code`/`_git_substring_files` keep their names and gained a trailing `rev` kwarg defaulting to the worktree sentinel, so any external caller sees BASE behavior.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-59/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1813 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 305.14s (0:05:05) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_compile_plan_base_tree.py tests/test_compile_plan_base_message.py tests/test_pin_base_facts.py tests/test_compile_plan_proof_runs.py tests/test_check_renders.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 74%]\n.........................                                                [100%]\n97 passed in 12.54s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | grep -q -e 'compile_plan.py --check --renders --base <checkout-dir|sha> <plan.md>'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q -e 'a checkout directory or a 40-hex sha.*present locally'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- evals/fixtures tests/fixtures skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh tests/test_compile_plan_proof_runs.py tests/test_check_renders.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 302434,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "25d9898bdc7831042efdff6b78c5c8414b84c5bf",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-59/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-59/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.092,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: none \u2014 all four changed paths are inside FILES.",
+    "task 1: I edited the peer-owned exam file tests/test_compile_plan_base_message.py, which the driver will overlay. The task text explicitly retires the #637 leg-(c) behavior, and its six parametrized tests (test_a_forty_hex_base_says_it_wants_a_checkout_directory / _prints_no_is_not_a_git_checkout_line / _still_exits_zero) asserted exactly the sentence the task removes, so they failed after the change. I deleted those four test functions and their SHA_SKIP/ZEROS/DEADBEEF/SHAS fixtures and marked the M3 docstring paragraph RETIRED by #725; the other 6 tests in the file are untouched and pass. No test file of my own was authored \u2014 in particular tests/test_compile_plan_base_tree.py and tests/test_pin_base_facts.py are left for the peer's exam.",
+    "task 1: plan-defect: the task says a directory `--base` gives a reader whose `repo` is 'its toplevel'. Implementing that literally breaks M2's byte-identity requirement: the five canonical fixtures are invoked as evals/fixtures/<name>/project (a subdirectory of this repo) and tests/test_compile_plan_claims_edges.py passes non-checkout tmp dirs, and all reads there have always been relative to the directory as given. Peeling to the toplevel changes the tracked set and the blast-radius/referent output and the fixtures stop printing `PLAN OK`. So BaseTree.repo holds the directory exactly as handed for the directory form, and only the sha form resolves the plan's toplevel. Documented in the class docstring.",
+    "task 1: BaseTree carries three members beyond the literal method list in the task: commit_sha() and is_checkout() (pin_base_facts.py's stamp and render_advisories' 'is not a git checkout' skip need them, and both are tree reads that must go through the one reader per the global constraint), plus __eq__/__hash__ so a directory reader still compares equal to the path it was handed \u2014 tests/test_check_renders.py::test_render_context_shape asserts ctx['base'] == repo and must keep passing untouched.",
+    "task 1: The `_git(base, *args)` name and signature are preserved (pin_base_facts.py imports it); the actual subprocess now happens in one new `_git_run`, which also has a bytes mode so `git show` of a binary blob does not raise. The module-level `_git_tracked`/`_git_word_files`/`_git_literal_in_code`/`_git_substring_files` keep their names and gained a trailing `rev` kwarg defaulting to the worktree sentinel, so any external caller sees BASE behavior."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
