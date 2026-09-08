@@ -5,3 +5,6 @@
 {"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M2014Z9B000145HQX7NE33VF","ts":1788855090475}
 {"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 6","id":"01M2014Z9F0000R60RF592X34Q","ts":1788855090479}
 {"kind":"engine:phase","phase":"Setup","id":"01M2014Z9G0000DZQ0N04SPXY9","ts":1788855090480}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-50 at 5acdb723ce8d9e2b3069141db9ba7e91bf8734dc; baseline green","id":"01M201GWGY0000Z6AB759GEGYZ","ts":1788855480862}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M201GWGY0001JPARBW4WJFT7","ts":1788855480862}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"bba3d207-a516-4676-b9e9-c66ac7c911ad","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-50/clones/task-1","model":"opus","id":"01M201GWH00000CENKX6JCYWTD","ts":1788855480864}
