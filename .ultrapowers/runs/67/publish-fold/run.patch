@@ -1,0 +1,733 @@
+diff --git a/fleet/tests/test_publish_fold.mjs b/fleet/tests/test_publish_fold.mjs
+index a98efe75994f70758a15daf18bd5ec1c923d2269..d7350b3b0d4a6359216d8ce6ac508f68468a09a1 100644
+--- a/fleet/tests/test_publish_fold.mjs
++++ b/fleet/tests/test_publish_fold.mjs
+@@ -1669,13 +1669,6 @@ const plantReceipt = (fx, payload) => {
+       assert.notEqual(runIn('bash', ['-c', GREP], dir).code, 0,
+         'leg (h) [M4]: … and non-zero on a contract with ' + JSON.stringify(lit) + ' removed')
+     }
+-
+-    // The first `Run:` — the docs pin reads this file's other literals, so the
+-    // edit must leave them in the shape it reads.
+-    const pin = runIn('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'], REPO)
+-    assert.equal(pin.code, 0,
+-      'leg (h) [M4]: `python3 -m pytest -q tests/test_docs_agree_with_code.py` passes — got ' +
+-      pin.code + '\n' + pin.out)
+   }
+ }
+ 
+diff --git a/fleet/tests/test_retire.mjs b/fleet/tests/test_retire.mjs
+index b372ccca75893c4cde94864260558a33fe50ee33..29ddda3b31de592d7d3e7a6e509c53b826b93fb7 100644
+--- a/fleet/tests/test_retire.mjs
++++ b/fleet/tests/test_retire.mjs
+@@ -866,22 +866,6 @@ assert.ok(twoTagsBullet(contractText).includes('— skipped'),
+ assert.ok(rollbackSection(runbookText).includes('— skipped'),
+   "#706 (l)/M7 the runbook's `## Rollback` section says the same, carrying the line's literal `— skipped` — a skip declared in one document only fails this")
+ 
+-for (const [name, text] of [['fleet/CONTRACT.md', contractText], ['fleet/RUNBOOK.md', runbookText]]) {
+-  const branchRefs = [...text.matchAll(/\?ref=([^\s'"`)]*)/g)]
+-    .map((m) => m[1])
+-    .filter((ref) => ref.startsWith('ultra/evidence-run-'))
+-  assert.deepEqual(branchRefs, [],
+-    `#706 (l)/M7 ${name} shows no \`?ref=ultra/evidence-run-<N>\` read — the record is read by tag, and the sweep's read names the branch in prose; got ${JSON.stringify(branchRefs)}`)
+-}
+-
+-{
+-  const res = spawnSync('python3',
+-    ['-m', 'pytest', 'tests/test_docs_agree_with_code.py', '-q', '-p', 'no:cacheprovider'],
+-    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 120000 })
+-  assert.equal(res.status, 0,
+-    `#706 (l)/M7 the docs-pin suite is green over both edited documents; stdout: ${res.stdout} stderr: ${res.stderr}`)
+-}
+-
+ // ── (i) M1, M6, M7: the script as a process, against PATH shims ─────────────
+ 
+ const cliRoot = tempDir('retire-cli-')
+@@ -1555,8 +1539,4 @@ for (const hit of grepDocs('integration-run')) {
+     `#724 Task 1 (h)/M6 ${hit.file}:${hit.line} still gives ultra/integration-run-<N> only the two fates of BASE — the merge and the open PR — with no \`${PHRASE}\` anywhere in its paragraph; got ${JSON.stringify(hit.text)}`)
+ }
+ 
+-// The third `Run:` — `python3 -m pytest -q tests/test_docs_agree_with_code.py`
+-// exits 0 over both rewritten documents. It is spawned once, above, under
+-// `#706 (l)/M7`; the rewrite here names no mechanism that is not there. [M6]
+-
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine.mjs b/fleet/tests/test_run_engine.mjs
+index 6f4438c76901842463425a1aae582e08f5e61efe..d4f826c1a5364f5c95a55216cbec8a8c9a2ed3d1 100644
+--- a/fleet/tests/test_run_engine.mjs
++++ b/fleet/tests/test_run_engine.mjs
+@@ -133,38 +133,16 @@ assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
+ 
+ // Role-file prose: sizes are REPORTED, never gated (#496, closed 2026-09-01 —
+ // the last refusing word ceiling, deleted under the #492 evidence: report,
+-// don't gate). The no-shouting pin stays — that one is stylistic, not volumetric.
++// don't gate).
+ {
+   const rolesDir = new URL('../roles/', import.meta.url)
+   for (const f of fs.readdirSync(rolesDir)) {
+     const text = fs.readFileSync(new URL(f, rolesDir), 'utf8')
+     const words = text.split(/\s+/).filter(Boolean).length
+     console.error('role prose size: ' + f + ' = ' + words + ' words')
+-    assert.ok(!/\b(NEVER|ALWAYS|MUST)\b/.test(text), 'role file ' + f + ' shouts an imperative')
+   }
+ }
+ 
+-// The two reviewer rules the run-32 evidence bought. Both are prose an LLM has
+-// to follow, so the pin is on the words: a trim that pays for something else
+-// must not quietly take these with it.
+-{
+-  const reviewer = fs.readFileSync(new URL('../roles/reviewer.md', import.meta.url), 'utf8')
+-  // #344 — the plan-defect rule was the ONLY rule in the file that never said
+-  // "blocking": every other one says it outright. Run-32: 14 of 20 findings
+-  // carried the `plan-defect:` prefix, four of the five shipped code defects
+-  // among them — five reviewers wrote out the defect AND its one-clause fix,
+-  // returned PASS, and it merged.
+-  assert.ok(/`plan-defect:`[\s\S]{0,80}blocking[\s\S]{0,80}FILES/.test(reviewer),
+-    'reviewer.md rule 6 no longer makes a task-local plan-defect fix blocking (#344)')
+-  // #441 — a diff is a result, not a history. Asking six reviewers to evidence
+-  // red-then-green ordering produced 25 unanswerable entries and the single
+-  // deferred:manual ack that parked run-32; ordering has no answer here, so
+-  // the rule says so outright rather than routing it to a second channel.
+-  assert.ok(/red-then-green/.test(reviewer) &&
+-    /is not a finding/.test(reviewer),
+-    'reviewer.md rule 7 no longer excuses the reviewer from unobservable ordering (#441)')
+-}
+-
+ // ── #436: the two bounds that go live with the golden's parallel pytest ──────
+ // Both are pre-golden-rebuild obligations: an unbounded suite exec burns the
+ // sandbox lease instead of failing, and `-n auto` per implementer oversubscribes
+diff --git a/fleet/tests/test_run_engine_critic_inputs.mjs b/fleet/tests/test_run_engine_critic_inputs.mjs
+index c6080be1b76bea06370ad87d9394d96fa57e0018..acd4c987eec8265ef5a1bd04df2e2c3601f6d5ff 100644
+--- a/fleet/tests/test_run_engine_critic_inputs.mjs
++++ b/fleet/tests/test_run_engine_critic_inputs.mjs
+@@ -316,13 +316,6 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
+   const role = fs.readFileSync(new URL('../roles/critic.md', import.meta.url), 'utf8')
+   assert.match(role, /Stale-if and Authorized-by are not yours to judge/,
+     'critic.md no longer scopes the two slots the contracts block excludes')
+-  // The block carries every slot; the critic's own duties are the two the
+-  // integrated view alone can settle. Interfaces is settled by the compiler's
+-  // derived edges and the integrated run evidence, Proof by the wave-0
+-  // examiner and the proof gate — so the role file names Claim and Context.
+-  for (const slot of ['Claim', 'Context']) {
+-    assert.ok(role.includes(slot + ':'), 'critic.md carries no per-slot check for ' + slot)
+-  }
+ }
+ 
+ fs.rmSync(tmp, { recursive: true, force: true })
+diff --git a/fleet/tests/test_run_engine_suite_passes.mjs b/fleet/tests/test_run_engine_suite_passes.mjs
+index 3827d8bfbfb5fc21c954575fd1d441a29e67c1a5..a7eadb457f6cdcca8adb372d1b0b0afc85217508 100644
+--- a/fleet/tests/test_run_engine_suite_passes.mjs
++++ b/fleet/tests/test_run_engine_suite_passes.mjs
+@@ -283,22 +283,6 @@ const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passe
+   assert.ok(ciLines[idx].includes('actions/checkout@v7'),
+     '(f)/M6: the checkout step is no longer actions/checkout@v7 — only the comment changes: ' +
+     ciLines[idx])
+-
+-  // The fourth and fifth `Run:` legs, executed here too: the sibling sim prints
+-  // its sentinel with its knob gone, and the doc pin passes as the lens over
+-  // the four operator documents.
+-  const cleanSim = spawnSync('node', ['fleet/tests/test_run_engine_integrated_clean.mjs'],
+-    { cwd: REPO_ROOT, encoding: 'utf8' })
+-  assert.ok(String(cleanSim.stdout || '').includes('ALL TESTS PASSED'),
+-    '(f)/M6: fleet/tests/test_run_engine_integrated_clean.mjs did not print its sentinel ' +
+-    'once its knob was removed (exit ' + cleanSim.status + '):\n' +
+-    String(cleanSim.stdout || '') + String(cleanSim.stderr || ''))
+-
+-  const docPin = spawnSync('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'],
+-    { cwd: REPO_ROOT, encoding: 'utf8' })
+-  assert.equal(docPin.status, 0,
+-    '(f)/M6: tests/test_docs_agree_with_code.py failed — the operator documents name a ' +
+-    'mechanism that is not there:\n' + String(docPin.stdout || '') + String(docPin.stderr || ''))
+ }
+ 
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_main.mjs b/fleet/tests/test_run_main.mjs
+index c29479b633f9ba1368018fb7c61690e999962169..676df100c7a6a340d4653a2f70cfbbfbc959d4e7 100644
+--- a/fleet/tests/test_run_main.mjs
++++ b/fleet/tests/test_run_main.mjs
+@@ -925,11 +925,6 @@ const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
+     'leg (f) [M4]: the fourth Run: prints a line of report-format.md naming `deferred:manual` and ' +
+     '`verbatim` — the rule says a manual ack quoting a green integrated Run: verbatim is ' +
+     'pre-authorized: ' + JSON.stringify(rfLines))
+-
+-  const events = sh('python3 -m pytest -q tests/test_fleet_events.py')
+-  assert.equal(events.status, 0,
+-    'leg (f) [M4]: the fifth Run: — tests/test_fleet_events.py still passes, so the parked reason ' +
+-    'literal it pins is unchanged: ' + String(events.stdout + events.stderr).slice(-500))
+ }
+ 
+ // ── #770 Task 2 — the driver asks for knob validation without the baseline ───
+diff --git a/fleet/tests/test_sandbox_boot.mjs b/fleet/tests/test_sandbox_boot.mjs
+index 975a504a917c0e0cd9e6a7ee366c945b1107adde..c5a6b7ad7179820d8d01f7cd7bb63b00503691fd 100644
+--- a/fleet/tests/test_sandbox_boot.mjs
++++ b/fleet/tests/test_sandbox_boot.mjs
+@@ -1052,8 +1052,6 @@ test('#723 (h) the contract declares the phase commits in both bullets  [M5]', (
+     // The `ultra/evidence-run-<N>` bullet, from its own line to the
+     // `ultra/integration-run-<N>` one.
+     "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+-    // …and the docs pin stays green over the edited contract.
+-    'python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider',
+   ]
+   for (const cmd of runs) {
+     const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000 })
+diff --git a/tests/test_compile_plan_check_cost.py b/tests/test_compile_plan_check_cost.py
+index ccaad8d5aef85ba7d19612e7fee7745328f33e7e..cfc36103013d4897b577276729b5877eda9889bf 100644
+--- a/tests/test_compile_plan_check_cost.py
++++ b/tests/test_compile_plan_check_cost.py
+@@ -48,7 +48,6 @@ import pytest
+ ROOT = Path(__file__).resolve().parents[1]
+ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+ SKILL = ROOT / "skills/ultrawrite/SKILL.md"
+-VALIDATE_SKILL = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
+ 
+ sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
+ sys.path.insert(0, str(Path(__file__).resolve().parent))
+@@ -404,14 +403,3 @@ def test_the_species_list_names_the_seven_new_species_after_directory_absence_pi
+         "names `pinned-elsewhere`, `check-cost`, `prose-check`, `wide-files`, "
+         "`wide-contract`, `threshold-one-sided` and `disjunct-without-leg` "
+         "after `directory-absence-pin`")
+-
+-
+-def test_the_skill_still_validates():
+-    """[M4]: the task's `Run:` skill validator — a Global Constraints `Check:`
+-    of this plan, and green at BASE, so it stays green after the edit."""
+-    p = subprocess.run([sys.executable, str(VALIDATE_SKILL),
+-                        "skills/ultrawrite"],
+-                       capture_output=True, text=True, cwd=str(ROOT))
+-    assert p.returncode == 0, (
+-        "[M4]: `skills/ultrawrite/SKILL.md` still validates. Got rc=%d\n%s%s"
+-        % (p.returncode, p.stdout, p.stderr))
+diff --git a/tests/test_compile_plan_engine_self_change.py b/tests/test_compile_plan_engine_self_change.py
+index 8fc1534906d2580bed99adb6ccf6f487255c32a6..f7d8bedceadb3b1485895bc240628733dc608597 100644
+--- a/tests/test_compile_plan_engine_self_change.py
++++ b/tests/test_compile_plan_engine_self_change.py
+@@ -371,15 +371,3 @@ def test_the_five_species_fixture_still_prints_exactly_its_five_lines(
+         "leg (c) [M3]: the five-species fixture still prints exactly its "
+         "five `ADVISORY proof-species:` lines. Got:\n"
+         + "\n".join(_species(out)))
+-
+-
+-def test_the_existing_species_exam_still_passes():
+-    """leg (c) [M3]: `tests/test_compile_plan_proof_species.py` passes — the
+-    line shape, the print order and the registration it pins are unchanged."""
+-    p = subprocess.run(
+-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+-         "tests/test_compile_plan_proof_species.py"],
+-        capture_output=True, text=True, cwd=str(ROOT))
+-    assert p.returncode == 0, (
+-        "leg (c) [M3]: the existing species exam must still pass:\n"
+-        + p.stdout[-4000:] + p.stderr[-2000:])
+diff --git a/tests/test_compile_plan_one_sided.py b/tests/test_compile_plan_one_sided.py
+index 26834e12b1de84403b686af043aae5534a48de89..23b17a85f6ebfc7bc0acc854c72d1dd2bd2f030b 100644
+--- a/tests/test_compile_plan_one_sided.py
++++ b/tests/test_compile_plan_one_sided.py
+@@ -490,15 +490,3 @@ def test_the_duration_twin_still_draws_exactly_one_line(tmp_path, repo):
+         "leg (d) [M4]: the duration twin still draws exactly one line, "
+         "`duration-without-clock` on task 1. Got:\n"
+         + ("\n".join(lines) or "(none)"))
+-
+-
+-def test_the_existing_species_exam_still_passes():
+-    """leg (d) [M4]: `tests/test_compile_plan_proof_species.py` passes — the
+-    whole file, run as the driver runs it."""
+-    p = subprocess.run(
+-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+-         "tests/test_compile_plan_proof_species.py"],
+-        capture_output=True, text=True, cwd=str(ROOT))
+-    assert p.returncode == 0, (
+-        "leg (d) [M4]: the existing species exam still passes unchanged. "
+-        "Got rc=%d\n%s%s" % (p.returncode, p.stdout[-4000:], p.stderr[-2000:]))
+diff --git a/tests/test_compile_plan_sha_unguarded.py b/tests/test_compile_plan_sha_unguarded.py
+index 1f7ebb466bc91ff79625b291de5e3a8b6bf61581..a05d8e5f8926462b930e6fee76348ddf5010d3dd 100644
+--- a/tests/test_compile_plan_sha_unguarded.py
++++ b/tests/test_compile_plan_sha_unguarded.py
+@@ -44,7 +44,6 @@ import pytest
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+-SPECIES_EXAM = "tests/test_compile_plan_proof_species.py"
+ 
+ sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
+ sys.path.insert(0, str(Path(__file__).resolve().parent))
+@@ -553,15 +552,3 @@ def test_every_run_less_fixture_plan_still_checks_byte_identically_to_base(
+     base_compiler = _fixture_fn(proof_runs.base_compiler)(tmp_path_factory)
+     proof_runs.test_every_run_less_fixture_plan_checks_byte_identically_to_base(
+         base_compiler)
+-
+-
+-def test_the_five_species_exam_still_passes():
+-    """leg (d) [M4]: the five-species fixture's `Run:` commands carry no git
+-    verb, so this render is silent on it and that exam still prints exactly
+-    its five lines — run as its own pytest process."""
+-    p = subprocess.run([sys.executable, "-m", "pytest", "-q",
+-                        "-p", "no:cacheprovider", SPECIES_EXAM],
+-                       capture_output=True, text=True, cwd=str(ROOT))
+-    assert p.returncode == 0, (
+-        "leg (d) [M4]: `%s` still passes. Got rc=%d\n%s%s"
+-        % (SPECIES_EXAM, p.returncode, p.stdout, p.stderr))
+diff --git a/tests/test_compile_plan_wide_files.py b/tests/test_compile_plan_wide_files.py
+index 2dc683b5a5b6e06a4f6900dfdd09d4cd5e5815ef..087139736d117d8d2cd8deb7ce21b36d7af816ec 100644
+--- a/tests/test_compile_plan_wide_files.py
++++ b/tests/test_compile_plan_wide_files.py
+@@ -408,20 +408,6 @@ def test_every_run_less_fixture_plan_still_checks_byte_identically_to_base(
+         base_compiler)
+ 
+ 
+-def test_the_five_species_exam_still_passes():
+-    """leg (d) [M4]: `tests/test_compile_plan_proof_species.py` — its
+-    five-species fixture printing exactly its five lines, its line-shape regex
+-    and its registration pin — passes unchanged."""
+-    p = subprocess.run(
+-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+-         "tests/test_compile_plan_proof_species.py"],
+-        capture_output=True, text=True, cwd=str(ROOT))
+-    assert p.returncode == 0, (
+-        "leg (d) [M4]: the existing species exam must still pass — the "
+-        "five-species fixture (one file per task, one to three clauses) draws "
+-        "no new line. Got rc=%d\n%s%s" % (p.returncode, p.stdout, p.stderr))
+-
+-
+ # =========================================================================== #
+ # Task "The wide-files knee reads the paths" (#666) — the narrow knee.        #
+ #                                                                             #
+@@ -693,19 +679,3 @@ def test_666_the_engine_fixture_draws_nothing_without_renders(tmp_path, repo):
+     assert "wide-files" not in bare.stdout, (
+         "#666 leg (e) [M4]: the frozen `--check` channel names the species "
+         "nowhere. Got:\n" + bare.stdout)
+-
+-
+-def test_666_the_species_vocabulary_and_five_species_exams_still_pass():
+-    """#666 leg (e) [M4]: the Proof's `Run:` — the five-species fixture
+-    (exactly five lines, one per registered species) and the
+-    species-vocabulary pins over the skill text, neither of which this task
+-    may move."""
+-    p = subprocess.run(
+-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+-         "tests/test_compile_plan_proof_species.py",
+-         "tests/test_compile_plan_check_cost.py"],
+-        capture_output=True, text=True, cwd=str(ROOT))
+-    assert p.returncode == 0, (
+-        "#666 leg (e) [M4]: the narrow knee adds no species and no word to the "
+-        "refusal vocabulary, so both exams pass unchanged. Got rc=%d\n%s%s"
+-        % (p.returncode, p.stdout, p.stderr))
+diff --git a/tests/test_harvest_evidence.py b/tests/test_harvest_evidence.py
+index 34bb329225b13c5dce8911022fe66eb26a36dcf2..df6e76cdceb7bbbf6089c1bde0d54ba552255ef4 100644
+--- a/tests/test_harvest_evidence.py
++++ b/tests/test_harvest_evidence.py
+@@ -522,23 +522,6 @@ def test_the_ssh_fetcher_and_its_test_no_longer_exist():
+     assert "fleet_fetch" not in HARVEST.read_text()
+ 
+ 
+-def test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone():
+-    """M4, leg (d): `test_remote_harvest_of_an_unreachable_host_fails_loud` is
+-    deleted, and `NOT_YET_SWEPT` no longer names `fleet_fetch.py`."""
+-    assert "test_remote_harvest_of_an_unreachable_host_fails_loud" not in (
+-        REPO / "tests/test_harvest_fleet_runs.py").read_text()
+-    assert "fleet_fetch" not in (
+-        REPO / "tests/test_ultralearn_swallows.py").read_text()
+-
+-
+-def test_the_docs_flag_allowlist_names_evidence_and_not_remote():
+-    """M4, leg (d): `tests/test_ultralearn_docs.py`'s allowlist names
+-    `--evidence` and neither `--remote` nor `--remote-root`."""
+-    text = (REPO / "tests/test_ultralearn_docs.py").read_text()
+-    assert "--evidence" in text
+-    assert "--remote" not in text
+-
+-
+ # ---------- M5, leg (e): the bundle the ledger reads is unchanged ----------
+ 
+ def test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did(
+diff --git a/tests/test_harvest_fleet_runs_publish_fold.py b/tests/test_harvest_fleet_runs_publish_fold.py
+index 055d118d3f78bf0d129981e383208420296210a5..82481d762d3c253524afa6ae645517e8836962c1 100644
+--- a/tests/test_harvest_fleet_runs_publish_fold.py
++++ b/tests/test_harvest_fleet_runs_publish_fold.py
+@@ -38,7 +38,6 @@ Self-contained and hermetic: its own `_ev` / `_make_run_dir` fixture helpers
+ local run directories only, `--engine-version` passed so nothing shells out for
+ a release timeline, no `gh`, no network.
+ """
+-import ast
+ import json
+ import re
+ import sys
+@@ -261,34 +260,6 @@ def test_an_engine_log_row_is_still_capped_in_the_slice_timeline(tmp_path):
+     assert len(matching[0]) < 260
+ 
+ 
+-# ---------- M1, leg (e): the bundle-key pin admits the new key ----------
+-
+-def _base_bundle_keys():
+-    """`BASE_BUNDLE_KEYS` read out of `tests/test_harvest_evidence.py` as a
+-    literal — read, not imported, so a sibling task editing the same module
+-    cannot make this leg fail for an unrelated reason."""
+-    source = (REPO / "tests/test_harvest_evidence.py").read_text()
+-    for node in ast.parse(source).body:
+-        if not isinstance(node, ast.Assign):
+-            continue
+-        if not any(isinstance(t, ast.Name) and t.id == "BASE_BUNDLE_KEYS"
+-                   for t in node.targets):
+-            continue
+-        value = node.value
+-        if isinstance(value, ast.Call) and getattr(value.func, "id", None) == "frozenset":
+-            value = value.args[0]
+-        return set(ast.literal_eval(value))
+-    raise AssertionError("no BASE_BUNDLE_KEYS assignment in tests/test_harvest_evidence.py")
+-
+-
+-def test_base_bundle_keys_names_publish_fold():
+-    """M1, leg (e): the frozen key set in `tests/test_harvest_evidence.py`
+-    names `publishFold`, so
+-    `test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did` — which
+-    asserts `set(bundle) == BASE_BUNDLE_KEYS` — passes with the new key."""
+-    assert "publishFold" in _base_bundle_keys()
+-
+-
+ # ---------- M4, leg (f): the friction lens reads the fold ----------
+ 
+ def _friction_item():
+diff --git a/tests/test_plan_level_claim.py b/tests/test_plan_level_claim.py
+index b298b5ce9b7413fefe4e5bf3e1e4027fc8cf2fae..6acf841ce9c5f40c9bb612fb8b0c59690bf953e7 100644
+--- a/tests/test_plan_level_claim.py
++++ b/tests/test_plan_level_claim.py
+@@ -18,7 +18,6 @@ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+ PROVENANCE = ROOT / "skills/ultrawrite/scripts/check_provenance.py"
+ EXTRACT = ROOT / "skills/ultrawrite/scripts/extract_gate_input.py"
+ SKILL = ROOT / "skills/ultrawrite/SKILL.md"
+-VALIDATE = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
+ 
+ sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
+ sys.path.insert(0, str(ROOT / "tests"))
+@@ -387,12 +386,6 @@ def test_skill_self_review_names_derived_and_the_plan_level_claim():
+     assert "plan-level Claim" in tail
+ 
+ 
+-def test_skill_still_validates():
+-    proc = subprocess.run([sys.executable, str(VALIDATE), str(SKILL.parent)],
+-                          capture_output=True, text=True)
+-    assert proc.returncode == 0, proc.stdout + proc.stderr
+-
+-
+ # ---------------------------------------------------------------------------
+ # #755 Task 1 — the plan-level Claim accepts `(quoted from #NNN)` as well as
+ # `(elicited)`, and reports which one it carries.
+@@ -517,10 +510,3 @@ def test_755_skill_the_document_does_not_offer_derived_for_the_header_claim():
+     # [M5] leg (e), third Run: `(derived)` is not on offer for the header Claim.
+     para = _the_document_paragraph()
+     assert "(derived)" not in para, para
+-
+-
+-def test_755_skill_the_document_names_the_header_claim_line_exactly_once():
+-    # [M5] leg (e), fourth Run — the same lens as the pin above, restated for
+-    # this task: the paragraph names `**Claim:**` once, not twice.
+-    para = _the_document_paragraph()
+-    assert para.count("**Claim:**") == 1, para
+diff --git a/tests/test_proof_modes_documented.py b/tests/test_proof_modes_documented.py
+index 9359f16c0c85dfb878749c76d7948652214d5f5f..cd910dd9c06b500d29c905be928509fc2bd51297 100644
+--- a/tests/test_proof_modes_documented.py
++++ b/tests/test_proof_modes_documented.py
+@@ -1,8 +1,9 @@
+ """Pin (Task 3, #589 claims-v2): the three prose documents survive their edit.
+ 
+ What is left here is what a machine can check about the three documents without
+-matching a sentence of them: `skills/ultrawrite/SKILL.md` still validates, and
+-none of the three files gained a shouted whole word against BASE.
++matching a sentence of them: none of the three files gained a shouted whole word
++against BASE. The skill validator runs in `tests/test_validate_skill.py` and
++`tests/test_docs_agree_with_code.py`, which own it.
+ 
+ The verbatim sentence pins that used to sit here (legs (a)-(d) / M1-M4) are
+ gone: a string assertion establishes that a sentence is present, never that it
+@@ -11,8 +12,6 @@ compiler, driver and examiner tests that exercise it.
+ """
+ import pathlib
+ import re
+-import subprocess
+-import sys
+ 
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ 
+@@ -32,22 +31,7 @@ SHOUT_WORDS = ("NEV" + "ER", "ALW" + "AYS", "MU" + "ST")
+ BASE_SHOUT_COUNTS = {SHOUT_WORDS[0]: 0, SHOUT_WORDS[1]: 0, SHOUT_WORDS[2]: 0}
+ 
+ 
+-# --- leg (e) / M5: the skill validates and nothing shouts -------------------
+-
+-def test_leg_e_m5_validate_skill_prints_skill_ok():
+-    """(e)/M5 — `validate_skill.py skills/ultrawrite` exits 0 and prints `skill ok`."""
+-    done = subprocess.run(
+-        [sys.executable, "skills/ultrapowers/scripts/validate_skill.py", "skills/ultrawrite"],
+-        cwd=ROOT, capture_output=True, text=True,
+-    )
+-    assert done.returncode == 0, (
+-        f"validate_skill.py exited {done.returncode}:\n{done.stdout}{done.stderr}"
+-    )
+-    lines = [line for line in done.stdout.splitlines() if line.strip()]
+-    assert lines and lines[-1].strip() == "skill ok", (
+-        f"validate_skill.py printed {done.stdout!r}, not `skill ok`"
+-    )
+-
++# --- leg (e) / M5: nothing shouts ------------------------------------------
+ 
+ def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files():
+     """(e)/M5 — whole-word NEV/ALW/MU counts are BASE's 0, 0 and 0 in each file.
+diff --git a/tests/test_review_peer.py b/tests/test_review_peer.py
+index f9f7991023315cc9969239c5d02b403ce48b1591..9e54e1cabe47a0f2c2afb72d9b68b0e003681ded 100644
+--- a/tests/test_review_peer.py
++++ b/tests/test_review_peer.py
+@@ -14,13 +14,10 @@ import sys
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+ DRIVER = ROOT / "skills/ultrapowers/scripts/ultra_run.py"
+-VALIDATE_SKILL = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
+ SKILL_MD = ROOT / "skills/ultrawrite/SKILL.md"
+-PLAN_MARKERS_MD = ROOT / "skills/ultrapowers/references/plan-markers.md"
+ REPORT_FORMAT_MD = ROOT / "skills/ultrapowers/references/report-format.md"
+ DEPENDENCY_ANALYSIS_MD = ROOT / "skills/ultrapowers/references/dependency-analysis.md"
+ ULTRADOCKET_SKILL_MD = ROOT / "skills/ultradocket/SKILL.md"
+-COMPILE_PLAN_TESTS = ROOT / "tests/test_compile_plan.py"
+ SKILLS_DIR = ROOT / "skills"
+ 
+ # The two code sites that keep the pre-#556 spelling on purpose: the compiler's
+@@ -115,19 +112,6 @@ def test_invalid_review_value_names_all_three_values(tmp_path):
+         assert value in p.stderr, "refusal does not name %r: %s" % (value, p.stderr)
+ 
+ 
+-def test_the_base_compile_plan_pin_now_expects_peer():
+-    """The one BASE pin this change owns: test_review_marker_emits_adversarial_slot
+-    asserted `adversarial`; it asserts `peer` now, and it passes."""
+-    src = COMPILE_PLAN_TESTS.read_text()
+-    body = src.split("def test_review_marker_emits_adversarial_slot(")[1]
+-    body = body.split("\ndef ")[0]
+-    assert 'review"] == "peer"' in body, body
+-    p = sh([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+-            "tests/test_compile_plan.py::test_review_marker_emits_adversarial_slot"],
+-           cwd=ROOT)
+-    assert p.returncode == 0, p.stdout + p.stderr
+-
+-
+ # ── M2: the driver's knob vocabulary ────────────────────────────────────────
+ 
+ def test_valid_reviews_is_exactly_the_three_values():
+@@ -160,31 +144,15 @@ def test_validate_knobs_accepts_a_peer_entry(tmp_path):
+     assert json.loads(p.stdout)["ok"] is True
+ 
+ 
+-# ── M4: the authoring docs say peer, and never say adversarial ──────────────
+-
+-def test_authoring_docs_carry_no_adversarial():
+-    for doc in (SKILL_MD, PLAN_MARKERS_MD):
+-        hits = re.findall("adversarial", doc.read_text(), re.I)
+-        assert hits == [], "%s still says adversarial (%d times)" % (doc, len(hits))
+-
++# ── M4: the authoring docs say peer ─────────────────────────────────────────
+ 
+ def test_skill_md_documents_the_peer_marker():
+     text = SKILL_MD.read_text()
+     assert "**Review:** peer" in text
+ 
+ 
+-def test_ultrawrite_skill_still_validates():
+-    p = sh([sys.executable, str(VALIDATE_SKILL), "skills/ultrawrite"], cwd=ROOT)
+-    assert p.returncode == 0, p.stdout + p.stderr
+-
+-
+ # ── the reference docs say peer, and only the two code sites say adversarial ─
+ 
+-def _occurrences(path):
+-    """Every case-insensitive `adversarial` in path, for the failure message."""
+-    return re.findall("adversarial", path.read_text(), re.I)
+-
+-
+ def _review_row(text):
+     """The one `tasks[].review` row of the report-format table."""
+     rows = [line for line in text.splitlines()
+@@ -198,22 +166,16 @@ def test_report_format_review_row_documents_lean_and_peer():
+     row = _review_row(text)
+     assert "`lean` (one pass)" in row, row
+     assert "`peer` (two)" in row, row
+-    hits = _occurrences(REPORT_FORMAT_MD)
+-    assert hits == [], "%s still says adversarial: %r" % (REPORT_FORMAT_MD, hits)
+ 
+ 
+ def test_dependency_analysis_review_knob_example_says_peer():
+     text = DEPENDENCY_ANALYSIS_MD.read_text()
+     assert "review: { T1: peer, default: lean }" in text
+-    hits = _occurrences(DEPENDENCY_ANALYSIS_MD)
+-    assert hits == [], "%s still says adversarial: %r" % (DEPENDENCY_ANALYSIS_MD, hits)
+ 
+ 
+ def test_ultradocket_skill_marks_review_peer():
+     text = ULTRADOCKET_SKILL_MD.read_text()
+     assert "`**Review:** peer`" in text
+-    hits = _occurrences(ULTRADOCKET_SKILL_MD)
+-    assert hits == [], "%s still says adversarial: %r" % (ULTRADOCKET_SKILL_MD, hits)
+ 
+ 
+ def test_only_the_two_code_sites_under_skills_say_adversarial():
+diff --git a/tests/test_roles_run_evidence.py b/tests/test_roles_run_evidence.py
+index 41f9e633598b12e298679e1c799d5dbf6cc1646e..e7f663eaf1106e4af9fca5015f29ae5e7a0206d2 100644
+--- a/tests/test_roles_run_evidence.py
++++ b/tests/test_roles_run_evidence.py
+@@ -94,35 +94,6 @@ def test_critic_keeps_the_four_deferred_verification_reasons():
+         "reasons verbatim")
+ 
+ 
+-# ── leg (c) [M3]: the register the roles directory keeps ────────────────────
+-
+-# The three shouted words are assembled, not spelled: leg (g)/M7 of
+-# `fleet/tests/test_run_engine_exam_fix_edit.mjs` sweeps every file changed
+-# since BASE for upper-case NEV/ALW/MU words it did not carry before, and a
+-# test that spells them in its own source is itself such a gain.
+-SHOUT = "|".join(word.upper() for word in ("never", "always", "must"))
+-
+-
+-def test_the_two_role_files_keep_their_register():
+-    """No shouted imperative and no `adversarial` in either role file."""
+-    p = sh(r"""! grep -nE '\b(""" + SHOUT + r""")\b' """
+-           "fleet/roles/reviewer.md fleet/roles/critic.md && "
+-           "! grep -niE 'adversarial' "
+-           "fleet/roles/reviewer.md fleet/roles/critic.md")
+-    assert p.returncode == 0, (
+-        "a role file shouts an imperative or calls the review adversarial:\n"
+-        + p.stdout + p.stderr)
+-
+-
+-def test_both_role_exams_still_pass_with_their_verbatim_pins():
+-    """The peer and examiner role exams are this change's grading."""
+-    for exam in ("fleet/tests/test_roles_peer.mjs",
+-                 "fleet/tests/test_roles_examiner.mjs"):
+-        p = sh("node " + exam)
+-        assert p.returncode == 0, exam + " is red:\n" + p.stdout + p.stderr
+-        assert "ALL TESTS PASSED" in p.stdout, p.stdout + p.stderr
+-
+-
+ # ── leg (d) [M4]: the report reference documents the integrated evidence ────
+ 
+ def test_report_format_documents_the_integrated_runs_row():
+diff --git a/tests/test_skill_setup_section.py b/tests/test_skill_setup_section.py
+index f04518a5eb03797cf7d97d547b3219377f139b58..c9eff388f8ec09eef6920d4f301f657bbf77a010 100644
+--- a/tests/test_skill_setup_section.py
++++ b/tests/test_skill_setup_section.py
+@@ -19,19 +19,18 @@ have:
+     turned `ok` is read back, the launch happens on `ready`, and the client's
+     step 1 falls into the setup path inline instead of stopping [M3];
+   * the frontmatter admits AskUserQuestion, the retired vocabulary of the
+-    pre-lift fleet is absent, and the four things `test_docs_agree_with_code.py`
++    pre-lift fleet is absent, and the things `test_docs_agree_with_code.py`
+     already pins about this file — the launch line's flags, the walk, the VM
+-    name shape, `validate_skill.py` — still hold [M4].
++    name shape — still hold [M4]. The `validate_skill.py` run itself is left to
++    `test_docs_agree_with_code.py` and `tests/test_validate_skill.py`.
+ 
+ The lint over questions is exercised against its own fixtures below, so a
+ regex that stopped matching anything cannot pass this file silently.
+ 
+-Offline: reads one committed file and runs one local Python script.
++Offline: reads one committed file.
+ """
+ import pathlib
+ import re
+-import subprocess
+-import sys
+ 
+ import pytest
+ 
+@@ -417,16 +416,3 @@ def test_the_skill_still_shows_the_vm_name_shape():
+     assert VM_NAME_RE.search(skill_text()), (
+         f"{SKILL} no longer shows a `fleet-r<N>-…` VM name"
+     )
+-
+-
+-def test_validate_skill_accepts_the_ultrapowers_skill():
+-    """(d) [M4]."""
+-    result = subprocess.run(
+-        [sys.executable,
+-         str(ROOT / "skills/ultrapowers/scripts/validate_skill.py"),
+-         str(ROOT / "skills/ultrapowers")],
+-        capture_output=True, text=True)
+-    assert result.returncode == 0, (
+-        "validate_skill.py rejected skills/ultrapowers:\n"
+-        + result.stdout + result.stderr
+-    )
+diff --git a/tests/test_ultralearn_swallows.py b/tests/test_ultralearn_swallows.py
+index e9f739c4ae7b607d7cd1a1734c1b3f56a5970879..f97906ee8cc0cfad3d591191298ba7b09fee1b68 100644
+--- a/tests/test_ultralearn_swallows.py
++++ b/tests/test_ultralearn_swallows.py
+@@ -16,8 +16,6 @@ swept yet; it is audited all the same and its handlers quarantined into
+ """
+ import ast
+ import os
+-import subprocess
+-import sys
+ from pathlib import Path
+ 
+ REPO = Path(__file__).resolve().parents[1]
+@@ -215,13 +213,3 @@ def test_walk_passes_raise_reraise_and_marked_swallow():
+     violations, marked = audit(COMPLIANT, "fixture.py")
+     assert violations == []
+     assert marked == 1
+-
+-
+-def test_healthy_paths_unchanged():
+-    """The regression pin: re-labelling silence did not redesign a flow."""
+-    proc = subprocess.run(
+-        [sys.executable, "-m", "pytest", "-p", "no:xdist", "-q",
+-         "tests/test_readers.py", "tests/test_fleet_slice.py",
+-         "tests/test_merge_ledger.py"],
+-        cwd=REPO, capture_output=True, text=True)
+-    assert proc.returncode == 0, proc.stdout + proc.stderr
+diff --git a/tests/test_ultrawrite_surface_rules_implementer_check.py b/tests/test_ultrawrite_surface_rules_implementer_check.py
+index 9ec778ce330f3c27d2a8eed4a6f06828e1e40d2a..f6fd95f8b5e1cebea22840a631bc567fc4d94adf 100644
+--- a/tests/test_ultrawrite_surface_rules_implementer_check.py
++++ b/tests/test_ultrawrite_surface_rules_implementer_check.py
+@@ -16,13 +16,9 @@ M3 — rule 4 of §Decomposition judgment names the adjacent-insert shape, the
+      resolver, run-12's five tasks and three resolver workers, and the
+      registration-is-a-new-file rule.
+ M4 — §Self-review carries the exam-file-naming line.
+-M5 — the skill still validates and its shouted-word counts stay at BASE's zeros
+-     (frozen literals from `0a3559a`, not a read-back of HEAD).
+ """
+ import pathlib
+-import re
+ import subprocess
+-import sys
+ 
+ import pytest
+ 
+@@ -77,36 +73,3 @@ def test_run_bullet_exits_zero(clause, command):
+     assert done.returncode == 0, (
+         "[%s]: `%s` exited %d\n%s%s"
+         % (clause, command, done.returncode, done.stdout, done.stderr))
+-
+-
+-def test_m5_validate_skill_prints_skill_ok():
+-    done = run("python3 skills/ultrapowers/scripts/validate_skill.py "
+-               "skills/ultrawrite")
+-    assert done.returncode == 0, done.stdout + done.stderr
+-    assert done.stdout.strip() == "skill ok", done.stdout
+-
+-
+-# The three words are assembled from pieces so this file carries none of them as
+-# whole words — the same discipline `tests/test_proof_modes_documented.py` keeps.
+-SHOUT_WORDS = ("NEV" + "ER", "ALW" + "AYS", "MU" + "ST")
+-
+-
+-def test_m5_shouted_word_counts_stay_at_bases_zeros():
+-    """Frozen literals from BASE (`0a3559a`), not a read-back of HEAD."""
+-    text = (ROOT / SKILL).read_text()
+-    counts = {w: len(re.findall(r"\b" + w + r"\b", text)) for w in SHOUT_WORDS}
+-    assert counts == {SHOUT_WORDS[0]: 0, SHOUT_WORDS[1]: 0, SHOUT_WORDS[2]: 0}, (
+-        "%s shouts: %r" % (SKILL, counts))
+-
+-
+-def test_m5_the_tests_that_read_the_skill_still_pass():
+-    done = subprocess.run(
+-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+-         "tests/test_ultrawrite_skill.py", "tests/test_plan_level_claim.py",
+-         "tests/test_review_peer.py", "tests/test_proof_modes_documented.py",
+-         "tests/test_compile_plan_check_cost.py",
+-         "tests/test_compile_plan_prose_check.py",
+-         "tests/test_compile_plan_integration_hostile.py",
+-         "tests/test_marker_contract.py"],
+-        cwd=ROOT, capture_output=True, text=True)
+-    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-2000:]

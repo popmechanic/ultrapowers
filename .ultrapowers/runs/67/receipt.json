@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -541,7 +541,7 @@
           "proofTests": [],
           "testCmd": null,
           "proofRuns": [
-            "! grep -q 'branchRefs' fleet/tests/test_retire.mjs && ! grep -q 'matchAll(/\\\\?ref=' fleet/tests/test_retire.mjs && ! grep -q \"startsWith('ultra/evidence-run-')\" fleet/tests/test_retire.mjs && ! grep -q \"spawnSync('python3'\" fleet/tests/test_retire.mjs && ! grep -q \"'-m', 'pytest'\" fleet/tests/test_retire.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_retire.mjs && grep -q \"twoTagsBullet(contractText).includes('\u2014 skipped')\" fleet/tests/test_retire.mjs && grep -q \"rollbackSection(runbookText).includes('\u2014 skipped')\" fleet/tests/test_retire.mjs",
+            "! grep -q 'branchRefs' fleet/tests/test_retire.mjs && ! grep -q 'matchAll(/\\\\?ref=' fleet/tests/test_retire.mjs && ! grep -q \"startsWith('ultra/evidence-run-')\" fleet/tests/test_retire.mjs && ! grep -q \"spawnSync('python3'\" fleet/tests/test_retire.mjs && ! grep -q \"'-m', 'pytest'\" fleet/tests/test_retire.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_retire.mjs && grep -q \"twoTagsBullet(contractText).includes('— skipped')\" fleet/tests/test_retire.mjs && grep -q \"rollbackSection(runbookText).includes('— skipped')\" fleet/tests/test_retire.mjs",
             "grep -q 'def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag' tests/test_docs_agree_with_code.py && grep -q 'refs_named(RUNBOOK) + refs_named(CONTRACT)' tests/test_docs_agree_with_code.py && test -f tests/test_docs_agree_with_code.py && grep -q 'testpaths = tests' pytest.ini",
             "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_retire.mjs]'"
           ]
@@ -594,7 +594,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The pass deletes tests and nothing else: no shipped document, role file, skill, engine\n  module or workflow changes.\n- The surviving guards the deletions lean on are untouched: `tests/test_docs_agree_with_code.py`\n  and `tests/test_recommendation_rubric.py` (kept by design, CLAUDE.md), the subject-owning\n  files each task names, and the fleet bridge.\n- A deletion is a whole test function, a whole assertion block, or a whole assertion line\n  the task names \u2014 never an assertion loosened in place, and never a survivor's positive\n  half. A helper, import or constant that served only a deleted test goes with it; one that\n  a kept test still uses stays.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The pass deletes tests and nothing else: no shipped document, role file, skill, engine\n  module or workflow changes.\n- The surviving guards the deletions lean on are untouched: `tests/test_docs_agree_with_code.py`\n  and `tests/test_recommendation_rubric.py` (kept by design, CLAUDE.md), the subject-owning\n  files each task names, and the fleet bridge.\n- A deletion is a whole test function, a whole assertion block, or a whole assertion line\n  the task names — never an assertion loosened in place, and never a survivor's positive\n  half. A helper, import or constant that served only a deleted test goes with it; one that\n  a kept test still uses stays.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
@@ -617,11 +617,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-67/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-67/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-67/acceptance.log"
 }

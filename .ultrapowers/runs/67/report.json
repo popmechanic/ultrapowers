@@ -1,0 +1,528 @@
+{
+  "integrationBranch": "ultra/integration-run-67",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "930fbc30fdfaacda1cd140530a863393b70a34e6",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "c1da4a3ca8997c0a9cea3ae84b08d4184c494c1a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale module-docstring index entries left behind by the deletions. Both files open with \"Each test below names the Machine clause and the Proof leg it encodes\", and after this diff three of those entries name nothing: `tests/test_harvest_evidence.py:24-27` still says M4/leg (d) covers \"the deleted remote test and the `NOT_YET_SWEPT` entry are gone, the docs allowlist names `--evidence` and not `--remote`/`--remote-root`\" (both clauses were `test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone` and `test_the_docs_flag_allowlist_names_evidence_and_not_remote`), and `tests/test_harvest_fleet_runs_publish_fold.py:24-25` still declares an \"M1 / leg (e)\" entry that was `test_base_bundle_keys_names_publish_fold` \u2014 and it is the one remaining mention of `tests/test_harvest_evidence.py` in that file, which reads against the Claim's sentence even though it is prose, not a read. No test pins either docstring (checked: only `tests/test_harvest_fleet_runs_confine_denials.py:588` and `tests/test_harvest_fleet_runs.py:510` mention these paths, both in unrelated prose), so trimming them is safe and stays inside FILES. Not blocking: docstrings are neither assertions nor helpers, so the global constraint on what a deletion may touch does not require it, and every Machine clause is settled by the Run evidence.; unverified: the stated Acceptance is \"suite \u2014 the committed suite is the verification\", but the evidence in hand covers only the two edited files (`22 passed`) plus the three constraint `Check:` commands. Nothing here exercises the rest of the suite against a tree where these three test functions no longer exist \u2014 the residual risk is a meta-test elsewhere that counts collected tests or reads these modules. What would settle it: `python3 -m pytest -q -p no:cacheprovider` over the whole suite in this task's clone (or the integration clone after the fold). Recorded as minor because the diff is deletion-only inside two test modules and the check evidence confirms no shipped document, role file, skill, engine module or workflow moved.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "72d6e025a4dcfb86fb305c769362cd7a7b8516a7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "bb7bb33981b34349c958aa26ab6d3e03e06c8e55",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "b6614bf3a3d15fe45ed608684328231bd273270f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "Documentation drift the deletion-only pass leaves behind: the module docstrings of all four compiler files still advertise the leg the deleted re-run carried. `tests/test_compile_plan_sha_unguarded.py:30-31` (\"and `tests/test_compile_plan_proof_species.py` still passes\"), `tests/test_compile_plan_wide_files.py:27-28` (\"`tests/test_compile_plan_proof_species.py` \u2014 the five-species fixture and its line-shape regex \u2014 still passes\"), `tests/test_compile_plan_engine_self_change.py:27` and `tests/test_compile_plan_one_sided.py:33` all describe an M4/M3 clause whose test no longer exists in the file. This is not the implementer's error: GLOBAL CONSTRAINT 1 (\"the pass deletes tests and nothing else\") and 3 (a deletion is \"a whole test function, a whole assertion block, or a whole assertion line the task names\") do not authorize trimming a docstring sentence, so leaving them is the compliant reading. Grounded only in prose constraints and a docstring, so minor; it needs the plan to authorize a follow-on docstring edit, not a fix round.; unverified: the Acceptance is \"suite \u2014 the committed suite is the verification\", but the evidence covers only the five edited files (`python3 -m pytest -q ... <five files>`, exit 0) plus the seven guard/collection `Run:` commands, not a whole-suite run. I checked the residual risk directly and found none: no file in the tree references any of the six deleted test names, `tests/test_harvest_evidence.py:531`'s only assertion over `tests/test_ultralearn_swallows.py` is that \"fleet_fetch\" is absent (still absent), and `tests/test_compile_plan_engine_self_change_impl.py` names the graded file only in its docstring. What would settle it outright: a full `python3 -m pytest -q` over `tests/` on this tree, which would also catch any collection-count pin elsewhere that I did not think to grep for.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "707ce7aad32dd6997a699ded787913089538f7e8",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the task's Acceptance is `suite \u2014 the committed suite is the verification`, but the recorded evidence runs only the four edited files (78 passed) plus the grep legs; the full committed suite was not executed on this tree. I checked the rest of the clone for dangling references to the five deleted test names and found none outside their own files (`tests/test_docs_agree_with_code.py:480` and `tests/test_spec_review_brief_selfcheck.py:129` hold same-named but independent tests that this patch does not touch), so no breakage is visible from the diff. What would settle it: `python3 -m pytest -q` over the whole tree after the sibling tasks are integrated.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "7",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "331f63b3c847929b4777e77b4a51decf7b2ae4c2",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-7.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "8",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "9620c2948142000a8a37f798271d17c3dd5a5fb1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-8.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "9",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "1a5cdb1c47123dd2678ca69a977f16af310b4ca4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-9.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale header comment: `fleet/tests/test_retire.mjs:58-59` still advertises the leg the patch deleted \u2014 \"(l) M7 \u2014 the two documents each declare the skip, carrying `\u2014 skipped`, and the docs-pin suite is green over both.\" The file no longer spawns `tests/test_docs_agree_with_code.py`, so the second clause describes a check the exam no longer performs. M1's greps don't catch it (it says \"docs-pin suite\", not `test_docs_agree_with_code`), so nothing in the Proof fails, but the file's own contents index is now wrong. Trim the clause to what (l)/M7 still grades.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "10",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "0c69380e749616f9e938757c729aae057c309c98",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-67/patches/task-10.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-67/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1791 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 40%]\n......................................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 72%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n..............................................................           [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1791 passed, 5 warnings in 296.68s (0:04:56) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "! grep -q 'def test_the_base_compile_plan_pin_now_expects_peer' tests/test_review_peer.py && ! grep -q 'def test_authoring_docs_carry_no_adversarial' tests/test_review_peer.py && ! grep -q 'def test_ultrawrite_skill_still_validates' tests/test_review_peer.py && ! grep -q 'COMPILE_PLAN_TESTS' tests/test_review_peer.py && ! grep -q 'VALIDATE_SKILL' tests/test_review_peer.py && ! grep -q 'tests/test_' tests/test_review_peer.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_review_peer.py 2>/dev/null | grep -c '::')\" = 12",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! grep -q 'hits == \\[\\]' tests/test_review_peer.py && ! grep -q 're.findall(\"adversarial\"' tests/test_review_peer.py && test \"$(grep -c 're.search(\"adversarial\"' tests/test_review_peer.py)\" = 1 && grep -q 'def test_report_format_review_row_documents_lean_and_peer' tests/test_review_peer.py && grep -q '(one pass)' tests/test_review_peer.py && grep -q 'def test_dependency_analysis_review_knob_example_says_peer' tests/test_review_peer.py && grep -q 'review: { T1: peer, default: lean }' tests/test_review_peer.py && grep -q 'def test_ultradocket_skill_marks_review_peer' tests/test_review_peer.py && grep -q 'Review:\\*\\* peer' tests/test_review_peer.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'review\"\\] == \"peer\"' tests/test_compile_plan.py && python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan.py::test_review_marker_emits_adversarial_slot && grep -q 'def test_ultrawrite_skill_validates' tests/test_validate_skill.py && grep -q 'def test_only_the_two_code_sites_under_skills_say_adversarial' tests/test_review_peer.py && grep -q 'SKILLS_DIR.rglob' tests/test_review_peer.py",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 0.23s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_review_peer.py",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 0.38s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'def test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone' tests/test_harvest_evidence.py && ! grep -q 'def test_the_docs_flag_allowlist_names_evidence_and_not_remote' tests/test_harvest_evidence.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_harvest_evidence.py 2>/dev/null | grep -c '::')\" = 14",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'def test_base_bundle_keys_names_publish_fold' tests/test_harvest_fleet_runs_publish_fold.py && ! grep -q '_base_bundle_keys' tests/test_harvest_fleet_runs_publish_fold.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_harvest_fleet_runs_publish_fold.py 2>/dev/null | grep -c '::')\" = 8",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "! grep -q 'tests/test_.*\\.py\").read_text()' tests/test_harvest_evidence.py tests/test_harvest_fleet_runs_publish_fold.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q 'def test_the_ssh_fetcher_and_its_test_no_longer_exist' tests/test_harvest_evidence.py && grep -q '\"fleet_fetch\" not in HARVEST.read_text()' tests/test_harvest_evidence.py && grep -q 'def test_help_names_evidence_and_never_remote' tests/test_harvest_evidence.py && grep -q 'assert set(b) == set(BASE_BUNDLE_KEYS)' tests/test_harvest_evidence.py && grep -q '\"publishFold\"' tests/test_harvest_evidence.py && grep -q 'def test_every_flag_the_skill_advertises_exists' tests/test_ultralearn_docs.py && grep -q '\"--evidence\"' tests/test_ultralearn_docs.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_harvest_evidence.py tests/test_harvest_fleet_runs_publish_fold.py",
+      "exit": 0,
+      "stdout": "......................                                                   [100%]\n22 passed in 2.02s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "! grep -q 'def test_the_two_role_files_keep_their_register' tests/test_roles_run_evidence.py && ! grep -q 'def test_both_role_exams_still_pass_with_their_verbatim_pins' tests/test_roles_run_evidence.py && ! grep -q 'ALL TESTS PASSED' tests/test_roles_run_evidence.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_roles_run_evidence.py 2>/dev/null | grep -c '::')\" = 7",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "grep -c 'NEVER|ALWAYS|MUST' fleet/tests/test_roles_peer.mjs | grep -qx 1 && grep -q 'roleFiles' fleet/tests/test_roles_peer.mjs && python3 -m pytest --co -q -p no:cacheprovider tests/test_fleet_suite.py | grep -q 'test_fleet_mjs\\[test_roles_peer.mjs\\]' && python3 -m pytest --co -q -p no:cacheprovider tests/test_fleet_suite.py | grep -q 'test_fleet_mjs\\[test_roles_examiner.mjs\\]'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_roles_run_evidence.py",
+      "exit": 0,
+      "stdout": ".......                                                                  [100%]\n7 passed in 0.04s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "! grep -q 'def test_m5_shouted_word_counts_stay_at_bases_zeros' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q 'def test_m5_the_tests_that_read_the_skill_still_pass' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q 'def test_m5_validate_skill_prints_skill_ok' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q '\"-m\", \"pytest\"' tests/test_ultrawrite_surface_rules_implementer_check.py && ! grep -q 'validate_skill.py' tests/test_ultrawrite_surface_rules_implementer_check.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_ultrawrite_surface_rules_implementer_check.py 2>/dev/null | grep -c '::')\" = 9",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "grep -q 'def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files' tests/test_proof_modes_documented.py && grep -q 'SKILL_PATH, EXAMINER_PATH, MARKERS_PATH' tests/test_proof_modes_documented.py && grep -q 'BASE_SHOUT_COUNTS' tests/test_proof_modes_documented.py && grep -q 'def test_ultrawrite_skill_validates' tests/test_validate_skill.py && grep -q 'def test_validate_skill_accepts_it' tests/test_ultrawrite_skill.py && test -f tests/test_ultrawrite_skill.py && test -f tests/test_plan_level_claim.py && test -f tests/test_review_peer.py && test -f tests/test_proof_modes_documented.py && test -f tests/test_compile_plan_check_cost.py && test -f tests/test_compile_plan_prose_check.py && test -f tests/test_compile_plan_integration_hostile.py && test -f tests/test_marker_contract.py && grep -q 'testpaths = tests' pytest.ini",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_ultrawrite_surface_rules_implementer_check.py",
+      "exit": 0,
+      "stdout": ".........                                                                [100%]\n9 passed in 0.05s\n"
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q 'def test_the_existing_species_exam_still_passes' tests/test_compile_plan_engine_self_change.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_engine_self_change.py 2>/dev/null | grep -c '::')\" = 15",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q 'def test_the_existing_species_exam_still_passes' tests/test_compile_plan_one_sided.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_one_sided.py 2>/dev/null | grep -c '::')\" = 31",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q 'def test_the_five_species_exam_still_passes' tests/test_compile_plan_sha_unguarded.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_sha_unguarded.py 2>/dev/null | grep -c '::')\" = 36",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q 'def test_the_five_species_exam_still_passes' tests/test_compile_plan_wide_files.py && ! grep -q 'def test_666_the_species_vocabulary_and_five_species_exams_still_pass' tests/test_compile_plan_wide_files.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_wide_files.py 2>/dev/null | grep -c '::')\" = 26",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q 'def test_healthy_paths_unchanged' tests/test_ultralearn_swallows.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_ultralearn_swallows.py 2>/dev/null | grep -c '::')\" = 8",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! grep -q '\"-m\", \"pytest\"' tests/test_compile_plan_engine_self_change.py tests/test_compile_plan_one_sided.py tests/test_compile_plan_sha_unguarded.py tests/test_compile_plan_wide_files.py tests/test_ultralearn_swallows.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "test -f tests/test_compile_plan_proof_species.py && test -f tests/test_compile_plan_check_cost.py && test -f tests/test_readers.py && test -f tests/test_fleet_slice.py && test -f tests/test_merge_ledger.py && grep -q 'testpaths = tests' pytest.ini",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_compile_plan_engine_self_change.py tests/test_compile_plan_one_sided.py tests/test_compile_plan_sha_unguarded.py tests/test_compile_plan_wide_files.py tests/test_ultralearn_swallows.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 62%]\n............................................                             [100%]\n116 passed in 20.47s\n"
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q 'def test_755_skill_the_document_names_the_header_claim_line_exactly_once' tests/test_plan_level_claim.py && ! grep -q 'def test_skill_still_validates' tests/test_plan_level_claim.py && grep -c 'para.count(\"\\*\\*Claim:\\*\\*\") == 1' tests/test_plan_level_claim.py | grep -qx 1 && grep -q 'def test_skill_the_document_names_the_header_claim_line' tests/test_plan_level_claim.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_plan_level_claim.py 2>/dev/null | grep -c '::')\" = 33",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q 'def test_leg_e_m5_validate_skill_prints_skill_ok' tests/test_proof_modes_documented.py && grep -q 'def test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files' tests/test_proof_modes_documented.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_proof_modes_documented.py 2>/dev/null | grep -c '::')\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q 'def test_the_skill_still_validates' tests/test_compile_plan_check_cost.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_compile_plan_check_cost.py 2>/dev/null | grep -c '::')\" = 11",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q 'def test_validate_skill_accepts_the_ultrapowers_skill' tests/test_skill_setup_section.py && test \"$(python3 -m pytest --collect-only -q -p no:cacheprovider tests/test_skill_setup_section.py 2>/dev/null | grep -c '::')\" = 33",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "grep -q 'def test_ultrawrite_skill_validates' tests/test_validate_skill.py && grep -q 'def test_validate_skill_accepts_it' tests/test_ultrawrite_skill.py && grep -q 'def test_validate_skill_accepts_the_ultrapowers_skill' tests/test_docs_agree_with_code.py && grep -q 'validate_skill.py \"${s%/}\"' .github/workflows/ci.yml",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider tests/test_plan_level_claim.py tests/test_proof_modes_documented.py tests/test_compile_plan_check_cost.py tests/test_skill_setup_section.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 92%]\n......                                                                   [100%]\n78 passed in 4.47s\n"
+    },
+    {
+      "task": "7",
+      "cmd": "! grep -q 'red-then-green' fleet/tests/test_run_engine.mjs && ! grep -q 'is not a finding' fleet/tests/test_run_engine.mjs && ! grep -q 'roles/reviewer.md' fleet/tests/test_run_engine.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "! grep -q 'NEVER|ALWAYS|MUST' fleet/tests/test_run_engine.mjs && grep -q 'role prose size' fleet/tests/test_run_engine.mjs && grep -q 'readdirSync(rolesDir)' fleet/tests/test_run_engine.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "grep -q 'plan-defect:' fleet/tests/test_roles_peer.mjs && grep -q '{0,80}blocking' fleet/tests/test_roles_peer.mjs && grep -q '/red-then-green/' fleet/tests/test_roles_peer.mjs && grep -q 'test(fix)' fleet/tests/test_roles_peer.mjs && grep -c 'NEVER|ALWAYS|MUST' fleet/tests/test_roles_peer.mjs | grep -qx 1 && grep -q 'roleFiles' fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine.mjs]'",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 1.21s\n"
+    },
+    {
+      "task": "8",
+      "cmd": "! grep -q \"'Claim', 'Context'\" fleet/tests/test_run_engine_critic_inputs.mjs && ! grep -q \"slot + ':'\" fleet/tests/test_run_engine_critic_inputs.mjs && test \"$(grep -c 'Stale-if and Authorized-by are not yours to judge' fleet/tests/test_run_engine_critic_inputs.mjs)\" = 2",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "grep -q \"'1. Claim', '2. Context'\" fleet/tests/test_roles_peer.mjs && grep -q '\\^\\[345\\]\\\\. ' fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "8",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_critic_inputs.mjs]'",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 3.14s\n"
+    },
+    {
+      "task": "9",
+      "cmd": "! grep -q 'branchRefs' fleet/tests/test_retire.mjs && ! grep -q 'matchAll(/\\\\?ref=' fleet/tests/test_retire.mjs && ! grep -q \"startsWith('ultra/evidence-run-')\" fleet/tests/test_retire.mjs && ! grep -q \"spawnSync('python3'\" fleet/tests/test_retire.mjs && ! grep -q \"'-m', 'pytest'\" fleet/tests/test_retire.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_retire.mjs && grep -q \"twoTagsBullet(contractText).includes('\u2014 skipped')\" fleet/tests/test_retire.mjs && grep -q \"rollbackSection(runbookText).includes('\u2014 skipped')\" fleet/tests/test_retire.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "9",
+      "cmd": "grep -q 'def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag' tests/test_docs_agree_with_code.py && grep -q 'refs_named(RUNBOOK) + refs_named(CONTRACT)' tests/test_docs_agree_with_code.py && test -f tests/test_docs_agree_with_code.py && grep -q 'testpaths = tests' pytest.ini",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "9",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_retire.mjs]'",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 0.56s\n"
+    },
+    {
+      "task": "10",
+      "cmd": "! grep -q 'test_docs_agree_with_code' fleet/tests/test_publish_fold.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_run_engine_suite_passes.mjs && ! grep -q 'test_docs_agree_with_code' fleet/tests/test_sandbox_boot.mjs && ! grep -q 'test_run_engine_integrated_clean' fleet/tests/test_run_engine_suite_passes.mjs && ! grep -q 'test_fleet_events' fleet/tests/test_run_main.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "10",
+      "cmd": "test \"$(grep -c \"grep -q 'engine:phase'\" fleet/tests/test_sandbox_boot.mjs)\" = 2 && grep -q 'verbatim/.test(l)' fleet/tests/test_run_main.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "10",
+      "cmd": "test -f tests/test_docs_agree_with_code.py && test -f tests/test_fleet_events.py && grep -q 'testpaths = tests' pytest.ini && python3 -m pytest --co -q -p no:cacheprovider tests/test_fleet_suite.py | grep -q 'test_fleet_mjs\\[test_run_engine_integrated_clean.mjs\\]'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "10",
+      "cmd": "python3 -m pytest -q -p no:cacheprovider 'tests/test_fleet_suite.py::test_fleet_mjs[test_publish_fold.mjs]' 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_suite_passes.mjs]' 'tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot.mjs]' 'tests/test_fleet_suite.py::test_fleet_mjs[test_run_main.mjs]'",
+      "exit": 0,
+      "stdout": "....                                                                     [100%]\n4 passed in 67.57s (0:01:07)\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 623706,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "cc26cd07dcc49c2d4b181e7aec11c7b73a9dfebd",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-67/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-67/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.82,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 10,
+    "tasks_planned": 10,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2 (Claim/Context): the two edited harvest files' module docstrings still advertise legs whose tests were deleted, so each file's own \"Each test below names the Machine clause and the Proof leg it encodes\" map now over-promises. tests/test_harvest_evidence.py:24-27 keeps the M4/leg (d) clauses \"the deleted remote test and the `NOT_YET_SWEPT` entry are gone, the docs allowlist names `--evidence` and not `--remote`/`--remote-root`\" \u2014 the two clauses whose tests (test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone, test_the_docs_flag_allowlist_names_evidence_and_not_remote) this task removed; tests/test_harvest_fleet_runs_publish_fold.py:24-25 keeps the whole \"M1 / leg (e) BASE_BUNDLE_KEYS in tests/test_harvest_evidence.py names publishFold\" entry, whose test (test_base_bundle_keys_names_publish_fold) is gone. The Claim's substance holds (no sibling-source read remains and the guards live where the plan says), and the plan's helper/import/constant rule does not cover docstrings, so this is documentation drift only, not a constraint breach."
+    }
+  ],
+  "blockedWaves": []
+}
