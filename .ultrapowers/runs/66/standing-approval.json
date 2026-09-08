@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-66.md run-66 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 4 — `fleet/strip-exams.sh` + `push_head`'s strip, end to end onto a live remote: the pull request carrying no `tests/exams/`|`fleet/tests/exams/` file and `ultra/evidence/run-<N>` carrying them under `.ultrapowers/runs/<N>/exams/`. — The ref-plumbing half is exercised against real git repositories (`fleet/tests/test_strip_exams.mjs`) and the call position against a stubbed boot (`fleet/tests/test_sandbox_boot_exams.mjs`), both green in the driver's suite. What cannot run here is the publish itself: the push to the GitHub remote, the PR diff a reviewer opens, and the tag `ultra/evidence/run-<N>` that the post-run retirement sweep moves onto the evidence branch head. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — a real examiner agent honoring the `EXAM PATHS:` line and writing its exam at the landing path (`fleet/run-engine.mjs:1057-1069`, `fleet/roles/examiner.md:25-31`). — The prompt line, the handoff, the `__init__.py` packaging and the branch state after a wave are all proven with a stub examiner that parses the line (`fleet/tests/test_run_engine_reserved_exams.mjs`). Whether a live model writes to `b` rather than the Proof path `a` — and writes its relative imports for that depth — is model behavior on a real fleet run and is not executable in this environment. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

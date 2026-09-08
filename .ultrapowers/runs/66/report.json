@@ -1,0 +1,367 @@
+{
+  "integrationBranch": "ultra/integration-run-66",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    [
+      "6"
+    ]
+  ],
+  "dependencyEdges": [
+    "1 -> 6 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "312359be7f4ed726800665cec68119a04a51bebb",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-66/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`restoreToBase` (fleet/run-engine.mjs:1123-1127) reads *any* non-zero `git checkout <base> -- <path>` exit as \"the path was absent at BASE\" and answers it by `fs.rmSync(..., {recursive:true, force:true})`. A transient git failure (index lock, a corrupt object, a git that is not on PATH in that clone) therefore deletes the graded clone's file at the Proof path \u2014 the implementer's own work \u2014 with no judgment call and no event. Related: the restore loop at line 1390 runs over `examMoves` unconditionally, so an examiner that returns `DONE` while writing nothing (every `sha` null, `handed` empty) still wipes the Proof path, whereas a BLOCKED examiner leaves it for review (line 1337's stated posture). M3 does ask for the restore whenever the landing path differs, so the unconditional loop is lawful; the conflated error path is the part worth tightening.; unverified: M3's \"restores the Proof path there to its BASE state\" has evidence only for the parenthetical case \u2014 \"deleted when absent at BASE\". Every scenario in fleet/tests/test_run_engine_reserved_exams.mjs builds its repo without the Proof path, so `restoreToBase`'s `git checkout` success branch (a Proof path that DOES exist at BASE and that the implementer rewrote) is never exercised; leg (e) only proves the absent-at-BASE removal. The Proof's enumerated legs (a)\u2013(g) do not name that case, which is why this is advisory rather than a missing leg. It would be settled by a scenario whose BASE commit carries `tests/test_t1.sh`, whose implementer stub overwrites it, and which asserts `git show <branch>:tests/test_t1.sh` equals the BASE bytes while the peer's exam sits at `tests/exams/sim1/test_t1.sh`.; fleet/exam-paths.mjs:42-47 \u2014 `reservedExamDirs` re-spells the two reserved directories as string literals (`'tests/exams/' + slug`, `'fleet/tests/exams/' + slug`) rather than deriving them from `ROOTS`, so a later edit to `ROOTS` (the single place the mapping rule lives) silently leaves this export behind. Its comment also says \"in root order\", but `ROOTS` is `['fleet/tests/', 'tests/']` (longest-first, for matching) while M5 requires the return to be tests-first \u2014 the comment describes an order the function does not use. Fix: derive and state the inversion, e.g. `[...ROOTS].reverse().map((r) => r + 'exams/' + slug)` with a comment saying M5 pins tests-first, not ROOTS order.; `fleet/exam-paths.mjs`: `reservedExamDirs` hardcodes its own copy of the two roots (`'tests/exams/' + slug`, `'fleet/tests/exams/' + slug`) while the file's single source of truth for the roots is `ROOTS = ['fleet/tests/', 'tests/']`, and the comment above it claims the result is \"in root order\" \u2014 it is not (ROOTS is fleet-first, longest-first for prefix matching; the return is tests-first, as M5 pins). The pinned order is correct and the exam asserts it; the defect is the misleading comment plus a second, drifting spelling of the root list. Either derive the list from ROOTS and reverse it, or drop the \"in root order\" phrase and say the order is the one M5 pins. Suggested: replace `// The reserved directory under each root, in root order \u2014 what a sweep that` with `// The reserved directory under each root, tests/ first (the order M5 pins) \u2014`.; unverified: the `Guard:` half of the Claim (\"except an exam the task's Proof marked `Guard:`, which sits at the path the Proof names\") is proven here only against a hand-built wave entry carrying `proofGuards: ['tests/test_t1.sh']` (leg (c)). The key itself is emitted by sibling Task 2's `compile_plan.py --emit-args`; this diff cannot settle that a real compiled plan ever populates it, and the engine reads an absent key as `[]`, so if Task 2 does not land, every exam moves and no `Guard:` is ever honoured. Interfaces declares `proofGuards` a shared literal rather than a Consumes edge, so this is not a missing dependency edge \u2014 it is a cross-task claim. What would settle it: an end-to-end check that `compile_plan.py --emit-args` on a plan with a `- Guard:` bullet writes `proofGuards` on the wave entry the engine reads (Task 2's leg (a)).; concern: scope-judgment: no Machine clause names the FIX round's prompt, but the fix round runs in the graded clone, which after the handoff holds the exam at its LANDING path \u2014 leaving `testCmdLine(task, workerTestCmd)` there would have handed the fix worker a command naming a path its tree no longer has. The two fix sites now use the same remapped command (`fixTestCmdLine()`), and carry no `EXAM PATHS:` line. For every existing sim the remap is the identity, so no committed pin changes.; concern: I did not write fleet/tests/test_run_engine_reserved_exams.mjs: it is the Proof's `Test:` path and so reserved for the peer's exam. My footprint is the other three files only (git diff --stat vs BASE: fleet/exam-paths.mjs +55, fleet/roles/examiner.md +12/-1, fleet/run-engine.mjs +121/-15).",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "05486c38404b293b8ae572cc1c2530b9c1409d57",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-66/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Footprint: the diff also edits `tests/test_compile_plan_task_test_cmd.py` (adds `\"proofGuards\": []` to the expected wave-entry dict at line ~185), a path outside this task's FILES (`skills/ultrapowers/scripts/compile_plan.py`, `tests/test_compile_plan_guard.py`, `tests/test_compile_plan_proof_tests.py`) and outside every SIBLING FILES list. The edit is required, not creep: `test_entry_keeps_every_other_key_at_its_base_value` deep-equals the whole entry dict, so the new key turns it red, and the task's own Proof `Run:` names that file (leg (f), \"the three existing wave-entry pins pass with the new key present\"). The plan's Context named only `tests/test_compile_plan_proof_tests.py` as the pin the new key owns and left this one out of the Files block; the fix is in the task text, not the diff (removing the hunk would turn the Proof `Run:` red \u2014 RUN EVIDENCE shows it at exit 0 with the hunk present).; plan-defect: Proof leg (e) demands \"no `--check` line contains `grammar:`\", which no correct implementation can satisfy \u2014 `compile_plan.py:1959` prints `ADVISORY grammar: Context is %d words \u2014 task %s` for every claims-v1 task at BASE, Guard or no Guard (a measurement, spec \u00a71.5). The exam discloses the narrowing in its module docstring and implements it as `_no_grammar_refusal` (tests/test_compile_plan_guard.py:432-447): no stdout line opens the bare `grammar:` refusal channel, and every line naming `grammar:` is an `ADVISORY ` line \u2014 plus the same leg's byte-identity assertion, which pins that the `Guard:` bullet changes no line of either channel. That is a lawful, disclosed divergence and it covers M4's intent at least as tightly as the literal text; the wording is what should be fixed, in the plan.; Disclosed divergence from Context, correct as taken: the Context asks for the guard render's `ADVISORY_RENDERS.append` \"directly after the `check-cost` append\", but `tests/test_compile_plan_sha_unguarded.py:394` pins `names[names.index(\"check-cost\") + 1] == \"sha-unguarded\"`, so that placement would turn an existing pin red. The diff appends `(\"guard\", _render_guard)` at the end of the registry and says why in the region comment. No test pins the registry's last element or its length (checked: sha-unguarded, base-sha-in-suite and proof-species assert membership only; test_check_renders monkeypatches the list), so the tail append displaces nothing.; unverified: Acceptance is `suite` \u2014 the committed suite \u2014 but the evidence in hand is this task's exam (`tests/test_compile_plan_guard.py`, 14 passed) and the Proof's three sibling wave-entry pins (42 passed), not a full-suite run. The new `proofGuards` key rides every `--emit-args` wave entry, so any other strict full-entry pin would go red. I grepped for one: `tests/test_compile_plan_proof_runs.py` (`sorted(e)` only inside assertion messages), `tests/test_compile_plan_check_constraints.py:368` and `tests/test_compile_plan_exam_command.py:204` all read individual keys rather than deep-equalling the dict, and the `fleet/tests/test_run_engine_*.mjs` sims build their own task objects, so nothing else looks exposed. A `python3 -m pytest -q` at the integration head would settle it.; Footprint overrun: the diff also edits `tests/test_compile_plan_task_test_cmd.py` (+3 lines, adding `\"proofGuards\": []` to the expected entry literal), a path outside FILES and outside every SIBLING FILES list. The edit is mandatory, not creep: `test_entry_keeps_every_other_key_at_its_base_value` (tests/test_compile_plan_task_test_cmd.py:168) deep-equals a whole wave entry against a literal, so the new key turns it red \u2014 and the task's own Proof `Run:` leg (f) runs that very file. The task's Context anticipated only the `PROOF_SLOT_KEYS` pin in `tests/test_compile_plan_proof_tests.py`; its FILES should have named this file too. No fix belongs in the diff (removing the edit would turn the Proof `Run:` red); recorded so the operator sees the footprint difference.; Proof leg (e)'s literal clause \"no `--check` line contains `grammar:`\" is unsatisfiable by any correct implementation: `compile_plan.py:1959` emits `ADVISORY grammar: Context is %d words \u2014 task %s` for every claims-v1 task, and that tail rides `--check` unconditionally (compile_plan.py:4063-4066), Guard bullet or not \u2014 and a `Guard:` bullet only exists in a claims-v1 body. The exam narrows the leg to the refusal channel in `_no_grammar_refusal` (tests/test_compile_plan_guard.py:432-447: no line opens with `grammar:`, and every line naming `grammar:` is an `ADVISORY ` line) and discloses the narrowing in the module docstring. That is a lawful, disclosed divergence and, with the byte-identity assertion in `test_e_deleting_the_guard_bullet_leaves_check_stdout_byte_identical`, leaves M4 fully covered \u2014 the defect is in the leg's wording, not the submission.; Disclosed divergence from the task Context, correct as taken: the Context directs \"give the guard render and its append a region of its own directly after the `check-cost` append (line 3797)\", but `tests/test_compile_plan_sha_unguarded.py:394` pins `names[names.index(\"check-cost\") + 1] == \"sha-unguarded\"`, so inserting there would turn an existing pin red. The diff appends `(\"guard\", _render_guard)` at the end of `ADVISORY_RENDERS` and says so in its comment; no registry pin enumerates the full name list (only membership/neighbour pins in test_compile_plan_proof_species.py, test_compile_plan_base_sha_in_suite.py, test_compile_plan_sha_unguarded.py), so nothing is displaced. No change needed \u2014 the stale instruction is in the task text.; concern: out-of-FILES: tests/test_compile_plan_task_test_cmd.py \u2014 its leg (g) pin `test_entry_keeps_every_other_key_at_its_base_value` deep-equals the whole wave entry to a literal, so the new `proofGuards` key turned it red. Added `\"proofGuards\": []` (three lines, comment matching the neighbouring `proofRuns` comment) and nothing else. The task's Context named only tests/test_compile_plan_proof_tests.py as the pin needing this edit, but the task's own Proof `Run:` line and leg (f) name this file too ('the three existing wave-entry pins pass with the new key present'), so the edit is required by the task as written. The file is owned by no sibling task.; concern: plan-defect: the Context's statement 'the last append at BASE is `check-cost`, line 3797' is false \u2014 at BASE, `sha-unguarded` (line 3898) and `base-sha-in-suite` (line 3992) are appended after it. Following the instruction literally (the guard render's region and append directly after the `check-cost` append) turned the existing pin tests/test_compile_plan_sha_unguarded.py::test_the_render_is_registered_directly_after_check_cost red, since it asserts `names[names.index(\"check-cost\") + 1] == \"sha-unguarded\"`. No Machine clause or Proof leg of this task constrains the guard render's registry position, so I read the instruction's intent as 'appended last, in a region of its own' \u2014 what 'directly after check-cost' would have meant had the premise been true \u2014 and appended `guard` last, after `base-sha-in-suite`. That keeps the peer's pin green and touches no exam outside my scope; the render's region carries a comment recording why.; concern: plan-defect: Proof leg (e) asserts 'no `--check` line contains `grammar:`'. Every claims-v1 task unconditionally draws `ADVISORY grammar: Context is N words \u2014 task <id>` (compile_plan.py line ~1977, a measurement with no threshold), and that line prints under plain `--check`, not only under `--renders`. That clause is therefore red at BASE for any claims-v1 fixture regardless of this change; it holds only under the reading 'no `grammar:` refusal line' (no line whose prefix is `grammar:`), which is true \u2014 a `Guard:` bullet produces no violation at all. Flagging because the peer's exam is written from this same text and may pin the literal reading.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b7fb94ae07985244cb5bef25f32c97e9d9a0fe58",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-66/patches/task-3.patch",
+      "reviewVerdict": "fixed",
+      "notes": "leg (d)'s `test_py_exam_without_the_package_marker_aborts_collection` asserts only `p.returncode != 0`. That passes for any non-zero exit \u2014 a usage error, a missing plugin, exit 5 for \"no tests collected\" \u2014 not only for the collection abort the leg is about. The task's Context states the measured failure precisely (\"collection aborts with `import file mismatch`\"), so assert that string in `p.stdout + p.stderr` alongside the return code; otherwise the leg can go green for a reason that has nothing to do with the `__init__.py` the engine writes.; unverified: the Claim's end-to-end sentence \u2014 \"inside a run the suite collects that directory from the branch\" \u2014 is only half settled by this diff. The patch proves the bridge collects `fleet/tests/exams/*/test_*.mjs` when such a directory exists (leg (b), on a tmp tree the exam builds itself), and leg (c)'s second half proves the no-`exams/` case on the tree at hand. What no test here can settle is that Task 1's engine actually writes to `fleet/tests/exams/<slug>/` and `tests/exams/<slug>/` with the same `<slug>` rule this exam hard-codes as `run_7` \u2014 that lives in `fleet/exam-paths.mjs`, a sibling-owned path absent at BASE. What would settle it: a green run of Task 1's `fleet/tests/test_run_engine_reserved_exams.mjs` leg (f) (the `__init__.py`/landing-path legs) on the integration branch after both tasks land. No action needed in this diff; recorded so the operator reads the seam.; EXAM EDITED (tests/test_fleet_suite_collection.py) \u2014 judged lawful, recorded so the operator can see what changed and why. Comparing the graded file against the examiner's bytes in clones/exam-3/, the submission changed exactly one thing: the helper `_expected_order` (its body and docstring), lines 115-121 of the peer's file. Nothing else differs \u2014 all four legs and all eight tests, every assertion, every fixture are the peer's. The peer's helper tested each RELATIVE name against `bridge.SLOW_FIRST` (`head = [n for n in bridge.SLOW_FIRST if n in present]`, `present` a set of `/`-joined relative paths); the submission keys membership on the basename and adds the relative path as a sort tiebreaker, mirroring the bridge's new `_order_key`. On this clone the two spellings are indistinguishable \u2014 fleet/tests/exams/ does not exist at BASE, so every relative name IS a basename, and the peer's helper greens against this implementation unedited (EXAM EVIDENCE: 8 passed, exit 0). They diverge only on a tree carrying an exams/ copy of a SLOW_FIRST-named sim \u2014 which this run's own integration branch will carry, since Task 6's Proof exam `fleet/tests/test_publish_fold.mjs` lands at `fleet/tests/exams/run_66/test_publish_fold.mjs` and `test_publish_fold.mjs` is a SLOW_FIRST member (tests/test_fleet_suite.py:22). There the peer's helper demands that file in the alphabetical tail while an M1-conforming collect_sims puts it in the SLOW_FIRST head. I read M1 (\"`SLOW_FIRST` names first and the rest alphabetical by path relative to `<fleet_dir>/tests`\") as keying on the name SLOW_FIRST actually holds \u2014 a basename, documented in the bridge as a wall measurement \u2014 so the peer's helper, which matches a relative path against a basename tuple, encoded a pin no M1-conforming implementation could satisfy on the branch the Acceptance suite runs on (global constraint 1: \"the committed suite, on the branch that includes the exams\"). The hunk changes only that, is disclosed in the helper's docstring, and weakens no leg: the ids still come from a real pytest collection of the real bridge, and the expected list is still built from the globs, never through `collect_sims`. Residual cost, noted not blocking: `_expected_order` is now a near-transcription of the bridge's `_order_key`, so leg (c) grades the collection's CONTENT independently but its ORDER by the implementation's own rule.; unverified: M1 does not say whether SLOW_FIRST membership is keyed by basename or by the path relative to `<fleet_dir>/tests`, and no leg on a tree this clone can build distinguishes the two \u2014 leg (a)'s only SLOW_FIRST member (`test_sandbox_boot.mjs`) sits at the top level, where both readings agree. That gap is what produced the exam/implementation divergence above. The submission resolves it toward the basename (tests/test_fleet_suite.py:36-46), which is the reading that keeps a run's 40 s exam copy in the first dispatch round \u2014 the stated purpose of the list. What would settle it: a green run of the committed suite on the integration branch after Tasks 1 and 6 land, where `fleet/tests/exams/run_66/test_publish_fold.mjs` exists and leg (c)'s first half actually exercises the case. No edit inside this task's FILES answers the ambiguity in the plan text itself.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 1,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "examEdited": [
+        "tests/test_fleet_suite_collection.py"
+      ]
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "cedd3f823cd65d550fc1fc568dd063566d2b1242",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-66/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "`fleet/strip-exams.sh` copies the record with `git ls-tree -r --name-only \"$BRANCH\" -- \"$dir\" | while IFS= read -r blob`. Without `-z`, git C-quotes any path containing a non-ASCII byte, a quote, or a backslash (`core.quotePath` defaults to true), so `blob` becomes `\"tests/exams/run_7/t\\303\\253st.py\"` including the literal quotes. `git cat-file blob \"$BRANCH:$blob\"` then fails, and under `set -euo pipefail` the whole strip exits non-zero, which `push_head` turns into `fail \"publish: strip-exams on $BRANCH\"` \u2014 a run killed by an exam filename. M1's \"copies every file of each present directory ... byte for byte\" is not met for such a file. The branch-side half of the script already does this correctly (`git ls-files -z ... | git update-index -z --force-remove --stdin`); only the copy loop is unguarded. Exam filenames are ASCII in practice, which is why the green exam does not catch it \u2014 `test_strip_exams.mjs` deliberately varies exam *content* (multi-byte UTF-8, no trailing newline) but not exam *names*.; unverified: the diff changes the shared rig `fleet/tests/_sandbox_boot_helpers.mjs` (`makeHome` now writes a talking `strip-exams.sh` stub into the fake engine checkout), which puts a new `CALL strip-exams \u2026` line into the one boot stream that eight sibling sims read \u2014 `test_sandbox_boot.mjs`, `_merge.mjs`, `_edges.mjs`, `_record.mjs`, `_approved.mjs`, `_approval_evidence.mjs`, `_effort.mjs`, `_selfmerge.mjs`. This task's Proof names no `Run:` over them and the driver's exam evidence runs only the two new files, so nothing in this submission's evidence shows they are still green. I read them and found no exhaustive stream golden (the `stream(ctx).filter(...)` uses are failure-message builders and `CALL curl`/`CALL git`-scoped counts, and the `readdirSync` pins are on the evidence run dir, which the stub never writes to), so the risk is low \u2014 but it is not settled here. What would settle it: `node fleet/tests/test_sandbox_boot.mjs` and its seven siblings, or the committed suite the plan's `Acceptance: suite` runs on the branch.; fleet/strip-exams.sh:128 \u2014 the record-copy loop reads `git ls-tree -r --name-only` as newline-delimited text. With git's default `core.quotePath`, a blob whose name carries a non-ASCII or special byte is printed C-quoted (`\"tests/exams/run_7/t\\303\\251st.py\"`), so `git cat-file blob \"$BRANCH:$blob\"` on the next line fails; under `set -euo pipefail` that takes the script down, and `push_head`'s `|| fail \"publish: strip-exams on $BRANCH\"` takes the whole run down at publish. The removal side already avoids this (`ls-files -z | update-index -z`), and the exam's fixtures exercise non-ASCII file *contents* but only ASCII file *names*, so the leg (a) 'byte for byte' assertion never reaches this path. Fail-closed rather than silently wrong, hence minor, but the fix is two tokens.; unverified: the diff changes the SHARED boot rig \u2014 `makeHome` in fleet/tests/_sandbox_boot_helpers.mjs now writes a talking `strip-exams.sh` stub, so every boot sim's one stream gains a `CALL strip-exams \u2026` line. The driver's evidence covers only the two new exams plus `node fleet/tests/test_publish_fold.mjs`; the nine existing `fleet/tests/test_sandbox_boot*.mjs` sims that share the rig were not run. I read them for the break classes this would hit \u2014 exact `deepEqual` over `stream(ctx)`, index/adjacency assertions around the integration-branch push, and `readdirSync` pins on the evidence run dir \u2014 and found only predicate filters (`filter(isEvidencePush)`, `mergePuts`, `foldUnits`), and the stub writes no file into the evidence dir, so the risk looks low. What settles it is the committed suite this task is accepted by: `python3 -m pytest -q tests/test_fleet_suite.py`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "e9bd59b7369131754ddeec2133ff0829f6dcc12b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-66/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "Path-placeholder mismatch with the runtime this plan builds. Both new paragraphs teach the reserved directory as `tests/exams/<run>/` / `fleet/tests/exams/<run>/` (skills/ultrawrite/SKILL.md, the `- Guard:` paragraph inserted after the `Run:` paragraph; skills/ultrapowers/references/plan-markers.md, \u00a7Proof grammar). Sibling task 6's Context fixes the actual landing path as `reservedExamPath(exam, 'run-<N>')` where the run id's `-` becomes `_` \u2014 run 7's `tests/exam_run.mjs` lands at `tests/exams/run_7/exam_run.mjs`, not `tests/exams/run-7/`. An author reading only ultrawrite would plausibly write a `.mjs` exam's relative imports for `run-7/` and get the same depth but the wrong literal when reasoning about a concrete path. This is the task's own text, not the implementer's choice: Machine clauses M2 and M3 and five of the Proof `Run:` greps require the literal `tests/exams/<run>/`, so no edit inside this task's FILES can both satisfy the exam and name `run_<N>`. Recorded for the operator; the cheap settlement is a later doc touch adding \"(`<run>` is the run id with `-` replaced by `_`: `tests/exams/run_7/`)\" once the exam is no longer graded on the bare literal.; unverified: the two paragraphs assert runtime behavior this patch cannot exercise \u2014 that the driver writes each unguarded exam under the reserved directory, and that publish moves those files onto `ultra/evidence/run-<N>` and strips them from the branch the pull request carries. Both are sibling-owned: the write is task 1 (fleet/run-engine.mjs, fleet/exam-paths.mjs, graded by fleet/tests/test_run_engine_reserved_exams.mjs) and the strip is task 4 (fleet/strip-exams.sh, graded by fleet/tests/test_strip_exams.mjs). This task's own Machine clauses M1\u2013M3 are statements *about the document*, and the driver's nine `Run:` commands all exited 0, so every leg this diff owns is settled; what remains unsettled is whether the prose stays true of the shipped runtime. Those sibling exams passing at the integration head is what would settle it \u2014 no change is required here.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "f79fae732b6221466ab73ca58fd4dadea0331c04",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-66/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: cross-task agreement between the fold's reader and the engine's writer. `EXAM_CHECK` now looks for a contender's exam at `reservedExamPath(exam, 'run-' + run)`, and the new legs prove the fold reads that rule by importing it from `fleet/exam-paths.mjs` and by pinning the literals (`tests/exam_run.mjs` -> `tests/exams/run_7/exam_run.mjs`). What no leg of this file can show is that a real run's engine handoff actually writes the exam bytes there \u2014 the fold sim plants the files itself (`RUN_A10({ [LANDED_RUN]: EXAM_RUN_A10 })`), it does not drive `run-engine.mjs`. What would settle it: Task 1's exam, `fleet/tests/test_run_engine_reserved_exams.mjs` leg (e), which asserts the branch after a wave holds the examiner's bytes at `tests/exams/<slug>/\u2026` and nothing at the Proof path. Nothing to change in this diff; recorded so the operator reads the two exams together. Shared-module import is the right mitigation and is present.; M2 (and so the diff, faithfully) records `skipped` for an exam missing at BOTH the reserved and the Proof path regardless of whose contender named it. That is the intended, authorized behaviour for a main-side contender whose exams were stripped onto its evidence tag (#767 decision 1), but it also silently downgrades THIS run's own missing exam: if the engine's handoff never wrote `tests/exams/run_7/exam_run.mjs` and nothing sits at the Proof path either, the fold now records `{result: 'skipped'}` and folds green, where at BASE the same shape read `suite red`. fleet/publish-fold.mjs:222-232 (patched) has the contender's run in hand (`contenderRun`), so distinguishing `String(contenderRun) === String(ctx.run)` \u2014 this run's own exam absent is a fault, a main-side one is a skip \u2014 is a one-line discrimination the fold could carry. Not raised as blocking because the diff implements the Machine clause as the plan states it; the fix is a change to M2's text, not to this task's code as specified.; unverified: the diff establishes that the fold LOOKS at `reservedExamPath(exam, 'run-' + contenderRun)`, and the fixture-sanity assertions pin the literal landing paths against the imported module, but nothing in this patch settles that the path the engine's handoff actually WRITES at run time equals the path this reader computes \u2014 that depends on Task 1's engine using a run id of the form `run-<N>` (`args.stamp`) for the same `reservedExamPath`. The exam here supplies the branch bytes itself rather than observing the engine write them. What would settle it: an end-to-end leg (or the merged suite on the branch that carries both Task 1's `test_run_engine_reserved_exams.mjs` and this file) showing a wave-written exam at the reserved path being found by `EXAM_CHECK` in the same tree. Graded minor because it is a cross-task claim this diff cannot judge.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-66/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1838 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 50%]\n........................................................................ [ 54%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n......................................................................... [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 97%]\n.....................................                                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1838 passed, 5 warnings in 322.26s (0:05:22) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "grep -q 'EXAM PATHS' fleet/roles/examiner.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "! git show $ULTRA_BASE:fleet/roles/examiner.md | grep -q 'EXAM PATHS'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_roles_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "role prose size: examiner.md = 519 words\n"
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_compile_plan_proof_tests.py tests/test_compile_plan_proof_runs.py tests/test_compile_plan_task_test_cmd.py",
+      "exit": 0,
+      "stdout": "..........................................                               [100%]\n42 passed in 4.19s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "bash -n fleet/strip-exams.sh",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n \"/the run.s record under/,/The publish fold writes its own/p\" fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'transcripts/<sessionId>.jsonl.*exams/'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_publish_fold.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Guard:.*Test:.*merged'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'ultra/evidence/run-<N>'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! git show $ULTRA_BASE:skills/ultrawrite/SKILL.md | sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' | grep -q 'Guard:'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'tests/exams/<run>/.*fleet/tests/exams/<run>/.*relative imports'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Guard:.*later run'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^## Proof grammar/,$p' skills/ultrapowers/references/plan-markers.md | tr '\\n' ' ' | grep -q 'tests/exams/<run>/.*evidence tag.*Guard:'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! git show $ULTRA_BASE:skills/ultrapowers/references/plan-markers.md | grep -q 'Guard:'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite | grep -q 'skill ok'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "python3 -m pytest -q tests/test_recommendation_rubric.py",
+      "exit": 0,
+      "stdout": "..............                                                           [100%]\n14 passed in 0.01s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- .github/workflows/ci.yml",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- .github/workflows/ci.yml",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 2123085,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.02826076205144872,
+    "pairRounds": 4,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "................................................... [ 51%]\n........................................................................ [ 55%]\n......................................................................... [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n......................................................................... [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 292.49s (0:04:52) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "1f7deb5d7a5a57f35db115e5ba486bf12a657bde",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "27ee27595f3ca48ddc8dd0a891c01b172757e7de",
+      "branches": [
+        "6"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-66/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-66/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.284,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-66/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-66/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8380000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 6,
+    "tasks_planned": 6,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 4 \u2014 `fleet/strip-exams.sh` + `push_head`'s strip, end to end onto a live remote: the pull request carrying no `tests/exams/`|`fleet/tests/exams/` file and `ultra/evidence/run-<N>` carrying them under `.ultrapowers/runs/<N>/exams/`.",
+      "reason": "external",
+      "why": "The ref-plumbing half is exercised against real git repositories (`fleet/tests/test_strip_exams.mjs`) and the call position against a stubbed boot (`fleet/tests/test_sandbox_boot_exams.mjs`), both green in the driver's suite. What cannot run here is the publish itself: the push to the GitHub remote, the PR diff a reviewer opens, and the tag `ultra/evidence/run-<N>` that the post-run retirement sweep moves onto the evidence branch head."
+    },
+    {
+      "deliverable": "Task 1 \u2014 a real examiner agent honoring the `EXAM PATHS:` line and writing its exam at the landing path (`fleet/run-engine.mjs:1057-1069`, `fleet/roles/examiner.md:25-31`).",
+      "reason": "external",
+      "why": "The prompt line, the handoff, the `__init__.py` packaging and the branch state after a wave are all proven with a stub examiner that parses the line (`fleet/tests/test_run_engine_reserved_exams.mjs`). Whether a live model writes to `b` rather than the Proof path `a` \u2014 and writes its relative imports for that depth \u2014 is model behavior on a real fleet run and is not executable in this environment."
+    }
+  ],
+  "judgmentCalls": [
+    "task 3: the fix round edited the exam \u2014 tests/test_fleet_suite_collection.py no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included",
+    "task 1: scope-judgment: no Machine clause names the FIX round's prompt, but the fix round runs in the graded clone, which after the handoff holds the exam at its LANDING path \u2014 leaving `testCmdLine(task, workerTestCmd)` there would have handed the fix worker a command naming a path its tree no longer has. The two fix sites now use the same remapped command (`fixTestCmdLine()`), and carry no `EXAM PATHS:` line. For every existing sim the remap is the identity, so no committed pin changes.",
+    "task 1: I did not write fleet/tests/test_run_engine_reserved_exams.mjs: it is the Proof's `Test:` path and so reserved for the peer's exam. My footprint is the other three files only (git diff --stat vs BASE: fleet/exam-paths.mjs +55, fleet/roles/examiner.md +12/-1, fleet/run-engine.mjs +121/-15).",
+    "task 2: out-of-FILES: tests/test_compile_plan_task_test_cmd.py \u2014 its leg (g) pin `test_entry_keeps_every_other_key_at_its_base_value` deep-equals the whole wave entry to a literal, so the new `proofGuards` key turned it red. Added `\"proofGuards\": []` (three lines, comment matching the neighbouring `proofRuns` comment) and nothing else. The task's Context named only tests/test_compile_plan_proof_tests.py as the pin needing this edit, but the task's own Proof `Run:` line and leg (f) name this file too ('the three existing wave-entry pins pass with the new key present'), so the edit is required by the task as written. The file is owned by no sibling task.",
+    "task 2: plan-defect: the Context's statement 'the last append at BASE is `check-cost`, line 3797' is false \u2014 at BASE, `sha-unguarded` (line 3898) and `base-sha-in-suite` (line 3992) are appended after it. Following the instruction literally (the guard render's region and append directly after the `check-cost` append) turned the existing pin tests/test_compile_plan_sha_unguarded.py::test_the_render_is_registered_directly_after_check_cost red, since it asserts `names[names.index(\"check-cost\") + 1] == \"sha-unguarded\"`. No Machine clause or Proof leg of this task constrains the guard render's registry position, so I read the instruction's intent as 'appended last, in a region of its own' \u2014 what 'directly after check-cost' would have meant had the premise been true \u2014 and appended `guard` last, after `base-sha-in-suite`. That keeps the peer's pin green and touches no exam outside my scope; the render's region carries a comment recording why.",
+    "task 2: plan-defect: Proof leg (e) asserts 'no `--check` line contains `grammar:`'. Every claims-v1 task unconditionally draws `ADVISORY grammar: Context is N words \u2014 task <id>` (compile_plan.py line ~1977, a measurement with no threshold), and that line prints under plain `--check`, not only under `--renders`. That clause is therefore red at BASE for any claims-v1 fixture regardless of this change; it holds only under the reading 'no `grammar:` refusal line' (no line whose prefix is `grammar:`), which is true \u2014 a `Guard:` bullet produces no violation at all. Flagging because the peer's exam is written from this same text and may pin the literal reading.",
+    "task 2: examiner: (e) [M4] \u2014 \"no `--check` line contains `grammar:`\" \u2014 Not assertable as a raw substring test: the compiler prints `ADVISORY grammar: Context is N words \u2014 task <id>` for every claims-v1 task at BASE and after, Guard or no Guard (the word count is a measurement, not a threshold, spec \u00a71.5), so the literal form could never pass. Encoded instead in its refusal sense \u2014 no stdout line opens the `grammar:` refusal channel, and every line naming `grammar:` is an ADVISORY line \u2014 plus the same leg's byte-identity check, which pins that the Guard bullet changes no line of either channel.",
+    "wave 1: candidate adopted after reconcile (b947fa3e2e8fdbfb25bad2c9ba3f2e20fe9bec6b + fixes \u2192 1f7deb5d7a5a57f35db115e5ba486bf12a657bde)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 3 (Claim / Context literal, `tests/test_fleet_suite.py:62-63`): `collect_sims` globs the reserved node directory only one level deep (`fleet/tests/exams/*/test_*.mjs`), while Task 1's landing rule preserves sub-paths \u2014 `fleet/exam-paths.mjs:47-55` maps a Proof path `fleet/tests/sub/test_y.mjs` to `fleet/tests/exams/<slug>/sub/test_y.mjs`. The two tasks agree on the reserved-directory literal but not on its depth, so a nested `.mjs` exam would land on the branch and never be collected by the pytest bridge (silently unrun in the wave suite, the fold's suite and the frozen gate). No exam escapes today \u2014 `fleet/tests/` is flat at this tip, and Task 3's own M1 pins the single-level glob, so this is a latent gap rather than a present defect. The Python half has no equivalent gap: `pytest.ini`'s `testpaths = tests` recurses and the engine writes an `__init__.py` at every level (`fleet/run-engine.mjs:1138-1154`)."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 2 (Files slot): the tree modifies `tests/test_compile_plan_task_test_cmd.py:185-187` (adding `\"proofGuards\": []` to the base-value wave-entry literal), but that path is in no task's Files block \u2014 Task 2 declares only `skills/ultrapowers/scripts/compile_plan.py`, `tests/test_compile_plan_proof_tests.py` and `tests/test_compile_plan_guard.py`. The edit is correct and unavoidable (the new key turns that pin red, and Task 2's own `Run:` bullet executes that file, which the driver's evidence shows passing at exit 0), and it is the same pin-ownership edit the task's Context authorized for `tests/test_compile_plan_proof_tests.py` \u2014 the Context simply enumerated one of the two pins. Worth an issue for the declaration, not a merge stopper."
+    }
+  ],
+  "blockedWaves": []
+}

@@ -1,0 +1,50 @@
+{
+  "engineHead": "27ee27595f3ca48ddc8dd0a891c01b172757e7de",
+  "attempts": {
+    "1": {
+      "tip": "26158da7d61e1b628e3c367dad7993ce8d44f871",
+      "candidate": "af52fa7ed68058096fc29dce4d245820f59c86e0",
+      "disposition": "folded",
+      "pathsJoined": 3,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_publish_fold.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_actor_routing.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_exam_edits.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_reserved_exams.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_publish_fold.mjs",
+          "path": "fleet/tests/test_publish_fold.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
