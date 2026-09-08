@@ -1,0 +1,38 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "a25dfa41c9234c9b0dc80a38d89958806c16732af342058ac7ee8f70607b154f",
+   "verdict": "pass",
+   "reason": "Leg (a) pins, on a green task with two proof bullets, exactly two driver:proof-run events at iter 0 and none at iter 1 with a BASE engine failing the count, and legs (b)/(e) plus the five re-scoped sims cover the remaining clauses at the engine-event layer the sentence names."
+  },
+  "2": {
+   "hash": "f46a89409170f47e14c63cad2c50482d7dfdf3a690340131c3bfb039e729c426",
+   "verdict": "pass",
+   "reason": "Legs (a)-(e) pin the decision at both the pure (ackDecision) and flow (runMain) layers with a real integratedRuns report - the green-citation approve, the no-citation / empty-report / no-report / red-plus-green parks with the exact reason literal, and the untouched runtime/external/coverage/plan-defect paths - while (f) reads the role and report-format prose through executed Run: output; a manual ack citing green driver-executed Run: evidence is necessarily pre-authorized and nothing else is."
+  }
+ },
+ "tally": {
+  "dispatched": 2,
+  "rejected": 0,
+  "rounds": {
+   "1": {
+    "1": "pass",
+    "2": "pass"
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "a25dfa41c9234c9b0dc80a38d89958806c16732af342058ac7ee8f70607b154f",
+   "verdict": "pass"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "f46a89409170f47e14c63cad2c50482d7dfdf3a690340131c3bfb039e729c426",
+   "verdict": "pass"
+  }
+ ]
+}
