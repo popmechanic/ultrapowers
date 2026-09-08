@@ -1,0 +1,41 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "04facce2268a4162139deff72fad0904c28647d5ba4d4a09dd5f7b22a993ce1b",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg: dict-equality of the whole 600-char row and id order (M1), empty list plus bundle presence (M2), per-kind whole lines for all five allowlisted kinds plus the retained engine:log cap (M3), ordered grep over the friction item (M4)."
+    },
+    "2": {
+      "hash": "55c08b1696b6d7f039c0f0b7d17099a72b631f5dfeb522ee2dc8a3dceb6c4d86",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg at the bundle layer: envelope-derived lines that a file-only harvester cannot produce (M1), the transcript-derived line matched by tool_use id (M2), file lines verbatim in order (M3), both triggers of null-vs-empty (M4), and the friction item's grep (M5)."
+    },
+    "3": {
+      "hash": "88343b3c69adfe520dbe1df20ef808c4b05ada60d6ea5371130d67537f4f382c",
+      "verdict": "pass",
+      "reason": "Round 2 pass: round 1 failed on the null-equals-null skip and the bare-directory lookup candidate having no observing leg; both were added (a local run harvested twice prints 1 already cached; a bare runs/run-30/ answers home) and every clause now has a leg an implementation violating it would fail."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "3",
+      "verdict": "fail",
+      "reason": "M5's bare-directory candidacy and M4's null-equals-null skip were never observed by a leg."
+    }
+  ]
+}
