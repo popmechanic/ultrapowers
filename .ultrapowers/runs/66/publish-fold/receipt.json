@@ -44,7 +44,8 @@
           "result": "pass"
         }
       ],
-      "checkRetries": 0
+      "checkRetries": 0,
+      "pushedHead": "af52fa7ed68058096fc29dce4d245820f59c86e0"
     }
   }
 }
