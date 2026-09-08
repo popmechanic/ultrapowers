@@ -190,9 +190,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     CLAUDE_CODE_OAUTH_TOKEN=placeholder ULTRAPOWERS_FLEET_RUN=run-N node
     <engine>/fleet/publish-fold.mjs --repo /home/exedev/target --base <base> --branch
     ultra/integration-run-N --run N --run-dir <run dir> --evidence-dir
-    /home/exedev/evidence/.ultrapowers/runs/N --attempt 1|2`.
+    /home/exedev/evidence/.ultrapowers/runs/N --attempt <n>`.
     It folds, runs the suite, and pushes the head with `push_head` — a plain push on attempt 1,
-    `--force-with-lease=<branch>:<pushedHead>` on attempt 2. Its disposition is one of `folded`,
+    `--force-with-lease=<branch>:<pushedHead>` on every attempt after it. Its disposition is one of `folded`,
     `nothing to join`, `tip unmoved`, `suite red`, `conflict parked` or `cannot fold`, and its receipt is
     `.ultrapowers/runs/<N>/publish-fold/receipt.json`. The candidate checks it runs before the suite
     are reasons under those words and never a seventh: a joined path that fails its parser is
@@ -206,7 +206,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     --count <base>..ultra/integration-run-N`; `ahead == 0` → state `parked`, evidence committed, NO push,
     NO PR. Otherwise the publish fold above runs, and then
     `publishing` (written only after `systemctl --user is-active fleet-engine-<N>.service` and `systemctl --user is-active fleet-fold-<N>-<attempt>.service` are inactive;
-    evidence committed BEFORE the push, except attempt 2's push, made under `running`, before its `publishing` commit) → the head is on the remote (`push_head`'s `git push origin
+    evidence committed BEFORE the push, except a fold-again's push, made under `running`, before its `publishing` commit) → the head is on the remote (`push_head`'s `git push origin
     ultra/integration-run-N`) → one REST call, never `gh`: `curl -sS -X POST
     https://github.int.exe.xyz/api/v3/repos/<owner>/<repo>/pulls -H 'content-type: application/json'
     -d <json>` with `title` (`fleet run-N: <plan h1>`), `head` = `ultra/integration-run-N`, `base` = the
@@ -232,16 +232,24 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     then `Plan-Tag: ultra/plan/run-<N>`) and records the answer's `sha` as `merged`; an answer with no runs waits
     `MERGE_CHECKS_GRACE` (120 s) and is then merged as having nothing to wait for; a failed run, 30
     minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null.
-    The merge is retried exactly once, and only for a moved tip:
+    The merge folds again for a moved tip, for as long as the fold stays clean and the clock holds:
     a 405 whose `message` says the pull request is not mergeable,
     or that the base branch was modified, or that a required status check is expected
     (the match ignores case), means the target moved between the fold and the PUT, so the script writes
-    `running "publish fold (attempt 2)"` (an evidence commit),
+    `running "publish fold (attempt <n>)"` (an evidence commit),
     re-folds onto the new tip, pushes with the lease, writes `publishing` (an evidence commit),
     re-enters its check-runs loop on the new head, polls `GET /pulls/<n>` until `mergeable` is
-    non-null and PUTs once more;
-    a second 405 leaves the PR open with `left open: merge PUT answered 405 twice`, and
-    any other non-2xx keeps the one PUT it made.
+    non-null and PUTs once more — and answers the next such 405 the same way, for as long as the
+    base keeps moving. THE BOUND IS A WALL CLOCK, NOT A COUNT: the first base-moved 405 always earns
+    its fold, and each one after it earns another only while fewer than `FOLD_AGAIN_WAIT`
+    (`FLEET_FOLD_AGAIN_WAIT`, default 3600 s) seconds have passed since that first one. The end of
+    that clock leaves the PR open with
+    `left open: merge PUT answered 405 after <N>s of folding again`, where `<N>` is `FOLD_AGAIN_WAIT`;
+    a fold that moved nothing has no new head to offer and makes no further PUT, leaving the PR open
+    with `left open: merge PUT answered 405 and the fold moved nothing`; and a fold that did not end
+    clean leaves the `left open: publish fold — <disposition text>` hold it always did.
+    Every PUT is one `publish:merge` line, in order, and the LAST of them is what became of the PR.
+    Any other non-2xx keeps the one PUT it made.
     `hold=1` in the assignment skips all of it.
   - record: after the last evidence push of a `done` or `parked` run, tag the plan commit `ultra/plan/run-<N>` and the evidence head `ultra/evidence/run-<N>`, verify both with `git ls-remote --tags` against the remote, then delete the branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
     A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
@@ -254,10 +262,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   already carries is a heartbeat (`updatedAt` moves, the page is rewritten every poll) and earns no
   second commit.
   The `state` cell is a sequence, not a set: a run that published reads
-  `booting → running → publishing → done`, and a run whose merge PUT answered 405 and was folded and
-  PUT again reads `running → publishing → running → publishing → done` — the second `running` is the
-  fold's attempt 2 (phase `publish fold (attempt 2)`), the merge is retried exactly once, and there is
-  no third `publishing`. `parked` and `failed` are terminal wherever they are reached.
+  `booting → running → publishing → done`, and a run whose merge PUT answered a base-moved 405 folds
+  again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase
+  `publish fold (attempt <n>)`. So a run folded once more reads
+  `running → publishing → running → publishing → done`, one folded three times more carries three
+  such pairs before its `done`, and the count is whatever `FOLD_AGAIN_WAIT` and the folds allowed —
+  never a fixed number. `parked` and `failed` are terminal wherever they are reached.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR.
   The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; a ready PR the

@@ -223,17 +223,20 @@ case "$url" in
   *github.int.exe.xyz/api/v3/repos/*/pulls/*/merge)
     # The say line is EXACTLY \`curl pr merge\`, with the count kept in the
     # counter file: a sim reads this line by equality to find the PUT in the
-    # stream. STUB_MERGE_CODE answers the FIRST PUT (or, as a list in order,
-    # "405 200", every PUT); STUB_MERGE_CODE_2 answers the SECOND and defaults
-    # to 200 — the retry a 405 buys is the one that merges unless a case says
-    # otherwise, so a refusal knob for the first PUT never leaks into the second.
+    # stream. STUB_MERGE_CODE is a LIST, and it answers PUT n with its n-th
+    # entry whenever it HAS an n-th entry: "405 405 405 200" is a base that moved
+    # three times and then let the merge through — a run that folds again three
+    # times and merges on its fourth PUT. STUB_MERGE_CODE_2 / STUB_MERGE_MESSAGE_2
+    # answer PUT n >= 2 only when the list runs out before n, and default to 200,
+    # so a one-entry list plus a _2 knob answers exactly what it always did and a
+    # refusal knob for the first PUT still never leaks into the second.
     n=$(bump merge)
     say "curl pr merge"; printf '%s\\n' "$payload" >>"$FLEET_HOME/merge.log"
     code=""; i=0
     for c in \${STUB_MERGE_CODE:-200}; do i=$((i + 1)); [ "$i" -le "$n" ] && code="$c"; done
     [ -n "$code" ] || code=200
     msg="\${STUB_MERGE_MESSAGE:-Pull Request successfully merged}"
-    if [ "$n" -ge 2 ]; then
+    if [ "$n" -ge 2 ] && [ "$i" -lt "$n" ]; then
       code="\${STUB_MERGE_CODE_2:-200}"
       msg="\${STUB_MERGE_MESSAGE_2:-$msg}"
     fi
