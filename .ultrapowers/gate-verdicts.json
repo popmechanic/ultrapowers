@@ -1,0 +1,45 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "49846b6af5d50ac7ce62c1a0b269ee30332920cf28bf395fa35cb3c88c982dad",
+      "verdict": "pass",
+      "reason": "Every Machine clause M1-M7 has a leg that constructs both the sha-present and dir-absent sides of a real fixture repository and names what must and must not print; enumerated rows of M2, M3 and M4 each get a leg; M5/M6 are falsified by a symlink-vs-file pair and a blob-pin at a deleted path rather than by self-reference."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 1,
+        "rejected": 1
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "904542ac21551fe0c7d1137041114719e7760db766d1b5987517876d331ea57d",
+      "verdict": "fail",
+      "reason": "Leg (f) unsatisfiable (a commit's tree cannot contain its own sha); M3/M6 universals checked by one instance; leg (b) delegated to unnamed assertions.",
+      "repaired": "leg (f) rebuilt as a three-commit fixture freezing an earlier commit's sha; M3 narrowed to the exam's four runs with empty stdout; M6 pinned over two blocks; leg (b) names the five canonical fixtures and the corpus test it re-runs."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "49846b6af5d50ac7ce62c1a0b269ee30332920cf28bf395fa35cb3c88c982dad",
+      "verdict": "pass",
+      "findings_not_acted_on": [
+        "Claim's 'every BASE-fact' universal is covered by the enumerated readers (Context lists them with line numbers at BASE); completeness is a Context fact, not a leg.",
+        "(j) second Run joins the section with tr \u2014 the two phrases sit in one sentence by authoring, the Run pins their order.",
+        "(d)-(f) invocation flags: stated in Context (--check --renders), which the hash does not cover.",
+        "(i) 'unchanged' pre-existing legs: the Global Constraints Check pins the frozen files; test_pin_base_facts.py is a Test: path the task may extend."
+      ]
+    }
+  ]
+}
