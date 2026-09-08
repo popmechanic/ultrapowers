@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-52.md run-52 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "skills/ultrapowers/SKILL.md §Client step 3 read-state recipe — `gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d` — The Claim's operator sentence ends in a live GitHub read of a finished run's tag returning the record and not a 404; this sandbox has no network or target repository, so the recipe's end-to-end behavior cannot be executed. Statically it is consistent with the ref the boot actually writes — `fleet/sandbox-boot.sh` `record_tags` sets `refs/tags/ultra/evidence/$RUN_ID` (line 1687) and verifies it before deleting the branches — and with `fleet/CONTRACT.md` §Literals *The two tags* and `fleet/RUNBOOK.md` §Per run *Watch*, which spell the same literal. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

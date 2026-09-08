@@ -1,0 +1,157 @@
+{
+  "integrationBranch": "ultra/integration-run-52",
+  "baseSha": "1c2c89e340ec099a8c94571cdd60f79e3e5c5a00",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "6b255b0ca4266ee45ba950dbf9c5f388a45e5ea1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-52/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Doc-accuracy nuance, not covered by any exam leg: patched step 3 of `skills/ultrapowers/SKILL.md` lists `failed` among the states `status.json` passes through and then tells the reader to \"read `status.json` by tag: a finished run's record is `ultra/evidence/run-<N>`\". Per `fleet/sandbox-boot.sh` (`record_tags` runs only after the last evidence push of a `done` or `parked` run; \"a run that ends `failed`, or whose tags do not verify, keeps both branches for the one-time sweep\"), a failed run never gets that tag, so the recipe 404s and the patched text offers no alternative for it \u2014 the in-flight case is covered by the added \"While the run is in flight \u2026\" sentence, the failed case is not. I grade this minor and actor=plan rather than implementer because the task's Machine clause M1 forbids any branch read spelled any way in SKILL.md, M2 forces every branch-naming sentence to carry `in flight` (which a failed-run caveat is not), and the first Global Constraint directs the skill to teach the contract's words \u2014 `fleet/RUNBOOK.md` \u00a7Per run *Watch* (lines 178\u2013183) carries the same omission, so closing it in SKILL.md alone would put the skill ahead of its stated authority. Settling it means a decision at the plan/contract level about whether \u00a7Watch should say a `failed` run is not tagged and its `ultra/evidence-run-<N>` branch survives for `node fleet/retire.mjs`.; Over-generalized end-state in \u00a7Client. Step 4 now reads \"at the tag `ultra/evidence/run-<N>` once it ends\" and step 3 reads \"a finished run's record is `ultra/evidence/run-<N>`\", but the task's own Context records that `fleet/sandbox-boot.sh` `record_tags` runs only after a run that ends `done` or `parked` \u2014 a run that ends `failed` (or one whose tag does not verify) keeps its branches and is never tagged, so a reader following the tag recipe on a failed run gets a 404 with nothing in the skill to explain it. Narrowing step 4 to \"once it ends `done` or `parked`\" fixes it without naming the branch, so the M2 sentence sweep (seventh `Run:`) stays at 0 and the M1 grep legs are untouched. The same hunk also leaves a ragged mid-paragraph line (`   `parked`. `pr` and`) from the reflow; the patch below rewraps it. Cosmetic only \u2014 no pin reads those bytes.; unverified: the two sims the task's Context names as pins on \u00a7Client \u2014 `fleet/tests/test_sandbox_boot_merge.mjs`, which slices step 4 from `4. **The PR is the gate` to `5. **Reap` and matches two of its sentences in order, and `fleet/tests/test_janitor_reap_only.mjs` \u2014 are not among the Proof's `Run:` commands and so carry no execution evidence on this tree, while the diff rewrites four lines inside that step-4 slice (the `its evidence is \u2026` sentence at 167\u2013169 and the `A parked run with nothing to publish \u2026` sentence at 178\u2013180). The matched phrases (\"A ready PR merges itself once its checks are green\", \"`--hold` on the launch line keeps it open\") are themselves untouched and still in order, so the risk is low. Running `node fleet/tests/test_sandbox_boot_merge.mjs` and `node fleet/tests/test_janitor_reap_only.mjs` on the edited tree would settle it; the committed-suite acceptance means they run at the gate regardless.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-52/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1737 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 29%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1737 passed, 5 warnings in 277.35s (0:04:37) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -o 'contents/.ultrapowers/runs[^ ]*' skills/ultrapowers/SKILL.md | grep -c .)\" = \"$(grep -o 'contents/.ultrapowers/runs[^ ]*' skills/ultrapowers/SKILL.md | grep -c '?ref=ultra/evidence/run-<N>[^A-Za-z0-9/_.-]*$')\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -o 'contents/.ultrapowers/runs[^ ]*' skills/ultrapowers/references/first-run.md | grep -c .)\" = \"$(grep -o 'contents/.ultrapowers/runs[^ ]*' skills/ultrapowers/references/first-run.md | grep -c '?ref=ultra/evidence/run-<N>[^A-Za-z0-9/_.-]*$')\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -F -q 'contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' skills/ultrapowers/SKILL.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'evidence-run-' skills/ultrapowers/references/first-run.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(awk -v f=\"$(printf '\\140\\140\\140')\" '{ s = $0; sub(/^[ \\t]*/, \"\", s) } index(s, f) == 1 { c = !c; next } c' skills/ultrapowers/SKILL.md | grep -c 'evidence-run-')\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -e 'gh api' -e 'curl' -e 'git ' -e '?ref=' -e 'githubusercontent' skills/ultrapowers/SKILL.md | grep -c 'evidence-run-')\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(tr '\\n' ' ' < skills/ultrapowers/SKILL.md | sed 's/\\. /.\\n/g' | grep -e 'evidence-run-' -e 'evidence branch' | grep -v -c 'in flight')\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Client/,/^## Resources/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | sed 's/\\. /.\\n/g' | grep 'ultra/evidence-run-<N>' | grep -q 'in flight'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(sed -n '/^## Client/,/^## Resources/p' skills/ultrapowers/SKILL.md | grep -c 'ultra/evidence/run-<N>')\" -ge 2",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.07s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/ tests/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 205205,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ce59cff6b61a7382f82269e2c00b56d2b58f2e75",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-52/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-52/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.34099999999999997,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "skills/ultrapowers/SKILL.md \u00a7Client step 3 read-state recipe \u2014 `gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d`",
+      "reason": "external",
+      "why": "The Claim's operator sentence ends in a live GitHub read of a finished run's tag returning the record and not a 404; this sandbox has no network or target repository, so the recipe's end-to-end behavior cannot be executed. Statically it is consistent with the ref the boot actually writes \u2014 `fleet/sandbox-boot.sh` `record_tags` sets `refs/tags/ultra/evidence/$RUN_ID` (line 1687) and verifies it before deleting the branches \u2014 and with `fleet/CONTRACT.md` \u00a7Literals *The two tags* and `fleet/RUNBOOK.md` \u00a7Per run *Watch*, which spell the same literal."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
