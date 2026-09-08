@@ -1,0 +1,19 @@
+{
+  "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "integrationBranch": "ultra/integration-run-103",
+  "engineVersion": "0.3.17",
+  "tasks": [
+    {
+      "task": "1"
+    },
+    {
+      "task": "2"
+    },
+    {
+      "task": "3"
+    }
+  ],
+  "tests": {
+    "passed": true
+  }
+}

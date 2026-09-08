@@ -1,0 +1,12 @@
+{
+  "baseSha": "dddddddddddddddddddddddddddddddddddddddd",
+  "integrationBranch": "ultra/integration-run-101",
+  "tasks": [
+    {
+      "task": "1"
+    }
+  ],
+  "tests": {
+    "passed": true
+  }
+}

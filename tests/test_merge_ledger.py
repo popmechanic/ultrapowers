@@ -109,7 +109,9 @@ def test_bundle_lookups_reads_cache_and_fails_closed(tmp_path):
          "engineVersion": {"epoch": "0.0.12", "asOf": "t", "basis": "home-repo-date"}}))
     origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
     assert origin_lookup("r1") == "home"
-    assert engine_lookup("r1") == "0.0.12"
+    # #696: basis 'home-repo-date' is a guess from the run's date, not a read
+    # version — the lookup no longer trusts it, so this bundle stamps nothing.
+    assert engine_lookup("r1") is None
     # missing bundle: origin fails closed to foreign, epoch is unknown
     assert origin_lookup("missing") == "foreign"
     assert engine_lookup("missing") is None

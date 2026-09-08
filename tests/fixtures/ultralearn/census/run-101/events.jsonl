@@ -1,0 +1,19 @@
+{"kind": "run:open", "id": "01AAA001", "ts": 1788130000000, "runId": "run-101", "base": "", "source": "fleet/run-main.mjs"}
+{"kind": "driver:stage", "id": "01AAA002", "ts": 1788130000000, "stage": "provision"}
+{"kind": "engine:phase", "id": "01AAA003", "ts": 1788130060000, "phase": "Setup"}
+{"kind": "engine:phase", "id": "01AAA004", "ts": 1788130120000, "phase": "Wave 1"}
+{"kind": "worker:start", "id": "01AAA005", "ts": 1788130120000, "label": "exam:1", "role": "examiner", "sessionId": "s-101-1", "cwd": "/c/exam:1", "model": "opus"}
+{"kind": "worker:end", "id": "01AAA006", "ts": 1788130180000, "label": "exam:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.25, "models": ["claude-opus-5"]}}
+{"kind": "worker:start", "id": "01AAA007", "ts": 1788130180000, "label": "impl:1", "role": "implementer", "sessionId": "s-101-2", "cwd": "/c/impl:1", "model": "opus"}
+{"kind": "worker:end", "id": "01AAA008", "ts": 1788130420000, "label": "impl:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 1.0, "models": ["claude-opus-5"]}}
+{"kind": "worker:start", "id": "01AAA009", "ts": 1788130420000, "label": "review:1:1:1", "role": "reviewer", "sessionId": "s-101-3", "cwd": "/c/review:1:1:1", "model": "opus"}
+{"kind": "worker:end", "id": "01AAA010", "ts": 1788130540000, "label": "review:1:1:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.5, "models": ["claude-opus-5"]}}
+{"kind": "engine:phase", "id": "01AAA011", "ts": 1788130540000, "phase": "Integration Review"}
+{"kind": "worker:start", "id": "01AAA012", "ts": 1788130540000, "label": "integration", "role": "critic", "sessionId": "s-101-4", "cwd": "/c/integration", "model": "opus"}
+{"kind": "worker:end", "id": "01AAA013", "ts": 1788130600000, "label": "integration", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.75, "models": ["claude-opus-5"]}}
+{"kind": "driver:stage", "id": "01AAA014", "ts": 1788130600000, "stage": "engine-done"}
+{"kind": "driver:stage", "id": "01AAA015", "ts": 1788130600000, "stage": "gate"}
+{"kind": "driver:approved", "id": "01AAA016", "ts": 1788130720000, "stamp": "run-101"}
+{"kind": "driver:publish-fold", "id": "01AAA017", "ts": 1788130780000, "attempt": 1, "disposition": "folded"}
+{"kind": "publish:pr", "id": "01AAA018", "ts": 1788130840000, "url": "https://github.com/o/r/pull/1"}
+{"kind": "publish:merge", "id": "01AAA019", "ts": 1788130900000, "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
