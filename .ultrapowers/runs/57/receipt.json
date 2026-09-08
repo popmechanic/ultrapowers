@@ -1,0 +1,155 @@
+{
+  "ok": true,
+  "stamp": "run-57",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-57"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The file's envelope rows are dropped when the envelopes were read directly",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/references/reading-lenses.md",
+          "skills/ultralearn/scripts/harvest_fleet_runs.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`_confine_denials(run_dir, workers) -> list | None` \u2014 the reconciled `bundle.confineDenials`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The file's envelope rows are dropped when the envelopes were read directly",
+          "files": [
+            "skills/ultralearn/references/reading-lenses.md",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py",
+            "tests/test_harvest_fleet_runs_confine_denials.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`_confine_denials(run_dir, workers) -> list | None` \u2014 the reconciled `bundle.confineDenials`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/references/reading-lenses.md",
+            "skills/ultralearn/scripts/harvest_fleet_runs.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_harvest_fleet_runs_confine_denials.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_harvest_fleet_runs_confine_denials.py",
+          "proofRuns": [
+            "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | tr '\\n' ' ' | grep -q 'counted once.*drops.*envelope.*hook'",
+            "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | grep -c 'never the total' | grep -qx 0",
+            "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | grep -c '23 lines' | grep -qx 0"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The file's envelope rows are dropped when the envelopes\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- `fleet/` is untouched: `recordEnvelopeDenials` keeps writing its `source: \"envelope\"` lines\n  (they are what a worker that dies before the harvester runs leaves behind); the harvester is\n  the side that reconciles. The verification periphery is frozen (0.1.0). The first two Checks\n  pin both.\n- The bundle is the interface: `confineDenials` keeps its name and its three values \u2014 a list of\n  denial lines each carrying `source`, `[]` for counted-zero, `null` for no source at all \u2014 and\n  every existing pin of it in `tests/test_harvest_fleet_runs.py`,\n  `tests/test_harvest_evidence.py` and `tests/test_harvest_fleet_runs_confine_denials.py` still\n  passes unedited.\n- The harvester stays advisory and loud: no new failure mode raises; an unreadable source is a\n  stderr line, never a traceback.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-57/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-57/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-57/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-57/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
