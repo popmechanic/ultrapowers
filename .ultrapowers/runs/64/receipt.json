@@ -1,0 +1,370 @@
+{
+  "ok": true,
+  "stamp": "run-64",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-64"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The plan's hash pins are verified at --base before the push",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`verifyPlanPins({ exec, repoDir, base, planText }) -> Promise<void>`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A refused plan push re-reads the highest run and takes N+1",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`PUSH_ATTEMPTS`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A target with no detectable test command is refused on the laptop",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs",
+          "fleet/tests/test_launch.mjs",
+          "fleet/tests/test_launch_effort.mjs",
+          "fleet/tests/test_launch_engine_source.mjs",
+          "fleet/tests/test_launch_hold.mjs",
+          "fleet/tests/test_launch_reaps.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`detectTestCommand({ exec, repoDir, base }) -> Promise<{ rule: string } | null>`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "A backticked or non-command Exam command line is refused by the compiler and the launcher",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs",
+          "skills/ultrapowers/scripts/compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`EXAM_RUNNER_WORD`"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The runbook says how a parked run is re-driven",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The plan's hash pins are verified at --base before the push",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_pins.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`verifyPlanPins({ exec, repoDir, base, planText }) -> Promise<void>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_pins.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_pins.mjs",
+          "proofRuns": []
+        },
+        {
+          "id": "2",
+          "title": "A refused plan push re-reads the highest run and takes N+1",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_run_number.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`PUSH_ATTEMPTS`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_run_number.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_run_number.mjs",
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'refused.*re-reads.*three pushes'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "A target with no detectable test command is refused on the laptop",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch.mjs",
+            "fleet/tests/test_launch_effort.mjs",
+            "fleet/tests/test_launch_engine_source.mjs",
+            "fleet/tests/test_launch_hold.mjs",
+            "fleet/tests/test_launch_reaps.mjs",
+            "fleet/tests/test_launch_test_command.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`detectTestCommand({ exec, repoDir, base }) -> Promise<{ rule: string } | null>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch.mjs",
+            "fleet/tests/test_launch_effort.mjs",
+            "fleet/tests/test_launch_engine_source.mjs",
+            "fleet/tests/test_launch_hold.mjs",
+            "fleet/tests/test_launch_reaps.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_test_command.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_test_command.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_hold.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "A backticked or non-command Exam command line is refused by the compiler and the launcher",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_exam_command.mjs",
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_exam_command.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`EXAM_RUNNER_WORD`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/launch.mjs",
+            "skills/ultrapowers/scripts/compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_exam_command.py",
+            "fleet/tests/test_launch_exam_command.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_exam_command.mjs && python3 -m pytest -q tests/test_compile_plan_exam_command.py",
+          "proofRuns": []
+        },
+        {
+          "id": "5",
+          "title": "The runbook says how a parked run is re-driven",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/RUNBOOK.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'gh pr ready.*gh pr merge.*--squash.*not.*--auto.*its own run on main'",
+            "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'closed.*re-authored'",
+            "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'never takes a run branch as.*re-driven as a plan on main, not as a base'",
+            "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | grep -q '^### Re-driving a parked run'",
+            "! git show ${ULTRA_BASE}:fleet/RUNBOOK.md | sed -n '/^## States/,/^## Reading a failure/p' | tr '\\n' ' ' | grep -q 'closed.*re-authored'",
+            "! git show ${ULTRA_BASE}:fleet/RUNBOOK.md | sed -n '/^## States/,/^## Reading a failure/p' | grep -q '^### Re-driving a parked run'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+            "test \"$(python3 -m pytest -q --collect-only tests/test_docs_agree_with_code.py | grep -c '::')\" = 23"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "5 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the first Check is its pin; the second\n  keeps this run off the three files it mirrors rather than edits \u2014 `highestRunOnTarget`,\n  `detect_test_cmd` and the sandbox's preflight stay exactly as at BASE, and the launcher\n  copies their rules rather than importing them.\n- Every refusal a task adds to `fleet/launch.mjs` is a `Refusal` (exit 2) raised before any\n  lobby verb is issued and before any `git push`, and its message begins `launch: `. `USAGE`\n  gains no flag: the launch line the operator documents is unchanged, and\n  `tests/test_docs_agree_with_code.py` is the lens for that.\n- Where the sandbox already has words for a refusal, the launcher quotes them and does not\n  paraphrase: the `ultra_run.py` `test-command` stage's failure line and\n  `compile_plan.py`'s backtick note are copied verbatim into the launcher's messages.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/lobby.mjs fleet/run-main.mjs skills/ultrapowers/scripts/ultra_run.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-64/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-64/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-64/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-64/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
