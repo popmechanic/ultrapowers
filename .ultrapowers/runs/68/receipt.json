@@ -1,0 +1,160 @@
+{
+  "ok": true,
+  "stamp": "run-68",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-68"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A base-moved 405 folds again until the PUT is accepted, bounded by FOLD_AGAIN_WAIT",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`FOLD_AGAIN_WAIT=\"${FLEET_FOLD_AGAIN_WAIT:-3600}\"`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A base-moved 405 folds again until the PUT is accepted, bounded by FOLD_AGAIN_WAIT",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`FOLD_AGAIN_WAIT=\"${FLEET_FOLD_AGAIN_WAIT:-3600}\"`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_merge.mjs",
+          "proofRuns": [
+            "grep -L '405 twice' fleet/sandbox-boot.sh fleet/CONTRACT.md | grep -c . | grep -qx 2",
+            "grep -qF 'FOLD_AGAIN_WAIT=\"${FLEET_FOLD_AGAIN_WAIT:-3600}\"' fleet/sandbox-boot.sh",
+            "sed -n '/^  - merge:/,/^  - record:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'FOLD_AGAIN_WAIT.*3600'",
+            "sed -n '/^  - merge:/,/^  - record:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'of folding again'",
+            "sed -n '/^  - merge:/,/^  - record:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'the fold moved nothing'",
+            "sed -n '/^- \\*\\*status.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'FOLD_AGAIN_WAIT'",
+            "sed -n '/^- \\*\\*status.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | grep -c 'no third' | grep -qx 0",
+            "grep -c 'retried exactly once' fleet/CONTRACT.md | grep -qx 0",
+            "node fleet/tests/test_sandbox_boot_exams.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "A base-moved 405 folds again until the PUT is accepted,\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The Check above is the scope pin: the fold itself is untouched. `fleet/publish-fold.mjs` already\n  floors attempt N on the highest prior attempt's `candidate` and records `tip unmoved` against\n  the prior attempt's `tip`, so a third and a fourth attempt need nothing from it; Amendment 10\n  holds \u2014 every git command, ref move, push and REST call in this change is the boot script's,\n  and no model is dispatched by anything this plan adds.\n- No token in any argv and no direct Anthropic API call: the fold unit's envelope\n  (`env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=\u2026 CLAUDE_CODE_OAUTH_TOKEN=placeholder`) is\n  the same for every attempt, whatever its number.\n- The vocabulary of `publish:hold` and `publish:merge` is unchanged: a hold's `why` is the\n  phase's text after `left open: `, a refused merge's `left` is `refused` and its `detail` the\n  account, and the LAST `publish:merge` line is what became of the PR.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/publish-fold.mjs fleet/run-engine.mjs fleet/run-waves.mjs fleet/roles",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-68/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-68/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-68/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-68/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
