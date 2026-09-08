@@ -1,1 +1,1 @@
-{"run":"51","state":"running","phase":"Setup","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-51","vm":"fleet-r51-2609080805-37ff","startedAt":"2026-09-08T08:05:12Z","updatedAt":"2026-09-08T08:12:37Z","error":null}
+{"run":"51","state":"running","phase":"Wave 1","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-51","vm":"fleet-r51-2609080805-37ff","startedAt":"2026-09-08T08:05:12Z","updatedAt":"2026-09-08T08:19:09Z","error":null}
