@@ -16,8 +16,6 @@ swept yet; it is audited all the same and its handlers quarantined into
 """
 import ast
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -215,13 +213,3 @@ def test_walk_passes_raise_reraise_and_marked_swallow():
     violations, marked = audit(COMPLIANT, "fixture.py")
     assert violations == []
     assert marked == 1
-
-
-def test_healthy_paths_unchanged():
-    """The regression pin: re-labelling silence did not redesign a flow."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:xdist", "-q",
-         "tests/test_readers.py", "tests/test_fleet_slice.py",
-         "tests/test_merge_ledger.py"],
-        cwd=REPO, capture_output=True, text=True)
-    assert proc.returncode == 0, proc.stdout + proc.stderr

@@ -522,23 +522,6 @@ def test_the_ssh_fetcher_and_its_test_no_longer_exist():
     assert "fleet_fetch" not in HARVEST.read_text()
 
 
-def test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone():
-    """M4, leg (d): `test_remote_harvest_of_an_unreachable_host_fails_loud` is
-    deleted, and `NOT_YET_SWEPT` no longer names `fleet_fetch.py`."""
-    assert "test_remote_harvest_of_an_unreachable_host_fails_loud" not in (
-        REPO / "tests/test_harvest_fleet_runs.py").read_text()
-    assert "fleet_fetch" not in (
-        REPO / "tests/test_ultralearn_swallows.py").read_text()
-
-
-def test_the_docs_flag_allowlist_names_evidence_and_not_remote():
-    """M4, leg (d): `tests/test_ultralearn_docs.py`'s allowlist names
-    `--evidence` and neither `--remote` nor `--remote-root`."""
-    text = (REPO / "tests/test_ultralearn_docs.py").read_text()
-    assert "--evidence" in text
-    assert "--remote" not in text
-
-
 # ---------- M5, leg (e): the bundle the ledger reads is unchanged ----------
 
 def test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did(

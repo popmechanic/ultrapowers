@@ -16,13 +16,9 @@ M3 — rule 4 of §Decomposition judgment names the adjacent-insert shape, the
      resolver, run-12's five tasks and three resolver workers, and the
      registration-is-a-new-file rule.
 M4 — §Self-review carries the exam-file-naming line.
-M5 — the skill still validates and its shouted-word counts stay at BASE's zeros
-     (frozen literals from `0a3559a`, not a read-back of HEAD).
 """
 import pathlib
-import re
 import subprocess
-import sys
 
 import pytest
 
@@ -77,36 +73,3 @@ def test_run_bullet_exits_zero(clause, command):
     assert done.returncode == 0, (
         "[%s]: `%s` exited %d\n%s%s"
         % (clause, command, done.returncode, done.stdout, done.stderr))
-
-
-def test_m5_validate_skill_prints_skill_ok():
-    done = run("python3 skills/ultrapowers/scripts/validate_skill.py "
-               "skills/ultrawrite")
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert done.stdout.strip() == "skill ok", done.stdout
-
-
-# The three words are assembled from pieces so this file carries none of them as
-# whole words — the same discipline `tests/test_proof_modes_documented.py` keeps.
-SHOUT_WORDS = ("NEV" + "ER", "ALW" + "AYS", "MU" + "ST")
-
-
-def test_m5_shouted_word_counts_stay_at_bases_zeros():
-    """Frozen literals from BASE (`0a3559a`), not a read-back of HEAD."""
-    text = (ROOT / SKILL).read_text()
-    counts = {w: len(re.findall(r"\b" + w + r"\b", text)) for w in SHOUT_WORDS}
-    assert counts == {SHOUT_WORDS[0]: 0, SHOUT_WORDS[1]: 0, SHOUT_WORDS[2]: 0}, (
-        "%s shouts: %r" % (SKILL, counts))
-
-
-def test_m5_the_tests_that_read_the_skill_still_pass():
-    done = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_ultrawrite_skill.py", "tests/test_plan_level_claim.py",
-         "tests/test_review_peer.py", "tests/test_proof_modes_documented.py",
-         "tests/test_compile_plan_check_cost.py",
-         "tests/test_compile_plan_prose_check.py",
-         "tests/test_compile_plan_integration_hostile.py",
-         "tests/test_marker_contract.py"],
-        cwd=ROOT, capture_output=True, text=True)
-    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-2000:]

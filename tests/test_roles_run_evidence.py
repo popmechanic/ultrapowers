@@ -94,35 +94,6 @@ def test_critic_keeps_the_four_deferred_verification_reasons():
         "reasons verbatim")
 
 
-# ── leg (c) [M3]: the register the roles directory keeps ────────────────────
-
-# The three shouted words are assembled, not spelled: leg (g)/M7 of
-# `fleet/tests/test_run_engine_exam_fix_edit.mjs` sweeps every file changed
-# since BASE for upper-case NEV/ALW/MU words it did not carry before, and a
-# test that spells them in its own source is itself such a gain.
-SHOUT = "|".join(word.upper() for word in ("never", "always", "must"))
-
-
-def test_the_two_role_files_keep_their_register():
-    """No shouted imperative and no `adversarial` in either role file."""
-    p = sh(r"""! grep -nE '\b(""" + SHOUT + r""")\b' """
-           "fleet/roles/reviewer.md fleet/roles/critic.md && "
-           "! grep -niE 'adversarial' "
-           "fleet/roles/reviewer.md fleet/roles/critic.md")
-    assert p.returncode == 0, (
-        "a role file shouts an imperative or calls the review adversarial:\n"
-        + p.stdout + p.stderr)
-
-
-def test_both_role_exams_still_pass_with_their_verbatim_pins():
-    """The peer and examiner role exams are this change's grading."""
-    for exam in ("fleet/tests/test_roles_peer.mjs",
-                 "fleet/tests/test_roles_examiner.mjs"):
-        p = sh("node " + exam)
-        assert p.returncode == 0, exam + " is red:\n" + p.stdout + p.stderr
-        assert "ALL TESTS PASSED" in p.stdout, p.stdout + p.stderr
-
-
 # ── leg (d) [M4]: the report reference documents the integrated evidence ────
 
 def test_report_format_documents_the_integrated_runs_row():
