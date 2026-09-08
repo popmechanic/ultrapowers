@@ -125,12 +125,33 @@ async function frontierCommits (repo, base, tip, target) {
   })
 }
 
+// The two blobs a plan tag can carry. The record is optional on the tag — a
+// legacy-grammar plan predates the gate and compiles without one — and
+// mandatory beside the plan when the tag has it, which is the sandbox boot
+// script's own rule for the run's own plan.
+const PLAN_BLOB_PATH = '.ultrapowers/plan.md'
+const VERDICTS_BLOB_PATH = '.ultrapowers/gate-verdicts.json'
+
+// The compiler reads the gate's record from a sibling of the plan named for the
+// plan's stem (`GATE_VERDICTS_SUFFIX` in `compile_plan.py`), so a plan written
+// out as `plan.md` wants its record as `plan.gate-verdicts.json` — the tag's
+// flat blob name is not the name the compiler looks for.
+const GATE_VERDICTS_SUFFIX = '.gate-verdicts.json'
+
 /**
  * Run M's plan, off its tag: fetch, read `.ultrapowers/plan.md` out of the tag,
  * compile it, return the `tasks` array. `null` means "no plan" for any reason —
  * the origin lacks the tag (it postdates the clone and was never pushed), the
  * tag carries no plan, or the plan does not compile. Every one of those is a
  * line, never a throw.
+ *
+ * A claims-v1 plan does not compile alone: the proof gate's verdict is an
+ * artifact and not a memory (spec §4.5), so the compiler refuses a plan whose
+ * record is not beside it. The tag carries that record as
+ * `.ultrapowers/gate-verdicts.json` when the run had one; it is laid into the
+ * temp directory under the name the compiler looks for before the compile, and
+ * its absence is passed over rather than treated as a failure — a legacy tag has
+ * no record and its plan still compiles.
  *
  * The refspec names its destination so the fetch LEAVES the tag in the clone
  * rather than only in FETCH_HEAD, and is forced so a second call over the same
@@ -141,14 +162,18 @@ async function planTasksFor (repo, run) {
   const tag = 'refs/tags/ultra/plan/run-' + run
   const fetched = await git(repo, ['fetch', 'origin', '+' + tag + ':' + tag])
   if (fetched.code !== 0) return null
-  const plan = await git(repo, ['show', tag + ':.ultrapowers/plan.md'])
+  const plan = await git(repo, ['show', tag + ':' + PLAN_BLOB_PATH])
   if (plan.code !== 0) return null
+  const verdicts = await git(repo, ['show', tag + ':' + VERDICTS_BLOB_PATH])
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-fold-block-'))
   try {
     const planFile = path.join(dir, 'plan.md')
     const launchFile = path.join(dir, 'launch.json')
     fs.writeFileSync(planFile, plan.stdout)
+    if (verdicts.code === 0) {
+      fs.writeFileSync(path.join(dir, 'plan' + GATE_VERDICTS_SUFFIX), verdicts.stdout)
+    }
     // `--emit-launch` is the shape that carries verbatim bodies beside
     // id/title/files — the same object `<run dir>/launch.json` holds, so the
     // frontier side and this run's side are one shape and one code path.
@@ -161,6 +186,56 @@ async function planTasksFor (repo, run) {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
+}
+
+/**
+ * The block's entries for one path, in the order it renders them: a
+ * `{ run, task }` for every task whose `files` name the path — the frontier
+ * plans' first, oldest commit first, then this run's `tasks` in their order —
+ * and a `{ commit }` wherever a frontier commit is unattributable. The two
+ * shapes share one list because their ORDER is the fact: a plan's tasks stand
+ * where the commit that carried them stands.
+ */
+async function blockEntries ({ repo, base, tip, run, path: target, tasks }) {
+  const entries = []
+  const plans = new Map()
+
+  for (const commit of await frontierCommits(repo, base, tip, target)) {
+    if (!commit.run) { entries.push({ commit }); continue }
+    if (!plans.has(commit.run)) plans.set(commit.run, await planTasksFor(repo, commit.run))
+    const planTasks = plans.get(commit.run)
+    if (!planTasks) { entries.push({ commit }); continue }
+    for (const task of planTasks) {
+      if (filesOf(task).includes(target)) entries.push({ run: commit.run, task })
+    }
+  }
+
+  for (const task of (Array.isArray(tasks) ? tasks : [])) {
+    if (filesOf(task).includes(target)) entries.push({ run, task })
+  }
+
+  return entries
+}
+
+/**
+ * The contending TASKS for one path — the same walk the block renders, without
+ * the unattributable commits' lines (#754). Read by the fold's exam check,
+ * which wants the bodies rather than the prose: a task's `Proof:` slot names
+ * the exams that stand for the path it wrote.
+ *
+ *   repo   a full clone of the target with an `origin` remote
+ *   base   this run's BASE; `tip`  main as the fold sees it
+ *   run    this run's number (the label the incoming hunk side carries)
+ *   path   the path in question
+ *   tasks  this run's `launch.json` tasks — `{ id, title, body, files }`
+ *
+ * Resolves the ordered `{ run, task }` entries: the frontier plans' tasks read
+ * off their tags, oldest commit first, then this run's, each included exactly
+ * when its `files` name the path.
+ */
+export async function contendingTasks ({ repo, base, tip, run, path: target, tasks }) {
+  const entries = await blockEntries({ repo, base, tip, run, path: target, tasks })
+  return entries.filter((e) => e.task).map((e) => ({ run: e.run, task: e.task }))
 }
 
 /**
@@ -177,24 +252,9 @@ async function planTasksFor (repo, run) {
  * name the conflicted path.
  */
 export async function contendingBlock ({ repo, base, tip, run, path: target, tasks }) {
-  const entries = []
-  const plans = new Map()
-
-  for (const commit of await frontierCommits(repo, base, tip, target)) {
-    if (!commit.run) { entries.push(noPlanLine(commit)); continue }
-    if (!plans.has(commit.run)) plans.set(commit.run, await planTasksFor(repo, commit.run))
-    const planTasks = plans.get(commit.run)
-    if (!planTasks) { entries.push(noPlanLine(commit)); continue }
-    for (const task of planTasks) {
-      if (filesOf(task).includes(target)) entries.push(taskEntry(commit.run, task))
-    }
-  }
-
-  for (const task of (Array.isArray(tasks) ? tasks : [])) {
-    if (filesOf(task).includes(target)) entries.push(taskEntry(run, task))
-  }
-
-  return HEADING + '\n' + sideSentence(run) + entries.map((e) => '\n' + e).join('')
+  const entries = await blockEntries({ repo, base, tip, run, path: target, tasks })
+  return HEADING + '\n' + sideSentence(run) +
+    entries.map((e) => '\n' + (e.task ? taskEntry(e.run, e.task) : noPlanLine(e.commit))).join('')
 }
 
 export default contendingBlock
