@@ -1,0 +1,244 @@
+{
+  "integrationBranch": "ultra/integration-run-54",
+  "baseSha": "d26bbdc1c1603d9865390e9890440e5c4c77422c",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9433c907a3810268f42a44fd4f6fb8700e1dfdab",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-54/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "No exam pins `SUMMARY_WHOLE_KINDS` to exactly the five kinds the Claim allowlists. The Claim's word is \"a small allowlist (`driver:publish-fold`, `publish:pr`, `publish:hold`, `publish:merge`, `driver:ack-decision`)\", and `skills/ultralearn/scripts/fleet_events.py` already carries the sibling convention for this \u2014 `test_event_kinds_matches_the_engine_vocabulary` in `tests/test_fleet_events.py:180` pins `EVENT_KINDS` by exact-set equality. The new render-level tests only establish the five ARE exempt (`test_render_timeline_keeps_an_allowlisted_kind_whole`) and that two named kinds are NOT (`publish:comment`, `engine:log`), so a sixth kind silently added to the frozenset leaves every test green while widening the exemption the Claim calls small. The exam's own `WHOLE_KINDS` tuple already spells the five out, so the pin is one assertion. This is advisory only: M3 as written speaks of the five kinds' behaviour, not of the set's extent, and every leg the Proof names is otherwise carried \u2014 no criterion is left unverified.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b79223bd70eef20d70f273144050a277c49d3947",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-54/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "tests/test_harvest_fleet_runs_confine_denials.py:368 \u2014 `test_an_unreadable_envelope_is_a_diagnostic_and_never_a_traceback` takes `capsys`, calls `capsys.readouterr()` and throws the result away, so the \"loud\" half of the global constraint it names (\"a source that is absent or unreadable is one line on stderr and never a traceback\") is never asserted; only the \"never a traceback\" half is. Its second assertion, `bundle[\"confineDenials\"] in (None, [])`, is also satisfied by both branches of the `has_source` decision, so it pins nothing about which one an unparseable envelope takes. This leaves no Machine clause unverified (M4 legs (d) and (e) are pinned exactly by their own tests, and the advisory constraint carries no `Check:`), so it is advisory. Fix: capture the output and assert the diagnostic names the envelope path, e.g. `err = capsys.readouterr().err` then `assert \"envelope.json\" in err`, and assert the exact expected value (`== []`, since `workers/impl_1/envelope.json` exists and therefore a source is present) rather than a two-way `in`.; `test_an_unreadable_envelope_is_a_diagnostic_and_never_a_traceback` in tests/test_harvest_fleet_runs_confine_denials.py names a diagnostic it never asserts: it takes `capsys`, calls `capsys.readouterr()` after the build and discards the result, so deleting the `_warn(f\"unreadable {path}: {exc}\")` in `_read_json` leaves the test green. Its value assertion is also loose \u2014 `bundle[\"confineDenials\"] in (None, [])` \u2014 where the outcome is deterministic: `workers/impl_1/envelope.json` exists, so `has_source` is true and the answer is `[]`, and accepting `None` would hide a regression that made a present-but-unreadable source read as \"no source at all\". Tighten to `err = capsys.readouterr().err; assert \"unreadable\" in err` and `assert bundle[\"confineDenials\"] == []`. Nothing in the Machine slot rests on this, so it does not block.; The `_envelope_denials` docstring in skills/ultralearn/scripts/harvest_fleet_runs.py claims the derived line is \"Shaped exactly as `fleet/run-worker.mjs`'s `recordEnvelopeDenials` shapes the lines it appends to `confine-denials.jsonl`, so a run that has both sources reads uniformly.\" It is not exact: `recordEnvelopeDenials` (fleet/run-worker.mjs:511) emits a `ts` and caps `reason`/`toolInput` at 200 characters via its `cap` helper, while the derived line has no `ts` and no cap. The absence of the cap is correct here \u2014 the global constraint forbids cutting a kept denial line to a length \u2014 so only the docstring needs to change; say the line carries the same field NAMES as `recordEnvelopeDenials`, without its `ts` and without its 200-character cap, and why the cap is deliberately absent.; INTERFACES Produces reads \"`confineDenials` \u2014 the `bundle.json` key, a list of denial lines each carrying `source`, or `null`\", but M3 requires the `confine-denials.jsonl` lines be carried \"in file order, each as parsed\" verbatim, and a pre-#476 file line has no `source` at all \u2014 `_make_run_dir`'s row in tests/test_harvest_evidence.py is `{\"tool\": \"Bash\", \"reason\": \"outside clone\"}`, which `test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did` pins by equality. So the diff can lawfully emit a line without `source`, and it must. The M clauses and the pinned BASE shape govern; the Produces wording is what is over-strong. No edit inside this tree resolves it \u2014 recording it so the contract text can be narrowed to \"each derived line carrying `source`\" when the plan is next touched.; plan-defect: plan-defect: every envelope denial is emitted TWICE on a local run directory that has both `workers/*/envelope.json` and `confine-denials.jsonl`, which is the ordinary shape of a sandbox-logs tarball whenever any worker was denied. `_confine_denials` (skills/ultralearn/scripts/harvest_fleet_runs.py) returns `envelopes + transcripts + file_lines` with no reconciliation, and `fleet/run-worker.mjs:511 recordEnvelopeDenials` already appends one `{\"source\": \"envelope\", label, role, tool, reason, toolInput}` line per `permission_denials` entry into that same `confine-denials.jsonl` \u2014 the implementer's own docstring on `_envelope_denials` says so (\"Shaped exactly as `fleet/run-worker.mjs`'s `recordEnvelopeDenials` shapes the lines it appends to `confine-denials.jsonl`\"), and the task Context says the file's lines carry `source: \"hook\"` or, since #476, `source: \"envelope\"`. So the derived envelope lines and the file's envelope echoes are the same denials counted twice. This directly defeats the counting rule the same diff writes into skills/ultralearn/references/reading-lenses.md \u2014 \"**THE SOURCES OVERLAP: count `envelope` lines when they are present, never the total.**\" \u2014 which now yields exactly 2x the true number on the runs where envelopes exist. That is the #476/#760 failure mode (\"two records, one an undisclosed subset of the other, is how a sensor lies for five runs running\") reintroduced from the other side. No Machine clause covers the both-sources-present case (M1 is envelope-only, M3 is file-only), so the exam passes while the lens number is wrong; the defect is faithfully transcribed from the plan's Context slot, which prescribes the bare concatenation, but its fix lies inside this task's own FILES. Drop the file's `source == \"envelope\"` rows when this run's envelopes were read directly. M3 stays green (its fixture has no `workers/`, so no filtering happens and the file lines pass through verbatim, including its `source: \"envelope\"` row), and so do `test_bundle_carries_the_event_summary_and_confine_denials` and `test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did`, whose `_make_run_dir` has no `workers/` either. Add a leg to tests/test_harvest_fleet_runs_confine_denials.py pinning it: one envelope with one `permission_denials` entry plus a `confine-denials.jsonl` holding that same denial as an `source: \"envelope\"` line and one `source: \"hook\"` line yields two lines, exactly one of them `source == \"envelope\"`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9e743d802052ffc38ec5e83c7d825a4a4ea9d0a4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-54/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Peer-owned assertions were weakened while re-pointing the cache-path pins in tests/test_harvest_fleet_runs.py. At BASE, `test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land` (now :349) and `test_a_zero_event_run_beside_a_healthy_one_refuses_only_itself` (now :451) each asserted `(cache / \"runs\" / \"run-30\" / \"bundle.json\").exists()` *and* the absence of the failing run's directory. The rewrite replaced both with the `iterdir()` names equality the task's Context asked for, but also dropped the `bundle.json` existence assert. The task only directed the run-31/empty-run absence assert be restated as an iterdir-names check. Net effect: in the zero-event test nothing now asserts the healthy run actually produced a bundle file \u2014 an empty `runs/run-30-2026-08-30/` directory would satisfy it (the corrupt-tarball test still has `\"1 bundle\" in cap.out`). Both legs still pass and no criterion is left unverified, so this is advisory; restore the two dropped asserts alongside the names check.; `_gh_api_object` (skills/ultralearn/scripts/harvest_fleet_runs.py:176) repeats the body of `_gh_api_listing` (:150) and `_gh_api` (:121) verbatim \u2014 the same `subprocess.run([\"gh\", \"api\", path], capture_output=True, text=True, timeout=GH_TIMEOUT)`, the same non-zero-is-an-absence return, the same `json.loads` + `swallow` on a JSONDecodeError \u2014 with only the post-parse type check differing. The task's Context did ask for \"a new helper beside `_gh_api` and `_gh_api_listing`\", so the third reader is authorized; the duplication of its transport half is not required by it. All three functions are inside this task's FILES, so a small `_gh_api_json(api_path)` returning the parsed body (or None) with the three callers keeping only their type checks would remove the third copy without changing any pinned behaviour. Not blocking: the behaviour is correct and pinned by the exam.; M4's `null` equal to `null` skip rule leaves a *fetched* run whose commits read fails permanently stale. `_is_already_cached` (harvest_fleet_runs.py:546) compares `bundle.get(\"evidenceSha\") == read_evidence_ref(run_dir).get(\"sha\")`, and `read_evidence_ref` flattens two different states to the same `None`: a local run directory with no `evidence-ref.json` at all, and a fetched run whose `evidence-ref.json` records `{\"sha\": null}` because `_fetch_commit_sha` could not resolve the ref. For the second, every later harvest skips the run even after its record moves \u2014 exactly the staleness this task exists to remove \u2014 and the harvester is silent about it beyond the one advisory line at fetch time. The two are distinguishable (`\"sha\" in record` vs. an empty record), but M4's text mandates the `null == null` skip without qualification, so the diff is a faithful transcription and the exam pins the local half only; changing it is the plan's call, not the implementer's. Recorded so the operator can decide whether a fetched-but-unresolved sha should rebuild.; Two BASE tests in `tests/test_harvest_fleet_runs.py` lost an assertion the re-keying did not require. `test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land` dropped `assert (cache / \"runs\" / \"run-30\" / \"bundle.json\").exists()` (BASE:349) and `test_a_zero_event_run_beside_a_healthy_one_refuses_only_itself` dropped the same line (BASE:451); both now assert only the directory NAMES under `runs/`. The Context authorised replacing the `not (cache / \"runs\" / \"run-31\").exists()` pin with an `iterdir()` names assertion, not deleting the healthy run's bundle pin. As written, a harvester that creates `runs/run-30-2026-08-30/` but writes no `bundle.json` still passes both (the `1 bundle` count line in the first test is the only remaining guard, and the second test has none). Coverage of the observable artefact is retained elsewhere, so this is advisory, not blocking.; unverified: the GLOBAL CONSTRAINT \"the five lenses read the same `bundle.json` + `slice.md` pair\" is not settled by this diff, because `skills/ultralearn/references/reading-lenses.md` is sibling-owned and not in FILES. I read the BASE copy of that file and of every other `skills/ultralearn` consumer: only `harvest_fleet_runs.py` and `merge_ledger.py` construct a `runs/<key>` path, the lens doc names `bundle.json`/`slice.md` by filename and never by cache directory, and `SKILL.md` steps 2 and 3 pass the pair by path rather than by key \u2014 so the rename of the cache directory appears harmless. What would settle it is the integration fold's run of the ultralearn doc/lens suite against the merged tree, since a sibling may add a lens reference to `runs/<runId>/` in the same wave.; concern: Proof leg (c) second half says stderr has \"one `harvest_fleet_runs:` line naming run 7 and the ref\" when the commits path is absent from the stub map. With that fixture the listing also 404s, and BASE already emits `no transcripts/ on <ref>` for that (pinned by `test_t2_a_404_listing_is_one_advisory_line_and_no_transcripts_directory`), so stderr carries TWO advisory lines: the new `\u2026 no commit sha for ultra/evidence/run-7; the bundle records evidenceSha null` plus the pre-existing transcripts line. A peer exam asserting `len(warned) == 1` on all `harvest_fleet_runs:` lines would fail against behaviour BASE pins; one filtering for the sha line passes. I could not suppress the transcripts line without breaking an existing pin.; concern: Renamed `test_t6_a_swept_run_lands_from_the_tag_in_exactly_eight_calls` to `\u2026_in_exactly_nine_calls` in tests/test_harvest_fleet_runs.py (a file I own) so the name matches the new count the task specifies; no other file references that name. Its sibling `test_t2_the_listing_and_every_listed_file_are_read_at_the_resolved_ref` keeps its name and now pins ten calls (six files + commits + listing + two slices).",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-54/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1777 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 72%]\n........................................................................ [ 76%]\n........................................................................ [ 81%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.................................................                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1777 passed, 5 warnings in 277.39s (0:04:37) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_harvest_fleet_runs_publish_fold.py tests/test_fleet_events.py tests/test_harvest_evidence.py tests/test_harvest_fleet_runs.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 82%]\n...............                                                          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n87 passed, 5 warnings in 4.70s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | tr '\\n' ' ' | grep -q 'bundle.publishFold.*pathsJoined.*pathsConflicted.*resolversDispatched.*suite.*disposition'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | grep -c 'gate-read-<runId>.detail.json' | grep -qx 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_harvest_fleet_runs_confine_denials.py tests/test_harvest_fleet_runs.py tests/test_harvest_evidence.py tests/test_fleet_slice.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 75%]\n.......................                                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n95 passed, 5 warnings in 4.37s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | tr '\\n' ' ' | grep -q 'bundle.confineDenials.*envelope.*transcript.*hook.*null'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | grep -c 'is now the one place to' | grep -qx 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest -q tests/test_harvest_fleet_runs_cache_key.py tests/test_merge_ledger.py tests/test_harvest_fleet_runs.py tests/test_harvest_evidence.py tests/test_ultralearn_docs.py",
+      "exit": 0,
+      "stdout": "........................................................................ [ 75%]\n.......................                                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n95 passed, 5 warnings in 6.62s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Verb 1/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'runs/run-<N>-<date>/.*evidenceSha'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Verb 1/,/^## Verb 2/p' skills/ultralearn/SKILL.md | grep -c 'keyed by the fleet' | grep -qx 0",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 889520,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.06745210900260815,
+    "pairRounds": 3,
+    "r2MarginalBlocking": 1
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b3690485a734cd9c2fc4bfd094cc2707c406622e",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 6,
+      "foldCliWallTimeSec": 2.592,
+      "autoResolved": 0,
+      "resolverTranscripts": [
+        {
+          "conflict": 1,
+          "attempt": 1,
+          "path": "skills/ultralearn/references/reading-lenses.md",
+          "epoch": 2,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/conflict-1.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/reply-1-1",
+          "status": "RESOLVED",
+          "notes": "Two-way concurrent edit, not a real semantic conflict: task 1 rewrote the friction item's first paragraph (drive's structured artifact \u2192 bundle.publishFold), task 2 rewrote the second paragraph (confine-denials.jsonl \u2192 bundle.confineDenials). Each task's body explicitly states it leaves the sibling paragraph untouched. Resolved by keeping both rewrites in original document order: task 1's publish-fold paragraph followed by task 2's confineDenials paragraph, dropping both stale paragraphs being replaced (drive's structured artifact / confine-denials.jsonl-is-the-one-place-to-look)."
+        },
+        {
+          "conflict": 2,
+          "attempt": 1,
+          "path": "skills/ultralearn/scripts/harvest_fleet_runs.py",
+          "epoch": 4,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/conflict-2.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/reply-2-1",
+          "status": "RESOLVED",
+          "notes": "Single hunk. Frontier already carries task 2's replacement of the confineDenials value (from a raw _read_jsonl read to the derived _confine_denials(run_dir, workers) call). Task 3's diff shows it deleting the pre-task-2 read_jsonl line (same line frontier already replaced) and adding three new keys (evidenceSha/evidenceRef/target) sourced from the evidence_ref computed above in context. These are independent, additive changes to the same dict literal, so the merge keeps task 2's confineDenials line as-is and appends task 3's three evidence fields after it \u2014 both sides' intent preserved, no conflict in substance."
+        },
+        {
+          "conflict": 3,
+          "attempt": 1,
+          "path": "tests/test_harvest_evidence.py",
+          "epoch": 4,
+          "hunksFile": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/conflict-3.hunks.txt",
+          "replyDir": "/home/exedev/target/.claude/ultrapowers/run-run-54/frontier/wave-1/reply-3-1",
+          "status": "RESOLVED",
+          "notes": "BASE_BUNDLE_KEYS frozenset literal: frontier already folded task 1's \"publishFold\" addition alongside the pre-existing \"confineDenials\" key (task 2 changes confineDenials's derivation, not the key name, so it was never a new frozenset entry). Task 3 adds \"evidenceSha\", \"evidenceRef\", \"target\" plus its explanatory comment. Merged both additions onto the same frozenset \u2014 order-free per task 1's own note (\"the fold resolves the adjacent edit, and the two additions are order-free\") \u2014 keeping the comment and closing `})`, plus the blank line that was shared context before `T0 = ...`."
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "harvest_fleet_runs.fetch_evidence's new `gh api repos/<target>/commits/<ref>` read (Task 3, M3)",
+      "reason": "external",
+      "why": "The commits-endpoint contract \u2014 that a real GitHub answer for a branch/tag ref is a commit object whose `sha` is the 40-hex commit sha \u2014 is exercised only against the exams' local `gh` stub, because the plan's global constraint freezes every exam to a stub on PATH with no socket. Call placement, ordering, the `evidence-ref.json` write and the advisory non-zero path are all executed and green; only the live API response shape is unexercised here."
+    },
+    {
+      "deliverable": "2",
+      "reason": "plan-defect",
+      "why": "plan-defect: every envelope denial is emitted TWICE on a local run directory that has both `workers/*/envelope.json` and `confine-denials.jsonl`, which is the ordinary shape of a sandbox-logs tarball whenever any worker was denied. `_confine_denials` (skills/ultralearn/scripts/harvest_fleet_runs.py) returns `envelopes + transcripts + file_lines` with no reconciliation, and `fleet/run-worker.mjs:511 recordEnvelopeDenials` already appends one `{\"source\": \"envelope\", label, role, tool, reason, toolInput}` line per `permission_denials` entry into that same `confine-denials.jsonl` \u2014 the implementer's own docstring on `_envelope_denials` says so (\"Shaped exactly as `fleet/run-worker.mjs`'s `recordEnvelopeDenials` shapes the lines it appends to `confine-denials.jsonl`\"), and the task Context says the file's lines carry `source: \"hook\"` or, since #476, `source: \"envelope\"`. So the derived envelope lines and the file's envelope echoes are the same denials counted twice. This directly defeats the counting rule the same diff writes into skills/ultralearn/references/reading-lenses.md \u2014 \"**THE SOURCES OVERLAP: count `envelope` lines when they are present, never the total.**\" \u2014 which now yields exactly 2x the true number on the runs where envelopes exist. That is the #476/#760 failure mode (\"two records, one an undisclosed subset of the other, is how a sensor lies for five runs running\") reintroduced from the other side. No Machine clause covers the both-sources-present case (M1 is envelope-only, M3 is file-only), so the exam passes while the lens number is wrong; the defect is faithfully transcribed from the plan's Context slot, which prescribes the bare concatenation, but its fix lies inside this task's own FILES. Drop the file's `source == \"envelope\"` rows when this run's envelopes were read directly. M3 stays green (its fixture has no `workers/`, so no filtering happens and the file lines pass through verbatim, including its `source: \"envelope\"` row), and so do `test_bundle_carries_the_event_summary_and_confine_denials` and `test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did`, whose `_make_run_dir` has no `workers/` either. Add a leg to tests/test_harvest_fleet_runs_confine_denials.py pinning it: one envelope with one `permission_denials` entry plus a `confine-denials.jsonl` holding that same denial as an `source: \"envelope\"` line and one `source: \"hook\"` line yields two lines, exactly one of them `source == \"envelope\"`."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: plan-defect names `workers/*/envelope.json` outside FILES \u2014 routed to the plan",
+    "task 3: Proof leg (c) second half says stderr has \"one `harvest_fleet_runs:` line naming run 7 and the ref\" when the commits path is absent from the stub map. With that fixture the listing also 404s, and BASE already emits `no transcripts/ on <ref>` for that (pinned by `test_t2_a_404_listing_is_one_advisory_line_and_no_transcripts_directory`), so stderr carries TWO advisory lines: the new `\u2026 no commit sha for ultra/evidence/run-7; the bundle records evidenceSha null` plus the pre-existing transcripts line. A peer exam asserting `len(warned) == 1` on all `harvest_fleet_runs:` lines would fail against behaviour BASE pins; one filtering for the sha line passes. I could not suppress the transcripts line without breaking an existing pin.",
+    "task 3: Renamed `test_t6_a_swept_run_lands_from_the_tag_in_exactly_eight_calls` to `\u2026_in_exactly_nine_calls` in tests/test_harvest_fleet_runs.py (a file I own) so the name matches the new count the task specifies; no other file references that name. Its sibling `test_t2_the_listing_and_every_listed_file_are_read_at_the_resolved_ref` keeps its name and now pins ten calls (six files + commits + listing + two slices).",
+    "task 3: examiner: (f) the rewritten BASE pins in tests/test_harvest_fleet_runs.py and tests/test_harvest_evidence.py pass, including the nine-call and eight-call counts and the unchanged six-call count [M1][M3] \u2014 Those two files are implementer-owned (task `writes`), not Proof `Test:` paths, so the examiner does not write them; the leg is verified by the Proof's first `Run:` line, which runs both files. The exam encodes the same clauses independently in tests/test_harvest_fleet_runs_cache_key.py (dated key, and the commits read's position in the call sequence).",
+    "task 2: plan-defect deferred to the gate \u2014 plan-defect: every envelope denial is emitted TWICE on a local run directory that has both `workers/*/envelope.json` and `confine-denials.jsonl`, which is the ordinary shape of a sandbox-logs tarball whenever any worker was denied. `_confine_denials` (skills/ultralearn/scripts/harvest_fleet_runs.py) returns `envelopes + transcripts + file_lines` with no reconciliation, and `fleet/run-worker.mjs:511 recordEnvelopeDenials` already appends one `{\"source\": \"envelope\", label, role, tool, reason, toolInput}` line per `permission_denials` entry into that same `confine-denials.jsonl` \u2014 the implementer's own docstring on `_envelope_denials` says so (\"Shaped exactly as `fleet/run-worker.mjs`'s `recordEnvelopeDenials` shapes the lines it appends to `confine-denials.jsonl`\"), and the task Context says the file's lines carry `source: \"hook\"` or, since #476, `source: \"envelope\"`. So the derived envelope lines and the file's envelope echoes are the same denials counted twice. This directly defeats the counting rule the same diff writes into skills/ultralearn/references/reading-lenses.md \u2014 \"**THE SOURCES OVERLAP: count `envelope` lines when they are present, never the total.**\" \u2014 which now yields exactly 2x the true number on the runs where envelopes exist. That is the #476/#760 failure mode (\"two records, one an undisclosed subset of the other, is how a sensor lies for five runs running\") reintroduced from the other side. No Machine clause covers the both-sources-present case (M1 is envelope-only, M3 is file-only), so the exam passes while the lens number is wrong; the defect is faithfully transcribed from the plan's Context slot, which prescribes the bare concatenation, but its fix lies inside this task's own FILES. Drop the file's `source == \"envelope\"` rows when this run's envelopes were read directly. M3 stays green (its fixture has no `workers/`, so no filtering happens and the file lines pass through verbatim, including its `source: \"envelope\"` row), and so do `test_bundle_carries_the_event_summary_and_confine_denials` and `test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did`, whose `_make_run_dir` has no `workers/` either. Add a leg to tests/test_harvest_fleet_runs_confine_denials.py pinning it: one envelope with one `permission_denials` entry plus a `confine-denials.jsonl` holding that same denial as an `source: \"envelope\"` line and one `source: \"hook\"` line yields two lines, exactly one of them `source == \"envelope\"`."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

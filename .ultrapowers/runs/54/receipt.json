@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -62,7 +62,7 @@
             "none"
           ],
           "produces": [
-            "`publishFold` \u2014 the `bundle.json` key holding the list of raw `driver:publish-fold` rows"
+            "`publishFold` — the `bundle.json` key holding the list of raw `driver:publish-fold` rows"
           ]
         }
       },
@@ -83,7 +83,7 @@
             "none"
           ],
           "produces": [
-            "`confineDenials` \u2014 the `bundle.json` key, a list of denial lines each carrying `source`, or `null`"
+            "`confineDenials` — the `bundle.json` key, a list of denial lines each carrying `source`, or `null`"
           ]
         }
       },
@@ -105,7 +105,7 @@
             "none"
           ],
           "produces": [
-            "`evidenceSha` \u2014 the `bundle.json` key holding the 40-hex commit sha the record was read at, or `null`"
+            "`evidenceSha` — the `bundle.json` key holding the 40-hex commit sha the record was read at, or `null`"
           ]
         }
       }
@@ -140,7 +140,7 @@
               "none"
             ],
             "produces": [
-              "`publishFold` \u2014 the `bundle.json` key holding the list of raw `driver:publish-fold` rows"
+              "`publishFold` — the `bundle.json` key holding the list of raw `driver:publish-fold` rows"
             ]
           },
           "tier": null,
@@ -179,7 +179,7 @@
               "none"
             ],
             "produces": [
-              "`confineDenials` \u2014 the `bundle.json` key, a list of denial lines each carrying `source`, or `null`"
+              "`confineDenials` — the `bundle.json` key, a list of denial lines each carrying `source`, or `null`"
             ]
           },
           "tier": null,
@@ -219,7 +219,7 @@
               "none"
             ],
             "produces": [
-              "`evidenceSha` \u2014 the `bundle.json` key holding the 40-hex commit sha the record was read at, or `null`"
+              "`evidenceSha` — the `bundle.json` key holding the 40-hex commit sha the record was read at, or `null`"
             ]
           },
           "tier": null,
@@ -255,7 +255,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- This plan is ultralearn's alone: `fleet/` is untouched (three sibling plans launched the same\n  day edit `fleet/run-engine.mjs`, `fleet/run-main.mjs` and `fleet/confine-hook.mjs`), and the\n  verification periphery is frozen (0.1.0) \u2014 the first two Checks pin both.\n- The bundle is the interface: every key `bundle.json` carries at BASE keeps its name and type\n  (`runId`, `sessionId`, `projectSlug`, `origin`, `sessionKind`, `engineVersion`, `planPath`,\n  `transcriptDir`, `gateReport`, `terminus`, `truncated`, `audit`, `report`, `events`,\n  `planningFound`, `confineDenials`), `merge_ledger.bundle_lookups` still answers `origin` and\n  `engineVersion.epoch` for a ledger `runId` such as `run-30`, and the five lenses read the same\n  `bundle.json` + `slice.md` pair.\n- The harvester stays advisory and loud: a source that is absent or unreadable is one line on\n  stderr and never a traceback, `FAILED-LOOKUP:` is still reserved for a run that cannot bundle\n  at all, and exit 2 still means every input failed.\n- No exam reaches the network: `gh` is a stub on `PATH`, and no test opens a socket or reads a\n  real evidence branch.\n- No kept row is cut to a length: an event row in the allowlist and a denial line derived from\n  an envelope or a transcript are carried as their source has them; the only truncation left in\n  the harvester is the ones BASE already has (`SUITE_OUTPUT_TAIL`, the slicer's budgets, and the\n  200-character cap on rows outside the allowlist).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- This plan is ultralearn's alone: `fleet/` is untouched (three sibling plans launched the same\n  day edit `fleet/run-engine.mjs`, `fleet/run-main.mjs` and `fleet/confine-hook.mjs`), and the\n  verification periphery is frozen (0.1.0) — the first two Checks pin both.\n- The bundle is the interface: every key `bundle.json` carries at BASE keeps its name and type\n  (`runId`, `sessionId`, `projectSlug`, `origin`, `sessionKind`, `engineVersion`, `planPath`,\n  `transcriptDir`, `gateReport`, `terminus`, `truncated`, `audit`, `report`, `events`,\n  `planningFound`, `confineDenials`), `merge_ledger.bundle_lookups` still answers `origin` and\n  `engineVersion.epoch` for a ledger `runId` such as `run-30`, and the five lenses read the same\n  `bundle.json` + `slice.md` pair.\n- The harvester stays advisory and loud: a source that is absent or unreadable is one line on\n  stderr and never a traceback, `FAILED-LOOKUP:` is still reserved for a run that cannot bundle\n  at all, and exit 2 still means every input failed.\n- No exam reaches the network: `gh` is a stub on `PATH`, and no test opens a socket or reads a\n  real evidence branch.\n- No kept row is cut to a length: an event row in the allowlist and a denial line derived from\n  an envelope or a transcript are carried as their source has them; the only truncation left in\n  the harvester is the ones BASE already has (`SUITE_OUTPUT_TAIL`, the slicer's budgets, and the\n  200-character cap on rows outside the allowlist).\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/",
@@ -278,11 +278,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-54/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-54/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-54/acceptance.log"
 }
