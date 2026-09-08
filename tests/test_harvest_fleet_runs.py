@@ -161,7 +161,7 @@ def _bundle(tmp_path, **kw):
 
 def test_bundle_lands_in_the_cache_under_the_fleet_run_id(tmp_path):
     out, b = _bundle(tmp_path)
-    assert out == tmp_path / "cache" / "runs" / "run-30"
+    assert out == tmp_path / "cache" / "runs" / "run-30-2026-08-30"
     assert b["runId"] == "run-30"
     assert (out / "slice.md").exists()
 
@@ -265,7 +265,7 @@ def test_main_harvests_and_reports_the_count(tmp_path, capsys):
     rc = hfr.main([str(tmp_path / "src"), "--cache", str(tmp_path / "cache")])
     assert rc == 0
     assert "1 bundle" in capsys.readouterr().out
-    assert (tmp_path / "cache" / "runs" / "run-30" / "bundle.json").exists()
+    assert (tmp_path / "cache" / "runs" / "run-30-2026-08-30" / "bundle.json").exists()
 
 
 def test_main_is_incremental_and_force_overrides(tmp_path, capsys):
@@ -346,8 +346,8 @@ def test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land(tmp_pat
     assert len(failed) == 1, failed
     assert failed[0].startswith(f"FAILED-LOOKUP: cannot unpack {bad}: ")
     assert "run-31" in failed[0]
-    assert (cache / "runs" / "run-30" / "bundle.json").exists()
-    assert not (cache / "runs" / "run-31").exists()
+    assert sorted(p.name for p in (cache / "runs").iterdir()) == [
+        "run-30-2026-08-30"]
     assert "1 bundle" in cap.out
 
 
@@ -365,7 +365,7 @@ def test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line(tmp_path, 
     cap = capsys.readouterr()
     assert _lines(cap.err, "FAILED-LOOKUP:") == [
         f"FAILED-LOOKUP: not a fleet run directory or tarball: {bad}"]
-    assert (cache / "runs" / "run-30" / "bundle.json").exists()
+    assert (cache / "runs" / "run-30-2026-08-30" / "bundle.json").exists()
 
 
 def test_every_input_failing_exits_two(tmp_path, capsys):
@@ -448,8 +448,8 @@ def test_a_zero_event_run_beside_a_healthy_one_refuses_only_itself(tmp_path, cap
     cap = capsys.readouterr()
     assert _lines(cap.err, "FAILED-LOOKUP:") == [
         f"FAILED-LOOKUP: {empty}: bundle would carry zero events — refused"]
-    assert (cache / "runs" / "run-30" / "bundle.json").exists()
-    assert sorted(p.name for p in (cache / "runs").iterdir()) == ["run-30"]
+    assert sorted(p.name for p in (cache / "runs").iterdir()) == [
+        "run-30-2026-08-30"]
 
 
 # ---------- #489: looked-and-found-nothing stays a healthy bundle ----------
@@ -462,7 +462,7 @@ def test_a_run_with_events_but_no_findings_still_bundles_and_looks_empty(tmp_pat
 
     assert rc == 0
     cap = capsys.readouterr()
-    out = cache / "runs" / "run-40"
+    out = cache / "runs" / "run-40-2026-08-30"
     assert json.loads((out / "bundle.json").read_text())["runId"] == "run-40"
     assert (out / "slice.md").exists()
     assert _lines(cap.err, "LOOKED-EMPTY:") == [
@@ -534,6 +534,17 @@ def _t6_path(name, ref):
             f"?ref={ref}")
 
 
+#: The sha the stub's commits endpoint answers with — a COMMIT sha, unrelated
+#: to the `"0" * 40` blob sha every contents envelope above carries.
+T6_COMMIT_SHA = "a" * 40
+
+
+def _t6_commit_path(ref):
+    """The commits read that resolves one ref to its sha. Not a contents path:
+    no `?ref=`, the ref is the last path segment."""
+    return f"repos/{T6_TARGET}/commits/{ref}"
+
+
 def _t6_events_text(run_id="run-7"):
     events = [
         _ev(1, 0, kind="run:open", runId=run_id, base="", source="fleet/run-main.mjs"),
@@ -582,7 +593,11 @@ def _t6_answers(ref, names=T6_EVIDENCE_FILES, run_id="run-7"):
     """What the stub `gh` serves at one ref: `names` of the six files, keyed by
     the full `repos/…?ref=<ref>` argument."""
     bodies = _t6_bodies(run_id)
-    return {_t6_path(n, ref): bodies[n] for n in names}
+    answers = {_t6_path(n, ref): bodies[n] for n in names}
+    # The sha read that follows the six files, at the same ref: a commit
+    # object, served unwrapped.
+    answers[_t6_commit_path(ref)] = {"sha": T6_COMMIT_SHA}
+    return answers
 
 
 # The `gh` stub: a Python executable named `gh`, answering from a JSON map
@@ -617,8 +632,10 @@ if body is None:
 # #702 Task 2: the contents API answers a DIRECTORY path with a JSON ARRAY of
 # entries — `name`, `path`, `sha`, `size`, `type`, `download_url`, and no
 # `content`. An answer that is a list is printed as that list, unwrapped; every
-# file answer is still wrapped in the base64 envelope below.
-if isinstance(body, list):
+# file answer is still wrapped in the base64 envelope below. A dict body is
+# printed unwrapped too — the commits endpoint answers a bare commit object
+# `{"sha": "<40 hex>", …}`, not a contents envelope.
+if isinstance(body, (list, dict)):
     sys.stdout.write(json.dumps(body) + "\\n")
     sys.exit(0)
 
@@ -684,14 +701,15 @@ def test_t6_evidence_tag_is_the_run_tag_and_the_branch_keeps_its_base_spelling()
     assert hfr.evidence_branch("run-7") == "ultra/evidence-run-7"
 
 
-def test_t6_a_swept_run_lands_from_the_tag_in_exactly_eight_calls(
+def test_t6_a_swept_run_lands_from_the_tag_in_exactly_nine_calls(
         tmp_path, monkeypatch, capsys):
     """M2/M3, leg (b): the branch is gone and the tag holds all six files. The
-    harvest exits 0, writes `<cache>/runs/run-7/bundle.json` with `terminus`
-    from the fetched gate receipt, and makes exactly EIGHT `gh api` calls: the
-    first at `…/status.json?ref=ultra/evidence-run-7`, the next six at
-    `?ref=ultra/evidence/run-7`, one per evidence file, and — #702 Task 2 — the
-    `transcripts` listing eighth, at the ref the loop resolved (the tag), which
+    harvest exits 0, writes `<cache>/runs/run-7-2026-08-30/bundle.json` with
+    `terminus` from the fetched gate receipt, and makes exactly NINE `gh api`
+    calls: the first at `…/status.json?ref=ultra/evidence-run-7`, the next six
+    at `?ref=ultra/evidence/run-7`, one per evidence file, then — this task —
+    the `commits/ultra/evidence/run-7` read eighth, and — #702 Task 2 — the
+    `transcripts` listing ninth, at the ref the loop resolved (the tag), which
     this fixture answers 404. A harvester that tries the tag per missing file,
     or never, still fails this leg."""
     log = _t6_install_gh(tmp_path, monkeypatch, _t6_answers(T6_TAG_REF))
@@ -704,11 +722,12 @@ def test_t6_a_swept_run_lands_from_the_tag_in_exactly_eight_calls(
     assert _t6_refs(log) == (
         [_t6_path("status.json", T6_BRANCH_REF)]
         + [_t6_path(n, T6_TAG_REF) for n in T6_EVIDENCE_FILES]
+        + [_t6_commit_path(T6_TAG_REF)]
         + [_t6_path(T6_TRANSCRIPTS, T6_TAG_REF)]), _t6_refs(log)
     # M2 spells the command exactly: `gh api <path>`, nothing else.
     assert [c for c in _t6_calls(log) if c != ["api", c[-1]]] == [], _t6_calls(log)
 
-    out = cache / "runs" / "run-7"
+    out = cache / "runs" / "run-7-2026-08-30"
     assert (out / "bundle.json").exists(), f"no bundle at {out}; stderr:\n{cap.err}"
     b = json.loads((out / "bundle.json").read_text())
     assert b["runId"] == "run-7"
@@ -736,9 +755,10 @@ def test_t6_a_run_on_the_branch_is_read_exactly_as_at_base(
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert _t6_refs(log) == ([_t6_path(n, T6_BRANCH_REF)
                               for n in T6_EVIDENCE_FILES]
+                             + [_t6_commit_path(T6_BRANCH_REF)]
                              + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]), _t6_refs(log)
     assert [p for p in _t6_refs(log) if T6_TAG_REF in p] == [], _t6_refs(log)
-    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    assert (cache / "runs" / "run-7-2026-08-30" / "bundle.json").exists(), cap.err
     assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
 
 
@@ -778,6 +798,7 @@ def test_t6_a_run_on_neither_ref_names_both_refs_and_probes_the_tag_once(
     assert [p for p in refs if T6_TAG_REF not in p] == [
         _t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES], refs
     assert [p for p in refs if T6_TRANSCRIPTS in p] == [], refs
+    assert [p for p in refs if "/commits/" in p] == [], refs
 
 
 def test_t6_an_absence_after_a_file_has_landed_never_falls_back_to_the_tag(
@@ -804,9 +825,10 @@ def test_t6_an_absence_after_a_file_has_landed_never_falls_back_to_the_tag(
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert _t6_refs(log) == ([_t6_path(n, T6_BRANCH_REF)
                               for n in T6_EVIDENCE_FILES]
+                             + [_t6_commit_path(T6_BRANCH_REF)]
                              + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]), _t6_refs(log)
     assert [p for p in _t6_refs(log) if T6_TAG_REF in p] == [], _t6_refs(log)
-    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    assert (cache / "runs" / "run-7-2026-08-30" / "bundle.json").exists(), cap.err
     assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
 
 
@@ -918,10 +940,11 @@ def test_t2_the_listing_and_every_listed_file_are_read_at_the_resolved_ref(
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     refs = _t6_refs(log)
     assert refs == ([_t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES]
+                    + [_t6_commit_path(T6_BRANCH_REF)]
                     + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]
                     + [_t6_path(f"{T6_TRANSCRIPTS}/{n}", T6_BRANCH_REF)
                        for n in T6_SLICE_NAMES]), refs
-    assert len(refs) == 9, refs
+    assert len(refs) == 10, refs
     assert [p for p in refs if "nested" in p] == [], (
         "a `type: \"dir\"` entry is not a slice and is never read: " + repr(refs))
     # M2's spelling is unchanged: `gh api <path>`, nothing else.
@@ -930,7 +953,7 @@ def test_t2_the_listing_and_every_listed_file_are_read_at_the_resolved_ref(
 
     # M4: the worker's section is rendered from the fetched slice, so the string
     # this harvest exists to remove is gone.
-    md = (cache / "runs" / "run-7" / "slice.md").read_text()
+    md = (cache / "runs" / "run-7-2026-08-30" / "slice.md").read_text()
     assert "## impl:1 (implementer, session sess-1)" in md, md
     assert T6_SLICE_MARK in md, md
     assert "_no transcript found_" not in md, md
@@ -975,8 +998,9 @@ def test_t2_a_404_listing_is_one_advisory_line_and_no_transcripts_directory(
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert _t6_refs(log) == ([_t6_path(n, T6_BRANCH_REF) for n in T6_EVIDENCE_FILES]
+                             + [_t6_commit_path(T6_BRANCH_REF)]
                              + [_t6_path(T6_TRANSCRIPTS, T6_BRANCH_REF)]), _t6_refs(log)
-    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    assert (cache / "runs" / "run-7-2026-08-30" / "bundle.json").exists(), cap.err
     assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
     warned = _t6_warn_lines(cap.err)
     assert len(warned) == 1, f"expected one harvest_fleet_runs: line, got: {cap.err}"

@@ -28,6 +28,13 @@ EVENT_KINDS = frozenset({
 
 SUMMARY_MAX = 200  # chars of per-event summary in the rendered timeline
 
+# #759: the publish fold and the decisions around it are read field-by-field,
+# so a cut line loses the evidence. These kinds render whole, at whatever
+# length their source has them; every other kind is capped at SUMMARY_MAX.
+SUMMARY_WHOLE_KINDS = frozenset({
+    "driver:publish-fold", "publish:pr", "publish:hold", "publish:merge",
+    "driver:ack-decision"})
+
 # Every worker record carries every key, so consumers never KeyError on a run
 # that was cut off mid-wave.
 _WORKER_FIELDS = ("role", "sessionId", "cwd", "model", "startId", "startTs",
@@ -245,7 +252,7 @@ def render_timeline(events):
                if isinstance(ts, (int, float)) and isinstance(opened_at, (int, float))
                else 0.0)
         summary = _summarize_one(e)
-        if len(summary) > SUMMARY_MAX:
+        if e.get("kind") not in SUMMARY_WHOLE_KINDS and len(summary) > SUMMARY_MAX:
             summary = summary[:SUMMARY_MAX - 1] + "…"
         lines.append("%s  +%.1fs  %s  %s" % (e.get("id"), rel, e.get("kind"), summary))
     return "\n".join(lines)

@@ -147,24 +147,66 @@ def regenerate_digest(ledger_path, digest_path):
     Path(digest_path).write_text("\n".join(lines))
 
 
+def _opened_at(bundle):
+    """A bundle's `events.openedAt`, or -inf so a bundle without one sorts
+    below every bundle that has one."""
+    opened = (bundle.get("events") or {}).get("openedAt")
+    if isinstance(opened, (int, float)) and not isinstance(opened, bool):
+        return opened
+    return float("-inf")
+
+
 def bundle_lookups(cache_dir):
-    """Build (origin_lookup, engine_lookup) over the cached run bundles at
-    <cache_dir>/runs/<runId>/bundle.json. origin fails closed to 'foreign'; the
-    engine epoch is None when the bundle or field is missing. Each bundle is read
-    at most once. Pass both to merge_findings so ledger entries carry the
-    ultrapowers version a finding was observed under, surfaced in the digest."""
+    """Build (origin_lookup, engine_lookup) over the cached run bundles under
+    <cache_dir>/runs/*/bundle.json. origin fails closed to 'foreign'; the engine
+    epoch is None when the bundle or field is missing. Each bundle is read at
+    most once. Pass both to merge_findings so ledger entries carry the
+    ultrapowers version a finding was observed under, surfaced in the digest.
+
+    The ledger's runId is the bare `run-30`, and the harvester's cache key is
+    `run-30-<opening date>`, so a lookup by directory name alone would fail
+    closed to 'foreign' for every fleet run. A run's candidates are therefore
+    the directory named exactly for it (August's caches are keyed that way, and
+    they still answer) plus every bundle whose `runId` field names it; the one
+    with the greatest `events.openedAt` wins, so a restarted numbering reads as
+    its most recent run rather than as whichever directory sorts first."""
     cache_dir = Path(cache_dir).expanduser()
     cache = {}
+    by_dir = {}
+    scanned = []
+
+    def _scan():
+        """`<directory name> -> bundle`, read once and lazily: a lookup pair
+        over a cache of N runs costs one directory walk, not one per id."""
+        if scanned:
+            return by_dir
+        scanned.append(True)
+        try:
+            entries = sorted((cache_dir / "runs").iterdir())
+        except OSError as exc:
+            swallow("run cache unreadable; every origin falls closed to "
+                    "'foreign'", exc)
+            return by_dir
+        for entry in entries:
+            path = entry / "bundle.json"
+            if not path.is_file():
+                continue
+            try:
+                bundle = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError) as exc:
+                swallow("bundle unreadable; it is not a lookup candidate and "
+                        "its origin falls closed to 'foreign'", exc)
+                continue
+            if isinstance(bundle, dict):
+                by_dir[entry.name] = bundle
+        return by_dir
 
     def _bundle(run_id):
         key = str(run_id)
         if key not in cache:
-            try:
-                cache[key] = json.loads(
-                    (cache_dir / "runs" / key / "bundle.json").read_text())
-            except (OSError, json.JSONDecodeError) as exc:
-                swallow("bundle unreadable; origin falls closed to 'foreign'", exc)
-                cache[key] = {}
+            candidates = [b for name, b in _scan().items()
+                          if name == key or b.get("runId") == key]
+            cache[key] = max(candidates, key=_opened_at, default={})
         return cache[key]
 
     def origin_lookup(run_id):
