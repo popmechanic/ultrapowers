@@ -301,10 +301,15 @@ def plan_grammar(md_text):
 
 
 # The plan-level Claim (#552): ONE operator sentence above the first task, in
-# the operator's words, about what they will see after the run. It is elicited
-# — there is no issue to quote a sentence about a run that has not happened —
-# so `(elicited)` is the only tag it takes.
-PLAN_CLAIM_ELICITED_RE = re.compile(r"\(elicited\)\s*$", re.I)
+# the operator's words, about what they will see after the run. It closes
+# `(elicited)` when the operator said it to the authoring agent and
+# `(quoted from #NNN)` when an issue already carries that sentence verbatim
+# (#755) — the same two signing forms a task Claim takes. `(derived)` is not
+# among them: there is nothing above the header to descend from.
+# The FORM is the compiler's business; resolving `#NNN` is the provenance
+# script's (§4.4), exactly as for a task-level quote.
+PLAN_CLAIM_PROVENANCE_RE = re.compile(
+    r"\((elicited|quoted from #(\d+))\)\s*$", re.I)
 
 
 def _plan_header_value(md_text, read_label):
@@ -357,7 +362,21 @@ def parse_plan_claim(md_text):
     raw = _plan_claim_raw(md_text)
     if raw is None:
         return None
-    return PLAN_CLAIM_ELICITED_RE.sub("", raw).strip()
+    return PLAN_CLAIM_PROVENANCE_RE.sub("", raw).strip()
+
+
+def plan_claim_provenance(md_text):
+    """The header Claim's provenance string — `"elicited"` or `"quoted:#NNN"`,
+    the same shapes a task-level tag parses to — or None when the header
+    carries no `**Claim:**` line, or one whose tag this grammar does not know
+    (which `plan_claim_violations` refuses)."""
+    raw = _plan_claim_raw(md_text)
+    if raw is None:
+        return None
+    m = PLAN_CLAIM_PROVENANCE_RE.search(raw)
+    if m is None:
+        return None
+    return "quoted:#" + m.group(2) if m.group(2) else "elicited"
 
 
 def plan_claim_violations(md_text):
@@ -367,13 +386,15 @@ def plan_claim_violations(md_text):
     raw = _plan_claim_raw(md_text)
     if raw is None:
         return []
-    if not PLAN_CLAIM_ELICITED_RE.search(raw):
+    if not PLAN_CLAIM_PROVENANCE_RE.search(raw):
         return ["grammar: plan-level Claim carries no provenance tag — the one "
-                "operator sentence above the first task is elicited, and closes "
-                "`(elicited)`"]
+                "operator sentence above the first task is elicited or quoted "
+                "from an issue, and closes `(elicited)` or "
+                "`(quoted from #NNN)`"]
     if not parse_plan_claim(md_text):
         return ["grammar: plan-level Claim carries no operator sentence — the "
-                "header Claim is nothing but its `(elicited)` tag"]
+                "header Claim is nothing but its `(elicited)` or "
+                "`(quoted from #NNN)` tag"]
     return []
 
 
@@ -3131,18 +3152,27 @@ BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
 # Below six characters a span is grep noise: `src/`, `'Ada'`, `M1.` match half
 # the tree as substrings, and this species greps for a substring, not a word.
 MIN_SPAN = 6
-# Above this many tracked test files a span is the tree's vocabulary, not one
-# sibling's strict-equality pin: measured on this repository, `runner: None`
-# sits in 1 tracked test file, `deferred:external` in 3, `examEdited` in 5 and
-# `fix-loop-exhausted` in 7 — each still named — while `PLAN OK` is in 25,
-# `claims-v1` in 29 and `ALL TESTS PASSED` in 64, none of which a clause could
-# replace without the implementer grepping anyway. Eight is the line the
-# compiler already draws elsewhere for width.
-PINNED_EVERYWHERE = 8
-PINNED_ELSEWHERE_DETAIL = "%s is asserted in %s, which is in no task's Files"
+# No file-count ceiling: the operator's 2026-09-07 decision on #756 drops the
+# vocabulary threshold along with every other hard cap here — the compiler
+# names each literal and its files, and the author and the gate reader weigh
+# them. `plan_title` sits in 1 tracked test file and `commit` in 83; both are
+# named, and the reader decides what to make of the second.
+PINNED_ELSEWHERE_SEGMENT = "%s is asserted in %s"
+# The closing clause reads off the line's DISTINCT files, not its segments: two
+# spans pinned by the same one file still name one file.
+PINNED_ELSEWHERE_ONE = ", which is in no task's Files"
+PINNED_ELSEWHERE_MANY = ", none of which is in any task's Files"
 # A test file by path or by basename: under a tests directory the repo keeps
 # suites in, or named the way a runner discovers one.
 TEST_DIR_PREFIXES = ("tests/", "fleet/tests/")
+# A span shaped like a bare file name — word, dot and hyphen characters closing
+# on a dot and a short extension (`status-page.json`, `plan.md`).
+BARE_FILE_NAME_RE = re.compile(r"[\w.\-]+\.[A-Za-z]{1,4}")
+# The driver's `state` enum, off CONTRACT.md's `status.json` line: a clause
+# quoting one of these names the state machine the compiler already knows, not
+# a literal a sibling test pins to this task's implementation.
+STATE_WORDS = frozenset(("booting", "running", "publishing",
+                         "done", "parked", "failed"))
 
 
 def _is_test_file(path):
@@ -3151,14 +3181,44 @@ def _is_test_file(path):
             or basename.startswith("test_") or ".test." in basename)
 
 
+def _is_pinning_file(path, declared):
+    """A tracked path this species may name: a test file by one of the four
+    shapes, carrying a CODE extension, that no task's Files block declares.
+
+    The extension is what keeps a fixture PLAN out — `_git_substring_files`
+    greps every tracked file whatever its suffix, so the plan corpus under
+    `tests/fixtures/plans/` sits under a `tests/` prefix and would otherwise
+    read as a suite pinning its neighbours' literals."""
+    return (_is_test_file(path) and path.endswith(CODE_EXTS)
+            and path not in declared)
+
+
+def _is_pinnable_span(span):
+    """False for the three candidates a pinning file does not make a pin.
+
+    A PATH (`fleet/tests/x.py`, `status-page.json`) is a name the implementer
+    reads off the Files block, not a literal to break blind; a PLACEHOLDER
+    (`ultra/integration-run-<N>`) is a shape, and the angle brackets say so;
+    and a STATE WORD is the driver's own vocabulary, which the compiler knows
+    without a test to tell it. Length decides none of the three: `publishings!`
+    is twelve characters and drawn, `'done'` is six and skipped."""
+    if "/" in span or BARE_FILE_NAME_RE.fullmatch(span):
+        return False
+    opened = span.find("<")
+    if opened != -1 and span.find(">", opened + 1) != -1:
+        return False
+    return span.strip("'\"").lower() not in STATE_WORDS
+
+
 def _clause_spans(clauses):
     """The backticked spans of `MIN_SPAN`+ characters across a task's Machine
-    clauses, document order, deduped — one line per (task, span, path) means a
-    span repeated across clauses is still one span.
+    clauses, document order, deduped — a span repeated across clauses is one
+    candidate, and so one segment of the task's line.
 
     A span ending in `/` is dropped whatever its length: that is a directory
     prefix (`fleet/tests/`, `src/`), which every import line under it contains
-    and no test pins."""
+    and no test pins. The rest of the path shapes, and the two other kinds a
+    file cannot pin, are `_is_pinnable_span`'s."""
     spans, seen = [], set()
     for clause in clauses:
         for m in BACKTICK_SPAN_RE.finditer(clause["text"]):
@@ -3180,20 +3240,29 @@ def _declared_files(tasks):
 
 
 def _species_pinned_elsewhere(task_id, clauses, base, declared, exclude):
-    lines = []
+    """At most ONE line per task: every candidate span with a pinning file, in
+    clause order, each naming its files in path order — the whole weighing put
+    in front of the reader at once rather than a line per (task, span, path).
+
+    No count silences a span: nine pinning files are nine names on the line."""
+    segments, named = [], set()
     for span in _clause_spans(clauses):
-        pinning = [path for path in _git_substring_files(base, span, exclude)
-                   if _is_test_file(path)]
-        # Counted BEFORE the `declared` filter: a span the whole suite carries
-        # is vocabulary whether or not one of its files happens to be owned.
-        if len(pinning) > PINNED_EVERYWHERE:
+        if not _is_pinnable_span(span):
             continue
-        for path in pinning:
-            if path not in declared:
-                lines.append(_species_line(
-                    "pinned-elsewhere", task_id,
-                    PINNED_ELSEWHERE_DETAIL % (span, path)))
-    return lines
+        pinning = sorted(path
+                         for path in _git_substring_files(base, span, exclude)
+                         if _is_pinning_file(path, declared))
+        if not pinning:
+            continue
+        named.update(pinning)
+        segments.append(PINNED_ELSEWHERE_SEGMENT % (span, ", ".join(pinning)))
+    if not segments:
+        return []
+    closing = (PINNED_ELSEWHERE_ONE if len(named) == 1
+               else PINNED_ELSEWHERE_MANY)
+    return [_species_line("pinned-elsewhere", task_id,
+                          "; ".join(segments) + closing)]
+
 
 def _clip_run(command, n=RUN_CLIP):
     """A command's first `n` characters, whitespace collapsed — the command,
@@ -3608,6 +3677,112 @@ def _render_sha_unguarded(tasks, ctx):
 
 
 ADVISORY_RENDERS.append(("sha-unguarded", _render_sha_unguarded))
+
+
+# P8 — a committed exam never reads BASE (#730; map #727 move B3). Run-35 wrote
+# the driver's BASE env var, or-defaulted to a frozen sha, into a committed sim
+# to carry two `Run:`-assigned BASE comparisons as test legs; the peer blocked
+# it twice and the fix cap parked the run. A BASE comparison is a `Run:` — the
+# driver hands that command the sha — so a `Test:` file that reaches for the
+# env var, or that freezes a commit sha of the checkout, is naming a Run:'s job
+# inside the suite.
+#
+# An ADVISORY, never a refusal: the same 40-hex shape is used lawfully (the
+# frozen pre-edit literal the skill teaches is a full sha fetched `--depth=1`),
+# so this render names the shape and the reader decides. It reads the TREE, so
+# it is its own render rather than a PROOF_SPECIES entry — but it prints the
+# same `ADVISORY proof-species:` line every species prints, via _species_line.
+BASE_SHA_IN_SUITE = "base-sha-in-suite"
+BASE_SHA_IN_SUITE_ADVICE = "a BASE comparison is a Run:, never a committed exam"
+# Spelled as a concatenation so no file of this repo carries the whole word by
+# naming the render — a `Test:` file that did would draw a line on itself.
+BASE_SHA_TOKEN = "ULTRA_" + "BASE"
+# Whole word, so a `$` or a `process.env.` prefix still counts and a longer
+# name that merely starts with it (…BASELINE) does not.
+BASE_SHA_TOKEN_RE = re.compile(r"\b%s\b" % BASE_SHA_TOKEN)
+# A full sha and nothing shorter or longer: both bounds are closed against ANY
+# hex digit, so a 39- or 41-hex run matches at no position.
+BASE_SHA_HEX40_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-f]{40}(?![0-9a-fA-F])")
+
+
+def _resolves_as_commit(base, sha, cache):
+    """True when `sha` names a commit of the checkout at `base`. `rev-parse
+    --verify --quiet <sha>^{commit}` prints the peeled sha on a hit and nothing
+    on a miss — `cat-file -e` is silent either way, so it cannot be read through
+    _git, which returns '' for both outcomes."""
+    if sha not in cache:
+        cache[sha] = bool(_git(base, "rev-parse", "--verify", "--quiet",
+                               sha + "^{commit}").strip())
+    return cache[sha]
+
+
+def _test_paths_in_order(task):
+    """A task's `Test:` paths in DOCUMENT order, deduped by first occurrence.
+
+    `task["reads"]` is sorted and setted, which loses the order the Files block
+    declares; the verbatim `files_raw` pairs keep it. Every path is filtered
+    back through `reads`, so this never admits one the Files parser rejected."""
+    accepted = set(task.get("reads") or ())
+    out, seen = [], set()
+    for label, rest in task.get("files_raw", []):
+        if label != "Test":
+            continue
+        for path in (p.split(":")[0] for p in PATH_RE.findall(rest)):
+            if path in accepted and path not in seen:
+                seen.add(path)
+                out.append(path)
+    return out
+
+
+def _base_sha_findings(text, base, cache):
+    """One file's findings: `(sha, line)` for every DISTINCT resolving 40-hex
+    literal in first-occurrence order, then the first line reading the token
+    (None when it reads none). Shas before the token, per M2."""
+    shas, seen, token_line = [], set(), None
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in BASE_SHA_HEX40_RE.finditer(line):
+            sha = m.group(0)
+            if sha in seen:
+                continue
+            seen.add(sha)
+            if _resolves_as_commit(base, sha, cache):
+                shas.append((sha, n))
+        if token_line is None and BASE_SHA_TOKEN_RE.search(line):
+            token_line = n
+    return shas, token_line
+
+
+def _render_base_sha_in_suite(tasks, ctx):
+    # Task order, then `Test:` order — a path named by two tasks draws a line
+    # for each, since each task owns its own exam.
+    base, tracked, cache = ctx["base"], ctx["tracked"], {}
+    lines = []
+    for t in tasks:
+        if not t.get("claims"):
+            continue  # legacy grammar: no claims-v1 task, no proof species
+        for path in _test_paths_in_order(t):
+            if path not in tracked:
+                continue  # an untracked or absent exam is no exam yet
+            try:
+                text = (base / path).read_text(errors="replace")
+            except OSError:
+                continue
+            shas, token_line = _base_sha_findings(text, base, cache)
+            for sha, n in shas:
+                lines.append(_species_line(
+                    BASE_SHA_IN_SUITE, t["id"],
+                    "%s freezes commit %s at line %d — %s"
+                    % (path, sha, n, BASE_SHA_IN_SUITE_ADVICE)))
+            if token_line is not None:
+                lines.append(_species_line(
+                    BASE_SHA_IN_SUITE, t["id"],
+                    "%s reads %s at line %d — %s"
+                    % (path, BASE_SHA_TOKEN, token_line,
+                       BASE_SHA_IN_SUITE_ADVICE)))
+    return lines
+
+
+ADVISORY_RENDERS.append((BASE_SHA_IN_SUITE, _render_base_sha_in_suite))
 
 
 def main(argv=None):

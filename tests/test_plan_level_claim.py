@@ -391,3 +391,136 @@ def test_skill_still_validates():
     proc = subprocess.run([sys.executable, str(VALIDATE), str(SKILL.parent)],
                           capture_output=True, text=True)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# #755 Task 1 — the plan-level Claim accepts `(quoted from #NNN)` as well as
+# `(elicited)`, and reports which one it carries.
+#
+# The module is reached by attribute here, not by a top-of-file `from ... import`,
+# so the absence of the new export is one red leg rather than a collection error
+# that would take every pin above down with it.
+# ---------------------------------------------------------------------------
+import compile_plan  # noqa: E402
+
+HEADER_QUOTED = "**Claim:** " + PLAN_CLAIM + " (quoted from #1)\n"
+HEADER_QUOTED_WRAPPED = ("**Claim:** After this run I can hand the catalog a "
+                         "list of sizes and see\n"
+                         "one widget back per size. (quoted from #1)\n")
+HEADER_DERIVED = "**Claim:** " + PLAN_CLAIM + " (derived)\n"
+HEADER_UNTAGGED = "**Claim:** " + PLAN_CLAIM + "\n"
+HEADER_TAG_ONLY = "**Claim:** (quoted from #1)\n"
+
+
+def _check(tmp_path, plan_text, name="check.md"):
+    """`--check` on a gate-signed plan, so the only thing left to refuse is the
+    header Claim itself."""
+    return _run(_sign(_write(tmp_path, plan_text, name)), "--check")
+
+
+# --- (a) a quoted header Claim parses, checks clean, and reports `quoted:#1` [M1]
+
+def test_755_a_quoted_header_claim_parses_with_the_tag_stripped():
+    # [M1] leg (a): `parse_plan_claim` gives the bare sentence for a header
+    # tagged `(quoted from #1)`, exactly as it does for an elicited one.
+    text = _plan(HEADER_QUOTED, _task("1", "(derived)"))
+    assert parse_plan_claim(text) == PLAN_CLAIM
+
+
+def test_755_a_quoted_header_claim_parses_when_it_is_hard_wrapped():
+    # [M1] leg (a): the wrap is the authoring agent's, not the operator's — a
+    # wrapped quoted header strips to the same one sentence.
+    text = _plan(HEADER_QUOTED_WRAPPED, _task("1", "(derived)"))
+    assert parse_plan_claim(text) == PLAN_CLAIM
+
+
+def test_755_a_quoted_header_claim_earns_no_grammar_violation():
+    # [M1] leg (a): `plan_claim_violations` is `[]` — the compiler that still
+    # requires `(elicited)` refuses here.
+    text = _plan(HEADER_QUOTED, _task("1", "(derived)"))
+    assert compile_plan.plan_claim_violations(text) == []
+
+
+def test_755_plan_claim_provenance_reads_a_quoted_header_tag():
+    # [M1] leg (a): the new export, in the task-level provenance shape.
+    text = _plan(HEADER_QUOTED, _task("1", "(derived)"))
+    assert compile_plan.plan_claim_provenance(text) == "quoted:#1"
+
+
+def test_755_a_quoted_header_claim_checks_clean(tmp_path):
+    # [M1] leg (a): `--check` exits 0 with `PLAN OK` as its FIRST line (the
+    # advisory tail rides below it, after a blank line).
+    proc = _check(tmp_path, _plan(HEADER_QUOTED, _task("1", "(derived)")))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.splitlines()[0] == "PLAN OK", proc.stdout
+
+
+# --- (b) `(elicited)` is unchanged; the other three headers stay refused [M2]
+
+def test_755_an_elicited_header_claim_reports_elicited_and_still_compiles(tmp_path):
+    # [M2] leg (b): the BASE tag keeps its meaning and its clean check.
+    text = _plan(HEADER_ONE_LINE, _task("1", "(derived)"))
+    assert compile_plan.plan_claim_provenance(text) == "elicited"
+    assert parse_plan_claim(text) == PLAN_CLAIM
+    assert compile_plan.plan_claim_violations(text) == []
+    proc = _check(tmp_path, text, "elicited.md")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.splitlines()[0] == "PLAN OK", proc.stdout
+
+
+def _refuses_at_check(tmp_path, header, name):
+    """`--check` closes on this header with a `grammar: plan-level Claim` line
+    and a non-zero exit — the refusal vocabulary that stands at BASE."""
+    proc = _check(tmp_path, _plan(header, _task("1", "(quoted from #489)")), name)
+    assert proc.returncode != 0, "expected a refusal, got:\n" + proc.stdout[:400]
+    assert any(line.startswith("grammar: plan-level Claim")
+               for line in proc.stdout.splitlines()), \
+        "--check carries no 'grammar: plan-level Claim' line:\n" + proc.stdout
+
+
+def test_755_a_derived_header_claim_is_refused(tmp_path):
+    # [M2] leg (b), row 1: a plan-level Claim has nothing above it to descend
+    # from — a compiler that admits any tag at all fails here.
+    _refuses_at_check(tmp_path, HEADER_DERIVED, "derived.md")
+
+
+def test_755_an_untagged_header_claim_is_refused(tmp_path):
+    # [M2] leg (b), row 2: no tag is still no provenance.
+    _refuses_at_check(tmp_path, HEADER_UNTAGGED, "untagged.md")
+
+
+def test_755_a_header_claim_that_is_only_a_quoted_tag_is_refused(tmp_path):
+    # [M2] leg (b), row 3: a header that is nothing but `(quoted from #1)`
+    # quotes nothing — a compiler that admits an empty quote fails here.
+    _refuses_at_check(tmp_path, HEADER_TAG_ONLY, "tag-only.md")
+
+
+# --- (e) §The document offers both tags for the header Claim, and only those [M5]
+
+def _the_document_paragraph():
+    return _paragraph(SKILL.read_text(encoding="utf-8"), "Above the first task:")
+
+
+def test_755_skill_the_document_offers_the_quoted_tag():
+    # [M5] leg (e), first Run: the paragraph names `(quoted from #NNN)`.
+    para = _the_document_paragraph()
+    assert "(quoted from #NNN)" in para, para
+
+
+def test_755_skill_the_document_still_offers_the_elicited_tag():
+    # [M5] leg (e), second Run: a rewrite that drops the elicited form fails.
+    para = _the_document_paragraph()
+    assert "(elicited)" in para, para
+
+
+def test_755_skill_the_document_does_not_offer_derived_for_the_header_claim():
+    # [M5] leg (e), third Run: `(derived)` is not on offer for the header Claim.
+    para = _the_document_paragraph()
+    assert "(derived)" not in para, para
+
+
+def test_755_skill_the_document_names_the_header_claim_line_exactly_once():
+    # [M5] leg (e), fourth Run — the same lens as the pin above, restated for
+    # this task: the paragraph names `**Claim:**` once, not twice.
+    para = _the_document_paragraph()
+    assert para.count("**Claim:**") == 1, para

@@ -34,6 +34,7 @@ from compile_plan import (  # noqa: E402
     CLAIM_PROVENANCE_RE,
     parse_claims_body,
     parse_plan_claim,
+    plan_claim_provenance,
     plan_grammar,
     split_tasks,
 )
@@ -88,6 +89,31 @@ def check_plan(md_text, gh):
     failures, cache = [], {}
     quotes = derived = anchors = 0
     plan_claim = parse_plan_claim(md_text)
+    # The header Claim signs like a task Claim (#755): `(elicited)` costs no
+    # `gh` call, `(quoted from #NNN)` is string-matched against the issue body
+    # exactly as a task-level quote is. It is resolved BEFORE the task loop and
+    # through the same per-number cache, so a header and a task quoting the
+    # same issue cost one fetch between them, and the failure lines name it
+    # `plan-level claim` where a task's name `task <id> claim`.
+    plan_provenance = plan_claim_provenance(md_text) or ""
+    if plan_provenance.startswith("quoted:#"):
+        quotes += 1
+        number = plan_provenance.split("#", 1)[1]
+        body = issue_body(number, gh, cache)
+        sentence = fold(plan_claim or "")
+        if body is None:
+            failures.append("provenance: plan-level claim quotes #%s, which "
+                            "does not resolve" % number)
+        elif not sentence:
+            # The vacuous pass, as at task level: a header that is nothing but
+            # its tag strips to "", and "" is a substring of every body.
+            failures.append(
+                "provenance: plan-level claim quotes #%s with an empty "
+                "operator sentence — the Claim is nothing but its provenance "
+                "tag" % number)
+        elif sentence not in fold(body):
+            failures.append("provenance: plan-level claim is not verbatim in "
+                            "#%s" % number)
     for task in split_tasks(md_text):
         claims = parse_claims_body(task["body"], task["id"], plan_claim)
         provenance = claims["claim_provenance"] or ""

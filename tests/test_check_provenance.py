@@ -245,3 +245,108 @@ def test_a_claim_with_no_recognizable_tag_is_a_provenance_failure(tmp_path):
     proc = _run(plan, gh)
     assert proc.returncode == 2
     assert "no recognizable provenance tag" in proc.stderr + proc.stdout
+
+
+# ---------------------------------------------------------------------------
+# #755 Task 1 — a plan-level Claim tagged `(quoted from #NNN)` is string-matched
+# against the issue body exactly as a task-level one is: same fold, same two
+# failure lines, same per-number fetch cache.
+# ---------------------------------------------------------------------------
+
+# The operator's header sentence, in the plan's wrap...
+PLAN_CLAIM_WRAPPED = (
+    "After this run I can hand the catalog a list of sizes and see one\n"
+    "widget back per size.")
+# ... and in issue #1's, which breaks at a different column and carries a run of
+# spaces where the plan has one. Folding is what makes these the same words.
+ISSUE_1 = (
+    "### What we want\n"
+    "\n"
+    "After this run I can hand the catalog a list of sizes\n"
+    "and see one widget    back per size.\n"
+    "\n"
+    "An operator asks for a widget of a given size and gets one.\n"
+    "\n"
+    "Filed after the 2026-08 corpus review.\n"
+)
+# Every word of the header sentence but one: `one` is gone before `widget`.
+ISSUE_1_A_WORD_SHORT = ISSUE_1.replace("and see one widget", "and see widget")
+TASK_SENTENCE = "An operator asks for a widget of a given size and gets one."
+SPEC_ANCHOR = ("spec `docs/superpowers/specs/"
+               "2026-08-31-owned-authoring-skill.md` §3")
+
+
+def _plan_with_header(tmp_path, header_claim, *tasks):
+    """A claims-v1 plan whose header carries a `**Claim:**` line — the shape
+    `HEADER` above deliberately lacks."""
+    path = tmp_path / "plan.md"
+    path.write_text(
+        "# Plan: Widget Kit\n"
+        "\n"
+        "**Grammar:** claims-v1\n"
+        "\n"
+        "**Claim:** " + header_claim + "\n"
+        "\n"
+        "**Acceptance:** waived — inline test plan\n"
+        "\n"
+        "---\n"
+        "\n" + "\n".join(tasks), encoding="utf-8")
+    return path
+
+
+def test_755_a_quoted_plan_level_claim_resolves_and_is_counted(tmp_path):
+    # [M3] leg (c): the header quotes #1 and so does task 1. The rewrapped body
+    # still matches (a script that compares the raw unfolded text fails here),
+    # the success line counts the header among the quotes, and the number is
+    # fetched ONCE, with exactly the documented argv — a script that resolves
+    # the header separately, or with other arguments, fails on the log.
+    plan = _plan_with_header(
+        tmp_path, PLAN_CLAIM_WRAPPED + " (quoted from #1)",
+        _task("1", TASK_SENTENCE + " (quoted from #1)", "#1"))
+    gh, log = _fake_gh(tmp_path, {"1": ISSUE_1})
+    proc = _run(plan, gh)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout == "provenance: ok — 2 claim quotes and 1 anchor resolve\n"
+    assert _invocations(log) == ["issue view 1 --json body -q .body"]
+
+
+def test_755_a_plan_level_claim_that_is_not_verbatim_refuses(tmp_path):
+    # [M4] leg (d): one word short of the header sentence. The line names the
+    # plan level, not a task — a script that resolves the header through the
+    # task loop reports it as `task 1` and fails this match.
+    plan = _plan_with_header(
+        tmp_path, PLAN_CLAIM_WRAPPED + " (quoted from #1)",
+        _task("1", TASK_SENTENCE + " (elicited)", SPEC_ANCHOR))
+    gh, _log = _fake_gh(tmp_path, {"1": ISSUE_1_A_WORD_SHORT})
+    proc = _run(plan, gh)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert proc.stdout.splitlines() == [
+        "provenance: plan-level claim is not verbatim in #1"]
+
+
+def test_755_a_plan_level_claim_quoting_an_unresolvable_issue_refuses(tmp_path):
+    # [M4] leg (d): the fake `gh` exits 3 on #7, so the header's issue does not
+    # resolve — the plan-level twin of the task-level line.
+    plan = _plan_with_header(
+        tmp_path, PLAN_CLAIM_WRAPPED + " (quoted from #7)",
+        _task("1", TASK_SENTENCE + " (elicited)", SPEC_ANCHOR))
+    gh, _log = _fake_gh(tmp_path, {"1": ISSUE_1})
+    proc = _run(plan, gh)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert proc.stdout.splitlines() == [
+        "provenance: plan-level claim quotes #7, which does not resolve"]
+
+
+def test_755_an_elicited_plan_level_claim_costs_no_gh_invocation(tmp_path):
+    # [M4] leg (d): as at BASE — an elicited header has no issue behind it, so
+    # the log is empty and the counts are the ones this plan earned.
+    plan = _plan_with_header(
+        tmp_path,
+        "After this run I can hand the catalog a list of sizes and see one "
+        "widget back per size. (elicited)",
+        _task("1", TASK_SENTENCE + " (elicited)", SPEC_ANCHOR))
+    gh, log = _fake_gh(tmp_path, {"1": ISSUE_1})
+    proc = _run(plan, gh)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout == "provenance: ok — 0 claim quotes and 0 anchors resolve\n"
+    assert _invocations(log) == []
