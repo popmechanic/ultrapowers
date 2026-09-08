@@ -41,7 +41,12 @@ outside it that the task genuinely requires is fine, but disclose it as a
 delete a file outside FILES. You may fix a genuinely defective piece of
 plan-supplied code when the fix is task-local — disclose it as a `concerns`
 entry prefixed `plan-defect:`; when in doubt, implement as written and report
-the defect. Verify your footprint with `git diff --stat <BASE> HEAD` before
+the defect. A Proof leg no implementation can satisfy — one that reads state
+your own code creates, or asserts a shape a sibling's contract forbids — is
+reported, not worked around: say so in a `concerns` entry
+`plan-defect: leg (x) …`, naming the leg by its label, and the driver parks the
+task for the plan instead of buying you a fix round that would land where you
+started. Verify your footprint with `git diff --stat <BASE> HEAD` before
 reporting.
 
 Return a single JSON object conforming to the schema. No prose outside the
