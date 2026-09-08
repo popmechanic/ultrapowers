@@ -7,7 +7,8 @@
       "disposition": "folded",
       "pathsJoined": 0,
       "resolversDispatched": 0,
-      "suite": "pass"
+      "suite": "pass",
+      "pushedHead": "1e76492d98fedee97bd17172f16a38502f8a7c08"
     }
   }
 }
