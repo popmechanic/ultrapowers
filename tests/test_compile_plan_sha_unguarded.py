@@ -44,7 +44,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
-SPECIES_EXAM = "tests/test_compile_plan_proof_species.py"
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -553,15 +552,3 @@ def test_every_run_less_fixture_plan_still_checks_byte_identically_to_base(
     base_compiler = _fixture_fn(proof_runs.base_compiler)(tmp_path_factory)
     proof_runs.test_every_run_less_fixture_plan_checks_byte_identically_to_base(
         base_compiler)
-
-
-def test_the_five_species_exam_still_passes():
-    """leg (d) [M4]: the five-species fixture's `Run:` commands carry no git
-    verb, so this render is silent on it and that exam still prints exactly
-    its five lines — run as its own pytest process."""
-    p = subprocess.run([sys.executable, "-m", "pytest", "-q",
-                        "-p", "no:cacheprovider", SPECIES_EXAM],
-                       capture_output=True, text=True, cwd=str(ROOT))
-    assert p.returncode == 0, (
-        "leg (d) [M4]: `%s` still passes. Got rc=%d\n%s%s"
-        % (SPECIES_EXAM, p.returncode, p.stdout, p.stderr))
