@@ -1,0 +1,209 @@
+{
+  "integrationBranch": "ultra/integration-run-61",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "89d009a4f39f0d75af2838a7f795038d230316e5",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-61/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: Proof leg (d) demands the gate's ack type list deep-equal `['deferred:plan-defect']`, but that is unsatisfiable together with leg (c)/M3: with a two-task wave and one merge, `coverage.complete` is false, and `skills/ultrapowers/scripts/gate_check.py:125-131` appends an unconditional `coverage` ack in that case. The submission diverges and discloses it in a comment at the assertion (patch lines 261-267 of fleet/tests/test_run_engine_actor_routing.mjs), asserting `['coverage','deferred:plan-defect']` for the full list while separately keeping M4's literal requirement (exactly one ack typed `deferred:plan-defect`, whose detail contains PARK_CONCERN). The divergence is correct, stronger than the leg's literal, and lawful under rule 6; the fix would be to the task text's leg (d) wording, which lies outside this task's FILES, so nothing in this diff should change. Recorded so the operator reads the leg as amended by the gate's actual behavior.; plan-defect: Proof leg (d) requires the gate's `acks` type list to deep-equal `['deferred:plan-defect']`, but that is unsatisfiable together with M3 and the frozen gate. M3 forces a two-task wave with `coverage.tasks_merged: 1` of 2 planned, so `coverage.complete` is false, and `skills/ultrapowers/scripts/gate_check.py:125-131` appends a `{type: 'coverage'}` ack unconditionally on that condition \u2014 before the `deferredVerification` loop at :132. No edit inside this task's FILES can change it (the gate is frozen by the first global constraint and its Check). The submission diverges openly: `fleet/tests/test_run_engine_actor_routing.mjs` leg (d) asserts `deepEqual(acks.map(a => a.type), ['coverage', 'deferred:plan-defect'])` with a comment naming exactly why, and it still asserts the M4 clause itself (exactly one `deferred:plan-defect` ack, its detail carrying PARK_CONCERN, verdict BLOCKED, exit 1, failing `deliverables` check on T1's files). The divergence is disclosed and the stricter-than-M4 assertion keeps the check live, so it is lawful; the fix belongs to the plan's leg (d) text, not to this tree \u2014 leg (d) should read `['coverage', 'deferred:plan-defect']` or drop the deep-equal in favour of M4's \"exactly one item of type `deferred:plan-defect`\".; concern: plan-defect: leg (d) asserts the gate's `acks` `type` list deep-equals `['deferred:plan-defect']`, which no implementation can produce on leg (c)'s two-task wave: the frozen `gate_check.py` (line 125-131, uneditable under the Global Constraints) appends a `coverage` ack whenever `coverage.complete` is false, and M3 requires exactly `tasks_merged: 1` of `tasks_planned: 2`, so the list is always `['coverage', 'deferred:plan-defect']`. I implemented M4's own satisfiable wording instead \u2014 \"its `acks` carry exactly one item of type `deferred:plan-defect` whose `detail` contains the concern's text\" \u2014 and verified that holds. If the peer's exam encodes leg (d)'s literal deep-equal, that assertion fails on any implementation; the fix is the leg, not the engine.; concern: The Proof's `Test:` path `fleet/tests/test_run_engine_actor_routing.mjs` is in my declared FILES but is reserved for the peer's exam, so I left it untouched \u2014 my footprint is the three files the task's `writes` list names.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "fc587c49ce1c4565c687b61328fa8f40b5368b66",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-61/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: M1 says \"one block per edited path\", but no leg exercises more than one edited path at a time \u2014 leg (e) runs with `proofTests: ['t1_test.sh','t1_extra.sh']` yet only `t1_extra.sh` is edited, so the map/join in `examEditedDiffBlock` (fleet/run-engine.mjs:376-379) and the block delimiting the sim's own `diffBlock` helper anticipates (`ends` includes '\\nEXAM EDITED DIFF ') are never seen with two blocks in one prompt. The committed legs settle the single-path case only. What would settle it: extend `fixRoundScenario` with a fix that edits both `t1_test.sh` and creates `t1_extra.sh`, then assert both `EXAM EDITED DIFF t1_test.sh:` and `EXAM EDITED DIFF t1_extra.sh:` appear, each with its own `@@` hunk, and that `diffBlock(prompt,'t1_test.sh')` stops at the second header rather than swallowing it.; The new block is the one driver-injected evidence in the review prompt with no size bound. `runEvidenceBlock`/`examEvidenceBlock`/`checkEvidenceBlock` all carry stdout that went through `tail(s, n = 4000)` (fleet/run-engine.mjs:555) and say so in their header text; `hunksOnly` (fleet/run-engine.mjs:384-396) passes the whole `git diff --no-index` stdout through, so a fix round that rewrites a large exam file puts the entire diff into the reviewer prompt. Not required by M1 \u2014 and blindly `tail`-ing would cut the `---`/`+++`/`@@` headers the legs read \u2014 so this is advisory: if you bound it, keep the constructed header and truncate only the hunk region, e.g. `const body = lines.slice(at).join('\\n'); return header + '\\n' + (body.length > CAP ? body.slice(0, CAP) + '\\n(\u2026 hunks truncated)' : body)`.; Unbounded block size. `examEditedDiffBlock` (fleet/run-engine.mjs, new) pastes the full `git diff --no-index` output for every edited Proof path into the review prompt with no cap, unlike every sibling block builder in the same region (`runEvidenceBlock`, `examEvidenceBlock`, `checkEvidenceBlock`) which tail-truncate to 4,000 characters. A fix round that rewrites a large exam file wholesale (the exams in `fleet/tests/` run 200\u2013700 lines) puts roughly twice that many diff lines into the referee's prompt. M1 does not ask for a cap and blind tail-truncation would be the wrong cure here \u2014 it could cut off the very `-` content line M3 wants the referee to see \u2014 so this is advisory, not a defect in the contract. If you bound it, bound it by keeping the head and appending an explicit `(\u2026 N further hunk lines elided)` marker inside `hunksOnly`, so the referee is told the block is partial rather than reading a silently short diff as a small edit.; unverified: the block header literal `EXAM EDITED DIFF <path>:` is, by this task's own Context, a shape shared with Task 3, whose `fleet/roles/reviewer.md` rule 8 is what tells the referee to read the block. Task 3 is a sibling and its file is outside this task's FILES, so nothing in this diff can settle that the two spellings agree. The producing side is correct and self-consistent here \u2014 `examEditedDiffBlock` emits `'EXAM EDITED DIFF ' + d.path + ':'` and the sim reads back exactly that string in `diffBlock` and in legs (a)/(e) \u2014 and the comment at the builder says as much. What would settle it: `sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | grep -q 'EXAM EDITED DIFF'` on the folded tree, which is Task 3's own third `Run:` proof.; Exam-strength note on leg (a), not a defect in the implementation. M1 requires the block to come *directly after* the `EXAM EDITED: <paths>` line, but the sim only pins ordering: `assert.ok(iBlock > iEdited)` and `assert.ok(iBlock < iRun)` in fleet/tests/test_run_engine_exam_edits.mjs. An implementation that emitted the block after `runEvidenceBlock`'s predecessor but anywhere between those two anchors would still pass. The submitted code does satisfy the stronger reading \u2014 `examEditedDiffBlock(editedDiffs)` is concatenated immediately after the `EXAM EDITED:` term in the `reviewPrompt` expression, and each block begins with a single leading `\\n` \u2014 so nothing here blocks. The tighter pin, if the exam is ever revisited, is `assert.equal(iBlock, iEdited + 1)`. Raising it only because the exam is this submission's grading; the peer wrote these legs and the diff carries no edit to them (no EXAM EDITED was reported for this task).",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "e2e2d97f6f23cbc1935684365d4c98fc505ea801",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-61/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Cosmetic only: the rewritten item 8 in fleet/roles/reviewer.md is raggedly wrapped compared with items 1\u20137, which fill to ~76 columns. Three continuation lines stop well short (\"\u2014 any tree that passes the edited exam passes the peer's) is\", \"assertion, unless the exam itself was wrong \u2014 a pin that\", \"no correct implementation could satisfy, a bad import, or a\"). Indentation (three spaces) is correct and every Proof `Run:` grep pipes through `tr '\\n' ' '`, so reflowing changes no assertion \u2014 it only matches the file's existing prose register.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-61/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1813 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 298.08s (0:04:58) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_actor_routing.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'plan-defect: leg (' fleet/roles/implementer.md && grep -q 'naming the leg by its label' fleet/roles/implementer.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'tasks\\[\\]\\.reviewVerdict' skills/ultrapowers/references/report-format.md)\" = 1 && grep 'tasks\\[\\]\\.reviewVerdict' skills/ultrapowers/references/report-format.md | grep -q 'plan-defect' && grep 'tasks\\[\\]\\.actor' skills/ultrapowers/references/report-format.md | grep -q 'plan' && grep 'deferredVerification. | no |' skills/ultrapowers/references/report-format.md | grep -q 'actor'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'only strengthens the exam (every original assertion kept, new ones added.*recorded and accepted, not blocked'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'drops or loosens an assertion the peer wrote.*blocking' && sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'exam itself was wrong.*no correct implementation could satisfy.*bad import.*fixture it never created.*changes only that'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | grep -q 'EXAM EDITED DIFF'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED' && python3 -m pytest -q tests/test_roles_run_evidence.py",
+      "exit": 0,
+      "stdout": ".........                                                                [100%]\n9 passed in 0.15s\nrole prose size: README.md = 288 words\nrole prose size: critic.md = 632 words\nrole prose size: examiner.md = 411 words\nrole prose size: fix.md = 355 words\nrole prose size: implementer.md = 546 words\nrole prose size: reconcile.md = 217 words\nrole prose size: resolver.md = 248 words\nrole prose size: reviewer.md = 1037 words\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 712735,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 303.21s (0:05:03) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "8c093b63a282776b06d118aba3c2c6b7bcb54814",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-61/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-61/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.4409999999999998,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: plan-defect: leg (d) asserts the gate's `acks` `type` list deep-equals `['deferred:plan-defect']`, which no implementation can produce on leg (c)'s two-task wave: the frozen `gate_check.py` (line 125-131, uneditable under the Global Constraints) appends a `coverage` ack whenever `coverage.complete` is false, and M3 requires exactly `tasks_merged: 1` of `tasks_planned: 2`, so the list is always `['coverage', 'deferred:plan-defect']`. I implemented M4's own satisfiable wording instead \u2014 \"its `acks` carry exactly one item of type `deferred:plan-defect` whose `detail` contains the concern's text\" \u2014 and verified that holds. If the peer's exam encodes leg (d)'s literal deep-equal, that assertion fails on any implementation; the fix is the leg, not the engine.",
+    "task 1: The Proof's `Test:` path `fleet/tests/test_run_engine_actor_routing.mjs` is in my declared FILES but is reserved for the peer's exam, so I left it untouched \u2014 my footprint is the three files the task's `writes` list names.",
+    "task 1: examiner: (d)/M4 \u2014 `acks` whose `type` list deep-equals `['deferred:plan-defect']` \u2014 The frozen gate_check.py appends an unconditional `coverage` ack whenever `coverage.complete` is false, and M3's own numbers force that here (1 of 2 tasks merged, and any run containing the parked task is incomplete by construction). The literal deep-equal is therefore unreachable without editing the frozen gate. Encoded instead as: exactly one ack of type `deferred:plan-defect` whose `detail` contains PARK_CONCERN, plus a full-list deep-equal of ['coverage','deferred:plan-defect'] \u2014 the strictness the leg asked for, against the list the frozen gate must actually produce.",
+    "wave 1: candidate adopted after reconcile (f6aad7210726624f9e20aa24c16fb75e2183a649 + fixes \u2192 8c093b63a282776b06d118aba3c2c6b7bcb54814)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

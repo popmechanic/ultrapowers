@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -227,7 +227,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the Check above is its pin; the gate row this\n  plan produces is read by the frozen gate from `report.deferredVerification` exactly as at BASE\n  (`{ deliverable, reason, why }` \u2192 an ack typed `deferred:<reason>`), never by a gate edit.\n- No sim this plan adds or edits compares the tree to BASE, reads `ULTRA_BASE` as a base to diff\n  against, or embeds a 40-hex commit sha; every sha a leg asserts is read from the sim's own\n  repository at run time.\n- Every task row the engine returned at BASE keeps its keys and their meaning; the one new row\n  key, `actor`, is present only on a row the implementer's plan-defect parked, and absent from\n  every other row.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped with what replaces them; new legs sit in the exam\n  file named for their surface, under a comment naming the task.\n- No file under `fleet/roles/` or `skills/` gains an upper-case whole-word NEVER, ALWAYS or MUST\n  (`fleet/tests/test_run_engine_exam_fix_edit.mjs` leg (g) is the lens), and rule 6 of\n  `fleet/roles/reviewer.md` keeps the phrase order its two pins read (`plan-defect:` \u2026 `blocking`\n  \u2026 `FILES`, each within 80 characters of the last).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the Check above is its pin; the gate row this\n  plan produces is read by the frozen gate from `report.deferredVerification` exactly as at BASE\n  (`{ deliverable, reason, why }` → an ack typed `deferred:<reason>`), never by a gate edit.\n- No sim this plan adds or edits compares the tree to BASE, reads `ULTRA_BASE` as a base to diff\n  against, or embeds a 40-hex commit sha; every sha a leg asserts is read from the sim's own\n  repository at run time.\n- Every task row the engine returned at BASE keeps its keys and their meaning; the one new row\n  key, `actor`, is present only on a row the implementer's plan-defect parked, and absent from\n  every other row.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped with what replaces them; new legs sit in the exam\n  file named for their surface, under a comment naming the task.\n- No file under `fleet/roles/` or `skills/` gains an upper-case whole-word NEVER, ALWAYS or MUST\n  (`fleet/tests/test_run_engine_exam_fix_edit.mjs` leg (g) is the lens), and rule 6 of\n  `fleet/roles/reviewer.md` keeps the phrase order its two pins read (`plan-defect:` … `blocking`\n  … `FILES`, each within 80 characters of the last).\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
@@ -242,11 +242,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-61/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-61/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-61/acceptance.log"
 }
