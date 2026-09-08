@@ -54,3 +54,16 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles","exit":0,"minor":false,"wave":1,"id":"01M20VX60700000DF140GJ7S3Y","ts":1788883146759}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M20VX6070001A4J7FFBESBW8","ts":1788883146759}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"74efaf14-5446-4bc5-95bf-b2cbd9a89be4","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-55/clones/integration","model":"opus","id":"01M20VX6080000WG3QBGGJTHEA","ts":1788883146760}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"74efaf14-5446-4bc5-95bf-b2cbd9a89be4","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3780,"output":15510,"cacheRead":796628,"cacheCreation":90798,"costUsd":1.712944,"models":["claude-opus-5"]},"id":"01M20W3PCP0000GK5SKC6RVBTG","ts":1788883360150}
+{"kind":"transcript:slice","label":"integration","sessionId":"74efaf14-5446-4bc5-95bf-b2cbd9a89be4","bytes":11646,"id":"01M20W3PCV0000X0D78X2M0WMV","ts":1788883360155}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M20W3PD700008A4XXW8BWGXQ","ts":1788883360167}
+{"kind":"driver:stage","stage":"finalize","id":"01M20W3PF20000PEPR96SHKE72","ts":1788883360226}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-55/acceptance.log","id":"01M20W3PH70000ACCK0164N024","ts":1788883360295}
+{"kind":"driver:stage","stage":"gate","id":"01M20W3PH70001GC4AWCXQ722J","ts":1788883360295}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M20WCC1V0000NZEVH58GNNKE","ts":1788883644475}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M20WCC1V0001SS3T56PYJKNY","ts":1788883644475}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M20WCC1W0000SQ0EG12Q5ZSQ","ts":1788883644476}
+{"kind":"driver:stage","stage":"approve","id":"01M20WCC1W0001TNRTFN6WX90Y","ts":1788883644476}
+{"kind":"driver:approved","stamp":"run-55","integrationBranch":"ultra/integration-run-55","id":"01M20WCC370000S7X564KXEDMG","ts":1788883644519}
+{"kind":"run:open","runId":"run-55","base":"d26bbdc1c1603d9865390e9890440e5c4c77422c","source":"fleet/publish-fold.mjs","id":"01M20WCC8N0000MS8CSE3BTCHV","ts":1788883644693}
+{"kind":"driver:publish-fold","run":"55","attempt":"1","base":"d26bbdc1c1603d9865390e9890440e5c4c77422c","tip":"d26bbdc1c1603d9865390e9890440e5c4c77422c","candidate":"e25a3f7ba5ca707a2a0715421424d1351ee6193b","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M20WCDHX00003ZCJEBTBCKQ2","ts":1788883646013}

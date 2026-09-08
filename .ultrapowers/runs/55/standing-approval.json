@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-55.md run-55 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Task 1 — the end-to-end hop that joins `fleet/run-worker.mjs`'s `childEnvFor` to `fleet/confine-hook.mjs`'s `process.env.FLEET_TEST_CMD` — Each half is executed on the adopted tree — the worker half through a `spawnFn` stub that records its third argument's `env` (test_run_worker.mjs legs u/v/w), the hook half through `decide()` and the CLI subprocess (test_confine_hook.mjs legs a-t). The hop between them — a real `claude -p` child inheriting the env and Claude Code passing its own environment down to the PreToolUse hook subprocess — needs a live CLI, which this environment has none of, so no test in the tree exercises it. The Context concedes the hook 'cannot see the prompt' and depends on exactly that inheritance. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
