@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "98ec59863bbe7cf42f55272a42b8e133b269888a4b6b6d1aff42ab59adab849d",
+      "verdict": "pass",
+      "reason": "Every Machine clause (three M1 rows, the M2 mirror, both M3 flag orders with the six-line exact call list, the three M4 controls, the M5 process spawn against PATH shims, and M6's two header greps) has a leg whose exact-line, deep-equal or absence assertion a wrong tool would fail, and the dry-run comparison in (e) is anchored by (b)'s literal so it is not self-referential."
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": {
+      "1": "1 dispatched, 1 pass (task 1, hash 98ec5986…)"
+    },
+    "history": [
+      { "round": 1, "task": "1", "hash": "98ec59863bbe7cf42f55272a42b8e133b269888a4b6b6d1aff42ab59adab849d", "verdict": "pass" }
+    ],
+    "note": "Authored 2026-09-08 for #752 on main 89e06aff7cef817b8a445750213df1eeac75036e (v0.3.19); the reader saw only extract_gate_input.py --task 1. Compile --check repair before the reader: M1's three rows split into legs (a)(b)(c) and M4's three controls into (f)(g)(h) (enumerated-clause advisory)."
+  }
+}
