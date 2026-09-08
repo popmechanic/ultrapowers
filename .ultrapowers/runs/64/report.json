@@ -1,0 +1,265 @@
+{
+  "integrationBranch": "ultra/integration-run-64",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "c8097517e52a94aadcf6333d646f4497444a1ada",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-64/patches/task-1.patch",
+      "reviewVerdict": "fixed",
+      "notes": "`slicePinSha` (fleet/launch.mjs) reads `ran.stdout` and never looks at `ran.status`, `ran.error` or `ran.stderr`. A slice command that fails outright \u2014 a missing file at `--base`, a shell syntax error, a spawn failure \u2014 yields empty stdout, is hashed to the empty blob and is reported as `launch: plan pin <command>: pinned <sha> but --base <base> has e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`, which tells the operator the base's content differs when in fact their command did not run. This is the only inexplicit error path in the new block (`basePinCheckout` and the `hash-object` call both refuse on non-zero). Suggest refusing with the command's own stderr when `ran.error` is set or `ran.status !== 0`, e.g. `launch: plan pin <clipped command> failed to run (exit <status>):\\n<stderr>`.; M3's \"the checkout's `HEAD`, index and working tree are as they were\" is asserted only with `git status --porcelain` empty, `rev-parse HEAD` unchanged and `worktree list` one line \u2014 and in the sim the clone is checked out AT `--base` with a clean tree, so those three hold even if `basePinCheckout` dropped its `GIT_INDEX_FILE` and `read-tree`'d the operator's real index. The implementation does set a temporary index (a lawful, disclosed divergence from the Context's suggested `git archive | tar -x` / detached worktree), but the leg that would catch losing it cannot fail. Stage something in the clone before the launch and assert it survives, e.g. in the (c) green block: `fs.writeFileSync(path.join(green.repo.dir, 'staged.txt'), 'x\\n'); green.repo.git(['add', 'staged.txt'])` before `greenLaunch`, then `assert.equal(green.repo.git(['diff', '--cached', '--name-only']), 'staged.txt', \"(c) [M3] the operator's index is the operator's: the pin checkout used its own\")` after (with the HEAD/status assertions adjusted for the staged file).; `slicePinSha` (fleet/launch.mjs) folds every failure of the plan's own command into a silent empty hash: `ran.stdout ?? Buffer.alloc(0)` turns a `/bin/sh` spawn error (`ran.error`) into the empty blob e69de29\u2026, which then surfaces as `launch: plan pin <cmd>: pinned <x> but --base <sha> has e69de29\u2026` \u2014 a message that reports a sha the base does not carry rather than saying the command could not be run. Ignoring the command's own EXIT STATUS is right (a real `test \"$(cmd | git hash-object --stdin)\" = <sha>` ignores it too), but a spawn that never happened is a different thing: consider `if (ran.error) throw new Refusal(\\`launch: plan pin ${clipCommand(command)} could not be run: ${ran.error.message}\\`)`.; EXAM EDITED \u2014 `fleet/tests/test_launch_pins.mjs` was changed after the peer wrote it. Saying which: the submitted exam is the peer's exam (patches/exam-1.patch, 597 lines) plus exactly one additive block of 33 lines at the end of section (c) \u2014 the `mixed` green case (a `- Run:` chaining a matching path pin and a matching slice pin launches with `result.run` 1 and one `new`) and the `mixedStale` red case (the same chain with the slice sha zeroed refuses with one line naming the clipped command alone). Line-for-line the rest is identical: peer line N maps to submitted line N up to `long.cleanup()`, and to N+33 after it; no peer assertion is deleted, reordered, relaxed or re-worded, and the peer file's every `assert` survives verbatim. So this is not the case rule 8 forbids in substance \u2014 the hunk does not fix a wrong exam either, it strengthens the grading with an M1 case the peer exam missed (the Context spells that a `Run:` may chain several tests with `&&`, and the peer exam only chained path+path, never path+slice, which is the boundary the implementation's `SLICE_PIN` `)\"` exclusion turns on). I am grading it minor rather than blocking because the only edit that would answer a blocking verdict is deleting coverage, which makes the submission strictly less verified; the operator can override if the letter of rule 8 is meant to bind regardless of direction.; Leg (c) never distinguishes the tree at `--base` from the operator's working tree, and never asserts a `fleet-pin-` directory was created at all. `basePinCheckout` (fleet/launch.mjs:281\u2013298) really does extract the base tree against a temporary index, and `slicePinSha` (fleet/launch.mjs:307\u2013311) really does run the command with `cwd: tree` \u2014 I read both \u2014 but in the sim the clone is checked out AT `--base` with a clean tree, so a `slicePinSha` that passed `cwd: repoDir` and skipped the checkout entirely would satisfy every assertion of leg (c): the sha would be identical, `status --porcelain` would still be empty, `rev-parse HEAD` unchanged, `worktree list` one line, and `pinDirs()` would report no leftover `fleet-pin-*` because none was ever made. M3's \"a temporary directory holding the tree at `--base` (prefix `fleet-pin-`)\" is therefore established by reading the diff, not by the exam. What would settle it: a separate workspace whose working-tree `README.md` is dirtied after the base commit (`fs.writeFileSync(path.join(ws.repo.dir, 'README.md'), '# drifted\\n')`) with the slice pin computed from the BASE content \u2014 the launch must still be green, which fails the moment the command runs in the operator's checkout \u2014 plus, in the same block, a rule on the exec seam or a `pinDirs()` sample taken from inside a `spawnSync` wrapper to witness that a `fleet-pin-*` directory existed while the command ran. The `status --porcelain` assertion in that new block has to be adjusted to the expected dirt rather than `''`.; EXAM EDITED \u2014 `fleet/tests/test_launch_pins.mjs`: I compared the submitted exam against the peer's `patches/exam-1.patch` line by line. The peer's file is 597 added lines, the submission's 630; every line up to `long.cleanup()` sits at a constant +190 offset and every line from `// \u2500\u2500 d.` onward at a constant +223 offset (verified at nine anchors: `pinLine`, `assertRefusalShape`, the `// \u2500\u2500 a.`, `// \u2500\u2500 c.`, `// \u2500\u2500 e.` and `// \u2500\u2500 f.` section heads, `const stale = workspace(`, `green.cleanup()`, `console.log`). The single change is a 33-line INSERTION at the end of the (c) block \u2014 the `mixed` and `mixedStale` cases, asserting that one `- Run:` chaining a path pin and a slice pin with `&&` is read as two pins (green launches with `result.run` 1 and one `new`; stale refuses with one line naming only the slice command). Nothing is deleted, relaxed or reworded: no leg's pin is loosened and no assertion's expected value moved.\n\nI am grading this minor rather than blocking on the merits: the rule exists so the implementer cannot lower the bar it is graded against, and a strictly additive hunk cannot \u2014 it only adds ways to fail. The added assertions are non-vacuous against this implementation (delete the `(?!\\)\")` guard in `SLICE_PIN` at fleet/launch.mjs:55 and both new cases fail: the chained line is read as one slice pin whose command is the two halves joined, the green case refuses and the stale case's label becomes the joined text). They also cover an M1 clause the peer exam left untested (`a `Run:` may chain several with `&&``) in its harder mixed-shape form. The only fix a blocking verdict could route to a fix round is deletion of two strengthening test blocks, which makes the tree worse. Recorded here so the operator sees exactly what moved and can overrule.\n\nNo other issue: every Machine clause maps to a leg \u2014 M1 to (a)/(b) chained and backtick-wrapped/(c) mixed/(e) Context-line and 39- and 41-hex; M2 to (a) and (b) with the refusal message asserted by full equality against the format the task spells; M3 to (c); M4 to (d) plus `assertRefusalShape`'s no-ssh / no-push / `mutating() === []` / no `ultra/` ref / after-`rev-parse --verify` / before-first-`ls-remote` checks; Produces to (f). Placement matches the Context's reserved region exactly (below `targetOfOriginUrl`, above `defaultEngineSha`; called after the `baseCheck` refusal at fleet/launch.mjs:366 and before `readDefaultBranch`), so the fold sees this task's two hunks and no sibling's. `WHOLLY_BACKTICKED` is a byte-for-byte copy of `compile_plan.py:462` and is disclosed as copied-not-imported, satisfying the first global constraint; every new refusal is a `Refusal` whose message begins `launch: ` and `USAGE` is untouched, satisfying the second. The divergence from the Context's suggested `git archive | tar -x` \u2014 `read-tree` + `checkout-index --prefix` against a temporary `GIT_INDEX_FILE` \u2014 is disclosed in `basePinCheckout`'s doc comment, never touches the operator's index/HEAD/worktree, and is lawful. No scope creep, no deletions, no debug code; the other launch sims carry no `hash-object` pin in their plan text, so `verifyPlanPins` returns early there and none of them regress.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 2,
+      "proofFixes": 0,
+      "examEdited": [
+        "fleet/tests/test_launch_pins.mjs"
+      ]
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a8a7516c3ad4c3a4797d13dfc5ebb502c7be337e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-64/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Diagnosability regression when the re-read itself fails. In `pushPlan` (fleet/launch.mjs), after a refused push the code calls `await reread()` outside any try/catch; `highestRunOnTarget` refuses (exit 2) when its `ls-remote` exits non-zero. A transient network loss that fails both the push and the following `ls-remote` therefore surfaces only `git ls-remote origin 'refs/heads/ultra/*' 'refs/tags/ultra/*' \u2026 failed`, and the push's own output \u2014 the BASE refusal the operator got before this change \u2014 is discarded. No Machine clause covers a failing re-read, and the exam does not exercise it, so this blocks nothing; the fix is to treat a re-read that cannot answer as \"not a race\" and raise the push's refusal, which is also the conservative reading of M3 (a refusal not shown to be a race is refused at once).; unverified: the Claim's closing sentence \u2014 \"Two launches started in the same second on one target both succeed with distinct N\" \u2014 is established in the exam by a seam rule that takes the ref between the launcher's commit and its push (fleet/tests/test_launch_run_number.mjs leg (a)), not by two `launch` calls racing for real. That is the right proxy for M1\u2013M4 and all five Machine clauses are covered by the diff, but genuine concurrent-launch behaviour on a live target is not something this patch can settle. What would settle it: two `launch` invocations driven concurrently against one bare origin, asserting distinct `result.run` and two distinct `ultra/plan-run-<N>` refs.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "809776a17ca9b4ee719b1f915168f0fdaf083a96",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-64/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Produces contract's `rule` value is never asserted anywhere. Leg (e) compares the *Python* ladder's output (`sandboxRuleFor(ws.repo.dir)`) to the exam's own `kase.rule` constant; `detectTestCommand` is never imported or called directly, and `launch` only tests its return for `=== null`, so the rule string it computes is dead. A mis-mirrored rung name \u2014 e.g. the `package-json-pnpm` branch (fleet/launch.mjs, the `pnpm-lock.yaml` check inside the `package.json` rung), which no seed in DETECTABLE/UNDETECTABLE exercises at all \u2014 would leave the exam green. This does not leave a Machine clause unverified (M1 is about detectability, and Legs (e) asks for exactly the Python-side cross-check the exam performs), so it is advisory. What would settle it: in the DETECTABLE loop, import `detectTestCommand` from `../launch.mjs` and assert `(await detectTestCommand({ exec, repoDir: ws.repo.dir, base: ws.repo.base }))?.rule === sandboxRuleFor(ws.repo.dir)`, and add a `package.json` + `scripts.test` + `pnpm-lock.yaml` seed so the pnpm rung is covered.; Exam scope: `fleet/tests/test_launch_test_command.mjs` legs (f)\u2013(j) re-run all five launch sims as nested `node` subprocesses (`Promise.all` over `runSim`, lines ~612\u2013650 of the new file), but those five legs are graded by the Proof's own five `Run:` lines, which the driver already executes (all exit 0). Under `tests/test_fleet_suite.py` \u2014 which globs `fleet/tests/test_*.mjs` \u2014 each of the five sims now runs twice per suite pass, five of them concurrently inside one sim's 300 s `MJS_TIMEOUT` budget. The suite's own comment above `SLOW_FIRST`/`MJS_TIMEOUT` records this exact pattern as a past problem (\"The merge sim ran it and six other boot siblings inside itself and no longer does, so the wall that used to be charged to the merge sim is this one's now\"). Nothing is wrong today (exam evidence exit 0), but dropping the `SIMS` block would remove the duplication and the wall risk without losing any coverage the Proof does not already have.; unverified: the `rule` half of the Produces contract `detectTestCommand(...) -> Promise<{ rule: string } | null>` is never asserted. `launch` only compares the result to `null`, the refusal message does not carry `rule`, and the exam never imports `detectTestCommand` \u2014 leg (e) (`sandboxRuleFor`) compares the *Python* ladder's rule names against hardcoded expectations, so a launcher rung that answered e.g. `package-json-npm` where the sandbox answers `package-json-pnpm` would pass every assertion. What would settle it: in the twelve-seed loops, `assert.equal((await detectTestCommand({ exec: defaultExec, repoDir: ws.repo.dir, base: ws.repo.base }))?.rule ?? 'None', sandboxRuleFor(ws.repo.dir))` \u2014 that turns leg (e) into the cross-check its own header comment claims (\"the laptop's ladder answers what the sandbox's does\") and pins the produced type's `rule` field.; Mirror fidelity of the copied ladder (Global Constraint 1, \"the launcher copies their rules\"): `present()` uses `git cat-file -e <base>:<rel>`, which succeeds for any object at that path \u2014 a tree or a submodule gitlink \u2014 while every rung of `detect_test_cmd` in `skills/ultrapowers/scripts/ultra_run.py` requires `Path.is_file()`. A base carrying a directory named e.g. `Makefile` or `go.mod` would be detectable on the laptop and undetectable in the sandbox. Similarly, `hasTest` treats a string `scripts` value as no-test where Python's `\"test\" in scripts` does a substring match. Both are degenerate trees and neither is reachable in the exam's twelve seeds, so nothing is broken; a one-line tightening is `const present = async (rel) => String((await git(exec, repoDir, ['cat-file', '-t', `${base}:${rel}`])).stdout ?? '').trim() === 'blob'`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "69144b0207292b82495cb40d6c64db478f55039f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-64/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "Documentation gap outside this task's FILES: `skills/ultrawrite/SKILL.md` (lines 27-33) is the authoring surface for the `**Exam command:**` line and still documents only the `{paths}`-exactly-once contract. After this diff a plan author who follows that text and writes e.g. `**Exam command:** npx vitest run {paths} 2>&1` or a backticked template is refused at `--check` (exit 2) with no documented rule behind it. Nothing in the diff is wrong \u2014 the task's Context prescribes exactly this compiler and launcher wording \u2014 but the new M2 rule (\"the sandbox reads the template as one runner and its arguments\"; every word `{paths}` or matching `^[A-Za-z0-9_.+/=:@,-]+$`, first word never `{paths}`) has no author-facing statement anywhere. The fix is one sentence in `skills/ultrawrite/SKILL.md`, which is in neither this task's FILES nor any SIBLING FILES entry, so no edit inside this tree answers it; the global constraint routes docs agreement through `fleet/RUNBOOK.md` and `tests/test_docs_agree_with_code.py` (task 5), which do not cover this skill file.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "2c0c751534bd8978be49af1abe1fef950c1c8a52",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-64/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "Exam coverage: the committed suite does not pin the new prose. `tests/test_docs_agree_with_code.py` is unchanged (23 tests, as M4 requires) and reads fleet/RUNBOOK.md only structurally (script names exist, no RETIRED token, no `?ref=ultra/evidence/run-`); nothing in it asserts the `### Re-driving a parked run` section or its three operative phrases. M1\u2013M3 are established solely by the Proof's `Run:` greps, which the driver ran (all exit 0) but which are not part of the committed suite, so a later edit could delete the whole section and the suite would still pass. This is how the task's Context specifies it (\"nothing in it pins the States section's sentences, so no pin moves\"), hence actor `plan` and minor: closing it would mean adding a pin to tests/test_docs_agree_with_code.py, which would also move the 23-test count M4 fixes.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-64/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1835 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 54%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1835 passed, 5 warnings in 306.69s (0:05:06) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "2",
+      "cmd": "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'refused.*re-reads.*three pushes'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_hold.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_effort.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_engine_source.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_launch_reaps.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'gh pr ready.*gh pr merge.*--squash.*not.*--auto.*its own run on main'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'closed.*re-authored'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'never takes a run branch as.*re-driven as a plan on main, not as a base'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "sed -n '/^## States/,/^## Reading a failure/p' fleet/RUNBOOK.md | grep -q '^### Re-driving a parked run'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! git show ${ULTRA_BASE}:fleet/RUNBOOK.md | sed -n '/^## States/,/^## Reading a failure/p' | tr '\\n' ' ' | grep -q 'closed.*re-authored'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "! git show ${ULTRA_BASE}:fleet/RUNBOOK.md | sed -n '/^## States/,/^## Reading a failure/p' | grep -q '^### Re-driving a parked run'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    },
+    {
+      "task": "5",
+      "cmd": "test \"$(python3 -m pytest -q --collect-only tests/test_docs_agree_with_code.py | grep -c '::')\" = 23",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/lobby.mjs fleet/run-main.mjs skills/ultrapowers/scripts/ultra_run.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1873286,
+    "blockingFindings": 2,
+    "blockingPerReviewerMinute": 0.06405855806321085,
+    "pairRounds": 4,
+    "r2MarginalBlocking": 1
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n............                                                             [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 289.29s (0:04:49) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "dcc10a21ca493fbe3308e00d57948e1d4b1fb09b",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-64/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-64/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.057,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 5,
+    "tasks_planned": 5,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: the fix round edited the exam \u2014 fleet/tests/test_launch_pins.mjs no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included",
+    "wave 1: candidate adopted after reconcile (07d764a5888bbe74a0fc33084047ec3cb1a3d9c2 + fixes \u2192 dcc10a21ca493fbe3308e00d57948e1d4b1fb09b)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
