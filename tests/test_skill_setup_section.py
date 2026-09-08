@@ -19,19 +19,18 @@ have:
     turned `ok` is read back, the launch happens on `ready`, and the client's
     step 1 falls into the setup path inline instead of stopping [M3];
   * the frontmatter admits AskUserQuestion, the retired vocabulary of the
-    pre-lift fleet is absent, and the four things `test_docs_agree_with_code.py`
+    pre-lift fleet is absent, and the things `test_docs_agree_with_code.py`
     already pins about this file — the launch line's flags, the walk, the VM
-    name shape, `validate_skill.py` — still hold [M4].
+    name shape — still hold [M4]. The `validate_skill.py` run itself is left to
+    `test_docs_agree_with_code.py` and `tests/test_validate_skill.py`.
 
 The lint over questions is exercised against its own fixtures below, so a
 regex that stopped matching anything cannot pass this file silently.
 
-Offline: reads one committed file and runs one local Python script.
+Offline: reads one committed file.
 """
 import pathlib
 import re
-import subprocess
-import sys
 
 import pytest
 
@@ -416,17 +415,4 @@ def test_the_skill_still_shows_the_vm_name_shape():
     """(d) [M4]."""
     assert VM_NAME_RE.search(skill_text()), (
         f"{SKILL} no longer shows a `fleet-r<N>-…` VM name"
-    )
-
-
-def test_validate_skill_accepts_the_ultrapowers_skill():
-    """(d) [M4]."""
-    result = subprocess.run(
-        [sys.executable,
-         str(ROOT / "skills/ultrapowers/scripts/validate_skill.py"),
-         str(ROOT / "skills/ultrapowers")],
-        capture_output=True, text=True)
-    assert result.returncode == 0, (
-        "validate_skill.py rejected skills/ultrapowers:\n"
-        + result.stdout + result.stderr
     )

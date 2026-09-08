@@ -1669,13 +1669,6 @@ const plantReceipt = (fx, payload) => {
       assert.notEqual(runIn('bash', ['-c', GREP], dir).code, 0,
         'leg (h) [M4]: … and non-zero on a contract with ' + JSON.stringify(lit) + ' removed')
     }
-
-    // The first `Run:` — the docs pin reads this file's other literals, so the
-    // edit must leave them in the shape it reads.
-    const pin = runIn('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'], REPO)
-    assert.equal(pin.code, 0,
-      'leg (h) [M4]: `python3 -m pytest -q tests/test_docs_agree_with_code.py` passes — got ' +
-      pin.code + '\n' + pin.out)
   }
 }
 

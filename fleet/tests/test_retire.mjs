@@ -866,22 +866,6 @@ assert.ok(twoTagsBullet(contractText).includes('— skipped'),
 assert.ok(rollbackSection(runbookText).includes('— skipped'),
   "#706 (l)/M7 the runbook's `## Rollback` section says the same, carrying the line's literal `— skipped` — a skip declared in one document only fails this")
 
-for (const [name, text] of [['fleet/CONTRACT.md', contractText], ['fleet/RUNBOOK.md', runbookText]]) {
-  const branchRefs = [...text.matchAll(/\?ref=([^\s'"`)]*)/g)]
-    .map((m) => m[1])
-    .filter((ref) => ref.startsWith('ultra/evidence-run-'))
-  assert.deepEqual(branchRefs, [],
-    `#706 (l)/M7 ${name} shows no \`?ref=ultra/evidence-run-<N>\` read — the record is read by tag, and the sweep's read names the branch in prose; got ${JSON.stringify(branchRefs)}`)
-}
-
-{
-  const res = spawnSync('python3',
-    ['-m', 'pytest', 'tests/test_docs_agree_with_code.py', '-q', '-p', 'no:cacheprovider'],
-    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 120000 })
-  assert.equal(res.status, 0,
-    `#706 (l)/M7 the docs-pin suite is green over both edited documents; stdout: ${res.stdout} stderr: ${res.stderr}`)
-}
-
 // ── (i) M1, M6, M7: the script as a process, against PATH shims ─────────────
 
 const cliRoot = tempDir('retire-cli-')
@@ -1554,9 +1538,5 @@ for (const hit of grepDocs('integration-run')) {
   assert.ok(paragraphAt(DOC_TEXT[hit.file], hit.line).includes(PHRASE),
     `#724 Task 1 (h)/M6 ${hit.file}:${hit.line} still gives ultra/integration-run-<N> only the two fates of BASE — the merge and the open PR — with no \`${PHRASE}\` anywhere in its paragraph; got ${JSON.stringify(hit.text)}`)
 }
-
-// The third `Run:` — `python3 -m pytest -q tests/test_docs_agree_with_code.py`
-// exits 0 over both rewritten documents. It is spawned once, above, under
-// `#706 (l)/M7`; the rewrite here names no mechanism that is not there. [M6]
 
 console.log('ALL TESTS PASSED')

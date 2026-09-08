@@ -371,15 +371,3 @@ def test_the_five_species_fixture_still_prints_exactly_its_five_lines(
         "leg (c) [M3]: the five-species fixture still prints exactly its "
         "five `ADVISORY proof-species:` lines. Got:\n"
         + "\n".join(_species(out)))
-
-
-def test_the_existing_species_exam_still_passes():
-    """leg (c) [M3]: `tests/test_compile_plan_proof_species.py` passes — the
-    line shape, the print order and the registration it pins are unchanged."""
-    p = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_compile_plan_proof_species.py"],
-        capture_output=True, text=True, cwd=str(ROOT))
-    assert p.returncode == 0, (
-        "leg (c) [M3]: the existing species exam must still pass:\n"
-        + p.stdout[-4000:] + p.stderr[-2000:])
