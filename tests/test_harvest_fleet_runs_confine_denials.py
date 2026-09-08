@@ -427,3 +427,258 @@ def test_the_friction_item_is_still_findable_by_the_run_legs_own_sed():
     assert proc.returncode == 0 and proc.stdout.strip(), (
         "the `1. **friction**` … `2. **routing**` range selects nothing in "
         f"{LENSES}; stdout={proc.stdout!r} stderr={proc.stderr!r}")
+
+
+# =====================================================================
+# Task 1: the file's envelope rows are dropped when the envelopes were
+# read directly — `confineDenials` counts each denial once.
+#
+# What each clause of THIS task asserts, and the leg that pins it:
+#
+# * M1 / leg (a) — one `workers/review_1_1/envelope.json` with one
+#   `permission_denials` entry, plus a `confine-denials.jsonl` holding one
+#   `source: "envelope"` row describing that same denial and one
+#   `source: "hook"` row, yields exactly two objects: exactly one
+#   `source == "envelope"` and exactly one `source == "hook"`. BASE
+#   concatenates and yields three.
+# * M1 / the Claim — the row that is dropped is the FILE's `envelope` row;
+#   the line the harvester derived from the envelope itself survives, and
+#   the `hook` row comes through verbatim.
+# * M2 / leg (b) — a `source: "envelope"` row in the file with no
+#   `workers/*/envelope.json` is kept: the drop applies only when THIS
+#   run's envelopes were read directly. (The existing leg (c) test
+#   `test_the_file_lines_are_carried_verbatim_in_file_order` pins the same
+#   fixture's file order and stays unedited.)
+# * M3 / legs (c), (d), (e) — the three `Run:` legs against the
+#   `1. **friction**` item of `reading-lenses.md`.
+# =====================================================================
+
+# The three `Run:` legs of this task's Proof, verbatim, over the same `sed`
+# range leg (f) above already uses.
+RUN_SAYS_COUNTED_ONCE = (
+    FRICTION_ITEM + r" | tr '\n' ' ' | "
+    r"grep -q 'counted once.*drops.*envelope.*hook'")
+RUN_DROPS_NEVER_THE_TOTAL = (
+    FRICTION_ITEM + r" | grep -c 'never the total' | grep -qx 0")
+RUN_DROPS_23_LINES = (
+    FRICTION_ITEM + r" | grep -c '23 lines' | grep -qx 0")
+
+# M3 is about the PHRASE, and the item is a wrapped markdown paragraph: at BASE
+# `never the total` is split across two source lines, which the line-oriented
+# `Run:` leg above cannot see. The clause is pinned on the joined item too,
+# whitespace squeezed, so a phrase that merely moved its line break is still
+# caught.
+_JOINED = FRICTION_ITEM + r" | tr '\n' ' ' | tr -s ' '"
+JOINED_DROPS_NEVER_THE_TOTAL = (
+    _JOINED + r" | grep -c 'never the total' | grep -qx 0")
+JOINED_DROPS_23_LINES = _JOINED + r" | grep -c '23 lines' | grep -qx 0"
+
+# The `confine-denials.jsonl` rows of leg (a): `recordEnvelopeDenials`'
+# own record of the envelope denial below, and a hook row for another
+# worker. The envelope row is deliberately distinguishable from the line
+# the harvester derives (no `role`, its own `reason` and `toolInput`) so
+# leg (a) can say WHICH of the two was dropped.
+FILE_ENVELOPE_ROW = {
+    "ts": T0 + 3000, "source": "envelope", "label": "review:1:1",
+    "tool": "Bash", "reason": "recorded by the worker at exit",
+    "toolInput": "{\"command\": \"git push origin HEAD\"}",
+}
+FILE_HOOK_ROW = {
+    "ts": T0 + 4000, "source": "hook", "label": "impl:1",
+    "role": "implementer", "tool": "Write", "reason": "outside clone",
+    "toolInput": "{\"file_path\": \"/etc/hosts\"}",
+}
+
+
+def _write_denial_file(run_dir, rows):
+    """`confine-denials.jsonl` — one JSON object per line, as
+    `fleet/run-worker.mjs` appends them."""
+    (run_dir / "confine-denials.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n")
+    return run_dir / "confine-denials.jsonl"
+
+
+def _run_with_both_sources(tmp_path, run_id, rows):
+    """A run directory that carries BOTH readers of the same denial: one
+    `workers/review_1_1/envelope.json` with `session_id: "sess-r1"` and one
+    `permission_denials` entry (`tool_name: "Bash"`), and the file rows given.
+    No `transcripts/`, so the count is envelope + file only."""
+    run_dir = _write_run(tmp_path / "src", run_id,
+                         _worker_events(run_id, "review:1:1", "reviewer",
+                                        "sess-r1"))
+    _write_envelope(run_dir, "review_1_1", {
+        "session_id": "sess-r1",
+        "subtype": "success",
+        "result": "the review found one concern",
+        "permission_denials": [
+            {"tool_name": "Bash", "tool_use_id": "toolu_1",
+             "tool_input": {"command": "git push origin HEAD"}},
+        ],
+    })
+    _write_denial_file(run_dir, rows)
+    assert not (run_dir / "transcripts").exists()
+    return run_dir
+
+
+# ---------- M1, leg (a): each denial is counted once ----------
+
+def test_a_denial_read_from_the_envelope_is_not_counted_again_from_the_file(
+        tmp_path):
+    """M1, leg (a): one envelope denial plus a `confine-denials.jsonl` holding
+    that same denial as a `source: "envelope"` row and one `source: "hook"` row
+    yields `bundle.confineDenials` of length exactly 2, with
+    `[d["source"] for d in denials].count("envelope") == 1` and
+    `.count("hook") == 1`.
+
+    A harvester that concatenates the three readers without reconciling yields
+    3 here and fails the length."""
+    run_dir = _run_with_both_sources(tmp_path, "run-59",
+                                     [FILE_ENVELOPE_ROW, FILE_HOOK_ROW])
+
+    bundle, _ = _bundle(run_dir, tmp_path)
+    denials = bundle["confineDenials"]
+
+    assert isinstance(denials, list), (
+        f"M1, leg (a): confineDenials must be a list here, got {denials!r}")
+    assert len(denials) == 2, (
+        "M1, leg (a): one envelope denial recorded by both readers is ONE "
+        "line, and the hook row is the other — exactly two; got "
+        f"{len(denials)}: {denials!r}")
+    sources = [d.get("source") for d in denials]
+    assert sources.count("envelope") == 1, (
+        "M1, leg (a): exactly one line has source == 'envelope'; got "
+        f"{sources!r} from {denials!r}")
+    assert sources.count("hook") == 1, (
+        "M1, leg (a): exactly one line has source == 'hook'; got "
+        f"{sources!r} from {denials!r}")
+
+
+def test_the_dropped_row_is_the_files_and_the_hook_row_survives_verbatim(
+        tmp_path):
+    """M1, the Claim: it is the FILE's `source: "envelope"` row that is
+    dropped — the line the harvester derived from `workers/*/envelope.json`
+    survives, so it still carries the `role` the `session_id` join supplies
+    (`reviewer`), which the file's row does not have. Every other file line,
+    the `hook` row included, comes through verbatim."""
+    run_dir = _run_with_both_sources(tmp_path, "run-60",
+                                     [FILE_ENVELOPE_ROW, FILE_HOOK_ROW])
+
+    bundle, _ = _bundle(run_dir, tmp_path)
+    denials = bundle["confineDenials"]
+
+    envelope_lines = [d for d in denials if d.get("source") == "envelope"]
+    assert len(envelope_lines) == 1, (
+        f"M1: one envelope-sourced line; got {envelope_lines!r}")
+    assert envelope_lines[0].get("role") == "reviewer", (
+        "M1, the Claim: the surviving `envelope` line is the one the harvester "
+        "read out of `workers/review_1_1/envelope.json` — it carries the role "
+        "of the worker whose session_id it joins on; got "
+        f"{envelope_lines[0]!r}")
+    assert FILE_ENVELOPE_ROW not in denials, (
+        "M1, the Claim: the file's own `source: \"envelope\"` row is dropped "
+        f"when this run's envelopes were read directly; got {denials!r}")
+    assert FILE_HOOK_ROW in denials, (
+        "M1: every file line that is not `source: \"envelope\"` is kept, as "
+        f"parsed; got {denials!r}")
+
+
+def test_a_file_line_with_no_source_key_survives_the_drop(tmp_path):
+    """M1: the drop is keyed on the string `"envelope"` and nothing else — a
+    file line with no `source` key at all (the shape
+    `tests/test_harvest_fleet_runs.py` and `tests/test_harvest_evidence.py`
+    write) still comes through verbatim beside the envelope-read line."""
+    sourceless = {"tool": "Bash", "reason": "outside clone"}
+    run_dir = _run_with_both_sources(tmp_path, "run-61",
+                                     [FILE_ENVELOPE_ROW, sourceless])
+
+    bundle, _ = _bundle(run_dir, tmp_path)
+    denials = bundle["confineDenials"]
+
+    assert sourceless in denials, (
+        "M1: a file line with no `source` key is not an `envelope` row and is "
+        f"kept as parsed; got {denials!r}")
+    assert len(denials) == 2, (
+        "M1: the derived envelope line plus the source-less file line — the "
+        f"file's `envelope` row is the only drop; got {denials!r}")
+
+
+# ---------- M2, leg (b): no envelope file, so nothing was read twice ----------
+
+def test_a_file_envelope_row_is_kept_when_this_run_has_no_envelope_file(
+        tmp_path):
+    """M2, leg (b): a run directory whose `confine-denials.jsonl` includes a
+    `source: "envelope"` line and which has no `workers/*/envelope.json` still
+    carries that line — it is the only record of a denial by a worker that died
+    before the harvester ran, and the drop applies only when THIS run's
+    envelopes were read directly.
+
+    Beside the existing leg (c) test, which pins the same two rows in file
+    order."""
+    run_dir = _write_run(tmp_path / "src", "run-62",
+                         _worker_events("run-62", "impl:1", "implementer",
+                                        "sess-i1"))
+    rows = [FILE_HOOK_ROW, FILE_ENVELOPE_ROW]
+    _write_denial_file(run_dir, rows)
+    assert not (run_dir / "workers").exists()
+    assert not (run_dir / "transcripts").exists()
+
+    bundle, _ = _bundle(run_dir, tmp_path)
+    denials = bundle["confineDenials"]
+
+    assert FILE_ENVELOPE_ROW in denials, (
+        "M2, leg (b): with no `workers/*/envelope.json` for this run, the "
+        "file's `source: \"envelope\"` row is the only record of that denial "
+        f"and is kept; got {denials!r}")
+    assert denials == rows, (
+        "M2, leg (b): with no envelope read, the file's lines are still "
+        f"carried whole and in file order; got {denials!r}")
+
+
+# ---------- M3, legs (c), (d), (e): the friction lens ----------
+
+def test_the_friction_lens_says_each_denial_is_counted_once():
+    """M3, leg (c): the first `Run:` — the friction item's text, joined with
+    `tr`, matches `counted once` then `drops` then `envelope` then `hook`, in
+    that order — exits 0."""
+    proc = _shell(RUN_SAYS_COUNTED_ONCE)
+    assert proc.returncode == 0, (
+        "M3, leg (c): the `1. **friction**` item of "
+        "skills/ultralearn/references/reading-lenses.md must say, in order, "
+        "that each denial is `counted once`, that the harvester `drops` the "
+        "file's `envelope` rows when it read the envelopes itself, and that "
+        "the `hook` lines are kept.\n"
+        f"stderr:\n{proc.stderr}")
+
+
+def test_the_friction_lens_no_longer_says_never_the_total():
+    """M3, leg (d): the second `Run:` exits 0 only when the phrase
+    `never the total` is absent from the friction item — the overlap it warned
+    about is reconciled by the harvester now, not by the reader."""
+    proc = _shell(RUN_DROPS_NEVER_THE_TOTAL)
+    assert proc.returncode == 0, (
+        "M3, leg (d): the `1. **friction**` item must no longer contain the "
+        "phrase `never the total`.\n"
+        f"stderr:\n{proc.stderr}")
+    joined = _shell(JOINED_DROPS_NEVER_THE_TOTAL)
+    assert joined.returncode == 0, (
+        "M3, leg (d): the phrase `never the total` must be gone from the "
+        "`1. **friction**` item, not merely re-wrapped across two source "
+        "lines — it is absent from the joined item too.\n"
+        f"stderr:\n{joined.stderr}")
+
+
+def test_the_friction_lens_no_longer_cites_23_lines_for_20_denials():
+    """M3, leg (e): the third `Run:` exits 0 only when the phrase `23 lines`
+    is absent from the friction item — the run-32-shaped arithmetic no longer
+    describes what the bundle holds."""
+    proc = _shell(RUN_DROPS_23_LINES)
+    assert proc.returncode == 0, (
+        "M3, leg (e): the `1. **friction**` item must no longer contain the "
+        "phrase `23 lines`.\n"
+        f"stderr:\n{proc.stderr}")
+    joined = _shell(JOINED_DROPS_23_LINES)
+    assert joined.returncode == 0, (
+        "M3, leg (e): the phrase `23 lines` must be gone from the "
+        "`1. **friction**` item, not merely re-wrapped across two source "
+        "lines — it is absent from the joined item too.\n"
+        f"stderr:\n{joined.stderr}")
