@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "348e7fb89c516c6e8b66c4bd0e8991e863f215c93b33d21b44ff7a761c502acb",
+      "verdict": "pass",
+      "reason": "Every M-clause has a leg that fails when it is false — both enumerated bodies get the full evidence/fold/push/PUT/phase assertions plus the attempt-2 pushedHead check-GET → /pulls → second-PUT ordering, the case-fold pair and the unmatched-body negative each get their own boot, the BASE scenario is pinned as written, and M6's scoped greps over the merge bullet plus the docs test cover the contract text."
+    }
+  },
+  "tally": { "dispatched": 1, "rejected": 0, "rounds": 1 }
+}
