@@ -1,0 +1,94 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "8793002af68555f9df69bfb7e585743a23a822904236b02be90971068a72b7b0",
+      "verdict": "pass",
+      "reason": "Every M1-M4 literal is pinned at the file/pytest layer: three defs and three handles absent, collect count 12 = 15 - 3, re.search(\"adversarial\" exactly once beside the rglob sweep, the compile_plan pin and validator test present in their owning files, and the file green."
+    },
+    "2": {
+      "hash": "cad63be710facecde0d86ebb888f2f0478236a92ddb9aa5c6358d76c4c739cba",
+      "verdict": "pass",
+      "reason": "Counts compute (16-2=14, 9-1=8); the three deletions and seven survivor literals are each grep-pinned, the read_text() sweep excludes the surviving HARVEST.read_text() while catching the tests/test_*.py shape the clause names, and the pytest leg discharges M3."
+    },
+    "3": {
+      "hash": "0144049ac110fd1c37fe77bd19c60d9e6f02165c944da6d50737ce06c057f6ab",
+      "verdict": "pass",
+      "reason": "Every literal computes (7 = 9 - 2, the shout regex on exactly one line of the peer exam plus roleFiles, both bridge ids, a green file); absence of both defs plus the exact count with the file passing makes M1-M3 and the sentence hold at the test-file/suite layer."
+    },
+    "4": {
+      "hash": "5ed43f7cab5df796291e25e6fb30c49ff330c60f65883888e933bf2f2531b15e",
+      "verdict": "pass",
+      "reason": "The three Runs pin every M1/M2/M3 literal directly (def-line absence, argv and validator-mention absence, node-id count 9 = 12 - 3, the retained tests with their leg and constant, the eight files, the testpaths scope, a green run); the only fragility is a false-fail, never a false-pass."
+    },
+    "5": {
+      "hash": "542c1a212fb9aeb698c3ce6326d1327ad725dac55013f4c08132cede666720ae",
+      "verdict": "pass",
+      "reason": "Every count literal checks out (16-1=15, 32-1=31, 37-1=36, 28-2=26, 9-1=8); each clause has a leg that fails on its own negation, so a passing exam entails the sentence at the test-suite layer."
+    },
+    "6": {
+      "hash": "31d64b15c5c507487d4625f86dc2af13c894fccf40974c08ff4728fef228e762",
+      "verdict": "pass",
+      "reason": "Every M1-M4 literal is pinned directly (def absence/presence, para.count at exactly one occurrence, per-file counts 33/1/11/33 consistent with BASE minus one node per deleted def, CI's per-directory validate line, a green run of the four files) and the counts are mutually satisfiable."
+    },
+    "7": {
+      "hash": "1aa35976c7813d8a47656ab07a195a27cb48a97f4eb1bc2c7b5c0f1e4fd068b8",
+      "verdict": "pass",
+      "reason": "Every literal is a plain fixed-string grep (BRE treats |, {0,80}, (fix) and /../ literally; grep -c | grep -qx 1 is a satisfiable exactly-once count); the four legs jointly force the block and shout assertion absent, the stderr report present, the role-file exam intact, and a passing bridged sim."
+    },
+    "8": {
+      "hash": "55ccdaefa5dac5e3d99b28367b82d682f0bff4bb8e40d6835affffd3f3938ee6",
+      "verdict": "pass",
+      "reason": "Each Machine literal is grep-pinned (the slot array and slot + ':' absent, the two Stale-if lines present via grep -c = 2, the '1. Claim', '2. Context' pin and the [345]. negative present, the bridged sim id in the suite's shape); all three legs fail-closed on the clause they cite."
+    },
+    "9": {
+      "hash": "e40ae071c3ddb72ceb8f135c1c5e741cef9799c9a2a734d8c2332f8b6daf0cf8",
+      "verdict": "pass",
+      "reason": "The negative greps pin every mechanism M1 names (loop variable, ?ref= scan, evidence-branch filter, both spawn argv fragments, the doc-test name) and the positive greps pin the surviving asserts, the docs test, its two-document sweep and testpaths = tests; the bridged sim run proves M3 directly."
+    },
+    "10": {
+      "hash": "c0e717419ce21f90530d7955935b8a65e16e1cbdeee132ec8551058e0ce32a20",
+      "verdict": "pass",
+      "reason": "The string-absence greps make the sentence true at the source layer (nothing in the four sims names the three targets), the collection/existence check plus the four-sim run establish 'runs once as the suite's own member', and every literal (testpaths = tests, the integrated-clean id, count = 2) is satisfiable as written."
+    }
+  },
+  "tally": {
+    "dispatched": 14,
+    "rejected": 4,
+    "rounds": 2,
+    "round1": {
+      "dispatched": 10,
+      "rejected": 4
+    },
+    "round2": {
+      "dispatched": 4,
+      "rejected": 0
+    }
+  },
+  "history": {
+    "round1": {
+      "pass": [
+        "3",
+        "5",
+        "6",
+        "7",
+        "8",
+        "10"
+      ],
+      "fail": {
+        "1": "exam pinned defs, not the behaviours the sentence named (source read, validator run, 'exactly once')",
+        "2": "universal sentence proven only by three named defs",
+        "4": "'held once' contradicted by two lawful survivors; spawn pinned to one spelling without saying so",
+        "9": "only two spellings pinned; a renamed loop or another spawn shape would pass"
+      }
+    },
+    "round2": {
+      "pass": [
+        "1",
+        "2",
+        "4",
+        "9"
+      ],
+      "fail": {}
+    }
+  }
+}
