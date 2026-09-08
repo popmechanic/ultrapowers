@@ -20,7 +20,10 @@
  *      `--account` names — a refresh failure is a failure before any VM
  *      exists;
  *   4. commits the plan against a temporary index and pushes it to the target
- *      as `ultra/plan-run-N`; that commit's sha is `plan=` in the assignment;
+ *      as `ultra/plan-run-N` — a refused push re-reads the highest run and, if
+ *      one appeared, takes N+1 and pushes again, three pushes in all, so the
+ *      push and not the read is what reserves N; that commit's sha is `plan=`
+ *      in the assignment;
  *   5. issues exactly one mutating lobby verb:
  *
  *        new --name <vm> --tag fleet --comment '<assignment>'
@@ -149,6 +152,87 @@ export const BASE_OFF_MAIN_FIX =
 export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
 
 /**
+ * What a word of a plan's `**Exam command:**` template may be spelled with
+ * (#716). The sandbox reads that template as ONE RUNNER AND ITS ARGUMENTS —
+ * `ultra_run.py`'s `runner_for` takes `cmd.split()[0]` for a command its table
+ * does not know and probes it with `command -v` — so the class admits what a
+ * runner and its flags are spelled with (`-q`, `--tb=short`, `./...`,
+ * `pkg:test`, `a,b`) and excludes every shell operator, quote and expansion
+ * character. This is the same literal `compile_plan.py` writes as
+ * `EXAM_RUNNER_WORD`; the launcher copies the rule rather than importing it,
+ * so a plan the compiler refuses never reaches a VM.
+ */
+export const EXAM_RUNNER_WORD = /^[A-Za-z0-9_.+/=:@,-]+$/
+
+const EXAM_PATHS_TOKEN = '{paths}'
+const EXAM_COMMAND_LABEL = /^\*\*\s*exam[-\s]?command\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$/i
+const FENCE_LINE = /^(`{3,}|~{3,})/
+const TASK_HEAD_LINE = /^ {0,3}### Task [A-Za-z0-9]+:/
+
+/**
+ * The plan header's `**Exam command:**` value, read the way `compile_plan.py`
+ * reads it: the first matching line before the first task heading and outside
+ * any fence, wrapped lines joined on a space, whitespace collapsed.
+ */
+function examCommandValue (planText) {
+  const stack = []
+  let value = null
+  for (const line of String(planText ?? '').split('\n')) {
+    const stripped = line.trim()
+    const fence = FENCE_LINE.exec(stripped)
+    if (fence) {
+      if (value !== null) break
+      const run = fence[1]
+      const inner = stack[stack.length - 1]
+      if (inner && run[0] === inner[0] && run.length >= inner.length && stripped === run) stack.pop()
+      else stack.push(run)
+      continue
+    }
+    if (stack.length > 0) {
+      if (value !== null) break
+      continue
+    }
+    if (TASK_HEAD_LINE.test(line)) break // the header ends at the first task heading
+    if (value === null) {
+      const match = EXAM_COMMAND_LABEL.exec(stripped)
+      if (match) value = [match[1].trim()]
+      continue
+    }
+    if (stripped === '' || stripped.startsWith('**')) break
+    value.push(stripped)
+  }
+  if (value === null) return null
+  return value.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * The plan header's exam-command template, refused when the sandbox would not
+ * read it as a runner and its arguments (#716). A backtick surviving to the
+ * driver's shell is a command substitution, and a word carrying a shell
+ * operator, a quote or an expansion means the first word is not necessarily
+ * what runs the suite — both were `PLAN OK` before, and a launch is the last
+ * place either can still be caught for free. Answers the value (or null when
+ * the header declares none) when the template is well shaped.
+ */
+export function examCommandShapeOf (planText) {
+  const value = examCommandValue(planText)
+  if (value === null) return null
+  if (value.includes('`')) {
+    throw new Refusal(
+      `launch: **Exam command:** carries a backtick — ${value}; the driver's shell reads it as a command substitution (run-74)`
+    )
+  }
+  const words = value.split(/\s+/).filter((word) => word !== '')
+  for (const [index, word] of words.entries()) {
+    if (word === EXAM_PATHS_TOKEN && index > 0) continue
+    if (word === EXAM_PATHS_TOKEN || !EXAM_RUNNER_WORD.test(word)) {
+      throw new Refusal(`launch: **Exam command:** ${word} is not a command word — ${value}`)
+    }
+  }
+  return value
+}
+
+/**
  * How many `new` lines a launch may issue, and the window it sleeps in between
  * them. A name exe.dev refused stays reserved, so each attempt mints its own.
  */
@@ -187,6 +271,173 @@ export function targetOfOriginUrl (url) {
     if (match && isSafeTarget(match[1])) return match[1]
   }
   return null
+}
+
+/**
+ * A hash pin is a fact about BASE, and BASE is chosen at launch and not at
+ * authoring — so every `git hash-object` literal a plan carries is checked
+ * against the tree at `--base` before the plan is pushed, with nothing but
+ * local git reads made. A stale pin found here costs seconds on the laptop; the
+ * same pin found on the sandbox costs a run.
+ *
+ * A pin lives on a `- Check:` bullet of `## Global Constraints` or a `- Run:`
+ * bullet of a task's Proof — the launcher reads a line by its stripped form and
+ * not by where in the plan it sits, so a pin on any other kind of line (a
+ * `**Context:**` sentence quoting one, say) is prose and is not read. Two
+ * shapes are pins:
+ *
+ *   test "$(git hash-object <path>)" = <40-hex>
+ *   test "$(<command> | git hash-object --stdin)" = <40-hex>
+ *
+ * A `Run:` may chain several with `&&`, so one line can carry several.
+ */
+
+/** A pin-bearing bullet, by its stripped form. */
+const PIN_LINE = /^-\s*(?:Check|Run):\s*(.*)$/
+
+/**
+ * `compile_plan.py`'s `_claims_run_command` wrapper rule, copied rather than
+ * imported: a whole-value backtick wrapper is decoration and comes off before
+ * the value is matched. A value with backticks INSIDE it does not match and
+ * rides untouched, exactly as it does there.
+ */
+const WHOLLY_BACKTICKED = /^`([^`]+)`$/
+
+/**
+ * The two shapes, each ending in a sha that is 40 hex characters and no more:
+ * the lookahead is why a 41-hex literal is not a pin, and the exact `{40}` is
+ * why a 39-hex one is not either. A pin the launcher cannot read is not a pin
+ * it guesses at.
+ */
+const PATH_PIN = /test\s+"\$\(\s*git\s+hash-object\s+([^\s)"|]+)\s*\)"\s*=\s*([0-9a-f]{40})(?![0-9a-fA-F])/g
+/**
+ * The slice command may not span a `)"`: that boundary closes the substitution
+ * of an earlier pin on the same `&&`-chained line, and a capture crossing it
+ * would swallow that pin whole — a path pin chained before a slice pin would be
+ * read as one slice pin whose command is the two halves joined, handed to
+ * `/bin/sh` as one command, hashed as the empty blob, and a plan whose pins all
+ * match would be refused. Only that two-character boundary is forbidden, so a
+ * command that quotes (`grep "^set -e" f`) or pipes several times still matches.
+ */
+const SLICE_PIN = /test\s+"\$\(\s*((?:(?!\)")[^\n])+?)\s*\|\s*git\s+hash-object\s+--stdin\s*\)"\s*=\s*([0-9a-f]{40})(?![0-9a-fA-F])/g
+
+/** How a slice pin names itself in a refusal: one line, at most 80 characters. */
+const clipCommand = (command) => String(command).replace(/\s+/g, ' ').trim().slice(0, 80)
+
+/** One stale pin, one line — the path (or clipped command), the pinned sha and
+ *  what the base really carries, so the operator can see the fix without
+ *  running anything. */
+const pinRefusalLine = (subject, pinned, base, real) =>
+  `launch: plan pin ${subject}: pinned ${pinned} but --base ${base} has ${real ?? 'no such path'}`
+
+/** Every pin the plan text carries, in the order the plan writes them. */
+export function planPins (planText) {
+  const pins = []
+  for (const rawLine of String(planText ?? '').split('\n')) {
+    const bullet = PIN_LINE.exec(rawLine.trim())
+    if (!bullet) continue
+    const value = bullet[1].trim()
+    const unwrapped = WHOLLY_BACKTICKED.exec(value)
+    const text = unwrapped ? unwrapped[1].trim() : value
+    const found = []
+    for (const m of text.matchAll(PATH_PIN)) {
+      found.push({ at: m.index, kind: 'path', path: m[1], pinned: m[2] })
+    }
+    for (const m of text.matchAll(SLICE_PIN)) {
+      found.push({ at: m.index, kind: 'slice', command: m[1], pinned: m[2] })
+    }
+    found.sort((a, b) => a.at - b.at)
+    pins.push(...found)
+  }
+  return pins
+}
+
+/**
+ * The tree at `<base>`, in a throwaway directory, built with git plumbing
+ * against a temporary index: `read-tree` fills that index and `checkout-index
+ * --prefix` writes the files out. The operator's own index, `HEAD` and working
+ * tree are never read and never written — a launch that verifies a slice pin
+ * leaves the checkout exactly as a launch that verifies none.
+ *
+ * Answers `{ dir, tree }`: `dir` is what the caller removes, `tree` is the
+ * working directory a slice command runs in.
+ */
+async function basePinCheckout ({ exec, repoDir, base }) {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-pin-'))
+  const tree = path.join(dir, 'tree')
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') }
+  try {
+    await fsp.mkdir(tree, { recursive: true })
+    for (const argv of [['read-tree', base], ['checkout-index', '-a', '-f', `--prefix=${tree}${path.sep}`]]) {
+      const res = await exec('git', ['-C', repoDir, ...argv], { env })
+      if (res.code !== 0) {
+        throw new Refusal(`launch: git ${argv.join(' ')} failed (exit ${res.code}):\n${output(res)}`)
+      }
+    }
+  } catch (error) {
+    await fsp.rm(dir, { recursive: true, force: true })
+    throw error
+  }
+  return { dir, tree }
+}
+
+/**
+ * What a slice pin's command really hashes to at `--base`: the command under
+ * `/bin/sh -c` with the extracted tree as its working directory, its stdout
+ * hashed with `git hash-object --stdin`. The shell runs outside the exec seam
+ * because it is not a lobby verb and not a git read — it is the plan's own
+ * command, and it must really run for its sha to mean anything.
+ */
+async function slicePinSha ({ exec, repoDir, tree, command }) {
+  const ran = spawnSync('/bin/sh', ['-c', command], { cwd: tree, maxBuffer: 32 * 1024 * 1024 })
+  const res = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], {
+    input: ran.stdout ?? Buffer.alloc(0)
+  })
+  if (res.code !== 0) {
+    throw new Refusal(
+      `launch: git hash-object --stdin failed (exit ${res.code}) for plan pin ${clipCommand(command)}:\n${output(res)}`
+    )
+  }
+  return String(res.stdout ?? '').trim()
+}
+
+/**
+ * Every pin the plan carries, verified against `<base>`, or a `Refusal` (exit
+ * 2) carrying one line per stale pin — so two stale pins are two lines and an
+ * operator fixes both in one pass. A path absent at `--base` is stale, not
+ * skipped: a pin naming a file the base does not have is a pin about some other
+ * tree.
+ *
+ * The base's blob for a path is `git rev-parse <base>:<path>`, which is what
+ * `git hash-object <path>` answers in a checkout of `<base>` — no clean filter
+ * is configured in this repository. A slice pin needs the files themselves, so
+ * it gets a throwaway checkout that is removed in a `finally`, whether this
+ * answers or throws.
+ */
+export async function verifyPlanPins ({ exec, repoDir, base, planText }) {
+  const pins = planPins(planText)
+  if (pins.length === 0) return
+  const checkout = pins.some((pin) => pin.kind === 'slice')
+    ? await basePinCheckout({ exec, repoDir, base })
+    : null
+  const stale = []
+  try {
+    for (const pin of pins) {
+      if (pin.kind === 'path') {
+        const res = await git(exec, repoDir, ['rev-parse', `${base}:${pin.path}`])
+        const real = res.code === 0 ? String(res.stdout ?? '').trim() : null
+        if (real !== pin.pinned) stale.push(pinRefusalLine(pin.path, pin.pinned, base, real))
+        continue
+      }
+      const real = await slicePinSha({ exec, repoDir, tree: checkout.tree, command: pin.command })
+      if (real !== pin.pinned) {
+        stale.push(pinRefusalLine(clipCommand(pin.command), pin.pinned, base, real))
+      }
+    }
+  } finally {
+    if (checkout !== null) await fsp.rm(checkout.dir, { recursive: true, force: true })
+  }
+  if (stale.length > 0) throw new Refusal(stale.join('\n'))
 }
 
 /**
@@ -314,6 +565,10 @@ export async function launch ({
     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
   }
   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
+  // Before the comment-length probe and before anything is executed: a plan
+  // whose declared exam command the sandbox would not read as a runner and its
+  // arguments is refused here, not discovered on the VM.
+  examCommandShapeOf(planText)
   let verdictsText = null
   try {
     verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
@@ -370,6 +625,11 @@ export async function launch ({
     )
   }
 
+  // The plan's hash pins are facts about `--base`, and the checkout has it now:
+  // a stale one is found here, with local git reads only, before the first
+  // `ls-remote` and long before anything is pushed or any lobby verb issued.
+  await verifyPlanPins({ exec, repoDir, base: opts.base, planText })
+
   // ── The base is on the target's default branch, or it is a refusal. The
   //    origin names its own default branch and that branch's tip in one
   //    `ls-remote --symref`; the fetch brings the tip's history into this
@@ -400,6 +660,17 @@ export async function launch ({
   if (ancestry.code !== 0) {
     throw new Refusal(
       `launch: --base ${opts.base} is not on ${target}'s ${origin.branch} (tip ${origin.tip}) — ${BASE_OFF_MAIN_FIX}`
+    )
+  }
+
+  // ── The target's test command is, like a hash pin, a fact about BASE the
+  //    laptop can read. A tree that matches no rung of the sandbox's ladder is
+  //    a run the gate would refuse an hour from now, after a VM, a clone and a
+  //    setup script; the ladder is file presence only, so the laptop reads the
+  //    same answer off `--base`'s tree before any of that exists.
+  if (await detectTestCommand({ exec, repoDir, base: opts.base }) === null) {
+    throw new Refusal(
+      `launch: ${target} at --base ${opts.base}: ${NO_TEST_CMD_LINE} — ${NO_TEST_CMD_FIX}`
     )
   }
 
@@ -464,7 +735,10 @@ export async function launch ({
     reapError = String(error?.message ?? error) || 'launch: the reap failed'
   }
 
-  const run = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
+  // The N this launch asks for. Without `--run` it is one past the highest the
+  // target carries *now*, which another launch can take between this read and
+  // the push; the push is where it is settled.
+  const firstRun = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
   // Where the sha came from, so the launch line can say whether the operator
   // chose this engine or the launcher read whatever `main` happened to be at.
   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
@@ -477,18 +751,24 @@ export async function launch ({
 
   // ── The plan commit, pushed to the target before the VM exists. Plumbing
   //    against a temporary index, so the operator's index and working tree are
-  //    never touched. ─────────────────────────────────────────────────────────
-  const planBranch = planBranchFor(run)
-  const planSha = await commitPlan({ exec, repoDir, base: opts.base, run, planText, verdictsText })
+  //    never touched. The push is also what reserves the run number, so the N
+  //    the launch ends up with is the one that got through — see `pushPlan`.
   const commands = []
-  const pushArgv = ['-C', repoDir, 'push', 'origin', `${planSha}:refs/heads/${planBranch}`]
-  commands.push(`git ${pushArgv.join(' ')}`)
-  const push = await exec('git', pushArgv)
-  if (push.code !== 0) {
-    throw new Refusal(
-      `launch: git push origin ${planSha}:refs/heads/${planBranch} failed (exit ${push.code}):\n${output(push)}`
-    )
-  }
+  const plan = await pushPlan({
+    exec,
+    repoDir,
+    base: opts.base,
+    run: firstRun,
+    planText,
+    verdictsText,
+    commands,
+    // `--run N` is the operator's number, not one the launcher is free to
+    // move: a refused push under it is refused, never retried elsewhere.
+    reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir)
+  })
+  const run = plan.run
+  const planBranch = plan.branch
+  const planSha = plan.sha
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
@@ -602,6 +882,82 @@ async function readDefaultBranch ({ exec, repoDir }) {
 }
 
 /**
+ * The sandbox's own words for a target it cannot test, copied verbatim from the
+ * `test-command` stage's failure line in `skills/ultrapowers/scripts/ultra_run.py`
+ * rather than paraphrased: the operator who reads this on the laptop and the
+ * operator who would have read it off a preflight receipt read the same sentence.
+ */
+export const NO_TEST_CMD_LINE =
+  'no test command detected — pass --test-cmd <run-wide suite command>; ' +
+  'the gate refuses to run without one'
+
+/**
+ * What the laptop can add to that line. The launch line has no `--test-cmd` —
+ * `COMMENT_KEYS` in `fleet/lobby.mjs` refuses an assignment key for one — so the
+ * fix is not a flag but a commit on the target's default branch, and the rungs
+ * are named in the ladder's own order.
+ */
+export const NO_TEST_CMD_FIX =
+  'the launch line carries no --test-cmd; commit one of pytest.ini, ' +
+  'pyproject.toml [tool.pytest], package.json scripts.test (or a bun lockfile ' +
+  'beside it), Makefile test:, go.mod or Cargo.toml on the target\'s default branch'
+
+/**
+ * The sandbox's test-command ladder, run against the tree at `--base` on the
+ * laptop. This mirrors `detect_test_cmd` in `skills/ultrapowers/scripts/ultra_run.py`
+ * — the verification periphery is frozen, so its rules are copied here rather
+ * than imported, and the Python ladder stays the one the sandbox runs.
+ *
+ * Only whether a rung matches is decided here: the launcher never runs pytest,
+ * never asks about xdist and never spawns python. The rule name is for the
+ * refusal's sake, and the command the sandbox derives is the sandbox's own.
+ *
+ * Every read is of the commit `--base` names and never of the working tree: an
+ * untracked `pytest.ini` beside the operator's editor is not a fact about the
+ * base, and a base whose `pytest.ini` the operator has deleted locally is still
+ * a base the sandbox can test.
+ */
+export async function detectTestCommand ({ exec, repoDir, base }) {
+  const present = async (rel) =>
+    (await git(exec, repoDir, ['cat-file', '-e', `${base}:${rel}`])).code === 0
+  const read = async (rel) => {
+    const res = await git(exec, repoDir, ['show', `${base}:${rel}`])
+    return res.code === 0 ? String(res.stdout ?? '') : ''
+  }
+
+  if (await present('pytest.ini')) return { rule: 'pytest-ini' }
+  if (await present('pyproject.toml') && (await read('pyproject.toml')).includes('[tool.pytest')) {
+    return { rule: 'pyproject-pytest' }
+  }
+  if (await present('package.json')) {
+    // A `package.json` that does not parse counts as having no scripts, exactly
+    // as the Python rung's `except (JSONDecodeError, AttributeError)` does.
+    let scripts = null
+    try {
+      scripts = JSON.parse(await read('package.json'))?.scripts ?? null
+    } catch {
+      scripts = null
+    }
+    const hasTest = Array.isArray(scripts)
+      ? scripts.includes('test')
+      : (scripts !== null && typeof scripts === 'object' && 'test' in scripts)
+    const bunLock = (await present('bun.lock')) || (await present('bun.lockb'))
+    if (hasTest) {
+      if (await present('pnpm-lock.yaml')) return { rule: 'package-json-pnpm' }
+      return { rule: bunLock ? 'package-json-bun' : 'package-json-npm' }
+    }
+    // A bun lockfile is a rung only beside a `package.json`, never alone.
+    if (bunLock) return { rule: 'bun-lockfile' }
+  }
+  if (await present('Makefile') && /^test\s*:/m.test(await read('Makefile'))) {
+    return { rule: 'makefile-test' }
+  }
+  if (await present('go.mod')) return { rule: 'go-mod' }
+  if (await present('Cargo.toml')) return { rule: 'cargo-toml' }
+  return null
+}
+
+/**
  * The plan commit: `<base>`'s tree plus `.ultrapowers/plan.md` (and the gate
  * verdicts when the plan has a sibling verdicts file), one commit on `<base>`,
  * built entirely with plumbing against a temporary index file. The operator's
@@ -643,6 +999,56 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText })
     return sha
   } finally {
     await fsp.rm(indexDir, { recursive: true, force: true })
+  }
+}
+
+/** How many plan pushes one launch makes before it refuses. */
+export const PUSH_ATTEMPTS = 3
+
+/**
+ * The plan commit, pushed — and the run number, reserved by that push rather
+ * than by the read that proposed it. Two launches started in the same second
+ * on one target read the same highest N and pick the same N+1; the ref is the
+ * only thing that can tell them apart, so the loser of the push is the one
+ * that takes the next number.
+ *
+ * So a refused push is re-read before it is believed: `highestRunOnTarget` —
+ * the same read the number came from, branches *and* tags in one `ls-remote` —
+ * says whether a ref for the N just tried appeared. If it did, the refusal was
+ * a race: the launch takes reading + 1, builds a *fresh* plan commit for that
+ * N (the subject carries the number, so the old sha cannot be re-pushed under
+ * a new name) and pushes again. If it did not, nothing raced us — the target
+ * refused this push on its own terms, a pre-receive hook or a lost credential,
+ * and a second push would be refused the same way — so it is refused at once,
+ * with the push's own output. Git's words are never parsed: the target's refs
+ * decide, not the wording of a rejection line.
+ *
+ * `--run N` names an N the operator chose, so it is pushed once and refused if
+ * that is refused: `reread` is null and no re-read is made at all.
+ *
+ * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
+ * text a single refused push has always carried — with ` after <n> tries` when
+ * more than one was made.
+ */
+async function pushPlan ({ exec, repoDir, base, run, planText, verdictsText, commands, reread }) {
+  let n = run
+  for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
+    const branch = planBranchFor(n)
+    const sha = await commitPlan({ exec, repoDir, base, run: n, planText, verdictsText })
+    const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
+    commands.push(`git ${pushArgv.join(' ')}`)
+    const push = await exec('git', pushArgv)
+    if (push.code === 0) return { run: n, sha, branch }
+
+    const refusal = () =>
+      new Refusal(
+        `launch: git push origin ${sha}:refs/heads/${branch} failed` +
+        `${attempt > 1 ? ` after ${attempt} tries` : ''} (exit ${push.code}):\n${output(push)}`
+      )
+    if (attempt === PUSH_ATTEMPTS || reread === null) throw refusal()
+    const highest = await reread()
+    if (highest < n) throw refusal()
+    n = highest + 1
   }
 }
 

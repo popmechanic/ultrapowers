@@ -261,6 +261,30 @@ That reading is why the unit is a `Type=exec` template and not a oneshot
 `TimeoutStartUSec=infinity`, ignores `RuntimeMaxSec=`, and finished reads
 `inactive/dead` — the same as never started.
 
+### Re-driving a parked run
+
+A park is a verdict, not a dead end. Which of the two shapes below applies is
+read off the finding, and both leave the parked branch where it is.
+
+**The finding is fixable.** Ack it and merge the run by hand: `gh pr ready <n>`,
+then `gh pr merge <n> --squash` — not `gh pr merge <n> --auto`, which GitHub
+refuses on a pull request already in clean status ("Pull request is in clean
+status"). The finding is then fixed by its own run on main, a one-task plan
+whose Claim is the finding. That is the shape run-54 was re-driven by on
+2026-09-08, as run-57: ready, squash-merge, then a plan for the finding.
+
+**The finding is not fixable.** The run is closed — its pull request closed, its
+integration branch left to the retire sweep (`node fleet/retire.mjs --target
+<t>`), which deletes the branch of a pull request that is closed and not merged
+— and its plan re-authored, with the finding folded into the new plan's tasks. A
+park with nothing mergeable, the branch zero commits ahead of base and `pr`
+null, is always this case.
+
+Either way the parked branch is a record, never a starting point:
+`fleet/launch.mjs` never takes a run branch as `--base`, and refuses one with
+`relaunch from main; a parked branch is re-driven as a plan on main, not as a
+base`.
+
 ## Reading a failure
 
 Four logs, in the order a run writes them:

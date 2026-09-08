@@ -93,8 +93,12 @@ const ENGINE = 'b'.repeat(40)
 const NOW = new Date('2026-09-03T22:15:00.000Z')
 const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
 const VERDICTS_TEXT = '{"verdict":"green","gates":[]}\n'
-/** The seed the base commit carries, so "the base's tree, otherwise" has shape. */
-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
+/** The seed the base commit carries, so "the base's tree, otherwise" has shape.
+ *  `pytest.ini` is the first rung of the sandbox's test-command ladder: a base
+ *  matching no rung is refused on the laptop, so every launch sim seeds one. */
+const SEED = {
+  'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n'
+}
 /** The plan's own pool, sized by the config when no flag says otherwise. */
 const CONFIG = { ...FLEET_DEFAULTS }
 /** `billing plan --json`, as measured 2026-09-04. */

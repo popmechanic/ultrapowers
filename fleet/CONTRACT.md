@@ -30,7 +30,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **Run id:** `N` = 1 + max N over the target's `ultra/{plan,integration,evidence}-run-<N>` branches
   and over its `ultra/{plan,evidence}/run-<N>` tags — the branches are transient and the tags are the
   record, so a run number is read from both shapes and never from one (`--run N` overrides).
-  `RUN_ID=run-N`.
+  A refused plan push re-reads the highest run and retries with the next N, up to three pushes
+  in all, so the push and not the read is what reserves N. `RUN_ID=run-N`.
 - **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev reserves deleted
   names forever, so a name is one incarnation and is never derived from N alone. Lookup by pattern:
   `ssh exe.dev "ls 'fleet-r<N>-*' --json"`; the whole fleet: `ls 'fleet-r*' --json`. Read `.vms[]` ONLY
