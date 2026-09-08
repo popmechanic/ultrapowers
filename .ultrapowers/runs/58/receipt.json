@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -124,7 +124,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- `fleet/run-engine.mjs`, `fleet/tests/_sandbox_boot_helpers.mjs` and\n  `fleet/tests/test_sandbox_boot_selfmerge.mjs` are byte-identical to BASE \u2014 the rig's knobs\n  already express every scenario, and the self-merge sim's `retry` case keeps its body (the\n  `Check:` beside this compares them against `$ULTRA_BASE`).\n- ONE PUT PER FOLD stands: the retry is bought once, by the first PUT's body, and nothing in\n  `fleet/sandbox-boot.sh` loops on a merge refusal; a second 405 is still\n  `left open: merge PUT answered 405 twice`, and every non-405 refusal keeps the one PUT it made.\n- The sim stays one process over the shared rig: every new scenario is one `bootWith(env)` boot\n  memoized at module load, read by its legs, and no leg spawns another sim or re-runs a sibling\n  file (#768's shape).\n- Every assertion that stands at BASE in `fleet/tests/test_sandbox_boot_merge.mjs` still holds as\n  written, except the one scenario whose body this task promotes from \"any other reason\" to a\n  retry \u2014 that scenario keeps its assertions and changes only its body.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- `fleet/run-engine.mjs`, `fleet/tests/_sandbox_boot_helpers.mjs` and\n  `fleet/tests/test_sandbox_boot_selfmerge.mjs` are byte-identical to BASE — the rig's knobs\n  already express every scenario, and the self-merge sim's `retry` case keeps its body (the\n  `Check:` beside this compares them against `$ULTRA_BASE`).\n- ONE PUT PER FOLD stands: the retry is bought once, by the first PUT's body, and nothing in\n  `fleet/sandbox-boot.sh` loops on a merge refusal; a second 405 is still\n  `left open: merge PUT answered 405 twice`, and every non-405 refusal keeps the one PUT it made.\n- The sim stays one process over the shared rig: every new scenario is one `bootWith(env)` boot\n  memoized at module load, read by its legs, and no leg spawns another sim or re-runs a sibling\n  file (#768's shape).\n- Every assertion that stands at BASE in `fleet/tests/test_sandbox_boot_merge.mjs` still holds as\n  written, except the one scenario whose body this task promotes from \"any other reason\" to a\n  retry — that scenario keeps its assertions and changes only its body.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/tests/_sandbox_boot_helpers.mjs fleet/tests/test_sandbox_boot_selfmerge.mjs",
@@ -139,11 +139,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-58/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-58/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-58/acceptance.log"
 }

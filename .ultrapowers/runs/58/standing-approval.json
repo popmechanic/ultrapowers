@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-58.md run-58 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/sandbox-boot.sh — the 405 arm's match against GitHub's real strict-mode refusal bodies (task 1, Claim/Context) — The sim's PATH shim synthesises the merge answer from `STUB_MERGE_MESSAGE` (`{\"sha\":…,\"merged\":true,\"message\":\"<msg>\"}`), so the legs prove the script folds again for the phrases `base branch was modified` and `required status check`, but that GitHub's own strict-mode 405 bodies actually carry those phrases is taken from the plan's Context and cannot be observed here — no API is reachable and `required_status_checks.strict` is not yet flipped on main. The suite, the sim sentinel, the three scoped CONTRACT.md greps and the docs test all ran green in the integrated evidence. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
