@@ -287,7 +287,33 @@ def probe_task_test_cmds(cmds, cwd):
     return items
 
 
-def validate_knobs(args_path, root):
+# A shell control operator, redirection or substitution anywhere in a command
+# means its first word is not necessarily what runs the suite.
+SHELL_OPERATORS = (";", "&", "|", "\n", "`", "$(", "(", ">", "<")
+
+
+def run_wide_runner_verdict(cmd, cwd):
+    """The one `{cmd, runner, ok}` verdict for the run-wide `testCmd` under
+    `--no-baseline` (#770), or `None` when the command carries no runner this
+    probe can read.
+
+    A `TASK_RUNNERS` row matches a PREFIX, so its label is the command's own
+    opening words and holds however the rest of the line is spelled. The
+    fallback reading — "the runner is the first word" — only holds for a
+    simple command: in `cd sub && npm test` the first word is `cd`, and a
+    `command -v cd` verdict says nothing about the suite that would have run.
+    Such a command therefore carries no verdict and no `testCmdRunner` key
+    (M1): the flag's contract is that the command is not executed, and this
+    probe cannot read a shell pipeline. Everything the table knows, and every
+    simple command, is probed exactly as `probe_task_test_cmds` probes a
+    per-task command."""
+    known = any(cmd.startswith(prefix) for prefix, _r, _p in TASK_RUNNERS)
+    if not known and any(op in cmd for op in SHELL_OPERATORS):
+        return None
+    return probe_task_test_cmds([cmd], cwd)[0]
+
+
+def validate_knobs(args_path, root, no_baseline=False):
     """Pre-launch knob validation, fail-closed (#89): every wave entry's
     tier/review must be a value the engine accepts, and a bootstrapCmd must
     be a clean no-op when rehearsed in a throwaway worktree (#99) — never on
@@ -296,7 +322,16 @@ def validate_knobs(args_path, root):
     caches (pip/npm/uv), outside-the-repo venvs, and network effects escape
     it. In the same worktree, every per-task `testCmd`'s runner is probed
     with `--version` (#234), so a task whose tests need a tool the sandbox
-    lacks fails here rather than mid-wave. Exit 0 = safe."""
+    lacks fails here rather than mid-wave. Exit 0 = safe.
+
+    `no_baseline` (#770) drops the one expensive thing this verb does: the
+    run-wide `testCmd` is no longer executed as a red-BASE baseline (#712 made
+    the engine's own baseline lazy, so reading BASE here is redundant), it is
+    validated by the same runner probe the per-task commands get (#234) and
+    reported under `testCmdRunner` — unless its runner is unreadable, which
+    is a command carrying shell operators the table does not know (see
+    `run_wide_runner_verdict`). Every other verdict is unchanged, and exit 3
+    — the baseline's code — becomes unreachable."""
     try:
         knobs = json.loads(Path(args_path).read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -382,7 +417,20 @@ def validate_knobs(args_path, root):
                 result["ok"] = False
                 bootstrap_red = True
         baseline_red = False
-        if has_test and not bootstrap_red:
+        test_runner_red = False
+        if has_test and not bootstrap_red and no_baseline:
+            # One command, so one object — deliberately NOT merged into
+            # perTaskTestCmds, whose item count existing tests pin exactly.
+            # `None` = a command whose runner this probe cannot read (see
+            # run_wide_runner_verdict): no key, and the line stays free of a
+            # command line the flag exists to leave unexecuted.
+            verdict = run_wide_runner_verdict(test_cmd, probe_wt)
+            if verdict is not None:
+                result["testCmdRunner"] = verdict
+                if not verdict["ok"]:
+                    result["ok"] = False
+                    test_runner_red = True
+        elif has_test and not bootstrap_red:
             try:
                 bl = subprocess.run(test_cmd, shell=True, cwd=probe_wt,
                                     capture_output=True, text=True,
@@ -412,7 +460,7 @@ def validate_knobs(args_path, root):
             result["output"] += ("\n[probe worktree removal failed: %s]"
                                  % rm.stderr.strip())
     print(json.dumps(result))
-    if bootstrap_red or per_task_red:
+    if bootstrap_red or per_task_red or test_runner_red:
         return 1
     return 3 if baseline_red else 0
 
@@ -425,6 +473,10 @@ def main(argv=None):
     ap.add_argument("--validate-knobs", type=Path, default=None,
                     metavar="ARGSFILE", dest="validate_knobs",
                     help="pre-launch knob validation only; skips the launch pipeline")
+    ap.add_argument("--no-baseline", action="store_true", dest="no_baseline",
+                    help="with --validate-knobs: validate the run-wide testCmd "
+                         "by its runner's probe instead of running it as a "
+                         "baseline (never exits 3); ignored otherwise")
     ap.add_argument("--test-cmd", default=None,
                     help="run-wide suite command; wins over detection")
     ap.add_argument("--bootstrap-cmd", default=None,
@@ -444,7 +496,8 @@ def main(argv=None):
             print(json.dumps({"ok": False, "stage": "knob-validate",
                               "detail": r.stderr or "not inside a git repository"}))
             return 1
-        return validate_knobs(a.validate_knobs, Path(r.stdout.strip()))
+        return validate_knobs(a.validate_knobs, Path(r.stdout.strip()),
+                              no_baseline=a.no_baseline)
 
     if a.plan is None:
         ap.error("plan is required unless --validate-knobs is given")

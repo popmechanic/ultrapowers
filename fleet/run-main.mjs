@@ -8,6 +8,7 @@
 // session becomes one deterministic program:
 //
 //   ultra_run.py preflight+compile  →  fill tiers  →  --validate-knobs
+//      --no-baseline (knobs only; the driver runs no suite of its own)
 //   →  provision the run tree (spec §5: clones at BASE, patches, workers,
 //      roles, a fresh CLAUDE_CONFIG_DIR, the event log)
 //   →  runEngine() with agent = withPatchCapture(createRunWorker(...))
@@ -598,11 +599,16 @@ export async function runMain(parsed, deps = {}) {
   const filled = fillTiers(argsObj, tier)
   fs.writeFileSync(argsFilePath, JSON.stringify(argsObj, null, 2))
   stage('tiers', filled + ' null tier slot(s) stamped ' + tier + ' (uniform driver fill; per-task tier is the intent document\'s slot, #243)')
-  const vk = await exec(py, [path.join(scripts, 'ultra_run.py'), '--validate-knobs', argsFilePath],
+  // `--no-baseline`: the driver asks the knob check for the knobs alone and
+  // runs no suite command of its own before the engine. The red-BASE reading
+  // is the engine's lazy baseline (fleet/run-engine.mjs, the `baseline:`
+  // judgment call, run only when a wave's candidate suite is red, #712).
+  const vk = await exec(py,
+    [path.join(scripts, 'ultra_run.py'), '--validate-knobs', argsFilePath, '--no-baseline'],
     { cwd: repoDir, env: pyEnv })
   if (vk.code !== 0) {
-    // Exit 3 is the red-baseline signal; SKILL.md launched past it only on a
-    // plan-note pre-authorization, which is prose the driver does not read.
+    // A knob defect only: with --no-baseline the verb never runs the suite, so
+    // every non-zero exit here is the plan's own knobs failing validation.
     // Fail closed; the operator re-drives with the repair plan.
     return fail('knob-validate-failed', 'ultra_run.py --validate-knobs exited ' + vk.code + ': ' +
       (vk.stdout || vk.stderr).slice(-500))

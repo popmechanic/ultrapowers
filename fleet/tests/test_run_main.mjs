@@ -283,8 +283,16 @@ const BASE = git(['rev-parse', 'HEAD'], repo).trim()
 
 // ── runMain, end to end over stubbed scripts ─────────────────────────────────
 // The exec stub plays ultra_run/finalize/ultra_gate; git calls run for real.
-// One knob: gateExit/acks steer the two-move branches.
-function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
+// Knobs: gateExit/acks steer the two-move branches, validateExit steers the
+// knob-validate verb (#770 task 2 leg (c)).
+
+// The line `ultra_run.py --validate-knobs` prints when a task carries a tier
+// outside the four the compiler accepts — the shape the driver must carry out
+// as its `detail`. Verbatim, so a driver that invented its own message fails.
+const KNOB_DEFECT_LINE =
+  '{"ok": false, "stage": "knob-validate", "detail": "task T1: tier \'opus\' is not null|cheap|standard|mostCapable"}'
+
+function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validateExit = 0 }) {
   const runDir = path.join(repoDir, '.claude/ultrapowers', 'run-' + runId)
   const argsFile = path.join(runDir, 'args.json')
   const calls = []
@@ -307,6 +315,8 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
     const script = path.basename(argv[0])
     if (script === 'ultra_run.py' && argv.includes('--validate-knobs')) {
       seen.validateKnobs = snapReceipt()
+      // A knob defect: the verb exits non-zero with its one JSON line on stdout.
+      if (validateExit !== 0) return { code: validateExit, stdout: KNOB_DEFECT_LINE, stderr: '' }
       return { code: 0, stdout: '{"ok": true}', stderr: '' }
     }
     if (script === 'ultra_run.py') {
@@ -920,6 +930,113 @@ const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
   assert.equal(events.status, 0,
     'leg (f) [M4]: the fifth Run: — tests/test_fleet_events.py still passes, so the parked reason ' +
     'literal it pins is unchanged: ' + String(events.stdout + events.stderr).slice(-500))
+}
+
+// ── #770 Task 2 — the driver asks for knob validation without the baseline ───
+// Claim: the driver asks the knob check to skip the baseline and issues no
+// suite command of its own before the engine starts, and a knob defect still
+// stops the run before any clone is cut.
+//
+// The sim stubs `ultra_run.py`, so nothing here asserts what happens INSIDE the
+// script — the seam is argv, and argv is exactly what these legs read. (A
+// sibling task teaches `--no-baseline` to the script itself; its exam covers
+// the other half.)
+
+// Legs (a) [M1] and (b) [M2] — one green runMain drive, read at two points.
+{
+  const repoDir = freshRepo('flow-no-baseline')
+  const runId = 'run-100'
+  const { exec, calls, runDir } = makeExecStub({ repoDir, runId, gateExit: 0, waves: WAVES })
+  const argsFilePath = path.join(runDir, 'args.json')
+  // The boundary M2 measures "before" against: how many execs the driver had
+  // issued at the moment the engine seam was entered.
+  let callsAtEngine = -1
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => {
+        callsAtEngine = calls.length
+        return { integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [] }
+      },
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 0, 'the drive is green — ' + out.verdict + ': ' + out.detail)
+
+  // (a) [M1] Exactly one exec per run carries `--validate-knobs`, and that argv
+  // carries the args file path and `--no-baseline`.
+  const vkCalls = calls.filter((c) => c.includes('--validate-knobs'))
+  assert.equal(vkCalls.length, 1,
+    'leg (a) [M1]: exactly one exec of the whole run carries --validate-knobs, not zero and not two: ' +
+    JSON.stringify(vkCalls))
+  const vk = vkCalls[0]
+  assert.ok(vk.includes(argsFilePath),
+    'leg (a) [M1]: the --validate-knobs argv names the args file: ' + vk.join(' '))
+  assert.ok(vk.includes('--no-baseline'),
+    'leg (a) [M1]: the --validate-knobs argv also carries --no-baseline — the driver asks the ' +
+    'knob check to skip the baseline: ' + vk.join(' '))
+
+  // (b) [M2] Before the engine seam: exactly two ultra_run.py execs — the
+  // preflight, then the knob check — and no suite command of the driver's own.
+  assert.ok(callsAtEngine >= 0, 'leg (b) [M2]: runEngineFn was entered, so the boundary is real')
+  const before = calls.slice(0, callsAtEngine)
+  const ultraRun = before.filter((c) => path.basename(String(c[1] || '')) === 'ultra_run.py')
+  assert.equal(ultraRun.length, 2,
+    'leg (b) [M2]: exactly two ultra_run.py execs precede the engine — the preflight and the ' +
+    'knob check, no third: ' + JSON.stringify(ultraRun))
+
+  const preflight = ultraRun[0]
+  assert.equal(preflight[2], 'plan.md', 'leg (b) [M2]: the first is the preflight — argv[0] is the plan path')
+  assert.equal(preflight[3], '--stamp', 'leg (b) [M2]: the preflight names --stamp next')
+  assert.equal(preflight[4], runId, 'leg (b) [M2]: the stamp is the runId')
+  assert.ok(!preflight.includes('--validate-knobs'),
+    'leg (b) [M2]: the preflight is not the knob check: ' + preflight.join(' '))
+  assert.ok(!preflight.includes('--no-baseline'),
+    'leg (b) [M2]: --no-baseline rides the knob check only — the preflight never executes a ' +
+    'suite, so the flag would name a mechanism that is not there: ' + preflight.join(' '))
+  assert.ok(ultraRun[1].includes('--validate-knobs'),
+    'leg (b) [M2]: the second ultra_run.py exec is the knob check: ' + ultraRun[1].join(' '))
+
+  // The driver runs no suite of its own before the engine. `true` is the args
+  // file's testCmd; a shell is how a driver would have run it.
+  for (const c of before) {
+    assert.ok(!['true', 'sh', 'bash', '/bin/sh'].includes(String(c[0])),
+      'leg (b) [M2]: no exec before the engine has the args file\'s testCmd or a shell as its ' +
+      'command — the driver issues no suite command of its own: ' + c.join(' '))
+  }
+}
+
+// Leg (c) [M3] — a knob defect still stops the run before any clone is cut.
+{
+  const repoDir = freshRepo('flow-knob-defect')
+  const runId = 'run-101'
+  const { exec, calls, runDir } = makeExecStub({
+    repoDir, runId, gateExit: 0, waves: WAVES, validateExit: 1,
+  })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => { throw new Error('must not launch') },
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 1, 'leg (c) [M3]: a knob defect is exit code 1 — ' + out.verdict + ': ' + out.detail)
+  assert.equal(out.verdict, 'knob-validate-failed', 'leg (c) [M3]: the verdict is knob-validate-failed')
+  assert.ok(String(out.detail).includes("task T1: tier"),
+    'leg (c) [M3]: the detail carries the JSON line\'s own detail, so the operator reads the bad ' +
+    'tier and not only an exit code: ' + JSON.stringify(out.detail))
+  // runEngineFn throws `must not launch` if entered; reaching here at all means
+  // it was not, and the refusal came from the knob check rather than the engine.
+  assert.ok(!String(out.detail).includes('must not launch'),
+    'leg (c) [M3]: runEngineFn was never entered — the run stopped at the knob check')
+  assert.ok(!fs.existsSync(path.join(runDir, 'clones')),
+    'leg (c) [M3]: no clones directory exists under the run dir — provisioning is step 3, and a ' +
+    'knob defect refuses before it')
+  assert.ok(calls.some((c) => c.includes('--validate-knobs')),
+    'leg (c) [M3]: the run did reach the knob check')
+  assert.ok(!calls.some((c) => c.includes('--approve')), 'leg (c) [M3]: a refused run never approves')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

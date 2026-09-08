@@ -65,9 +65,11 @@ def write_args(repo, entries, **top):
     return args_path
 
 
-def validate(repo, args_path, env=None):
-    return sh([sys.executable, str(RUN), "--validate-knobs", str(args_path)],
-              cwd=repo, env=env)
+def validate(repo, args_path, *extra, env=None):
+    """The knob verb. `extra` carries the flags a case is pinning — #770's
+    `--no-baseline` is passed this way rather than through a second helper."""
+    return sh([sys.executable, str(RUN), "--validate-knobs", str(args_path),
+               *extra], cwd=repo, env=env)
 
 
 def worktrees(repo):
@@ -327,3 +329,103 @@ def test_a_bun_that_will_not_start_is_red_and_the_node_slot_stays_green(tmp_path
         {"cmd": NODE_A, "runner": "node", "ok": True},
     ]
     assert_no_probe_left(repo)
+
+
+# --- Task 1 / #770: the run-wide testCmd's runner, under `--no-baseline` -----
+# With the flag the preflight stops running the run-wide test command and
+# probes its runner instead — the same `runner_for` table and the same probe
+# worktree #234 already uses, reported under its own key `testCmdRunner`
+# (one object, not a list: it is one command) and never merged into
+# `perTaskTestCmds`, whose item count the legs above pin exactly.
+
+NODE_X = "node fleet/tests/test_x.mjs"
+ABSENT_RUNNER_CMD = "no-such-runner-770 tests/"
+
+
+def test_no_baseline_probes_the_run_wide_runner_in_the_probe_worktree(tmp_path):
+    """Leg (g) [M2]: `testCmdRunner` is the one {cmd, runner, ok} object, its
+    probe is a `--version` call made inside the wt-knob-* worktree, and the
+    test command itself is never run."""
+    repo = make_repo(tmp_path)
+    log = tmp_path / "node-nobaseline.log"
+    env = shim_env(tmp_path, "node", log)
+    args_path = write_args(repo, [entry("1")], testCmd=NODE_X)
+    r = validate(repo, args_path, "--no-baseline", env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert v["ok"] is True
+    assert isinstance(v["testCmdRunner"], dict), "one object, not a list"
+    assert v["testCmdRunner"] == {"cmd": NODE_X, "runner": "node", "ok": True}
+    recorded = calls(log)
+    assert [argv for _cwd, argv in recorded] == ["--version"]
+    cwd = pathlib.Path(recorded[0][0])
+    assert cwd.name.startswith("wt-knob-")
+    assert cwd.parent == (repo / ".claude/ultrapowers").resolve()
+    # M1/M2: the runner was probed, the suite was not run.
+    assert not any("test_x.mjs" in line for line in log.read_text().splitlines())
+    assert_no_probe_left(repo)                   # leg (l) [M5]
+
+
+def test_no_baseline_reds_a_run_wide_runner_that_does_not_resolve(tmp_path):
+    """Leg (h) [M2]: a runner the table does not know is its first word,
+    probed for resolution on PATH; one that resolves nowhere is red and
+    carries the line to exit 1."""
+    repo = make_repo(tmp_path)
+    args_path = write_args(repo, [entry("1")], testCmd=ABSENT_RUNNER_CMD)
+    r = validate(repo, args_path, "--no-baseline")
+    assert r.returncode == 1, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert v["ok"] is False
+    assert v["testCmdRunner"] == {"cmd": ABSENT_RUNNER_CMD,
+                                  "runner": "no-such-runner-770", "ok": False}
+    assert_no_probe_left(repo)                   # leg (l) [M5]
+
+
+def test_no_baseline_reds_a_run_wide_runner_whose_probe_exits_nonzero(tmp_path):
+    """Leg (i) [M2]: a runner that resolves but will not start is red too —
+    the probe's exit code is the verdict, fail-closed."""
+    repo = make_repo(tmp_path)
+    log = tmp_path / "node-probe-red.log"
+    env = shim_env(tmp_path, "node", log, exit_code=3, only_args="--version")
+    args_path = write_args(repo, [entry("1")], testCmd=NODE_X)
+    r = validate(repo, args_path, "--no-baseline", env=env)
+    assert r.returncode == 1, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert v["ok"] is False
+    assert v["testCmdRunner"]["ok"] is False
+    assert v["testCmdRunner"]["cmd"] == NODE_X
+    assert v["testCmdRunner"]["runner"] == "node"
+    assert_no_probe_left(repo)                   # leg (l) [M5]
+
+
+def test_no_baseline_without_a_run_wide_test_cmd_carries_no_runner_key(tmp_path):
+    """Leg (j) [M2]: `testCmdRunner` is additive — an args file with only
+    per-task commands keeps the BASE shape, `perTaskTestCmds` and no more."""
+    repo = make_repo(tmp_path)
+    args_path = write_args(repo, [entry("1", testCmd=NODE_A),
+                                  entry("2", testCmd=PYTEST_B)])
+    r = validate(repo, args_path, "--no-baseline")
+    assert r.returncode == 0, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert v["ok"] is True
+    assert v["perTaskTestCmds"] == [
+        {"cmd": NODE_A, "runner": "node", "ok": True},
+        {"cmd": PYTEST_B, "runner": "python3 -m pytest", "ok": True},
+    ]
+    assert "testCmdRunner" not in v
+    assert_no_probe_left(repo)                   # leg (l) [M5]
+
+
+def test_the_flagless_line_carries_no_run_wide_runner_key(tmp_path):
+    """Leg (k) [M4]: the same args file as leg (g), flagless — the BASE path
+    runs the baseline and prints no `testCmdRunner`."""
+    repo = make_repo(tmp_path)
+    log = tmp_path / "node-flagless.log"
+    env = shim_env(tmp_path, "node", log)
+    args_path = write_args(repo, [entry("1")], testCmd=NODE_X)
+    r = validate(repo, args_path, env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    v = json.loads(r.stdout)
+    assert "testCmdRunner" not in v
+    assert v["baseline"]["ok"] is True
+    assert_no_probe_left(repo)                   # leg (l) [M5]
