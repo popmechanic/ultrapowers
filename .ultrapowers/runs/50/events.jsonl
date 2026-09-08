@@ -52,3 +52,15 @@
 {"kind":"engine:phase","phase":"Depth-1 Leg","id":"01M203X5NG0000A99T0QPJ8R0F","ts":1788857980592}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M203X5NJ0000C08EKXRAT19A","ts":1788857980594}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"5a1fdf85-5423-4de4-8cc1-51e9424d3afc","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-50/clones/integration","model":"opus","id":"01M203X5NK0000AQWHV4XQK3QS","ts":1788857980595}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"5a1fdf85-5423-4de4-8cc1-51e9424d3afc","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6346,"output":13336,"cacheRead":1290515,"cacheCreation":81432,"costUsd":1.8247075,"models":["claude-opus-5"]},"id":"01M2042ZH2000099CKFQFHR8CD","ts":1788858170914}
+{"kind":"transcript:slice","label":"integration","sessionId":"5a1fdf85-5423-4de4-8cc1-51e9424d3afc","bytes":11409,"id":"01M2042ZH900004BR1E6XG8MF6","ts":1788858170921}
+{"kind":"engine:log","line":"depth-1 leg: green","id":"01M2045PTG00008HVER3XM989J","ts":1788858260304}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2045PTR00004C91CMWFFGWK","ts":1788858260312}
+{"kind":"driver:stage","stage":"finalize","id":"01M2045PVT0000P9AGY2KK7C5P","ts":1788858260346}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-50/acceptance.log","id":"01M2045PXB0000X62DN5Q7FB3A","ts":1788858260395}
+{"kind":"driver:stage","stage":"gate","id":"01M2045PXB0001EPSZXZ0KAVRD","ts":1788858260395}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M204E8RK0000YDR0QP2BAP0D","ts":1788858540819}
+{"kind":"driver:stage","stage":"approve","id":"01M204E8RK0001DGMVFB1KCD4N","ts":1788858540819}
+{"kind":"driver:approved","stamp":"run-50","integrationBranch":"ultra/integration-run-50","id":"01M204E8TH0000JDDVXZNDH9EP","ts":1788858540881}
+{"kind":"run:open","runId":"run-50","base":"5acdb723ce8d9e2b3069141db9ba7e91bf8734dc","source":"fleet/publish-fold.mjs","id":"01M204E90H000027MTQMKFRN3R","ts":1788858541073}
+{"kind":"driver:publish-fold","run":"50","attempt":"1","base":"5acdb723ce8d9e2b3069141db9ba7e91bf8734dc","tip":"004dd5fe7f09e1e7d641fdb2b6999c4185951c82","candidate":"c2f7af3babd9690a0b546f66c27ef4fe4fdd4a60","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","id":"01M204QKZN00000HF14G9JM6T5","ts":1788858847221}

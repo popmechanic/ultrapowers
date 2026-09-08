@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -114,7 +114,7 @@
             "! grep -nE '\\b(spawn|spawnSync|execFile|execFileSync|execSync|fork)\\(' fleet/tests/test_sandbox_boot_merge.mjs fleet/tests/_sandbox_boot_helpers.mjs | grep -vE \"\\b(spawn|spawnSync)\\(('bash'|path\\.join\\(ctx\\.bin)\" | grep .",
             "! grep -nE 'child_process' fleet/tests/test_sandbox_boot_merge.mjs fleet/tests/_sandbox_boot_helpers.mjs | grep -vE \"^[^:]+:[0-9]+:import \\{ (spawn|spawnSync|spawn, spawnSync|spawnSync, spawn) \\} from 'node:child_process'$\" | grep .",
             "test -s /tmp/merge-sim.out && grep -c '^ok (' /tmp/merge-sim.out | grep -qx 73 && ! grep -q 'still passes on the shared rig' /tmp/merge-sim.out",
-            "awk 'NR==FNR { need[substr($0, index($0, \" \") + 1)] = $1 + 0; next } /^ok \\(/ { for (t in need) if (index($0, t)) got[t]++ } END { bad = 0; for (t in need) { if (got[t] + 0 != need[t]) { print \"MISMATCH \" t \": want \" need[t] \" got \" got[t] + 0; bad = 1 } else print \"ok \" got[t] \" x \" t }; exit bad }' <(printf '%s\\n' '1 [leg (l)]' '1 [legs (a)\u2013(m)]' '1 [M1 / leg (a)]' '4 [M1 / leg (b)]' '1 [M2 / leg (c)]' '1 [M2 / leg (d)]' '3 [M1] [M2] / leg (e)]' '1 [M2 / leg (f)]' '1 [M2 / leg (g)]' '2 [M1] [M2] / leg (m)]' '1 [M3 / leg (h)]' '1 [M3 / leg (i)]' '2 [M3] [M4] / leg (j)]' '3 [M4 / leg (k)]' '3 [M5]' '3 [M6]' '1 [M7]' '8 [publish-fold M1 / leg (a)]' '6 [publish-fold M2 / leg (b)]' '1 [publish-fold M2 / leg (i)]' '3 [publish-fold M3 / leg (c)]' '4 [publish-fold M4 / leg (d)]' '7 [publish-fold M5 / leg (e)]' '1 [publish-fold M6 / leg (f)]' '8 [publish-fold M7 / leg (g)]' '3 [publish-fold M4 / leg (h)]' '2 [publish-fold M8 / leg (j)]') /tmp/merge-sim.out",
+            "awk 'NR==FNR { need[substr($0, index($0, \" \") + 1)] = $1 + 0; next } /^ok \\(/ { for (t in need) if (index($0, t)) got[t]++ } END { bad = 0; for (t in need) { if (got[t] + 0 != need[t]) { print \"MISMATCH \" t \": want \" need[t] \" got \" got[t] + 0; bad = 1 } else print \"ok \" got[t] \" x \" t }; exit bad }' <(printf '%s\\n' '1 [leg (l)]' '1 [legs (a)–(m)]' '1 [M1 / leg (a)]' '4 [M1 / leg (b)]' '1 [M2 / leg (c)]' '1 [M2 / leg (d)]' '3 [M1] [M2] / leg (e)]' '1 [M2 / leg (f)]' '1 [M2 / leg (g)]' '2 [M1] [M2] / leg (m)]' '1 [M3 / leg (h)]' '1 [M3 / leg (i)]' '2 [M3] [M4] / leg (j)]' '3 [M4 / leg (k)]' '3 [M5]' '3 [M6]' '1 [M7]' '8 [publish-fold M1 / leg (a)]' '6 [publish-fold M2 / leg (b)]' '1 [publish-fold M2 / leg (i)]' '3 [publish-fold M3 / leg (c)]' '4 [publish-fold M4 / leg (d)]' '7 [publish-fold M5 / leg (e)]' '1 [publish-fold M6 / leg (f)]' '8 [publish-fold M7 / leg (g)]' '3 [publish-fold M4 / leg (h)]' '2 [publish-fold M8 / leg (j)]') /tmp/merge-sim.out",
             "node fleet/tests/test_sandbox_boot_merge.mjs > /tmp/merge-sim-2.out & pid=$! && sleep 8 && alive=$(ps -eo ppid=,args= | awk -v p=\"$pid\" '$1 == p && $2 == \"bash\" && $NF == \"boot\" && $3 ~ /sandbox-boot\\.sh$/ { n++ } END { print n + 0 }') && printf 'boots alive at 8 s under node pid %s: %s\\n' \"$pid\" \"$alive\" && wait \"$pid\" && grep -q 'ALL TESTS PASSED' /tmp/merge-sim-2.out && [ \"$alive\" -ge 2 ]",
             "python3 -c \"import runpy; m = runpy.run_path('tests/test_fleet_suite.py'); assert m['SLOW_FIRST'][0] == 'test_sandbox_boot_selfmerge.mjs', m['SLOW_FIRST']; assert m['MJS_TIMEOUT'] == 300, m['MJS_TIMEOUT']\"",
             "grep -n '^#\\|^    #' tests/test_fleet_suite.py | grep 'longest' | grep -q 'test_sandbox_boot_selfmerge\\.mjs' && ! grep -qE 're-runs seven sibling|re-running seven siblings|sum of eight sims' tests/test_fleet_suite.py",
@@ -127,7 +127,7 @@
       ]
     ],
     "waveLabels": [
-      "The merge sim boots its scenarios side by side and nest\u2026"
+      "The merge sim boots its scenarios side by side and nest…"
     ],
     "mode": "sequential",
     "degrade_reason": "Sequential mode: 1 implementation tasks",
@@ -136,7 +136,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The boot script, the engine and the folder are untouched: this plan changes what the merge\n  sim does with `fleet/sandbox-boot.sh`, never the script \u2014 every leg still boots it with the\n  rig's stubs and `FLEET_POLL_SECONDS=0`, and no new environment knob is read by the script.\n- The rig grows beside its BASE exports rather than through them: what a sibling sim imports\n  today keeps its meaning, and a sibling that registers only synchronous tests is not asked\n  to change.\n- No sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a commit sha.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The boot script, the engine and the folder are untouched: this plan changes what the merge\n  sim does with `fleet/sandbox-boot.sh`, never the script — every leg still boots it with the\n  rig's stubs and `FLEET_POLL_SECONDS=0`, and no new environment knob is read by the script.\n- The rig grows beside its BASE exports rather than through them: what a sibling sim imports\n  today keeps its meaning, and a sibling that registers only synchronous tests is not asked\n  to change.\n- No sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a commit sha.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/publish-fold-block.mjs fleet/sandbox-boot.sh fleet/CONTRACT.md",
@@ -155,11 +155,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-50/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-50/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-50/acceptance.log"
 }

@@ -1,0 +1,1085 @@
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index 8a50ef3b5707a8afe08c455d3faf629443f5e6f2..bcf373443ddb4c45b1d0908c28d73e54f2f2997b 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -21,7 +21,7 @@
+ // homes under one temp root and `runTests` removes it when the process is done.
+ 
+ import assert from 'node:assert/strict'
+-import { spawnSync } from 'node:child_process'
++import { spawn, spawnSync } from 'node:child_process'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+@@ -624,10 +624,12 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true
+   return { home, bin }
+ }
+ 
+-export function boot(ctx, args = ['boot'], env = {}) {
+-  return spawnSync('bash', [SCRIPT, ...args], {
+-    encoding: 'utf8',
+-    env: {
++/**
++ * The environment a boot runs under, `env` last so a case can override any of
++ * it. One object, read by both the blocking `boot` and the promised
++ * `bootAsync`, so the two start the script exactly alike.
++ */
++const bootEnv = (ctx, env) => ({
+       PATH: process.env.PATH,
+       HOME: ctx.home,
+       FLEET_HOME: ctx.home,
+@@ -654,11 +656,49 @@ export function boot(ctx, args = ['boot'], env = {}) {
+       STUB_FOLD_LINE: FOLD_STUB_LINE,
+       STUB_FOLD_SUITE: FOLD_SUITE_TEXT,
+       ...env,
+-    },
++})
++
++export function boot(ctx, args = ['boot'], env = {}) {
++  return spawnSync('bash', [SCRIPT, ...args], {
++    encoding: 'utf8',
++    env: bootEnv(ctx, env),
+     timeout: 60000,
+   })
+ }
+ 
++/**
++ * `boot` as a promise: the same command, the same environment and a result of
++ * the same shape (`status`, `signal`, `stdout`, `stderr`), without holding the
++ * process while the script runs.
++ *
++ * Every scenario of a boot exam is independent of every other — its own
++ * `home`, its own stub counters, its own logs — so a sim with many of them can
++ * start them all and wait once. That is the difference between forty-seven
++ * boots one after another and forty-seven at once, and it is the only reason
++ * this exists: `boot` above is unchanged and still the way a synchronous case
++ * runs the script.
++ *
++ * The promise resolves on ANY exit — a non-zero status is the leg's to assert
++ * on, exactly as `boot`'s is — and rejects only when the child could not be
++ * started at all.
++ */
++export function bootAsync(ctx, args = ['boot'], env = {}) {
++  return new Promise((resolve, reject) => {
++    const child = spawn('bash', [SCRIPT, ...args], {
++      env: bootEnv(ctx, env),
++      stdio: ['ignore', 'pipe', 'pipe'],
++    })
++    let stdout = ''
++    let stderr = ''
++    child.stdout.setEncoding('utf8')
++    child.stderr.setEncoding('utf8')
++    child.stdout.on('data', (chunk) => { stdout += chunk })
++    child.stderr.on('data', (chunk) => { stderr += chunk })
++    child.on('error', reject)
++    child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }))
++  })
++}
++
+ export const readLog = (ctx, name) => {
+   const f = path.join(ctx.home, name)
+   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
+@@ -871,19 +911,39 @@ export const green = () => {
+   return GREEN
+ }
+ 
++// The same one green run, for a sim whose legs run their boots side by side.
++// What is memoised is the PROMISE and not its result: a dozen legs asking for
++// the green context while the boot is still in flight all join the one boot,
++// where a memo of the result would have started a dozen.
++let GREEN_ASYNC = null
++export const greenAsync = () => {
++  if (!GREEN_ASYNC) {
++    const ctx = makeHome()
++    GREEN_ASYNC = bootAsync(ctx).then((r) => {
++      assert.equal(r.status, 0, r.stdout + r.stderr)
++      return ctx
++    })
++  }
++  return GREEN_ASYNC
++}
++
+ // ── the runner ───────────────────────────────────────────────────────────────
+ 
+ /**
+  * Run `tests` — `[name, fn]` pairs — in order, printing one `ok (<ms> ms) —
+  * <name>` line per passing case. Removes the temp root, then prints
+  * `ALL TESTS PASSED`, or the failure count and `FAILED` with exit 1.
++ *
++ * A case may return a promise, which is awaited before the next one starts; a
++ * case that returns nothing runs to completion inside its own turn, exactly as
++ * it always has. The registration order is the running order either way.
+  */
+-export function runTests(tests) {
++export async function runTests(tests) {
+   let failures = 0
+   for (const [name, fn] of tests) {
+     const started = Date.now()
+     try {
+-      fn()
++      await fn()
+       console.log(`ok (${Date.now() - started} ms) — ${name}`)
+     } catch (error) {
+       failures += 1
+diff --git a/fleet/tests/test_sandbox_boot.mjs b/fleet/tests/test_sandbox_boot.mjs
+index 120c7659968b3f57f6001594a38d7fd374d60725..975a504a917c0e0cd9e6a7ee366c945b1107adde 100644
+--- a/fleet/tests/test_sandbox_boot.mjs
++++ b/fleet/tests/test_sandbox_boot.mjs
+@@ -862,14 +862,13 @@ const PHASES = ['Wave 1', 'Wave 2', 'Integration Review', 'gate']
+ /** M1's environment: four polls a second, the four phases, and an engine that
+  *  outlives the last of them.
+  *
+- *  The interval is a QUARTER of a second and not a whole one because leg (j) of
+- *  test_sandbox_boot_merge.mjs re-runs this whole exam inside its own, under the
+- *  wall tests/test_fleet_suite.py puts on a sim: four phases relayed at a
+- *  poll a second cost that chain four seconds per case for nothing the cases
+- *  read. What they read is the ORDER of the commits, which a faster poll only
+- *  reaches sooner. `STUB_ENGINE_SLEEP` is untouched — it is the margin the last
+- *  phase's commit has to land in before the unit exits, which legs (b) and (f)
+- *  assert on. */
++ *  The interval is a QUARTER of a second and not a whole one because this exam
++ *  is one of the longest poles of tests/test_fleet_suite.py, under the wall the
++ *  bridge puts on a sim: four phases relayed at a poll a second cost these
++ *  cases four seconds each for nothing they read. What they read is the ORDER
++ *  of the commits, which a faster poll only reaches sooner.
++ *  `STUB_ENGINE_SLEEP` is untouched — it is the margin the last phase's commit
++ *  has to land in before the unit exits, which legs (b) and (f) assert on. */
+ const PHASE_ENV = {
+   FLEET_STATUS_INTERVAL: '0.25',
+   STUB_ENGINE_PHASES: PHASES.join('|'),
+diff --git a/fleet/tests/test_sandbox_boot_merge.mjs b/fleet/tests/test_sandbox_boot_merge.mjs
+index 3426bab38abd0ce3f61a0153e3f62c812d95f241..6c66277e1983b8a5b4c074b7edfe6f89146e593c 100644
+--- a/fleet/tests/test_sandbox_boot_merge.mjs
++++ b/fleet/tests/test_sandbox_boot_merge.mjs
+@@ -67,7 +67,7 @@ import * as RIG from './_sandbox_boot_helpers.mjs'
+ import {
+   SCRIPT, TARGET, HEAD_SHA, BASE_SHA, PR_URL, PR_AUTHOR, PLAN_H1, ASSIGNMENT,
+   INTEGRATION_BRANCH, VM_NAME,
+-  makeHome, boot, green,
++  makeHome, boot, bootAsync, greenAsync as green,
+   readLog, lines, argvLines, stream, statusOf, committed, commitStates, notifies,
+   prPosts, engineRuns, unitsRun, gitLog, verbOf, dirOf, isIntegrationPush,
+   targetDir, checkReads, mergePuts,
+@@ -77,6 +77,70 @@ import {
+ const tests = []
+ const test = (name, fn) => tests.push([name, fn])
+ 
++// ── the scenarios, all in flight at once ─────────────────────────────────────
++//
++// Every scenario this file reads is an independent run of the boot script —
++// its own home, its own stub counters, its own logs — so none has to wait for
++// another. Each is STARTED where it is declared, at load, and a leg awaits
++// only the one it asks about; the boots overlap and the file's wall is the
++// slowest of them rather than the sum of all of them.
++//
++// `started` memoises the PROMISE, never its result, so a scenario several legs
++// share is booted once however early they ask. It also settles the promise into
++// a thunk, so a scenario whose boot failed throws in the leg that reads it —
++// a rejection sitting unread while another leg is on the clock would otherwise
++// tear the process down before the failing leg had its say.
++
++const started = (make) => {
++  const settled = make().then((value) => () => value, (error) => () => { throw error })
++  return () => settled.then((read) => read())
++}
++
++/**
++ * How many boots are in flight at once, and the only knob this file's wall
++ * turns on.
++ *
++ * A boot is ~40 forks of stub shell around a handful of tenth-of-a-second
++ * polls: fork-bound, so the box's cores are what it competes for. Three at a
++ * time is what the smallest box the suite runs on — a four-vCPU sandbox — can
++ * work on while still leaving a core to the process reading the results. Wider
++ * does not finish the forty-seven boots much sooner (they queue in the kernel
++ * instead of here) and narrower makes the file's wall the sum of its boots
++ * again, which is what this exam stopped being.
++ */
++const WIDTH = 3
++let inFlight = 0
++const waiting = []
++const pump = () => {
++  while (inFlight < WIDTH && waiting.length) {
++    inFlight += 1
++    waiting.shift()()
++  }
++}
++const acquire = () => new Promise((admit) => {
++  waiting.push(admit)
++  pump()
++})
++const release = () => {
++  inFlight -= 1
++  pump()
++}
++/** `bootAsync`, behind that gate. */
++const gatedBoot = (ctx, args, env) =>
++  acquire().then(() => bootAsync(ctx, args, env).finally(release))
++
++/** A boot of `args` under `env`, started now; resolves to its home, the run's
++ *  result hung on it as `result`. */
++const bootRun = (env = {}, args = ['boot']) => {
++  const ctx = makeHome()
++  return gatedBoot(ctx, args, env).then((result) => {
++    ctx.result = result
++    return ctx
++  })
++}
++/** The same, memoised for the legs that share it. */
++const scenario = (env = {}, args = ['boot']) => started(() => bootRun(env, args))
++
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const CONTRACT = path.join(HERE, '..', 'CONTRACT.md')
+ const RUNBOOK = path.join(HERE, '..', 'RUNBOOK.md')
+@@ -157,25 +221,11 @@ const RED_CONCLUSIONS = ['failure', 'cancelled', 'timed_out']
+ // A boot is ~40 forks of stub shell, so the two runs read by more than one leg
+ // are made once and read many times, the way the rig's own `green()` is.
+ 
+-let PARKED = null
+ /** A NEEDS_ACK verdict with no approval: the parked outcome, M3's first half. */
+-const parked = () => {
+-  if (!PARKED) {
+-    PARKED = makeHome()
+-    PARKED.result = boot(PARKED, ['boot'], { STUB_VERDICT: 'NEEDS_ACK' })
+-  }
+-  return PARKED
+-}
++const parked = scenario({ STUB_VERDICT: 'NEEDS_ACK' })
+ 
+-let HELD = null
+ /** The helper's assignment with ` hold=1` appended: M3's second half. */
+-const held = () => {
+-  if (!HELD) {
+-    HELD = makeHome()
+-    HELD.result = boot(HELD, ['boot'], { FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` })
+-  }
+-  return HELD
+-}
++const held = scenario({ FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` })
+ 
+ /**
+  * The four legs that end `done` with the PR left open say the same three
+@@ -206,8 +256,8 @@ test("the rig exports the merge stub's four readers  [legs (a)–(m)]", () => {
+ 
+ // ── (a) the green path reads the checks and merges  [M1] ─────────────────────
+ 
+-test('the green path GETs the check-runs URL and PUTs one squash merge  [M1 / leg (a)]', () => {
+-  const ctx = green()
++test('the green path GETs the check-runs URL and PUTs one squash merge  [M1 / leg (a)]', async () => {
++  const ctx = await green()
+ 
+   // M1's read: the URL is the target's and the pushed head's, exactly, and it
+   // is a GET — `-X` would make it something else.
+@@ -260,10 +310,11 @@ test('the green path GETs the check-runs URL and PUTs one squash merge  [M1 / le
+ 
+ // ── (b) the three green conclusions  [M1] ────────────────────────────────────
+ 
+-test('three completed runs concluding success, neutral and skipped merge  [M1 / leg (b)]', () => {
+-  const ctx = makeHome()
+-  const runs = GREEN_CONCLUSIONS.map((c, i) => done(`check-${i}`, c))
+-  const r = boot(ctx, ['boot'], { STUB_CHECKS: body(runs) })
++const threeGreen = scenario({ STUB_CHECKS: body(GREEN_CONCLUSIONS.map((c, i) => done(`check-${i}`, c))) })
++
++test('three completed runs concluding success, neutral and skipped merge  [M1 / leg (b)]', async () => {
++  const ctx = await threeGreen()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   assert.equal(mergeCalls(ctx).length, 1,
+@@ -274,9 +325,10 @@ test('three completed runs concluding success, neutral and skipped merge  [M1 /
+ })
+ 
+ for (const conclusion of GREEN_CONCLUSIONS) {
+-  test(`a single completed run concluding ${conclusion} merges  [M1 / leg (b)]`, () => {
+-    const ctx = makeHome()
+-    const r = boot(ctx, ['boot'], { STUB_CHECKS: body([done('test', conclusion)]) })
++  const oneGreen = scenario({ STUB_CHECKS: body([done('test', conclusion)]) })
++  test(`a single completed run concluding ${conclusion} merges  [M1 / leg (b)]`, async () => {
++    const ctx = await oneGreen()
++    const r = ctx.result
+     assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+     assert.equal(mergeCalls(ctx).length, 1,
+@@ -289,9 +341,11 @@ for (const conclusion of GREEN_CONCLUSIONS) {
+ 
+ // ── (c) a pending run keeps the poll going  [M2] ─────────────────────────────
+ 
+-test('two in_progress answers are polled through, and the PUT follows the third read  [M2 / leg (c)]', () => {
+-  const ctx = makeHome()
+-  const r = boot(ctx, ['boot'], { STUB_CHECKS_PENDING: '2' })
++const twoPending = scenario({ STUB_CHECKS_PENDING: '2' })
++
++test('two in_progress answers are polled through, and the PUT follows the third read  [M2 / leg (c)]', async () => {
++  const ctx = await twoPending()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   assert.equal(checkGets(ctx).length, 3,
+@@ -312,13 +366,15 @@ test('two in_progress answers are polled through, and the PUT follows the third
+ 
+ // ── (d) no check runs at all, after the grace  [M2] ──────────────────────────
+ 
+-test('an answer listing no check run waits out the grace, then merges  [M2 / leg (d)]', () => {
+-  const ctx = makeHome()
+-  const r = boot(ctx, ['boot'], {
+-    STUB_CHECKS: '{"total_count":0,"check_runs":[]}',
+-    FLEET_MERGE_CHECKS_GRACE: '1',
+-    FLEET_MERGE_CHECK_WAIT: '5',
+-  })
++const noChecks = scenario({
++  STUB_CHECKS: '{"total_count":0,"check_runs":[]}',
++  FLEET_MERGE_CHECKS_GRACE: '1',
++  FLEET_MERGE_CHECK_WAIT: '5',
++})
++
++test('an answer listing no check run waits out the grace, then merges  [M2 / leg (d)]', async () => {
++  const ctx = await noChecks()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   // `poll_attempts` is `timeout / step + 1` and `FLEET_POLL_SECONDS=0` makes
+@@ -337,9 +393,10 @@ test('an answer listing no check run waits out the grace, then merges  [M2 / leg
+ // ── (e) a completed conclusion outside the three stops the poll  [M1] [M2] ───
+ 
+ for (const conclusion of RED_CONCLUSIONS) {
+-  test(`a completed run concluding ${conclusion} leaves the PR open  [M1] [M2] / leg (e)]`, () => {
+-    const ctx = makeHome()
+-    const r = boot(ctx, ['boot'], { STUB_CHECKS: body([done('test', conclusion)]) })
++  const oneRed = scenario({ STUB_CHECKS: body([done('test', conclusion)]) })
++  test(`a completed run concluding ${conclusion} leaves the PR open  [M1] [M2] / leg (e)]`, async () => {
++    const ctx = await oneRed()
++    const r = ctx.result
+     assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+     assert.equal(mergeCalls(ctx).length, 0,
+@@ -355,12 +412,14 @@ for (const conclusion of RED_CONCLUSIONS) {
+ 
+ // ── (f) a poll that never completes  [M2] ────────────────────────────────────
+ 
+-test('a poll still pending after MERGE_CHECK_WAIT stops with no PUT  [M2 / leg (f)]', () => {
+-  const ctx = makeHome()
+-  const r = boot(ctx, ['boot'], {
+-    STUB_CHECKS_PENDING: '50',
+-    FLEET_MERGE_CHECK_WAIT: '3',
+-  })
++const neverCompletes = scenario({
++  STUB_CHECKS_PENDING: '50',
++  FLEET_MERGE_CHECK_WAIT: '3',
++})
++
++test('a poll still pending after MERGE_CHECK_WAIT stops with no PUT  [M2 / leg (f)]', async () => {
++  const ctx = await neverCompletes()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   assert.equal(checkGets(ctx).length, 4,
+@@ -373,9 +432,11 @@ test('a poll still pending after MERGE_CHECK_WAIT stops with no PUT  [M2 / leg (
+ 
+ // ── (g) a refused PUT is not retried  [M2] ───────────────────────────────────
+ 
+-test('a PUT answering 405 gets no second PUT  [M2 / leg (g)]', () => {
+-  const ctx = makeHome()
+-  const r = boot(ctx, ['boot'], { STUB_MERGE_CODE: '405' })
++const put405 = scenario({ STUB_MERGE_CODE: '405' })
++
++test('a PUT answering 405 gets no second PUT  [M2 / leg (g)]', async () => {
++  const ctx = await put405()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   assert.equal(mergeCalls(ctx).length, 1,
+@@ -387,11 +448,13 @@ test('a PUT answering 405 gets no second PUT  [M2 / leg (g)]', () => {
+ 
+ // ── (m) one green run beside a red or a pending one  [M1] [M2] ───────────────
+ 
+-test('a success beside a failure merges nothing, after one read  [M1] [M2] / leg (m)]', () => {
+-  const ctx = makeHome()
+-  const r = boot(ctx, ['boot'], {
+-    STUB_CHECKS: body([done('one', 'success'), done('two', 'failure')]),
+-  })
++const greenBesideRed = scenario({
++  STUB_CHECKS: body([done('one', 'success'), done('two', 'failure')]),
++})
++
++test('a success beside a failure merges nothing, after one read  [M1] [M2] / leg (m)]', async () => {
++  const ctx = await greenBesideRed()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   assert.equal(mergeCalls(ctx).length, 0,
+@@ -401,12 +464,14 @@ test('a success beside a failure merges nothing, after one read  [M1] [M2] / leg
+   assertLeftOpen(ctx, '(m) [M2] success beside failure:')
+ })
+ 
+-test('a success beside an in_progress run is polled to the deadline and merges nothing  [M1] [M2] / leg (m)]', () => {
+-  const ctx = makeHome()
+-  const r = boot(ctx, ['boot'], {
+-    STUB_CHECKS: body([done('one', 'success'), running('two')]),
+-    FLEET_MERGE_CHECK_WAIT: '3',
+-  })
++const greenBesidePending = scenario({
++  STUB_CHECKS: body([done('one', 'success'), running('two')]),
++  FLEET_MERGE_CHECK_WAIT: '3',
++})
++
++test('a success beside an in_progress run is polled to the deadline and merges nothing  [M1] [M2] / leg (m)]', async () => {
++  const ctx = await greenBesidePending()
++  const r = ctx.result
+   assert.equal(r.status, 0, r.stdout + r.stderr)
+ 
+   assert.equal(checkGets(ctx).length, 4,
+@@ -418,8 +483,8 @@ test('a success beside an in_progress run is polled to the deadline and merges n
+ 
+ // ── (h) a parked outcome never looks at the checks  [M3] ─────────────────────
+ 
+-test('a NEEDS_ACK verdict with no approval reads no checks and issues no PUT  [M3 / leg (h)]', () => {
+-  const ctx = parked()
++test('a NEEDS_ACK verdict with no approval reads no checks and issues no PUT  [M3 / leg (h)]', async () => {
++  const ctx = await parked()
+   assert.equal(ctx.result.status, 0, ctx.result.stdout + ctx.result.stderr)
+ 
+   const status = statusOf(ctx)
+@@ -433,8 +498,8 @@ test('a NEEDS_ACK verdict with no approval reads no checks and issues no PUT  [M
+ 
+ // ── (i) hold=1 publishes and stops  [M3] ─────────────────────────────────────
+ 
+-test('hold=1 publishes the PR, reads no checks and leaves it open  [M3 / leg (i)]', () => {
+-  const ctx = held()
++test('hold=1 publishes the PR, reads no checks and leaves it open  [M3 / leg (i)]', async () => {
++  const ctx = await held()
+   assert.equal(ctx.result.status, 0,
+     `(i) [M3] hold=1 is an accepted value: ${ctx.result.stdout}${ctx.result.stderr}`)
+ 
+@@ -454,9 +519,10 @@ test('hold=1 publishes the PR, reads no checks and leaves it open  [M3 / leg (i)
+ // ── (j) any other hold= value fails the assignment  [M3] [M4] ────────────────
+ 
+ for (const value of ['yes', '0']) {
+-  test(`hold=${value} fails before any clone, with 'assignment' in the error  [M3] [M4] / leg (j)]`, () => {
+-    const ctx = makeHome()
+-    const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=${value}` })
++  const badHold = scenario({ FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=${value}` })
++  test(`hold=${value} fails before any clone, with 'assignment' in the error  [M3] [M4] / leg (j)]`, async () => {
++    const ctx = await badHold()
++    const r = ctx.result
+     assert.notEqual(r.status, 0, `(j) [M3] hold=${value} must exit non-zero`)
+ 
+     const status = statusOf(ctx)
+@@ -475,8 +541,8 @@ for (const value of ['yes', '0']) {
+ 
+ // ── (k) the merged cell on every page, and nothing else moved  [M4] ──────────
+ 
+-test('every green-path evidence commit carries a merged cell, null until the merge  [M4 / leg (k)]', () => {
+-  const ctx = green()
++test('every green-path evidence commit carries a merged cell, null until the merge  [M4 / leg (k)]', async () => {
++  const ctx = await green()
+   const snaps = committed(ctx)
+   assert.equal(snaps.length, 3, `(k) [M4] three evidence commits${why(ctx)}`)
+   for (const [i, snap] of snaps.entries()) {
+@@ -489,8 +555,8 @@ test('every green-path evidence commit carries a merged cell, null until the mer
+   assert.equal(snaps[2].merged, mergeSha(), '(k) [M4] and the merge sha on the last')
+ })
+ 
+-test('the green path still commits running, publishing, done and notifies once  [M4 / leg (k)]', () => {
+-  const ctx = green()
++test('the green path still commits running, publishing, done and notifies once  [M4 / leg (k)]', async () => {
++  const ctx = await green()
+   assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'done'],
+     `(k) [M4] the merge adds no evidence commit between the PR and done${why(ctx)}`)
+   assert.deepEqual(notifies(ctx), [
+@@ -498,8 +564,8 @@ test('the green path still commits running, publishing, done and notifies once
+   ], '(k) [M4] and the run still sends exactly one notification, unchanged')
+ })
+ 
+-test('the parked page and the held page each carry a null merged cell  [M4 / leg (k)]', () => {
+-  for (const [label, ctx] of [['parked', parked()], ['held', held()]]) {
++test('the parked page and the held page each carry a null merged cell  [M4 / leg (k)]', async () => {
++  for (const [label, ctx] of [['parked', await parked()], ['held', await held()]]) {
+     const status = statusOf(ctx)
+     assert.ok('merged' in status, `(k) [M4] the ${label} page carries a merged cell`)
+     assert.equal(status.merged, null, `(k) [M4] and its value is null`)
+@@ -620,8 +686,11 @@ test("SKILL.md's step 4 says a ready PR merges itself and --hold keeps it open
+ //   M7  a 405 saying the PR is not mergeable buys ONE retry: a second fold
+ //       attempt, a leased push, and a second PUT after the checks and the
+ //       mergeability poll; every other refusal keeps one PUT.
+-//   M8  the shared rig answers the fold unit as its FIRST branch, and the seven
+-//       sibling boot sims still pass.
++//   M8  the shared rig answers the fold unit as its FIRST branch. That the rig's
++//       other sims still pass on it is the SUITE's sentence, not a leg of this
++//       file: every one of them is a sim of tests/test_fleet_suite.py already,
++//       and re-running them from inside here proved nothing the suite does not
++//       and cost more wall than every other leg put together.
+ //
+ // WHAT THIS HALF ASKS OF THE RIG (`_sandbox_boot_helpers.mjs`, the implementer's
+ // file). The stubs are driven by environment knobs only, so nothing here links
+@@ -745,20 +814,15 @@ const patches = (ctx) =>
+ 
+ // ── the runs this half reads ─────────────────────────────────────────────────
+ //
+-// One boot per shape, made on first use and read by every leg that asks about
+-// it — the same economy `green()` is.
++// One boot per shape, started where it is declared and read by every leg that
++// asks about it — the same economy `green()` is, and the same concurrency the
++// merge half's scenarios are.
+ 
+-const once = (make) => {
+-  let ctx = null
+-  return () => (ctx || (ctx = make()))
+-}
+ /** A boot with `env` on top of the rig's; `expect` null leaves the exit to the leg. */
+-const bootWith = (env, expect = 0) => once(() => {
+-  const ctx = makeHome()
+-  ctx.result = boot(ctx, ['boot'], env)
++const bootWith = (env, expect = 0) => started(() => bootRun(env).then((ctx) => {
+   if (expect !== null) assert.equal(ctx.result.status, expect, ctx.result.stdout + ctx.result.stderr)
+   return ctx
+-})
++}))
+ 
+ /** The one 405 that buys a retry (M7). */
+ const NOT_MERGEABLE = { STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Pull Request is not mergeable' }
+@@ -792,8 +856,8 @@ const noGateReceipt = bootWith({ STUB_NO_RECEIPT: '1' })
+ 
+ // ── (a) the fold unit, its argv and its place in the order  [M1] ─────────────
+ 
+-test('the green boot runs the engine, then one fold unit  [publish-fold M1 / leg (a)]', () => {
+-  const ctx = green()
++test('the green boot runs the engine, then one fold unit  [publish-fold M1 / leg (a)]', async () => {
++  const ctx = await green()
+   const units = unitsRun(ctx)
+   assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(a) [M1] exactly one fold unit, ${FOLD_UNIT_1}; the units run were ` +
+@@ -803,8 +867,8 @@ test('the green boot runs the engine, then one fold unit  [publish-fold M1 / leg
+     `(a) [M1] the engine's unit comes first: ${JSON.stringify(units)}`)
+ })
+ 
+-test("the fold unit's argv is the engine's bracket, pointed at publish-fold.mjs  [publish-fold M1 / leg (a)]", () => {
+-  const ctx = green()
++test("the fold unit's argv is the engine's bracket, pointed at publish-fold.mjs  [publish-fold M1 / leg (a)]", async () => {
++  const ctx = await green()
+   const argv = unitArgv(ctx, FOLD_UNIT_1, '(a) [M1]')
+   const shown = argv.join(' ')
+   for (const word of [
+@@ -835,8 +899,8 @@ test("the fold unit's argv is the engine's bracket, pointed at publish-fold.mjs
+     `(a) [M1] the folder the unit runs is a word ending /fleet/publish-fold.mjs: ${shown}`)
+ })
+ 
+-test("the fold's output is teed into publish-fold/publish-fold-1.log  [publish-fold M1 / leg (a)]", () => {
+-  const ctx = green()
++test("the fold's output is teed into publish-fold/publish-fold-1.log  [publish-fold M1 / leg (a)]", async () => {
++  const ctx = await green()
+   const log = foldRead(ctx, 'publish-fold-1.log', '(a) [M1]')
+   assert.ok(log.includes('fold stub speaking'),
+     `(a) [M1] the boot's own tee wrote the unit's stdout into publish-fold-1.log; it holds:\n${log}`)
+@@ -845,8 +909,8 @@ test("the fold's output is teed into publish-fold/publish-fold-1.log  [publish-f
+       `stub says so only when it already exists${whyFold(ctx)}`)
+ })
+ 
+-test('running/publish fold, the unit, its await and publishing are in that order  [publish-fold M1 / leg (a)]', () => {
+-  const ctx = green()
++test('running/publish fold, the unit, its await and publishing are in that order  [publish-fold M1 / leg (a)]', async () => {
++  const ctx = await green()
+   const running = at(ctx, (l) => l.startsWith('status: state=running') && l.includes('phase=publish fold'),
+     'a `status: state=running phase=publish fold` line', '(a) [M1]')
+   const unit = at(ctx, foldRunLine(FOLD_UNIT_1), `the fold unit's systemd-run line`, '(a) [M1]')
+@@ -860,8 +924,8 @@ test('running/publish fold, the unit, its await and publishing are in that order
+     `(a) [M1] publishing is claimed only after the fold unit is inactive${whyFold(ctx)}`)
+ })
+ 
+-test('no phase_refresher runs beside the fold unit  [publish-fold M1 / leg (a)]', () => {
+-  const ctx = green()
++test('no phase_refresher runs beside the fold unit  [publish-fold M1 / leg (a)]', async () => {
++  const ctx = await green()
+   const s = stream(ctx)
+   const exited = s.findIndex((l) => l.startsWith('engine: exited'))
+   assert.ok(exited >= 0, `(a) [M1] the engine's exit line is in the log${whyFold(ctx)}`)
+@@ -873,8 +937,8 @@ test('no phase_refresher runs beside the fold unit  [publish-fold M1 / leg (a)]'
+     `(a) [M1] and that one is the fold's: ${after[0]}`)
+ })
+ 
+-test("the engine's done marker holds the engine's code, not the fold's  [publish-fold M1 / leg (a)]", () => {
+-  for (const [label, ctx] of [['the green boot', green()], ['a fold that exited 3', foldCrash()]]) {
++test("the engine's done marker holds the engine's code, not the fold's  [publish-fold M1 / leg (a)]", async () => {
++  for (const [label, ctx] of [['the green boot', await green()], ['a fold that exited 3', await foldCrash()]]) {
+     assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+       `(a) [M1] ${label} ran the fold unit${whyFold(ctx)}`)
+     const marker = path.join(ctx.home, '.fleet-engine-done')
+@@ -885,16 +949,16 @@ test("the engine's done marker holds the engine's code, not the fold's  [publish
+   }
+ })
+ 
+-test('a parked outcome runs the fold unit too  [publish-fold M1 / leg (a)]', () => {
+-  const ctx = parked()
++test('a parked outcome runs the fold unit too  [publish-fold M1 / leg (a)]', async () => {
++  const ctx = await parked()
+   assert.equal(statusOf(ctx).state, 'parked')
+   assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(a) [M1] gate-green and parked alike fold, as long as there are commits ahead of BASE` +
+       `${whyFold(ctx)}`)
+ })
+ 
+-test('a branch with nothing ahead of BASE starts no fold unit  [publish-fold M1 / leg (a)]', () => {
+-  const ctx = noCommits()
++test('a branch with nothing ahead of BASE starts no fold unit  [publish-fold M1 / leg (a)]', async () => {
++  const ctx = await noCommits()
+   assert.equal(statusOf(ctx).state, 'parked')
+   assert.deepEqual(foldUnits(ctx), [],
+     `(a) [M1] nothing to publish is nothing to fold${whyFold(ctx)}`)
+@@ -904,8 +968,8 @@ test('a branch with nothing ahead of BASE starts no fold unit  [publish-fold M1
+ 
+ // ── (b) the page first, the crash row, and the deadman  [M2] ─────────────────
+ 
+-test('a fold that exits non-zero with no disposition restores the ref and writes a crash row  [publish-fold M2 / leg (b)]', () => {
+-  const ctx = foldCrash()
++test('a fold that exits non-zero with no disposition restores the ref and writes a crash row  [publish-fold M2 / leg (b)]', async () => {
++  const ctx = await foldCrash()
+   const leg = '(b) [M2]'
+   const head = foldRead(ctx, 'engine-head', leg).trim()
+   const refs = updateRefs(ctx)
+@@ -932,8 +996,8 @@ test('a fold that exits non-zero with no disposition restores the ref and writes
+     `${leg} whose phase carries the disposition; got: ${status.phase}`)
+ })
+ 
+-test('a crash before the folder wrote engine-head reads the branch first  [publish-fold M2 / leg (b)]', () => {
+-  const ctx = foldCrashNoHead()
++test('a crash before the folder wrote engine-head reads the branch first  [publish-fold M2 / leg (b)]', async () => {
++  const ctx = await foldCrashNoHead()
+   const leg = '(b) [M2]'
+   const git = gitLog(ctx)
+   const revParse = git.findIndex(isBranchRevParse)
+@@ -948,8 +1012,8 @@ test('a crash before the folder wrote engine-head reads the branch first  [publi
+   assert.equal(attemptOf(ctx, 1, leg).disposition, 'cannot fold', `${leg} and carries the crash row`)
+ })
+ 
+-test('a fold that wrote its disposition and then died keeps its row  [publish-fold M2 / leg (b)]', () => {
+-  const ctx = foldCrashFolded()
++test('a fold that wrote its disposition and then died keeps its row  [publish-fold M2 / leg (b)]', async () => {
++  const ctx = await foldCrashFolded()
+   const leg = '(b) [M2]'
+   assert.deepEqual(updateRefs(ctx), [],
+     `${leg} no ref is restored: the invoked attempt recorded a disposition${whyFold(ctx)}`)
+@@ -958,8 +1022,8 @@ test('a fold that wrote its disposition and then died keeps its row  [publish-fo
+     `${leg} and the folder's own disposition is not overwritten by a crash row`)
+ })
+ 
+-test("attempt 2's crash restores attempt 1's candidate, not engine-head  [publish-fold M2 / leg (b)]", () => {
+-  const ctx = crashOnTwo()
++test("attempt 2's crash restores attempt 1's candidate, not engine-head  [publish-fold M2 / leg (b)]", async () => {
++  const ctx = await crashOnTwo()
+   const leg = '(b) [M2]'
+   const head = foldRead(ctx, 'engine-head', leg).trim()
+   const first = attemptOf(ctx, 1, leg)
+@@ -979,8 +1043,8 @@ test("attempt 2's crash restores attempt 1's candidate, not engine-head  [publis
+     `${leg} and the second carries the lease: ${pushes[1].join(' ')}`)
+ })
+ 
+-test('an unparsable receipt at crash time is replaced, not read  [publish-fold M2 / leg (b)]', () => {
+-  const ctx = foldCrashBadReceipt()
++test('an unparsable receipt at crash time is replaced, not read  [publish-fold M2 / leg (b)]', async () => {
++  const ctx = await foldCrashBadReceipt()
+   const leg = '(b) [M2]'
+   const receipt = receiptOf(ctx, leg)
+   assert.equal(receipt.engineHead, HEAD_SHA,
+@@ -995,8 +1059,8 @@ test('an unparsable receipt at crash time is replaced, not read  [publish-fold M
+     `${leg} and no attempt names a pushedHead, so the push is plain: ${pushes[0].join(' ')}`)
+ })
+ 
+-test("the deadman's parked page ends the run at 0 with no push and no PR  [publish-fold M2 / leg (b)]", () => {
+-  const ctx = foldPark()
++test("the deadman's parked page ends the run at 0 with no push and no PR  [publish-fold M2 / leg (b)]", async () => {
++  const ctx = await foldPark()
+   const leg = '(b) [M2]'
+   assert.equal(ctx.result.status, 0,
+     `${leg} the deadman's own exit is taken: ${ctx.result.stdout}${ctx.result.stderr}`)
+@@ -1018,7 +1082,9 @@ test("the deadman's parked page ends the run at 0 with no push and no PR  [publi
+     `${leg} and the receipt's .tmp is removed`)
+ })
+ 
+-test('the deadman stops the fold units beside the engine and carries the PR cells forward  [publish-fold M2 / leg (i)]', () => {
++/** A home whose page says a fold is running, and the deadman's own pass over
++ *  it — leg (i)'s scenario, started at load like every other. */
++const deadmanOverFold = started(() => {
+   const ctx = makeHome()
+   const page = {
+     run: '7', state: 'running', phase: 'publish fold', pr: PR_URL, prAuthor: PR_AUTHOR,
+@@ -1027,8 +1093,13 @@ test('the deadman stops the fold units beside the engine and carries the PR cell
+   }
+   fs.mkdirSync(path.join(ctx.home, 'www'), { recursive: true })
+   fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'), JSON.stringify(page))
++  return gatedBoot(ctx, ['deadman'], { STUB_ENGINE_ACTIVE: 'active', STUB_FOLD_ACTIVE: 'active' })
++    .then((dead) => { ctx.dead = dead; return ctx })
++})
+ 
+-  const dead = boot(ctx, ['deadman'], { STUB_ENGINE_ACTIVE: 'active', STUB_FOLD_ACTIVE: 'active' })
++test('the deadman stops the fold units beside the engine and carries the PR cells forward  [publish-fold M2 / leg (i)]', async () => {
++  const ctx = await deadmanOverFold()
++  const dead = ctx.dead
+   assert.equal(dead.status, 0, dead.stdout + dead.stderr)
+ 
+   const stops = argvLines(ctx, 'systemctl').filter((a) => a.includes('stop')).map((a) => a.join(' '))
+@@ -1046,8 +1117,8 @@ test('the deadman stops the fold units beside the engine and carries the PR cell
+ 
+ // ── (c) push_head  [M3] ──────────────────────────────────────────────────────
+ 
+-test('the green boot pushes the branch plainly, then reads it back  [publish-fold M3 / leg (c)]', () => {
+-  const ctx = green()
++test('the green boot pushes the branch plainly, then reads it back  [publish-fold M3 / leg (c)]', async () => {
++  const ctx = await green()
+   const leg = '(c) [M3]'
+   const pushes = integrationPushes(ctx)
+   assert.equal(pushes.length, 1, `${leg} exactly one push of ${INTEGRATION_BRANCH}${whyFold(ctx)}`)
+@@ -1081,8 +1152,8 @@ test('a re-entry that already recorded a PR still pushes, and POSTs nothing  [pu
+     `(c) [M3] but the head is pushed again — the push left publish with the re-entry${whyFold(ctx)}`)
+ })
+ 
+-test('a refused integration push fails the run before the PR  [publish-fold M3 / leg (c)]', () => {
+-  const ctx = pushFail()
++test('a refused integration push fails the run before the PR  [publish-fold M3 / leg (c)]', async () => {
++  const ctx = await pushFail()
+   const leg = '(c) [M3]'
+   assert.notEqual(ctx.result.status, 0, `${leg} a refused push ends the run non-zero`)
+   const status = statusOf(ctx)
+@@ -1103,8 +1174,8 @@ const bodyOf = (ctx, leg) => {
+   return posts[0].body
+ }
+ 
+-test("a suite-red fold puts its section, its tail and publish-fold in the body  [publish-fold M4 / leg (d)]", () => {
+-  const ctx = suiteRed()
++test("a suite-red fold puts its section, its tail and publish-fold in the body  [publish-fold M4 / leg (d)]", async () => {
++  const ctx = await suiteRed()
+   const leg = '(d) [M4]'
+   const body = bodyOf(ctx, leg)
+   const section = body.indexOf('## Publish fold')
+@@ -1122,25 +1193,25 @@ test("a suite-red fold puts its section, its tail and publish-fold in the body
+     `${leg} and plan_closes' lines are still the body's last:\n${body}`)
+ })
+ 
+-test('a conflict-parked fold names its path in the body  [publish-fold M4 / leg (d)]', () => {
+-  const ctx = conflictParked()
++test('a conflict-parked fold names its path in the body  [publish-fold M4 / leg (d)]', async () => {
++  const ctx = await conflictParked()
+   const body = bodyOf(ctx, '(d) [M4]')
+   assert.ok(body.includes('## Publish fold'), `(d) [M4] the section is rendered:\n${body}`)
+   assert.ok(body.includes('conflict parked on a.txt'),
+     `(d) [M4] naming the disposition and the path:\n${body}`)
+ })
+ 
+-test('a folded run renders the section only when it dispatched a resolver  [publish-fold M4 / leg (d)]', () => {
+-  const withResolver = bodyOf(foldedResolvers(), '(d) [M4] folded, one resolver:')
++test('a folded run renders the section only when it dispatched a resolver  [publish-fold M4 / leg (d)]', async () => {
++  const withResolver = bodyOf(await foldedResolvers(), '(d) [M4] folded, one resolver:')
+   assert.ok(withResolver.includes('## Publish fold'),
+     `(d) [M4] a folded whose resolversDispatched is non-zero gets a section:\n${withResolver}`)
+-  const plain = bodyOf(foldedPlain(), '(d) [M4] folded, no resolver:')
++  const plain = bodyOf(await foldedPlain(), '(d) [M4] folded, no resolver:')
+   assert.ok(!plain.includes('## Publish fold'),
+     `(d) [M4] a folded with zero resolvers gets none — there is nothing to disclose:\n${plain}`)
+ })
+ 
+-test('nothing to join renders no section  [publish-fold M4 / leg (d)]', () => {
+-  const ctx = nothingToJoin()
++test('nothing to join renders no section  [publish-fold M4 / leg (d)]', async () => {
++  const ctx = await nothingToJoin()
+   assert.equal(attemptOf(ctx, 1, '(d) [M4]').disposition, 'nothing to join',
+     '(d) [M4] the fold ran and recorded its disposition')
+   const body = bodyOf(ctx, '(d) [M4] nothing to join:')
+@@ -1152,8 +1223,8 @@ test('nothing to join renders no section  [publish-fold M4 / leg (d)]', () => {
+ 
+ const phaseOf = (ctx) => String(statusOf(ctx).phase)
+ 
+-test('a red suite holds the PR: no check read, no PUT, and the failure in the phase  [publish-fold M5 / leg (e)]', () => {
+-  const ctx = suiteRed()
++test('a red suite holds the PR: no check read, no PUT, and the failure in the phase  [publish-fold M5 / leg (e)]', async () => {
++  const ctx = await suiteRed()
+   const leg = '(e) [M5]'
+   assert.equal(checkReads(ctx), 0,
+     `${leg} a non-empty FOLD_HOLD reads no check runs at all${whyFold(ctx)}`)
+@@ -1164,8 +1235,8 @@ test('a red suite holds the PR: no check read, no PUT, and the failure in the ph
+     `${leg} and the done phase is FOLD_HOLD's text; got: ${phaseOf(ctx)}`)
+ })
+ 
+-test('a parked conflict names its path in the phase  [publish-fold M5 / leg (e)]', () => {
+-  const ctx = conflictParked()
++test('a parked conflict names its path in the phase  [publish-fold M5 / leg (e)]', async () => {
++  const ctx = await conflictParked()
+   assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, 'conflict parked',
+     '(e) [M5] the fold parked on a conflict')
+   assert.ok(phaseOf(ctx).includes('left open: publish fold — conflict parked on a.txt'),
+@@ -1173,8 +1244,8 @@ test('a parked conflict names its path in the phase  [publish-fold M5 / leg (e)]
+   assert.deepEqual(mergePuts(ctx), [], '(e) [M5] and no PUT was issued')
+ })
+ 
+-test('a cannot-fold names its reason in the phase  [publish-fold M5 / leg (e)]', () => {
+-  const ctx = cannotFold()
++test('a cannot-fold names its reason in the phase  [publish-fold M5 / leg (e)]', async () => {
++  const ctx = await cannotFold()
+   assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, 'cannot fold',
+     '(e) [M5] the fold could not fold')
+   assert.ok(phaseOf(ctx).includes('left open: publish fold — cannot fold: base not an ancestor'),
+@@ -1182,8 +1253,8 @@ test('a cannot-fold names its reason in the phase  [publish-fold M5 / leg (e)]',
+   assert.deepEqual(mergePuts(ctx), [], '(e) [M5] and no PUT was issued')
+ })
+ 
+-test('a held run under a fold hold still says hold=1  [publish-fold M5 / leg (e)]', () => {
+-  const ctx = heldFolded()
++test('a held run under a fold hold still says hold=1  [publish-fold M5 / leg (e)]', async () => {
++  const ctx = await heldFolded()
+   assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(e) [M5] a held run folds all the same${whyFold(ctx)}`)
+   assert.ok(phaseOf(ctx).includes('left open: hold=1'),
+@@ -1191,17 +1262,17 @@ test('a held run under a fold hold still says hold=1  [publish-fold M5 / leg (e)
+   assert.deepEqual(mergePuts(ctx), [], '(e) [M5] and no PUT')
+ })
+ 
+-test('a red suite on a parked outcome still opens a draft  [publish-fold M5 / leg (e)]', () => {
+-  const ctx = suiteRedParked()
++test('a red suite on a parked outcome still opens a draft  [publish-fold M5 / leg (e)]', async () => {
++  const ctx = await suiteRedParked()
+   assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, 'suite red',
+     '(e) [M5] the fold ran and its suite was red')
+   assert.equal(prPosts(ctx)[0].draft, true,
+     `(e) [M5] the draft flag follows the gate's outcome, not the fold's${whyFold(ctx)}`)
+ })
+ 
+-for (const [name, run] of [['folded', foldedPlain], ['nothing to join', nothingToJoin]]) {
+-  test(`a ${name} fold merges the way the green path does  [publish-fold M5 / leg (e)]`, () => {
+-    const ctx = run()
++for (const [name, folded] of [['folded', foldedPlain], ['nothing to join', nothingToJoin]]) {
++  test(`a ${name} fold merges the way the green path does  [publish-fold M5 / leg (e)]`, async () => {
++    const ctx = await folded()
+     assert.equal(attemptOf(ctx, 1, '(e) [M5]').disposition, name,
+       `(e) [M5] the fold ran and disposed of the join as '${name}'`)
+     assert.equal(mergePuts(ctx).length, 1,
+@@ -1213,8 +1284,8 @@ for (const [name, run] of [['folded', foldedPlain], ['nothing to join', nothingT
+ 
+ // ── (f) the merge payload's commit_message  [M6] ─────────────────────────────
+ 
+-test('the merge PUT carries the run and plan tag as its commit_message  [publish-fold M6 / leg (f)]', () => {
+-  const ctx = green()
++test('the merge PUT carries the run and plan tag as its commit_message  [publish-fold M6 / leg (f)]', async () => {
++  const ctx = await green()
+   const puts = mergePuts(ctx)
+   assert.equal(puts.length, 1, '(f) [M6] the green path merges once')
+   assert.equal(puts[0].commit_message, 'Fleet-Run: 7\nPlan-Tag: ultra/plan/run-7',
+@@ -1226,8 +1297,8 @@ test('the merge PUT carries the run and plan tag as its commit_message  [publish
+ 
+ // ── (g) the one retry  [M7] ─────────────────────────────────────────────────
+ 
+-test('a 405 saying "not mergeable" buys one more fold, one leased push and one more PUT  [publish-fold M7 / leg (g)]', () => {
+-  const ctx = retryMerged()
++test('a 405 saying "not mergeable" buys one more fold, one leased push and one more PUT  [publish-fold M7 / leg (g)]', async () => {
++  const ctx = await retryMerged()
+   const leg = '(g) [M7]'
+   assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'running', 'publishing', 'done'],
+     `${leg} the retry's evidence commits${whyFold(ctx)}`)
+@@ -1262,16 +1333,16 @@ test('a 405 saying "not mergeable" buys one more fold, one leased push and one m
+   assert.ok(phaseOf(ctx).includes('merged'), `${leg} and the run merged; got: ${phaseOf(ctx)}`)
+ })
+ 
+-test('a second 405 is the end of it  [publish-fold M7 / leg (g)]', () => {
+-  const ctx = retry405Twice()
++test('a second 405 is the end of it  [publish-fold M7 / leg (g)]', async () => {
++  const ctx = await retry405Twice()
+   assert.equal(mergePuts(ctx).length, 2,
+     `(g) [M7] exactly two PUTs — the retry is bought once${whyFold(ctx)}`)
+   assert.ok(phaseOf(ctx).includes('left open: merge PUT answered 405 twice'),
+     `(g) [M7] got: ${phaseOf(ctx)}`)
+ })
+ 
+-test('a tip unmoved on attempt 2 skips the push and the merge  [publish-fold M7 / leg (g)]', () => {
+-  const ctx = retryTipUnmoved()
++test('a tip unmoved on attempt 2 skips the push and the merge  [publish-fold M7 / leg (g)]', async () => {
++  const ctx = await retryTipUnmoved()
+   const leg = '(g) [M7]'
+   assert.equal(attemptOf(ctx, 2, leg).disposition, 'tip unmoved',
+     `${leg} the retry ran and found the tip where it left it`)
+@@ -1282,8 +1353,8 @@ test('a tip unmoved on attempt 2 skips the push and the merge  [publish-fold M7
+   assert.ok(phaseOf(ctx).includes('405 twice'), `${leg} got: ${phaseOf(ctx)}`)
+ })
+ 
+-test('a 405 for any other reason keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', () => {
+-  const ctx = merge405Other()
++test('a 405 for any other reason keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', async () => {
++  const ctx = await merge405Other()
+   assert.equal(mergePuts(ctx).length, 1, `(g) [M7] one PUT${whyFold(ctx)}`)
+   assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(g) [M7] and the run folded once and only once: ${JSON.stringify(unitsRun(ctx))}`)
+@@ -1292,8 +1363,8 @@ test('a 405 for any other reason keeps one PUT and starts no second fold  [publi
+   assert.ok(!phaseOf(ctx).includes('twice'), `(g) [M7] and not twice: ${phaseOf(ctx)}`)
+ })
+ 
+-test('a 409 keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', () => {
+-  const ctx = merge409()
++test('a 409 keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]', async () => {
++  const ctx = await merge409()
+   assert.equal(mergePuts(ctx).length, 1, `(g) [M7] one PUT${whyFold(ctx)}`)
+   assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(g) [M7] and the run folded once and only once: ${JSON.stringify(unitsRun(ctx))}`)
+@@ -1301,9 +1372,9 @@ test('a 409 keeps one PUT and starts no second fold  [publish-fold M7 / leg (g)]
+     `(g) [M7] got: ${phaseOf(ctx)}`)
+ })
+ 
+-for (const [code, run] of [['422', merge422], ['500', merge500]]) {
+-  test(`a ${code} keeps one PUT, three evidence commits and one note  [publish-fold M7 / leg (g)]`, () => {
+-    const ctx = run()
++for (const [code, refused] of [['422', merge422], ['500', merge500]]) {
++  test(`a ${code} keeps one PUT, three evidence commits and one note  [publish-fold M7 / leg (g)]`, async () => {
++    const ctx = await refused()
+     assert.equal(mergePuts(ctx).length, 1, `(g) [M7] one PUT${whyFold(ctx)}`)
+     assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(g) [M7] and the run folded once and only once: ${JSON.stringify(unitsRun(ctx))}`)
+@@ -1314,8 +1385,8 @@ for (const [code, run] of [['422', merge422], ['500', merge500]]) {
+   })
+ }
+ 
+-test('the mergeable poll runs until GitHub answers something  [publish-fold M7 / leg (g)]', () => {
+-  const ctx = mergeableLate()
++test('the mergeable poll runs until GitHub answers something  [publish-fold M7 / leg (g)]', async () => {
++  const ctx = await mergeableLate()
+   const leg = '(g) [M7]'
+   const puts = indicesOf(ctx, isMergePut)
+   assert.equal(puts.length, 2, `${leg} the retry ran${whyFold(ctx)}`)
+@@ -1326,8 +1397,8 @@ test('the mergeable poll runs until GitHub answers something  [publish-fold M7 /
+ 
+ // ── (h) the body PATCH  [M4] ────────────────────────────────────────────────
+ 
+-test("a disposition that lands after the POST is PATCHed onto the body  [publish-fold M4 / leg (h)]", () => {
+-  const ctx = retrySuiteRed()
++test("a disposition that lands after the POST is PATCHed onto the body  [publish-fold M4 / leg (h)]", async () => {
++  const ctx = await retrySuiteRed()
+   const leg = '(h) [M4]'
+   const sent = patches(ctx)
+   assert.equal(sent.length, 1, `${leg} exactly one PATCH${whyFold(ctx)}`)
+@@ -1339,8 +1410,8 @@ test("a disposition that lands after the POST is PATCHed onto the body  [publish
+     `${leg} and the done page's phase carries it too; got: ${phaseOf(ctx)}`)
+ })
+ 
+-test('a run refused twice PATCHes its body after the second PUT  [publish-fold M4 / leg (h)]', () => {
+-  const ctx = retry405Twice()
++test('a run refused twice PATCHes its body after the second PUT  [publish-fold M4 / leg (h)]', async () => {
++  const ctx = await retry405Twice()
+   const leg = '(h) [M4]'
+   const sent = patches(ctx)
+   assert.equal(sent.length, 1, `${leg} exactly one PATCH${whyFold(ctx)}`)
+@@ -1355,8 +1426,8 @@ test('a run refused twice PATCHes its body after the second PUT  [publish-fold M
+     `${leg} sent after the second PUT, whose answer it discloses${whyFold(ctx)}`)
+ })
+ 
+-test('a one-attempt run sends no PATCH at all  [publish-fold M4 / leg (h)]', () => {
+-  const ctx = green()
++test('a one-attempt run sends no PATCH at all  [publish-fold M4 / leg (h)]', async () => {
++  const ctx = await green()
+   assert.deepEqual(Object.keys(receiptOf(ctx, '(h) [M4]').attempts || {}), ['1'],
+     '(h) [M4] the green run folded once')
+   assert.deepEqual(patches(ctx), [],
+@@ -1365,8 +1436,8 @@ test('a one-attempt run sends no PATCH at all  [publish-fold M4 / leg (h)]', ()
+ 
+ // ── (j) the rig itself  [M8] ────────────────────────────────────────────────
+ 
+-test("the fold unit does not take the engine's branch of the stub  [publish-fold M8 / leg (j)]", () => {
+-  const ctx = noGateReceipt()
++test("the fold unit does not take the engine's branch of the stub  [publish-fold M8 / leg (j)]", async () => {
++  const ctx = await noGateReceipt()
+   const receipt = path.join(ctx.home, 'target', '.claude', 'ultrapowers', 'run-run-7', 'gate-receipt.json')
+   assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1],
+     `(j) [M8] the fold unit ran${whyFold(ctx)}`)
+@@ -1386,23 +1457,4 @@ test('the systemctl stub answers a fold unit inactive  [publish-fold M8 / leg (j
+     '(j) [M8] a fold unit is inactive unless STUB_FOLD_ACTIVE says otherwise')
+ })
+ 
+-for (const sim of [
+-  'test_sandbox_boot.mjs',
+-  'test_sandbox_boot_edges.mjs',
+-  'test_sandbox_boot_record.mjs',
+-  'test_sandbox_boot_approved.mjs',
+-  'test_sandbox_boot_approval_evidence.mjs',
+-  'test_sandbox_boot_effort.mjs',
+-  'test_sandbox_boot_selfmerge.mjs',
+-]) {
+-  test(`${sim} still passes on the shared rig  [publish-fold M8 / leg (j)]`, () => {
+-    const r = spawnSync(process.execPath, [path.join(HERE, sim)], {
+-      encoding: 'utf8',
+-      timeout: 300000,
+-    })
+-    assert.ok(String(r.stdout).includes('ALL TESTS PASSED'),
+-      `(j) [M8] the rig's fold half is additive — ${sim} reads it too:\n${r.stdout}${r.stderr}`)
+-  })
+-}
+-
+ runTests(tests)
+diff --git a/tests/test_fleet_suite.py b/tests/test_fleet_suite.py
+index e561e063c89d1f5cb0a00717dc8a69f685584f06..5fefe7471cf74af1912e0f01af4fc48602da7f5c 100644
+--- a/tests/test_fleet_suite.py
++++ b/tests/test_fleet_suite.py
+@@ -2,19 +2,24 @@ import fcntl
+ import glob, os, subprocess, pytest
+ 
+ FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
+-# Measured wall at 0.3.18: 106 s, 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s.
+-# Under `--dist load` a worker that picks up a 106 s sim last holds the whole
+-# suite open, so the seven longest go out first, longest first; the rest follow
+-# alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
+-# test_sandbox_boot_merge.mjs leads it because leg (j) re-runs seven sibling
+-# sims inside itself: its wall is theirs plus its own, so it is the longest sim
+-# there is and it grows whenever any of the seven does — every leg added to a
+-# sibling lands on it twice, which is also why `timeout` below reads
+-# MJS_TIMEOUT rather than a literal.
+-SLOW_FIRST = ('test_sandbox_boot_merge.mjs', 'test_run_engine_examiner.mjs',
+-              'test_sandbox_boot.mjs',
+-              'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
+-              'test_run_engine_proof_runs.mjs', 'test_deadline_slack.mjs')
++# Measured wall at 0.3.19 under `-n 6`: 40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s,
++# 12.6 s, 10.6 s.
++# Under `--dist load` a worker that picks up a 40 s sim last holds the whole
++# suite open, so the seven longest go out first; the rest follow alphabetically.
++# A name that leaves fleet/tests/ simply drops out of the list.
++# test_sandbox_boot_selfmerge.mjs leads it as the longest sim that boots
++# fleet/sandbox-boot.sh — the pole test_sandbox_boot_merge.mjs used to hide.
++# The merge sim ran it and six other boot siblings inside itself and no longer
++# does, so the wall that used to be charged to the merge sim is this one's now,
++# out where the bridge can dispatch it first. test_run_engine_proof_runs.mjs is
++# longer still and follows it: the head of this list goes out in one dispatch
++# round, so the order WITHIN it is not what keeps a worker from stranding —
++# membership is. `timeout` below reads MJS_TIMEOUT rather than a literal so the
++# cap and this list keep being read together.
++SLOW_FIRST = ('test_sandbox_boot_selfmerge.mjs', 'test_run_engine_proof_runs.mjs',
++              'test_sandbox_boot.mjs', 'test_sandbox_boot_merge.mjs',
++              'test_sandbox_boot_edges.mjs', 'test_run_engine_exam_evidence.mjs',
++              'test_publish_fold.mjs')
+ 
+ 
+ def _slowest_first(paths):
+@@ -45,11 +50,14 @@ def _ensure_node_modules():
+ 
+ # The cap is per sim, and it is a hang detector, not a budget: a sim that has
+ # not spoken in this long is wedged, not slow. 120 s was a fit for a fleet whose
+-# longest sim was 83.5 s, and it stopped being one when the nesting above made
+-# `test_sandbox_boot_merge.mjs` the sum of eight sims — ~130 s of wall on an idle
+-# four-core box, and every core busy with a peer worker under `-n auto` puts it
+-# near 150 s. 300 s keeps roughly the margin over the longest pole that 120 s
+-# had over 83.5 s.
++# longest sim was 83.5 s, and it stopped being one when the merge sim's nesting
++# put ~130 s of wall on one name on an idle four-core box. That nesting is gone:
++# the longest pole among the boot sims is test_sandbox_boot_selfmerge.mjs at
++# ~33 s here, and test_run_engine_proof_runs.mjs at ~41 s is the longest of any
++# sim. The cap stays 300 s because it is sized for the slowest box the suite
++# runs on rather than this one — a four-vCPU sandbox with every core busy under
++# `-n auto` takes several times these walls — and because a hang detector is
++# worth nothing if it fires on a slow box instead of a wedged sim.
+ MJS_TIMEOUT = 300
+ 
+ 
+@@ -57,10 +65,10 @@ MJS_TIMEOUT = 300
+ def test_fleet_mjs(path):
+     _ensure_node_modules()
+     # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+-    # contention, and that sim is now test_sandbox_boot_merge.mjs, which spends
+-    # most of its own wall re-running seven siblings one after another. A wall
+-    # only a little above that sim's honest runtime reports a slow box as a
+-    # broken suite; this one is a deadlock catcher, not a budget.
++    # contention on the slowest box the suite runs on, not on the box that
++    # measured the numbers above. A wall only a little over an honest runtime
++    # reports a slow box as a broken suite; this one is a deadlock catcher,
++    # not a budget.
+     r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+     assert r.returncode == 0, r.stdout + r.stderr
+     assert "ALL TESTS PASSED" in r.stdout
