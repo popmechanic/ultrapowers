@@ -59,7 +59,11 @@
  * only a page whose `state` is one of `REAPABLE_STATES` earns the sweep. A live
  * page, an unreadable one, or an open pull request on the run's integration
  * branch prints `run <N>: live (<why>) — skipped` and the sweep moves to the
- * next N. The states are imported from `./janitor.mjs`, which is the one place
+ * next N. The open-PR read takes that same allowlist posture: only a JSON array
+ * is an answer about pull requests, so a non-2xx exit, an error object and a
+ * truncated stream alike print `run <N>: unreadable (pulls) — skipped` — never
+ * "no open PR", which would let an unread run through to the tags and the
+ * deletes. The states are imported from `./janitor.mjs`, which is the one place
  * they are spelled: the test is membership, never a denylist of the live words,
  * so a `state` the boot never writes is skipped rather than swept.
  *
@@ -186,11 +190,22 @@ function liveReason (page) {
   return REAPABLE_STATES.includes(state) ? null : state
 }
 
+/** The word the pulls read's unreadable answer is recorded and printed under. */
+const PULLS_UNREADABLE = 'unreadable (pulls)'
+
 /**
  * The run's open pull request, if it has one. `head=<owner>:<ref>` matches on
  * the head ref's NAME; `state=open` is the only difference from the closed read
  * below. A run whose integration PR is still open is a run somebody is still
  * looking at, and its branches are what its links resolve through.
+ *
+ * The answer is `{ unreadable, pull }`, not a bare row, because "no open PR" and
+ * "no answer" are different facts and only the first earns the sweep. The list
+ * endpoint answers a JSON ARRAY and nothing else, so an array is the whole
+ * allowlist — the same posture the status page is read with: a non-2xx exit and
+ * a truncated stream both arrive here as `null`, an error body arrives as an
+ * object, and every one of those is unreadable. An empty array is still an
+ * answer, and it says the run has no open pull request.
  */
 async function openPullOf (exec, target, run) {
   const owner = String(target).split('/')[0]
@@ -198,8 +213,8 @@ async function openPullOf (exec, target, run) {
     exec,
     `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
   )
-  const rows = Array.isArray(payload) ? payload : []
-  return rows.length > 0 ? rows[0] : null
+  if (!Array.isArray(payload)) return { unreadable: true, pull: null }
+  return { unreadable: false, pull: payload.length > 0 ? payload[0] : null }
 }
 
 /** Create one tag at one sha through the refs API. */
@@ -381,12 +396,22 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
     // is a run in flight. Skipping it is the same decision under `--dry-run`
     // and without it — the sweep never asks what it would do to a run it is not
     // going to touch.
-    let why = liveReason(await readStatusPage(exec, target, run))
-    if (why === null) {
-      const open = await openPullOf(exec, target, run)
-      if (open !== null) why = `PR #${open.number} open`
+    const pageWhy = liveReason(await readStatusPage(exec, target, run))
+    if (pageWhy !== null) {
+      live.push({ run, why: pageWhy })
+      return `live (${pageWhy}) — skipped`
     }
-    if (why !== null) {
+    // The second read of the gate, and the same posture: an answer that is not a
+    // list of pull requests is no answer at all. Its line names the read rather
+    // than the run's state — the sweep did not learn one — but the run joins
+    // `live` all the same, because `live` is what the sweep declined to touch.
+    const open = await openPullOf(exec, target, run)
+    if (open.unreadable) {
+      live.push({ run, why: PULLS_UNREADABLE })
+      return `${PULLS_UNREADABLE} — skipped`
+    }
+    if (open.pull !== null) {
+      const why = `PR #${open.pull.number} open`
       live.push({ run, why })
       return `live (${why}) — skipped`
     }
