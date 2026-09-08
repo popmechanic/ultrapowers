@@ -28,6 +28,10 @@ by rewording:
     read-only, the per-target one acts as the user, and no document binds any
     integration to ``tag:fleet`` (the contract's one-integration rule: both of
     a run's credentials ride the VM from creation, and nothing rides the tag);
+  * the contract's ``- **Publish:**`` bullet declares the PR body's
+    ``### Residuals`` checklist, the one ``watch-item`` follow-up issue the run
+    files, and the ``publish:followup`` event that records it — the literals a
+    reader of the boot script has to find declared somewhere;
   * the retired vocabulary of the pre-lift fleet appears in none of the four
     documents;
   * ``validate_skill.py`` still accepts ``skills/ultrapowers``.
@@ -356,6 +360,164 @@ def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag():
         "neither fleet/RUNBOOK.md nor fleet/CONTRACT.md shows a "
         "`?ref=ultra/evidence/run-<N>` read at all, so the pin above is vacuous; "
         f"the `?ref=`s found were {refs!r}"
+    )
+
+
+# ── the publish bullet names the residuals sink ──────────────────────────────
+#
+# `fleet/CONTRACT.md`'s header rule is that every literal a task introduces is
+# declared in the contract, and the `- **Publish:**` bullet is where the PR
+# body's sections and the publish record's event kinds are declared. The boot
+# script's residuals path introduces three of them: the `### Residuals`
+# checklist the body carries before its `Closes #<n>` lines, the ONE
+# `watch-item` follow-up issue the run files against
+# `POST /repos/<owner>/<repo>/issues`, and the `publish:followup` event that
+# records it. A bullet that does not name them is a contract a reader cannot
+# check the script against.
+#
+# The range these read is exactly the one `fleet/tests/test_sandbox_boot_selfmerge.mjs`
+# slices — from the line beginning `- **Publish:**` to the line beginning
+# `- **Integration naming` — so the two suites pin one section, not two.
+
+PUBLISH_BULLET_FIRST = "- **Publish:**"
+PUBLISH_BULLET_LAST = "- **Integration naming"
+
+
+def publish_bullet():
+    """The contract's `- **Publish:**` range, flattened to one line.
+
+    Lines are joined with a single space and runs of whitespace collapsed, the
+    way the Proof's `sed … | tr '\\n' ' '` reads it, so an assertion about the
+    order of two phrases is not an assertion about where the file wraps.
+    """
+    lines = read(CONTRACT).splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if line.startswith(PUBLISH_BULLET_FIRST)),
+        None,
+    )
+    assert start is not None, (
+        f"{CONTRACT} no longer carries a line beginning `{PUBLISH_BULLET_FIRST}` — "
+        "that bullet is where the PR body's sections and the publish record are declared"
+    )
+    end = next(
+        (i for i in range(start + 1, len(lines))
+         if lines[i].startswith(PUBLISH_BULLET_LAST)),
+        None,
+    )
+    assert end is not None, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet is no longer followed by a "
+        f"`{PUBLISH_BULLET_LAST}` line — this pin reads the range between them"
+    )
+    return re.sub(r"\s+", " ", " ".join(lines[start:end + 1])).strip()
+
+
+def test_the_publish_bullet_puts_the_residuals_section_before_the_closes_lines():
+    """Leg (a) [M1]: `### Residuals`, then `deferred:external`, then `Closes #`."""
+    bullet = publish_bullet()
+    assert re.search(r"### Residuals.*deferred:external.*Closes #", bullet), (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not read "
+        "`### Residuals` … `deferred:external` … `Closes #` in that order — the "
+        "body's residuals checklist, one line per `deferred:external` ack, sits "
+        "before the `Closes #<n>` lines, and the bullet is where that is said\n"
+        "bullet:\n" + bullet
+    )
+
+
+# The follow-up issue's POST, its `watch-item` label, and the six program
+# labels as one comma-separated list in this order. Backticks are matched as
+# any character, as the Proof's leg spells the pattern.
+FOLLOWUP_POST = "POST /repos/<owner>/<repo>/issues"
+WATCH_ITEM_LABEL = "watch-item"
+PROGRAM_LABELS = (
+    "merge-frontier",
+    "experience-compiler",
+    "verification-frontier",
+    "peer-review",
+    "fleet",
+    "determinism",
+)
+PROGRAM_LABELS_RE = re.compile("., .".join(PROGRAM_LABELS) + ".")
+NEVER_A_GATE = "never a gate"
+
+
+def test_the_publish_bullet_declares_the_follow_up_issue_and_its_labels():
+    """Leg (b) [M2]: the POST path, `watch-item`, the six program labels in
+    order, and the refused POST's posture — `never a gate`."""
+    bullet = publish_bullet()
+    assert FOLLOWUP_POST in bullet, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not name "
+        f"`{FOLLOWUP_POST}` — the follow-up issue is filed at the PR's own edge, "
+        "and the bullet is where that call is declared\nbullet:\n" + bullet
+    )
+    assert WATCH_ITEM_LABEL in bullet, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not name "
+        f"`{WATCH_ITEM_LABEL}` — the one follow-up issue per PR carries that "
+        "label\nbullet:\n" + bullet
+    )
+    assert PROGRAM_LABELS_RE.search(bullet), (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not carry the six "
+        "program labels as one comma-separated list in this order — "
+        + ", ".join(f"`{name}`" for name in PROGRAM_LABELS)
+        + "\nbullet:\n" + bullet
+    )
+    assert NEVER_A_GATE in bullet, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not say the refused "
+        f"POST is `{NEVER_A_GATE}` — the issue's posture is one log line, not a "
+        "gate on the run\nbullet:\n" + bullet
+    )
+
+
+def test_the_publish_bullet_counts_four_event_kinds_and_names_the_followup():
+    """Leg (c) [M3]: `publish:followup` beside `url` and `items`, the count now
+    `four event kinds`, and `three event kinds` gone from the range."""
+    bullet = publish_bullet()
+    assert re.search(r"publish:followup.*url.*items", bullet), (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not declare "
+        "`publish:followup` (`url`, `items`) — the follow-up issue's record is "
+        "that event, and the bullet is where its fields are named\n"
+        "bullet:\n" + bullet
+    )
+    assert "four event kinds" in bullet, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not say the publish "
+        "record is `four event kinds` — `publish:followup` joined "
+        "`publish:pr`, `publish:hold` and `publish:merge`\nbullet:\n" + bullet
+    )
+    assert "three event kinds" not in bullet, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet still counts `three event "
+        "kinds` somewhere in the range, so the bullet names four kinds and counts "
+        "three\nbullet:\n" + bullet
+    )
+
+
+# What the same range said before this edit and still has to say: the three
+# older event kinds and every field `fleet/tests/test_sandbox_boot_selfmerge.mjs`
+# M7 reads out of this bullet. An edit that adds the follow-up by rewriting the
+# publish record is an edit that took something away.
+PUBLISH_RECORD_LITERALS = (
+    "publish:pr",
+    "publish:hold",
+    "publish:merge",
+    "url",
+    "number",
+    "draft",
+    "why",
+    "left",
+    "detail",
+    "checks red",
+    "checks pending",
+    "refused",
+)
+
+
+def test_the_publish_bullet_keeps_the_literals_it_already_declared():
+    """Leg (d) [M4]: the range's other literals are untouched."""
+    bullet = publish_bullet()
+    missing = [name for name in PUBLISH_RECORD_LITERALS if name not in bullet]
+    assert not missing, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet no longer declares "
+        + ", ".join(f"`{name}`" for name in missing)
+        + " — the follow-up joins the publish record, it does not replace it\n"
+        "bullet:\n" + bullet
     )
 
 
