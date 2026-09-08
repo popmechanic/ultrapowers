@@ -1068,14 +1068,32 @@ export async function runEngine({
     // the examiner needs before it can be dispatched — the clone and the
     // bootstrap its red-at-BASE run reads — is awaited HERE, so the dispatch
     // itself is one unawaited call beside the implementer's.
+    // Cutting the clone is its own step because it happens twice: once here,
+    // and once again when a dead examiner is re-dispatched alone beside an
+    // implementer that already finished (#762) — the second examiner must open
+    // its eyes on a tree at BASE, not on whatever the first one left behind.
+    const cutExamClone = async () => {
+      // A barrier retry re-enters runTaskInner; the clone is re-cut from
+      // scratch rather than reused, the same posture resetTaskClone takes.
+      fs.rmSync(examDir, { recursive: true, force: true })
+      cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
+                    base: baseShaForTask })
+    }
+    const bootstrapExamClone = async () => {
+      if (!bootstrapCmd) return
+      // The setup loop bootstrapped every clone that existed then; this one
+      // did not, and its red-at-BASE run needs the same tree.
+      const b = await sh(bootstrapCmd, examDir)
+      if (b.code !== 0) {
+        judgmentCalls.push('bootstrap failed in ' + path.basename(examDir) + ' (exit ' + b.code +
+          ') — the suite may be unrunnable there: ' + tail(b.stderr || b.stdout, 300))
+        log('bootstrap failed in ' + path.basename(examDir))
+      }
+    }
     const examReady = await (async () => {
       if (!(proofTests.length && examTestCmd)) return false
       try {
-        // A barrier retry re-enters runTaskInner; the clone is re-cut from
-        // scratch rather than reused, the same posture resetTaskClone takes.
-        fs.rmSync(examDir, { recursive: true, force: true })
-        cloneAtBase({ repo: await cloneSourceFor(baseShaForTask), dest: examDir,
-                      base: baseShaForTask })
+        await cutExamClone()
       } catch (e) {
         // No clone, no exam — and no reason to fail a task over it: the same
         // standing a BLOCKED examiner has.
@@ -1085,16 +1103,7 @@ export async function runEngine({
           ') — no exam recorded; the implementer proceeds unexamined')
         return false
       }
-      if (bootstrapCmd) {
-        // The setup loop bootstrapped every clone that existed then; this one
-        // did not, and its red-at-BASE run needs the same tree.
-        const b = await sh(bootstrapCmd, examDir)
-        if (b.code !== 0) {
-          judgmentCalls.push('bootstrap failed in ' + path.basename(examDir) + ' (exit ' + b.code +
-            ') — the suite may be unrunnable there: ' + tail(b.stderr || b.stdout, 300))
-          log('bootstrap failed in ' + path.basename(examDir))
-        }
-      }
+      await bootstrapExamClone()
       return true
     })()
     // The Proof paths whose blob no longer matches what the examiner left.
@@ -1138,18 +1147,61 @@ export async function runEngine({
     // neither before the other. Deliberately NOT the `parallel` seam: that one
     // is bounded by the caller and this code already runs inside one of its
     // slots, so nesting it could hand the wave a width it does not have.
-    const examCall = examReady
-      ? agent(roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs,
-          { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
-            schema: EXAMINER_SCHEMA })
-      : null
+    const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs
+    const examOpts = { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
+                       schema: EXAMINER_SCHEMA }
+    const examCall = examReady ? agent(examPrompt, examOpts) : null
     const implCall = agent(
       roles.implementer + '\nBASE: ' + baseShaForTask + implementerInputs,
       { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
-    const [ex, implReply] = await Promise.all([examCall, implCall])
-    let impl = implReply
+    // Both halves are SETTLED before either is judged (#762). `Promise.all`
+    // rejected the moment the examiner died — with the implementer still
+    // running, un-awaited — and that rejection climbed to runTask, which reset
+    // the task clone and re-entered runTaskInner whole: a second implementer
+    // redoing work the first one had already finished (run-34's lost 746 s).
+    // Settling first costs nothing (the pair is dispatched exactly as before,
+    // neither awaited before the other) and lets the driver see what it
+    // actually has: a dead examiner beside a finished implementer.
+    const [examSettled, implSettled] = await Promise.allSettled([examCall, implCall])
+    // An implementer that died is the pair lane unchanged: its error is the one
+    // that climbs, runTask resets the clone and re-dispatches both. There is no
+    // work to keep.
+    if (implSettled.status === 'rejected') throw implSettled.reason
+    let ex = examSettled.status === 'fulfilled' ? examSettled.value : null
+    let impl = implSettled.value
     if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
+    // Before the kept-reply question is asked, so `hasCoordinates` reads the
+    // driver's own capture and never a model-typed path.
     stripUntrustedPatch(impl, patchPrefix)
+    if (examSettled.status === 'rejected') {
+      const examErr = String((examSettled.reason && examSettled.reason.message) || examSettled.reason)
+      // A KEPT reply — success with coordinates — is the whole condition. Only
+      // then is there something a whole-pair retry would throw away; an
+      // implementer that merely returned (BLOCKED, NEEDS_CONTEXT, a capture
+      // failure) has nothing worth keeping, so the examiner's error climbs and
+      // the lane at BASE runs.
+      const kept = (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && hasCoordinates(impl)
+      if (!kept) throw examSettled.reason
+      judgmentCalls.push('task ' + task.id + ': examiner died (' + examErr +
+        ') — the implementer ended success with its patch captured; re-dispatching the examiner alone')
+      appendEvent({ kind: 'driver:exam-redispatch', task: task.id, detail: examErr })
+      log('task ' + task.id + ' examiner died — re-dispatching the examiner alone')
+      try {
+        // The graded clone is NOT reset and the implementer is NOT re-dispatched:
+        // `impl.patch` is the driver's own capture and stays exactly as taken.
+        // The examiner's clone is re-cut at BASE so the second attempt sees the
+        // tree the first one was given, not the tree it left.
+        await cutExamClone()
+        await bootstrapExamClone()
+        ex = await agent(examPrompt, examOpts)
+      } catch (e2) {
+        // One re-dispatch, never two. A second death leaves `ex` null, which the
+        // verdict block below already reads as an examiner that returned no
+        // reply: exam `blocked`, the implementer proceeds unexamined.
+        ex = null
+        log('task ' + task.id + ' examiner died again — proceeding unexamined')
+      }
+    }
     noteConcerns(impl)
     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
     // construction, so a mismatch here is a check on a thing that cannot

@@ -199,6 +199,77 @@ export function bashWriteTargets(command) {
   return targets.filter(Boolean)
 }
 
+// #762 — A KILL PATTERN CAN NAME THE WORKER ITSELF. The worker is a
+// `claude -p <prompt>` process, so its argv carries the whole prompt — the
+// role text, the FILES line, the TEST COMMAND line. A `pkill -f` whose pattern
+// matches any of that matches the worker, and run-34 spent a task learning it:
+// a worker that reached for `pkill -f <the test command>` to clear a stuck test
+// killed the process that was running the test. `kill <pid>` never has this
+// property, which is why the deny says so.
+//
+// The check is the same shape as the write denylist above and is closed the
+// same way: `pkill`/`killall` (or a path tail of either), found WHEREVER it
+// sits — a kill after `&&`, `;`, `|` or a leading `cd` is the same kill — with
+// the command token read from the MASKED text (so a quoted `pkill` is data,
+// the #475 rule) and the pattern from the ORIGINAL. `pkill` without `-f`
+// matches process NAMES, so its pattern is tried against `claude` alone;
+// `pkill -f` and `killall` are tried against `claude` and the TEST COMMAND.
+const KILLS = ['pkill', 'killall']
+const isKill = (t) => KILLS.some((k) => t === k || t.endsWith('/' + k))
+// `-f`, `-af`, `-9 -f`, `--full`: the flag that makes pkill match the full
+// argv rather than the process name.
+const matchesFullArgv = (flag) => /^-{1,2}[A-Za-z]*f/.test(flag)
+
+export function bashKillPatterns(command) {
+  const raw = String(command)
+  const masked = maskData(raw)
+  const tok = []
+  for (let m, re = /\S+/g; (m = re.exec(masked)); ) {
+    tok.push({ m: strip(m[0]), o: strip(raw.slice(m.index, m.index + m[0].length)) })
+  }
+  const kills = []
+  for (let i = 0; i < tok.length; i++) {
+    if (!isKill(tok[i].m)) continue
+    // killall's only mode is a name match against every process of that name;
+    // pkill needs the flag. Collected first, emitted after, so a flag written
+    // behind its pattern (`pkill claude -f`) still counts.
+    let full = tok[i].m.endsWith('killall')
+    const patterns = []
+    for (let j = i + 1; j < tok.length; j++) {
+      // A separator ends this command's argument list. Quoted text is NUL in
+      // the masked copy, so a `;` inside a pattern is not read as one, and the
+      // two strings stay index-aligned (masking never changes a length).
+      const sep = /[|;&]/.exec(tok[j].m)
+      if (sep && sep.index === 0) break
+      const flag = sep ? tok[j].m.slice(0, sep.index) : tok[j].m
+      const pattern = sep ? tok[j].o.slice(0, sep.index) : tok[j].o
+      if (flag.startsWith('-')) { if (matchesFullArgv(flag)) full = true }
+      else if (pattern) patterns.push(pattern)
+      if (sep) break
+    }
+    for (const pattern of patterns) kills.push({ kill: tok[i].m, pattern, full })
+  }
+  return kills
+}
+
+// A pattern "matches" as pkill would read it: a regular expression against the
+// target, or — when the pattern is not one the constructor accepts — the
+// literal substring test, so an unparseable pattern is never a silent pass.
+const killPatternMatches = (pattern, target) => {
+  if (!target) return false
+  let re = null
+  try { re = new RegExp(pattern) } catch { /* not a regexp: fall back to literal */ }
+  return re ? re.test(target) : target.includes(pattern)
+}
+
+// The deny string is what the model reads back, so it names the self-match
+// rather than the rule: the pattern it wrote, the process it would have hit,
+// and the form that does not have this problem.
+const killDeny = (kill, pattern, testCmd) =>
+  'confine-hook: ' + kill + " '" + pattern + "' would match this worker's own claude -p " +
+  'process — its argv carries the prompt, TEST COMMAND included' +
+  (testCmd ? ' (' + testCmd + ')' : '') + '. Kill by pid (kill <pid>) instead.'
+
 // The file-path input keys of the write-capable tools. MultiEdit/NotebookEdit
 // are covered even though the driver's matcher may not dispatch them — a
 // matcher tightened later must not silently widen the boundary.
@@ -222,6 +293,19 @@ export function decide(input) {
 
   if (tool === 'Bash') {
     const cmd = String(ti.command || '')
+    // The hook cannot see the prompt — it reads stdin and its own environment,
+    // which Claude Code inherits from the worker. `FLEET_TEST_CMD` is the one
+    // line of the prompt the worker can name (run-worker.mjs sets it per
+    // dispatch); the conceded residual is the rest of the argv — a pattern
+    // matching a FILES path or a word of the task body still matches the
+    // worker and is not caught here, and the VM is the backstop for it.
+    const testCmd = process.env.FLEET_TEST_CMD || ''
+    for (const k of bashKillPatterns(cmd)) {
+      const targets = k.full ? ['claude', testCmd] : ['claude']
+      if (targets.some((t) => killPatternMatches(k.pattern, t))) {
+        return { deny: killDeny(k.kill, k.pattern, testCmd) }
+      }
+    }
     for (const raw of bashWriteTargets(cmd)) {
       const abs = path.resolve(cwd, raw)
       // /dev/* is a sink, not storage: `2>/dev/null` rides half the

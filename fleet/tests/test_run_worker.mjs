@@ -25,6 +25,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { EventEmitter } from 'node:events'
 import {
   ROLES, roleForLabel, sessionIdFor, buildArgs, lastResult, classify, meterOf,
   createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES, recordEnvelopeDenials,
@@ -975,6 +976,95 @@ await assert.rejects(
   }
 
   console.log('ok - #702 Task 1: the worker transcript slice — paths and sizes, never bodies')
+}
+
+// ── 10. #762 [M5]: the worker names the TEST COMMAND to its own hook ─────────
+//
+// The confine hook cannot see the prompt — it reads the PreToolUse JSON on
+// stdin and its own environment, which Claude Code inherits from this process.
+// So the worker is what tells it which command the task was handed:
+// `FLEET_TEST_CMD`, read out of the prompt's `TEST COMMAND:` line (the engine
+// writes exactly one, `'\nTEST COMMAND: ' + cmd`, value to end of line). The
+// hook's half of the claim is fleet/tests/test_confine_hook.mjs legs (a)-(t).
+//
+// A `spawnFn` stub is how a leg reads the child environment without a real CLI:
+// it records `options.env` and answers with a success envelope.
+{
+  const TESTCMD = 'node fleet/tests/test_sandbox_boot.mjs'
+  const spawned = []
+  const okEnvelope = JSON.stringify({
+    type: 'result', subtype: 'success', is_error: false, terminal_reason: 'completed',
+    api_error_status: null, structured_output: { ok: true }, total_cost_usd: 0, modelUsage: {},
+  })
+  const recordingSpawn = (cliArg, argv, options) => {
+    spawned.push({ cli: cliArg, argv, options })
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {}
+    child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {}
+    child.kill = () => {}
+    setImmediate(() => { child.stdout.emit('data', okEnvelope); child.emit('close', 0, null) })
+    return child
+  }
+  // A SMALL run-wide env, so "one variable is added and nothing else" is a
+  // legible equality rather than a scan of the ambient environment.
+  const baseChildEnv = { PATH: process.env.PATH || '/usr/bin:/bin', FLEET_MARKER: 'kept' }
+  const tcWorkers = path.join(tmp, 'testcmd-workers')
+  const mkTcAgent = (workerEnv) => createRunWorker({
+    runId: 'run-762', workersDir: tcWorkers, cwdFor: () => clone, cli: 'claude',
+    env: workerEnv, spawnFn: recordingSpawn, onEvent: () => {},
+  })
+  const lastEnv = () => {
+    assert.ok(spawned.length, 'a dispatch must have reached spawnFn at all')
+    const o = spawned[spawned.length - 1].options
+    assert.ok(o && o.env, "spawnFn's third argument must carry an env")
+    return o.env
+  }
+
+  // (u) [M5] — the prompt's TEST COMMAND line becomes the child's
+  // FLEET_TEST_CMD. Without this the hook has nothing to compare a kill pattern
+  // against and #762's whole self-match check is inert on every live dispatch.
+  {
+    const prompt = 'Task 7: do the thing\n\nFILES: fleet/a.mjs\nTEST COMMAND: ' + TESTCMD +
+      '\n\nReturn your verdict.\n'
+    const out = await mkTcAgent({ ...baseChildEnv })(prompt, { label: 'impl:TC1', model: 'sonnet', schema: SCHEMA })
+    assert.deepEqual(out, { ok: true }, '(u) [M5] the dispatch still returns structured_output')
+    assert.equal(lastEnv().FLEET_TEST_CMD, TESTCMD,
+      "(u) [M5] the child's FLEET_TEST_CMD is the prompt's TEST COMMAND value, to end of line")
+    // ONE variable is added; every other key is what the caller passed.
+    assert.deepEqual(lastEnv(), { ...baseChildEnv, FLEET_TEST_CMD: TESTCMD },
+      '(u) [M5] the child env gains FLEET_TEST_CMD and nothing else')
+  }
+
+  // (v) [M5] — the FIRST `TEST COMMAND:` line. A prompt can quote a second one
+  // (a task body, a Proof `Run:` block); the engine appends its own, and the
+  // one the worker was told to run is the one that wins.
+  {
+    const prompt = 'preamble\nTEST COMMAND: bash first.sh\nsome task body\n' +
+      'TEST COMMAND: bash second.sh\ntrailer\n'
+    await mkTcAgent({ ...baseChildEnv })(prompt, { label: 'impl:TC2', model: 'sonnet', schema: SCHEMA })
+    assert.equal(lastEnv().FLEET_TEST_CMD, 'bash first.sh',
+      '(v) [M5] the FIRST TEST COMMAND line is the value, not the last')
+  }
+
+  // (w) [M5] — no TEST COMMAND line means the KEY IS ABSENT, not empty. The
+  // run-wide env is shared by every dispatch, so a stale value left in place
+  // would reach a role that was never given that command — and the hook would
+  // then refuse a kill on a pattern this worker has no relation to.
+  {
+    const stale = { ...baseChildEnv, FLEET_TEST_CMD: 'stale' }
+    await mkTcAgent(stale)('a prompt with no test command line at all\nFILES: fleet/a.mjs\n',
+      { label: 'impl:TC3', model: 'sonnet', schema: SCHEMA })
+    const childEnv = lastEnv()
+    assert.equal(Object.prototype.hasOwnProperty.call(childEnv, 'FLEET_TEST_CMD'), false,
+      '(w) [M5] the key is DELETED, not set to an empty string; got ' +
+      JSON.stringify(childEnv.FLEET_TEST_CMD))
+    assert.deepEqual(childEnv, { ...baseChildEnv },
+      '(w) [M5] and nothing else about the child env changed')
+    assert.equal(stale.FLEET_TEST_CMD, 'stale',
+      "(w) [M5] the run-wide env object itself is not mutated — the next dispatch reads it too")
+  }
+
+  console.log('ok - #762 [M5]: the worker passes the prompt\'s TEST COMMAND to its child as FLEET_TEST_CMD')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
