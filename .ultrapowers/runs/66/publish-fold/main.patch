@@ -58213,6 +58213,562 @@ index 846ee631ea00d0a6a97914fe7edeacd04ae7eaec..00000000000000000000000000000000
 -- `c-1a58ed29`: reconciliation commit ebc522a8403777aaf3280826916602155951ffc8 on integration chain
 -- `c-31339f70`: reconciliation commit 60b02846b1f6268c61a6716c30af074a05ccfbac on integration chain
 -- `c-13e97401`: reconciliation commit c92a3d03423e7e8b0e526d4e5cc30e00094380c7 on integration chain
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 0e864ea78f31272179f88ece8d8982eb20fd173b..58ac4b080ee623431233c70d3fae29ee3e2c11e1 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -30,7 +30,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+ - **Run id:** `N` = 1 + max N over the target's `ultra/{plan,integration,evidence}-run-<N>` branches
+   and over its `ultra/{plan,evidence}/run-<N>` tags — the branches are transient and the tags are the
+   record, so a run number is read from both shapes and never from one (`--run N` overrides).
+-  `RUN_ID=run-N`.
++  A refused plan push re-reads the highest run and retries with the next N, up to three pushes
++  in all, so the push and not the read is what reserves N. `RUN_ID=run-N`.
+ - **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev reserves deleted
+   names forever, so a name is one incarnation and is never derived from N alone. Lookup by pattern:
+   `ssh exe.dev "ls 'fleet-r<N>-*' --json"`; the whole fleet: `ls 'fleet-r*' --json`. Read `.vms[]` ONLY
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 0c6f461bb76a01edd8416d7e070eb251447d968f..a27794e3b37e8e35e5b9b0314a8b1550721b4a2a 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -261,6 +261,30 @@ That reading is why the unit is a `Type=exec` template and not a oneshot
+ `TimeoutStartUSec=infinity`, ignores `RuntimeMaxSec=`, and finished reads
+ `inactive/dead` — the same as never started.
+ 
++### Re-driving a parked run
++
++A park is a verdict, not a dead end. Which of the two shapes below applies is
++read off the finding, and both leave the parked branch where it is.
++
++**The finding is fixable.** Ack it and merge the run by hand: `gh pr ready <n>`,
++then `gh pr merge <n> --squash` — not `gh pr merge <n> --auto`, which GitHub
++refuses on a pull request already in clean status ("Pull request is in clean
++status"). The finding is then fixed by its own run on main, a one-task plan
++whose Claim is the finding. That is the shape run-54 was re-driven by on
++2026-09-08, as run-57: ready, squash-merge, then a plan for the finding.
++
++**The finding is not fixable.** The run is closed — its pull request closed, its
++integration branch left to the retire sweep (`node fleet/retire.mjs --target
++<t>`), which deletes the branch of a pull request that is closed and not merged
++— and its plan re-authored, with the finding folded into the new plan's tasks. A
++park with nothing mergeable, the branch zero commits ahead of base and `pr`
++null, is always this case.
++
++Either way the parked branch is a record, never a starting point:
++`fleet/launch.mjs` never takes a run branch as `--base`, and refuses one with
++`relaunch from main; a parked branch is re-driven as a plan on main, not as a
++base`.
++
+ ## Reading a failure
+ 
+ Four logs, in the order a run writes them:
+diff --git a/fleet/launch.mjs b/fleet/launch.mjs
+index 6150d5939e90adc6b84a06d4af4cd545f6d53ebe..8cc2fc384dc903e80a1873c53ef5368cb15991a1 100644
+--- a/fleet/launch.mjs
++++ b/fleet/launch.mjs
+@@ -20,7 +20,10 @@
+  *      `--account` names — a refresh failure is a failure before any VM
+  *      exists;
+  *   4. commits the plan against a temporary index and pushes it to the target
+- *      as `ultra/plan-run-N`; that commit's sha is `plan=` in the assignment;
++ *      as `ultra/plan-run-N` — a refused push re-reads the highest run and, if
++ *      one appeared, takes N+1 and pushes again, three pushes in all, so the
++ *      push and not the read is what reserves N; that commit's sha is `plan=`
++ *      in the assignment;
+  *   5. issues exactly one mutating lobby verb:
+  *
+  *        new --name <vm> --tag fleet --comment '<assignment>'
+@@ -148,6 +151,87 @@ export const BASE_OFF_MAIN_FIX =
+  *  launcher: unshallowing an operator's clone is not a launch's business. */
+ export const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
+ 
++/**
++ * What a word of a plan's `**Exam command:**` template may be spelled with
++ * (#716). The sandbox reads that template as ONE RUNNER AND ITS ARGUMENTS —
++ * `ultra_run.py`'s `runner_for` takes `cmd.split()[0]` for a command its table
++ * does not know and probes it with `command -v` — so the class admits what a
++ * runner and its flags are spelled with (`-q`, `--tb=short`, `./...`,
++ * `pkg:test`, `a,b`) and excludes every shell operator, quote and expansion
++ * character. This is the same literal `compile_plan.py` writes as
++ * `EXAM_RUNNER_WORD`; the launcher copies the rule rather than importing it,
++ * so a plan the compiler refuses never reaches a VM.
++ */
++export const EXAM_RUNNER_WORD = /^[A-Za-z0-9_.+/=:@,-]+$/
++
++const EXAM_PATHS_TOKEN = '{paths}'
++const EXAM_COMMAND_LABEL = /^\*\*\s*exam[-\s]?command\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$/i
++const FENCE_LINE = /^(`{3,}|~{3,})/
++const TASK_HEAD_LINE = /^ {0,3}### Task [A-Za-z0-9]+:/
++
++/**
++ * The plan header's `**Exam command:**` value, read the way `compile_plan.py`
++ * reads it: the first matching line before the first task heading and outside
++ * any fence, wrapped lines joined on a space, whitespace collapsed.
++ */
++function examCommandValue (planText) {
++  const stack = []
++  let value = null
++  for (const line of String(planText ?? '').split('\n')) {
++    const stripped = line.trim()
++    const fence = FENCE_LINE.exec(stripped)
++    if (fence) {
++      if (value !== null) break
++      const run = fence[1]
++      const inner = stack[stack.length - 1]
++      if (inner && run[0] === inner[0] && run.length >= inner.length && stripped === run) stack.pop()
++      else stack.push(run)
++      continue
++    }
++    if (stack.length > 0) {
++      if (value !== null) break
++      continue
++    }
++    if (TASK_HEAD_LINE.test(line)) break // the header ends at the first task heading
++    if (value === null) {
++      const match = EXAM_COMMAND_LABEL.exec(stripped)
++      if (match) value = [match[1].trim()]
++      continue
++    }
++    if (stripped === '' || stripped.startsWith('**')) break
++    value.push(stripped)
++  }
++  if (value === null) return null
++  return value.join(' ').replace(/\s+/g, ' ').trim()
++}
++
++/**
++ * The plan header's exam-command template, refused when the sandbox would not
++ * read it as a runner and its arguments (#716). A backtick surviving to the
++ * driver's shell is a command substitution, and a word carrying a shell
++ * operator, a quote or an expansion means the first word is not necessarily
++ * what runs the suite — both were `PLAN OK` before, and a launch is the last
++ * place either can still be caught for free. Answers the value (or null when
++ * the header declares none) when the template is well shaped.
++ */
++export function examCommandShapeOf (planText) {
++  const value = examCommandValue(planText)
++  if (value === null) return null
++  if (value.includes('`')) {
++    throw new Refusal(
++      `launch: **Exam command:** carries a backtick — ${value}; the driver's shell reads it as a command substitution (run-74)`
++    )
++  }
++  const words = value.split(/\s+/).filter((word) => word !== '')
++  for (const [index, word] of words.entries()) {
++    if (word === EXAM_PATHS_TOKEN && index > 0) continue
++    if (word === EXAM_PATHS_TOKEN || !EXAM_RUNNER_WORD.test(word)) {
++      throw new Refusal(`launch: **Exam command:** ${word} is not a command word — ${value}`)
++    }
++  }
++  return value
++}
++
+ /**
+  * How many `new` lines a launch may issue, and the window it sleeps in between
+  * them. A name exe.dev refused stays reserved, so each attempt mints its own.
+@@ -189,6 +273,173 @@ export function targetOfOriginUrl (url) {
+   return null
+ }
+ 
++/**
++ * A hash pin is a fact about BASE, and BASE is chosen at launch and not at
++ * authoring — so every `git hash-object` literal a plan carries is checked
++ * against the tree at `--base` before the plan is pushed, with nothing but
++ * local git reads made. A stale pin found here costs seconds on the laptop; the
++ * same pin found on the sandbox costs a run.
++ *
++ * A pin lives on a `- Check:` bullet of `## Global Constraints` or a `- Run:`
++ * bullet of a task's Proof — the launcher reads a line by its stripped form and
++ * not by where in the plan it sits, so a pin on any other kind of line (a
++ * `**Context:**` sentence quoting one, say) is prose and is not read. Two
++ * shapes are pins:
++ *
++ *   test "$(git hash-object <path>)" = <40-hex>
++ *   test "$(<command> | git hash-object --stdin)" = <40-hex>
++ *
++ * A `Run:` may chain several with `&&`, so one line can carry several.
++ */
++
++/** A pin-bearing bullet, by its stripped form. */
++const PIN_LINE = /^-\s*(?:Check|Run):\s*(.*)$/
++
++/**
++ * `compile_plan.py`'s `_claims_run_command` wrapper rule, copied rather than
++ * imported: a whole-value backtick wrapper is decoration and comes off before
++ * the value is matched. A value with backticks INSIDE it does not match and
++ * rides untouched, exactly as it does there.
++ */
++const WHOLLY_BACKTICKED = /^`([^`]+)`$/
++
++/**
++ * The two shapes, each ending in a sha that is 40 hex characters and no more:
++ * the lookahead is why a 41-hex literal is not a pin, and the exact `{40}` is
++ * why a 39-hex one is not either. A pin the launcher cannot read is not a pin
++ * it guesses at.
++ */
++const PATH_PIN = /test\s+"\$\(\s*git\s+hash-object\s+([^\s)"|]+)\s*\)"\s*=\s*([0-9a-f]{40})(?![0-9a-fA-F])/g
++/**
++ * The slice command may not span a `)"`: that boundary closes the substitution
++ * of an earlier pin on the same `&&`-chained line, and a capture crossing it
++ * would swallow that pin whole — a path pin chained before a slice pin would be
++ * read as one slice pin whose command is the two halves joined, handed to
++ * `/bin/sh` as one command, hashed as the empty blob, and a plan whose pins all
++ * match would be refused. Only that two-character boundary is forbidden, so a
++ * command that quotes (`grep "^set -e" f`) or pipes several times still matches.
++ */
++const SLICE_PIN = /test\s+"\$\(\s*((?:(?!\)")[^\n])+?)\s*\|\s*git\s+hash-object\s+--stdin\s*\)"\s*=\s*([0-9a-f]{40})(?![0-9a-fA-F])/g
++
++/** How a slice pin names itself in a refusal: one line, at most 80 characters. */
++const clipCommand = (command) => String(command).replace(/\s+/g, ' ').trim().slice(0, 80)
++
++/** One stale pin, one line — the path (or clipped command), the pinned sha and
++ *  what the base really carries, so the operator can see the fix without
++ *  running anything. */
++const pinRefusalLine = (subject, pinned, base, real) =>
++  `launch: plan pin ${subject}: pinned ${pinned} but --base ${base} has ${real ?? 'no such path'}`
++
++/** Every pin the plan text carries, in the order the plan writes them. */
++export function planPins (planText) {
++  const pins = []
++  for (const rawLine of String(planText ?? '').split('\n')) {
++    const bullet = PIN_LINE.exec(rawLine.trim())
++    if (!bullet) continue
++    const value = bullet[1].trim()
++    const unwrapped = WHOLLY_BACKTICKED.exec(value)
++    const text = unwrapped ? unwrapped[1].trim() : value
++    const found = []
++    for (const m of text.matchAll(PATH_PIN)) {
++      found.push({ at: m.index, kind: 'path', path: m[1], pinned: m[2] })
++    }
++    for (const m of text.matchAll(SLICE_PIN)) {
++      found.push({ at: m.index, kind: 'slice', command: m[1], pinned: m[2] })
++    }
++    found.sort((a, b) => a.at - b.at)
++    pins.push(...found)
++  }
++  return pins
++}
++
++/**
++ * The tree at `<base>`, in a throwaway directory, built with git plumbing
++ * against a temporary index: `read-tree` fills that index and `checkout-index
++ * --prefix` writes the files out. The operator's own index, `HEAD` and working
++ * tree are never read and never written — a launch that verifies a slice pin
++ * leaves the checkout exactly as a launch that verifies none.
++ *
++ * Answers `{ dir, tree }`: `dir` is what the caller removes, `tree` is the
++ * working directory a slice command runs in.
++ */
++async function basePinCheckout ({ exec, repoDir, base }) {
++  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-pin-'))
++  const tree = path.join(dir, 'tree')
++  const env = { ...process.env, GIT_INDEX_FILE: path.join(dir, 'index') }
++  try {
++    await fsp.mkdir(tree, { recursive: true })
++    for (const argv of [['read-tree', base], ['checkout-index', '-a', '-f', `--prefix=${tree}${path.sep}`]]) {
++      const res = await exec('git', ['-C', repoDir, ...argv], { env })
++      if (res.code !== 0) {
++        throw new Refusal(`launch: git ${argv.join(' ')} failed (exit ${res.code}):\n${output(res)}`)
++      }
++    }
++  } catch (error) {
++    await fsp.rm(dir, { recursive: true, force: true })
++    throw error
++  }
++  return { dir, tree }
++}
++
++/**
++ * What a slice pin's command really hashes to at `--base`: the command under
++ * `/bin/sh -c` with the extracted tree as its working directory, its stdout
++ * hashed with `git hash-object --stdin`. The shell runs outside the exec seam
++ * because it is not a lobby verb and not a git read — it is the plan's own
++ * command, and it must really run for its sha to mean anything.
++ */
++async function slicePinSha ({ exec, repoDir, tree, command }) {
++  const ran = spawnSync('/bin/sh', ['-c', command], { cwd: tree, maxBuffer: 32 * 1024 * 1024 })
++  const res = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], {
++    input: ran.stdout ?? Buffer.alloc(0)
++  })
++  if (res.code !== 0) {
++    throw new Refusal(
++      `launch: git hash-object --stdin failed (exit ${res.code}) for plan pin ${clipCommand(command)}:\n${output(res)}`
++    )
++  }
++  return String(res.stdout ?? '').trim()
++}
++
++/**
++ * Every pin the plan carries, verified against `<base>`, or a `Refusal` (exit
++ * 2) carrying one line per stale pin — so two stale pins are two lines and an
++ * operator fixes both in one pass. A path absent at `--base` is stale, not
++ * skipped: a pin naming a file the base does not have is a pin about some other
++ * tree.
++ *
++ * The base's blob for a path is `git rev-parse <base>:<path>`, which is what
++ * `git hash-object <path>` answers in a checkout of `<base>` — no clean filter
++ * is configured in this repository. A slice pin needs the files themselves, so
++ * it gets a throwaway checkout that is removed in a `finally`, whether this
++ * answers or throws.
++ */
++export async function verifyPlanPins ({ exec, repoDir, base, planText }) {
++  const pins = planPins(planText)
++  if (pins.length === 0) return
++  const checkout = pins.some((pin) => pin.kind === 'slice')
++    ? await basePinCheckout({ exec, repoDir, base })
++    : null
++  const stale = []
++  try {
++    for (const pin of pins) {
++      if (pin.kind === 'path') {
++        const res = await git(exec, repoDir, ['rev-parse', `${base}:${pin.path}`])
++        const real = res.code === 0 ? String(res.stdout ?? '').trim() : null
++        if (real !== pin.pinned) stale.push(pinRefusalLine(pin.path, pin.pinned, base, real))
++        continue
++      }
++      const real = await slicePinSha({ exec, repoDir, tree: checkout.tree, command: pin.command })
++      if (real !== pin.pinned) {
++        stale.push(pinRefusalLine(clipCommand(pin.command), pin.pinned, base, real))
++      }
++    }
++  } finally {
++    if (checkout !== null) await fsp.rm(checkout.dir, { recursive: true, force: true })
++  }
++  if (stale.length > 0) throw new Refusal(stale.join('\n'))
++}
++
+ /**
+  * The engine sha, when `--engine` was not given: the tip of the PUBLIC
+  * ultrapowers repository, read with `git ls-remote`. The sandbox clones from
+@@ -314,6 +565,10 @@ export async function launch ({
+     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
+   }
+   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
++  // Before the comment-length probe and before anything is executed: a plan
++  // whose declared exam command the sandbox would not read as a runner and its
++  // arguments is refused here, not discovered on the VM.
++  examCommandShapeOf(planText)
+   let verdictsText = null
+   try {
+     verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
+@@ -370,6 +625,11 @@ export async function launch ({
+     )
+   }
+ 
++  // The plan's hash pins are facts about `--base`, and the checkout has it now:
++  // a stale one is found here, with local git reads only, before the first
++  // `ls-remote` and long before anything is pushed or any lobby verb issued.
++  await verifyPlanPins({ exec, repoDir, base: opts.base, planText })
++
+   // ── The base is on the target's default branch, or it is a refusal. The
+   //    origin names its own default branch and that branch's tip in one
+   //    `ls-remote --symref`; the fetch brings the tip's history into this
+@@ -403,6 +663,17 @@ export async function launch ({
+     )
+   }
+ 
++  // ── The target's test command is, like a hash pin, a fact about BASE the
++  //    laptop can read. A tree that matches no rung of the sandbox's ladder is
++  //    a run the gate would refuse an hour from now, after a VM, a clone and a
++  //    setup script; the ladder is file presence only, so the laptop reads the
++  //    same answer off `--base`'s tree before any of that exists.
++  if (await detectTestCommand({ exec, repoDir, base: opts.base }) === null) {
++    throw new Refusal(
++      `launch: ${target} at --base ${opts.base}: ${NO_TEST_CMD_LINE} — ${NO_TEST_CMD_FIX}`
++    )
++  }
++
+   const githubName = githubIntegrationFor(target)
+   if (!(await listIntegrations(exec)).some((row) => row.name === githubName)) {
+     throw new Refusal(
+@@ -464,7 +735,10 @@ export async function launch ({
+     reapError = String(error?.message ?? error) || 'launch: the reap failed'
+   }
+ 
+-  const run = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
++  // The N this launch asks for. Without `--run` it is one past the highest the
++  // target carries *now*, which another launch can take between this read and
++  // the push; the push is where it is settled.
++  const firstRun = opts.run ? Number(opts.run) : await highestRunOnTarget(exec, repoDir) + 1
+   // Where the sha came from, so the launch line can say whether the operator
+   // chose this engine or the launcher read whatever `main` happened to be at.
+   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
+@@ -477,18 +751,24 @@ export async function launch ({
+ 
+   // ── The plan commit, pushed to the target before the VM exists. Plumbing
+   //    against a temporary index, so the operator's index and working tree are
+-  //    never touched. ─────────────────────────────────────────────────────────
+-  const planBranch = planBranchFor(run)
+-  const planSha = await commitPlan({ exec, repoDir, base: opts.base, run, planText, verdictsText })
++  //    never touched. The push is also what reserves the run number, so the N
++  //    the launch ends up with is the one that got through — see `pushPlan`.
+   const commands = []
+-  const pushArgv = ['-C', repoDir, 'push', 'origin', `${planSha}:refs/heads/${planBranch}`]
+-  commands.push(`git ${pushArgv.join(' ')}`)
+-  const push = await exec('git', pushArgv)
+-  if (push.code !== 0) {
+-    throw new Refusal(
+-      `launch: git push origin ${planSha}:refs/heads/${planBranch} failed (exit ${push.code}):\n${output(push)}`
+-    )
+-  }
++  const plan = await pushPlan({
++    exec,
++    repoDir,
++    base: opts.base,
++    run: firstRun,
++    planText,
++    verdictsText,
++    commands,
++    // `--run N` is the operator's number, not one the launcher is free to
++    // move: a refused push under it is refused, never retried elsewhere.
++    reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir)
++  })
++  const run = plan.run
++  const planBranch = plan.branch
++  const planSha = plan.sha
+ 
+   // ── The one mutating lobby verb. ──────────────────────────────────────────
+   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
+@@ -601,6 +881,82 @@ async function readDefaultBranch ({ exec, repoDir }) {
+   return { branch, tip }
+ }
+ 
++/**
++ * The sandbox's own words for a target it cannot test, copied verbatim from the
++ * `test-command` stage's failure line in `skills/ultrapowers/scripts/ultra_run.py`
++ * rather than paraphrased: the operator who reads this on the laptop and the
++ * operator who would have read it off a preflight receipt read the same sentence.
++ */
++export const NO_TEST_CMD_LINE =
++  'no test command detected — pass --test-cmd <run-wide suite command>; ' +
++  'the gate refuses to run without one'
++
++/**
++ * What the laptop can add to that line. The launch line has no `--test-cmd` —
++ * `COMMENT_KEYS` in `fleet/lobby.mjs` refuses an assignment key for one — so the
++ * fix is not a flag but a commit on the target's default branch, and the rungs
++ * are named in the ladder's own order.
++ */
++export const NO_TEST_CMD_FIX =
++  'the launch line carries no --test-cmd; commit one of pytest.ini, ' +
++  'pyproject.toml [tool.pytest], package.json scripts.test (or a bun lockfile ' +
++  'beside it), Makefile test:, go.mod or Cargo.toml on the target\'s default branch'
++
++/**
++ * The sandbox's test-command ladder, run against the tree at `--base` on the
++ * laptop. This mirrors `detect_test_cmd` in `skills/ultrapowers/scripts/ultra_run.py`
++ * — the verification periphery is frozen, so its rules are copied here rather
++ * than imported, and the Python ladder stays the one the sandbox runs.
++ *
++ * Only whether a rung matches is decided here: the launcher never runs pytest,
++ * never asks about xdist and never spawns python. The rule name is for the
++ * refusal's sake, and the command the sandbox derives is the sandbox's own.
++ *
++ * Every read is of the commit `--base` names and never of the working tree: an
++ * untracked `pytest.ini` beside the operator's editor is not a fact about the
++ * base, and a base whose `pytest.ini` the operator has deleted locally is still
++ * a base the sandbox can test.
++ */
++export async function detectTestCommand ({ exec, repoDir, base }) {
++  const present = async (rel) =>
++    (await git(exec, repoDir, ['cat-file', '-e', `${base}:${rel}`])).code === 0
++  const read = async (rel) => {
++    const res = await git(exec, repoDir, ['show', `${base}:${rel}`])
++    return res.code === 0 ? String(res.stdout ?? '') : ''
++  }
++
++  if (await present('pytest.ini')) return { rule: 'pytest-ini' }
++  if (await present('pyproject.toml') && (await read('pyproject.toml')).includes('[tool.pytest')) {
++    return { rule: 'pyproject-pytest' }
++  }
++  if (await present('package.json')) {
++    // A `package.json` that does not parse counts as having no scripts, exactly
++    // as the Python rung's `except (JSONDecodeError, AttributeError)` does.
++    let scripts = null
++    try {
++      scripts = JSON.parse(await read('package.json'))?.scripts ?? null
++    } catch {
++      scripts = null
++    }
++    const hasTest = Array.isArray(scripts)
++      ? scripts.includes('test')
++      : (scripts !== null && typeof scripts === 'object' && 'test' in scripts)
++    const bunLock = (await present('bun.lock')) || (await present('bun.lockb'))
++    if (hasTest) {
++      if (await present('pnpm-lock.yaml')) return { rule: 'package-json-pnpm' }
++      return { rule: bunLock ? 'package-json-bun' : 'package-json-npm' }
++    }
++    // A bun lockfile is a rung only beside a `package.json`, never alone.
++    if (bunLock) return { rule: 'bun-lockfile' }
++  }
++  if (await present('Makefile') && /^test\s*:/m.test(await read('Makefile'))) {
++    return { rule: 'makefile-test' }
++  }
++  if (await present('go.mod')) return { rule: 'go-mod' }
++  if (await present('Cargo.toml')) return { rule: 'cargo-toml' }
++  return null
++}
++
+ /**
+  * The plan commit: `<base>`'s tree plus `.ultrapowers/plan.md` (and the gate
+  * verdicts when the plan has a sibling verdicts file), one commit on `<base>`,
+@@ -646,6 +1002,56 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText })
+   }
+ }
+ 
++/** How many plan pushes one launch makes before it refuses. */
++export const PUSH_ATTEMPTS = 3
++
++/**
++ * The plan commit, pushed — and the run number, reserved by that push rather
++ * than by the read that proposed it. Two launches started in the same second
++ * on one target read the same highest N and pick the same N+1; the ref is the
++ * only thing that can tell them apart, so the loser of the push is the one
++ * that takes the next number.
++ *
++ * So a refused push is re-read before it is believed: `highestRunOnTarget` —
++ * the same read the number came from, branches *and* tags in one `ls-remote` —
++ * says whether a ref for the N just tried appeared. If it did, the refusal was
++ * a race: the launch takes reading + 1, builds a *fresh* plan commit for that
++ * N (the subject carries the number, so the old sha cannot be re-pushed under
++ * a new name) and pushes again. If it did not, nothing raced us — the target
++ * refused this push on its own terms, a pre-receive hook or a lost credential,
++ * and a second push would be refused the same way — so it is refused at once,
++ * with the push's own output. Git's words are never parsed: the target's refs
++ * decide, not the wording of a rejection line.
++ *
++ * `--run N` names an N the operator chose, so it is pushed once and refused if
++ * that is refused: `reread` is null and no re-read is made at all.
++ *
++ * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
++ * text a single refused push has always carried — with ` after <n> tries` when
++ * more than one was made.
++ */
++async function pushPlan ({ exec, repoDir, base, run, planText, verdictsText, commands, reread }) {
++  let n = run
++  for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
++    const branch = planBranchFor(n)
++    const sha = await commitPlan({ exec, repoDir, base, run: n, planText, verdictsText })
++    const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
++    commands.push(`git ${pushArgv.join(' ')}`)
++    const push = await exec('git', pushArgv)
++    if (push.code === 0) return { run: n, sha, branch }
++
++    const refusal = () =>
++      new Refusal(
++        `launch: git push origin ${sha}:refs/heads/${branch} failed` +
++        `${attempt > 1 ? ` after ${attempt} tries` : ''} (exit ${push.code}):\n${output(push)}`
++      )
++    if (attempt === PUSH_ATTEMPTS || reread === null) throw refusal()
++    const highest = await reread()
++    if (highest < n) throw refusal()
++    n = highest + 1
++  }
++}
++
+ /**
+  * An unpinned engine, named as the tip it is. Only the unpinned case is
+  * annotated: a pinned sha is one the operator typed, and the assignment comment
 diff --git a/fleet/roles/implementer.md b/fleet/roles/implementer.md
 index 582a6b6f9fbdd6b5eb9c66c349443fac3775649a..4a389e84561690902b0ab5c4dde67ea76428ccc4 100644
 --- a/fleet/roles/implementer.md
@@ -58418,6 +58974,2102 @@ index e45a4ec44115f5696472522a44996a785c3f8667..740b9bd78340341669c6c03a0052949b
    const deferredVerification = (Array.isArray(review.deferredVerification)
      ? review.deferredVerification : [])
      .concat(planDeferred)
+diff --git a/fleet/tests/test_launch.mjs b/fleet/tests/test_launch.mjs
+index 1f6c236358b6ae73a8c630a6c5ab87183519c943..2948ac516cbf5f6990f68cdc1ca078022c548682 100644
+--- a/fleet/tests/test_launch.mjs
++++ b/fleet/tests/test_launch.mjs
+@@ -93,8 +93,12 @@ const ENGINE = 'b'.repeat(40)
+ const NOW = new Date('2026-09-03T22:15:00.000Z')
+ const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
+ const VERDICTS_TEXT = '{"verdict":"green","gates":[]}\n'
+-/** The seed the base commit carries, so "the base's tree, otherwise" has shape. */
+-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
++/** The seed the base commit carries, so "the base's tree, otherwise" has shape.
++ *  `pytest.ini` is the first rung of the sandbox's test-command ladder: a base
++ *  matching no rung is refused on the laptop, so every launch sim seeds one. */
++const SEED = {
++  'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n'
++}
+ /** The plan's own pool, sized by the config when no flag says otherwise. */
+ const CONFIG = { ...FLEET_DEFAULTS }
+ /** `billing plan --json`, as measured 2026-09-04. */
+diff --git a/fleet/tests/test_launch_effort.mjs b/fleet/tests/test_launch_effort.mjs
+index 2e2b789f3867af8963fab20bcc45e8e47e421e3f..2829aa72c9bdaaff40c6470477b4c5f13d928c66 100644
+--- a/fleet/tests/test_launch_effort.mjs
++++ b/fleet/tests/test_launch_effort.mjs
+@@ -106,7 +106,11 @@ const rulesFor = (repo) => [
+ 
+ function workspace () {
+   const root = tempDir('fleet-launch-effort-')
+-  const repo = makeTargetRepo({ root, files: { 'README.md': '# target\n' } })
++  // `pytest.ini` is the first rung of the sandbox's test-command ladder, which
++  // the launcher reads off `--base`: a base matching no rung is refused.
++  const repo = makeTargetRepo({
++    root, files: { 'README.md': '# target\n', 'pytest.ini': '[pytest]\n' }
++  })
+   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
+   const planDir = path.join(root, 'plans-src')
+   fs.mkdirSync(planDir)
+diff --git a/fleet/tests/test_launch_engine_source.mjs b/fleet/tests/test_launch_engine_source.mjs
+index c045d3fd62b19779745374e06f9999038e8695e7..7d919d22f99354b824b73b456043288f8085ecfb 100644
+--- a/fleet/tests/test_launch_engine_source.mjs
++++ b/fleet/tests/test_launch_engine_source.mjs
+@@ -71,7 +71,11 @@ const MAIN_TIP = 'a1b2c3d4'.repeat(5)
+ const PINNED = '9f'.repeat(20)
+ const NOW = new Date('2026-09-03T22:15:00.000Z')
+ const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
+-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
++/** `pytest.ini` is the first rung of the sandbox's test-command ladder, which
++ *  the launcher reads off `--base`: a base matching no rung is refused. */
++const SEED = {
++  'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n'
++}
+ const CONFIG = { ...FLEET_DEFAULTS }
+ /** `billing plan --json`, as measured 2026-09-04. */
+ const BILLING_OK = {
+diff --git a/fleet/tests/test_launch_exam_command.mjs b/fleet/tests/test_launch_exam_command.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..377846430ee4ea50673b7236867b7849b2359264
+--- /dev/null
++++ b/fleet/tests/test_launch_exam_command.mjs
+@@ -0,0 +1,339 @@
++/**
++ * fleet/tests/test_launch_exam_command.mjs — the launcher half of task 4
++ * (#716): a backticked or non-command `**Exam command:**` line is refused by
++ * the launcher, not only by the compiler.
++ *
++ * The exam is written against the task's Machine clause M4 and its Proof leg
++ * (d), and each assertion names both:
++ *
++ *   (d) [M4] a plan whose header `**Exam command:**` value carries a backtick,
++ *       or a word outside the command-word class, is a `Refusal` with
++ *       `exitCode` 2 whose message carries `**Exam command:**` and the value —
++ *       raised before any `ssh` and before any `git push`, so `exec.mutating()`
++ *       is `[]` and the origin carries no `ultra/` ref; and a plan whose value
++ *       is `node {paths}` launches with `result.run` 1, as at BASE.
++ *
++ * The command-word class itself is the shared literal of the two halves —
++ * `EXAM_RUNNER_WORD`, this task's Produces, exported from `fleet/launch.mjs`
++ * and written `EXAM_RUNNER_WORD = re.compile(r"^[A-Za-z0-9_.+/=:@,-]+$")` in
++ * `skills/ultrapowers/scripts/compile_plan.py`. It is read here through a
++ * namespace import, so a launcher that has not grown it yet fails an assertion
++ * rather than a module link.
++ *
++ * Nothing here opens a network socket: every `ssh` goes through the injected
++ * exec seam, the target is a real local repository with a bare origin behind
++ * it, and the credential seam is a spy — no keychain is read. The scaffolding
++ * is `fleet/tests/test_launch.mjs`'s, copied.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import * as launcher from '../launch.mjs'
++import {
++  FLEET_DEFAULTS,
++  Refusal,
++  defaultExec
++} from '../lobby.mjs'
++import {
++  answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
++} from './_lobby_helpers.mjs'
++
++const { launch } = launcher
++
++const TARGET = 'popmechanic/smoke'
++const GH = 'gh-popmechanic-smoke'
++const ORIGIN_URL = `https://github.com/${TARGET}.git`
++const ENGINE = 'b'.repeat(40)
++const NOW = new Date('2026-09-03T22:15:00.000Z')
++/** The seed: a README, and a `pytest.ini` so the tree at `--base` has a test
++ *  command a launch can detect. */
++const SEED = { 'README.md': '# target\n', 'pytest.ini': '[pytest]\n' }
++const CONFIG = { ...FLEET_DEFAULTS }
++const BILLING_OK = {
++  max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual'
++}
++
++const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
++
++// ── The seam's rules, copied from test_launch.mjs ───────────────────────────
++
++const NEW_OK = (cmd, argv) =>
++  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
++
++const pointAtOrigin = (repo, argv) => {
++  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
++  const fetchAt = argv.indexOf('fetch')
++  if (fetchAt < 0) return pointed
++  const remoteAt = argv.indexOf('origin', fetchAt)
++  const branch = String(argv[remoteAt + 1] ?? '')
++  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
++  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
++  return pointed
++}
++
++const localRemote = (repo) => ({
++  when: (cmd, argv) => cmd === 'git' &&
++    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
++    !argv.includes('--get-url') &&
++    !argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
++})
++
++const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
++const NO_REMOTE_OPS = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
++  answer: OFFLINE
++}
++const NO_NETWORK_GIT = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
++  answer: OFFLINE
++}
++
++const helpText = (verb, flags) => [
++  `Command: ${verb}`,
++  '',
++  'Options:',
++  ...flags.map((flag) => `  ${flag}  what ${flag} does`),
++  ''
++].join('\n')
++
++const HELP_OK = (cmd, argv) => {
++  const verb = String(argv[1] ?? '').slice('help '.length)
++  const flags = VERBS.verbs[verb]
++  return flags
++    ? answer(helpText(verb, flags))
++    : answer(`No help available for unrecognized command: ${verb}\n`)
++}
++
++const readRules = ({ repo } = {}) => [
++  ...(repo ? [localRemote(repo)] : []),
++  sshRule('help ', HELP_OK),
++  sshRule('integrations list --json',
++    answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
++  sshRule('billing plan --json', answer(BILLING_OK)),
++  sshRule('new ', NEW_OK),
++  NO_REMOTE_OPS,
++  NO_NETWORK_GIT
++]
++
++// ── The workspace: a real target repository and a plan beside it ────────────
++
++/** A plan whose header carries `value` on its `**Exam command:**` line, above
++ *  one task — the line under test is a PLAN-level header line. */
++const planWith = (value) => [
++  '# Plan: an exam command',
++  '',
++  `**Exam command:** ${value}`,
++  '',
++  '### Task 1: Sample',
++  '',
++  '**Type:** implementation',
++  '',
++  'One task, and a trailing newline.',
++  ''
++].join('\n')
++
++/** The same plan with no `**Exam command:**` line at all. */
++const PLAN_WITHOUT = [
++  '# Plan: no exam command',
++  '',
++  '### Task 1: Sample',
++  '',
++  '**Type:** implementation',
++  '',
++  'One task, and a trailing newline.',
++  ''
++].join('\n')
++
++function workspace (planText) {
++  const root = tempDir('fleet-launch-exam-')
++  const repo = makeTargetRepo({ root, files: { ...SEED } })
++  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
++  const planDir = path.join(root, 'plans-src')
++  fs.mkdirSync(planDir)
++  const planPath = path.join(planDir, 'a-plan.md')
++  fs.writeFileSync(planPath, planText)
++  return { root, repo, planPath, cleanup: () => cleanup(root) }
++}
++
++/** The origin's own `refs/heads/*`, read off the bare path the exam made. */
++const branchesOf = (ws) => {
++  const out = {}
++  for (const line of ws.repo.git(['ls-remote', '--heads', ws.repo.origin]).split('\n')) {
++    const [sha, ref] = line.split('\t')
++    if (!ref) continue
++    out[ref.trim().replace(/^refs\/heads\//, '')] = sha.trim()
++  }
++  return out
++}
++
++const argvFor = (ws) => [
++  ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir,
++  '--engine', ENGINE
++]
++
++/** The credential seam, so no keychain is read. */
++const refreshSpy = () => {
++  const spy = (account) => {
++    spy.calls.push({ account })
++    return { ok: true }
++  }
++  spy.calls = []
++  return spy
++}
++
++const launchIn = (ws, exec) => launch({
++  argv: argvFor(ws),
++  exec,
++  config: CONFIG,
++  now: () => NOW,
++  sleep: async () => {},
++  refreshCredential: refreshSpy()
++})
++
++const sshCalls = (exec) => exec.calls.filter((c) => c.cmd === 'ssh').map((c) => c.line)
++const pushCalls = (exec) =>
++  exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push')).map((c) => c.line)
++
++// ── (d) [M4] the three refused values ───────────────────────────────────────
++{
++  const refused = [
++    {
++      why: 'a backticked template — the value #716 finding 2 met, which reached ' +
++        '`--validate-knobs` as a runner literally named with a leading backtick',
++      value: '`python3 -m pytest {paths}`',
++      backtick: true
++    },
++    {
++      why: 'a command substitution in the first word: `$(which` is not what runs the suite',
++      value: '$(which node) {paths}',
++      word: '$(which'
++    },
++    {
++      why: 'a `;` — the template is one runner and its arguments, never two commands',
++      value: 'node {paths}; rm -rf ~',
++      word: '{paths};'
++    }
++  ]
++
++  for (const kase of refused) {
++    const ws = workspace(planWith(kase.value))
++    const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
++    const error = await thrown(() => launchIn(ws, exec))
++
++    assert.ok(error, `(d) [M4] ${kase.why}: the launch must refuse`)
++    assert.ok(
++      error instanceof Refusal,
++      `(d) [M4] ${kase.why}: it is a Refusal, got ${error?.name}: ${error?.message}`
++    )
++    assert.equal(error.exitCode, 2, `(d) [M4] ${kase.why}: with exitCode 2`)
++    assert.ok(
++      String(error.message).startsWith('launch: '),
++      `(d) [M4] ${kase.why}: every launcher refusal message begins \`launch: \`, got ${JSON.stringify(error.message)}`
++    )
++    assert.ok(
++      error.message.includes('**Exam command:**'),
++      `(d) [M4] ${kase.why}: the message names the line it read, got ${JSON.stringify(error.message)}`
++    )
++    assert.ok(
++      error.message.includes(kase.value),
++      `(d) [M4] ${kase.why}: and carries the value ${JSON.stringify(kase.value)}, got ${JSON.stringify(error.message)}`
++    )
++    if (kase.backtick) {
++      // Where the sandbox already has words for this refusal the launcher
++      // quotes them: `compile_plan.py`'s backtick note, verbatim.
++      assert.ok(
++        error.message.includes(
++          "; the driver's shell reads it as a command substitution (run-74)"
++        ),
++        `(d) [M4] ${kase.why}: quoting the compiler's own backtick note verbatim, got ${JSON.stringify(error.message)}`
++      )
++    } else {
++      assert.ok(
++        error.message.includes(`${kase.word} is not a command word`),
++        `(d) [M4] ${kase.why}: naming the first offending word ${JSON.stringify(kase.word)}, got ${JSON.stringify(error.message)}`
++      )
++    }
++
++    assert.deepEqual(
++      sshCalls(exec), [],
++      `(d) [M4] ${kase.why}: refused before any ssh`
++    )
++    assert.deepEqual(
++      pushCalls(exec), [],
++      `(d) [M4] ${kase.why}: and before any git push`
++    )
++    assert.deepEqual(
++      exec.mutating(), [],
++      `(d) [M4] ${kase.why}: so nothing on exe.dev is mutated`
++    )
++    assert.ok(
++      Object.keys(branchesOf(ws)).every((ref) => !ref.startsWith('ultra/')),
++      `(d) [M4] ${kase.why}: and the origin carries no ultra/ ref`
++    )
++    ws.cleanup()
++  }
++}
++
++// ── (d) [M4] and the well-formed value launches, as at BASE ─────────────────
++{
++  const ws = workspace(planWith('node {paths}'))
++  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
++  const result = await launchIn(ws, exec)
++  assert.equal(
++    result.run, 1,
++    '(d) [M4] `**Exam command:** node {paths}` is a runner and its arguments: the launch goes through, and an origin with no ultra/ ref is run 1'
++  )
++  assert.equal(
++    exec.mutating().length, 1,
++    '(d) [M4] with BASE\'s one mutating lobby verb'
++  )
++  ws.cleanup()
++
++  const silent = workspace(PLAN_WITHOUT)
++  const execSilent = makeExec({ rules: readRules({ repo: silent.repo }) })
++  const quiet = await launchIn(silent, execSilent)
++  assert.equal(
++    quiet.run, 1,
++    '(d) [M4] and a plan carrying no `**Exam command:**` line launches exactly as at BASE'
++  )
++  silent.cleanup()
++}
++
++// ── (d) [M4] the shared literal: `EXAM_RUNNER_WORD`, this task's Produces ───
++{
++  const exported = launcher.EXAM_RUNNER_WORD
++  assert.ok(
++    exported !== undefined,
++    '(d) [M4] fleet/launch.mjs exports EXAM_RUNNER_WORD — the command-word class the compiler half shares'
++  )
++  const source = typeof exported === 'string' ? exported : exported.source
++  assert.equal(
++    source, '^[A-Za-z0-9_.+/=:@,-]+$',
++    '(d) [M4] and it is the class the task spells, character for character'
++  )
++  const word = new RegExp(source)
++  // What a runner and its flags are spelled with.
++  for (const ok of [
++    'node', 'python3', 'go', 'test', '-q', '-m', '--tb=short',
++    './node_modules/.bin/vitest', './...', 'pkg:test', 'a,b', 'a+b', 'user@host'
++  ]) {
++    assert.ok(word.test(ok), `(d) [M4] ${JSON.stringify(ok)} is a command word`)
++  }
++  // Every shell operator, quote and expansion character is outside it.
++  for (const bad of [
++    '$(which', "'npx'", '"npx"', '$(x)', '|', '2>&1', '>out', 'a&b', 'a;b',
++    '{paths};', '*', '?', '!', '#', 'a\\b', '`x`'
++  ]) {
++    assert.ok(
++      !word.test(bad),
++      `(d) [M4] ${JSON.stringify(bad)} carries a shell operator, a quote or an expansion character and is not a command word`
++    )
++  }
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_launch_hold.mjs b/fleet/tests/test_launch_hold.mjs
+index 43a51867c8973fd6353516112def30983e37d463..aad80d272b3f3927d8db4e4b41e63bd0c5ff53d7 100644
+--- a/fleet/tests/test_launch_hold.mjs
++++ b/fleet/tests/test_launch_hold.mjs
+@@ -104,7 +104,11 @@ const rulesFor = (repo) => [
+ 
+ function workspace () {
+   const root = tempDir('fleet-launch-hold-')
+-  const repo = makeTargetRepo({ root, files: { 'README.md': '# target\n' } })
++  // `pytest.ini` is the first rung of the sandbox's test-command ladder, which
++  // the launcher reads off `--base`: a base matching no rung is refused.
++  const repo = makeTargetRepo({
++    root, files: { 'README.md': '# target\n', 'pytest.ini': '[pytest]\n' }
++  })
+   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
+   const planDir = path.join(root, 'plans-src')
+   fs.mkdirSync(planDir)
+diff --git a/fleet/tests/test_launch_pins.mjs b/fleet/tests/test_launch_pins.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e20d9b992e24b07d00a0922be35b911e965aa1b8
+--- /dev/null
++++ b/fleet/tests/test_launch_pins.mjs
+@@ -0,0 +1,630 @@
++/**
++ * fleet/tests/test_launch_pins.mjs — the plan's hash pins, verified at `--base`
++ * before the push.
++ *
++ * A hash pin is a fact about BASE, and BASE is chosen at launch: so the
++ * launcher reads the pins the plan carries and checks them against the tree at
++ * `--base`, refusing before it touches exe.dev or the target. The exam is
++ * written against the task's Machine clauses, leg by leg, and every assertion
++ * names its leg and the clause it comes from:
++ *
++ *   (a) [M1] [M2] a `## Global Constraints` `- Check:` pin that matches and a
++ *       Proof `- Run:` pin that does not: a `Refusal`, `exitCode` 2, naming the
++ *       stale path, its pinned sha and the real one — and not the path whose
++ *       pin matched;
++ *   (b) [M2] a pin on a path absent at `--base` says `no such path`; two stale
++ *       pins are two lines, whether they sit on two lines or are chained with
++ *       `&&` on one;
++ *   (c) [M3] a slice pin (`<command> | git hash-object --stdin`) is run under
++ *       `/bin/sh -c` in a checkout of `--base`: a matching one launches, a
++ *       stale one refuses with the command in place of the path
++ *       (whitespace-collapsed, clipped to 80 characters), and either way no
++ *       `fleet-pin-*` directory is left under the OS temp dir and the
++ *       operator's checkout — `HEAD`, index, working tree, worktree list — is
++ *       as it was;
++ *   (d) [M4] every one of those refusals issues no `ssh`, pushes nothing,
++ *       mutates no lobby verb and leaves no `ultra/` ref on the origin — and is
++ *       raised after the `--base` check and before the first `ls-remote`;
++ *   (e) [M1] [M4] what is not a pin: a plan with none, a pin on a
++ *       `**Context:**` line, and a `- Check:` whose sha is 39 or 41 hex. All
++ *       launch, and a plan whose pins all match launches exactly as one
++ *       carrying none;
++ *   (f) [Produces] `verifyPlanPins` is what `fleet/launch.mjs` produces.
++ *
++ * Nothing here opens a network socket. Every `ssh` goes through the injected
++ * exec seam; `git`, `tar` and `/bin/sh` are real, and the target is a real
++ * repository — `makeTargetRepo`'s bare origin and its clone — so a push is a
++ * real push and the refs a leg reads are the origin's own. The scaffolding is
++ * copied from `fleet/tests/test_launch.mjs` rather than imported: that file
++ * exports nothing.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { spawnSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++
++import * as launchModule from '../launch.mjs'
++import { launch } from '../launch.mjs'
++import { FLEET_DEFAULTS, Refusal, defaultExec } from '../lobby.mjs'
++import {
++  answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
++} from './_lobby_helpers.mjs'
++
++const TARGET = 'popmechanic/smoke'
++/** The target's one GitHub integration. */
++const GH = 'gh-popmechanic-smoke'
++/** How a real target's `origin` is spelled. */
++const ORIGIN_URL = `https://github.com/${TARGET}.git`
++const ENGINE = 'b'.repeat(40)
++const NOW = new Date('2026-09-03T22:15:00.000Z')
++const CONFIG = { ...FLEET_DEFAULTS }
++/** `billing plan --json`, as measured 2026-09-04. */
++const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
++
++/**
++ * The seed the base commit carries. `pytest.ini` rides beside the README
++ * because a sibling task of this wave refuses a launch whose tree at `--base`
++ * has no detectable test command.
++ */
++const SEED = {
++  'README.md': '# target\n',
++  'src/app.js': 'export const x = 1\n',
++  'pytest.ini': '[pytest]\n'
++}
++
++/** Two shas no blob of this seed has. */
++const ZEROS = '0'.repeat(40)
++const AAAA = 'a'.repeat(40)
++
++const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
++
++/**
++ * What really runs when no rule matched. `git` so a plan commit is a real
++ * commit; `tar` and the shells so a slice pin's checkout and its `/bin/sh -c`
++ * are real however the launcher spells them — M3 asks for both.
++ */
++const PASSTHROUGH = ['git', 'tar', 'sh', 'bash', '/bin/sh', '/bin/bash']
++
++// ── The seam's rules, as test_launch.mjs writes them ────────────────────────
++
++const NEW_OK = (cmd, argv) =>
++  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
++
++const ENGINE_RULE = {
++  when: (cmd, argv) =>
++    cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: answer(`${ENGINE}\tHEAD\n`)
++}
++
++const pointAtOrigin = (repo, argv) => {
++  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
++  const fetchAt = argv.indexOf('fetch')
++  if (fetchAt < 0) return pointed
++  const remoteAt = argv.indexOf('origin', fetchAt)
++  const branch = String(argv[remoteAt + 1] ?? '')
++  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
++  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
++  return pointed
++}
++
++/** `origin` pointed at the bare repository the exam really made. */
++const localRemote = (repo) => ({
++  when: (cmd, argv) => cmd === 'git' &&
++    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
++    !argv.includes('--get-url') &&
++    !argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
++})
++
++/** No socket, whatever else the launcher tries. */
++const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
++const NO_REMOTE_OPS = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
++  answer: OFFLINE
++}
++const NO_NETWORK_GIT = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
++  answer: OFFLINE
++}
++
++/** `help <verb>` as the lobby prints it, answering the shipped record's flags. */
++const helpText = (verb, flags) => [
++  `Command: ${verb}`, '', 'Options:', ...flags.map((flag) => `  ${flag}  what ${flag} does`), ''
++].join('\n')
++
++const HELP_OK = (cmd, argv) => {
++  const verb = String(argv[1] ?? '').slice('help '.length)
++  const flags = VERBS.verbs[verb]
++  return flags
++    ? answer(helpText(verb, flags))
++    : answer(`No help available for unrecognized command: ${verb}\n`)
++}
++
++const readRules = ({ repo } = {}) => [
++  ENGINE_RULE,
++  ...(repo ? [localRemote(repo)] : []),
++  sshRule('help ', HELP_OK),
++  sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
++  sshRule('billing plan --json', answer(BILLING_OK)),
++  sshRule('new ', NEW_OK),
++  NO_REMOTE_OPS,
++  NO_NETWORK_GIT
++]
++
++// ── The plan text, and the two pin shapes plans write ───────────────────────
++
++/** The path shape: "the shape for a single file". */
++const pathPin = (rel, sha) => `test "$(git hash-object ${rel})" = ${sha}`
++/** The slice shape: a command's stdout, hashed on stdin. */
++const slicePin = (command, sha) => `test "$(${command} | git hash-object --stdin)" = ${sha}`
++
++/**
++ * A plan: a `## Global Constraints` section of `- Check:` bullets and one task
++ * whose Proof carries `- Run:` bullets, plus whatever `**Context:**` lines a leg
++ * wants — the shape `skills/ultrawrite/SKILL.md` spells.
++ */
++const makePlan = ({ checks = [], runs = [], context = [] } = {}) => [
++  '# a plan',
++  '',
++  '## Global Constraints',
++  ...checks.map((check) => `- Check: ${check}`),
++  '',
++  '### Task 1: the one task',
++  '',
++  ...context.map((line) => `**Context:** ${line}`),
++  '',
++  '**Proof:**',
++  '- Test: `fleet/tests/test_thing.mjs`',
++  ...runs.map((run) => `- Run: ${run}`),
++  ''
++].join('\n')
++
++/** The plan text BASE launches with: not a pin in it. */
++const NO_PIN_PLAN = '# a plan\n\nOne task, and a trailing newline.\n'
++
++/** The refusal line M2 spells, one per stale pin. */
++const pinLine = (label, pinned, base, real) =>
++  `launch: plan pin ${label}: pinned ${pinned} but --base ${base} has ${real}`
++
++// ── The workspace: a real target repository and a plan beside it ────────────
++
++function workspace ({ plan = NO_PIN_PLAN, refs = [], origin = ORIGIN_URL } = {}) {
++  const root = tempDir('fleet-launch-pins-')
++  const repo = makeTargetRepo({ root, files: { ...SEED } })
++  for (const ref of refs) repo.git(['push', repo.origin, `${repo.base}:refs/heads/${ref}`])
++  repo.git(['remote', 'set-url', 'origin', origin])
++  const planDir = path.join(root, 'plans-src')
++  fs.mkdirSync(planDir)
++  const planPath = path.join(planDir, 'a-plan.md')
++  fs.writeFileSync(planPath, typeof plan === 'function' ? plan(repo) : plan)
++  return { root, repo, planPath, cleanup: () => cleanup(root) }
++}
++
++/** The blob the tree at `--base` carries at `<rel>` — what a path pin pins. */
++const blobAt = (repo, rel) => repo.git(['rev-parse', `${repo.base}:${rel}`])
++
++/** The sha a slice pin pins, computed by the exam the way M3 says to compute it. */
++const sliceSha = (repo, command) => {
++  const res = spawnSync('/bin/sh', ['-c', `${command} | git hash-object --stdin`],
++    { cwd: repo.dir, encoding: 'utf8' })
++  assert.equal(res.status, 0, `the exam computes its own slice sha: ${res.stdout}${res.stderr}`)
++  const sha = String(res.stdout).trim()
++  assert.match(sha, /^[0-9a-f]{40}$/, 'the exam computes its own slice sha')
++  return sha
++}
++
++/** The origin's own `refs/heads/*`. */
++const branchesOf = (ws) => {
++  const out = {}
++  for (const line of ws.repo.git(['ls-remote', '--heads', ws.repo.origin]).split('\n')) {
++    const [sha, ref] = line.split('\t')
++    if (!ref) continue
++    out[ref.trim().replace(/^refs\/heads\//, '')] = sha.trim()
++  }
++  return out
++}
++
++const argvFor = (ws, extra = []) => [
++  ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir,
++  '--engine', ENGINE, ...extra
++]
++
++/** The credential seam: nothing spawns the credential tool, so no keychain is read. */
++const refreshSpy = () => {
++  const spy = () => ({ ok: true })
++  return spy
++}
++
++const launchIn = (ws, { argv, exec }) => launch({
++  argv: argv ?? argvFor(ws),
++  exec,
++  config: CONFIG,
++  now: () => NOW,
++  sleep: async () => {},
++  refreshCredential: refreshSpy()
++})
++
++const newLines = (exec) => exec.lobby().filter((line) => line.startsWith('new '))
++
++async function greenLaunch (ws, { extra = [] } = {}) {
++  const exec = makeExec({ rules: readRules({ repo: ws.repo }), passthrough: PASSTHROUGH })
++  const result = await launchIn(ws, { argv: argvFor(ws, extra), exec })
++  return { result, exec }
++}
++
++async function refusingLaunch (ws, { extra = [] } = {}) {
++  const exec = makeExec({ rules: readRules({ repo: ws.repo }), passthrough: PASSTHROUGH })
++  const error = await thrown(() => launchIn(ws, { argv: argvFor(ws, extra), exec }))
++  return { error, exec }
++}
++
++/** The `fleet-pin-*` directories under the OS temp dir, right now. */
++const pinDirs = () => fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('fleet-pin-'))
++
++/**
++ * (d) [M4] what every pin refusal has and has not done: it is a `Refusal` with
++ * `exitCode` 2 whose message begins `launch: `, it was raised after the
++ * `--base` read and before the first `ls-remote`, and nothing on exe.dev or on
++ * the target moved.
++ */
++function assertRefusalShape (label, { error, exec, ws }) {
++  assert.ok(error, `${label} [M2] must refuse`)
++  assert.ok(
++    error instanceof Refusal,
++    `${label} [M2] is a Refusal, got ${error?.name}: ${error?.message}`
++  )
++  assert.equal(error.exitCode, 2, `${label} [M2] refuses with exit 2`)
++  assert.ok(
++    error.message.startsWith('launch: '),
++    `${label} [M2] its message begins \`launch: \`, got ${JSON.stringify(error.message)}`
++  )
++  assert.deepEqual(
++    exec.calls.filter((c) => c.cmd === 'ssh').map((c) => c.line), [],
++    `(d) [M4] ${label} issues no ssh command: no lobby verb is reached`
++  )
++  assert.deepEqual(
++    exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push')).map((c) => c.line), [],
++    `(d) [M4] ${label} pushes nothing`
++  )
++  assert.deepEqual(exec.mutating(), [], `(d) [M4] ${label} mutates no lobby verb`)
++  assert.deepEqual(
++    Object.keys(branchesOf(ws)).filter((ref) => ref.startsWith('ultra/')), [],
++    `(d) [M4] ${label} leaves no ultra/ ref on the origin`
++  )
++  assert.ok(
++    exec.calls.some((c) => c.cmd === 'git' && c.argv.includes('rev-parse') && c.argv.includes('--verify')),
++    `(d) [M4] ${label} is raised after --base is verified present in the checkout`
++  )
++  assert.deepEqual(
++    exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('ls-remote')).map((c) => c.line), [],
++    `(d) [M4] ${label} is raised before the first ls-remote: a stale pin costs nothing but local git reads`
++  )
++}
++
++// ── a. [M1] [M2] a matching Check pin and a stale Run pin ───────────────────
++{
++  const ws = workspace({
++    plan: (repo) => makePlan({
++      checks: [pathPin('README.md', blobAt(repo, 'README.md'))],
++      runs: [pathPin('src/app.js', ZEROS)]
++    })
++  })
++  const real = blobAt(ws.repo, 'src/app.js')
++  const { error, exec } = await refusingLaunch(ws)
++  assertRefusalShape('(a) a stale Proof `- Run:` path pin', { error, exec, ws })
++
++  assert.ok(
++    error.message.includes('src/app.js'),
++    `(a) [M2] the refusal names the stale path, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes(ZEROS),
++    `(a) [M2] and the sha the plan pinned, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes(real),
++    `(a) [M2] and the blob --base really carries there, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    !error.message.includes('README.md'),
++    `(a) [M2] and says nothing of README.md, whose Global Constraints pin matches, got ${JSON.stringify(error.message)}`
++  )
++  assert.equal(
++    error.message, pinLine('src/app.js', ZEROS, ws.repo.base, real),
++    '(a) [M2] one stale pin is one line, in the format the task spells'
++  )
++  ws.cleanup()
++}
++
++// ── b. [M2] an absent path, and two stale pins ─────────────────────────────
++{
++  const missing = workspace({ plan: makePlan({ checks: [pathPin('missing.txt', ZEROS)] }) })
++  const { error, exec } = await refusingLaunch(missing)
++  assertRefusalShape('(b) a pin on a path absent at --base', { error, exec, ws: missing })
++  for (const piece of ['missing.txt', ZEROS, 'no such path']) {
++    assert.ok(
++      error.message.includes(piece),
++      `(b) [M2] the refusal carries ${JSON.stringify(piece)}, got ${JSON.stringify(error.message)}`
++    )
++  }
++  assert.equal(
++    error.message, pinLine('missing.txt', ZEROS, missing.repo.base, 'no such path'),
++    '(b) [M2] a path absent at --base is a stale pin, not a skipped one'
++  )
++  missing.cleanup()
++
++  // Two stale pins on two lines: two lines in the message.
++  const two = workspace({
++    plan: makePlan({
++      checks: [pathPin('missing.txt', ZEROS)],
++      runs: [pathPin('src/app.js', AAAA)]
++    })
++  })
++  const twoReal = blobAt(two.repo, 'src/app.js')
++  const twoRun = await refusingLaunch(two)
++  assertRefusalShape('(b) two stale pins on two lines', { ...twoRun, ws: two })
++  for (const piece of ['missing.txt', 'src/app.js']) {
++    assert.ok(
++      twoRun.error.message.includes(piece),
++      `(b) [M2] both stale paths are in the message, missing ${piece}: ${JSON.stringify(twoRun.error.message)}`
++    )
++  }
++  assert.deepEqual(
++    twoRun.error.message.split('\n').slice().sort(),
++    [
++      pinLine('missing.txt', ZEROS, two.repo.base, 'no such path'),
++      pinLine('src/app.js', AAAA, two.repo.base, twoReal)
++    ].sort(),
++    '(b) [M2] two stale pins are two lines, one per pin'
++  )
++  two.cleanup()
++
++  // [M1] a `Run:` may chain several tests with `&&`: one line, two pins.
++  const chained = workspace({
++    plan: makePlan({
++      runs: [`${pathPin('missing.txt', ZEROS)} && ${pathPin('src/app.js', AAAA)}`]
++    })
++  })
++  const chainedReal = blobAt(chained.repo, 'src/app.js')
++  const chainedRun = await refusingLaunch(chained)
++  assertRefusalShape('(b) [M1] two pins chained with && on one `- Run:` line', { ...chainedRun, ws: chained })
++  assert.deepEqual(
++    chainedRun.error.message.split('\n').slice().sort(),
++    [
++      pinLine('missing.txt', ZEROS, chained.repo.base, 'no such path'),
++      pinLine('src/app.js', AAAA, chained.repo.base, chainedReal)
++    ].sort(),
++    '(b) [M1] one line can carry several pins, and each stale one is its own line'
++  )
++  chained.cleanup()
++
++  // The whole-value backtick wrapper `compile_plan.py` strips off a
++  // `Run:`/`Check:` value is stripped here too, so the pin inside it is a pin.
++  const wrapped = workspace({
++    plan: makePlan({ checks: [`\`${pathPin('src/app.js', ZEROS)}\``] })
++  })
++  const wrappedReal = blobAt(wrapped.repo, 'src/app.js')
++  const wrappedRun = await refusingLaunch(wrapped)
++  assertRefusalShape('(b) [M1] a backtick-wrapped `- Check:` value', { ...wrappedRun, ws: wrapped })
++  assert.equal(
++    wrappedRun.error.message,
++    pinLine('src/app.js', ZEROS, wrapped.repo.base, wrappedReal),
++    '(b) [M1] the wrapper is stripped before matching, and the label carries no backtick'
++  )
++  wrapped.cleanup()
++}
++
++// ── c. [M3] the slice shape: a command's stdout, in a checkout of --base ────
++const SLICE_CMD = "sed -n '1p' README.md"
++{
++  // A matching slice pin launches, and leaves nothing behind.
++  const green = workspace({
++    plan: (repo) => makePlan({ runs: [slicePin(SLICE_CMD, sliceSha(repo, SLICE_CMD))] })
++  })
++  const headBefore = green.repo.git(['rev-parse', 'HEAD'])
++  const pinDirsBefore = pinDirs()
++  const { result, exec } = await greenLaunch(green)
++  assert.equal(result.run, 1, '(c) [M3] a slice pin the tree at --base answers launches: run 1')
++  assert.equal(newLines(exec).length, 1, '(c) [M3] with one `new`')
++  assert.deepEqual(
++    exec.mutating(), newLines(exec),
++    '(c) [M3] and that `new` the only mutating lobby verb'
++  )
++  assert.deepEqual(
++    pinDirs().filter((name) => !pinDirsBefore.includes(name)), [],
++    '(c) [M3] no fleet-pin-* directory remains under the OS temp dir after a launch'
++  )
++  assert.equal(
++    green.repo.git(['status', '--porcelain']), '',
++    "(c) [M3] the checkout's index and working tree are as they were"
++  )
++  assert.equal(
++    green.repo.git(['rev-parse', 'HEAD']), headBefore,
++    "(c) [M3] and its HEAD"
++  )
++  assert.equal(
++    green.repo.git(['worktree', 'list']).split('\n').length, 1,
++    '(c) [M3] and `git worktree list` has one line: the temporary checkout is gone, not merely emptied'
++  )
++
++  // The same pin with forty zeros: the command in place of the path.
++  const stale = workspace({ plan: makePlan({ runs: [slicePin(SLICE_CMD, ZEROS)] }) })
++  const staleHead = stale.repo.git(['rev-parse', 'HEAD'])
++  const staleBefore = pinDirs()
++  const computed = sliceSha(stale.repo, SLICE_CMD)
++  const staleRun = await refusingLaunch(stale)
++  assertRefusalShape('(c) a stale slice pin', { ...staleRun, ws: stale })
++  for (const piece of [SLICE_CMD, ZEROS, computed]) {
++    assert.ok(
++      staleRun.error.message.includes(piece),
++      `(c) [M3] the refusal carries ${JSON.stringify(piece)}, got ${JSON.stringify(staleRun.error.message)}`
++    )
++  }
++  assert.equal(
++    staleRun.error.message, pinLine(SLICE_CMD, ZEROS, stale.repo.base, computed),
++    '(c) [M3] the command stands in the place the path would take'
++  )
++  assert.deepEqual(
++    pinDirs().filter((name) => !staleBefore.includes(name)), [],
++    '(c) [M3] and the temporary directory is removed before launch throws, not only before it returns'
++  )
++  assert.equal(
++    stale.repo.git(['status', '--porcelain']), '',
++    "(c) [M3] the refusing launch left the checkout's index and working tree as they were"
++  )
++  assert.equal(stale.repo.git(['rev-parse', 'HEAD']), staleHead, '(c) [M3] and its HEAD')
++  assert.equal(
++    stale.repo.git(['worktree', 'list']).split('\n').length, 1,
++    '(c) [M3] and its worktree list one line'
++  )
++  green.cleanup()
++  stale.cleanup()
++
++  // Whitespace-collapsed and clipped to 80 characters: the label is what M3
++  // says it is, and the command still runs as it was written.
++  const spaced =
++    "sed -n '1p' README.md    src/app.js     pytest.ini     README.md     src/app.js     pytest.ini     src/app.js"
++  const collapsed =
++    "sed -n '1p' README.md src/app.js pytest.ini README.md src/app.js pytest.ini src/app.js"
++  assert.ok(collapsed.length > 80, '(c) [M3] the fixture command is longer than the 80-character clip')
++  const long = workspace({ plan: makePlan({ runs: [slicePin(spaced, ZEROS)] }) })
++  const longReal = sliceSha(long.repo, spaced)
++  const longRun = await refusingLaunch(long)
++  assertRefusalShape('(c) a stale slice pin whose command is long', { ...longRun, ws: long })
++  const label = /^launch: plan pin ([\s\S]*): pinned /.exec(longRun.error.message)?.[1] ?? null
++  assert.ok(label !== null, `(c) [M3] the refusal is one pin line, got ${JSON.stringify(longRun.error.message)}`)
++  assert.equal(label.length, 80, '(c) [M3] the command is clipped to 80 characters')
++  assert.equal(label, collapsed.slice(0, 80), '(c) [M3] and whitespace-collapsed first')
++  assert.equal(
++    longRun.error.message, pinLine(collapsed.slice(0, 80), ZEROS, long.repo.base, longReal),
++    '(c) [M3] the line is otherwise the one M2 spells, and the real sha is the command run as written'
++  )
++  long.cleanup()
++
++  // [M1] one `- Run:` chaining a path pin and a slice pin is two pins: the path
++  // pin's closing `)"` bounds the slice command, so neither reading swallows the
++  // other. Both matching, the launch goes through.
++  const mixed = workspace({
++    plan: (repo) => makePlan({
++      runs: [`${pathPin('src/app.js', blobAt(repo, 'src/app.js'))} && ${slicePin(SLICE_CMD, sliceSha(repo, SLICE_CMD))}`]
++    })
++  })
++  const mixedRun = await greenLaunch(mixed)
++  assert.equal(
++    mixedRun.result.run, 1,
++    '(c) [M1] [M4] a `- Run:` chaining a matching path pin and a matching slice pin launches'
++  )
++  assert.equal(newLines(mixedRun.exec).length, 1, '(c) [M4] with one `new` line')
++  mixed.cleanup()
++
++  // And the same line with the slice pin stale is one line naming that command
++  // alone — not the whole line from the first `test`.
++  const mixedStale = workspace({
++    plan: (repo) => makePlan({
++      runs: [`${pathPin('src/app.js', blobAt(repo, 'src/app.js'))} && ${slicePin(SLICE_CMD, ZEROS)}`]
++    })
++  })
++  const mixedSha = sliceSha(mixedStale.repo, SLICE_CMD)
++  const mixedStaleRun = await refusingLaunch(mixedStale)
++  assertRefusalShape('(c) [M1] a stale slice pin chained after a matching path pin', { ...mixedStaleRun, ws: mixedStale })
++  assert.equal(
++    mixedStaleRun.error.message,
++    pinLine(SLICE_CMD, ZEROS, mixedStale.repo.base, mixedSha),
++    '(c) [M1] the chained slice pin is read as itself, and the matching path pin beside it says nothing'
++  )
++  mixedStale.cleanup()
++}
++
++// ── d. [M4] the ordering: the --base check comes first ──────────────────────
++{
++  // A `--base` the checkout does not have, and a stale pin: the base refusal is
++  // the one raised, because the pins are checked against a base that is there.
++  const ws = workspace({ plan: makePlan({ checks: [pathPin('src/app.js', ZEROS)] }) })
++  const exec = makeExec({ rules: readRules({ repo: ws.repo }), passthrough: PASSTHROUGH })
++  const error = await thrown(() => launchIn(ws, {
++    argv: [ws.planPath, '--target', TARGET, '--base', 'f'.repeat(40),
++      '--repo', ws.repo.dir, '--engine', ENGINE],
++    exec
++  }))
++  assert.ok(error instanceof Refusal, `(d) [M4] an absent --base still refuses, got ${error?.name}`)
++  assert.ok(
++    error.message.includes(`has no commit ${'f'.repeat(40)}`),
++    `(d) [M4] with the --base refusal BASE already raises, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    !error.message.includes('plan pin'),
++    '(d) [M4] the pins are read after --base is verified present, so no pin is reported against a base that is not there'
++  )
++  ws.cleanup()
++}
++
++// ── e. [M1] [M4] what is not a pin, and what a matching pin costs ───────────
++{
++  // The plan text BASE launches with: not a pin in it.
++  const bare = workspace()
++  const { result: bareResult, exec: bareExec } = await greenLaunch(bare)
++  assert.equal(bareResult.run, 1, '(e) [M4] a plan carrying no pin launches: run 1')
++  assert.equal(newLines(bareExec).length, 1, '(e) [M4] with one `new` line')
++
++  // A pin on a `**Context:**` line is not on a `- Check:`/`- Run:` line, so it
++  // is not a pin: the launch never reads it.
++  const contextual = workspace({
++    plan: makePlan({
++      context: [`the frozen literal ${pathPin('src/app.js', ZEROS)} is quoted here, not claimed`]
++    })
++  })
++  const { result: contextResult, exec: contextExec } = await greenLaunch(contextual)
++  assert.equal(
++    contextResult.run, 1,
++    '(e) [M1] a pin written on a `**Context:**` line is not a pin: the launch goes through'
++  )
++  assert.equal(newLines(contextExec).length, 1, '(e) [M4] with one `new` line')
++  contextual.cleanup()
++
++  // A sha that is not forty hex is not a pin either, at 39 or at 41.
++  for (const [width, sha] of [[39, '0'.repeat(39)], [41, '0'.repeat(41)]]) {
++    const odd = workspace({ plan: makePlan({ checks: [pathPin('README.md', sha)] }) })
++    const { result, exec } = await greenLaunch(odd)
++    assert.equal(
++      result.run, 1,
++      `(e) [M1] a \`- Check:\` whose sha is ${width} hex characters is not a pin: the launch goes through`
++    )
++    assert.equal(newLines(exec).length, 1, `(e) [M4] with one \`new\` line, at ${width} hex`)
++    odd.cleanup()
++  }
++
++  // [M4] a plan whose pins all match launches exactly as at BASE: the same
++  // lobby verbs, in the same order, the `new` line's minted name apart.
++  const matching = workspace({
++    plan: (repo) => makePlan({
++      checks: [pathPin('README.md', blobAt(repo, 'README.md'))],
++      runs: [
++        pathPin('src/app.js', blobAt(repo, 'src/app.js')),
++        slicePin(SLICE_CMD, sliceSha(repo, SLICE_CMD))
++      ]
++    })
++  })
++  const { result: matchResult, exec: matchExec } = await greenLaunch(matching)
++  assert.equal(matchResult.run, 1, '(e) [M4] a plan whose pins all match launches')
++  const shape = (exec) => exec.lobby().map((line) => (line.startsWith('new ') ? 'new' : line))
++  assert.deepEqual(
++    shape(matchExec), shape(bareExec),
++    '(e) [M4] and issues exactly the lobby a plan carrying no pin issues'
++  )
++  matching.cleanup()
++  bare.cleanup()
++}
++
++// ── f. [Produces] the function the task produces ────────────────────────────
++{
++  assert.equal(
++    typeof launchModule.verifyPlanPins, 'function',
++    '(f) [Produces] fleet/launch.mjs produces verifyPlanPins({ exec, repoDir, base, planText })'
++  )
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_launch_reaps.mjs b/fleet/tests/test_launch_reaps.mjs
+index 9a470cbf61107079f24ab5cbb37b02f3c2a66b97..86e2c44af68e2a2f9f6fcfea0dc06970a890067a 100644
+--- a/fleet/tests/test_launch_reaps.mjs
++++ b/fleet/tests/test_launch_reaps.mjs
+@@ -57,8 +57,11 @@ const ORIGIN_URL = `https://github.com/${TARGET}.git`
+ const ENGINE = 'b'.repeat(40)
+ const NOW = new Date('2026-09-03T22:15:00.000Z')
+ const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
+-/** The seed the base commit carries. */
+-const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
++/** The seed the base commit carries. `pytest.ini` is the first rung of the
++ *  sandbox's test-command ladder, which the launcher reads off `--base`. */
++const SEED = {
++  'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n'
++}
+ /** The plan's own pool, sized by the config when no flag says otherwise. */
+ const CONFIG = { ...FLEET_DEFAULTS }
+ /** `billing plan --json`, as measured 2026-09-04. */
+diff --git a/fleet/tests/test_launch_run_number.mjs b/fleet/tests/test_launch_run_number.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e191fa451f9e479a96cabba5239e9bc883bd5530
+--- /dev/null
++++ b/fleet/tests/test_launch_run_number.mjs
+@@ -0,0 +1,562 @@
++/**
++ * fleet/tests/test_launch_run_number.mjs — the push is what reserves N.
++ *
++ * The exam for "A refused plan push re-reads the highest run and takes N+1",
++ * written against that task's Machine clauses, leg by leg. Each assertion names
++ * its leg and the clause it comes from:
++ *
++ *   (a) [M1] [M4] a competitor that takes `ultra/plan-run-1` between the
++ *       launcher's commit and its push: the refused push is re-read, N+1 is
++ *       taken, a fresh plan commit for that N is pushed, and every number the
++ *       launch carries afterwards — `run`, the comment's `run=`/`plan=`, the VM
++ *       name, `planBranch`, `runId` and the setup script on `new`'s stdin — is
++ *       the N that was pushed;
++ *   (b) [M2] a competitor that takes every ref the launcher tries: three plan
++ *       pushes in all — `PUSH_ATTEMPTS` — then a `Refusal` (exit 2) carrying the
++ *       last push's own output and the number 3, with no `new` issued;
++ *   (c) [M3] a push refused by something that is not a race — a pre-receive hook
++ *       that touches the origin nothing, whose re-read is still below the N
++ *       tried — is the BASE refusal after exactly one push and one re-read; and
++ *       a refused push under `--run <N>` is the BASE refusal after exactly one
++ *       push and no re-read at all;
++ *   (d) [M5] `fleet/CONTRACT.md`'s `**Run id:**` bullet says that a refused plan
++ *       push re-reads the highest run and retries, up to three pushes.
++ *
++ * Nothing here opens a network socket. The target is a real repository —
++ * `makeTargetRepo`'s bare origin and its clone — and the seam rewrites the
++ * remote of the launcher's own `ls-remote`, `fetch` and `push` to that bare path
++ * and runs them for real: the rejections are git's own words, `plan=` is a sha
++ * git made, and the refs the launcher re-reads are the origin's own. The
++ * competitor is a SIBLING of `<base>` (a second `commit-tree` of base's tree
++ * with `-p <base>`), never `<base>` itself: a descendant of base pushed onto a
++ * ref that holds base is a fast-forward and would be accepted.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { spawnSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++
++import * as launcher from '../launch.mjs'
++import {
++  FLEET_DEFAULTS,
++  Refusal,
++  defaultExec
++} from '../lobby.mjs'
++import { readFleetFiles, renderSetupScript } from '../setup-script.mjs'
++import {
++  answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
++} from './_lobby_helpers.mjs'
++
++const { launch } = launcher
++
++const TARGET = 'popmechanic/smoke'
++/** The target's one GitHub integration. */
++const GH = 'gh-popmechanic-smoke'
++const ORIGIN_URL = `https://github.com/${TARGET}.git`
++const ENGINE = 'b'.repeat(40)
++const NOW = new Date('2026-09-03T22:15:00.000Z')
++const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
++const VERDICTS_TEXT = '{"verdict":"green","gates":[]}\n'
++/**
++ * The seed the base commit carries. `pytest.ini` is beside the README because a
++ * sibling task of this wave refuses a launch whose tree at `--base` has no
++ * detectable test command; the number this exam is about is read the same way
++ * either side of that.
++ */
++const SEED = { 'README.md': '# target\n', 'pytest.ini': '[pytest]\n' }
++const CONFIG = { ...FLEET_DEFAULTS }
++/** `billing plan --json`, as measured 2026-09-04. */
++const BILLING_OK = {
++  max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual'
++}
++
++const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const REPO_ROOT = path.resolve(FLEET_DIR, '..')
++
++const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
++
++// ── The seam's rules (the scaffolding of fleet/tests/test_launch.mjs) ────────
++
++/** `new … --json` answers the row for whatever name the line asked for. */
++const NEW_OK = (cmd, argv) =>
++  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
++
++/** The engine tip, when a launch reads it rather than taking `--engine`. */
++const ENGINE_RULE = {
++  when: (cmd, argv) =>
++    cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: answer(`${ENGINE}\tHEAD\n`)
++}
++
++/** `origin` pointed at the bare repository the exam really made. */
++const pointAtOrigin = (repo, argv) => {
++  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
++  const fetchAt = argv.indexOf('fetch')
++  if (fetchAt < 0) return pointed
++  const remoteAt = argv.indexOf('origin', fetchAt)
++  const branch = String(argv[remoteAt + 1] ?? '')
++  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
++  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
++  return pointed
++}
++
++/** The launcher's remote reads and writes, run for real against the bare path. */
++const localRemote = (repo) => ({
++  when: (cmd, argv) => cmd === 'git' &&
++    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
++    !argv.includes('--get-url') &&
++    !argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
++})
++
++/** No socket, whatever else the launcher tries. */
++const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
++const NO_REMOTE_OPS = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
++  answer: OFFLINE
++}
++const NO_NETWORK_GIT = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
++  answer: OFFLINE
++}
++
++/** `help <verb>` as the lobby prints it, answering the shipped record's flags. */
++const HELP_OK = (cmd, argv) => {
++  const verb = String(argv[1] ?? '').slice('help '.length)
++  const flags = VERBS.verbs[verb]
++  if (!flags) return answer(`No help available for unrecognized command: ${verb}\n`)
++  return answer([
++    `Command: ${verb}`, '', 'Options:', ...flags.map((f) => `  ${f}  what ${f} does`), ''
++  ].join('\n'))
++}
++
++/**
++ * The rules a launch runs over. `competitor`, when given, sits ahead of
++ * `localRemote` so it sees the launcher's plan push first.
++ */
++const readRules = ({
++  repo,
++  competitor = null,
++  integrations = [{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }],
++  billing = BILLING_OK,
++  newVerb = NEW_OK
++} = {}) => [
++  ENGINE_RULE,
++  ...(competitor ? [competitor] : []),
++  ...(repo ? [localRemote(repo)] : []),
++  sshRule('help ', HELP_OK),
++  sshRule('integrations list --json', answer(integrations)),
++  sshRule('billing plan --json', answer(billing)),
++  sshRule('new ', newVerb),
++  NO_REMOTE_OPS,
++  NO_NETWORK_GIT
++]
++
++// ── The workspace: a real target repository and a plan beside it ─────────────
++
++function workspace ({ origin = ORIGIN_URL } = {}) {
++  const root = tempDir('fleet-launch-run-')
++  const repo = makeTargetRepo({ root, files: { ...SEED } })
++  repo.git(['remote', 'set-url', 'origin', origin])
++  const planDir = path.join(root, 'plans-src')
++  fs.mkdirSync(planDir)
++  const planPath = path.join(planDir, 'a-plan.md')
++  fs.writeFileSync(planPath, PLAN_TEXT)
++  fs.writeFileSync(path.join(planDir, 'a-plan.gate-verdicts.json'), VERDICTS_TEXT)
++  return { root, repo, planPath, cleanup: () => cleanup(root) }
++}
++
++/** The origin's own `refs/heads/*`, read off the bare path the exam made. */
++const branchesOf = (ws) => {
++  const out = {}
++  for (const line of ws.repo.git(['ls-remote', '--heads', ws.repo.origin]).split('\n')) {
++    const [sha, ref] = line.split('\t')
++    if (!ref) continue
++    out[ref.trim().replace(/^refs\/heads\//, '')] = sha.trim()
++  }
++  return out
++}
++
++/**
++ * The competitor: a SIBLING of `<base>` — base's own tree, `-p <base>`, another
++ * message. It is not an ancestor and not a descendant of the plan commit, so a
++ * ref holding it refuses the launcher's push as a non-fast-forward.
++ */
++const siblingOf = (ws, message = 'another launch got there first') =>
++  ws.repo.git(['commit-tree', `${ws.repo.base}^{tree}`, '-p', ws.repo.base, '-m', message])
++
++const argvFor = (ws, extra = []) => [
++  ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir,
++  '--engine', ENGINE, ...extra
++]
++
++const launchIn = (ws, { argv, exec, sleep = async () => {} } = {}) => launch({
++  argv: argv ?? argvFor(ws),
++  exec,
++  config: CONFIG,
++  now: () => NOW,
++  sleep,
++  refreshCredential: () => ({ ok: true })
++})
++
++/** Run `body`, answering `{ value, error }` — the exam reads both. */
++async function attempt (body) {
++  try {
++    return { value: await body(), error: null }
++  } catch (error) {
++    return { value: null, error }
++  }
++}
++
++// ── Reading the seam's log ──────────────────────────────────────────────────
++
++/** The ref spec of a plan push: `<sha>:refs/heads/ultra/plan-run-<N>`. */
++const PLAN_SPEC = /^([0-9a-f]{40}):refs\/heads\/ultra\/plan-run-(\d+)$/
++
++const specOf = (argv) => argv.map(String).find((a) => PLAN_SPEC.test(a)) ?? null
++
++/** Every plan push the launcher issued through the seam, in order. */
++const pushCalls = (exec) => exec.calls
++  .map((c, i) => ({ ...c, i }))
++  .filter((c) => c.cmd === 'git' && c.argv.includes('push') && specOf(c.argv) !== null)
++
++/** Every `ls-remote … refs/heads/ultra/*` read, in order. */
++const ultraReads = (exec) => exec.calls
++  .map((c, i) => ({ ...c, i }))
++  .filter((c) => c.cmd === 'git' && c.argv.includes('ls-remote') &&
++    c.argv.some((a) => String(a) === 'refs/heads/ultra/*'))
++
++const newLines = (exec) => exec.lobby().filter((line) => line.startsWith('new '))
++
++const newCallOf = (exec) =>
++  exec.calls.find((c) => c.cmd === 'ssh' && String(c.argv[1] ?? '').startsWith('new '))
++
++/** The paths of a commit's tree, off the clone that can read the origin. */
++const treeOf = (ws, sha) => {
++  ws.repo.git(['fetch', ws.repo.origin, sha])
++  return ws.repo.git(['ls-tree', '-r', '--name-only', sha]).split('\n').filter((l) => l !== '')
++}
++
++// ── a. [M1] [M4] a refused first push takes N+1 and lands there ─────────────
++{
++  const ws = workspace()
++  const sibling = siblingOf(ws)
++  const tried = []
++
++  // The competitor rule, ahead of `localRemote`: it takes the ref the launcher
++  // is about to push to — on the first push only — and then runs the launcher's
++  // own push for real, which git then refuses as a non-fast-forward.
++  const competitor = {
++    when: (cmd, argv) => cmd === 'git' && argv.includes('push') && specOf(argv) !== null,
++    answer: (cmd, argv, options) => {
++      const n = Number(PLAN_SPEC.exec(specOf(argv))[2])
++      tried.push(n)
++      if (tried.length === 1) {
++        ws.repo.git(['push', ws.repo.origin, `${sibling}:refs/heads/ultra/plan-run-${n}`])
++      }
++      return defaultExec('git', pointAtOrigin(ws.repo, argv), options ?? {})
++    }
++  }
++
++  const exec = makeExec({ rules: readRules({ repo: ws.repo, competitor }) })
++  const { value: result, error } = await attempt(() => launchIn(ws, { argv: argvFor(ws), exec }))
++
++  assert.equal(
++    error, null,
++    `(a) [M1] a plan push refused because the ref already exists is re-read and retried, not refused; got ${error?.name}: ${error?.message}`
++  )
++  assert.deepEqual(tried, [1, 2], '(a) [M1] the launcher tried run 1, then run 2: the re-read saw the competitor and took reading+1')
++
++  assert.equal(result.run, 2, '(a) [M4] result.run is 2 — the N the push that took reserved')
++  assert.equal(result.runId, 'run-2', '(a) [M4] and runId is run-2')
++  assert.equal(result.planBranch, 'ultra/plan-run-2', '(a) [M4] planBranch is ultra/plan-run-2')
++  assert.ok(
++    result.comment.startsWith(`run=2 plan=${result.plan}`),
++    `(a) [M4] the comment starts run=2 plan=<result.plan>, got ${JSON.stringify(result.comment)}`
++  )
++  assert.equal(
++    result.comment,
++    `run=2 plan=${result.plan} target=${TARGET} base=${ws.repo.base} engine=${ENGINE}`,
++    '(a) [M4] and is the assignment for that N, key for key'
++  )
++  assert.ok(
++    result.vm.startsWith('fleet-r2-'),
++    `(a) [M4] the VM is named for run 2, got ${JSON.stringify(result.vm)}`
++  )
++
++  const branches = branchesOf(ws)
++  assert.equal(
++    branches['ultra/plan-run-2'], result.plan,
++    "(a) [M4] the origin's ultra/plan-run-2 is result.plan"
++  )
++  assert.equal(
++    ws.repo.git(['log', '-1', '--format=%s', result.plan]), 'ultrapowers plan run-2',
++    '(a) [M1] a fresh plan commit was built for the retried N: its subject is `ultrapowers plan run-2`'
++  )
++  assert.equal(
++    ws.repo.git(['rev-parse', `${result.plan}^`]), ws.repo.base,
++    "(a) [M1] whose parent is --base's commit"
++  )
++  assert.equal(
++    branches['ultra/plan-run-1'], sibling,
++    "(a) [M1] and the origin's ultra/plan-run-1 is still the competitor's commit — the launcher took a number, it did not take a ref"
++  )
++
++  assert.equal(
++    newCallOf(exec)?.options?.input,
++    renderSetupScript({ run: '2', ...readFleetFiles() }),
++    "(a) [M4] the rendered setup script for run 2 is on the `new` call's stdin"
++  )
++
++  const pushes = pushCalls(exec)
++  const reads = ultraReads(exec)
++  assert.equal(pushes.length, 2, `(a) [M1] exactly two plan pushes were made, got ${pushes.length}`)
++  assert.equal(
++    reads.length, 2,
++    `(a) [M1] and exactly two \`ls-remote … refs/heads/ultra/*\` reads, got ${reads.length}`
++  )
++  assert.deepEqual(
++    reads[1].argv, reads[0].argv,
++    "(a) [M1] the re-read is the same read `highestRunOnTarget` makes: git ls-remote origin refs/heads/ultra/* refs/tags/ultra/*"
++  )
++  assert.ok(
++    reads[1].argv.some((a) => String(a) === 'refs/tags/ultra/*'),
++    '(a) [M1] carrying the tag pattern as well as the branch one, so a competitor that has already published is seen'
++  )
++  assert.ok(
++    reads[0].i < pushes[0].i,
++    `(a) [M1] the first read is the run number's own, before the first push: read ${reads[0].i}, push ${pushes[0].i}`
++  )
++  assert.ok(
++    reads[1].i > pushes[0].i,
++    `(a) [M1] and the second read sits after the first push: push ${pushes[0].i}, read ${reads[1].i}`
++  )
++  assert.ok(
++    pushes[1].i > reads[1].i,
++    `(a) [M1] with the second push after it: read ${reads[1].i}, push ${pushes[1].i}`
++  )
++  assert.match(
++    specOf(pushes[1].argv), /:refs\/heads\/ultra\/plan-run-2$/,
++    '(a) [M1] the second push is to ultra/plan-run-2'
++  )
++  assert.equal(
++    PLAN_SPEC.exec(specOf(pushes[1].argv))[1], result.plan,
++    '(a) [M4] pushing the fresh commit for that N'
++  )
++  assert.notEqual(
++    PLAN_SPEC.exec(specOf(pushes[0].argv))[1], result.plan,
++    '(a) [M1] which is not the commit the first push offered: a retried N gets its own commit, not the old sha under a new name'
++  )
++  ws.cleanup()
++}
++
++// ── b. [M2] three pushes in all, then the refusal ──────────────────────────
++{
++  assert.equal(
++    launcher.PUSH_ATTEMPTS, 3,
++    '(b) [M2] PUSH_ATTEMPTS is exported by fleet/launch.mjs and is 3'
++  )
++
++  const ws = workspace()
++  const sibling = siblingOf(ws)
++  const tried = []
++  const competitor = {
++    when: (cmd, argv) => cmd === 'git' && argv.includes('push') && specOf(argv) !== null,
++    answer: (cmd, argv, options) => {
++      const n = Number(PLAN_SPEC.exec(specOf(argv))[2])
++      tried.push(n)
++      ws.repo.git(['push', ws.repo.origin, `${sibling}:refs/heads/ultra/plan-run-${n}`])
++      return defaultExec('git', pointAtOrigin(ws.repo, argv), options ?? {})
++    }
++  }
++
++  const exec = makeExec({ rules: readRules({ repo: ws.repo, competitor }) })
++  const error = await thrown(() => launchIn(ws, { argv: argvFor(ws), exec }))
++
++  assert.ok(error, '(b) [M2] a competitor that takes every ref the launcher tries ends in a refusal')
++  assert.ok(
++    error instanceof Refusal,
++    `(b) [M2] which is a Refusal, got ${error?.name}: ${error?.message}`
++  )
++  assert.equal(error.exitCode, 2, '(b) [M2] with exit 2')
++  assert.ok(
++    error.message.startsWith('launch: '),
++    `(b) [M2] whose message begins \`launch: \`, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes('3'),
++    `(b) [M2] and carries the number 3 — the pushes it made, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes('rejected'),
++    `(b) [M2] and the last push's own output, git's \`rejected\` and all, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes('ultra/plan-run-3'),
++    `(b) [M2] naming the ref that last push was refused, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    /failed after 3 tries \(exit \d+\):/.test(error.message),
++    `(b) [M2] the BASE refusal text with \` after 3 tries\` after \`failed\`, got ${JSON.stringify(error.message)}`
++  )
++
++  const pushes = pushCalls(exec)
++  assert.equal(pushes.length, 3, `(b) [M2] exactly three plan pushes were made, got ${pushes.length}`)
++  assert.deepEqual(tried, [1, 2, 3], '(b) [M2] for runs 1, 2 and 3 — each N one past the reading the last refusal produced')
++  assert.deepEqual(newLines(exec), [], '(b) [M2] no `new` line was issued')
++  assert.deepEqual(exec.mutating(), [], '(b) [M2] and `exec.mutating()` is empty: nothing on exe.dev was touched')
++
++  const branches = branchesOf(ws)
++  for (const n of [1, 2, 3]) {
++    assert.equal(
++      branches[`ultra/plan-run-${n}`], sibling,
++      `(b) [M2] the origin's ultra/plan-run-${n} is the competitor's commit, not the launcher's`
++    )
++    assert.ok(
++      !treeOf(ws, branches[`ultra/plan-run-${n}`]).includes('.ultrapowers/plan.md'),
++      `(b) [M2] a tree with no .ultrapowers/plan.md: no plan of this launch is on ultra/plan-run-${n}`
++    )
++  }
++  ws.cleanup()
++}
++
++// ── c. [M3] a refusal that is not a race, and a refusal under --run ────────
++{
++  // A pre-receive hook: the push is refused, the origin is not touched, and the
++  // re-read is therefore still below the N tried.
++  const ws = workspace()
++  const HOOK_OUT = [
++    `To ${ORIGIN_URL}`,
++    ' ! [remote rejected] plan -> ultra/plan-run-1 (pre-receive hook declined)',
++    `error: failed to push some refs to '${ORIGIN_URL}'`,
++    ''
++  ].join('\n')
++  const declined = {
++    when: (cmd, argv) => cmd === 'git' && argv.includes('push') && specOf(argv) !== null,
++    answer: () => answer('', { code: 1, stderr: HOOK_OUT })
++  }
++
++  const exec = makeExec({ rules: readRules({ repo: ws.repo, competitor: declined }) })
++  const error = await thrown(() => launchIn(ws, { argv: argvFor(ws), exec }))
++
++  assert.ok(error, '(c) [M3] a push refused by a pre-receive hook is a refusal')
++  assert.ok(
++    error instanceof Refusal,
++    `(c) [M3] a Refusal, got ${error?.name}: ${error?.message}`
++  )
++  assert.equal(error.exitCode, 2, '(c) [M3] with exit 2')
++
++  const pushes = pushCalls(exec)
++  const reads = ultraReads(exec)
++  assert.equal(
++    pushes.length, 1,
++    `(c) [M3] exactly one plan push was made — a refusal whose re-read is below the N tried is not another launch's, got ${pushes.length}`
++  )
++  assert.equal(
++    reads.filter((r) => r.i > pushes[0].i).length, 1,
++    '(c) [M3] with exactly one `ls-remote … refs/heads/ultra/*` read after the push: the race is decided by the re-read, not by parsing git\'s words'
++  )
++  assert.equal(
++    reads.length, 2,
++    "(c) [M3] and two such reads in all — the run number's own, and that one"
++  )
++  assert.ok(
++    error.message.includes(HOOK_OUT.trim()),
++    `(c) [M3] the message carries the push's own stderr, verbatim, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes('failed (exit'),
++    `(c) [M3] and is the BASE refusal text — \`failed (exit\`, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    !error.message.includes('after'),
++    `(c) [M3] with no \`after\`: there was one push, so the BASE text is unchanged, got ${JSON.stringify(error.message)}`
++  )
++  assert.equal(
++    error.message,
++    `launch: git push origin ${specOf(pushes[0].argv)} failed (exit 1):\n${HOOK_OUT.trim()}`,
++    '(c) [M3] the BASE refusal, byte for byte'
++  )
++  assert.deepEqual(newLines(exec), [], '(c) [M3] and no `new` was issued')
++  assert.deepEqual(exec.mutating(), [], '(c) [M3] nothing on exe.dev was mutated')
++  ws.cleanup()
++
++  // `--run <N>`: the operator chose the number, so a refused push is refused —
++  // no re-read at all, and no second push.
++  const forced = workspace()
++  const sibling = siblingOf(forced)
++  const tried = []
++  const competitor = {
++    when: (cmd, argv) => cmd === 'git' && argv.includes('push') && specOf(argv) !== null,
++    answer: (cmd, argv, options) => {
++      const n = Number(PLAN_SPEC.exec(specOf(argv))[2])
++      tried.push(n)
++      forced.repo.git(['push', forced.repo.origin, `${sibling}:refs/heads/ultra/plan-run-${n}`])
++      return defaultExec('git', pointAtOrigin(forced.repo, argv), options ?? {})
++    }
++  }
++  const execForced = makeExec({ rules: readRules({ repo: forced.repo, competitor }) })
++  const forcedError = await thrown(() => launchIn(forced, {
++    argv: argvFor(forced, ['--run', '5']), exec: execForced
++  }))
++
++  assert.ok(forcedError, '(c) [M3] a refused push under --run 5 is a refusal')
++  assert.ok(
++    forcedError instanceof Refusal,
++    `(c) [M3] a Refusal, got ${forcedError?.name}: ${forcedError?.message}`
++  )
++  assert.equal(forcedError.exitCode, 2, '(c) [M3] with exit 2')
++  assert.deepEqual(tried, [5], '(c) [M3] and the one push it made was for the N the operator chose')
++  assert.equal(
++    pushCalls(execForced).length, 1,
++    `(c) [M3] exactly one plan push, got ${pushCalls(execForced).length}`
++  )
++  assert.deepEqual(
++    ultraReads(execForced), [],
++    '(c) [M3] with no `ls-remote … refs/heads/ultra/*` read at all: --run overrides the reading, so there is nothing to re-read'
++  )
++  assert.ok(
++    forcedError.message.includes('failed (exit'),
++    `(c) [M3] the BASE refusal text, got ${JSON.stringify(forcedError.message)}`
++  )
++  assert.ok(
++    !forcedError.message.includes('after'),
++    `(c) [M3] with no \`after\`, got ${JSON.stringify(forcedError.message)}`
++  )
++  assert.ok(
++    forcedError.message.startsWith(`launch: git push origin ${specOf(pushCalls(execForced)[0].argv)} failed (exit `),
++    `(c) [M3] naming the push it made, got ${JSON.stringify(forcedError.message)}`
++  )
++  assert.equal(
++    branchesOf(forced)['ultra/plan-run-5'], sibling,
++    "(c) [M3] and the origin's ultra/plan-run-5 is the competitor's commit"
++  )
++  assert.deepEqual(newLines(execForced), [], '(c) [M3] no `new` was issued')
++  forced.cleanup()
++}
++
++// ── d. [M5] the contract's **Run id:** bullet ──────────────────────────────
++{
++  const RUN_CHECK =
++    "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name:\\*\\*/p' fleet/CONTRACT.md" +
++    " | tr '\\n' ' ' | grep -q 'refused.*re-reads.*three pushes'"
++  const res = spawnSync('bash', ['-c', RUN_CHECK], { cwd: REPO_ROOT, encoding: 'utf8' })
++  assert.equal(
++    res.status, 0,
++    "(d) [M5] the **Run id:** bullet of fleet/CONTRACT.md says that a refused plan push re-reads the highest run and retries, up to three pushes — so the push is what reserves N"
++  )
++
++  const contract = fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8')
++  assert.ok(
++    contract.includes('- **Run id:**'),
++    '(d) [M5] the bullet keeps its opening `- **Run id:**`'
++  )
++  assert.ok(
++    contract.includes('- **VM name:**'),
++    '(d) [M5] and the next bullet keeps its `- **VM name:**`, which tests/test_docs_agree_with_code.py reads'
++  )
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_launch_test_command.mjs b/fleet/tests/test_launch_test_command.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef7fd8f36ecde267e610312f4c0c402c2f3aff50
+--- /dev/null
++++ b/fleet/tests/test_launch_test_command.mjs
+@@ -0,0 +1,453 @@
++/**
++ * fleet/tests/test_launch_test_command.mjs — a target with no detectable test
++ * command is refused on the laptop.
++ *
++ * The exam is written against the task's Machine clauses, leg by leg. Each
++ * assertion names its leg and the clause it comes from:
++ *
++ *   (a) [M1] [M3] each of the seven rungs of the sandbox's ladder —
++ *       `pytest.ini`; `pyproject.toml` with `[tool.pytest]`; `package.json`
++ *       with a `scripts.test`; `package.json` with no scripts beside a
++ *       `bun.lockb`; a `Makefile` with a `test:` line; `go.mod`; `Cargo.toml` —
++ *       launches: `result.run` is 1 and the lobby sees one `new` line;
++ *   (b) [M1] [M2] each of five trees matching no rung is a `Refusal` with
++ *       `exitCode` 2, whose message carries the target, the `--base` sha, the
++ *       sandbox's own failure line and the word `pytest.ini`, and which is
++ *       raised after the `merge-base --is-ancestor` read;
++ *   (c) [M3] every one of those refusals issues no `ssh` and no `git push`,
++ *       mutates no lobby verb, and leaves the origin with no `ultra/` ref;
++ *   (d) [M3] the read is of `--base`'s tree: an untracked `pytest.ini` in the
++ *       working tree of a base without one still refuses, and a base carrying
++ *       `pytest.ini` whose working-tree copy is deleted still launches;
++ *   (e) [M1] the cross-check: the sandbox's own `detect_test_cmd`, spawned on
++ *       each of the twelve clone directories, names a rung for the seven and
++ *       `None` for the five — the laptop's ladder answers what the sandbox's
++ *       does;
++ *   (f) [M4] `node fleet/tests/test_launch.mjs` exits 0 and prints
++ *       `ALL TESTS PASSED`;
++ *   (g) [M4] and `fleet/tests/test_launch_hold.mjs`;
++ *   (h) [M4] and `fleet/tests/test_launch_effort.mjs`;
++ *   (i) [M4] and `fleet/tests/test_launch_engine_source.mjs`;
++ *   (j) [M4] and `fleet/tests/test_launch_reaps.mjs`.
++ *
++ * Nothing here opens a network socket. Every `ssh` goes through the injected
++ * exec seam, and the target of every launch is a real repository — the bare
++ * origin `makeTargetRepo` builds and its clone — so a plan push is a real push
++ * against a path and the refs a leg reads are the origin's own. The keychain is
++ * never touched: every launch is handed a `refreshCredential` of the exam's
++ * own. The one subprocess the exam spawns besides the five sims is `python3`,
++ * running the frozen ladder in `skills/ultrapowers/scripts/ultra_run.py`, which
++ * this task does not edit.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { execFile, spawnSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++
++import { launch } from '../launch.mjs'
++import { FLEET_DEFAULTS, Refusal, defaultExec } from '../lobby.mjs'
++import {
++  answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
++} from './_lobby_helpers.mjs'
++
++const TARGET = 'popmechanic/smoke'
++/** The target's one GitHub integration, so the integrations read is green. */
++const GH = 'gh-popmechanic-smoke'
++/** How a real target's `origin` is spelled. */
++const ORIGIN_URL = `https://github.com/${TARGET}.git`
++const ENGINE = 'b'.repeat(40)
++const NOW = new Date('2026-09-03T22:15:00.000Z')
++const PLAN_TEXT = '# a plan\n\nOne task, and a trailing newline.\n'
++const CONFIG = { ...FLEET_DEFAULTS }
++/** `billing plan --json`, as measured 2026-09-04. */
++const BILLING_OK = {
++  max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual'
++}
++
++/** The sandbox's own words for this refusal — `ultra_run.py`'s `test-command`
++ *  stage failure line, verbatim, which M2 says the laptop quotes. */
++const SANDBOX_LINE =
++  'no test command detected — pass --test-cmd <run-wide suite command>; ' +
++  'the gate refuses to run without one'
++
++const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const REPO_ROOT = path.resolve(FLEET_DIR, '..')
++const ULTRA_RUN = path.join(REPO_ROOT, 'skills', 'ultrapowers', 'scripts', 'ultra_run.py')
++
++// ── The seam's rules, as `fleet/tests/test_launch.mjs` builds them ───────────
++
++/** `new … --json` answers the row for whatever name the line asked for. */
++const NEW_OK = (cmd, argv) =>
++  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
++
++/** The engine tip, when a launch reads it rather than taking `--engine`. */
++const ENGINE_RULE = {
++  when: (cmd, argv) =>
++    cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: answer(`${ENGINE}\tHEAD\n`)
++}
++
++/** `origin` pointed at the bare repository the exam really made; a bare
++ *  `fetch origin <branch>` is spelled with the refspec a configured remote
++ *  supplies, so the tracking ref moves the way it does in a real checkout. */
++const pointAtOrigin = (repo, argv) => {
++  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
++  const fetchAt = argv.indexOf('fetch')
++  if (fetchAt < 0) return pointed
++  const remoteAt = argv.indexOf('origin', fetchAt)
++  const branch = String(argv[remoteAt + 1] ?? '')
++  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
++  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
++  return pointed
++}
++
++const localRemote = (repo) => ({
++  when: (cmd, argv) => cmd === 'git' &&
++    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
++    !argv.includes('--get-url') &&
++    !argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
++})
++
++/** No socket, whatever else the launcher tries. */
++const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
++
++const readRules = ({ repo, integrations = [{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }] } = {}) => [
++  ENGINE_RULE,
++  ...(repo ? [localRemote(repo)] : []),
++  sshRule('integrations list --json', answer(integrations)),
++  sshRule('billing plan --json', answer(BILLING_OK)),
++  sshRule('new ', NEW_OK),
++  {
++    when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
++    answer: OFFLINE
++  },
++  {
++    when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
++    answer: OFFLINE
++  }
++]
++
++// ── The workspace: a real target repository and a plan beside it ─────────────
++
++/** A target whose base commit carries `README.md` plus whatever `files` says. */
++function workspace ({ files } = {}) {
++  const root = tempDir('fleet-launch-testcmd-')
++  const repo = makeTargetRepo({ root, files: { 'README.md': '# target\n', ...(files ?? {}) } })
++  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
++  const planDir = path.join(root, 'plans-src')
++  fs.mkdirSync(planDir)
++  const planPath = path.join(planDir, 'a-plan.md')
++  fs.writeFileSync(planPath, PLAN_TEXT)
++  return { root, repo, planPath, cleanup: () => cleanup(root) }
++}
++
++/** The origin's own `refs/heads/*`, read off the bare path the exam made. */
++const branchesOf = (ws) => {
++  const out = {}
++  for (const line of ws.repo.git(['ls-remote', '--heads', ws.repo.origin]).split('\n')) {
++    const [sha, ref] = line.split('\t')
++    if (!ref) continue
++    out[ref.trim().replace(/^refs\/heads\//, '')] = sha.trim()
++  }
++  return out
++}
++
++const argvFor = (ws, extra = []) => [
++  ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir,
++  '--engine', ENGINE, ...extra
++]
++
++/** The keychain is never read: the credential seam is the exam's own. */
++const refreshCredential = () => ({ ok: true })
++
++const launchIn = (ws, { argv, exec } = {}) => launch({
++  argv: argv ?? argvFor(ws),
++  exec,
++  config: CONFIG,
++  now: () => NOW,
++  sleep: async () => {},
++  refreshCredential
++})
++
++const newLines = (exec) => exec.lobby().filter((line) => line.startsWith('new '))
++const gitCallAt = (exec, text) =>
++  exec.calls.findIndex((c) => c.cmd === 'git' && c.argv.map(String).join(' ').includes(text))
++
++// ── The twelve seeds: seven rungs of the ladder, and five trees off it ───────
++
++/** The seven rungs M1 spells, each with the rule name the sandbox's ladder
++ *  gives it — the name leg (e) reads back out of `detect_test_cmd`. */
++const DETECTABLE = [
++  { name: 'pytest.ini', files: { 'pytest.ini': '[pytest]\n' }, rule: 'pytest-ini' },
++  {
++    name: 'pyproject.toml with [tool.pytest]',
++    files: { 'pyproject.toml': '[project]\nname = "t"\n\n[tool.pytest.ini_options]\n' },
++    rule: 'pyproject-pytest'
++  },
++  {
++    name: 'package.json with a scripts.test',
++    files: { 'package.json': '{"name":"t","scripts":{"test":"x"}}\n' },
++    rule: 'package-json-npm'
++  },
++  {
++    name: 'package.json with no scripts, beside a bun.lockb',
++    files: { 'package.json': '{"name":"t"}\n', 'bun.lockb': 'not really a lockfile\n' },
++    rule: 'bun-lockfile'
++  },
++  {
++    name: 'a Makefile with a test: line',
++    files: { Makefile: 'all:\n\techo all\n\ntest:\n\techo test\n' },
++    rule: 'makefile-test'
++  },
++  { name: 'go.mod', files: { 'go.mod': 'module example.com/t\n\ngo 1.22\n' }, rule: 'go-mod' },
++  {
++    name: 'Cargo.toml',
++    files: { 'Cargo.toml': '[package]\nname = "t"\nversion = "0.1.0"\n' },
++    rule: 'cargo-toml'
++  }
++]
++
++/** Five trees matching no rung: each is one rung away from matching. */
++const UNDETECTABLE = [
++  { name: 'README.md alone', files: {} },
++  {
++    name: 'pyproject.toml with [tool.black] only',
++    files: { 'pyproject.toml': '[project]\nname = "t"\n\n[tool.black]\nline-length = 100\n' }
++  },
++  {
++    name: 'package.json with a scripts.build and no lockfile',
++    files: { 'package.json': '{"name":"t","scripts":{"build":"x"}}\n' }
++  },
++  { name: 'bun.lock with no package.json', files: { 'bun.lock': 'not really a lockfile\n' } },
++  {
++    name: 'a Makefile with only a build: line',
++    files: { Makefile: '# no suite here\nbuild:\n\techo build\n' }
++  }
++]
++
++// ── The fixture: the sandbox's own words, read off the frozen ladder ─────────
++{
++  assert.ok(
++    fs.existsSync(ULTRA_RUN),
++    `(b) [M2] the fixture: the sandbox's ladder is at ${ULTRA_RUN}`
++  )
++  // Python's implicit concatenation of adjacent string literals, undone, so the
++  // wrapped `failure=` line reads as the one sentence the launcher quotes.
++  const joined = fs.readFileSync(ULTRA_RUN, 'utf8').replace(/"\s*\n\s*"/g, '')
++  assert.ok(
++    joined.includes(SANDBOX_LINE),
++    `(b) [M2] the fixture: ultra_run.py's test-command stage says ${JSON.stringify(SANDBOX_LINE)} — the line the laptop copies verbatim`
++  )
++}
++
++// ── a. [M1] [M3] each of the seven rungs launches ────────────────────────────
++// ── b. [M1] [M2] each of the five trees off the ladder is refused ────────────
++// ── c. [M3] and each refusal touched neither exe.dev nor the origin ──────────
++// ── e. [M1] the sandbox's own ladder, spawned on all twelve clones ───────────
++
++/** The frozen ladder, run on a directory: the rule name it answers, or `None`. */
++const LADDER = 'import sys; sys.path.insert(0, "skills/ultrapowers/scripts"); ' +
++  'from ultra_run import detect_test_cmd; print(detect_test_cmd(sys.argv[1])[1])'
++
++const sandboxRuleFor = (dir) => {
++  const res = spawnSync('python3', ['-c', LADDER, dir], { cwd: REPO_ROOT, encoding: 'utf8' })
++  assert.equal(
++    res.status, 0,
++    `(e) [M1] the sandbox's ladder runs on ${dir}: ${res.stdout ?? ''}${res.stderr ?? ''}`
++  )
++  return String(res.stdout ?? '').trim()
++}
++
++for (const kase of DETECTABLE) {
++  const ws = workspace({ files: kase.files })
++  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
++  const result = await launchIn(ws, { exec })
++
++  assert.equal(
++    result.run, 1,
++    `(a) [M1] [M3] a base seeded with ${kase.name} matches a rung of the ladder, so the launch goes through: run 1`
++  )
++  assert.equal(
++    newLines(exec).length, 1,
++    `(a) [M3] and issues one \`new\` line for ${kase.name}`
++  )
++  assert.equal(
++    exec.mutating().length, 1,
++    `(a) [M3] exactly one mutating lobby verb for ${kase.name}`
++  )
++  assert.ok(
++    exec.mutating()[0].startsWith('new '),
++    `(a) [M3] that one verb being the \`new …\` line, got ${JSON.stringify(exec.mutating()[0])}`
++  )
++
++  assert.equal(
++    sandboxRuleFor(ws.repo.dir), kase.rule,
++    `(e) [M1] the sandbox's own detect_test_cmd calls ${kase.name} the \`${kase.rule}\` rung`
++  )
++  ws.cleanup()
++}
++
++for (const kase of UNDETECTABLE) {
++  const ws = workspace({ files: kase.files })
++  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
++  const error = await thrown(() => launchIn(ws, { exec }))
++
++  assert.ok(error, `(b) [M2] a base whose tree is ${kase.name} matches no rung and must be refused`)
++  assert.ok(
++    error instanceof Refusal,
++    `(b) [M2] ${kase.name} is a Refusal, got ${error?.name}: ${error?.message}`
++  )
++  assert.equal(error.exitCode, 2, `(b) [M2] ${kase.name} refuses with exit 2`)
++  assert.ok(
++    error.message.startsWith('launch: '),
++    `(b) [M2] whose message begins \`launch: \`, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes(TARGET),
++    `(b) [M2] ${kase.name}: the message names the target ${TARGET}, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes(ws.repo.base),
++    `(b) [M2] ${kase.name}: and the --base sha ${ws.repo.base}, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes(SANDBOX_LINE),
++    `(b) [M2] ${kase.name}: and the sandbox's own line ${JSON.stringify(SANDBOX_LINE)} in full, got ${JSON.stringify(error.message)}`
++  )
++  assert.ok(
++    error.message.includes('pytest.ini'),
++    `(b) [M2] ${kase.name}: and the word \`pytest.ini\`, so the operator reads what to commit, got ${JSON.stringify(error.message)}`
++  )
++
++  assert.ok(
++    gitCallAt(exec, `merge-base --is-ancestor ${ws.repo.base}`) >= 0,
++    `(b) [M1] ${kase.name}: the refusal comes after the --base ancestry check, which still ran`
++  )
++
++  assert.deepEqual(
++    exec.calls.filter((c) => c.cmd === 'ssh').map((c) => c.line), [],
++    `(c) [M3] ${kase.name}: no ssh command at all — the refusal is before the integrations list read, so no VM exists`
++  )
++  assert.deepEqual(
++    exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push')).map((c) => c.line), [],
++    `(c) [M3] ${kase.name}: and no git push`
++  )
++  assert.deepEqual(exec.mutating(), [], `(c) [M3] ${kase.name}: nothing mutated on exe.dev`)
++  assert.deepEqual(newLines(exec), [], `(c) [M3] ${kase.name}: and no \`new\` issued`)
++  assert.deepEqual(
++    Object.keys(branchesOf(ws)).filter((ref) => ref.startsWith('ultra/')), [],
++    `(c) [M3] ${kase.name}: so no ultra/ ref reached the origin`
++  )
++
++  assert.equal(
++    sandboxRuleFor(ws.repo.dir), 'None',
++    `(e) [M1] the sandbox's own detect_test_cmd finds no rung for ${kase.name} either`
++  )
++  ws.cleanup()
++}
++
++// ── d. [M3] the tree read is `--base`'s, not the working tree's ──────────────
++{
++  // An untracked `pytest.ini` beside a base that has none: the working tree
++  // would pass the ladder, the tree at `--base` does not, and `--base` is what
++  // the sandbox will clone.
++  const untracked = workspace()
++  fs.writeFileSync(path.join(untracked.repo.dir, 'pytest.ini'), '[pytest]\n')
++  assert.ok(
++    fs.existsSync(path.join(untracked.repo.dir, 'pytest.ini')),
++    "(d) [M3] the fixture: the clone's working tree carries an untracked pytest.ini"
++  )
++  assert.notEqual(
++    untracked.repo.git(['status', '--porcelain']), '',
++    '(d) [M3] the fixture: which git reports as untracked, so it is in no commit'
++  )
++  const execUntracked = makeExec({ rules: readRules({ repo: untracked.repo }) })
++  const error = await thrown(() => launchIn(untracked, { exec: execUntracked }))
++  assert.ok(
++    error instanceof Refusal,
++    `(d) [M3] an untracked pytest.ini does not make a base detectable: still a Refusal, got ${error?.name}: ${error?.message}`
++  )
++  assert.ok(
++    error.message.includes(SANDBOX_LINE),
++    `(d) [M3] and it is this refusal, carrying the sandbox's line, got ${JSON.stringify(error.message)}`
++  )
++  assert.deepEqual(
++    execUntracked.calls.filter((c) => c.cmd === 'ssh').map((c) => c.line), [],
++    '(d) [M3] with no ssh command issued'
++  )
++  assert.deepEqual(
++    Object.keys(branchesOf(untracked)).filter((ref) => ref.startsWith('ultra/')), [],
++    '(d) [M3] and no ultra/ ref on the origin'
++  )
++  untracked.cleanup()
++
++  // The mirror: a base that has `pytest.ini`, deleted from the working tree.
++  const deleted = workspace({ files: { 'pytest.ini': '[pytest]\n' } })
++  fs.rmSync(path.join(deleted.repo.dir, 'pytest.ini'))
++  assert.ok(
++    !fs.existsSync(path.join(deleted.repo.dir, 'pytest.ini')),
++    "(d) [M3] the fixture: the working tree's copy of pytest.ini is gone"
++  )
++  assert.equal(
++    deleted.repo.git(['show', `${deleted.repo.base}:pytest.ini`]), '[pytest]',
++    "(d) [M3] the fixture: while the tree at --base still has it"
++  )
++  const execDeleted = makeExec({ rules: readRules({ repo: deleted.repo }) })
++  const result = await launchIn(deleted, { exec: execDeleted })
++  assert.equal(
++    result.run, 1,
++    '(d) [M3] a working-tree deletion does not hide the rung the base carries: the launch goes through, run 1'
++  )
++  assert.equal(newLines(execDeleted).length, 1, '(d) [M3] with one `new` line')
++  deleted.cleanup()
++}
++
++// ── f–j. [M4] the five launch sims still print ALL TESTS PASSED ──────────────
++//
++// One `Run:` per sim, run the way the Proof runs it: `node <sim>` from the
++// repository root, its exit status and its `ALL TESTS PASSED` sentinel both
++// read — a sim that stops short of the sentinel makes its `grep -q` exit 1.
++{
++  const SIMS = [
++    { leg: 'f', file: 'fleet/tests/test_launch.mjs' },
++    { leg: 'g', file: 'fleet/tests/test_launch_hold.mjs' },
++    { leg: 'h', file: 'fleet/tests/test_launch_effort.mjs' },
++    { leg: 'i', file: 'fleet/tests/test_launch_engine_source.mjs' },
++    { leg: 'j', file: 'fleet/tests/test_launch_reaps.mjs' }
++  ]
++
++  const runSim = (file) => new Promise((resolve) => {
++    execFile(
++      process.execPath, [file],
++      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
++      (error, stdout, stderr) => resolve({
++        code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
++        stdout: String(stdout ?? ''),
++        stderr: String(stderr ?? '')
++      })
++    )
++  })
++
++  const runs = await Promise.all(SIMS.map((sim) => runSim(sim.file)))
++  for (const [i, sim] of SIMS.entries()) {
++    const res = runs[i]
++    const tail = `${res.stdout}${res.stderr}`.split('\n').slice(-25).join('\n')
++    assert.ok(
++      fs.existsSync(path.join(REPO_ROOT, sim.file)),
++      `(${sim.leg}) [M4] ${sim.file} is a file this exam can run`
++    )
++    assert.ok(
++      res.stdout.includes('ALL TESTS PASSED'),
++      `(${sim.leg}) [M4] ${sim.file} prints ALL TESTS PASSED — its \`grep -q\` is the Run:, and a sim seeded with no pytest.ini stops short of the sentinel. Tail:\n${tail}`
++    )
++    assert.equal(
++      res.code, 0,
++      `(${sim.leg}) [M4] and exits 0. Tail:\n${tail}`
++    )
++  }
++}
++
++console.log('ALL TESTS PASSED')
 diff --git a/fleet/tests/test_publish_fold.mjs b/fleet/tests/test_publish_fold.mjs
 index a98efe75994f70758a15daf18bd5ec1c923d2269..d7350b3b0d4a6359216d8ce6ac508f68468a09a1 100644
 --- a/fleet/tests/test_publish_fold.mjs
@@ -59827,6 +62479,74 @@ index 0180ae969beec1e4399951bf4635725c9adb7f47..4ab481fa470458d2743d42e297392ac2
  | `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314)); **degradation** — verify the affected slice (budget-deferred, integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo (endpoint not in run, dependent before prerequisite, endpoints share a wave). New cases slot into an existing kind rather than lengthening this reference. |
  | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
  | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic derives its own detach target — `git rev-parse HEAD` inside the integration worktree — then runs `git checkout --detach` and re-confirms `git rev-parse HEAD` still matches; the model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority, and a mismatch against the derived tip also blocks. If it cannot (an unresolvable branch/HEAD, or the detach itself fails — e.g. a dirty/conflicted integration worktree) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). Each finding is an object `{severity, detail}` (#474): **`blocking`** means the critic found a named defect that must not be merged as-is — an unmet plan requirement, a missing deliverable, a claim the integrated tree contradicts; **`minor`** means everything the operator should see but that does not stop the run. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 7a61e069ed7d22a08b9b48e01d02cd54f3547429..e46b69c7fc1a54161f77490028364e35098e98e9 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -408,6 +408,20 @@ EXAM_COMMAND_LABEL_RE = re.compile(
+     r"^\*\*\s*exam[-\s]?command\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$", re.I)
+ EXAM_PATHS_TOKEN = "{paths}"
+ 
++# What a word of the declared template may be spelled with (#716). The sandbox
++# reads the template as ONE RUNNER AND ITS ARGUMENTS: `ultra_run.py`'s
++# `runner_for` takes `cmd.split()[0]` for a command its `TASK_RUNNERS` table
++# does not know and probes it with `/bin/sh -c 'command -v <word>'`. This class
++# admits what a runner and its flags are spelled with (`-q`, `--tb=short`,
++# `./...`, `pkg:test`, `a,b`) and excludes every shell operator, quote and
++# expansion character — a `;`, `|`, `$(`, `>` or quote anywhere on the line
++# means the first word is not necessarily what runs the suite, so the template
++# is refused rather than handed to a shell that reads it differently.
++EXAM_RUNNER_WORD = re.compile(r"^[A-Za-z0-9_.+/=:@,-]+$")
++EXAM_RUNNER_WORD_NOTE = (" is not a command word — the sandbox reads the "
++                         "template as one runner and its arguments, probing "
++                         "the first word with command -v")
++
+ 
+ def _exam_command_label(stripped):
+     m = EXAM_COMMAND_LABEL_RE.match(stripped)
+@@ -421,13 +435,39 @@ def parse_exam_command(md_text):
+     return _plan_header_value(md_text, _exam_command_label)
+ 
+ 
++def _exam_runner_word_violation(template):
++    """The first word of the template that is not a command word, or None.
++
++    The rule is word by word over the value split on whitespace: every word is
++    the `{paths}` token itself or matches `EXAM_RUNNER_WORD`, and the first
++    word is never `{paths}` — a template whose runner is the paths token names
++    no runner at all."""
++    for index, word in enumerate(template.split()):
++        if word == EXAM_PATHS_TOKEN:
++            if index == 0:
++                return word
++            continue
++        if not EXAM_RUNNER_WORD.match(word):
++            return word
++    return None
++
++
+ def exam_command_violations(md_text):
+-    """The declared template's own refusals. `{paths}` is the whole contract:
+-    zero occurrences and the template runs the same files for every task (or
+-    none at all), two and the substitution is ambiguous."""
++    """The declared template's own refusals, in the order a reader meets them:
++    a backtick anywhere (the same species, the same wording, as a `Run:`/
++    `Check:` command's — the driver's shell would read it as a command
++    substitution), then a word that is not a command word, then the `{paths}`
++    count. `{paths}` is the substitution's whole contract: zero occurrences and
++    the template runs the same files for every task (or none at all), two and
++    the substitution is ambiguous."""
+     template = parse_exam_command(md_text)
+     if template is None:
+         return []
++    if "`" in template:
++        return [_backtick_command_violation("Exam command", template)]
++    offender = _exam_runner_word_violation(template)
++    if offender is not None:
++        return ["exam-command: %s%s" % (offender, EXAM_RUNNER_WORD_NOTE)]
+     if template.count(EXAM_PATHS_TOKEN) != 1:
+         return ["exam-command: the template must carry %s exactly once"
+                 % EXAM_PATHS_TOKEN]
 diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
 index b86897b9a8d63058885a17b27202d9d978067cd3..5bd97145af75755d2ecaf901cbdc934cfbf3d5a6 100644
 --- a/skills/ultrawrite/SKILL.md
@@ -60536,6 +63256,257 @@ index 8fc1534906d2580bed99adb6ccf6f487255c32a6..f7d8bedceadb3b1485895bc240628733
 -    assert p.returncode == 0, (
 -        "leg (c) [M3]: the existing species exam must still pass:\n"
 -        + p.stdout[-4000:] + p.stderr[-2000:])
+diff --git a/tests/test_compile_plan_exam_command.py b/tests/test_compile_plan_exam_command.py
+index 0785a902a4baf2d0bdb7c3fc9245ce099757e651..17bfce35347c851e131addee894e4d9081a4d0eb 100644
+--- a/tests/test_compile_plan_exam_command.py
++++ b/tests/test_compile_plan_exam_command.py
+@@ -19,13 +19,20 @@ the committed compiler against it.
+ """
+ import json
+ import pathlib
++import re
+ import subprocess
+ import sys
+ 
++import pytest
++
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+ sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+ import compile_plan  # noqa: E402
++# Task 4 leg (c) [M3]: the frozen-sha byte-identity assertion is that file's,
++# imported and re-run from here.
++import test_compile_plan_proof_runs as proof_runs  # noqa: E402
+ from compile_plan import (  # noqa: E402
+     gate_input_hash,
+     parse_claims_body,
+@@ -258,3 +265,225 @@ def test_exam_command_violations_pins_the_token_count(tmp_path):
+         found = compile_plan.exam_command_violations(HEADER + line + body)
+         assert len(found) == 1, (template, found)
+         assert found[0].startswith("exam-command:"), found[0]
++
++
++# =========================================================================== #
++# Task 4 (#716): a backticked or non-command `**Exam command:**` value is a
++# REFUSAL, not an advisory — the compiler half. The blocks below are that
++# task's own Proof legs (a), (b) and (c); its launcher half is
++# `fleet/tests/test_launch_exam_command.mjs`.
++# =========================================================================== #
++
++# The two message tails the refusals carry. The backtick note is the compiler's
++# own `BACKTICK_COMMAND_NOTE`, which `_backtick_command_violation` already
++# writes for a `Run:` and a `Check:` — the same wording, a third caller.
++BACKTICK_NOTE = ("; the driver's shell reads it as a command substitution "
++                 "(run-74)")
++RUNNER_NOTE = (" — the sandbox reads the template as one runner and its "
++               "arguments, probing the first word with command -v")
++
++# The command-word class of M2: the shared literal of the two halves, written
++# `EXAM_RUNNER_WORD` in the compiler and exported under that name from
++# `fleet/launch.mjs`.
++WORD_CLASS = r"^[A-Za-z0-9_.+/=:@,-]+$"
++
++
++def _exam_plan(tmp_path, value, name):
++    """A signed one-task plan whose header carries `value` on its
++    `**Exam command:**` line."""
++    return _plan(tmp_path, HEADER + "**Exam command:** %s\n\n" % value,
++                 [_task("1", ["tests/c.py"])], name=name)
++
++
++def _backtick_line(value):
++    """The `grammar:` line M1 spells, for a value quoted to 80 characters."""
++    return ("grammar: Exam command: command carries a backtick — %s%s"
++            % (value[:80], BACKTICK_NOTE))
++
++
++def _word_line(word):
++    """The `exam-command:` line M2 spells, naming the first offending word."""
++    return "exam-command: %s is not a command word%s" % (word, RUNNER_NOTE)
++
++
++# --- task 4, leg (a) [M1]: a backtick anywhere on the value -----------------
++
++BACKTICKED = "`python3 -m pytest {paths}`"
++# A value past the 80-character quote, so the clipping M1 spells is live.
++LONG_BACKTICKED = ("`python3 -m pytest -q --tb=short tests/test_alpha.py "
++                   "tests/test_beta.py tests/test_gamma.py {paths}`")
++
++
++def test_task4_a_backticked_exam_command_is_refused_with_the_grammar_line(
++        tmp_path):
++    # The plan the sandbox met (#716's finding 2): a template written inside
++    # backticks reached `--validate-knobs` as a runner literally named
++    # `` `python3 ``, after the compiler had printed PLAN OK.
++    plan = _exam_plan(tmp_path, BACKTICKED, "backticked")
++    assert compile_plan.parse_exam_command(plan.read_text()) == BACKTICKED, (
++        "leg (a) [M1]: the fixture's header value is the backticked template, "
++        "verbatim — the header reader keeps the backticks")
++    r = _check(plan)
++    assert r.returncode == 2, (
++        "leg (a) [M1]: a backtick on the `**Exam command:**` line is a "
++        "refusal, so `--check` exits 2\n" + r.stdout + r.stderr)
++    assert _backtick_line(BACKTICKED) in r.stdout.splitlines(), (
++        "leg (a) [M1]: the output carries exactly the line\n  %s\ngot:\n%s"
++        % (_backtick_line(BACKTICKED), r.stdout))
++
++
++def test_task4_the_backtick_line_is_the_wording_run_and_check_already_use():
++    # M1 names the function: `_backtick_command_violation("Exam command",
++    # value)`. One wording, now three callers — an author who has read the
++    # `Run:` refusal has read this one.
++    assert (compile_plan._backtick_command_violation("Exam command", BACKTICKED)
++            == _backtick_line(BACKTICKED)), (
++        "leg (a) [M1]: the `Exam command` line is the shared "
++        "`_backtick_command_violation` wording, not a paraphrase of it")
++
++
++def test_task4_a_long_backticked_value_is_quoted_to_eighty_characters(tmp_path):
++    assert len(LONG_BACKTICKED) > 80, "the fixture must outrun the 80-char quote"
++    plan = _exam_plan(tmp_path, LONG_BACKTICKED, "backticked-long")
++    r = _check(plan)
++    assert r.returncode == 2, (
++        "leg (a) [M1]: still a refusal\n" + r.stdout + r.stderr)
++    assert _backtick_line(LONG_BACKTICKED) in r.stdout.splitlines(), (
++        "leg (a) [M1]: the value is quoted to its first 80 characters — "
++        "expected\n  %s\ngot:\n%s"
++        % (_backtick_line(LONG_BACKTICKED), r.stdout))
++
++
++# --- task 4, leg (b) [M2]: the first word outside the command-word class ----
++
++# Each row is a value and the FIRST word of it that breaks the rule — the word
++# the refusal must name.
++NON_COMMAND_VALUES = [
++    ("$(which node) {paths}", "$(which"),
++    ("'npx' vitest run {paths}", "'npx'"),
++    ("{paths}", "{paths}"),
++    ("node {paths}; rm -rf ~", "{paths};"),
++    ("node $(x) {paths}", "$(x)"),
++    ("node {paths} | tee out", "|"),
++    ("node {paths} 2>&1", "2>&1"),
++]
++
++
++@pytest.mark.parametrize("value,word", NON_COMMAND_VALUES,
++                         ids=[v for v, _ in NON_COMMAND_VALUES])
++def test_task4_a_word_outside_the_command_word_class_is_refused(
++        tmp_path, value, word):
++    # A `;`, `|`, `$(`, `>` or quote anywhere on the line means the first word
++    # is not necessarily what runs the suite — and `runner_for` probes exactly
++    # that first word with `command -v`. `{paths}` first is the same finding:
++    # the template's runner would be a list of test paths.
++    plan = _exam_plan(tmp_path, value, "word")
++    assert compile_plan.parse_exam_command(plan.read_text()) == value, (
++        "leg (b) [M2]: the fixture's header value is %r, verbatim" % value)
++    r = _check(plan)
++    assert r.returncode == 2, (
++        "leg (b) [M2]: %r carries a word outside the command-word class, so "
++        "`--check` exits 2\n%s%s" % (value, r.stdout, r.stderr))
++    blocks = _violations(r.stdout, "exam-command:")
++    assert blocks == [_word_line(word)], (
++        "leg (b) [M2]: %r draws exactly one `exam-command:` refusal, naming "
++        "its first offending word %r:\n  %s\ngot:\n%s"
++        % (value, word, _word_line(word), r.stdout))
++
++
++def test_task4_the_command_word_class_is_the_shared_literal():
++    # The shared literal of the two halves. `fleet/launch.mjs` exports it as
++    # `EXAM_RUNNER_WORD`; the compiler writes it under that same name.
++    assert hasattr(compile_plan, "EXAM_RUNNER_WORD"), (
++        "leg (b) [M2]: the compiler names the class `EXAM_RUNNER_WORD`, the "
++        "literal it shares with fleet/launch.mjs")
++    assert compile_plan.EXAM_RUNNER_WORD.pattern == WORD_CLASS, (
++        "leg (b) [M2]: the class is %s, got %r"
++        % (WORD_CLASS, compile_plan.EXAM_RUNNER_WORD.pattern))
++    # What a runner and its flags are spelled with, and what a shell operator,
++    # a quote or an expansion is spelled with.
++    for word in ("node", "python3", "-q", "--tb=short", "./node_modules/.bin/vitest",
++                 "./...", "pkg:test", "a,b", "go", "test", "user@host", "a+b"):
++        assert compile_plan.EXAM_RUNNER_WORD.match(word), (
++            "leg (b) [M2]: %r is how a runner or its flag is spelled" % word)
++    for word in ("$(which", "'npx'", '"npx"', "{paths};", "$(x)", "|", "2>&1",
++                 ">out", "a&b", "a;b", "*", "?", "!", "#", "back\\slash", "`x`"):
++        assert not compile_plan.EXAM_RUNNER_WORD.match(word), (
++            "leg (b) [M2]: %r carries a shell operator, a quote or an "
++            "expansion character and is not a command word" % word)
++
++
++# --- task 4, leg (c) [M3]: what stays green, and the frozen channel ---------
++
++GREEN_TEMPLATES = [
++    "node {paths}",
++    "./node_modules/.bin/vitest run {paths}",
++    "python3 -m pytest -q --tb=short {paths}",
++    "go test ./... {paths}",
++]
++
++
++@pytest.mark.parametrize("value", GREEN_TEMPLATES, ids=GREEN_TEMPLATES)
++def test_task4_a_well_formed_template_still_checks_ok(tmp_path, value):
++    # Every word either `{paths}` itself or a match of the class, and the first
++    # word a runner: the class admits what a real exam command is spelled with.
++    # (The class is spelled out here rather than imported, so this leg reads
++    # the same whether or not the compiler has grown its copy yet.)
++    for word in value.split():
++        assert word == "{paths}" or re.match(WORD_CLASS, word), (
++            "leg (c) [M3]: %r is a command word of %r" % (word, value))
++    plan = _exam_plan(tmp_path, value, "green")
++    r = _check(plan)
++    assert r.returncode == 0, (
++        "leg (c) [M3]: %r is a well-formed template and must check OK\n%s%s"
++        % (value, r.stdout, r.stderr))
++    assert r.stdout.splitlines()[0] == "PLAN OK", r.stdout
++    assert _violations(r.stdout, "exam-command:") == [], r.stdout
++    assert _violations(r.stdout, "grammar: Exam command") == [], r.stdout
++
++
++def test_task4_a_plan_with_no_exam_command_line_still_checks_ok(tmp_path):
++    # No line at all is not a refusal: every task's command derives from the
++    # built-in shape table exactly as it did before #644.
++    plan = _plan(tmp_path, HEADER, [_task("1", ["tests/c.py"])], name="silent4")
++    r = _check(plan)
++    assert r.returncode == 0, (
++        "leg (c) [M3]: a header carrying no `**Exam command:**` line checks "
++        "OK\n" + r.stdout + r.stderr)
++    assert r.stdout.splitlines()[0] == "PLAN OK", r.stdout
++    assert _violations(r.stdout, "exam-command:") == [], r.stdout
++
++
++def test_task4_two_paths_tokens_still_draw_the_base_refusal(tmp_path):
++    # The BASE `{paths}` count is the third rule, and it is unchanged: every
++    # word of `node {paths} {paths}` is a command word, so the refusal it draws
++    # is the one #644 wrote.
++    plan = _exam_plan(tmp_path, "node {paths} {paths}", "twice4")
++    r = _check(plan)
++    assert r.returncode == 2, (
++        "leg (c) [M3]: two `{paths}` is still a refusal\n" + r.stdout + r.stderr)
++    assert (_violations(r.stdout, "exam-command:")
++            == ["exam-command: the template must carry {paths} exactly once"]), (
++        "leg (c) [M3]: and it is the BASE wording, not the new one:\n"
++        + r.stdout)
++
++
++def _fixture_fn(fixture):
++    """The plain function inside a pytest fixture object, so leg (e) of
++    `tests/test_compile_plan_proof_runs.py` can be re-run from here."""
++    fn = getattr(fixture, "__wrapped__", None)
++    if fn is None and hasattr(fixture, "_get_wrapped_function"):
++        fn = fixture._get_wrapped_function()
++    assert fn is not None, "cannot unwrap %r" % (fixture,)
++    return fn
++
++
++def test_task4_every_run_less_fixture_plan_still_checks_byte_identically(
++        tmp_path_factory):
++    """leg (c) [M3]: the two new rules are additive — every Run-less fixture
++    plan's bare `--check` output stays byte-identical to the compiler at the
++    frozen sha. The assertion is `tests/test_compile_plan_proof_runs.py`'s
++    own, imported and called."""
++    base_compiler = _fixture_fn(proof_runs.base_compiler)(tmp_path_factory)
++    proof_runs.test_every_run_less_fixture_plan_checks_byte_identically_to_base(
++        base_compiler)
 diff --git a/tests/test_compile_plan_one_sided.py b/tests/test_compile_plan_one_sided.py
 index 26834e12b1de84403b686af043aae5534a48de89..23b17a85f6ebfc7bc0acc854c72d1dd2bd2f030b 100644
 --- a/tests/test_compile_plan_one_sided.py

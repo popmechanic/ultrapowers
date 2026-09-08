@@ -46,6 +46,75 @@
       ],
       "checkRetries": 0,
       "pushedHead": "af52fa7ed68058096fc29dce4d245820f59c86e0"
+    },
+    "2": {
+      "tip": "2b080eb57b79cd1a62e384f0eb53e2d929594634",
+      "candidate": "4ccc07337971bda0dd0ab00826400392032a0a6b",
+      "disposition": "folded",
+      "pathsJoined": 5,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_publish_fold.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "skills/ultrapowers/scripts/compile_plan.py",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_strip_exams.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_exams.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_actor_routing.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_exam_edits.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_reserved_exams.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_publish_fold.mjs",
+          "path": "fleet/tests/test_publish_fold.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "tests/test_compile_plan_guard.py",
+          "path": "skills/ultrapowers/scripts/compile_plan.py",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0,
+      "pushedHead": "4ccc07337971bda0dd0ab00826400392032a0a6b"
     }
   }
 }

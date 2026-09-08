@@ -1,0 +1,7 @@
+ok (10 ms) — the strip moves both reserved directories onto the record  [M1 / leg (a)]
+ok (4 ms) — the stripped tree is the previous tree minus the reserved directories  [M1 / leg (a)]
+ok (9 ms) — every file of both directories is on the record, byte for byte  [M1 / leg (a)]
+ok (0 ms) — the clone's HEAD, index and working tree are unchanged  [M1 / leg (a)]
+ok (9 ms) — a branch carrying only fleet/tests/exams is stripped there and nowhere else  [M1 / leg (b)]
+ok (0 ms) — a branch with neither directory is left alone, and says so  [M2 / leg (c)]
+ALL TESTS PASSED

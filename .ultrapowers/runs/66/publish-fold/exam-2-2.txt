@@ -1,0 +1,7 @@
+ok (1082 ms) — the green boot strips once, with the argv M3 spells  [M3 / leg (d)]
+ok (3 ms) — the strip sits after the fold unit and before the branch's push  [M3 / leg (d)]
+ok (2 ms) — the run's last evidence push comes after the strip  [M3 / leg (d)]
+ok (0 ms) — a run with nothing ahead of base strips nothing at all  [M3 / leg (d)]
+ok (1198 ms) — a run that folds twice strips twice  [M3 / leg (e)]
+ok (1 ms) — the second strip sits after the second fold and before the leased push  [M3 / leg (e)]
+ALL TESTS PASSED
