@@ -1457,4 +1457,207 @@ test('the systemctl stub answers a fold unit inactive  [publish-fold M8 / leg (j
     '(j) [M8] a fold unit is inactive unless STUB_FOLD_ACTIVE says otherwise')
 })
 
+// ═════════════════════════════════════════════════════════════════════════════
+// THE PULL REQUEST QUOTES THE FOLD SUITE'S FAILING BLOCK
+//
+// A THIRD numbering, belonging to a third task (#763 narrowed to part (2), on
+// top of #715's `suite red` section). Its clauses are M1–M5 and its legs (a)–(e)
+// of their own, and every assertion below names them with a `failing-block`
+// prefix so none of the three numberings in this file reads as another.
+//
+//   M1  on a `suite red` fold whose `publish-fold/suite-1.txt` is TAP-shaped —
+//       `ok 1 - join`, then `not ok 2 - the recorded text names the failing
+//       leg`, then more than twenty indented diagnostic lines, then `# fail 1`
+//       as the last line — the PR body's fenced block contains the `not ok 2`
+//       line.
+//   M2  that fenced block's lines are exactly `suite-1.txt`'s lines from the
+//       `not ok 2` line through its last line, `# fail 1` included, in order,
+//       and the `ok 1 - join` line is not in the body.
+//   M3  `publish-fold/suite-1.txt` on the evidence worktree is still the whole
+//       text — twenty-eight lines, the first `ok 1 - join`, the last
+//       `# fail 1` — not the excerpt.
+//   M4  on a `suite red` fold whose `suite-1.txt` has no line matching the
+//       start rule — three plain lines — the fenced block is those three lines
+//       whole.
+//   M5  the boot log of the `suite red` run carries no `node DIRECT` line: the
+//       excerpt is produced by the boot script's own shell and awk.
+//
+// What the excerpt rule is, spelled once, because these legs read it and not an
+// implementation of it: START is the first line matching the ERE
+// `^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)`; END is the line
+// before the first LATER line matching `^(___+ .+ ___+$|===+ |(not )?ok [0-9])`,
+// or the file's last line when no later line matches; a file with NO start line
+// is printed whole.
+//
+// Every leg below reads the fixture's own file off the evidence worktree and
+// compares the body against THAT, so what is pinned is the rule and not a
+// particular way of writing it. The one thing pinned as a literal is the
+// fixture itself, because leg (a) only discriminates while the `not ok` line
+// sits further from the end of the file than twenty lines.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `FOLD_SUITE_TEXT`'s twenty-eight lines, as the task spells them: `ok 1 -
+ * join`, the `not ok 2` line, twenty-four two-space-indented `diagnostic line
+ * N` lines for N from 1 to 24, `  ...`, and `# fail 1` last.
+ */
+const TAP_FIXTURE = [
+  'ok 1 - join',
+  'not ok 2 - the recorded text names the failing leg',
+  ...Array.from({ length: 24 }, (_, i) => `  diagnostic line ${i + 1}`),
+  '  ...',
+  '# fail 1',
+]
+/** The line M1 and M2 name, verbatim. */
+const NOT_OK_LINE = 'not ok 2 - the recorded text names the failing leg'
+/** The first line, which M2 says the body does not carry. */
+const OK_LINE = 'ok 1 - join'
+/** The last line, which M3 says the record still ends on. */
+const FAIL_LINE = '# fail 1'
+/** What BASE's `tail -n 20` would have shown, as a number of lines. */
+const BASE_TAIL = 20
+
+/** A file's lines, one trailing newline dropped — the stub's `printf '%s\n'`
+ *  leaves exactly one, and a blank line inside an excerpt is still a line. */
+const fileLines = (text) => text.replace(/\n$/, '').split('\n')
+
+/** `<evidence>/.ultrapowers/runs/7/publish-fold/suite-1.txt`, spelled out the
+ *  way leg (c) spells it, read off the evidence worktree. */
+const suiteRecord = (ctx, leg) => {
+  const p = path.join(ctx.home, 'evidence', '.ultrapowers', 'runs', '7', 'publish-fold', 'suite-1.txt')
+  assert.ok(fs.existsSync(p), `${leg} the fold's suite file is on the evidence worktree at ${p}${whyFold(ctx)}`)
+  return fs.readFileSync(p, 'utf8')
+}
+
+/**
+ * The fenced block of the `## Publish fold` section: the lines between the
+ * first line that is exactly three backticks AFTER `## Publish fold` and the
+ * next such line. The anchor matters — the `### Checks` section above carries a
+ * ```json fence of its own, whose closing line is also three backticks.
+ */
+const foldFence = (body, leg) => {
+  const ls = body.split('\n')
+  const head = ls.findIndex((l) => l.trim() === '## Publish fold')
+  assert.ok(head >= 0, `${leg} the body carries a '## Publish fold' section:\n${body}`)
+  const open = ls.findIndex((l, i) => i > head && l === '```')
+  assert.ok(open > head,
+    `${leg} and a fenced block inside it — a line of exactly three backticks after the ` +
+      `heading:\n${body}`)
+  const close = ls.findIndex((l, i) => i > open && l === '```')
+  assert.ok(close > open, `${leg} and that fence is closed by another such line:\n${body}`)
+  return ls.slice(open + 1, close)
+}
+
+/** M4's fixture: a suite file with no line matching the start rule. */
+const PLAIN_SUITE = ['first line', 'second line', 'third line']
+const suiteRedPlain = bootWith({
+  STUB_FOLD_DISPOSITION: 'suite red',
+  STUB_FOLD_SUITE: PLAIN_SUITE.join('\n'),
+})
+
+// ── the fixture M1 describes  [failing-block M1] ─────────────────────────────
+
+test("the rig's FOLD_SUITE_TEXT is the TAP shape, its last line FOLD_SUITE_LAST  [failing-block M1 / leg (a)]", () => {
+  const leg = '(a) [failing-block M1]'
+  assert.deepEqual(fileLines(String(rig('FOLD_SUITE_TEXT'))), TAP_FIXTURE,
+    `${leg} FOLD_SUITE_TEXT is M1's TAP-shaped suite: '${OK_LINE}', the '${NOT_OK_LINE}' line, ` +
+      `twenty-four indented 'diagnostic line N' lines, '  ...', and '${FAIL_LINE}' last — ` +
+      `twenty-eight lines in all, so the '${NOT_OK_LINE}' line sits further than ${BASE_TAIL} ` +
+      `lines from the end and a tail of ${BASE_TAIL} cannot reach it`)
+  assert.equal(rig('FOLD_SUITE_LAST'), FAIL_LINE,
+    `${leg} FOLD_SUITE_LAST is still that text's last line, which the body still has to carry`)
+})
+
+// ── (a) the failing leg's name is in the fenced block  [M1] ──────────────────
+
+test("the fenced block of a suite-red body carries the not-ok line  [failing-block M1 / leg (a)]", async () => {
+  const ctx = await suiteRed()
+  const leg = '(a) [failing-block M1]'
+  const recorded = fileLines(suiteRecord(ctx, leg))
+  // The discriminator, asserted before the block is read: this fixture's
+  // `not ok` line is OUTSIDE the last twenty lines, so a `tail -n 20` of it
+  // cannot be what the body shows.
+  assert.ok(!recorded.slice(-BASE_TAIL).includes(NOT_OK_LINE),
+    `${leg} the fixture puts the '${NOT_OK_LINE}' line outside suite-1.txt's last ${BASE_TAIL} ` +
+      `lines; the file's ${recorded.length} lines are:\n${recorded.join('\n')}`)
+  const block = foldFence(bodyOf(ctx, leg), leg)
+  assert.ok(block.includes(NOT_OK_LINE),
+    `${leg} [M1] the fenced block names the failing leg — it holds the line\n  ${NOT_OK_LINE}\n` +
+      `even though that line is the second of the file's ${recorded.length}; a tail of ` +
+      `${BASE_TAIL} lacks it. The block is:\n${block.join('\n')}`)
+})
+
+// ── (b) the block is the failing test's own block, start to end of file  [M2] ─
+
+test("the fenced block is suite-1.txt's lines from not-ok through its last  [failing-block M2 / leg (b)]", async () => {
+  const ctx = await suiteRed()
+  const leg = '(b) [failing-block M2]'
+  const recorded = fileLines(suiteRecord(ctx, leg))
+  const start = recorded.indexOf(NOT_OK_LINE)
+  assert.ok(start >= 0, `${leg} the recorded suite holds the '${NOT_OK_LINE}' line:\n${recorded.join('\n')}`)
+  assert.equal(recorded[recorded.length - 1], FAIL_LINE,
+    `${leg} and ends on '${FAIL_LINE}' — with no later boundary line, the block runs to there`)
+  const expected = recorded.slice(start)
+  const body = bodyOf(ctx, leg)
+  const block = foldFence(body, leg)
+  assert.deepEqual(block, expected,
+    `${leg} [M2] the block's lines are EXACTLY suite-1.txt's lines from its '${NOT_OK_LINE}' ` +
+      `line through '${FAIL_LINE}', in order — ${expected.length} lines, no more and no fewer.\n` +
+      `--- the block in the body (${block.length} lines) ---\n${block.join('\n')}\n` +
+      `--- suite-1.txt from the not-ok line (${expected.length} lines) ---\n${expected.join('\n')}`)
+  assert.ok(!body.includes(OK_LINE),
+    `${leg} [M2] and the '${OK_LINE}' line above the start is nowhere in the body — the block ` +
+      `begins at the marker, it does not begin at the file:\n${body}`)
+})
+
+// ── (c) the record on the evidence branch is still whole  [M3] ───────────────
+
+test('the suite file on the evidence worktree is the whole text, not the excerpt  [failing-block M3 / leg (c)]', async () => {
+  const ctx = await suiteRed()
+  const leg = '(c) [failing-block M3]'
+  const recorded = fileLines(suiteRecord(ctx, leg))
+  assert.equal(recorded.length, 28,
+    `${leg} [M3] <evidence>/.ultrapowers/runs/7/publish-fold/suite-1.txt has twenty-eight ` +
+      `lines; it has ${recorded.length}:\n${recorded.join('\n')}`)
+  assert.equal(recorded[0], OK_LINE,
+    `${leg} [M3] the first of them is '${OK_LINE}' — the record keeps the lines the body's ` +
+      `excerpt drops; got: ${JSON.stringify(recorded[0])}`)
+  assert.equal(recorded[recorded.length - 1], FAIL_LINE,
+    `${leg} [M3] and the last is '${FAIL_LINE}'; got: ${JSON.stringify(recorded[recorded.length - 1])}`)
+  assert.deepEqual(recorded, TAP_FIXTURE,
+    `${leg} [M3] the record is the whole of what the fold's suite wrote and nothing the ` +
+      `excerpting touched:\n${recorded.join('\n')}`)
+  const block = foldFence(bodyOf(ctx, leg), leg)
+  assert.ok(block.length < recorded.length,
+    `${leg} [M3] the body's block is an EXCERPT of that record, not the record — ` +
+      `${block.length} lines against ${recorded.length}`)
+})
+
+// ── (d) a file with no start line is printed whole  [M4] ─────────────────────
+
+test('a suite with no marker line is quoted whole  [failing-block M4 / leg (d)]', async () => {
+  const ctx = await suiteRedPlain()
+  const leg = '(d) [failing-block M4]'
+  assert.deepEqual(fileLines(suiteRecord(ctx, leg)), PLAIN_SUITE,
+    `${leg} the fixture's suite-1.txt is the three plain lines`)
+  const block = foldFence(bodyOf(ctx, leg), leg)
+  assert.deepEqual(block, PLAIN_SUITE,
+    `${leg} [M4] no line of '${PLAIN_SUITE.join("', '")}' matches the start rule, so the ` +
+      `fallback prints the file whole — the fenced block is exactly those three lines.\n` +
+      `--- the block (${block.length} lines) ---\n${block.join('\n')}`)
+})
+
+// ── (e) the excerpt is shell and awk, never node  [M5] ──────────────────────
+
+test("the suite-red boot calls node directly not once  [failing-block M5 / leg (e)]", async () => {
+  const ctx = await suiteRed()
+  const leg = '(e) [failing-block M5]'
+  const log = lines(readLog(ctx, 'fleet-boot.log'))
+  const direct = log.filter((l) => l.includes('node DIRECT'))
+  assert.deepEqual(direct, [],
+    `${leg} [M5] the stub \`node\` logs 'node DIRECT' whenever the boot script runs it as a ` +
+      `command of its own, and the excerpt is the script's own shell and awk — on the sandbox ` +
+      `\`node\` is argv to systemd-run only. The direct calls logged were:\n${direct.join('\n')}`)
+})
+
 runTests(tests)
