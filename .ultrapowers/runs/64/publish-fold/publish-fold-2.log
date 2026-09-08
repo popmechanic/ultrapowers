@@ -1,0 +1,8 @@
+Running as unit: fleet-fold-64-2.service; invocation ID: 45effc7ae769482db2282a0961ec08e5
+publish-fold: attempt 2 — folded
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 5min 45.294s
+CPU time consumed: 9min 31.865s
+Memory peak: 328.0K
+Memory swap peak: 0B
