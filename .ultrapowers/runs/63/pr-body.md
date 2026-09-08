@@ -1,0 +1,104 @@
+## fleet run-63 — gate-green
+
+| | |
+|---|---|
+| verdict | `NEEDS_ACK` |
+| target | `popmechanic/ultrapowers` at `1c97ba442c65d882354953d16590b1f8eb0c7a7a` |
+| engine | `1c97ba442c65d882354953d16590b1f8eb0c7a7a` |
+| plan | `.ultrapowers/plan.md` at `9a7cc2979bf41d08be4967183c387d67aac32628` |
+| branch | `ultra/integration-run-63` |
+| vm | `fleet-r63-2609081938-7ac6` |
+
+### Checks
+
+```json
+{
+  "mode": "gate",
+  "stamp": "run-63",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-63/report.json",
+  "branch": "ultra/integration-run-63",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "skills/ultralearn/scripts/_readers.py \u2014 `released_versions()` against the real `.claude-plugin/plugin.json` history \u2014 Proof leg (e) exercises it only with `release_timeline` monkeypatched to a 3-row tuple and to `()`. Whether the live function actually yields the released set (0.0.6 \u2026 0.3.21) depends on a full git history of `.claude-plugin/plugin.json`, which this sandbox clone does not carry; nothing in the tree executes the unmocked path. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:manual",
+        "detail": "skills/ultralearn/SKILL.md \u00a7Verb 1 steps 1 and 3 \u2014 the operator-facing harvest\u2192read\u2192merge procedure \u2014 The driver settled the text's presence and shape: `$ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn | grep -q 'skill ok'` and `$ python3 -m pytest -q tests/test_ultralearn_docs.py -p no:cacheprovider` both exit 0, and each of Task 3's eleven `sed`/`grep` Run: lines exits 0. What remains is human judgment on whether the rewritten prose reads correctly to an operator running the verb by hand \u2014 not a command."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.Jzed96HZSB/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 6/6 workers\\n6 workers [1835 items]\\n\\n........................................................................ [  3%]\\n........................................................................ [  7%]\\n........................................................................ [ 11%]\\n........................................................................ [ 15%]\\n........................................................................ [ 19%]\\n........................................................................ [ 23%]\\n........................................................................ [ 27%]\\n........................................................................ [ 31%]\\n........................................................................ [ 35%]\\n........................................................................ [ 39%]\\n........................................................................ [ 43%]\\n........................................................................ [ 47%]\\n........................................................................ [ 51%]\\n........................................................................ [ 54%]\\n........................................................................ [ 58%]\\n........................................................................ [ 62%]\\n........................................................................ [ 66%]\\n........................................................................ [ 70%]\\n........................................................................ [ 74%]\\n........................................................................ [ 78%]\\n........................................................................ [ 82%]\\n........................................................................ [ 86%]\\n........................................................................ [ 90%]\\n........................................................................ [ 94%]\\n........................................................................ [ 98%]\\n...................................                                      [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1835 passed, 5 warnings in 292.54s (0:04:52) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-63/.ultrapowers/runs/63/
+
+- acceptance.log
+- approve-receipt.json
+- claude-version.txt
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- publish-fold
+- receipt.json
+- report.json
+- standing-approval.json
+- status.json
+- transcripts
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-63/.ultrapowers/plan.md
+Closes #697
+Closes #695
+Closes #696
