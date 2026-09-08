@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "e6bf0fb286e0232f8d2ee658a65c51a6efbc90d0c5c74ac44244af8b0a955756",
+      "verdict": "pass",
+      "reason": "round 2: counts computed under the clauses' own rule (405 405 405 200 -> 4 folds, 4 PUTs, 9 states; wait 0 -> 2 folds, 2 PUTs; unclean attempt 2 -> 2 folds, 1 PUT, 1 hold); every literal matches between clause and citing leg; each clause has a leg that fails if the boot stops at two folds."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "history": [
+      {"round": 1, "hash": "62bd3de69343d7adf20153b73a8ac4a8c255656f2beb9645066e9e808fe34051", "verdict": "fail", "reason": "M4 pinned the wait-0 and tip-unmoved cases to the base-moved 405 while legs (f)/(g) drove them with the not-mergeable body; the clauses never said the three bodies are one class."},
+      {"round": 2, "hash": "e6bf0fb286e0232f8d2ee658a65c51a6efbc90d0c5c74ac44244af8b0a955756", "verdict": "pass"}
+    ]
+  }
+}
