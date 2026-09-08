@@ -1,0 +1,50 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "bc1319bbaf191eeec5cdb23946633e07c45f8b327c5934dbda142fc72d69dc67",
+      "verdict": "pass",
+      "reason": "Every pinned literal computes under M1/M5 (run-7 -> run_7, the two prefixes, pass-through for t1_test.sh, the __init__.py paths), and legs (c)/(e)/(f) inspect the branch itself via git show for the unguarded, guarded and implementer-collision cases, so a passing exam entails the operator-facing sentence at the branch layer."
+    },
+    "2": {
+      "hash": "1d7ad414d8ebbeff80b8732ce814af425bbdc55d647af3d5d1210014600b1d86",
+      "verdict": "pass",
+      "reason": "Legs (a)-(e) pin each clause on both sides (M2 fires/does not fire, M3 fires, M1 dedup+order+[] defaults, M4 byte-identical --check with the bullet removed) and the advisory-only shape is exactly the no-new-frozen-vocabulary half of the sentence."
+    },
+    "3": {
+      "hash": "1a524572b327b5faaf4a3bd0990852bdb76afd7c9eca360ca78823ff119de181",
+      "verdict": "pass",
+      "reason": "Leg (b) exercises the real bridge file end-to-end over a tree with fleet/tests/exams/, including a red exam naming the right id; leg (c) reads the exams-absent case off the filesystem; leg (d)'s __init__.py on/off pair is exactly pytest's prepend-mode behaviour with duplicate basenames."
+    },
+    "4": {
+      "hash": "adf8e0a4175a03756c1624818089db089a18c387b10009b372244e462665fc70",
+      "verdict": "pass",
+      "reason": "The slug run_7 is computed correctly, the legs pin every M1-M4 literal (single-parent commit, subject, both directories stripped, byte-equal copies, HEAD/index untouched, nothing-to-strip exit 0, strip-after-fold before the push on both attempts and before the last evidence push, the contract sentence order), so a passing exam makes the PR diff exam-free and the record carry the exams."
+    },
+    "5": {
+      "hash": "57afa2af16fc878423ecd708807a87cff3abfa3e0087ad3e12d068bb7341051d",
+      "verdict": "pass",
+      "reason": "Every literal the clauses pin is greppable inside the sed-bounded region M1-M3 define, the two BASE negative controls make the greps non-vacuous, and M4 is executed rather than asserted."
+    },
+    "6": {
+      "hash": "da1ab940f9ed29b510c4e7b2d7288c77edf5e159f927e58d9de89ee42c0dfb05",
+      "verdict": "pass",
+      "reason": "The reserved-path literals compute under M1's own rule (run-7 -> run_7, run-3 -> run_3), and legs (a)-(f) pin the reserved-path run, the Guard fallback to the Test: path, the skipped record that neither runs nor changes disposition, exam-before-suite with suite none on a red exam, and the existing legs unchanged."
+    }
+  },
+  "tally": {
+    "dispatched": 10,
+    "rejected": 4,
+    "rounds": {
+      "1": { "dispatched": 6, "rejected": 3, "failed": ["2", "3", "6"] },
+      "2": { "dispatched": 3, "rejected": 1, "failed": ["3"] },
+      "3": { "dispatched": 1, "rejected": 0, "note": "task 3 passed; the reader's aside (leg (c) would go red on a later branch carrying exams) was adopted as an edit, which re-dispatched" },
+      "4": { "dispatched": 1, "rejected": 0 }
+    }
+  },
+  "history": [
+    { "round": 1, "task": "2", "verdict": "fail", "reason": "every leg used a task with at most one Guard: bullet, so 'each Guard:' was never exercised" },
+    { "round": 1, "task": "3", "verdict": "fail", "reason": "M2's same-order pin was compared as a set and leg (c) was circular" },
+    { "round": 1, "task": "6", "verdict": "fail", "reason": "reservedExamPath undefined in the clauses; exam-before-suite and the Guard exam had no clause or leg" },
+    { "round": 2, "task": "3", "verdict": "fail", "reason": "no leg ran the bridge over a tree containing fleet/tests/exams/" }
+  ]
+}
