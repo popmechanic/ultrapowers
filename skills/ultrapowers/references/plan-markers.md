@@ -226,4 +226,13 @@ A `Run:` bullet is executed by the driver in the task's clone after the
 implementer's patch; each execution is a `driver:proof-run` event, and a
 non-zero exit is a blocking review issue that sends the task to fix.
 
+An exam file the driver receives from the peer examiner is written under the
+reserved directory `tests/exams/<run>/` (a node exam under
+`fleet/tests/exams/<run>/`), which is where an unguarded exam lives for the
+length of the run: publish moves those files onto the run's evidence tag
+`ultra/evidence/run-<N>` and strips them from the branch the pull request
+carries. A `- Guard:` bullet in a Proof names one of that same Proof's `Test:`
+paths; the exam written for a guarded path stays at that path and merges with
+the task, which is how a claim keeps refusing a later run that breaks it.
+
 (End of plan-markers.md.)

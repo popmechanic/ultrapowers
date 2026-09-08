@@ -102,10 +102,23 @@ derivation.
   against the legs, and a non-zero exit sends the task to the fix loop. A task whose
   deliverable is prose proves itself with `Run:` commands, never with a test that
   matches sentences of a document.
+  A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
+  is the one way an exam file reaches the pull request: the peer examiner still writes the
+  exam, but the file it names is written at that path and is merged with the task. An exam
+  with no `Guard:` lives instead on the run's evidence tag `ultra/evidence/run-<N>`, and
+  publish strips it from the pull request. The examiner writes an unguarded exam under
+  `tests/exams/<run>/` — a node exam under `fleet/tests/exams/<run>/` — so a `.mjs` exam's
+  relative imports are written for that depth, two levels deeper than `fleet/tests/`, not
+  for the directory a guarded copy would sit in. Guard the claim a *later run* could break
+  — run-8's `runner_for` pin is that class, and a `Guard:` is what protects it; a claim
+  only this run's own diff can break needs none.
   Name **one exam file per behaviour surface**, named for it (`test_fold_wave.py`, not
   `test_<task-noun>`): a later task on that surface — a later wave or a later plan —
   extends that file instead of opening a second one, and its legs sit under a comment
-  naming the task. Five plans on 2026-09-03 each left one `fleet/tests/test_<task-noun>.mjs`
+  naming the task. Under the reserved directory an unguarded exam is a new file per run by
+  construction, so *extending the existing file* is now exactly what a `Guard:` on that
+  path buys — only a guarded exam sits at a stable path a later task can extend. Five
+  plans on 2026-09-03 each left one `fleet/tests/test_<task-noun>.mjs`
   behind, which is the shape this replaces; two *same-wave* tasks appending to one file are
   the adjacent-insert shape rule 4 names, not this one.
   A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the

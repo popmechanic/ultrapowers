@@ -235,9 +235,9 @@ BASE_WIDE_CHECK = "PLAN OK\n"
 
 # The keys this pin deliberately does NOT compare: the Proof-slot LISTS, each
 # added by its own task and pinned by its own exam (`proofTests` by #515/#553,
-# `proofRuns` by #589). What this pin guards is that adding one leaves EVERY
-# OTHER key — `testCmd` included — at its base value.
-PROOF_SLOT_KEYS = ("proofTests", "proofRuns")
+# `proofRuns` by #589, `proofGuards` by #777). What this pin guards is that
+# adding one leaves EVERY OTHER key — `testCmd` included — at its base value.
+PROOF_SLOT_KEYS = ("proofTests", "proofRuns", "proofGuards")
 
 
 def _waves_without_proof_slots(payload):

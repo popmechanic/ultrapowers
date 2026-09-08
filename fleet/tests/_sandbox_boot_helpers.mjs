@@ -629,6 +629,16 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true 
   // never executed here (the `fleet-fold-*` unit is answered by the
   // `systemd-run` stub), present so the path the boot script names is real.
   fs.writeFileSync(path.join(engine, 'publish-fold.mjs'), '')
+  // The strip the boot script runs before every push of the run's branch, in
+  // the same checkout. A STUB, and a talking one: it appends its argv to the
+  // one stream in the `say` shape every other stub uses, so a sim reads its
+  // position against the fold's unit and the push, and exits 0. What the real
+  // `fleet/strip-exams.sh` does to a branch is proven against real git
+  // repositories in `fleet/tests/test_strip_exams.mjs`.
+  fs.writeFileSync(
+    path.join(engine, 'strip-exams.sh'),
+    PRELUDE + 'say "strip-exams $*"\nexit 0\n',
+  )
   fs.writeFileSync(path.join(engine, 'package.json'), packageJson)
   if (nodeModules) fs.mkdirSync(path.join(engine, 'node_modules'))
   return { home, bin }

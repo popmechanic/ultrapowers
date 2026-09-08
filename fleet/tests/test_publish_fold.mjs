@@ -51,6 +51,10 @@ import { publishFold, CANDIDATE_CHECKS, parseArgvFor } from '../publish-fold.mjs
 // are written; they sit here so this task's additions read as one region.)
 import { EXAM_CHECK, examArgvFor } from '../publish-fold.mjs'
 import { contendingBlock, contendingTasks } from '../publish-fold-block.mjs'
+// #777 Task 6 — the fold finds an exam where the engine wrote it: the landing
+// rule is imported rather than restated, so this exam and the folder read one
+// module and cannot drift.
+import { reservedExamPath } from '../exam-paths.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FOLDER_CLI = path.resolve(HERE, '../publish-fold.mjs')
@@ -2401,4 +2405,327 @@ const plantReceipt = (fx, payload) => {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// #777 Task 6 — the fold finds an exam where the engine wrote it
+// ═════════════════════════════════════════════════════════════════════════════
+// M1. For each contender `{ run, task }` of a joined path, `EXAM_CHECK` runs
+//     each Proof `Test:` exam at `reservedExamPath(exam, 'run-' + run)` —
+//     imported from `fleet/exam-paths.mjs` — when that file exists in the
+//     candidate tree, else at `exam` when THAT file exists; the `exam` field of
+//     the recorded check and of a `suite red` reason is the path it ran.
+// M2. An exam present at neither path is recorded as `{ check: 'exam', exam,
+//     path, result: 'skipped' }`, is not run, and does not stop the pass or
+//     change the disposition.
+// M3. The existing legs of this file, whose exams sit at repository-root paths,
+//     pass unchanged — every block ABOVE this one is the assertion of M3, and
+//     this block adds no edit to any of them. `reservedExamPath` returns a path
+//     under neither test root unchanged, which is why they hold.
+// M4. Every exam check of an attempt runs before that attempt's suite command,
+//     as `CANDIDATE_CHECKS` orders them at BASE.
+//
+// The task's own legs: (a) the reserved directory, green and red; (b) the
+// `Guard:` shape — the exam kept at its own Proof path; (c) a main-side exam
+// that now lives only on its tag, recorded `skipped`; (d) exams before the
+// suite, and no suite at all behind a red exam; (e) M3, above; (f) the
+// `ALL TESTS PASSED` sentinel that closes this file.
+{
+  // ── the two paths of each exam: the Proof's, and the engine's landing ──────
+  // The literals the legs pin are written out here and checked against the
+  // imported `reservedExamPath`, so a reader sees both the words and the rule.
+  const PROOF_RUN = 'tests/exam_run.mjs'
+  const LANDED_RUN = 'tests/exams/run_7/exam_run.mjs'
+  const PROOF_GUARD = 'tests/exam_guard.mjs'
+  const LANDED_GUARD = 'tests/exams/run_7/exam_guard.mjs'
+  const PROOF_THREE = 'tests/exam_three.mjs'
+  const LANDED_THREE = 'tests/exams/run_3/exam_three.mjs'
+
+  assert.equal(RUN, '7',
+    'fixture sanity: this file\'s run is 7, so its reserved directory is run_7')
+  assert.equal(reservedExamPath(PROOF_RUN, 'run-' + RUN), LANDED_RUN,
+    'fixture sanity [M1]: reservedExamPath(' + JSON.stringify(PROOF_RUN) + ", 'run-7') is " +
+    JSON.stringify(LANDED_RUN) + ' — the literal the legs below pin')
+  assert.equal(reservedExamPath(PROOF_GUARD, 'run-' + RUN), LANDED_GUARD,
+    'fixture sanity [M1]: … and ' + JSON.stringify(PROOF_GUARD) + ' lands at ' +
+    JSON.stringify(LANDED_GUARD))
+  assert.equal(reservedExamPath(PROOF_THREE, 'run-3'), LANDED_THREE,
+    'fixture sanity [M2]: … and a run-3 contender\'s ' + JSON.stringify(PROOF_THREE) +
+    ' lands at ' + JSON.stringify(LANDED_THREE))
+  // M3's own mechanism: the repository-root exams of the blocks above are under
+  // neither test root, so the landing rule leaves them where they are.
+  for (const p of ['exam_main.mjs', 'exam_run.mjs', 'exam_mod.mjs']) {
+    assert.equal(reservedExamPath(p, 'run-' + RUN), p,
+      'fixture sanity [M3]: ' + JSON.stringify(p) + ' — a repository-root exam of the legs ' +
+      'above — maps to itself, so those legs stand unchanged')
+  }
+
+  // ── the exams themselves: an exit code is the verdict ─────────────────────
+  // Each runs with cwd the integration clone, on the candidate's tree. a.txt's
+  // line 10 is the run's edit and line 1 is main's, so a green exam here is a
+  // statement about the joined file and not about the exam's own bytes.
+  const EXAM_RUN_A10 = [
+    "import fs from 'node:fs'",
+    "const ls = fs.readFileSync('a.txt', 'utf8').split('\\n')",
+    "console.log('exam_run: a.txt line 10 is ' + ls[9])",
+    "process.exit(ls[9] === 'line10 from run' ? 0 : 1)",
+    '',
+  ].join('\n')
+  // The same exam, red: the red leg of (a) wants a non-zero exit from a file
+  // that is unambiguously present and unambiguously ran.
+  const EXAM_RUN_A10_RED = [
+    "import fs from 'node:fs'",
+    "const ls = fs.readFileSync('a.txt', 'utf8').split('\\n')",
+    "console.log('exam_run: a.txt line 10 is ' + ls[9] + ' and this exam is red')",
+    'process.exit(1)',
+    '',
+  ].join('\n')
+  // The `Guard:` exam, kept at its Proof path: 0 exactly when main's line 1 is
+  // in the joined file.
+  const EXAM_GUARD = [
+    "import fs from 'node:fs'",
+    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[0]",
+    "console.log('exam_guard: line 1 is ' + line)",
+    "process.exit(line === 'line1 from main' ? 0 : 1)",
+    '',
+  ].join('\n')
+
+  // ── run 3's plan, as it lives on its tag ──────────────────────────────────
+  // T1's Files name `a.txt`, so it contends for that path, and its Proof names
+  // an exam under `tests/`. The plan tag is the only place this task exists:
+  // publish stripped the run's exams onto the evidence tag, so the file is in
+  // no later tree at either path.
+  const PLAN_RUN3_EXAM = [
+    '# Plan: run three',
+    '',
+    '**Acceptance:** suite — the committed suite is the verification.',
+    '',
+    '### Task T1: The first task of run three',
+    '',
+    '**Type:** implementation',
+    '**Review:** lean',
+    '',
+    '**Files:**',
+    '- Modify: `a.txt`',
+    '- Test: `' + PROOF_THREE + '`',
+    '',
+    '**Claim:** the first task of run three rewrites the first line of a.txt.',
+    '',
+    '**Proof:**',
+    '- Test: `' + PROOF_THREE + '`',
+    '',
+    '- [ ] rewrite the first line',
+    '',
+  ].join('\n')
+
+  /** Run 3's plan tag, re-pushed over the template's — forced, as a re-tag is. */
+  const tagRun3 = (maker, planText) => {
+    git(['checkout', '--quiet', '--orphan', 'plan-run-3-exams'], maker)
+    git(['rm', '-r', '--quiet', '--cached', '.'], maker)
+    for (const f of fs.readdirSync(maker)) {
+      if (f !== '.git') fs.rmSync(path.join(maker, f), { recursive: true, force: true })
+    }
+    fs.mkdirSync(path.join(maker, '.ultrapowers'), { recursive: true })
+    write(path.join(maker, '.ultrapowers'), 'plan.md', planText)
+    git(['add', '-A'], maker)
+    git(['commit', '--quiet', '-m', 'the plan of run 3, whose task names an exam'], maker)
+    git(['tag', '-f', 'ultra/plan/run-3'], maker)
+    git(['push', '--quiet', 'origin',
+      '+refs/tags/ultra/plan/run-3:refs/tags/ultra/plan/run-3'], maker)
+    git(['checkout', '--quiet', '--force', 'main'], maker)
+  }
+
+  // ── the main-side moves ───────────────────────────────────────────────────
+  // Main rewrites a.txt's FIRST line and the run rewrites its tenth: one joined
+  // path, no conflicted hunk, so `noAgent()` stands and every leg below is
+  // about the exam check alone.
+  const MAIN_A1_RUN3 = (fx) => {
+    write(fx.maker, 'a.txt', lines({ 1: 'line1 from main' }))
+    git(['add', '-A'], fx.maker)
+    git(['commit', '--quiet', '-m', 'run three rewrites the first line', '-m', 'Fleet-Run: 3'],
+      fx.maker)
+    pushMain(fx)
+    tagRun3(fx.maker, PLAN_RUN3_EXAM)
+  }
+
+  /** `runEdits`, for paths with directories in them. */
+  const runWritesDeep = (files) => (d) => {
+    for (const [name, text] of Object.entries(files)) {
+      const f = path.join(d, name)
+      fs.mkdirSync(path.dirname(f), { recursive: true })
+      fs.writeFileSync(f, text)
+    }
+  }
+  const RUN_A10 = (extra) => runWritesDeep({
+    'a.txt': lines({ 10: 'line10 from run' }), ...extra,
+  })
+
+  // ── this run's `launch.json` tasks ────────────────────────────────────────
+  // Each names a.txt and its own exam's PROOF path — the path the Proof wrote,
+  // which is the only path a task body ever carries.
+  const taskFor = (proof) => ({
+    id: 'F1',
+    title: 'The folding task',
+    files: ['a.txt', proof],
+    body: [
+      '### Task F1: The folding task',
+      '',
+      '**Claim:** the run rewrites the tenth line of a.txt.',
+      '',
+      '**Proof:**',
+      '- Test: `' + proof + '`',
+    ].join('\n'),
+  })
+  const RESERVED_TASK = taskFor(PROOF_RUN)
+  const GUARD_TASK = taskFor(PROOF_GUARD)
+
+  // ── reading the recorder ──────────────────────────────────────────────────
+  const withIndex = (rec) => rec.calls.map((c, n) => ({ ...norm(c), n }))
+  const word = (c) => [c.cmd, ...c.argv].join(' ')
+  const examCalls = (rec) => withIndex(rec)
+    .filter((c) => c.cmd === 'node' && !String(c.argv[0] || '').startsWith('-'))
+  const suiteCalls = (rec) => withIndex(rec).filter((c) => c.cmd === 'bash' && c.argv[0] === '-lc')
+  const named = (rec, needle) => rec.calls
+    .filter((c) => [c.cmd, ...c.argv].some((a) => String(a).includes(needle)))
+    .map((c) => word(norm(c)))
+  const exam = (e, p, result) => ({ check: 'exam', exam: e, path: p, result })
+  const inTree = (fx, sha, p) => gitOk(['cat-file', '-e', sha + ':' + p], fx.target)
+
+  // ═══ (a) the reserved directory: the exam runs where the engine wrote it ═══
+  {
+    const fx = newCase('t6-reserved', {
+      mainMoves: MOVES.editALine1,
+      runEdits: RUN_A10({ [LANDED_RUN]: EXAM_RUN_A10 }),
+      tasks: [RESERVED_TASK],
+    })
+    assert.ok(inTree(fx, fx.engineHead, LANDED_RUN),
+      'fixture sanity: the branch carries the exam at ' + LANDED_RUN)
+    assert.ok(!inTree(fx, fx.engineHead, PROOF_RUN),
+      'fixture sanity: and nothing at its Proof path ' + PROOF_RUN)
+
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
+    assert.equal(a1.resolversDispatched, 0, 'fixture sanity: and no resolver was dispatched')
+
+    assert.deepEqual(a1.checks, [exam(LANDED_RUN, 'a.txt', 'pass')],
+      'leg (a) [M1]: the recorded check\'s `exam` is the path it ran — the reserved path ' +
+      JSON.stringify(LANDED_RUN) + ', not the Proof\'s ' + JSON.stringify(PROOF_RUN) + ' — got ' +
+      JSON.stringify(a1.checks))
+    assert.deepEqual(examCalls(rec).map(word), ['node ' + LANDED_RUN],
+      'leg (a) [M1]: and the recorded argv is exactly `node ' + LANDED_RUN + '`')
+    assert.equal(examCalls(rec)[0].cwd, fx.integ,
+      'leg (a) [M1]: run in the integration clone, on the candidate\'s tree — got ' +
+      String(examCalls(rec)[0].cwd))
+    assert.deepEqual(named(rec, PROOF_RUN), [],
+      'leg (a) [M1]: no recorded call names ' + JSON.stringify(PROOF_RUN) + ' — a folder that ' +
+      'runs the Proof path verbatim reads `suite red` for a file that was never there')
+    assert.equal(a1.disposition, 'folded', 'leg (a) [M1]: the row is `folded`')
+    assert.equal(a1.suite, 'pass', 'leg (a) [M1]: on a green suite')
+
+    // ── (d) the exam runs BEFORE the attempt's suite command ────────────────
+    const suites = suiteCalls(rec)
+    assert.deepEqual(suites.map(word), ['bash -lc bash check.sh'],
+      'leg (d) [M4]: the attempt ran its suite command once — got ' +
+      JSON.stringify(suites.map(word)))
+    assert.ok(examCalls(rec)[0].n < suites[0].n,
+      'leg (d) [M4]: and `node ' + LANDED_RUN + '` sits at a lower index in the recorder\'s ' +
+      'call list than `bash check.sh` — got ' + examCalls(rec)[0].n + ' and ' + suites[0].n)
+  }
+
+  // ═══ (a) the same case, red: the reason names the path that ran ═══════════
+  {
+    const fx = newCase('t6-reserved-red', {
+      mainMoves: MOVES.editALine1,
+      runEdits: RUN_A10({ [LANDED_RUN]: EXAM_RUN_A10_RED }),
+      tasks: [RESERVED_TASK],
+    })
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
+
+    const a1 = att(fx, 1)
+    assert.deepEqual(a1.checks, [exam(LANDED_RUN, 'a.txt', 'fail')],
+      'leg (a) [M1]: the red exam is recorded at the path it ran — got ' +
+      JSON.stringify(a1.checks))
+    assert.equal(a1.disposition, 'suite red',
+      'leg (a) [M1]: a red exam on a path with no conflicts-index entry is `suite red`')
+    assert.equal(a1.reason, LANDED_RUN + ' red on a.txt',
+      'leg (a) [M1]: with reason `' + LANDED_RUN + ' red on a.txt` — the `exam` of the reason ' +
+      'is the path it ran')
+    // ── (d) a red exam spends no suite ──────────────────────────────────────
+    assert.equal(a1.suite, 'none',
+      'leg (d) [M4]: and `suite` is `none` — the suite never ran')
+    assert.deepEqual(suiteCalls(rec).map(word), [],
+      'leg (d) [M4]: no recorded call whose cmd is `bash` and whose first argument is `-lc`')
+  }
+
+  // ═══ (b) the `Guard:` shape: the exam kept at its own Proof path ══════════
+  {
+    const fx = newCase('t6-guard', {
+      mainMoves: MOVES.editALine1,
+      runEdits: RUN_A10({ [PROOF_GUARD]: EXAM_GUARD }),
+      tasks: [GUARD_TASK],
+    })
+    assert.ok(inTree(fx, fx.engineHead, PROOF_GUARD),
+      'fixture sanity: the branch carries the exam at its Proof path ' + PROOF_GUARD)
+    assert.ok(!inTree(fx, fx.engineHead, LANDED_GUARD),
+      'fixture sanity: and nothing at ' + LANDED_GUARD)
+
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
+
+    const a1 = att(fx, 1)
+    assert.deepEqual(a1.checks, [exam(PROOF_GUARD, 'a.txt', 'pass')],
+      'leg (b) [M1]: a `Guard:` exam is absent from the reserved directory, so the check\'s ' +
+      '`exam` is its Proof path ' + JSON.stringify(PROOF_GUARD) + ' — got ' +
+      JSON.stringify(a1.checks))
+    assert.deepEqual(examCalls(rec).map(word), ['node ' + PROOF_GUARD],
+      'leg (b) [M1]: and the recorded argv is exactly `node ' + PROOF_GUARD + '`')
+    assert.deepEqual(named(rec, LANDED_GUARD), [],
+      'leg (b) [M1]: no recorded call names ' + JSON.stringify(LANDED_GUARD) + ' — the reserved ' +
+      'path is where the folder LOOKS, never a file it invents')
+    assert.equal(a1.disposition, 'folded', 'leg (b) [M1]: the row is `folded`')
+    assert.equal(a1.suite, 'pass', 'leg (b) [M1]: on a green suite')
+  }
+
+  // ═══ (c) a main-side exam that lives on its tag is skipped, not red ═══════
+  {
+    const fx = newCase('t6-mainside-tag', {
+      mainMoves: MAIN_A1_RUN3,
+      runEdits: RUN_A10({ [LANDED_RUN]: EXAM_RUN_A10 }),
+      tasks: [RESERVED_TASK],
+    })
+    const T1_3 = compiledTask(PLAN_RUN3_EXAM, 'T1')
+    assert.deepEqual(T1_3.files, ['a.txt', PROOF_THREE],
+      'fixture sanity: run 3\'s task contends for a.txt and names ' + PROOF_THREE)
+    assert.ok(String(T1_3.body).includes('**Proof:**\n- Test: `' + PROOF_THREE + '`'),
+      'fixture sanity: and its Proof slot names that exam — got ' + JSON.stringify(T1_3.body))
+
+    const rec = recorder()
+    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
+
+    const a1 = att(fx, 1)
+    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
+    for (const p of [LANDED_THREE, PROOF_THREE]) {
+      assert.ok(!inTree(fx, a1.candidate, p),
+        'fixture sanity: the candidate carries exam_three.mjs at neither path — not ' + p)
+    }
+
+    assert.deepEqual(a1.checks, [
+      exam(PROOF_THREE, 'a.txt', 'skipped'),
+      exam(LANDED_RUN, 'a.txt', 'pass'),
+    ], 'leg (c) [M2]: an exam present at neither path is recorded `skipped` under the Proof path ' +
+       'the task named, and the run\'s own exam still runs after it — got ' +
+       JSON.stringify(a1.checks))
+    assert.deepEqual(named(rec, 'exam_three.mjs'), [],
+      'leg (c) [M2]: and no recorded argv names exam_three.mjs — a skipped exam is not run')
+    assert.equal(a1.disposition, 'folded',
+      'leg (c) [M2]: the skip does not stop the pass or change the disposition')
+    assert.equal(a1.suite, 'pass', 'leg (c) [M2]: the whole suite ran and was green')
+    assert.equal(a1.checkRetries, 0, 'leg (c) [M2]: with no retry spent')
+  }
+}
+
+// leg (f) [M1]: the sentinel closes the file — a run that dies partway prints
+// no such line, so the driver reading stdout cannot mistake it for a pass.
 console.log('ALL TESTS PASSED')

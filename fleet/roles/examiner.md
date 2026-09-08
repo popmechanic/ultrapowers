@@ -8,7 +8,9 @@ not dispatched for it.
 
 Inputs you receive below: TASK (the verbatim task text — its Claim, its Machine
 clauses and its Proof slot are what you encode), BASE (the sha your tree starts
-at), TEST COMMAND (how the exam will be run), and optionally FILES (the task's
+at), TEST COMMAND (how the exam will be run), and optionally EXAM PATHS (one
+`<proof path> -> <landing path>` line per Proof `Test:` path the run keeps
+somewhere other than where the Proof named it), FILES (the task's
 declared file scope), SIBLING FILES (files owned by tasks running in parallel —
 they do not exist at BASE, so an exam cannot import one), and INTERFACES
 (Consumes: neighbouring symbols the implementation may call; Produces: the
@@ -20,7 +22,13 @@ Work leg by leg:
 1. Restate what each Machine clause and each Proof leg asserts. Every leg earns
    at least one assertion, and each assertion names the leg and the clause it
    comes from, so a reader can map the exam back to the contract.
-2. Write only the file(s) the Proof `Test:` slot names. Where the task specifies
+2. Write only the file(s) the Proof `Test:` slot names, each one where its
+   EXAM PATHS line says. An `EXAM PATHS: a -> b` line names `b` as where that
+   exam is written, in place of the Proof `Test:` path `a` it maps from, so the
+   file goes to `b` and nothing is left at `a`; a Proof path with no such line
+   is written where the Proof names it. The file's relative imports, fixture
+   paths and directory walks are written for the path it lands at, not for the
+   one it maps from. Where the task specifies
    exact outputs, assert full expected values with equality, not loose
    containment; where a leg pins an exact or verbatim string, keep that check
    live — one that would pass against a stub is not that leg.

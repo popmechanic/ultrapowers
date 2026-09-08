@@ -1087,6 +1087,24 @@ publish_fold() { # $1 = attempt
 # while `--force-with-lease` refuses and this run parks instead.
 push_head() {
   local attempt lease
+
+  # THE EXAMS, OFF THE BRANCH AND ONTO THE RECORD, before anything of this
+  # branch reaches the remote. The run's exams ride the branch so the fold's
+  # suite runs them, and the operator who opens the pull request must not be
+  # shown them: they are this run's measurement of its own work, not a change to
+  # the target. So the strip sits HERE and not beside the fold — every push of
+  # `$BRANCH` goes through this function, and attempt 2's fold floors on attempt
+  # 1's candidate, which is the head BEFORE attempt 1's strip, so the exams come
+  # back with every re-fold and are taken off again here. It runs before
+  # `await_branch_visible` reads `BRANCH_HEAD`, so the head recorded as
+  # `pushedHead` — and therefore the lease attempt 2 pushes under — is the strip
+  # commit the remote actually holds. A strip that fails stops the run: the
+  # alternative is publishing the exams.
+  bash "$ENGINE_REPO_DIR/fleet/strip-exams.sh" \
+    "$TARGET_DIR" "$BRANCH" "$RUN_ID" "$EVIDENCE_DIR/$EVIDENCE_PATH" \
+    >>"$BOOT_LOG" 2>&1 \
+    || fail "publish: strip-exams on $BRANCH"
+
   attempt="$(fold_receipt pushed)"
   if [ -n "$attempt" ]; then
     lease="$(fold_field "$attempt" pushedHead)"
