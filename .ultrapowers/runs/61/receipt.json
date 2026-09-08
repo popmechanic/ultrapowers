@@ -1,0 +1,252 @@
+{
+  "ok": true,
+  "stamp": "run-61",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-61"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The implementer's plan-defect against a Proof leg parks the task for the plan",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/implementer.md",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The referee sees what an exam edit changed against the peer's bytes",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "Rule 8 names the strengthening exception",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/reviewer.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The implementer's plan-defect against a Proof leg parks the task for the plan",
+          "files": [
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_actor_routing.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_actor_routing.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_actor_routing.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_actor_routing.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -q 'plan-defect: leg (' fleet/roles/implementer.md && grep -q 'naming the leg by its label' fleet/roles/implementer.md",
+            "test \"$(grep -c 'tasks\\[\\]\\.reviewVerdict' skills/ultrapowers/references/report-format.md)\" = 1 && grep 'tasks\\[\\]\\.reviewVerdict' skills/ultrapowers/references/report-format.md | grep -q 'plan-defect' && grep 'tasks\\[\\]\\.actor' skills/ultrapowers/references/report-format.md | grep -q 'plan' && grep 'deferredVerification. | no |' skills/ultrapowers/references/report-format.md | grep -q 'actor'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The referee sees what an exam edit changed against the peer's bytes",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_exam_edits.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_exam_edits.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_exam_edits.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "Rule 8 names the strengthening exception",
+          "files": [
+            "fleet/roles/reviewer.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/roles/reviewer.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'only strengthens the exam (every original assertion kept, new ones added.*recorded and accepted, not blocked'",
+            "sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'drops or loosens an assertion the peer wrote.*blocking' && sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'exam itself was wrong.*no correct implementation could satisfy.*bad import.*fixture it never created.*changes only that'",
+            "sed -n '/^8\\. EXAM EDITED/,/^Every issue names/p' fleet/roles/reviewer.md | grep -q 'EXAM EDITED DIFF'",
+            "node fleet/tests/test_run_engine_exam_fix_edit.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED' && node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED' && python3 -m pytest -q tests/test_roles_run_evidence.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the Check above is its pin; the gate row this\n  plan produces is read by the frozen gate from `report.deferredVerification` exactly as at BASE\n  (`{ deliverable, reason, why }` \u2192 an ack typed `deferred:<reason>`), never by a gate edit.\n- No sim this plan adds or edits compares the tree to BASE, reads `ULTRA_BASE` as a base to diff\n  against, or embeds a 40-hex commit sha; every sha a leg asserts is read from the sim's own\n  repository at run time.\n- Every task row the engine returned at BASE keeps its keys and their meaning; the one new row\n  key, `actor`, is present only on a row the implementer's plan-defect parked, and absent from\n  every other row.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped with what replaces them; new legs sit in the exam\n  file named for their surface, under a comment naming the task.\n- No file under `fleet/roles/` or `skills/` gains an upper-case whole-word NEVER, ALWAYS or MUST\n  (`fleet/tests/test_run_engine_exam_fix_edit.mjs` leg (g) is the lens), and rule 6 of\n  `fleet/roles/reviewer.md` keeps the phrase order its two pins read (`plan-defect:` \u2026 `blocking`\n  \u2026 `FILES`, each within 80 characters of the last).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-61/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-61/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-61/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-61/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
