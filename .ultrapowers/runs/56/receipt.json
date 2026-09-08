@@ -1,0 +1,199 @@
+{
+  "ok": true,
+  "stamp": "run-56",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-56"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The knob verb validates the test command by its runner, not by running it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/ultra_run.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`ultra_run.py --validate-knobs <argsFile> --no-baseline` (exit 0 = knobs safe; 1 on any knob defect; never 3)"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The driver asks for knob validation without the baseline",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-main.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing a sibling consumes \u2014 the `--no-baseline` argv is read by `ultra_run.py`, which a sibling task teaches the flag to"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The knob verb validates the test command by its runner, not by running it",
+          "files": [
+            "skills/ultrapowers/scripts/ultra_run.py",
+            "tests/test_ultra_run.py",
+            "tests/test_ultra_run_task_test_cmds.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`ultra_run.py --validate-knobs <argsFile> --no-baseline` (exit 0 = knobs safe; 1 on any knob defect; never 3)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/ultra_run.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_ultra_run.py",
+            "tests/test_ultra_run_task_test_cmds.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_ultra_run.py tests/test_ultra_run_task_test_cmds.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_ultra_run.py tests/test_ultra_run_task_test_cmds.py tests/test_ultra_run_bootstrap_cmd.py tests/test_ultra_run_exam_command.py tests/test_review_peer.py tests/test_deadline_slack.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The driver asks for knob validation without the baseline",
+          "files": [
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_main.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing a sibling consumes \u2014 the `--no-baseline` argv is read by `ultra_run.py`, which a sibling task teaches the flag to"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-main.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_main.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_main.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_main.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_main_engine_dir.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q tests/test_finalize_wiring.py tests/test_docs_agree_with_code.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Knobs"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the first Check is its pin; the second keeps\n  this run off the three files concurrent runs are editing. What no command decides is the\n  meaning: the gate's own acceptance suite (`run_acceptance.sh --suite-gate`) still executes on\n  every run, the engine's lazy baseline (`fleet/run-engine.mjs`) is untouched and is now the only\n  reader of a red BASE, and `receipt.json`'s `testCmd` is still the plan's command.\n- `ultra_run.py --validate-knobs <argsFile>` **without** `--no-baseline` behaves as at BASE:\n  every exit code, JSON key and verdict the existing tests pin is kept, and every test that\n  stands at BASE in the files a task's Files names still holds.\n- The knob-validate JSON line stays one JSON object on stdout, `ok` and `stage` first as at\n  BASE; new keys are additive and appear only when the flag is given.\n- The four operator documents name no mechanism that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens); at BASE none of them describes the\n  preflight's suite pass, so this plan edits none of them.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/confine-hook.mjs skills/ultralearn/scripts/harvest_fleet_runs.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-56/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-56/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-56/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-56/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
