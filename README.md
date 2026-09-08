@@ -195,10 +195,22 @@ exe.dev VM for the hours the run is up.
 
 ### 3. Write the plan
 
-Authoring needs no fleet and no account: ask for the `ultrawrite` skill and hand it your spec,
-however you arrived at it. It writes a claims-v1 plan — each task a contract and the proof that
-decides it, no steps to retype. You read that plan and approve it. That is the first of your two
-checkpoints.
+Authoring needs no fleet and no account. A session begins with one sentence — what you will be
+able to see or do after the run — and there are three places that sentence comes from:
+
+- **An issue you filed.** The common start. Write what should be true afterwards, in your own words,
+  then ask for the `ultrawrite` skill and name the issue: that sentence becomes the plan's Claim,
+  quoted, and you confirm it rather than write it again.
+- **An idea you can spec in one sitting.** Ask for `ultrawrite` and it asks you scenario questions —
+  *after this run, what can you see that you couldn't before?* — with two or three concrete options
+  to pick from. If you have [Superpowers](https://github.com/obra/superpowers) installed, its
+  brainstorming skill is a good companion here; it ends by handing off to `ultrawrite`.
+- **A foggy program, many sessions.** Chart it first (a map of decision tickets); each destination
+  is a spec that `ultrawrite` takes unchanged.
+
+Whichever way you arrive, `ultrawrite` writes a claims-v1 plan — each task a contract and the proof
+that decides it, no steps to retype. You read that plan and approve it. That is the first of your
+two checkpoints.
 
 ### 4. Build
 
