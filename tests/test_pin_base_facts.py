@@ -8,6 +8,13 @@ print (M1), `--write` (M2), `--verify` (M3), and the legacy-plan exit (M4).
 
 Every fixture repo is built here, so every sha the tests assert is the test's
 own; nothing reads the network.
+
+#725 adds one input mode and no new output: `--base` takes a 40-hex commit sha
+of the plan's own repository as well as a checkout directory, and the facts are
+then generated from the tree at that commit rather than from HEAD. The section
+at the foot of this file carries that clause (M6) leg by leg; every leg above
+it is a `--base <dir>` leg and is unchanged, which is the other half of what
+M6 asserts.
 """
 import hashlib
 import json
@@ -384,6 +391,114 @@ def test_the_claims_fixture_pins_one_block_per_task():
             re.match(r"^- `([^`]+?)(?::\d+)?` blob ", bullet)
         assert path is not None, bullet
         assert (ROOT / path.group(1)).exists(), bullet
+
+
+# --------------------------------------------------------------------------- #
+# #725 Task 1 — `--base` takes a 40-hex sha as well as a checkout directory    #
+#                                                                             #
+# (h) M6 — on a repository whose first commit carries `pkg/only.py` and whose  #
+# second deletes it, `--base <first commit sha>` generates from the tree at    #
+# that commit: two blocks, both headed with the SHA's first seven characters   #
+# and neither with the checkout's HEAD, the first carrying `pkg/only.py` with  #
+# its blob sha — a path present only at the sha. `--write` then `--verify` at  #
+# the same sha exits 0, and a 40-hex `--base` naming no commit of the plan's   #
+# repository exits non-zero with one `error:` line carrying the sha.          #
+#                                                                             #
+# The plan is written INSIDE the repository: a sha names a commit of the       #
+# PLAN's own repository, which is what `default_base(plan)` resolves.          #
+# --------------------------------------------------------------------------- #
+ONLY_PY = "VALUE = 1\n"
+ONLY_PATH = "pkg/only.py"
+CTX1_WITH_ONLY = CTX1 + " The extra file to read is `%s`." % ONLY_PATH
+NO_SUCH_SHA = "0000000000000000000000000000000000000000"
+
+
+def repo_with_a_sha_only_file(tmp_path, name="sharepo"):
+    """(repo, sha): a checkout whose FIRST commit carries `pkg/a.py`,
+    `docs/n.md` and `pkg/only.py`, and whose second deletes `pkg/only.py` — so
+    the working directory of that same repository is the tree that lacks it."""
+    repo = tmp_path / name
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "config", "user.email", "pin@example.com")
+    git(repo, "config", "user.name", "Pin Test")
+    commit(repo, {"pkg/a.py": A_PY, "docs/n.md": N_MD, ONLY_PATH: ONLY_PY},
+           "base")
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    commit(repo, {ONLY_PATH: None}, "drop the sha-only file")
+    assert re.fullmatch(r"[0-9a-f]{40}", sha), sha
+    assert not (repo / ONLY_PATH).exists()
+    assert base7(repo) != sha[:7], (
+        "fixture: HEAD and the pinned commit must have distinct short shas")
+    return repo, sha
+
+
+def test_a_sha_base_pins_the_tree_at_that_commit(tmp_path):
+    """leg (h) [M6]: `--base <sha>` prints one block per task, each headed with
+    the SHA's first seven characters — not the checkout's HEAD — and the first
+    carries `pkg/only.py`, a path only that commit's tree holds."""
+    repo, sha = repo_with_a_sha_only_file(tmp_path)
+    plan = write_plan(repo, ctx1=CTX1_WITH_ONLY)
+    r = pin(plan, sha)
+    assert r.returncode == 0, r.stdout + r.stderr
+    blocks = paragraphs(r.stdout)
+    assert len(blocks) == 2, (
+        "leg (h) [M6]: a two-task plan prints exactly two blocks; got %d:\n%s"
+        % (len(blocks), r.stdout))
+
+    a7 = sha7(repo, "pkg/a.py", sha)
+    n7 = sha7(repo, "docs/n.md", sha)
+    o7 = sha7(repo, ONLY_PATH, sha)
+    assert blocks[0] == "\n".join([
+        "**BASE facts:** (generated at %s)" % sha[:7],
+        "- `pkg/a.py:2` blob %s line 2 `def alpha():`" % a7,
+        "- `docs/n.md` blob %s" % n7,
+        "- `alpha` at `pkg/a.py:2` blob %s" % a7,
+        "- `%s` blob %s" % (ONLY_PATH, o7),
+    ]), r.stdout
+    assert blocks[1] == "\n".join([
+        "**BASE facts:** (generated at %s)" % sha[:7],
+        "- `pkg/a.py:3` blob %s line 3 `%s`" % (a7, LONG_COMMENT[:60]),
+    ]), r.stdout
+
+    heads = [b.splitlines()[0] for b in blocks]
+    assert [h for h in heads if base7(repo) in h] == [], (
+        "leg (h) [M6]: no block is headed with the checkout's HEAD (%s) — the "
+        "sha is the tree the facts are generated at. Got:\n%s"
+        % (base7(repo), "\n".join(heads)))
+
+
+def test_write_then_verify_at_the_same_sha_holds(tmp_path):
+    """leg (h) [M6]: `--write --base <sha>` splices the blocks the sha's tree
+    gives, and `--verify --base <sha>` on that output exits 0 — a fact pinned
+    from a commit re-resolves against that same commit."""
+    repo, sha = repo_with_a_sha_only_file(tmp_path)
+    plan = write_plan(repo, ctx1=CTX1_WITH_ONLY)
+    w = pin(plan, sha, "--write")
+    assert w.returncode == 0, w.stdout + w.stderr
+    assert ONLY_PATH in plan.read_text(), (
+        "leg (h) [M6]: the spliced block carries `%s`, the path only the "
+        "sha's tree holds:\n%s" % (ONLY_PATH, plan.read_text()))
+    v = pin(plan, sha, "--verify")
+    assert (v.returncode, stale_lines(v.stdout)) == (0, []), (
+        "leg (h) [M6]: `--verify --base %s` on the `--write` output exits 0 "
+        "with no `stale:` line; got rc=%d\n%s%s"
+        % (sha, v.returncode, v.stdout, v.stderr))
+
+
+def test_a_sha_naming_no_commit_is_one_error_line(tmp_path):
+    """leg (h) [M6]: a 40-hex `--base` that names no commit of the plan's
+    repository exits non-zero with one stderr line beginning `error:` that
+    contains the sha."""
+    repo, _sha = repo_with_a_sha_only_file(tmp_path)
+    plan = write_plan(repo, ctx1=CTX1_WITH_ONLY)
+    r = pin(plan, NO_SUCH_SHA)
+    assert r.returncode != 0, r.stdout + r.stderr
+    err = r.stderr.splitlines()
+    assert len(err) == 1 and err[0].startswith("error:") \
+        and NO_SUCH_SHA in err[0], (
+        "leg (h) [M6]: `--base %s` prints exactly one stderr line, beginning "
+        "`error:` and naming the sha; got:\n%s" % (NO_SUCH_SHA, r.stderr))
 
 
 def test_usage_error_without_a_plan():
