@@ -1,0 +1,1856 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 85ce5eb5e7411315aed28c428c7ce3ad96dd356f..592c9415dcfc7d723b5f9ffe6577bf0ae2f1e97e 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -15,9 +15,12 @@ jobs:
+   test:
+     runs-on: ubuntu-latest
+     steps:
+-      # fetch-depth stays DEFAULT (1). The shallow clone is deliberate: it is the
+-      # real consumer shape #465's depth-1 gate leg exists to predict. Setting
+-      # fetch-depth: 0 would make CI and the gate agree by making CI stop testing
++      # fetch-depth stays DEFAULT (1), and since #712 deleted the engine's
++      # depth-1 rehearsal this checkout IS the guard for a history-coupled
++      # test: a test that reads repository history passes in the fleet's full
++      # clone and fails here, where a shallow boundary commit looks like it
++      # introduced every file (#465, the class that took main red). Setting
++      # depth 0 would make CI and the gate agree by making CI stop testing
+       # the case that broke main.
+       - uses: actions/checkout@v7
+ 
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 9bfc31705896901bd78a1026dec3646d50ce59c0..31482527107f7d27777bb0debfe6e93189bbbbe4 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -505,8 +505,9 @@ export function parseCliJson(stdout) {
+ const tail = (s, n = 4000) => String(s || '').slice(-n)
+ 
+ // ── the integration clone's cache sweep (#631 option (d)) ────────────────────
+-// The driver runs the suite in the integration clone — baseline, then each
+-// wave's candidate — so a python suite leaves `__pycache__` and `.pytest_cache`
++// The driver runs the suite in the integration clone — each wave's candidate,
++// and BASE's tree once if one of them is red — so a python suite leaves
++// `__pycache__` and `.pytest_cache`
+ // behind there before the integrated `Run:` pass reads the tree. That litter is
+ // the driver's own: a task whose proof asserts a cache directory is ABSENT
+ // would be parked by the suite run rather than by anything in the adopted tree.
+@@ -870,8 +871,8 @@ export async function runEngine({
+ 
+   // ── SETUP — driver git (was: a haiku agent told to run `git worktree add`;
+   // run-25's park class). The integration clone sits detached at BASE; the
+-  // branch is created there, bootstraps run, and the baseline is established,
+-  // all through exec. No prompt exists for any of this to be misread. ────────
++  // branch is created there and the bootstraps run, all through exec. No
++  // prompt exists for any of this to be misread. ────────────────────────────
+   phase('Setup')
+   const branchExists = await exec('git', ['show-ref', '--verify', '--quiet',
+     'refs/heads/' + integrationBranch], { cwd: integ })
+@@ -883,7 +884,7 @@ export async function runEngine({
+   const baseSha = await git(['rev-parse', 'HEAD'], integ)
+   if (bootstrapCmd) {
+     // Every fresh clone needs its dependencies before a suite can run there —
+-    // the integration clone (baseline, reconcile, driver suite runs) and each
++    // the integration clone (candidate, baseline, reconcile suite runs) and each
+     // task clone (implementer red-green cycles). Driver-run, so the warm-cache
+     // prompt choreography does not exist on this path.
+     for (const dir of [integ, ...WAVES.flat().map((t) => path.join(clonesDir, 'task-' + t.id))]) {
+@@ -895,15 +896,41 @@ export async function runEngine({
+       }
+     }
+   }
+-  const baselineRun = await sh(testCmd, integ)
+-  const baseline = { passed: baselineRun.code === 0, output: tail(baselineRun.stdout + baselineRun.stderr, 2000) }
+-  if (!baseline.passed) {
+-    judgmentCalls.push('baseline: test suite was already failing before any task ran (' +
+-      tail(baseline.output, 500) + ') — task results inherit a red suite')
+-    log('setup: baseline tests FAILED before any work began')
++  // The suite on BASE is LAZY (#712): a run whose every wave goes green never
++  // runs it at all — green runs pay nothing — and the first wave whose
++  // candidate is red pays for it once, because only then is the question
++  // ("the diff's red, or BASE's own?") worth a suite's wall clock. `null`
++  // until `runBaseline()` answers it; `{ passed, output }` after.
++  let baseline = null
++  log('setup: branch ' + integrationBranch + ' at ' + baseSha)
++
++  // Run the suite on BASE's tree, at most once per run. Called from the wave
++  // site the moment a candidate suite comes back red and before the first
++  // `reconcile:` dispatch, so the note the reconcile agent and the critic read
++  // is settled before either of them speaks; a no-op once `baseline` is set,
++  // which is why a second red wave costs nothing.
++  //
++  // BASE and not the previous wave's head: that head was judged green when it
++  // was adopted, so a later wave's red is the diff's unless BASE itself moved
++  // under the run, which it cannot.
++  //
++  // The clone's index and worktree hold `restoreTree` (the candidate) at the
++  // call site, so BASE's tree is swapped in for the run and swapped back out
++  // before returning — the reconcile agent edits files in that worktree and
++  // the driver commits whatever `git add -A` finds there, so leaving BASE's
++  // tree behind would silently revert the wave.
++  const runBaseline = async (restoreTree) => {
++    if (baseline !== null) return
++    await git(['read-tree', '-u', '--reset', baseSha + '^{tree}'], integ)
++    const r = await sh(testCmd, integ)
++    await git(['read-tree', '-u', '--reset', restoreTree + '^{tree}'], integ)
++    baseline = { passed: r.code === 0, output: tail(r.stdout + r.stderr, 2000) }
++    log('baseline: ' + (baseline.passed ? 'green' : 'RED') + ' on ' + baseSha)
++    if (!baseline.passed) {
++      judgmentCalls.push('baseline: the suite is RED on BASE (' +
++        tail(baseline.output, 500) + ') — this wave\'s red is inherited, not the diff\'s')
++    }
+   }
+-  log('setup: branch ' + integrationBranch + ' at ' + baseSha + '; baseline ' +
+-    (baseline.passed ? 'green' : 'RED'))
+ 
+   // ── dependency cascade (ported) ────────────────────────────────────────────
+   const blockedByDep = new Set()
+@@ -1750,6 +1777,9 @@ export async function runEngine({
+       return { status: 'MERGED', headSha: candidate,
+                suite: { passed: true, output: tail(suite.stdout + suite.stderr) } }
+     }
++    // Red candidate: settle whether BASE itself is red before dispatching
++    // anyone at it. Restores the candidate tree before returning.
++    await runBaseline(candidate)
+     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
+       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
+       let rec
+@@ -2044,84 +2074,6 @@ export async function runEngine({
+     break
+   }
+ 
+-  // ── the depth-1 leg (#465) ────────────────────────────────────────────────
+-  // The gate is the operator's single pre-merge checkpoint, and until this leg
+-  // it certified against a clone the merge target does not match: the sandbox
+-  // clone carries full history, `actions/checkout@v4` defaults to fetch-depth
+-  // 1, and git reports a shallow boundary commit as INTRODUCING EVERY FILE —
+-  // so `git log -- <path>` returns the tip commit for any path that exists.
+-  // Run-32 gated green (7/7 checks, 979 tests) and CI went red on exactly that;
+-  // a human diagnosed and patched it, which is the work the single-gate promise
+-  // is supposed to absorb. The class is wider than the instance: any test
+-  // coupled to repository state — history, tags, remotes, tree cleanliness —
+-  // passes here and fails on main.
+-  //
+-  // Cost is one suite pass (~90 s at 16 vCPU), paid only when there is a green
+-  // adopted tree to re-certify. A red leg becomes a `deferred:manual` item, not
+-  // a failed `tests` field: the driver's full-clone run really did pass, and a
+-  // depth-1 degradation can legitimately be correct behaviour in a consumer
+-  // clone (#465's own reading of `_release_timeline` returning None there). Which
+-  // it is, is a human judgment — so it reaches the gate as the one ack type that
+-  // is NOT pre-authorized (run-main's ackDecision), and the run parks on real
+-  // evidence instead of surprising the operator after the merge.
+-  //
+-  // The leg runs BESIDE the completeness critic below (#654, re-shaped on the
+-  // operator's call 2026-09-05), not ahead of it: neither reads the other's
+-  // result — the critic's inputs are `lastSuite`, the plan, the contracts and
+-  // the integrated Run:/Check: evidence, while `shallowSuite` and
+-  // `shallowDeferred` are consumed further down, after both have settled — so
+-  // serially the leg's ~90 s was wall clock nobody was waiting on. Its
+-  // judgment calls land in a local array and are appended in BASE order once
+-  // both sides are done, so a concurrent run's `judgmentCalls` stay
+-  // deterministic (leg first, then critic) rather than racing.
+-  let shallowSuite = null
+-  let shallowDeferred = null
+-  const shallowCalls = []
+-  const runShallowLeg = async () => {
+-    if (!(args.shallowLeg !== false && waveMerges.some((m) => m && m.status === 'MERGED') &&
+-          lastSuite && lastSuite.passed)) return
+-    phase('Depth-1 Leg')
+-    // Under clonesDir on purpose: it is a full repo copy (plus whatever
+-    // bootstrapCmd installs), and drive.mjs's evidence pull excludes exactly
+-    // `run-*/clones` from the tarball — "never the repo itself" is that
+-    // command's whole rule. A sibling directory would ride home in every bundle.
+-    const shallowDir = path.join(clonesDir, 'shallow')
+-    fs.rmSync(shallowDir, { recursive: true, force: true })
+-    // `file://` is load-bearing: git IGNORES --depth on a plain local path clone
+-    // (it hardlinks the whole object store), so a path form would silently
+-    // certify a second full clone and always agree. The path is resolved because
+-    // a `file://` URL is only a URL when it is absolute (repoDir is resolved for
+-    // the same reason); clonesDir arrives from the caller unnormalized.
+-    const cl = await exec('git', ['clone', '--quiet', '--depth', '1', '--branch',
+-      integrationBranch, 'file://' + path.resolve(integ), shallowDir], { cwd: runDir })
+-    if (cl.code !== 0) {
+-      shallowCalls.push('depth-1 leg: cloning ' + integrationBranch + ' at depth 1 failed (' +
+-        tail(cl.stderr || cl.stdout, 300) + ') — the shallow-clone class is unchecked this run')
+-    } else {
+-      if (bootstrapCmd) {
+-        const b = await sh(bootstrapCmd, shallowDir)
+-        if (b.code !== 0) {
+-          shallowCalls.push('depth-1 leg: bootstrap failed in the shallow clone (exit ' + b.code +
+-            ') — a red leg below may be a missing dependency rather than a history coupling')
+-        }
+-      }
+-      const s = await sh(testCmd, shallowDir)
+-      shallowSuite = { depth: 1, command: testCmd, passed: s.code === 0,
+-                       output: tail(s.stdout + s.stderr, 2000) }
+-      log('depth-1 leg: ' + (shallowSuite.passed ? 'green' : 'RED'))
+-      if (!shallowSuite.passed) {
+-        const why = 'the suite passed on the full clone and failed on a depth-1 clone of ' +
+-          integrationBranch + ' — CI checks out at fetch-depth 1, so the merge target will not ' +
+-          'reproduce this run\'s green. Either a test is coupled to repository history (fix the ' +
+-          'test) or the degradation is correct for a shallow consumer (ack it): ' +
+-          tail(shallowSuite.output, 800)
+-        shallowCalls.push('depth-1 leg: ' + why)
+-        shallowDeferred = { deliverable: 'depth-1 clone of ' + integrationBranch,
+-                            reason: 'manual', why }
+-      }
+-    }
+-  }
+-
+   // ── completeness critic — read-only judgment; the driver already ran the
+   // suite (per adopted wave) and derives gitVerified below from receipts. ────
+   const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
+@@ -2153,8 +2105,8 @@ export async function runEngine({
+           contractsBlock(WAVES, EDGES, wavesPath) +
+           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+           suiteLine(lastSuite, testCmd) +
+-          (baseline.passed === false
+-            ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
++          (baseline && baseline.passed === false
++            ? '\nBaseline: the suite is RED on BASE — ' + tail(baseline.output, 500)
+             : '') +
+           integratedRunEvidenceBlock(integratedRuns) +
+           integratedCheckEvidenceBlock(integratedChecks),
+@@ -2174,13 +2126,12 @@ export async function runEngine({
+     }
+   }
+ 
+-  // Started together, both awaited here — every line below reads one side's
+-  // result or the other's, so this is the barrier and there is no other. Plain
+-  // `Promise.all`, not the `parallel` seam: run-main hands the engine
+-  // `boundedParallel(WIDTH)`, and at WIDTH 1 that seam would quietly serialize
+-  // these two again and put the leg back on the critical path.
+-  await Promise.all([runShallowLeg(), runCritic()])
+-  judgmentCalls.push(...shallowCalls, ...criticCalls)
++  // The critic runs alone here — every line below reads its result, so this is
++  // the barrier and there is no other. Its judgment calls land in a local array
++  // and are appended once it is done, so their order in `judgmentCalls` does
++  // not depend on when the call returned.
++  await runCritic()
++  judgmentCalls.push(...criticCalls)
+ 
+   // A red integrated `Run:` proof outranks whatever the critic returned, and it
+   // is folded into the SAME list the #474 brake already reads — appended after
+@@ -2249,7 +2200,6 @@ export async function runEngine({
+   }
+   const deferredVerification = (Array.isArray(review.deferredVerification)
+     ? review.deferredVerification : [])
+-    .concat(shallowDeferred ? [shallowDeferred] : [])
+     .concat(planDeferred)
+ 
+   // tests: the DRIVER's own suite run on the adopted tree (was: the critic's).
+@@ -2308,7 +2258,6 @@ export async function runEngine({
+       pairRounds,
+       r2MarginalBlocking,
+     },
+-    shallowSuite,
+     acceptance,
+     baseline,
+     waveMerges,
+diff --git a/fleet/tests/_engine_helpers.mjs b/fleet/tests/_engine_helpers.mjs
+index f929b25244dfd2657c99e4ed236e5ac1d1d30763..8aa0df0dc96de925e97593540f0481b787e93048 100644
+--- a/fleet/tests/_engine_helpers.mjs
++++ b/fleet/tests/_engine_helpers.mjs
+@@ -51,8 +51,8 @@ export function provision({ repo, runDir, taskIds }) {
+ // real diff, exactly as in production.
+ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash check.sh',
+                       acceptance = { mode: 'suite', reason: 'sim' }, stamp = 'sim',
+-                      // Extra runEngine args merged last (the depth-1 leg's
+-                      // shallowLeg knob, and whatever the next one is).
++                      // Extra runEngine args merged last (constraintChecks,
++                      // patchInput, and whatever the next knob is).
+                       extraArgs = {} }) {
+   const taskIds = waves.flat().map((t) => t.id)
+   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
+@@ -64,6 +64,10 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
+     taskIdOf: defaultTaskIdOf,
+   })
+   const logs = []
++  // The phases the engine announced, in order. The rig left `phase` a no-op
++  // until #712: a sim that wants the phase sequence should read it here rather
++  // than infer it from the suite command's side effects.
++  const phases = []
+   const run = () => runEngine({
+     args: {
+       waves, edges, testCmd, acceptance, stamp,
+@@ -77,9 +81,10 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
+     exec: execSeam,
+     paths: { repoDir: repo, runDir, clonesDir },
+     log: (l) => logs.push(String(l)),
++    phase: (p) => phases.push(String(p)),
+     patchBase,
+   })
+-  return { run, base, clonesDir, patchesDir, integ, logs, patchBase }
++  return { run, base, clonesDir, patchesDir, integ, logs, phases, patchBase }
+ }
+ 
+ // Common canned judgments.
+diff --git a/fleet/tests/test_exam_edited_patches.mjs b/fleet/tests/test_exam_edited_patches.mjs
+index 048392d72cc55d5fae4580971b180c750c424623..628c82ca75794738ba48aa5b7f2d88f637f4527e 100644
+--- a/fleet/tests/test_exam_edited_patches.mjs
++++ b/fleet/tests/test_exam_edited_patches.mjs
+@@ -57,7 +57,7 @@ function build({ waves, stub, testCmd = 'bash check.sh' }) {
+     args: {
+       waves, edges: [], testCmd, acceptance: { mode: 'suite', reason: 'sim' }, stamp,
+       integrationBranch: 'ultra/integration-' + stamp,
+-      dependencyEdges: [], patchInput: patchesDir, shallowLeg: false,
++      dependencyEdges: [], patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+diff --git a/fleet/tests/test_run_engine.mjs b/fleet/tests/test_run_engine.mjs
+index 25a93dabb3294b4bd870236ae619ef67e3a9978e..6f4438c76901842463425a1aae582e08f5e61efe 100644
+--- a/fleet/tests/test_run_engine.mjs
++++ b/fleet/tests/test_run_engine.mjs
+@@ -72,7 +72,10 @@ assert.ok(report.waveMerges.every((m) => m.status === 'MERGED' && m.headSha))
+ assert.equal(report.tests.passed, true, 'the DRIVER ran the suite: ' + report.tests.output)
+ assert.equal(report.acceptance.mode, 'suite')
+ assert.equal(report.acceptance.passed, true)
+-assert.equal(report.baseline.passed, true)
++// #712 — the baseline is lazy: every wave here is green, so the suite never
++// ran on BASE and the field stays null. Strict, so an engine that drops the
++// key entirely (undefined) fails this line rather than passing it.
++assert.strictEqual(report.baseline, null)
+ assert.equal(report.gitVerified, true, 'receipt-derived gitVerified holds on a clean run')
+ assert.deepEqual(report.ancestryMisses, [])
+ assert.equal(report.frontier.length, 2, 'one frontier entry per folded wave')
+diff --git a/fleet/tests/test_run_engine_actor_routing.mjs b/fleet/tests/test_run_engine_actor_routing.mjs
+index bc63591b20e498ae90e0c88f3857e9207f688b91..28c731e38a2bd098a9562a5c4f4d495ff0da60c7 100644
+--- a/fleet/tests/test_run_engine_actor_routing.mjs
++++ b/fleet/tests/test_run_engine_actor_routing.mjs
+@@ -79,7 +79,7 @@ const oneTaskRun = ({ name, files = ['a.txt'], reviews, fixWrites = false }) =>
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run, integ } = rig({ repo, runDir, waves: [[mkTask('T1', files)]], stub,
+-                               stamp: name, extraArgs: { shallowLeg: false } })
++                               stamp: name })
+   return { run, calls, prompts, repo, runDir, integ, branch: 'ultra/integration-' + name }
+ }
+ 
+diff --git a/fleet/tests/test_run_engine_baseline.mjs b/fleet/tests/test_run_engine_baseline.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..04f9191ac165dd9b147389d887cef488ae6bc8ad
+--- /dev/null
++++ b/fleet/tests/test_run_engine_baseline.mjs
+@@ -0,0 +1,355 @@
++// fleet/tests/test_run_engine_baseline.mjs — #712 Task 2: the baseline runs
++// once, only when a wave's suite is red.
++//
++// The claim: a run whose every wave's suite is green never runs the suite on
++// BASE; when a wave's candidate suite is red the driver runs the suite on BASE
++// exactly once per run, before that wave's first `reconcile:` dispatch, and the
++// record says whether BASE itself was red or green.
++//
++// Every leg below is its own `rig()` run over a repo whose `check.sh` appends
++// `$PWD` and `$(git write-tree)` to an absolute log under the sim's temp dir on
++// every execution, then exits by the BROKEN rule. `git write-tree` names the
++// INDEX's tree — the candidate's after the driver's `read-tree`, BASE's during
++// the baseline however it is run, the reconciled commit's after the driver's
++// commit — so a logged line says WHICH tree ran without the exam knowing how
++// the driver arranged it. Every count is over the lines whose directory is
++// `<runDir>/clones/integration` (the "integration lines"): the depth-1 leg runs
++// the same command in `<runDir>/clones/shallow`, and an implementer's clone is
++// a different directory again. The engine emits no event for a suite execution,
++// so the count is the command's own log, never an event count.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-baseline-'))
++
++// The suite the legs count executions from. The log path is absolute and baked
++// in at makeRepo time, so the line lands wherever the command is run from.
++const checkSh = (logPath) =>
++  '#!/bin/bash\n' +
++  'printf "%s %s\\n" "$PWD" "$(git write-tree)" >> ' + JSON.stringify(logPath) + '\n' +
++  '[ ! -f BROKEN ]\n'
++
++// makeRepo writes its own check.sh first and the caller's `files` after, so
++// `check.sh` here replaces the helper's plain BROKEN-rule script.
++const scenario = (name, files = {}) => {
++  const dir = path.join(tmp, name)
++  const logPath = path.join(tmp, name + '.log')
++  const repo = makeRepo(path.join(dir, 'repo'), { 'check.sh': checkSh(logPath), ...files })
++  return { repo, runDir: path.join(dir, 'run'), logPath }
++}
++
++const logEntries = (logPath) => (fs.existsSync(logPath)
++  ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean).map((line) => {
++      const i = line.lastIndexOf(' ')
++      return { dir: line.slice(0, i), tree: line.slice(i + 1) }
++    })
++  : [])
++
++// The integration lines, in execution order, as the trees they ran on. The
++// directory is compared against the resolved path because bash reports the
++// physical cwd in $PWD.
++const integrationTrees = (logPath, integ) => {
++  const real = fs.realpathSync(integ)
++  return logEntries(logPath).filter((e) => e.dir === real).map((e) => e.tree)
++}
++
++const treeOf = (sha, integ) => gitSync(['rev-parse', sha + '^{tree}'], integ)
++
++const task = (id) => ({
++  id, title: 'task ' + id, files: [id + '.txt'], tier: 'standard', review: 'lean',
++  writes: [id + '.txt'], commutes: [], body: 'sim task ' + id,
++})
++
++// ── (a) every wave green: the suite never runs on BASE [M1] ─────────────────
++{
++  const { repo, runDir, logPath } = scenario('a')
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      const id = opts.label.split(':')[1]
++      fs.writeFileSync(path.join(cwd, id + '.txt'), 'from ' + id + '\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('leg (a): unexpected dispatch ' + opts.label)
++  }
++  const { run, integ, base, logs } = rig({
++    repo, runDir, waves: [[task('T1')], [task('T2')]], edges: [['T1', 'T2']],
++    stub, stamp: 'bl-a',
++  })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'leg (a) [M1]: wave 1 merges — ' + JSON.stringify(report.judgmentCalls))
++  assert.equal(report.waveMerges[1].status, 'MERGED',
++    'leg (a) [M1]: wave 2 merges — ' + JSON.stringify(report.judgmentCalls))
++
++  const trees = integrationTrees(logPath, integ)
++  assert.deepEqual(trees,
++    [treeOf(report.waveMerges[0].headSha, integ), treeOf(report.waveMerges[1].headSha, integ)],
++    'leg (a) [M1]: exactly one integration-clone execution per MERGED wave, each on that ' +
++    'wave\'s adopted tree — an engine that still runs the suite in Setup fails this line count')
++  assert.ok(!trees.includes(treeOf(base, integ)),
++    'leg (a) [M1]: no integration-clone execution carried BASE\'s tree')
++  assert.ok(!logs.some((l) => l.includes('baseline')),
++    'leg (a) [M1]: no engine:log line contains "baseline" on an all-green run — ' +
++    JSON.stringify(logs))
++  assert.strictEqual(report.baseline, null,
++    'leg (a) [M1]: report.baseline is null (strict — an engine that drops the key fails)')
++}
++
++// ── (b) a red candidate: one BASE run before the reconcile dispatch [M2, M3] ─
++{
++  const { repo, runDir, logPath } = scenario('b')
++  const ctx = {}
++  let dispatchCount = null
++  let criticPrompt = null
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      fs.writeFileSync(path.join(cwd, 'BROKEN'), 'oops\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      dispatchCount = integrationTrees(logPath, ctx.integ).length
++      // The agent edits files in the integration clone and the driver commits
++      // what it finds there, so the worktree it is handed holds the CANDIDATE
++      // tree — not whatever tree the baseline run left behind.
++      assert.ok(fs.existsSync(path.join(cwd, 'BROKEN')),
++        'leg (b) [M2]: the reconcile agent\'s cwd holds the candidate\'s red marker')
++      assert.ok(fs.existsSync(path.join(cwd, 'T1.txt')),
++        'leg (b) [M2]: the reconcile agent\'s cwd holds the implementer\'s file')
++      fs.rmSync(path.join(cwd, 'BROKEN'))
++      return { status: 'FIXED', summary: 'removed the BROKEN marker' }
++    }
++    if (opts.label === 'integration') { criticPrompt = prompt; return cleanCritic() }
++    throw new Error('leg (b): unexpected dispatch ' + opts.label)
++  }
++  const r = rig({ repo, runDir, waves: [[task('T1')]], stub, stamp: 'bl-b' })
++  ctx.integ = r.integ
++  const report = await r.run()
++  const { integ, base, logs } = r
++
++  const trees = integrationTrees(logPath, integ)
++  assert.equal(trees.length, 3,
++    'leg (b) [M2]: three integration-clone executions — candidate, BASE, reconciled head — ' +
++    JSON.stringify(trees))
++  assert.equal(trees[1], treeOf(base, integ),
++    'leg (b) [M2]: the SECOND execution ran on BASE\'s tree')
++  assert.equal(trees[2], treeOf(report.waveMerges[0].headSha, integ),
++    'leg (b) [M2]: the third execution ran on the reconciled head\'s tree')
++  assert.notEqual(trees[0], treeOf(base, integ),
++    'leg (b) [M2]: the first execution is the wave\'s red candidate, not BASE')
++  assert.notEqual(trees[0], trees[2],
++    'leg (b) [M2]: the candidate\'s tree is not the reconciled head\'s tree')
++  assert.equal(dispatchCount, 2,
++    'leg (b) [M2]: the BASE run happened BEFORE the first reconcile: dispatch — an engine ' +
++    'that runs the baseline after the reconcile sees a count of 1 here')
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'leg (b) [M2]: the wave ends as at BASE — FIXED → MERGED — ' +
++    JSON.stringify(report.judgmentCalls))
++  assert.equal(report.tests.passed, true, 'leg (b) [M2]: report.tests.passed is true')
++
++  assert.ok(report.baseline && typeof report.baseline === 'object',
++    'leg (b) [M2]: report.baseline is the { passed, output } record')
++  assert.deepEqual(Object.keys(report.baseline).sort(), ['output', 'passed'],
++    'leg (b) [M2]: report.baseline carries exactly passed and output')
++  assert.equal(report.baseline.passed, true, 'leg (b) [M2]: BASE itself was green')
++  assert.equal(typeof report.baseline.output, 'string', 'leg (b) [M2]: output is a string')
++
++  assert.ok(logs.includes('baseline: green on ' + base),
++    'leg (b) [M2]: one engine:log line is exactly "baseline: green on <baseSha>" — ' +
++    JSON.stringify(logs))
++  assert.ok(!report.judgmentCalls.some((j) => String(j).startsWith('baseline:')),
++    'leg (b) [M3]: a green baseline draws no judgmentCalls entry starting "baseline:" — ' +
++    JSON.stringify(report.judgmentCalls))
++  assert.ok(criticPrompt !== null, 'leg (b) [M3]: the completeness critic was dispatched')
++  assert.ok(!criticPrompt.split('\n').some((l) => l.startsWith('Baseline:')),
++    'leg (b) [M3]: a green baseline puts no line starting "Baseline:" in the critic\'s brief')
++}
++
++// ── (c) BASE itself red: the record says so [M2, M3] ────────────────────────
++{
++  const { repo, runDir, logPath } = scenario('c', { BROKEN: 'red at BASE\n' })
++  let criticPrompt = null
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      fs.rmSync(path.join(cwd, 'BROKEN'))
++      return { status: 'FIXED', summary: 'removed the BROKEN marker' }
++    }
++    if (opts.label === 'integration') { criticPrompt = prompt; return cleanCritic() }
++    throw new Error('leg (c): unexpected dispatch ' + opts.label)
++  }
++  const { run, integ, base, logs } = rig({
++    repo, runDir, waves: [[task('T1')]], stub, stamp: 'bl-c',
++  })
++  const report = await run()
++
++  const trees = integrationTrees(logPath, integ)
++  assert.equal(trees.length, 3,
++    'leg (c) [M2]: three integration-clone executions — ' + JSON.stringify(trees))
++  assert.equal(trees[1], treeOf(base, integ),
++    'leg (c) [M2]: the second execution ran on BASE\'s tree')
++  assert.equal(trees[2], treeOf(report.waveMerges[0].headSha, integ),
++    'leg (c) [M2]: the third execution ran on the reconciled head\'s tree')
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'leg (c) [M2]: a red baseline changes nothing about the wave — FIXED → MERGED — ' +
++    JSON.stringify(report.judgmentCalls))
++  assert.equal(report.baseline.passed, false, 'leg (c) [M3]: report.baseline.passed is false')
++  assert.ok(logs.includes('baseline: RED on ' + base),
++    'leg (c) [M2]: one engine:log line is exactly "baseline: RED on <baseSha>" — ' +
++    JSON.stringify(logs))
++
++  const redCalls = report.judgmentCalls.filter(
++    (j) => String(j).startsWith('baseline: the suite is RED on BASE'))
++  assert.equal(redCalls.length, 1,
++    'leg (c) [M3]: exactly one judgmentCalls entry starts with "baseline: the suite is RED ' +
++    'on BASE" — ' + JSON.stringify(report.judgmentCalls))
++
++  assert.ok(criticPrompt !== null, 'leg (c) [M3]: the completeness critic was dispatched')
++  assert.ok(criticPrompt.split('\n').some(
++    (l) => l.startsWith('Baseline: the suite is RED on BASE')),
++    'leg (c) [M3]: the critic\'s brief carries a line starting "Baseline: the suite is RED ' +
++    'on BASE"')
++}
++
++// ── (d) BASE red and the reconcile BLOCKED: the wave ends as at BASE [M2] ───
++{
++  const { repo, runDir, logPath } = scenario('d', { BROKEN: 'red at BASE\n' })
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') return { status: 'BLOCKED', summary: 'not fixable here' }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('leg (d): unexpected dispatch ' + opts.label)
++  }
++  const { run, integ, base } = rig({
++    repo, runDir, waves: [[task('T1')]], stub, stamp: 'bl-d',
++  })
++  const report = await run()
++
++  const trees = integrationTrees(logPath, integ)
++  assert.equal(trees.length, 2,
++    'leg (d) [M2]: two integration-clone executions — candidate, then BASE — ' +
++    JSON.stringify(trees))
++  assert.equal(trees[1], treeOf(base, integ),
++    'leg (d) [M2]: the second execution ran on BASE\'s tree')
++  assert.notEqual(trees[0], treeOf(base, integ),
++    'leg (d) [M2]: the first execution is the wave\'s red candidate, not BASE')
++
++  assert.equal(report.waveMerges[0].status, 'TEST_FAILED',
++    'leg (d) [M2]: BLOCKED → TEST_FAILED, exactly as at BASE — ' +
++    JSON.stringify(report.judgmentCalls))
++  assert.equal(gitSync(['rev-parse', 'ultra/integration-bl-d'], integ), base,
++    'leg (d) [M2]: the integration branch is back at its previous head')
++  assert.equal(report.baseline.passed, false, 'leg (d) [M2]: report.baseline.passed is false')
++}
++
++// ── (e) two red waves: the baseline runs at most once per run [M4] ──────────
++{
++  const { repo, runDir, logPath } = scenario('e')
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      const id = opts.label.split(':')[1]
++      fs.writeFileSync(path.join(cwd, id + '.txt'), 'from ' + id + '\n')
++      fs.writeFileSync(path.join(cwd, 'BROKEN'), 'oops\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      if (opts.label.split(':')[1] === 'wave1') {
++        fs.rmSync(path.join(cwd, 'BROKEN'))
++        return { status: 'FIXED', summary: 'removed the BROKEN marker' }
++      }
++      return { status: 'BLOCKED', summary: 'not fixable here' }
++    }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('leg (e): unexpected dispatch ' + opts.label)
++  }
++  const { run, integ, base } = rig({
++    repo, runDir, waves: [[task('T1')], [task('T2')]], edges: [], stub, stamp: 'bl-e',
++  })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    'leg (e) [M4]: wave 1 reconciles and merges — ' + JSON.stringify(report.judgmentCalls))
++  assert.equal(report.waveMerges[1].status, 'TEST_FAILED',
++    'leg (e) [M4]: wave 2 blocks — ' + JSON.stringify(report.judgmentCalls))
++
++  const trees = integrationTrees(logPath, integ)
++  const baseTree = treeOf(base, integ)
++  assert.equal(trees.length, 4,
++    'leg (e) [M4]: four integration-clone executions — wave-1 candidate, BASE, wave-1 ' +
++    'reconciled, wave-2 candidate — an engine that runs the baseline again on wave 2 fails ' +
++    'this count: ' + JSON.stringify(trees))
++  assert.equal(trees.filter((t) => t === baseTree).length, 1,
++    'leg (e) [M4]: exactly one execution carried BASE\'s tree across two red waves')
++  assert.equal(trees[1], baseTree,
++    'leg (e) [M4]: its position is the second, after wave 1\'s candidate — an engine that ' +
++    'runs it on wave 1\'s head instead of BASE fails this equality')
++  assert.equal(trees[2], treeOf(report.waveMerges[0].headSha, integ),
++    'leg (e) [M4]: the third execution is wave 1\'s reconciled head')
++}
++
++// ── (f) the documents and the two source literals the Run: legs grep [M5] ────
++// The fifth and sixth Run: legs (`node fleet/tests/test_run_engine.mjs` and
++// `python3 -m pytest tests/test_docs_agree_with_code.py`) are executed by the
++// driver as commands of their own; what is pinned here is the re-scoped
++// baseline assertion the fifth exists for.
++{
++  const read = (rel) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8')
++  const doc = read('../../skills/ultrapowers/references/report-format.md')
++  const engineSrc = read('../run-engine.mjs')
++  const simSrc = read('./test_run_engine.mjs')
++
++  assert.ok(doc.includes('"baseline": { "oneOf": [{"type":"null"}, '),
++    'leg (f) [M5]: the report-format schema line admits null — a line that keeps BASE\'s ' +
++    'bare object shape fails the first Run: leg')
++
++  const lines = doc.split('\n')
++  const fieldRow = lines.filter((l) => /^\| `baseline` \|/.test(l))
++  assert.equal(fieldRow.length, 1, 'leg (f) [M5]: exactly one `baseline` field row')
++  assert.ok(fieldRow[0].includes('only when a wave') && fieldRow[0].includes('null'),
++    'leg (f) [M5]: the `baseline` field row carries BOTH "only when a wave" (the trigger) ' +
++    'and "null" (the value otherwise) — a row naming only one of them fails the second ' +
++    'Run: leg: ' + fieldRow[0])
++
++  const item3 = lines.filter((l) => l.startsWith('3. '))
++  assert.equal(item3.length, 1, 'leg (f) [M5]: exactly one Presentation item 3 line')
++  assert.ok(item3[0].includes('only when a wave') && item3[0].includes('null'),
++    'leg (f) [M5]: Presentation item 3 carries BOTH "only when a wave" and "null" — an item ' +
++    'that keeps BASE\'s "before wave 1" sentence fails the third Run: leg: ' + item3[0])
++
++  assert.ok(!engineSrc.includes('already failing before any task ran'),
++    'leg (f) [M5]: BASE\'s judgment-call literal is gone from fleet/run-engine.mjs')
++  assert.ok(engineSrc.includes('the suite is RED on BASE'),
++    'leg (f) [M5]: fleet/run-engine.mjs carries the new judgment-call literal')
++
++  assert.ok(simSrc.includes('assert.strictEqual(report.baseline, null)'),
++    'leg (f) [M5]: test_run_engine.mjs\'s baseline pin is re-scoped to a strict null')
++  assert.ok(!simSrc.includes('report.baseline.passed'),
++    'leg (f) [M5]: test_run_engine.mjs no longer pins report.baseline.passed — its run is ' +
++    'all-green, so the suite never ran on BASE there')
++}
++
++fs.rmSync(tmp, { recursive: true, force: true })
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_depth1_beside_critic.mjs b/fleet/tests/test_run_engine_depth1_beside_critic.mjs
+deleted file mode 100644
+index 2f31a596e0840aaa9054b9e9d6ef9fbfedab1f20..0000000000000000000000000000000000000000
+--- a/fleet/tests/test_run_engine_depth1_beside_critic.mjs
++++ /dev/null
+@@ -1,261 +0,0 @@
+-// fleet/tests/test_run_engine_depth1_beside_critic.mjs — the depth-1 leg runs
+-// BESIDE the completeness critic (#654, re-shaped 2026-09-05: "Overlap it with
+-// the critic").
+-//
+-// At BASE the two are serial: `phase('Depth-1 Leg')` clones the integration
+-// branch at depth 1, bootstraps it and runs the suite there; only when that
+-// returns does `phase('Integration Review')` dispatch the critic. Neither reads
+-// the other's result — the critic's inputs are `lastSuite`, the plan, the
+-// contracts and the integrated Run:/Check: evidence, while `shallowDeferred`
+-// and `shallowSuite` are consumed after both — so the ~1.5 min the leg costs is
+-// wall clock nobody is waiting on. The change is to start both and await both.
+-//
+-// The rig leaves `phase` a no-op, so the overlap is not observable from phase
+-// events. It is observed from the two seams the sim owns: the SUITE COMMAND
+-// (a check.sh that marks an order file only in a shallow repository) and the
+-// CRITIC STUB (which marks the same file when dispatched). The leg is on the
+-// path exactly when `critic` lands between the leg's start and its end.
+-import assert from 'node:assert/strict'
+-import fs from 'node:fs'
+-import os from 'node:os'
+-import path from 'node:path'
+-import { makeRepo, rig, gitSync, passReview, cleanCritic, criticWithFindings,
+-         doneImpl } from './_engine_helpers.mjs'
+-
+-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+-
+-// The Proof legs name `report.review.findings`; at BASE the critic's findings
+-// reach the report as `completenessFindings` (run-engine.mjs:2048), and M2/M3
+-// pin what the leg produces "as at BASE". Read whichever surface the engine
+-// offers so these legs pin the FINDING, not the field name.
+-const criticFindings = (report) =>
+-  (report && report.review && Array.isArray(report.review.findings))
+-    ? report.review.findings
+-    : ((report && report.completenessFindings) || [])
+-
+-const countOf = (labels, label) => labels.filter((l) => l === label).length
+-
+-// Same history-coupled oracle as test_run_engine_shallow.mjs: true in any full
+-// clone of a two-commit repo, false at depth 1.
+-const HISTORY_COUPLED = '#!/bin/bash\n[ "$(git rev-list --count HEAD)" -gt 1 ]\n'
+-
+-const wavesFor = (id) => [[{ id, title: 'create ' + id, files: [id + '.txt'], tier: 'standard',
+-  review: 'lean', writes: [id + '.txt'], commutes: [], body: 'sim task ' + id }]]
+-
+-// More than one commit at BASE so the full-clone suite is green before the run
+-// starts (a red baseline would change the run's shape) and so `--depth 1`
+-// really writes a shallow boundary.
+-function twoCommitRepo(dir, checkScript) {
+-  makeRepo(dir, checkScript ? { 'check.sh': checkScript } : {})
+-  fs.writeFileSync(path.join(dir, 'b.txt'), 'second\n')
+-  gitSync(['add', '-A'], dir)
+-  gitSync(['commit', '-q', '-m', 'second'], dir)
+-  return dir
+-}
+-
+-// ── (a) [M1] the critic's dispatch lands INSIDE the depth-1 suite's window ───
+-// check.sh marks `shallow-start`, sleeps half a second, marks `shallow-end` —
+-// but only in a shallow repository, so the baseline and per-wave runs (full
+-// clones, every one) leave the order file alone. The critic stub marks
+-// `critic` on dispatch, once the leg has actually started; a serial engine
+-// dispatches it after `shallow-end` is already written, so it marks third.
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-beside-order-'))
+-  const order = path.join(tmp, 'order.txt')
+-  const q = JSON.stringify(order)
+-  const MARKING = '#!/bin/bash\n' +
+-    'if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then\n' +
+-    '  echo shallow-start >> ' + q + '\n' +
+-    '  sleep 0.5\n' +
+-    '  echo shallow-end >> ' + q + '\n' +
+-    'fi\n' +
+-    'exit 0\n'
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), MARKING)
+-  const marks = () => (fs.existsSync(order)
+-    ? fs.readFileSync(order, 'utf8').split('\n').filter(Boolean) : [])
+-
+-  const labels = []
+-  const stub = async (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'A1.txt'), 'from A1\n')
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') return passReview()
+-    if (opts.label === 'integration') {
+-      // Bounded, not a hang: the mark goes down as soon as the leg's suite has
+-      // started. On the serial path `shallow-start` is already present (with
+-      // `shallow-end` behind it) and this returns on the first look, so the
+-      // order below reads shallow-start/shallow-end/critic and the leg is red
+-      // for the one reason it should be.
+-      const deadline = Date.now() + 20000
+-      while (!marks().includes('shallow-start') && Date.now() < deadline) await sleep(10)
+-      fs.appendFileSync(order, 'critic\n')
+-      return cleanCritic()
+-    }
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-
+-  const runDir = path.join(tmp, 'run')
+-  const { run } = rig({ repo, runDir, waves: wavesFor('A1'), stub, stamp: 'beside' })
+-  const report = await run()
+-
+-  assert.equal(report.tests.passed, true,
+-    '(a)/M1 precondition: the full-clone suite is green — ' + report.tests.output)
+-  assert.ok(report.shallowSuite, '(a)/M1 precondition: the leg ran on the green adopted tree')
+-  assert.equal(report.shallowSuite.passed, true,
+-    '(a)/M1 precondition: the marking suite is green at depth 1 too')
+-  assert.equal(countOf(labels, 'integration'), 1,
+-    '(a)/M1 precondition: the critic is dispatched once — ' + labels.join(','))
+-  assert.deepEqual(marks(), ['shallow-start', 'critic', 'shallow-end'],
+-    '(a)/M1: the critic\'s dispatch begins while the depth-1 suite is still running ' +
+-    '(serial reads shallow-start,shallow-end,critic)')
+-}
+-
+-// ── (b) [M2] what each side produces is unchanged by running them together ───
+-// b1: a history-coupled suite — green on the two-commit full clone, RED at
+-// depth 1 — still yields shallowSuite.passed === false and exactly one
+-// depth-1 `manual` deferral; the critic still ran once and its finding is in
+-// the report.
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-beside-red-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), HISTORY_COUPLED)
+-  const FINDING = { severity: 'advisory', detail: 'sim critic finding: B1 beside the red leg' }
+-  const labels = []
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'B1.txt'), 'from B1\n')
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') return passReview()
+-    if (opts.label === 'integration') return criticWithFindings([FINDING])
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({ repo, runDir: path.join(tmp, 'run'), waves: wavesFor('B1'),
+-                        stub, stamp: 'besidered' })
+-  const report = await run()
+-
+-  assert.equal(report.tests.passed, true,
+-    '(b)/M2 precondition: the driver\'s full-clone suite passed — ' + report.tests.output)
+-  assert.ok(report.shallowSuite, '(b)/M2: the leg still ran')
+-  assert.equal(report.shallowSuite.passed, false,
+-    '(b)/M2: a history-coupled suite still fails on the depth-1 clone')
+-
+-  const depth1 = report.deferredVerification
+-    .filter((d) => d && String(d.deliverable || '').startsWith('depth-1 clone of '))
+-  assert.equal(depth1.length, 1, '(b)/M2: exactly one depth-1 deferral — ' +
+-    JSON.stringify(report.deferredVerification))
+-  assert.equal(depth1[0].reason, 'manual',
+-    '(b)/M2: and it is the `manual` ack the gate does not pre-authorize')
+-
+-  assert.equal(countOf(labels, 'integration'), 1,
+-    '(b)/M2: the critic is dispatched exactly once — ' + labels.join(','))
+-  assert.deepEqual(criticFindings(report), [FINDING],
+-    '(b)/M2: the finding the critic stub returned is in the report')
+-}
+-
+-// b2: a plain green suite — shallowSuite.passed === true, no depth-1 item, the
+-// critic still dispatched once with its finding carried.
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-beside-green-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), null)
+-  const FINDING = { severity: 'advisory', detail: 'sim critic finding: B2 beside the green leg' }
+-  const labels = []
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'B2.txt'), 'from B2\n')
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') return passReview()
+-    if (opts.label === 'integration') return criticWithFindings([FINDING])
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({ repo, runDir: path.join(tmp, 'run'), waves: wavesFor('B2'),
+-                        stub, stamp: 'besidegreen' })
+-  const report = await run()
+-
+-  assert.ok(report.shallowSuite, '(b)/M2: the leg still ran')
+-  assert.equal(report.shallowSuite.passed, true,
+-    '(b)/M2: a suite that does not read history still agrees at depth 1')
+-  assert.deepEqual(
+-    report.deferredVerification
+-      .filter((d) => d && String(d.deliverable || '').startsWith('depth-1 clone of ')), [],
+-    '(b)/M2: a green leg still adds no depth-1 ack — ' +
+-    JSON.stringify(report.deferredVerification))
+-
+-  assert.equal(countOf(labels, 'integration'), 1,
+-    '(b)/M2: the critic is dispatched exactly once — ' + labels.join(','))
+-  assert.deepEqual(criticFindings(report), [FINDING],
+-    '(b)/M2: the finding the critic stub returned is in the report')
+-}
+-
+-// ── (c) [M3] the two skip paths are as at BASE ──────────────────────────────
+-// c1: `shallowLeg: false` skips the leg and nothing else — the critic still
+-// runs. strictEqual on purpose: a loose `== null` would also accept the
+-// `undefined` an engine WITHOUT the field returns, a check that cannot fail.
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-beside-off-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), HISTORY_COUPLED)
+-  const runDir = path.join(tmp, 'run')
+-  const labels = []
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, 'C1.txt'), 'from C1\n')
+-      return doneImpl(cwd)
+-    }
+-    if (kind === 'review') return passReview()
+-    if (opts.label === 'integration') return cleanCritic()
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({ repo, runDir, waves: wavesFor('C1'), stub, stamp: 'besideoff',
+-                        extraArgs: { shallowLeg: false } })
+-  const report = await run()
+-
+-  assert.strictEqual(report.shallowSuite, null, '(c)/M3: shallowLeg:false skips the leg')
+-  assert.ok(!fs.existsSync(path.join(runDir, 'clones', 'shallow')),
+-    '(c)/M3: and clones nothing')
+-  assert.equal(countOf(labels, 'integration'), 1,
+-    '(c)/M3: the critic is still dispatched exactly once — ' + labels.join(','))
+-}
+-
+-// c2: no wave merged (the only implementer returns BLOCKED) — no leg, no
+-// clone, NO critic, and the report carries the `no wave merged` finding.
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-beside-nomerge-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), null)
+-  const runDir = path.join(tmp, 'run')
+-  const labels = []
+-  const stub = (prompt, opts, cwd) => {
+-    labels.push(opts.label)
+-    const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') {
+-      return { status: 'BLOCKED', summary: 'sim: cannot proceed', startHead: doneImpl(cwd).startHead }
+-    }
+-    if (kind === 'review') return passReview()
+-    if (opts.label === 'integration') return cleanCritic()
+-    throw new Error('unexpected dispatch: ' + opts.label)
+-  }
+-  const { run } = rig({ repo, runDir, waves: wavesFor('C2'), stub, stamp: 'besidenomerge' })
+-  const report = await run()
+-
+-  assert.ok(!report.waveMerges.some((m) => m && m.status === 'MERGED'),
+-    '(c)/M3 precondition: no wave merged — ' + JSON.stringify(report.waveMerges))
+-  assert.strictEqual(report.shallowSuite, null, '(c)/M3: no merged wave, no leg')
+-  assert.ok(!fs.existsSync(path.join(runDir, 'clones', 'shallow')),
+-    '(c)/M3: and no depth-1 clone was made')
+-  assert.equal(countOf(labels, 'integration'), 0,
+-    '(c)/M3: the critic is not dispatched on a tree that is still at BASE — ' + labels.join(','))
+-  assert.ok(criticFindings(report).some((f) => f && String(f.detail || '').includes('no wave merged')),
+-    '(c)/M3: the report carries the `no wave merged` finding — ' +
+-    JSON.stringify(criticFindings(report)))
+-}
+-
+-// ── (d) the sim's sentinel ──────────────────────────────────────────────────
+-console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_exam_edits.mjs b/fleet/tests/test_run_engine_exam_edits.mjs
+index 0f4b8c983024d1864c8897c233a8500ab0d6327a..eedad9fd3c6c03845e5b1df598384f07da8db693 100644
+--- a/fleet/tests/test_run_engine_exam_edits.mjs
++++ b/fleet/tests/test_run_engine_exam_edits.mjs
+@@ -53,7 +53,7 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
+     args: {
+       waves, edges: [], testCmd, acceptance: { mode: 'suite', reason: 'sim' }, stamp,
+       integrationBranch: 'ultra/integration-' + stamp,
+-      dependencyEdges: [], patchInput: patchesDir, shallowLeg: false,
++      dependencyEdges: [], patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+diff --git a/fleet/tests/test_run_engine_exam_evidence.mjs b/fleet/tests/test_run_engine_exam_evidence.mjs
+index 53e0d3cbd06f2d4bdbe7324dd931be54f25411a7..d5b39fb7f58e3d643514cc1be8b91257925bcf9b 100644
+--- a/fleet/tests/test_run_engine_exam_evidence.mjs
++++ b/fleet/tests/test_run_engine_exam_evidence.mjs
+@@ -161,7 +161,7 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
+   }
+   const { run } = rig({
+     repo, runDir, waves: [tasks], stub, stamp,
+-    extraArgs: { shallowLeg: false, ...extraArgs },
++    extraArgs: { ...extraArgs },
+   })
+   const report = await run()
+   const rowOf = (id) => report.tasks.find((t) => t.task === id)
+diff --git a/fleet/tests/test_run_engine_exam_fix_edit.mjs b/fleet/tests/test_run_engine_exam_fix_edit.mjs
+index 747c5d50fa4f5d934f56ba2855544341e58d763f..1d5b2acbfdf29568bf9406b67860cf34db881f12 100644
+--- a/fleet/tests/test_run_engine_exam_fix_edit.mjs
++++ b/fleet/tests/test_run_engine_exam_fix_edit.mjs
+@@ -55,7 +55,7 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
+     args: {
+       waves, edges: [], testCmd, acceptance: { mode: 'suite', reason: 'sim' }, stamp,
+       integrationBranch: 'ultra/integration-' + stamp,
+-      dependencyEdges: [], patchInput: patchesDir, shallowLeg: false,
++      dependencyEdges: [], patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+@@ -278,8 +278,9 @@ assert.equal(skipsShoutScan('skills/ultrapowers/SKILL.md'), false,
+   // The leg is a pin against BASE, so it needs BASE in the object store. A
+   // depth-1 clone (the shape `actions/checkout` gives CI, #465) has no
+   // `d6efce4` to diff against; there the leg has nothing to say and says so,
+-  // rather than failing for a reason unrelated to the tree's words. run-54's
+-  // depth-1 leg caught exactly this on the first cut of this file.
++  // rather than failing for a reason unrelated to the tree's words. The
++  // engine's own depth-1 rehearsal, deleted in #712, caught exactly this on
++  // the first cut of this file back in run-54.
+   const haveBase = git(['cat-file', '-e', BASE_SHA + '^{commit}']).code === 0
+   const diff = haveBase ? git(['diff', '--name-only', BASE_SHA]) : { code: 0, out: '' }
+   if (!haveBase) console.log('(g)/M7: BASE ' + BASE_SHA + ' not in this clone (shallow) — leg skipped')
+diff --git a/fleet/tests/test_run_engine_exam_together.mjs b/fleet/tests/test_run_engine_exam_together.mjs
+index f7ae858fbeb3df4db2d698256475bbe1ee8ba7b7..71b366c9f77ddc7a84a26cd2584a770dc1522671 100644
+--- a/fleet/tests/test_run_engine_exam_together.mjs
++++ b/fleet/tests/test_run_engine_exam_together.mjs
+@@ -169,7 +169,7 @@ async function scenario({ exam = (cwd) => writeExam(cwd), onImpl = writeOne, onF
+   }
+   const { run, base, clonesDir, patchesDir, integ } = rig({
+     repo, runDir, waves: [[entry()]], stub, stamp,
+-    extraArgs: { shallowLeg: false, ...extraArgs },
++    extraArgs: { ...extraArgs },
+   })
+   const report = await run()
+   return { report, row: report.tasks[0], labels, seen, base, runDir, clonesDir, patchesDir,
+diff --git a/fleet/tests/test_run_engine_examiner.mjs b/fleet/tests/test_run_engine_examiner.mjs
+index e212e54ee088f16e12a2b43b789123624d2ebf53..11dea88734fd8b8bb99f9e77c93fd4519968fa4e 100644
+--- a/fleet/tests/test_run_engine_examiner.mjs
++++ b/fleet/tests/test_run_engine_examiner.mjs
+@@ -56,7 +56,7 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
+     args: {
+       waves, edges: [], testCmd, acceptance: { mode: 'suite', reason: 'sim' }, stamp,
+       integrationBranch: 'ultra/integration-' + stamp,
+-      dependencyEdges: [], patchInput: patchesDir, shallowLeg: false,
++      dependencyEdges: [], patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+diff --git a/fleet/tests/test_run_engine_implementer_suite.mjs b/fleet/tests/test_run_engine_implementer_suite.mjs
+index 28d22488dc945534eb2c0ba74f8798cc50c71bdb..51dbc1e69084a0abab0a0c84d78ee305258ab330 100644
+--- a/fleet/tests/test_run_engine_implementer_suite.mjs
++++ b/fleet/tests/test_run_engine_implementer_suite.mjs
+@@ -172,7 +172,7 @@ async function scenario ({ waves, testCmd = RUN_WIDE, examScript = RED_AT_BASE,
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run, base, clonesDir, patchesDir, integ, logs } = rig({
+-    repo, runDir, waves, stub, testCmd, stamp, extraArgs: { shallowLeg: false },
++    repo, runDir, waves, stub, testCmd, stamp,
+   })
+   const report = await run()
+   const rowOf = (id) => report.tasks.find((t) => t.task === id)
+diff --git a/fleet/tests/test_run_engine_integrated_clean.mjs b/fleet/tests/test_run_engine_integrated_clean.mjs
+index 4f9edb7b6797af7fa98eb4eff84f52fd454c0749..1fadc9638b771330a302f87524a7d4372e80c0ef 100644
+--- a/fleet/tests/test_run_engine_integrated_clean.mjs
++++ b/fleet/tests/test_run_engine_integrated_clean.mjs
+@@ -111,8 +111,7 @@ const stub = (prompt, opts, cwd) => {
+   if (opts.label === 'integration') return cleanCritic()
+   throw new Error('unexpected dispatch: ' + opts.label)
+ }
+-const { run, integ } = rig({ repo, runDir, waves, stub, testCmd: PLANT, stamp: 'ic1',
+-                             extraArgs: { shallowLeg: false } })
++const { run, integ } = rig({ repo, runDir, waves, stub, testCmd: PLANT, stamp: 'ic1' })
+ const report = await run()
+ 
+ // ── sim preconditions ────────────────────────────────────────────────────────
+diff --git a/fleet/tests/test_run_engine_integrated_runs.mjs b/fleet/tests/test_run_engine_integrated_runs.mjs
+index 71e98f503a29ae2f8a6306e5ec3895d01a1f029f..9b42d3b66ec113bebbbacc78750504e5245353af 100644
+--- a/fleet/tests/test_run_engine_integrated_runs.mjs
++++ b/fleet/tests/test_run_engine_integrated_runs.mjs
+@@ -144,8 +144,7 @@ const blockOf = (prompt) => {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir1',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir1' })
+   const report = await run()
+   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
+   assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
+@@ -213,8 +212,7 @@ const blockOf = (prompt) => {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run, integ, clonesDir } = rig({ repo, runDir, waves, stub, stamp: 'ir2',
+-                                          extraArgs: { shallowLeg: false } })
++  const { run, integ, clonesDir } = rig({ repo, runDir, waves, stub, stamp: 'ir2' })
+   const report = await run()
+   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
+   assert.equal(report.integratedRuns.length, 6,
+@@ -351,7 +349,7 @@ async function pinRun(engine, tasks) {
+       waves: [tasks], edges: [], testCmd: 'bash check.sh',
+       acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
+       integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
+-      patchInput: patchesDir, shallowLeg: false,
++      patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+@@ -426,8 +424,7 @@ async function pinRun(engine, tasks) {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir3',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir3' })
+   const report = await run()
+   // The clone-local run was green: no fix round, and A merged.
+   assert.ok(!calls.some((l) => l.startsWith('fix:')),
+@@ -498,8 +495,7 @@ async function pinRun(engine, tasks) {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir4',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir4' })
+   const report = await run()
+   const rowB = report.tasks.find((r) => r.task === 'B')
+   assert.equal(rowB.status, 'failed', 'sim precondition: B never merged')
+@@ -538,8 +534,7 @@ async function pinRun(engine, tasks) {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir5',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir5' })
+   const report = await run()
+   assert.equal(report.waveMerges[0].status, 'TEST_FAILED',
+     'sim precondition: the candidate suite went red and was never adopted')
+diff --git a/fleet/tests/test_run_engine_pre_review.mjs b/fleet/tests/test_run_engine_pre_review.mjs
+index 12afbec8ed6aad74938bd716b8b83de7b621b711..db5604eb89021bbbe3ce147401c41a7fef6b7a2e 100644
+--- a/fleet/tests/test_run_engine_pre_review.mjs
++++ b/fleet/tests/test_run_engine_pre_review.mjs
+@@ -183,7 +183,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr1',
+-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
++                        extraArgs: { constraintChecks: CHECKS } })
+   const report = await run()
+ 
+   // The pre-review pass ran before ANY review worker was dispatched.
+@@ -220,7 +220,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr2',
+-                        extraArgs: { shallowLeg: false, constraintChecks: 'nope' } })
++                        extraArgs: { constraintChecks: 'nope' } })
+   const report = await run()
+   assert.equal(report.coverage.complete, true,
+     'a malformed constraintChecks must not fail the run')
+@@ -245,7 +245,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr3',
+-                        extraArgs: { shallowLeg: false, constraintChecks: [
++                        extraArgs: { constraintChecks: [
+                           { cmd: 'test -e a.txt' },
+                           { cmd: 'test -e z.txt', minor: 1 },
+                         ] } })
+@@ -285,7 +285,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr4',
+-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS,
++                        extraArgs: { constraintChecks: CHECKS,
+                                      globalConstraints: 'the periphery is frozen' } })
+   const report = await run()
+ 
+@@ -360,7 +360,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr5',
+-                        extraArgs: { shallowLeg: false,
++                        extraArgs: {
+                                      constraintChecks: [{ cmd: 'test -e c.txt', minor: false }] } })
+   const report = await run()
+   const row = report.tasks.find((r) => r.task === 'T1')
+@@ -391,8 +391,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr6',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr6' })
+   const report = await run()
+   assert.deepEqual(calls.filter((l) => !l.startsWith('exam:') && l !== 'integration'),
+     ['impl:T1', 'fix:T1:0', 'review:T1:1'],
+@@ -424,8 +423,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr7',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr7' })
+   const report = await run()
+   const row = report.tasks.find((r) => r.task === 'T1')
+   assert.equal(row.status, 'failed', JSON.stringify(row))
+@@ -455,7 +453,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr8',
+-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
++                        extraArgs: { constraintChecks: CHECKS } })
+   const report = await run()
+ 
+   // [M2] a green first pass costs no fix round; a red MINOR check never does.
+@@ -540,7 +538,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr9',
+-                        extraArgs: { shallowLeg: false,
++                        extraArgs: {
+                                      constraintChecks: [{ cmd: 'test -e c.txt', minor: false }] } })
+   const report = await run()
+   assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0).map((e) => e.exit),
+@@ -580,8 +578,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr10',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr10' })
+   const report = await run()
+   assert.equal(report.coverage.complete, true, 'sim precondition: the task merged')
+   // A RENDERED block is what this leg forbids, and a rendered block opens with
+@@ -614,7 +611,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr11',
+-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
++                        extraArgs: { constraintChecks: CHECKS } })
+   const report = await run()
+   assert.equal(report.coverage.complete, true, 'sim precondition: the wave was adopted')
+ 
+@@ -671,7 +668,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr12',
+-                        extraArgs: { shallowLeg: false,
++                        extraArgs: {
+                                      constraintChecks: [{ cmd: CMD, minor: false }] } })
+   const report = await run()
+   assert.deepEqual(calls.filter((l) => l.startsWith('fix:')), [],
+@@ -761,7 +758,7 @@ const segmentOf = (block, cmd) => {
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run, base } = rig({ repo, runDir, waves, stub, stamp: 'ub1',
+-                              extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
++                              extraArgs: { constraintChecks: CHECKS } })
+   const report = await run()
+   assert.match(base, /^[0-9a-f]{40}$/, 'sim precondition: the rig\'s base is a 40-hex sha')
+ 
+@@ -855,7 +852,7 @@ const segmentOf = (block, cmd) => {
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2',
+-                              extraArgs: { shallowLeg: false,
++                              extraArgs: {
+                                            constraintChecks: [{ cmd: CBASE, minor: false }] } })
+   const report = await run()
+ 
+diff --git a/fleet/tests/test_run_engine_proof_runs.mjs b/fleet/tests/test_run_engine_proof_runs.mjs
+index 25b9304cf94c20ecca416bbc19d80eb0b77de3ce..9dda45f72eeb3a31de0a29c45d4b9de66e01a90e 100644
+--- a/fleet/tests/test_run_engine_proof_runs.mjs
++++ b/fleet/tests/test_run_engine_proof_runs.mjs
+@@ -128,7 +128,7 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+   }
+   const { run, clonesDir } = rig({
+     repo, runDir, waves: [[task]], stub, stamp,
+-    extraArgs: { shallowLeg: false, constraintChecks },
++    extraArgs: { constraintChecks },
+   })
+   const report = await run()
+   return { report, row: report.tasks[0], calls, prompts, runDir, clonesDir,
+@@ -265,11 +265,11 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+ // imported from there, is driven by the same canned agents through the same run
+ // directory (the review prompt names the patch FILE, so a second directory
+ // would differ in bytes that are not this change).
+-// The byte-pin needs BASE in the object store. A depth-1 clone — the engine's
+-// own shallow leg (run-engine.mjs:1437) and `actions/checkout`'s default — has
+-// no 0a3559a; there the leg has nothing to say and says so, rather than failing
+-// for a reason unrelated to the tree (test_run_engine_exam_fix_edit.mjs guards
+-// the same way, after run-54's depth-1 leg caught exactly this).
++// The byte-pin needs BASE in the object store. A depth-1 clone — the shape
++// `actions/checkout` gives CI by default — has no 0a3559a; there the pin has
++// nothing to say and says so, rather than failing for a reason unrelated to
++// the tree (test_run_engine_exam_fix_edit.mjs guards the same way; the engine's
++// own depth-1 rehearsal, deleted in #712, caught exactly this back in run-54).
+ const haveBase = (() => {
+   try {
+     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
+@@ -318,7 +318,7 @@ async function pinPrompt(engine, task) {
+       waves: [[task]], edges: [], testCmd: 'bash check.sh',
+       acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
+       integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
+-      patchInput: patchesDir, shallowLeg: false,
++      patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+@@ -510,7 +510,7 @@ const segmentOf = (block, cmd) => {
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run, base: rigBase } = rig({
+-    repo, runDir, stub, stamp: 'ub1', extraArgs: { shallowLeg: false },
++    repo, runDir, stub, stamp: 'ub1',
+     waves: [[entry({ proofRuns: [PRINTENV, TEST_EQ] })]],
+   })
+   assert.equal(rigBase, base, 'sim precondition: every clone was provisioned at that sha')
+@@ -573,8 +573,7 @@ const segmentOf = (block, cmd) => {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2',
+-                              extraArgs: { shallowLeg: false } })
++  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2' })
+   const report = await run()
+ 
+   assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
+@@ -901,7 +900,7 @@ const probeSource = ({ tag, runs = [], checks = [], exam = false, pin, why }) =>
+   const _r = _h.rig({
+     repo: _h.makeRepo(_pp.join(_tmp, 'repo')), runDir: _pp.join(_tmp, 'run'),
+     waves: [[_task]], stub: _stub, stamp: '${tag}',
+-    extraArgs: { shallowLeg: false, constraintChecks: ${JSON.stringify(checks)} },
++    extraArgs: { constraintChecks: ${JSON.stringify(checks)} },
+   })
+   await _r.run()
+   const evs = _fs.readFileSync(_pp.join(_tmp, 'run', 'events.jsonl'), 'utf8')
+diff --git a/fleet/tests/test_run_engine_review_economy.mjs b/fleet/tests/test_run_engine_review_economy.mjs
+index f538c3f0efa68d3555355dfbf603fe5884ef2dcb..8d80cc96b228b0ef056c6f8a94493763990dfd13 100644
+--- a/fleet/tests/test_run_engine_review_economy.mjs
++++ b/fleet/tests/test_run_engine_review_economy.mjs
+@@ -96,8 +96,7 @@ const eventsOf = (runDir) => {
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+-  const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'])]], stub, stamp: 're1',
+-                        extraArgs: { shallowLeg: false } })
++  const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'])]], stub, stamp: 're1' })
+   const report = await run()
+   assert.equal(report.coverage.complete, true,
+     'an unread extra field must not fail the task: ' + JSON.stringify(report.tasks))
+@@ -139,7 +138,7 @@ const eventsOf = (runDir) => {
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { review: 'peer' })]],
+-                        stub, stamp: 're2', extraArgs: { shallowLeg: false } })
++                        stub, stamp: 're2' })
+   const report = await run()
+   const eco = report.reviewEconomy
+   assert.equal(report.coverage.complete, true, 'sim precondition: the task merged')
+@@ -187,7 +186,7 @@ const eventsOf = (runDir) => {
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { review: 'peer' })]],
+-                        stub, stamp: 're3', extraArgs: { shallowLeg: false } })
++                        stub, stamp: 're3' })
+   const report = await run()
+   const eco = report.reviewEconomy
+   assert.equal(report.tasks.find((r) => r.task === 'A').reviewVerdict, 'fixed',
+@@ -240,7 +239,7 @@ const eventsOf = (runDir) => {
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { proofRuns: [TOGGLE] })]],
+-                        stub, stamp: 're4', extraArgs: { shallowLeg: false } })
++                        stub, stamp: 're4' })
+   const report = await run()
+   const row = report.tasks.find((r) => r.task === 'A')
+   const proofRuns = eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run' && e.task === 'A')
+@@ -321,7 +320,7 @@ async function pinRun(engine, tasks) {
+       waves: [tasks], edges: [], testCmd: 'bash check.sh',
+       acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
+       integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
+-      patchInput: patchesDir, shallowLeg: false,
++      patchInput: patchesDir,
+     },
+     agent,
+     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
+diff --git a/fleet/tests/test_run_engine_shallow.mjs b/fleet/tests/test_run_engine_shallow.mjs
+deleted file mode 100644
+index bc1cd5663aac88d0ce6de62811bb4d45f33963c1..0000000000000000000000000000000000000000
+--- a/fleet/tests/test_run_engine_shallow.mjs
++++ /dev/null
+@@ -1,124 +0,0 @@
+-// fleet/tests/test_run_engine_shallow.mjs — the depth-1 leg (#465).
+-//
+-// Run-32 gated green and CI went red: the sandbox clone carries full history,
+-// `actions/checkout@v4` defaults to fetch-depth 1, and git reports a shallow
+-// boundary commit as introducing every file. The leg re-runs the suite on a
+-// depth-1 clone of the integration branch so that divergence is a gate finding
+-// instead of a post-merge surprise.
+-//
+-// The sim's oracle is a history-coupled suite: `git rev-list --count HEAD > 1`
+-// is true in any full clone of this repo and false at depth 1 — the smallest
+-// faithful stand-in for `git log -- <path>` collapsing on a shallow boundary.
+-import assert from 'node:assert/strict'
+-import fs from 'node:fs'
+-import os from 'node:os'
+-import path from 'node:path'
+-import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+-
+-const HISTORY_COUPLED = '#!/bin/bash\n[ "$(git rev-list --count HEAD)" -gt 1 ]\n'
+-
+-const wavesFor = (id) => [[{ id, title: 'create ' + id, files: [id + '.txt'], tier: 'standard',
+-  review: 'lean', writes: [id + '.txt'], commutes: [], body: 'sim task ' + id }]]
+-
+-const stubFor = (id) => (prompt, opts, cwd) => {
+-  const kind = opts.label.split(':')[0]
+-  if (kind === 'impl') {
+-    fs.writeFileSync(path.join(cwd, id + '.txt'), 'from ' + id + '\n')
+-    return doneImpl(cwd)
+-  }
+-  if (kind === 'review') return passReview()
+-  if (opts.label === 'integration') return cleanCritic()
+-  throw new Error('unexpected dispatch: ' + opts.label)
+-}
+-
+-// A repo with more than one commit at BASE, so the full-clone suite is green
+-// before the run starts (a red baseline would change the run's shape).
+-function twoCommitRepo(dir, checkScript) {
+-  makeRepo(dir, checkScript ? { 'check.sh': checkScript } : {})
+-  fs.writeFileSync(path.join(dir, 'b.txt'), 'second\n')
+-  gitSync(['add', '-A'], dir)
+-  gitSync(['commit', '-q', '-m', 'second'], dir)
+-  return dir
+-}
+-
+-// ── 1. a history-coupled suite: green on the full clone, RED at depth 1 ──────
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-shallow-red-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), HISTORY_COUPLED)
+-  const { run } = rig({ repo, runDir: path.join(tmp, 'run'), waves: wavesFor('T1'),
+-                        stub: stubFor('T1'), stamp: 'shallowred' })
+-  const report = await run()
+-
+-  assert.equal(report.baseline.passed, true, 'the full-clone baseline is green')
+-  assert.equal(report.tests.passed, true,
+-    'the driver\'s full-clone suite really passed: ' + report.tests.output)
+-  assert.ok(report.shallowSuite, 'the leg ran on a green adopted tree')
+-  assert.equal(report.shallowSuite.depth, 1)
+-  assert.equal(report.shallowSuite.command, 'bash check.sh')
+-  assert.equal(report.shallowSuite.passed, false,
+-    'the same suite fails on a depth-1 clone — the merge target does not reproduce the green')
+-
+-  // The gate channel: a red leg is a `manual` ack, which run-main's ackDecision
+-  // does NOT pre-authorize, so the run parks on real evidence. It must not
+-  // silently rewrite `tests`, which describes the full-clone run.
+-  const manual = report.deferredVerification.filter((d) => d.reason === 'manual')
+-  assert.equal(manual.length, 1, 'exactly one manual deferral: ' +
+-    JSON.stringify(report.deferredVerification))
+-  assert.ok(manual[0].deliverable.includes('depth-1 clone of ultra/integration-shallowred'))
+-  assert.ok(/fetch-depth 1/.test(manual[0].why), 'the ack says why CI will disagree')
+-  assert.ok(report.judgmentCalls.some((j) => j.startsWith('depth-1 leg:')),
+-    'the divergence is also on the judgment record')
+-}
+-
+-// ── 2. a depth-agnostic suite: the leg runs and agrees, adding no ack ────────
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-shallow-green-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), null)
+-  const { run } = rig({ repo, runDir: path.join(tmp, 'run'), waves: wavesFor('T2'),
+-                        stub: stubFor('T2'), stamp: 'shallowgreen' })
+-  const report = await run()
+-
+-  assert.equal(report.tests.passed, true)
+-  assert.equal(report.shallowSuite.passed, true, 'a suite that does not read history agrees')
+-  assert.deepEqual(report.deferredVerification, [], 'a green leg adds no ack')
+-  assert.ok(!report.judgmentCalls.some((j) => j.startsWith('depth-1 leg:')),
+-    'a green leg is silent on the judgment record')
+-}
+-
+-// ── 3. the leg is a real depth-1 clone, not a second full one — and it sits
+-// under clones/, the one path drive.mjs's evidence pull excludes ─────────────
+-// `git clone --depth` is IGNORED on a plain local path (it hardlinks the whole
+-// object store), so the `file://` form is load-bearing: without it the leg
+-// would certify a full clone and always agree with `tests`.
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-shallow-tree-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), null)
+-  const runDir = path.join(tmp, 'run')
+-  const { run } = rig({ repo, runDir, waves: wavesFor('T3'), stub: stubFor('T3'),
+-                        stamp: 'shallowtree' })
+-  await run()
+-  const shallow = path.join(runDir, 'clones', 'shallow')
+-  assert.ok(fs.existsSync(path.join(shallow, '.git', 'shallow')),
+-    'the leg cloned with a shallow boundary')
+-  assert.equal(gitSync(['rev-list', '--count', 'HEAD'], shallow), '1',
+-    'the leg\'s clone holds exactly one commit')
+-  assert.ok(fs.existsSync(path.join(shallow, 'T3.txt')),
+-    'and it is the integration branch tip, carrying the run\'s work')
+-}
+-
+-// ── 4. the opt-out ──────────────────────────────────────────────────────────
+-{
+-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-shallow-off-'))
+-  const repo = twoCommitRepo(path.join(tmp, 'repo'), HISTORY_COUPLED)
+-  const runDir = path.join(tmp, 'run')
+-  const { run } = rig({ repo, runDir, waves: wavesFor('T4'), stub: stubFor('T4'),
+-                        stamp: 'shallowoff', extraArgs: { shallowLeg: false } })
+-  const report = await run()
+-  // strictEqual on purpose: a loose `== null` would also accept `undefined`,
+-  // which is what an engine WITHOUT the leg returns — a check that cannot fail.
+-  assert.strictEqual(report.shallowSuite, null, 'shallowLeg:false skips the leg')
+-  assert.deepEqual(report.deferredVerification, [])
+-  assert.ok(!fs.existsSync(path.join(runDir, 'clones', 'shallow')), 'and clones nothing')
+-}
+-
+-console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_suite_passes.mjs b/fleet/tests/test_run_engine_suite_passes.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3827d8bfbfb5fc21c954575fd1d441a29e67c1a5
+--- /dev/null
++++ b/fleet/tests/test_run_engine_suite_passes.mjs
+@@ -0,0 +1,304 @@
++// fleet/tests/test_run_engine_suite_passes.mjs — #712 Task 1: the depth-1 leg
++// is gone; CI's depth-1 checkout keeps the guard.
++//
++// The claim: after a run whose adopted tree is green, no depth-1 clone was made
++// and no ack was manufactured for one — the leg is gone from the engine, its
++// record, its documents and its sims, and `.github/workflows/ci.yml`'s
++// default-depth checkout is what now predicts the history-coupled failure.
++//
++// How the legs count suite executions: the engine emits no event for a suite
++// run, so an event count cannot answer M1. The count comes from the SUITE
++// COMMAND itself — a `check.sh` written into the sim repo at `makeRepo` time
++// that appends `$PWD` and `$(git write-tree)` to an absolute log under the
++// sim's temp dir on every execution and then exits by its own rule. The
++// implementer stubs never run the suite and no sim task carries `proofTests`,
++// so every line of that log is one of the driver's executions, naming the
++// directory it ran in and the tree its index held.
++//
++// The six identifiers M5 sweeps for are assembled from fragments below on
++// purpose: this file is tracked under `fleet/`, so writing any of them out
++// whole here would make leg (e) unsatisfiable by construction.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { spawnSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++
++// fleet/tests/<this file> → the repository root the tracked-file legs read.
++const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
++
++// The six strings of M5, never spelled whole in this file.
++const SHALLOW_SUITE = 'shallow' + 'Suite'
++const SHALLOW_LEG = 'shallow' + 'Leg'
++const SHALLOW_DEFERRED = 'shallow' + 'Deferred'
++const RUN_SHALLOW_LEG = 'run' + 'ShallowLeg'
++const LEG_PHASE = 'Depth-1' + ' Leg'
++const LEG_CALL_PREFIX = 'depth-1' + ' leg:'
++const GONE = [SHALLOW_SUITE, SHALLOW_LEG, SHALLOW_DEFERRED, RUN_SHALLOW_LEG, LEG_PHASE,
++              LEG_CALL_PREFIX]
++
++// A suite command that logs where it ran, then decides by `rule`.
++const loggingCheck = (logPath, rule) =>
++  '#!/bin/bash\n' +
++  'printf \'%s\\t%s\\n\' "$PWD" "$(git write-tree 2>/dev/null)" >> ' + JSON.stringify(logPath) +
++  '\n' + rule + '\n'
++
++// The BASE suite rule (`makeRepo`'s own) and the history-coupled one: true in
++// any full clone of a two-commit repo, false at depth 1 — the smallest faithful
++// stand-in for a test that reads repository history.
++const BROKEN_RULE = '[ ! -f BROKEN ]'
++const HISTORY_COUPLED_RULE = '[ "$(git rev-list --count HEAD)" -gt 1 ]'
++
++// More than one commit at BASE, so the full-clone suite is green before the run
++// starts (a red baseline would change the run's shape).
++function twoCommitRepo(dir, checkScript) {
++  makeRepo(dir, { 'check.sh': checkScript })
++  fs.writeFileSync(path.join(dir, 'b.txt'), 'second\n')
++  gitSync(['add', '-A'], dir)
++  gitSync(['commit', '-q', '-m', 'second'], dir)
++  return dir
++}
++
++const wavesFor = (id) => [[{ id, title: 'create ' + id, files: [id + '.txt'], tier: 'standard',
++  review: 'lean', writes: [id + '.txt'], commutes: [], body: 'sim task ' + id }]]
++
++const countOf = (labels, label) => labels.filter((l) => l === label).length
++
++// Physical paths on both sides: bash resolves `$PWD` through getcwd(), and the
++// sim's temp root may itself be reached through a symlink.
++const real = (p) => { try { return fs.realpathSync(p) } catch { return p } }
++
++// One {dir, tree} per execution of the suite command, in execution order.
++const readLog = (logPath) => (fs.existsSync(logPath)
++  ? fs.readFileSync(logPath, 'utf8').split('\n').filter(Boolean)
++      .map((l) => { const [dir, tree] = l.split('\t'); return { dir, tree } })
++  : [])
++
++const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passes-' + tag + '-'))
++
++// ── (a) [M1] + (b) [M2] + the merged half of (d) [M4] — one run, read three
++// ways: no depth-1 clone, every suite execution in the integration clone, the
++// phases the engine announced, and one critic dispatch. ─────────────────────
++{
++  const tmp = mkTmp('merged')
++  const logPath = path.join(tmp, 'suite-runs.log')
++  const repo = twoCommitRepo(path.join(tmp, 'repo'), loggingCheck(logPath, BROKEN_RULE))
++  const runDir = path.join(tmp, 'run')
++
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T1.txt'), 'from T1\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++
++  // No knob is passed: an engine that reads no such arg must not be handed one.
++  const { run, integ, phases } = rig({ repo, runDir, waves: wavesFor('T1'), stub,
++                                       stamp: 'suitepassesa' })
++  const report = await run()
++
++  // (a)/M1 — the run this leg is about: a wave that merged on a green tree.
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    '(a)/M1 precondition: wave 1 was adopted — ' + JSON.stringify(report.waveMerges))
++  assert.equal(report.tests.passed, true,
++    '(a)/M1 precondition: the driver\'s suite on the adopted tree passed — ' +
++    report.tests.output)
++
++  const shallowDir = path.join(runDir, 'clones', 'shallow')
++  assert.equal(fs.existsSync(shallowDir), false,
++    '(a)/M1: `<runDir>/clones/shallow` exists — the engine still cuts a depth-1 clone ' +
++    'after a green wave; the leg is supposed to be gone')
++
++  const executions = readLog(logPath)
++  assert.ok(executions.length >= 1,
++    '(a)/M1 precondition: the suite command logged no execution at all — the log is the ' +
++    'only witness this leg has, so an empty one is a broken fixture, not a green run')
++  const wanted = real(integ)
++  const strays = executions.filter((e) => real(e.dir) !== wanted)
++  assert.deepEqual(strays, [],
++    '(a)/M1: the suite command ran outside ' + wanted + ' — every execution must happen in ' +
++    '<runDir>/clones/integration, and these did not: ' + JSON.stringify(strays))
++
++  // (b)/M2 — the phases announced, in order, with nothing between the wave and
++  // the review. `phases` is the rig\'s array beside `logs`, filled by the
++  // `phase` callback it passes to runEngine.
++  assert.deepEqual(phases, ['Setup', 'Wave 1', 'Integration Review'],
++    '(b)/M2: the phases announced on a one-wave run whose wave merged are not exactly ' +
++    'Setup, Wave 1, Integration Review (an engine that still announces `' + LEG_PHASE +
++    '` fails on the extra element; `undefined` means rig() does not return `phases` yet) — ' +
++    'got ' + JSON.stringify(phases))
++
++  // (d)/M4 — the critic is dispatched exactly once on a run whose wave merged.
++  assert.equal(countOf(labels, 'integration'), 1,
++    '(d)/M4: the completeness critic was not dispatched exactly once on a merged run — ' +
++    labels.join(','))
++}
++
++// ── (c) [M3] the history-coupled suite: green in the rig's full clones, red at
++// depth 1 — the run is clean, and the report has no key for the leg at all ───
++{
++  const tmp = mkTmp('coupled')
++  const logPath = path.join(tmp, 'suite-runs.log')
++  const repo = twoCommitRepo(path.join(tmp, 'repo'), loggingCheck(logPath, HISTORY_COUPLED_RULE))
++  const runDir = path.join(tmp, 'run')
++
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'T2.txt'), 'from T2\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++
++  const { run } = rig({ repo, runDir, waves: wavesFor('T2'), stub, stamp: 'suitepassesc' })
++  const report = await run()
++
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    '(c)/M3: the wave did not merge on a history-coupled suite that is green in every full ' +
++    'clone — ' + JSON.stringify(report.waveMerges))
++  assert.equal(report.tests.passed, true,
++    '(c)/M3: the driver\'s full-clone suite did not pass — ' + report.tests.output)
++
++  assert.equal(Object.hasOwn(report, SHALLOW_SUITE), false,
++    '(c)/M3: `report` still carries the `' + SHALLOW_SUITE + '` key — it must be ABSENT, ' +
++    'not null: a sim at BASE pinned null as "did not run", and an engine without the leg ' +
++    'returns no key at all (got ' + JSON.stringify(report[SHALLOW_SUITE]) + ')')
++
++  const manufactured = (report.deferredVerification || []).filter((d) =>
++    d && (d.reason === 'manual' || String(d.deliverable || '').startsWith('depth-1 clone of ')))
++  assert.deepEqual(manufactured, [],
++    '(c)/M3: an ack was manufactured for a depth-1 clone — the `manual` reason is the one ' +
++    'the gate does not pre-authorize, and a green run must not park on it: ' +
++    JSON.stringify(manufactured))
++  assert.deepEqual(report.deferredVerification, [],
++    '(c)/M3: `report.deferredVerification` is not [] on a clean run — ' +
++    JSON.stringify(report.deferredVerification))
++
++  const legCalls = (report.judgmentCalls || []).filter((j) => String(j).startsWith(LEG_CALL_PREFIX))
++  assert.deepEqual(legCalls, [],
++    '(c)/M3: a judgment call still starts with `' + LEG_CALL_PREFIX + '` — the leg still ran: ' +
++    JSON.stringify(legCalls))
++}
++
++// ── (d) [M4] the other half: nothing merged, so no critic is dispatched and
++// the report says so itself ─────────────────────────────────────────────────
++{
++  const tmp = mkTmp('blocked')
++  const logPath = path.join(tmp, 'suite-runs.log')
++  const repo = twoCommitRepo(path.join(tmp, 'repo'), loggingCheck(logPath, BROKEN_RULE))
++  const runDir = path.join(tmp, 'run')
++
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      return { status: 'BLOCKED', summary: 'sim: cannot proceed', startHead: doneImpl(cwd).startHead }
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++
++  const { run } = rig({ repo, runDir, waves: wavesFor('T3'), stub, stamp: 'suitepassesd' })
++  const report = await run()
++
++  assert.equal(report.waveMerges.some((m) => m && m.status === 'MERGED'), false,
++    '(d)/M4 precondition: no wave merged — ' + JSON.stringify(report.waveMerges))
++  assert.equal(countOf(labels, 'integration'), 0,
++    '(d)/M4: the completeness critic was dispatched on a tree still at BASE — ' +
++    labels.join(','))
++  assert.ok((report.completenessFindings || []).some((f) =>
++    f && String(f.detail || '').includes('no wave merged')),
++    '(d)/M4: the report carries no `no wave merged` finding — ' +
++    JSON.stringify(report.completenessFindings))
++}
++
++// ── (e) [M5] the deletion is real: neither sim file survives, and no tracked
++// file of the four directories names the leg. Same sweep as the Proof's first
++// two `Run:` commands, run here so the exam fails on a half-done deletion. ───
++{
++  const sweep = spawnSync('git',
++    ['grep', '-n', '-e', SHALLOW_SUITE, '-e', SHALLOW_LEG, '-e', SHALLOW_DEFERRED,
++     '-e', RUN_SHALLOW_LEG, '-e', LEG_PHASE, '-e', LEG_CALL_PREFIX,
++     '--', 'fleet', 'skills', 'tests', '.github', ':!tests/fixtures'],
++    { cwd: REPO_ROOT, encoding: 'utf8' })
++  assert.equal(sweep.error, undefined, '(e)/M5: the sweep could not run: ' + sweep.error)
++  assert.equal(String(sweep.stdout || ''), '',
++    '(e)/M5: a tracked file under fleet/, skills/, tests/ or .github/ still names the leg ' +
++    '(the knob in one of the thirteen sims, or the row in report-format.md, counts):\n' +
++    String(sweep.stdout || ''))
++  assert.equal(sweep.status, 1,
++    '(e)/M5: `git grep` exited ' + sweep.status + ' rather than 1-for-no-match — ' +
++    String(sweep.stderr || ''))
++
++  for (const p of ['fleet/tests/test_run_engine_shallow.mjs',
++                   'fleet/tests/test_run_engine_depth1_beside_critic.mjs']) {
++    assert.equal(fs.existsSync(path.join(REPO_ROOT, p)), false,
++      '(e)/M5: ' + p + ' is still in the tree — both sims are deleted outright')
++  }
++
++  const reportFormat = fs.readFileSync(
++    path.join(REPO_ROOT, 'skills/ultrapowers/references/report-format.md'), 'utf8')
++  assert.equal(reportFormat.includes(SHALLOW_SUITE), false,
++    '(e)/M5: report-format.md still carries the leg — both its schema entry and its field ' +
++    'table row go, and the record must not name a field the engine no longer returns')
++}
++
++// ── (f) [M6] CI keeps the guard: the checkout comment names #712, the file has
++// dropped the old reading, and no line sets a fetch-depth key ───────────────
++{
++  const ciPath = path.join(REPO_ROOT, '.github/workflows/ci.yml')
++  const ciLines = fs.readFileSync(ciPath, 'utf8').split('\n')
++  const idx = ciLines.findIndex((l) => l.includes('uses: actions/checkout'))
++  assert.ok(idx >= 0, '(f)/M6: ci.yml has no `uses: actions/checkout` line at all')
++
++  const above = ciLines.slice(Math.max(0, idx - 8), idx)
++  assert.ok(above.some((l) => l.includes('#712')),
++    '(f)/M6: none of the eight lines directly above the `uses: actions/checkout` line names ' +
++    '#712 — the comment has to say the depth-1 checkout IS the guard now that #712 deleted ' +
++    'the engine\'s leg (a #712 written elsewhere in the file does not satisfy this):\n' +
++    above.join('\n'))
++
++  const gateLeg = ciLines.filter((l) => l.includes('gate leg'))
++  assert.deepEqual(gateLeg, [],
++    '(f)/M6: ci.yml still describes the checkout as predicting a gate leg that no longer ' +
++    'exists: ' + JSON.stringify(gateLeg))
++
++  const depthKeys = ciLines.filter((l) => /^[ \t]+fetch-depth:/.test(l))
++  assert.deepEqual(depthKeys, [],
++    '(f)/M6: a line of ci.yml sets a fetch-depth key — the default depth is the guard, so ' +
++    'the key stays unset (a comment naming it is not a key): ' + JSON.stringify(depthKeys))
++  assert.ok(ciLines[idx].includes('actions/checkout@v7'),
++    '(f)/M6: the checkout step is no longer actions/checkout@v7 — only the comment changes: ' +
++    ciLines[idx])
++
++  // The fourth and fifth `Run:` legs, executed here too: the sibling sim prints
++  // its sentinel with its knob gone, and the doc pin passes as the lens over
++  // the four operator documents.
++  const cleanSim = spawnSync('node', ['fleet/tests/test_run_engine_integrated_clean.mjs'],
++    { cwd: REPO_ROOT, encoding: 'utf8' })
++  assert.ok(String(cleanSim.stdout || '').includes('ALL TESTS PASSED'),
++    '(f)/M6: fleet/tests/test_run_engine_integrated_clean.mjs did not print its sentinel ' +
++    'once its knob was removed (exit ' + cleanSim.status + '):\n' +
++    String(cleanSim.stdout || '') + String(cleanSim.stderr || ''))
++
++  const docPin = spawnSync('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'],
++    { cwd: REPO_ROOT, encoding: 'utf8' })
++  assert.equal(docPin.status, 0,
++    '(f)/M6: tests/test_docs_agree_with_code.py failed — the operator documents name a ' +
++    'mechanism that is not there:\n' + String(docPin.stdout || '') + String(docPin.stderr || ''))
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index a6cd511351e05a5876e9c6233c18d6b5ca8fbfa6..0180ae969beec1e4399951bf4635725c9adb7f47 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -30,13 +30,12 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+       "reviewerMs": {"type":"integer"}, "blockingFindings": {"type":"integer"},
+       "blockingPerReviewerMinute": {"type":"number"}, "pairRounds": {"type":"integer"},
+       "r2MarginalBlocking": {"type":"integer"} } },
+-    "shallowSuite": { "oneOf": [{"type":"null"}, {"type":"object", "properties":
+-      { "depth": {"type":"integer"}, "command": {"type":"string"}, "passed": {"type":"boolean"}, "output": {"type":"string"} }}] },
+     "acceptance": { "oneOf": [{"type":"null"}, {"type":"object", "properties":
+       { "mode": {"type":"string","enum":["waived","sealed","suite"]}, "reason": {"type":"string"},
+         "passed": {"type":["boolean","null"]}, "sealId": {"type":"string"},
+         "status": {"type":"string"}, "exitCode": {"type":"integer"}, "output": {"type":"string"} }}] },
+-    "baseline": { "type": "object", "properties": { "passed": {"type":"boolean"}, "output": {"type":"string"} } },
++    "baseline": { "oneOf": [{"type":"null"}, {"type":"object", "properties":
++      { "passed": {"type":"boolean"}, "output": {"type":"string"} }}] },
+     "waveMerges": { "type": "array", "items": { "type": "object",
+       "properties": { "wave": {"type":"integer"}, "status": {"type":"string"}, "headSha": {"type":"string"},
+         "command": {"type":"string"}, "detail": {"type":"string"}, "branches": {"type":"array","items":{"type":"string"}} } } },
+@@ -92,12 +91,11 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].examEdited` | no | Present on every row returned after the implementer when the wave-0 examiner recorded an exam (#553): the `proofTests` paths whose blob no longer matches what the examiner left — edited by a fix round (since #653 the implementer never holds the exam while it works, so only a fix round can move it) — `[]` when none moved. The driver never refuses the edit: it names the paths to the referee as `EXAM EDITED` and pushes one matching `judgmentCalls` entry; the referee decides whether the exam was wrong (reviewer.md rule 8). Absent when no exam was recorded. |
+ | `tasks[].baseCorrected` | no | The #314 provisioning-drift record. `null` when the implementer's reported `startHead` (its pre-work `git rev-parse HEAD`, a required implementer-schema field) equalled the dispatched `BASE`; `{ from, to }` when it differed and the implementer reset to `BASE` (`from` = the sha the worktree was provisioned at, `to` = `BASE`); absent when no implementer reply was received (`agent-error`, infra-park). Engine-derived, never model-typed; the predicate is exact equality, not ancestry. Every correction also pushes an `autonomy` judgment call naming both shas; a reply with no `startHead` (engine-bypass class — the schema requires it) pushes a `degradation` call `BASE anchoring unverified` instead. Fix-round replies are not compared: their `BASE` is the prior implementation HEAD by design. |
+ | `tests` | yes | Result of the suite run on the integration branch |
+-| `shallowSuite` | no | #465 — the same suite re-run on a **depth-1 clone** of the integration branch, the shape `actions/checkout` gives the merge target. `null` when the leg did not run (no adopted tree, a red `tests`, or `args.shallowLeg: false`). A red leg does **not** fail `tests` (the full-clone run really passed); it appends a `deferredVerification` item with reason `manual`, because whether a shallow degradation is a coupled test or correct consumer behaviour is a human call |
+ | `integratedRuns` | no | The driver's own execution of every merged task's Proof `Run:` commands, re-run on the adopted integration tree — the evidence the completeness critic reads as INTEGRATED RUN EVIDENCE. One item per command, `{ task, cmd, exit, stdout }`: the task id, the command verbatim, its exit code, and its combined stdout/stderr tail. `[]` when no merged task declared a `Run:` proof and when no tree was adopted — the two cases are indistinguishable here, so read it beside `waveMerges`. A non-zero `exit` is a blocking completeness finding: a task's Proof passed against its own clone but does not hold on the integrated tree, which is precisely what the per-task reviews cannot see. Because the driver ran these itself, they are settled — a cannot-verify item asking for their re-execution is answered by this field, not deferred |
+ | `integratedChecks` | no | The driver's own execution of every Global Constraints `Check:` command on the adopted integration tree — the evidence the completeness critic reads as INTEGRATED CHECK EVIDENCE. One item per command, `{ cmd, exit, stdout, minor }`: the command verbatim, its exit code, its combined stdout/stderr tail, and whether the run declared it minor. `[]` when the run declared no checks and when no tree was adopted — the two cases are indistinguishable here, so read it beside `waveMerges`. A non-zero `exit` on a non-minor check is a blocking completeness finding (`integrated Check: <cmd> exited <n> on the adopted tree`): the constraint held in every task's own clone, where each referee was right about the tree it read, and the fold broke it — which is precisely what no per-task review can see. A non-zero minor check is a judgment call and nothing more |
+ | `reviewEconomy` | no | What a reviewer-minute bought. `reviewerMs` — the summed wall clock of every `review:` agent call, each timed INDIVIDUALLY, so a concurrent pair contributes both durations (both were paid for; a per-round maximum would report a pair as costing what one reviewer cost). `blockingFindings` — how many blocking issues the REFEREES returned, de-duplicated by `severity|detail` across the run; the driver's own `Run:`/`Check:` reds are excluded, because charging the driver's findings to the referee flatters the ratio. `blockingPerReviewerMinute` — `blockingFindings / (reviewerMs / 60000)`, and `0` when no reviewer ran. `pairRounds` — how many review rounds dispatched a pair. `r2MarginalBlocking` — across those rounds, how many blocking issues the second reviewer returned that the first did not: the number that says whether the pair profile earned its second bill |
+ | `acceptance` | no | Sealed acceptance exam result, placed directly after the test result in presentation order. `null` when no exam was requested. `{ mode: 'waived', reason, passed: null }` when the orchestrator waived the exam. `{ mode: 'sealed', … , status: 'PENDING_GATE', passed: null }` is still emitted for a `sealed` line (frozen compiler vocabulary) but the gate reports it `BLOCKED` — sealed acceptance is not administered (One Driver Phase 0, row 7). `{ mode: 'suite', passed, reason }` when the committed test suite is the acceptance authority — `passed` mirrors `tests.passed` (the integration test result); no held-out exam is dispatched. A `passed: false` result pushes a judgment call requiring the gate to NOT Approve. |
+-| `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
++| `baseline` | no | Result of the suite run on BASE's tree in the integration clone — run **only when a wave's candidate suite came back red**, once per run, before that wave's first reconcile dispatch. `null` when no wave was red (a run whose every wave went green never runs the suite on BASE at all, so there is nothing to report); `{ passed, output }` when a red wave bought it, where `passed: false` means BASE itself was red and the wave's red is inherited rather than the diff's. A red baseline draws a `baseline:` judgment call and a `Baseline:` line in the completeness critic's brief; it changes nothing about the wave's own reconcile/`MERGED`/`TEST_FAILED` outcome |
+ | `waveMerges` | no | One entry per wave's integration merge: `wave`, `status`, `headSha`, `command`, `detail`, and `branches` — the task IDs submitted to the merge, listed even when it failed. Surfaces *how* integration went, not just whether it failed; status semantics are enumerated once under **`waveMerges[].status` values** below. **`waveMerges` may be empty or absent** when the budget was exhausted before wave 1's merge, when all waves were SKIPPED, or when the workflow was interrupted before any merge completed. Consumers — the Step-5 gate and display code — MUST degrade gracefully: check that `waveMerges` is present and non-empty and that `waveMerges[last].headSha` exists before indexing it; a missing or empty `waveMerges` is `BLOCKED` at the Step-5 gate as "merge-sha guard unavailable", never a crash. |
+ | `frontier` | no | One entry per wave that took the **contended** merge path (frontier mode) — recorded whether the wave adopted its folded candidate or fell back: whenever the fold CLI ran, the on-disk `frontier/wave-<n>/` directory is the durable record the production canary harvests. Absent or empty on every run without a contended wave, including every `--overlap serialize` compile, where no wave can contain intersecting `files`. Fields, all sourced from the contended dispatches' reply scalars — no payload is relayed through an agent (#36): `wave` (1-based wave number); `foldLogPath` (the wave's `fold_log.jsonl`, the self-sufficient event record documented in `kernel/FOLD_LOG.md`); `conflictsIndex` (the `conflicts.json` beside it — the single record of every conflict and every park, with its `dispatchable()` verdict and reason); `selfChecks` (the fold CLI's two live self-checks, **sourced from the completing CLI reply** — the CLI runs them inside whichever call completes the wave, so a stop reply carries none; `ok`, or a named failure that routed the wave to fallback, or the empty string when no reply ever attested; the engine never claims a fold succeeded without them); `foldCliCalls` (how many fold-CLI invocations this wave drove — 1 fold + N resolves + 1 materialize on a clean run, fewer when it fell back. The incremental protocol makes N unbounded by the conflict total, because a drained stop folds on inside the same `resolve` call, so this is the wave's real CLI cost rather than a number derivable from the conflict count); `foldCliWallTimeSec` (the **sum** of the wall clocks the STEP replies reported across every leg — fold, each resolve, and materialize — reported on its own line so the first real-repo reading is not buried inside a passing test result; `null` when no reply timed its invocation); `autoResolved` (how many conflicts the kernel resolved **in process** against the wave's `Commutes:` contract — every writer declared the path and every hunk segment was an addition, so the fold never stopped on it and no resolver was dispatched. **Summed** across the fold and resolve legs, since the kernel folds on past a contract-resolved conflict inside any call; `0` when the wave declared no `Commutes:`, when no declared path conflicted, or when no reply carried the count. Read it beside `resolverTranscripts`: it is the resolver dispatches the contract *bought*); `resolverTranscripts` (one entry per resolver dispatch — `conflict` (the conflicts-index `i`), `attempt`, `path`, `epoch`, `hunksFile`, `replyDir`, `status`, `notes` — recorded verbatim as the A/B grading surface). `foldLogPath` and `conflictsIndex` are empty strings when the fold dispatch threw, returned no reply at all, or returned a reply that carried no paths — in the first two cases the directory the paths would name may never have been written, since the CLI itself may never have run. Fallback **reasons** are **not** recorded here: each one is a `judgmentCalls` entry naming its reason plus the wave's `waveMerges` result — one fact, one record |
+ | `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished`. Note: `DEFERRED` waves are NOT recorded here — a budget outcome is not a merge failure |
+@@ -125,7 +123,7 @@ When the workflow completes, the main agent renders the report as a concise huma
+ 
+ 1. **Integration branch** — name of the branch ready for review.
+ 2. **Wave plan** — one line per wave listing which tasks ran in parallel and the wave sequence.
+-3. **Baseline** — whether the suite was green before any task ran; a red baseline reframes every later test result.
++3. **Baseline** — whether the suite is green on BASE itself, run only when a wave's candidate suite was red and so `null` (nothing to render — omit the line) on a run whose every wave went green; a red baseline reframes every later test result.
+ 4. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes; include tier, review depth, and fix iterations so the human can judge cost vs. benefit per task.
+ 5. **Wave merges** — one line per wave: merge `status`, the task IDs merged, and the integration `headSha` (or the conflict/failure detail). Lets the human see the integration sequence, not just the final state.
+ 6. **Blocked waves** — any wave whose merge failed after reconciliation, or that cascaded conservatively (zero mergeable branches with `args.edges` omitted), with the failure detail; everything cascade-blocked behind it appears under unfinished. Omit the section only when the array is empty.

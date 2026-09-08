@@ -1,0 +1,202 @@
+{
+  "integrationBranch": "ultra/integration-run-51",
+  "baseSha": "5acdb723ce8d9e2b3069141db9ba7e91bf8734dc",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "28f6bdacf3677df9d35f623a3713712300665e6f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-51/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/tests/_engine_helpers.mjs:54 \u2014 the reworded `extraArgs` comment now names `patchInput` as an example knob, but `rig()` sets `patchInput: patchesDir` itself in `args` (line 72); it is a rig default, not something a sim passes through `extraArgs`. After this diff the knobs sims actually pass are `constraintChecks` and `globalConstraints`. Reword to name those so the comment does not point at a key nobody passes here. (The requirement \u2014 that the comment stop naming the deleted shallowLeg knob \u2014 is met; this is accuracy of the replacement.); fleet/tests/test_run_engine_pre_review.mjs \u2014 five knob removals leave the continuation line indented to the column the deleted `shallowLeg: false,` used to occupy, e.g. `extraArgs: {` on one line and `                             constraintChecks: [...] } })` on the next (hunks at ~183, ~245, ~360, ~538, ~668, plus ~852). Valid JS and no assertion changes, but it is a visible mechanical-edit artifact; collapsing each to a single `extraArgs: { constraintChecks: ... }` line would leave the file reading as it did before the knob existed.; fleet/tests/test_run_engine_suite_passes.mjs leg (f) re-executes two of the Proof's `Run:` commands in-process \u2014 it spawns a full `node fleet/tests/test_run_engine_integrated_clean.mjs` and a `python3 -m pytest tests/test_docs_agree_with_code.py` from inside a sim that `tests/test_fleet_suite.py` already globs and runs on its own (it globs `fleet/tests/test_*.mjs`, so both the exam and integrated_clean run anyway). The driver's RUN EVIDENCE settles both commands, so this is duplicated wall time under the committed suite rather than added coverage. Not wrong \u2014 the plan's leg (f) text does name those `Run:` results \u2014 but the file-level assertions in (e)/(f) (the git-grep sweep, the two absent paths, the ci.yml reads) are the part the exam uniquely adds.; unverified: GLOBAL CONSTRAINT \"No sim this plan adds or edits ... embeds a 40-hex commit sha\" carries no `Check:`, and read literally it is unsatisfiable for this task: three sims it must edit to remove the `shallowLeg` knob already embed 40-hex byte-pins at BASE (fleet/tests/test_run_engine_proof_runs.mjs:54, test_run_engine_integrated_runs.mjs:56, test_run_engine_review_economy.mjs:47), and another constraint forbids disturbing their other assertions. The diff itself adds no sha \u2014 the new exam file reads every sha it needs from its own rig at run time \u2014 so I read the constraint as \"no sha this plan ADDS\" and the submission satisfies it. Flagging the wording so the operator settles the reading rather than a fix round chasing pre-existing pins.; Exam leg (f) in fleet/tests/test_run_engine_suite_passes.mjs re-executes two of the Proof's own `Run:` commands *inside* the node sim: `spawnSync('node', ['fleet/tests/test_run_engine_integrated_clean.mjs'])` and `spawnSync('python3', ['-m','pytest','-q','tests/test_docs_agree_with_code.py'])`. Both already run as driver `Run:` legs (RUN EVIDENCE shows each exit 0), and fleet/tests/test_fleet_suite.py discovers this file by glob and runs it under a 300 s per-sim hang cap whose comment explicitly names sim-nesting as the reason that cap had to be raised (`test_sandbox_boot_merge.mjs` \"is the sum of eight sims\"). This exam now inherits the same growth: its wall is its own three rig() runs plus a full sibling engine sim plus a pytest process spawned from inside a pytest-driven node process. It also couples a node sim to python3/pytest being on PATH, so on a box without them the exam fails for a reason unrelated to the tree it grades. The four file-content assertions above them (#712 in the eight lines above `uses: actions/checkout`, no `gate leg`, no `fetch-depth:` key, checkout@v7) are the part of leg (f) only this file can make; the two spawns are duplication. Consider dropping the two spawnSync blocks and leaving those two legs to the driver's `Run:` evidence.; Residue from the mechanical `shallowLeg: false` removals. fleet/tests/test_run_engine_exam_evidence.mjs:164 and fleet/tests/test_run_engine_exam_together.mjs:172 are now `extraArgs: { ...extraArgs }` \u2014 a spread of an object into a fresh copy of itself, which is what is left when the only other key is deleted; `extraArgs,` says the same thing. Several sites in fleet/tests/test_run_engine_pre_review.mjs (the pr3, pr5, pr9, pr12 and ub2 rigs) are left as `extraArgs: {` on one line with the surviving `constraintChecks:` still indented to where the deleted knob used to sit, e.g. `extraArgs: {` / `                             constraintChecks: [...] } })`. Both are cosmetic and neither changes behaviour \u2014 the exam and the suite are green \u2014 but they read as an unfinished edit in files a future reader will diff against BASE.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "cd7ed2b5db79e17358b3c3e0fbda6ed47ab60fb4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-51/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: `fleet/tests/test_run_engine_shallow.mjs:52` asserts `assert.equal(report.baseline.passed, true, 'the full-clone baseline is green')` on an all-green run. After this task `report.baseline` is `null` on such a run, so that line now throws a TypeError. The file is the sibling's (Task 1's Files, which `git rm`s it), so no edit inside this task's FILES can answer it and this patch must not touch it. The declared acceptance is the committed suite, so that suite only goes green once Task 1's deletion lands on the folded tree; running `node fleet/tests/test_run_engine_shallow.mjs` on the folded tree (where the file is absent) is what settles it. Nothing else in the tree consumes `report.baseline` as an object: `fleet/tests/test_run_engine_cap_width.mjs:183` (`shells.length >= 2`) still holds because that scenario's candidate is red, so the baseline runs beside it, and the run-wide-command `deepEqual` at :184 holds because the baseline uses `testCmd` verbatim; the four operator documents name no baseline mechanism (`git grep` finds `baseline` only in `report-format.md`), and `tests/test_docs_agree_with_code.py` pins none of the rewritten sentences.; Stale prose left behind in a sibling-owned sim: `fleet/tests/test_run_engine_integrated_clean.mjs:4` (\"The driver runs the suite in the integration clone (baseline, then the candidate suite of every wave)\") and `:39-40` (\"it plants every artifact on EVERY execution \u2014 once at baseline, once more for the wave candidate\") describe the eager Setup baseline this task deletes; that sim's candidates go green, so the suite now executes there once, not twice. The assertions are unaffected (they count planted directories, `REMOVED_COUNT = 3`, not executions), so nothing fails \u2014 only the comments are now false. The path is in SIBLING FILES and outside this task's FILES, so this diff correctly leaves it alone; the reword belongs to whichever task owns that file. Named here so the drift is on the record rather than discovered later.; unverified: `fleet/tests/test_run_engine_shallow.mjs:52` asserts `assert.equal(report.baseline.passed, true, 'the full-clone baseline is green')` on an all-green run. With this diff `report.baseline` is `null` on such a run, so that line throws a TypeError \u2014 the sim is red in this task's own clone. It only stays green on the folded tree because the sibling task (Task 1) deletes `fleet/tests/test_run_engine_shallow.mjs` outright, and that file is not in this task's FILES, so no edit inside this tree can answer it. Nothing in this task's Context names the pin, so it is worth recording as a coupling the plan carries rather than a defect the implementer left. What would settle it: the driver's integrated suite run on the folded tree (Task 1 + Task 2 together), where the file is absent; if Task 1 is dropped or parked, the committed suite goes red and this line is why.; Stale comment left by the behavior change, in a file outside this task's FILES: `fleet/tests/test_run_engine_integrated_clean.mjs:4` (\"The driver runs the suite in the integration clone (baseline, then the \u2026\") and `:40` (\"it plants every artifact on EVERY execution \u2014 once at baseline, once more for the wave candidate\"). That sim's wave is green, so after this diff the suite no longer runs on BASE there at all and the cache litter comes from the candidate execution alone; the assertions still hold (they count artifacts, not executions), only the prose is now wrong. The sibling task already edits that file to drop its `shallowLeg` knob, so the reword belongs there. `fleet/tests/test_run_engine_cap_width.mjs:183`'s \"baseline + candidate\" comment is checked and still accurate \u2014 that scenario's candidate is red, so the baseline runs beside it and `shells.length >= 2` holds with every entry the run-wide command.; concern: sibling-owned-red: `python3 -m pytest -n 3` ends 1 failed, 1665 passed. The single failure is `fleet/tests/test_run_engine_shallow.mjs:52` \u2014 `assert.equal(report.baseline.passed, true)` now throws `TypeError: Cannot read properties of null`. That file is a SIBLING FILE (the parallel task deletes the depth-1/`shallowSuite` leg, which is that whole sim), it is not in my FILES, and my task's Context enumerates the pins re-scoped here (`test_run_engine.mjs:75` only) without naming it. I left it untouched rather than colliding with the sibling; on the folded tree it disappears with the leg. Everything else in the suite is green, including `test_run_engine_cap_width.mjs:183` (`shells.length >= 2`), which still holds because that scenario's candidate is red so the baseline runs beside it.; concern: comment-drift-out-of-scope: three prose comments in `fleet/run-engine.mjs` described the Setup-time baseline (the SETUP banner at ~871, the cache-sweep note at ~508, the bootstrap note at ~887). I updated their wording to match the lazy shape. `fleet/tests/test_run_engine_integrated_clean.mjs` carries the same stale phrasing (\"once at baseline, once more for the wave candidate\") in comments only \u2014 its assertions still pass and the file is a sibling's, so I left it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-51/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 418.24s (0:06:58) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "bash -c '! git grep -q -e shallowSuite -e shallowLeg -e shallowDeferred -e runShallowLeg -e \"Depth-1 Leg\" -e \"depth-1 leg:\" -- fleet skills tests .github \":!tests/fixtures\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'test ! -e fleet/tests/test_run_engine_shallow.mjs && test ! -e fleet/tests/test_run_engine_depth1_beside_critic.mjs'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'grep -B8 \"uses: actions/checkout\" .github/workflows/ci.yml | grep -q \"#712\" && ! grep -q \"gate leg\" .github/workflows/ci.yml && ! grep -qE \"^[[:space:]]+fetch-depth:\" .github/workflows/ci.yml'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'node fleet/tests/test_run_engine_integrated_clean.mjs | grep -q \"ALL TESTS PASSED\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.08s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "grep -q '\"baseline\": { \"oneOf\"' skills/ultrapowers/references/report-format.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c 'grep -E \"^\\| .baseline. \\|\" skills/ultrapowers/references/report-format.md | grep null | grep -q \"only when a wave\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c 'grep -E \"^3\\. \" skills/ultrapowers/references/report-format.md | grep null | grep -q \"only when a wave\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c '! grep -q \"already failing before any task ran\" fleet/run-engine.mjs && grep -q \"the suite is RED on BASE\" fleet/run-engine.mjs'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "bash -c 'node fleet/tests/test_run_engine.mjs | grep -q \"ALL TESTS PASSED\"'",
+      "exit": 0,
+      "stdout": "role prose size: README.md = 288 words\nrole prose size: critic.md = 632 words\nrole prose size: examiner.md = 411 words\nrole prose size: fix.md = 355 words\nrole prose size: implementer.md = 478 words\nrole prose size: reconcile.md = 217 words\nrole prose size: resolver.md = 248 words\nrole prose size: reviewer.md = 934 words\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ".......................                                                  [100%]\n23 passed in 0.07s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/ultra_run.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 864213,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n.............s.......................................................... [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 418.52s (0:06:58) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 391.80s (0:06:31) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "4319f63ea615595fdfdc8b9b6a06f00f44ef3c7f",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-51/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-51/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.274,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 \u2014 `.github/workflows/ci.yml`: the depth-1 checkout as the standing guard for a history-coupled test",
+      "reason": "external",
+      "why": "The file is present and structurally settled here \u2014 leg (f) of `fleet/tests/test_run_engine_suite_passes.mjs` and the driver's own Run: pin that `#712` sits within the eight lines above `uses: actions/checkout`, that `gate leg` appears nowhere, that no line sets a `fetch-depth:` key, and that the step is still `actions/checkout@v7`. What cannot be executed in this sandbox is the workflow itself: whether GitHub Actions' default-depth-1 checkout actually reproduces the #465 class the deleted engine leg used to catch is only observable on a PR run against the GitHub Actions service, which is unreachable from here. The step's behavior is unchanged from BASE (only the comment was rewritten), so nothing new was introduced \u2014 but the Claim's assertion that CI keeps the guard is confirmable only on the first PR run."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: sibling-owned-red: `python3 -m pytest -n 3` ends 1 failed, 1665 passed. The single failure is `fleet/tests/test_run_engine_shallow.mjs:52` \u2014 `assert.equal(report.baseline.passed, true)` now throws `TypeError: Cannot read properties of null`. That file is a SIBLING FILE (the parallel task deletes the depth-1/`shallowSuite` leg, which is that whole sim), it is not in my FILES, and my task's Context enumerates the pins re-scoped here (`test_run_engine.mjs:75` only) without naming it. I left it untouched rather than colliding with the sibling; on the folded tree it disappears with the leg. Everything else in the suite is green, including `test_run_engine_cap_width.mjs:183` (`shells.length >= 2`), which still holds because that scenario's candidate is red so the baseline runs beside it.",
+    "task 2: comment-drift-out-of-scope: three prose comments in `fleet/run-engine.mjs` described the Setup-time baseline (the SETUP banner at ~871, the cache-sweep note at ~508, the bootstrap note at ~887). I updated their wording to match the lazy shape. `fleet/tests/test_run_engine_integrated_clean.mjs` carries the same stale phrasing (\"once at baseline, once more for the wave candidate\") in comments only \u2014 its assertions still pass and the file is a sibling's, so I left it.",
+    "task 2: examiner: (f), sixth Run: `python3 -m pytest -q tests/test_docs_agree_with_code.py` \u2014 Encoded only as the driver's own Run: leg, not re-executed from the node exam. It is green at BASE and green after, so spawning pytest from the exam adds no red and would let a missing/differently-installed pytest surface as an exam failure that does not read as the absent implementation. The other five Run: legs of (f) are encoded as live file assertions in the exam."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

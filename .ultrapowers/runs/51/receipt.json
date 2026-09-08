@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -77,7 +77,7 @@
             "none"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the rig's new phase array and the deletions are read by the exam and by the operator, never by a task"
+            "nothing a sibling consumes — the rig's new phase array and the deletions are read by the exam and by the operator, never by a task"
           ]
         }
       },
@@ -97,7 +97,7 @@
             "none"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the report field's new value and the two log literals are read by the exam and by the operator, never by a task"
+            "nothing a sibling consumes — the report field's new value and the two log literals are read by the exam and by the operator, never by a task"
           ]
         }
       }
@@ -145,7 +145,7 @@
               "none"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the rig's new phase array and the deletions are read by the exam and by the operator, never by a task"
+              "nothing a sibling consumes — the rig's new phase array and the deletions are read by the exam and by the operator, never by a task"
             ]
           },
           "tier": null,
@@ -199,7 +199,7 @@
               "none"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the report field's new value and the two log literals are read by the exam and by the operator, never by a task"
+              "nothing a sibling consumes — the report field's new value and the two log literals are read by the exam and by the operator, never by a task"
             ]
           },
           "tier": null,
@@ -235,7 +235,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the two Checks above are its pin; what no\n  command decides is the meaning: the gate's own acceptance suite (`run_acceptance.sh\n  --suite-gate`) still executes on every run, and `receipt.json`'s `testCmd` is still the plan's\n  command, never a wrapper \u2014 the `--validate-knobs` preflight in `ultra_run.py` runs as at BASE.\n- No sim this plan adds or edits compares the tree to BASE, reads `ULTRA_BASE` as a base to diff\n  against, or embeds a 40-hex commit sha; every sha a leg asserts is read from the sim's own\n  repository at run time.\n- The run record stays data: the existing event kinds (`engine:phase`, `engine:log`,\n  `driver:proof-run`, `driver:exam-run`, `driver:check-run`, `driver:integrated-run`,\n  `driver:integrated-check`, `driver:integrated-clean`, `driver:exam-handoff`) keep their BASE\n  fields, and no new event kind is added \u2014 the engine emits no event for a suite execution at\n  BASE and emits none after this plan.\n- `report.tests` and `report.acceptance` keep their BASE shape and meaning: `tests` is the\n  driver's last suite result on the adopted tree, `acceptance.passed` mirrors `tests.passed`.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped or deleted with what replaces them; the new legs\n  sit in the exam file named for their surface.\n- The four operator documents name no mechanism that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens; both tasks run it).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The verification periphery is frozen (0.1.0) and the two Checks above are its pin; what no\n  command decides is the meaning: the gate's own acceptance suite (`run_acceptance.sh\n  --suite-gate`) still executes on every run, and `receipt.json`'s `testCmd` is still the plan's\n  command, never a wrapper — the `--validate-knobs` preflight in `ultra_run.py` runs as at BASE.\n- No sim this plan adds or edits compares the tree to BASE, reads `ULTRA_BASE` as a base to diff\n  against, or embeds a 40-hex commit sha; every sha a leg asserts is read from the sim's own\n  repository at run time.\n- The run record stays data: the existing event kinds (`engine:phase`, `engine:log`,\n  `driver:proof-run`, `driver:exam-run`, `driver:check-run`, `driver:integrated-run`,\n  `driver:integrated-check`, `driver:integrated-clean`, `driver:exam-handoff`) keep their BASE\n  fields, and no new event kind is added — the engine emits no event for a suite execution at\n  BASE and emits none after this plan.\n- `report.tests` and `report.acceptance` keep their BASE shape and meaning: `tests` is the\n  driver's last suite result on the adopted tree, `acceptance.passed` mirrors `tests.passed`.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped or deleted with what replaces them; the new legs\n  sit in the exam file named for their surface.\n- The four operator documents name no mechanism that is not there\n  (`tests/test_docs_agree_with_code.py` is the lens; both tasks run it).\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
@@ -254,11 +254,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-51/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-51/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-51/acceptance.log"
 }

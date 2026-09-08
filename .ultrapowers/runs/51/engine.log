@@ -3,3 +3,16 @@ run-main: preflight
 run-main: tiers — 2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 5acdb723ce8d9e2b3069141db9ba7e91bf8734dc; 2 task clone(s) + integration
 run-main: engine — waves 2, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: acceptance-capture — gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-51/acceptance.log
+run-main: gate
+run-main: acks — 1 deferred runtime/external ack(s) — pre-authorized (#243)
+run-main: approve
+run-main: approved — ultra/integration-run-51
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 56min 13.565s
+CPU time consumed: 1h 26min 43.406s
+Memory peak: 1.5M
+Memory swap peak: 0B

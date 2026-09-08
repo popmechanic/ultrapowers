@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-51.md run-51 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — `.github/workflows/ci.yml`: the depth-1 checkout as the standing guard for a history-coupled test — The file is present and structurally settled here — leg (f) of `fleet/tests/test_run_engine_suite_passes.mjs` and the driver's own Run: pin that `#712` sits within the eight lines above `uses: actions/checkout`, that `gate leg` appears nowhere, that no line sets a `fetch-depth:` key, and that the step is still `actions/checkout@v7`. What cannot be executed in this sandbox is the workflow itself: whether GitHub Actions' default-depth-1 checkout actually reproduces the #465 class the deleted engine leg used to catch is only observable on a PR run against the GitHub Actions service, which is unreachable from here. The step's behavior is unchanged from BASE (only the comment was rewritten), so nothing new was introduced — but the Claim's assertion that CI keeps the guard is confirmable only on the first PR run. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
