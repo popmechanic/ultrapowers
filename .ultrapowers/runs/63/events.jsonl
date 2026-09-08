@@ -1,0 +1,14 @@
+{"kind":"run:open","runId":"run-63","base":"","source":"fleet/run-main.mjs","id":"01M218G2D80000PN8JVCYF6R6H","ts":1788896348584}
+{"kind":"driver:stage","stage":"tiers","detail":"3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M218G2DA0000363R2EDR40Q2","ts":1788896348586}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 1c97ba442c65d882354953d16590b1f8eb0c7a7a; 3 task clone(s) + integration","id":"01M218G2X30000C5SF9GSZKPQB","ts":1788896349091}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M218G3E6000045ZVCNV77RRN","ts":1788896349638}
+{"kind":"driver:stage","stage":"engine","detail":"waves 3, width bound 12, patch input armed","id":"01M218G3E60001FZEEQ8GR71CQ","ts":1788896349638}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 2","id":"01M218G3EA0000KHHCJDWJEHCG","ts":1788896349642}
+{"kind":"engine:phase","phase":"Setup","id":"01M218G3EB00009RGS0CPJ7PRY","ts":1788896349643}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-63 at 1c97ba442c65d882354953d16590b1f8eb0c7a7a","id":"01M218G3G60000HT6GS6THK843","ts":1788896349702}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M218G3G600018GQ4Z4H52Q9Z","ts":1788896349702}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"e398c03c-2dc4-41d8-a396-072ef505ef5c","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-63/clones/task-3","model":"opus","id":"01M218G3GE0000XGXAXGSZMX6T","ts":1788896349710}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"ca3325fe-d02c-4fc1-9148-eeb7a42b6797","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-63/clones/exam-2","model":"opus","id":"01M218G3KT00008PM3MZ8JHT1E","ts":1788896349818}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"11704330-9213-4e18-b6a1-f1a465d80d93","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-63/clones/task-2","model":"opus","id":"01M218G3KY0000VYYSKF97CC39","ts":1788896349822}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"66ad6637-a74d-4232-96b9-d211f092c125","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-63/clones/exam-1","model":"opus","id":"01M218G3QE0000CN976P1B0MG3","ts":1788896349934}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"a3b2557a-47f9-42b4-a1ac-ae47f0b09e1a","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-63/clones/task-1","model":"opus","id":"01M218G3QG0000Q1RW3GRCQ070","ts":1788896349936}
