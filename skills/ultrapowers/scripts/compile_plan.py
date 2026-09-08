@@ -1915,9 +1915,9 @@ def claims_grammar_advisories(tasks, tree_root=None):
     """Every `ADVISORY grammar:` line the parsed claims-v1 `tasks` draw.
 
     Pure and total: it reads the parsed tasks (and, for the same-file tier,
-    the tree root, when one is provided, one shared path at a time) and
-    returns lines. `tasks` that carry no claims overlay — every legacy task —
-    contribute nothing."""
+    the `BaseTree` at `tree_root`, when one is provided, one shared path at a
+    time) and returns lines. `tasks` that carry no claims overlay — every
+    legacy task — contribute nothing."""
     tasks = [t for t in tasks if t.get("claims")]
     produced = {t["id"]: {tok for pr in t["interfaces"]["produces"]
                           if (tok := _interface_token(pr))} for t in tasks}
@@ -2017,7 +2017,7 @@ def claims_grammar_advisories(tasks, tree_root=None):
                 % (a["id"], b["id"],
                    ", ".join("`%s`" % p for p in shared)))
             continue
-        non_text = [p for p in shared if is_binary(tree_root, p)]
+        non_text = [p for p in shared if tree_root.is_binary(p)]
         if not non_text:
             continue
         lines.append(
@@ -2188,11 +2188,15 @@ _BINARY_SNIFF_BYTES = 8192
 
 
 def is_binary(tree_root, rel_path):
-    """True when `rel_path` under `tree_root` is not a line-wise mergeable text
-    file: a symlink, or a file whose first 8 KB carry a NUL byte. A path that
-    cannot be read — absent, a directory, permission-denied — is False: a file
-    that is not there is one a task is about to create, and presuming text is
-    the fold-preserving direction."""
+    """True when `rel_path` under the DIRECTORY `tree_root` is not a line-wise
+    mergeable text file: a symlink, or a file whose first 8 KB carry a NUL
+    byte. A path that cannot be read — absent, a directory, permission-denied —
+    is False: a file that is not there is one a task is about to create, and
+    presuming text is the fold-preserving direction.
+
+    This is `BaseTree.is_binary`'s directory half; a sha reader asks the same
+    question of a commit's tree (`ls-tree` mode `120000`, then a NUL sniff of
+    `git show`) and answers it the same way."""
     p = Path(tree_root) / rel_path
     try:
         if p.is_symlink():
@@ -2219,7 +2223,8 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
     the advisory channel says so out loud), the `undeclared-dependency`
     cross-check is retired (see its own comment), and a same-file pair whose
     shared path is NON-TEXT under `tree_root` is ordered, since no kernel fold
-    can merge it. `tree_root` is the tree the non-text classifier reads; None
+    can merge it. `tree_root` is the `BaseTree` the non-text classifier reads —
+    a checkout directory or a commit sha, and this tier cannot tell which; None
     (the default) leaves the pair unordered and draws an advisory instead.
     """
     if overlap_mode not in OVERLAP_MODES:
@@ -2416,7 +2421,7 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
                     continue
                 shared = ((set(a["writes"]) | set(a["reads"]))
                           & (set(b["writes"]) | set(b["reads"])))
-                if not any(is_binary(tree_root, p) for p in sorted(shared)):
+                if not any(tree_root.is_binary(p) for p in sorted(shared)):
                     continue
                 if (a["id"], b["id"]) in seen or would_cycle(a["id"], b["id"]):
                     continue
@@ -2525,45 +2530,83 @@ CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh")
 ADVISORY_RENDERS = []
 
 
-def _git(base, *args):
-    """git in `base`; stdout text, or '' on ANY failure (missing git, not a
-    checkout, no match) — advisory code never raises."""
+def _git_run(base, *args, binary=False):
+    """THE subprocess call every git read of a base tree makes: `git -C <base>`
+    in the plan's own repository. Returns (ok, stdout) — ok False on ANY
+    failure (missing git, not a checkout, no match, an absent path at a rev),
+    so advisory code never raises. `binary=True` returns bytes, for a blob that
+    need not decode as text."""
     try:
         p = subprocess.run(["git", "-C", str(base), *args],
-                           capture_output=True, text=True)
+                           capture_output=True, text=not binary)
     except OSError:
-        return ""
-    return p.stdout if p.returncode == 0 else ""
+        return False, (b"" if binary else "")
+    return p.returncode == 0, p.stdout
+
+
+def _git(base, *args):
+    """git in `base`; stdout text, or '' on ANY failure (missing git, not a
+    checkout, no match) — advisory code never raises. Name and signature are
+    load-bearing: `pin_base_facts.py` imports this."""
+    ok, out = _git_run(base, *args)
+    return out if ok else ""
 
 
 def _exclude_pathspecs(exclude):
     return [":(exclude)" + p for p in exclude]
 
 
-def _git_tracked(base, exclude=()):
-    """Tracked paths under `base`, relative to it, minus `exclude`."""
+# `rev` is how a read names the tree it reads. The sentinel "HEAD" is the
+# DIRECTORY reader: it passes no tree-ish at all, so `ls-files` reads the index
+# and `git grep` the working tree — an author's uncommitted file still resolves,
+# exactly as it did at BASE. Any other rev is a commit sha, and every read is of
+# that commit's tree, with no file opened off disk.
+WORKTREE_REV = "HEAD"
+
+
+def _rev_args(rev):
+    """The tree-ish argument a read takes: none for the directory reader, the
+    sha itself for a sha reader."""
+    return () if rev == WORKTREE_REV else (rev,)
+
+
+def _strip_rev(rev, paths):
+    """`git grep` prints each hit as `<tree-ish>:<path>` when it is given one;
+    the reader's callers see a plain relative path either way."""
+    if rev == WORKTREE_REV:
+        return paths
+    return [p[len(rev) + 1:] if p.startswith(rev + ":") else p for p in paths]
+
+
+def _git_tracked(base, exclude=(), rev=WORKTREE_REV):
+    """Tracked paths under `base`, relative to it, minus `exclude`. At a sha
+    that is the commit's own tree (`ls-tree -r`); at the directory sentinel it
+    stays `ls-files`, so an uncommitted file resolves as it does at BASE."""
     spec = ["--", "."] + _exclude_pathspecs(exclude) if exclude else []
-    return set(_git(base, "ls-files", *spec).split())
+    if rev == WORKTREE_REV:
+        return set(_git(base, "ls-files", *spec).split())
+    return set(_git(base, "ls-tree", "-r", "--name-only", rev, *spec).split())
 
 
 def _code_pathspecs(exclude=()):
     return ["--"] + ["*" + ext for ext in CODE_EXTS] + _exclude_pathspecs(exclude)
 
 
-def _git_word_files(base, word, exclude=()):
+def _git_word_files(base, word, exclude=(), rev=WORKTREE_REV):
     """Tracked CODE files (CODE_EXTS) under `base` containing `word` as a
     whole word (`git grep -l -w -F`), sorted, relative to `base`."""
-    return sorted(_git(base, "grep", "-l", "-w", "-F", word,
-                       *_code_pathspecs(exclude)).split())
+    return sorted(_strip_rev(rev, _git(base, "grep", "-l", "-w", "-F", word,
+                                       *_rev_args(rev),
+                                       *_code_pathspecs(exclude)).split()))
 
 
-def _git_literal_in_code(base, literal, exclude=()):
+def _git_literal_in_code(base, literal, exclude=(), rev=WORKTREE_REV):
     """True when some tracked CODE file under `base` contains `literal`."""
-    return bool(_git(base, "grep", "-l", "-F", literal,
+    return bool(_git(base, "grep", "-l", "-F", literal, *_rev_args(rev),
                      *_code_pathspecs(exclude)).strip())
 
 
-def _git_substring_files(base, literal, exclude=()):
+def _git_substring_files(base, literal, exclude=(), rev=WORKTREE_REV):
     """Tracked files under `base` containing `literal` as a SUBSTRING
     (`git grep -l -F`), sorted, relative to `base`.
 
@@ -2571,14 +2614,167 @@ def _git_substring_files(base, literal, exclude=()):
     a Machine clause pins spans like `runner: None`, which is not one word and
     can be asserted from a fixture of any extension. `-e` keeps a span opening
     with `-` from reading as a flag."""
-    return sorted(_git(base, "grep", "-l", "-F", "-e", literal,
-                       "--", *_exclude_pathspecs(exclude)).split())
+    return sorted(_strip_rev(rev, _git(base, "grep", "-l", "-F", "-e", literal,
+                                       *_rev_args(rev), "--",
+                                       *_exclude_pathspecs(exclude)).split()))
 
 
 def default_base(plan_path):
     """The git toplevel of the plan's directory, or None outside a checkout."""
     top = _git(Path(plan_path).resolve().parent, "rev-parse", "--show-toplevel").strip()
     return Path(top) if top else None
+
+
+_SHA40_RE = re.compile(r"[0-9a-f]{40}")
+
+
+class BaseTree:
+    """The one reader every BASE-tree question in this file goes through.
+
+    `--base` names a tree two ways and the difference stops here:
+
+      * a CHECKOUT DIRECTORY — `repo` is the directory `git -C` runs in (a
+        checkout, or any directory inside one; the fixture projects under
+        `evals/fixtures/*/project` are the latter, and their reads have always
+        been relative to the directory itself, so that is what `repo` holds),
+        `rev` is the `WORKTREE_REV` sentinel, and a read is the working tree's.
+      * a 40-hex SHA — `repo` is the plan's own git toplevel, `rev` is the sha,
+        and every read is `git -C <repo> … <sha>`: `git show <sha>:<path>`,
+        `git ls-tree <sha>`, `git grep … <sha>`. Nothing is opened off disk,
+        because the commit need not be checked out anywhere.
+
+    Both answer the same questions, so no caller below branches on which one it
+    was handed — a sha is an input, and every line it produces is a line a
+    directory could have produced (#725)."""
+
+    def __init__(self, repo, rev=WORKTREE_REV):
+        self.repo = Path(repo)
+        self.rev = rev
+        self._peeled = {}
+
+    @classmethod
+    def from_flag(cls, value, plan_path):
+        """The reader a `--base` VALUE names, for the plan at `plan_path`.
+
+        A directory (or any non-sha value, which stays the directory case so
+        `<dir> is not a git checkout` remains the answer for a typo'd path) is
+        read as itself. A 40-hex sha is resolved in the plan's own repository,
+        and a sha that names no commit of it — or a plan that lies outside any
+        checkout, so there is no repository to resolve it in — exits with one
+        `error:` line naming the sha rather than compiling against a tree the
+        caller did not ask for."""
+        text = str(value)
+        if Path(text).is_dir() or not _SHA40_RE.fullmatch(text):
+            return cls(text)
+        repo = default_base(plan_path)
+        if repo is None:
+            sys.exit("error: --base %s: no git checkout found for %s to "
+                     "resolve the sha in"
+                     % (text, Path(plan_path).resolve().parent))
+        tree = cls(repo, text)
+        if not tree.resolves_as_commit(text):
+            sys.exit("error: --base %s names no commit of %s" % (text, repo))
+        return tree
+
+    @property
+    def is_sha(self):
+        return self.rev != WORKTREE_REV
+
+    def __str__(self):
+        """The tree, as a diagnostic names it — the directory or repository the
+        reads run in, never a `BaseTree` repr."""
+        return str(self.repo)
+
+    def __eq__(self, other):
+        """A directory reader IS the directory it was handed, so a caller
+        holding that path still recognizes it (the render context's `base` is
+        this reader, and BASE's was the path). A sha reader equals only another
+        reader of the same repository at the same rev — no path is that tree."""
+        if isinstance(other, BaseTree):
+            return (self.repo, self.rev) == (other.repo, other.rev)
+        if not self.is_sha and isinstance(other, (str, Path)):
+            return self.repo == Path(other)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.repo if not self.is_sha else (self.repo, self.rev))
+
+    # --- the tree, question by question ---------------------------------- #
+    def tracked(self, exclude=()):
+        return _git_tracked(self.repo, exclude, self.rev)
+
+    def word_files(self, word, exclude=()):
+        return _git_word_files(self.repo, word, exclude, self.rev)
+
+    def literal_in_code(self, literal, exclude=()):
+        return _git_literal_in_code(self.repo, literal, exclude, self.rev)
+
+    def substring_files(self, literal, exclude=()):
+        return _git_substring_files(self.repo, literal, exclude, self.rev)
+
+    def read_text(self, path):
+        """`path`'s text at BASE, or None when it is not readable there."""
+        if not self.is_sha:
+            try:
+                return (self.repo / path).read_text(errors="replace")
+            except OSError:
+                return None
+        ok, raw = self._show(path)
+        return raw.decode("utf-8", "replace") if ok else None
+
+    def is_binary(self, path):
+        """True when `path` is not a line-wise mergeable text file at BASE: a
+        symlink, or a blob whose first 8 KB carry a NUL. A path that is not
+        there is False — the fold-preserving direction `is_binary` takes."""
+        if not self.is_sha:
+            return is_binary(self.repo, path)
+        mode = self._blob_mode(path)
+        if mode is None:
+            return False
+        if mode == "120000":
+            return True
+        ok, raw = self._show(path)
+        return ok and b"\x00" in raw[:_BINARY_SNIFF_BYTES]
+
+    def resolves_as_commit(self, sha):
+        """True when `sha` names a commit of this reader's repository."""
+        return bool(self._peel(sha))
+
+    def commit_sha(self):
+        """The 40-hex commit this reader reads — the sha itself for a sha
+        reader, the checkout's HEAD for a directory one. '' when there is
+        none (an empty repository, a directory that is no checkout). The
+        identity a generated block of BASE facts is stamped with."""
+        return self._peel(self.rev)
+
+    def is_checkout(self):
+        """True when the reads can run at all: `repo` resolves to a checkout.
+        Always true for a sha reader, which was resolved against one."""
+        return bool(_git(self.repo, "rev-parse", "--show-toplevel").strip())
+
+    # --- the two reads with no module-level function of their own --------- #
+    def _peel(self, rev):
+        """`rev-parse --verify --quiet <rev>^{commit}` prints the peeled sha on
+        a hit and nothing on a miss — `cat-file -e` is silent both ways, so it
+        cannot be read through `_git`, which returns '' for either outcome.
+        Cached: one plan asks after the same sha many times."""
+        if rev not in self._peeled:
+            self._peeled[rev] = _git(self.repo, "rev-parse", "--verify",
+                                     "--quiet", rev + "^{commit}").strip()
+        return self._peeled[rev]
+
+    def _show(self, path):
+        return _git_run(self.repo, "show", "%s:%s" % (self.rev, path),
+                        binary=True)
+
+    def _blob_mode(self, path):
+        """The tree entry's mode when `path` is a blob at `rev` (`100644`,
+        `100755`, `120000`), None when it is absent or names a tree."""
+        for line in _git(self.repo, "ls-tree", self.rev, "--", path).splitlines():
+            head = line.split("\t", 1)[0].split()
+            if len(head) >= 3 and head[1] == "blob":
+                return head[0]
+        return None
 
 
 def render_advisories(plan_path, base, exclude=()):
@@ -2588,9 +2784,11 @@ def render_advisories(plan_path, base, exclude=()):
     not trust is not one to render over. A `base` that is not a git checkout
     yields the single skip note instead of guessing. A render that raises
     degrades to one `render failed` line — advisory output never changes the
-    check's exit code, so nothing here may propagate. A `base` that is a 40-hex
-    sha naming no directory says so in its own words: the flag wants a checkout
-    directory, not a commit."""
+    check's exit code, so nothing here may propagate.
+
+    `base` is a `BaseTree` — a checkout directory or a commit sha, and the
+    renders below cannot tell which. A bare path is accepted and read as the
+    directory case, so a caller holding a checkout need not build one."""
     plan_text = Path(plan_path).read_text()
     if _malformed_task_headings(plan_text):
         return []
@@ -2601,13 +2799,9 @@ def render_advisories(plan_path, base, exclude=()):
     if base is None:
         return ["ADVISORY renders skipped: no git checkout found for %s (pass --base)"
                 % Path(plan_path).resolve().parent]
-    # A 40-hex `--base` that names no directory is a commit sha someone reached
-    # for where the flag wants a checkout: say so, rather than reporting the sha
-    # as a directory that failed to be a checkout (#637).
-    if not Path(base).is_dir() and re.fullmatch(r"[0-9a-f]{40}", str(base)):
-        return ["ADVISORY renders skipped: --base wants a checkout directory, "
-                "got a commit sha %s" % base]
-    if not _git(base, "rev-parse", "--show-toplevel").strip():
+    if not isinstance(base, BaseTree):
+        base = BaseTree(base)
+    if not base.is_checkout():
         return ["ADVISORY renders skipped: %s is not a git checkout" % base]
     # Grammar-aware, like the compile and `--check` call sites: a claims-v1
     # body is six SLOTS, not legacy prose, and its two unsigned tiers are
@@ -2617,8 +2811,8 @@ def render_advisories(plan_path, base, exclude=()):
                         grammar=plan_grammar(plan_text),
                         plan_claim=parse_plan_claim(plan_text)) for t in raw]
     exclude = tuple(exclude)
-    ctx = {"base": Path(base), "plan_path": Path(plan_path).resolve(),
-           "tracked": _git_tracked(base, exclude), "task_ids": set(ids),
+    ctx = {"base": base, "plan_path": Path(plan_path).resolve(),
+           "tracked": base.tracked(exclude), "task_ids": set(ids),
            "exclude": exclude}
     lines = []
     for name, fn in ADVISORY_RENDERS:
@@ -2669,7 +2863,7 @@ def _render_blast_radius(tasks, ctx):
     for t in tasks:
         own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
         for sym in _produces_symbols(t):
-            hits = [f for f in _git_word_files(ctx["base"], sym, ctx.get("exclude", ()))
+            hits = [f for f in ctx["base"].word_files(sym, ctx.get("exclude", ()))
                     if f not in own]
             if not hits:
                 continue
@@ -2795,7 +2989,7 @@ def _render_referents(tasks, ctx):
                         p in tracked or p in own or p in dep_creates
                         or ("/" not in p and (p in basenames
                                               or any(f.endswith("/" + p) for f in all_files)))
-                        or _git_literal_in_code(base, p, exclude))
+                        or base.literal_in_code(p, exclude))
                     if not resolved:
                         lines.append("ADVISORY referent: Task %s names `%s` — not at BASE, "
                                      "not in Task %s's Files, not Created by a task it "
@@ -2807,7 +3001,7 @@ def _render_referents(tasks, ctx):
                     seen.add(tok)
                     segs = [s.replace("[]", "") for s in tok.split(".")[1:]]
                     missing = [s for s in segs
-                               if s not in vocab and not _git_word_files(base, s, exclude)]
+                               if s not in vocab and not base.word_files(s, exclude)]
                     if missing:
                         lines.append("ADVISORY referent: Task %s names `%s` — `%s` is not a "
                                      "report-format.md field and appears in no code file "
@@ -3250,7 +3444,7 @@ def _species_pinned_elsewhere(task_id, clauses, base, declared, exclude):
         if not _is_pinnable_span(span):
             continue
         pinning = sorted(path
-                         for path in _git_substring_files(base, span, exclude)
+                         for path in base.substring_files(span, exclude)
                          if _is_pinning_file(path, declared))
         if not pinning:
             continue
@@ -3545,7 +3739,7 @@ PROOF_FILES_SPECIES = (
 
 def _render_proof_species(tasks, ctx):
     # `pinned-elsewhere` is the one species that reads the TREE rather than the
-    # task's own text, so it takes the checkout and the plan-wide declared set
+    # task's own text, so it takes the reader and the plan-wide declared set
     # instead of PROOF_SPECIES' (clauses, legs, runs) — both computed once, then
     # run last within each task so print order stays task-major.
     base = ctx["base"]
@@ -3705,17 +3899,6 @@ BASE_SHA_TOKEN_RE = re.compile(r"\b%s\b" % BASE_SHA_TOKEN)
 BASE_SHA_HEX40_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-f]{40}(?![0-9a-fA-F])")
 
 
-def _resolves_as_commit(base, sha, cache):
-    """True when `sha` names a commit of the checkout at `base`. `rev-parse
-    --verify --quiet <sha>^{commit}` prints the peeled sha on a hit and nothing
-    on a miss — `cat-file -e` is silent either way, so it cannot be read through
-    _git, which returns '' for both outcomes."""
-    if sha not in cache:
-        cache[sha] = bool(_git(base, "rev-parse", "--verify", "--quiet",
-                               sha + "^{commit}").strip())
-    return cache[sha]
-
-
 def _test_paths_in_order(task):
     """A task's `Test:` paths in DOCUMENT order, deduped by first occurrence.
 
@@ -3734,7 +3917,7 @@ def _test_paths_in_order(task):
     return out
 
 
-def _base_sha_findings(text, base, cache):
+def _base_sha_findings(text, base):
     """One file's findings: `(sha, line)` for every DISTINCT resolving 40-hex
     literal in first-occurrence order, then the first line reading the token
     (None when it reads none). Shas before the token, per M2."""
@@ -3745,7 +3928,7 @@ def _base_sha_findings(text, base, cache):
             if sha in seen:
                 continue
             seen.add(sha)
-            if _resolves_as_commit(base, sha, cache):
+            if base.resolves_as_commit(sha):
                 shas.append((sha, n))
         if token_line is None and BASE_SHA_TOKEN_RE.search(line):
             token_line = n
@@ -3755,7 +3938,7 @@ def _base_sha_findings(text, base, cache):
 def _render_base_sha_in_suite(tasks, ctx):
     # Task order, then `Test:` order — a path named by two tasks draws a line
     # for each, since each task owns its own exam.
-    base, tracked, cache = ctx["base"], ctx["tracked"], {}
+    base, tracked = ctx["base"], ctx["tracked"]
     lines = []
     for t in tasks:
         if not t.get("claims"):
@@ -3763,11 +3946,10 @@ def _render_base_sha_in_suite(tasks, ctx):
         for path in _test_paths_in_order(t):
             if path not in tracked:
                 continue  # an untracked or absent exam is no exam yet
-            try:
-                text = (base / path).read_text(errors="replace")
-            except OSError:
+            text = base.read_text(path)
+            if text is None:
                 continue
-            shas, token_line = _base_sha_findings(text, base, cache)
+            shas, token_line = _base_sha_findings(text, base)
             for sha, n in shas:
                 lines.append(_species_line(
                     BASE_SHA_IN_SUITE, t["id"],
@@ -3825,8 +4007,10 @@ def main(argv=None):
                          "code; prints nothing when there is nothing to say.")
     ap.add_argument("--base", type=Path, default=None,
                     help="the tree file-level questions resolve against, given "
-                         "as <checkout-dir> — a checkout directory, never a "
-                         "commit sha. It "
+                         "either as <checkout-dir>, a checkout directory, or "
+                         "as <sha>, a 40-hex commit of the plan's own "
+                         "repository, which must be present locally: its tree "
+                         "is read with git show/ls-tree, never checked out. It "
                          "is the tree the claims-v1 non-text same-file "
                          "classifier reads — on a plain compile, where it "
                          "orders the pair, and under --check, where the "
@@ -3859,6 +4043,11 @@ def main(argv=None):
         sys.exit("error: --base requires --renders")
     if args.exclude and not args.renders:
         sys.exit("error: --exclude requires --renders")
+    # One reader for the tree at BASE, built before any verdict is printed: a
+    # `--base` sha that names no commit of the plan's repository is an input
+    # error, and an input error prints no verdict line at all.
+    base_tree = (BaseTree.from_flag(args.base, args.plan)
+                 if args.base is not None else None)
     if args.check:
         violations = collect_violations(args.plan)
         if violations:
@@ -3874,10 +4063,10 @@ def main(argv=None):
         # The claims-v1 `ADVISORY grammar:` lines ride unconditionally (they
         # are the grammar's own channel and empty for every legacy plan); the
         # #345 renders ride behind --renders.
-        lines = collect_advisories(args.plan, args.base)
+        lines = collect_advisories(args.plan, base_tree)
         if args.renders:
             lines = lines + render_advisories(args.plan,
-                                              args.base if args.base is not None
+                                              base_tree if base_tree is not None
                                               else default_base(args.plan),
                                               exclude=tuple(args.exclude))
         if lines:
@@ -4048,7 +4237,7 @@ def main(argv=None):
               "(plan is gates/release/manual only); the runbook and gates "
               "still apply.", file=sys.stderr)
     edges, conflicts = build_edges(impl, overlap_mode=args.overlap,
-                                   grammar=grammar, tree_root=args.base)
+                                   grammar=grammar, tree_root=base_tree)
     waves = layer(impl, edges)
 
     mode, degrade = "parallel", None

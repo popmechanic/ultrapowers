@@ -228,12 +228,19 @@ each of them idle behind a barrier it did not need.
 Then resolve provenance and compile:
 
     python3 $UW/check_provenance.py <plan.md>
-    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py --check --renders <plan.md>
+    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py --check --renders --base <checkout-dir|sha> <plan.md>
 
 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
 `quoted from #NNN` claim against its issue body at signing time. `compile_plan.py --check`
 must print `PLAN OK`; read its `ADVISORY` lines before handoff. A plan is not done until
 all three pass.
+
+`--base` takes a checkout directory or a 40-hex sha, and a sha must be present locally:
+the compiler reads that commit's tree with `git show`/`git ls-tree` in the plan's own
+repository, so every BASE fact — which paths exist, which file mentions a `Produces:`
+symbol, which test pins a Machine-clause span — resolves against the exact commit
+`launch.mjs --base` will hand the run, not against whatever the working tree happens to
+hold. Unset, `--base` defaults to the plan's own git toplevel.
 
 The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the
 rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose`,

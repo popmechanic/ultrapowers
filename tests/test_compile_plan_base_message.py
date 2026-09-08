@@ -5,11 +5,24 @@ refusal species and the `PLAN OK` / `N violation(s)` verdict are frozen, so
 every assertion below reads an advisory sentence or the `--help` body and every
 one of them re-asserts that the verdict and the exit code did not move.
 
-This exam pins the three Machine clauses leg by leg:
+#725 then made `--base` accept a 40-hex sha as well as a directory, so the
+sha branch #637 added — `ADVISORY renders skipped: --base wants a checkout
+directory, got a commit sha <value>` — is gone, and with it this file's leg
+(c): a sha is now an INPUT the compiler reads, not a value it refuses, and the
+runs that ARE refused (a sha naming no commit of the plan's repository, a sha
+given for a plan outside any checkout) exit non-zero with empty stdout, which
+`_check` below cannot express because it asserts `PLAN OK` and exit 0 first.
+That error path is exercised in `tests/test_compile_plan_base_tree.py` instead,
+leg (c) [M3] of #725. What survives here is leg (a) — now reading BOTH
+`<checkout-dir>` and `<sha>` off the `--help` entry, since the flag takes both
+forms — and leg (b), which is frozen.
+
+This exam pins the Machine clauses leg by leg:
 
   M1 / leg (a) — `compile_plan.py --help` prints the text `<checkout-dir>`
     inside the `--base` entry (BASE's entry opens "the tree file-level
-    questions resolve against" and never names a directory).
+    questions resolve against" and never names a directory), and — since #725 —
+    the text `<sha>` beside it.
   M2 / leg (b) — NOT IMPLEMENTED; leg (b) pins the opposite, and says why.
     M2 asked the same-file advisory to end `pass --base <checkout-dir> so the
     compiler can tell a mergeable text file from a non-text one it must
@@ -25,13 +38,10 @@ This exam pins the three Machine clauses leg by leg:
     wording lands where it costs no frozen byte — the `--base` help entry
     [M1] and the renders skip note [M3] — and leg (b) below pins the advisory
     to BASE's sentence so the freeze is visible from this file too.
-  M3 / leg (c) — `--check --renders --base <40-hex>` on that plan prints
-    `ADVISORY renders skipped: --base wants a checkout directory, got a commit
-    sha <value>` in place of BASE's `<value> is not a git checkout`, prints no
-    line containing `is not a git checkout`, and exits 0 — for two different
-    40-hex values, each echoed verbatim; and the same run with `--base` naming
-    an empty directory (a real directory, not a sha) keeps BASE's `<dir> is not
-    a git checkout` line and still exits 0.
+  M3 / leg (c) — RETIRED by #725, above. What is left of it is the half that
+    was never about a sha: a `--base` naming an empty directory (a real
+    directory, not a sha) keeps BASE's `<dir> is not a git checkout` line and
+    still exits 0.
 
 The fixture plan is a signed claims-v1 plan (spec §4.5: the compiler refuses to
 compile one without its gate-verdict record) and `_check` asserts the fixture's
@@ -55,8 +65,10 @@ import compile_plan  # noqa: E402
 # --------------------------------------------------------------------------- #
 # The verbatim strings the task pins, quoted from its own words                #
 # --------------------------------------------------------------------------- #
-# M1: the token the `--base` help entry must carry.
+# M1: the tokens the `--base` help entry must carry — the directory form #637
+# asked for, and (#725) the sha form the flag also takes.
 CHECKOUT_DIR = "<checkout-dir>"
+SHA_TOKEN = "<sha>"
 
 # M2: the sentence the same-file advisory still ends with, byte for byte. The
 # `<checkout-dir>` rewording M2 asked for is blocked — see the module docstring
@@ -73,16 +85,12 @@ FROZEN_BY = ("tests/test_compile_plan_proof_runs.py leg (e) [M5], which pins "
              "`--check` bytes against the compiler at sha 0a3559a for every "
              "Run-less fixture plan")
 
-# M3: the new skip line, and BASE's line the sha case must stop printing.
-SHA_SKIP = ("ADVISORY renders skipped: --base wants a checkout directory, "
-            "got a commit sha %s")
+# M3: the line a directory that is not a git checkout still draws. (#637's sha
+# line, and the two 40-hex values leg (c) drove it with, are retired by #725 —
+# see the module docstring; the sha error path lives in
+# `tests/test_compile_plan_base_tree.py`.)
 NOT_A_CHECKOUT = "%s is not a git checkout"
 NOT_A_CHECKOUT_TAIL = "is not a git checkout"
-
-# The two 40-hex values leg (c) names.
-ZEROS = "0000000000000000000000000000000000000000"
-DEADBEEF = "deadbeefcafe0123456789abcdef0123456789ab"
-SHAS = (ZEROS, DEADBEEF)
 
 # The shared path the fixture's two tasks both `Modify:`.
 SHARED_PATH = "app/shared.py"
@@ -246,12 +254,18 @@ def _base_entry(help_text):
 
 
 def test_help_base_entry_names_a_checkout_dir():
-    """leg (a) [M1]: the `--base` entry carries the text `<checkout-dir>`."""
+    """leg (a) [M1]: the `--base` entry carries the text `<checkout-dir>` —
+    and, since #725 gave the flag a second form, the text `<sha>` too."""
     entry = _base_entry(_help_text())
     assert CHECKOUT_DIR in entry, (
         "leg (a) [M1]: `compile_plan.py --help` prints the text `%s` inside "
         "the `--base` entry — the flag has to say it wants a checkout "
         "directory. Got the entry:\n%s" % (CHECKOUT_DIR, entry))
+    assert SHA_TOKEN in entry, (
+        "leg (a) [M1, extended by #725]: the `--base` entry also prints the "
+        "text `%s` — the flag takes a 40-hex commit sha as well as a checkout "
+        "directory, and the help entry names both forms. Got the entry:\n%s"
+        % (SHA_TOKEN, entry))
 
 
 # --------------------------------------------------------------------------- #
@@ -300,45 +314,16 @@ def test_the_checkout_dir_wording_stays_off_the_frozen_check_channel(plan):
 
 
 # --------------------------------------------------------------------------- #
-# (c) [M3] `--check --renders --base <value>`                                  #
+# (c) [M3] `--check --renders --base <a directory that is not a checkout>`     #
+#                                                                             #
+# The 40-hex half of leg (c) is retired: #725 makes a sha an input `--base`    #
+# READS, so there is no sha skip line left to pin and the two runs that ARE    #
+# refused print no verdict at all — `_check` asserts `PLAN OK` and exit 0      #
+# first, so that path is exercised in `tests/test_compile_plan_base_tree.py`,  #
+# whose leg (c) [M3] also pins that no run says `wants a checkout directory`.  #
+# The directory case below is unchanged, and stays unchanged: it is one of the #
+# bytes M2 of #725 freezes.                                                    #
 # --------------------------------------------------------------------------- #
-def test_the_two_leg_c_values_really_are_forty_hex():
-    """Fixture health: M3's test is `re.fullmatch(r"[0-9a-f]{40}", …)`, so
-    both values leg (c) names must satisfy it."""
-    for sha in SHAS:
-        assert re.fullmatch(r"[0-9a-f]{40}", sha), sha
-
-
-@pytest.mark.parametrize("sha", SHAS)
-def test_a_forty_hex_base_says_it_wants_a_checkout_directory(plan, sha):
-    """leg (c) [M3]: a 40-hex `--base` that is not a directory draws the sha
-    line, echoing the value verbatim."""
-    out = _check(plan, "--renders", "--base", sha).stdout
-    expected = SHA_SKIP % sha
-    assert expected in out.splitlines(), (
-        "leg (c) [M3]: `--check --renders --base %s` prints the whole line\n"
-        "  %s\nGot:\n%s" % (sha, expected, out))
-
-
-@pytest.mark.parametrize("sha", SHAS)
-def test_a_forty_hex_base_prints_no_is_not_a_git_checkout_line(plan, sha):
-    """leg (c) [M3]: the sha line stands IN PLACE OF BASE's line — not beside
-    it."""
-    out = _check(plan, "--renders", "--base", sha).stdout
-    offenders = [l for l in out.splitlines() if NOT_A_CHECKOUT_TAIL in l]
-    assert offenders == [], (
-        "leg (c) [M3]: with `--base %s` no line contains `%s`; got:\n%s"
-        % (sha, NOT_A_CHECKOUT_TAIL, "\n".join(offenders)))
-
-
-@pytest.mark.parametrize("sha", SHAS)
-def test_a_forty_hex_base_still_exits_zero(plan, sha):
-    """leg (c) [M3]: neither message changes the exit code — advisory output
-    never does. (`_check` asserts `PLAN OK` and rc 0.)"""
-    p = _check(plan, "--renders", "--base", sha)
-    assert p.returncode == 0, p.stdout + p.stderr
-
-
 def test_a_directory_that_is_not_a_checkout_keeps_bases_line(plan, not_a_checkout):
     """leg (c) [M3]: a `--base` naming a directory that is not a git checkout
     keeps BASE's line — the sha branch is the 40-hex non-directory case only."""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate each claims-v1 task's `**BASE facts:**` block from the tree at BASE.
 
-    pin_base_facts.py <plan.md> [--base <root>] [--write | --verify]
+    pin_base_facts.py <plan.md> [--base <checkout-dir|sha>] [--write | --verify]
 
 A plan names referents — `pkg/a.py`, `pkg/a.py:2`, `alpha`. Typed by hand they
 rot silently: the path moves, the line shifts, the symbol's first definition
@@ -26,8 +26,11 @@ of facts is not the place to record an absence. A plan that is not claims-v1 is
 not this script's business and exits 0 saying so.
 
 Nothing here reaches the network, and the resolver is the compiler's own — the
-referent scan, the path normalizer and the `_git` wrapper are imported, never
-re-implemented, so what this pins is exactly what the compiler resolves.
+referent scan, the path normalizer and the tree reader (`BaseTree`, `_git`) are
+imported, never re-implemented, so what this pins is exactly what the compiler
+resolves. `--base` therefore takes what the compiler's does: a checkout
+directory, or a 40-hex sha of the plan's own repository, whose tree is read
+with `git show`/`git ls-tree` and never checked out.
 """
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ from compile_plan import (  # noqa: E402
     CLAIMS_GRAMMAR,
     PATH_RE,
     SLOT_LABEL_RE,
+    BaseTree,
     _fence_aware_lines,
     _git,
     _path_referent,
@@ -79,11 +83,12 @@ DEF_PATTERN = (r"^([[:space:]]*(export[[:space:]]+)?(async[[:space:]]+)?"
 # --------------------------------------------------------------------------- #
 # Resolving one referent against the tree at BASE                              #
 # --------------------------------------------------------------------------- #
-def base_sha(base):
-    """The commit the facts are generated against: HEAD in `--base`."""
-    return _git(base, "rev-parse", "HEAD").strip()
-
-
+# Every resolver below already reads BY SHA — `ls-tree <sha>`, `show <sha>:`,
+# `grep <sha>` — so all a `--base` value has to yield is the pair (repo, sha)
+# the reads run against. `BaseTree.from_flag` is what yields it, for a checkout
+# directory (the sha is that checkout's HEAD) and for a 40-hex sha alike, so a
+# block generated at a sha is generated from that commit's tree and stamped
+# with it.
 def blob_sha(base, sha, path):
     """The 7-char blob sha of `path` in the tree at `sha`, or None when the
     path is absent there or names a tree rather than a blob."""
@@ -354,7 +359,9 @@ def main(argv=None):
         description="Pin each claims-v1 task's BASE facts from the tree at BASE.")
     ap.add_argument("plan", type=Path)
     ap.add_argument("--base", type=Path, default=None,
-                    help="the checkout the facts are resolved against "
+                    help="the tree the facts are resolved against: a checkout "
+                         "directory, or a 40-hex sha of the plan's own "
+                         "repository that must be present locally "
                          "(default: the plan's own git toplevel)")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--write", action="store_true",
@@ -372,10 +379,17 @@ def main(argv=None):
               % args.plan)
         return 0
 
-    base = args.base if args.base is not None else default_base(args.plan)
-    if base is None:
-        sys.exit("error: no git checkout found for %s (pass --base)" % args.plan)
-    sha = base_sha(base)
+    # The compiler's reader resolves the flag: a directory, or a sha it refuses
+    # with one `error:` line when the plan's repository holds no such commit.
+    if args.base is not None:
+        tree = BaseTree.from_flag(args.base, args.plan)
+    else:
+        repo = default_base(args.plan)
+        if repo is None:
+            sys.exit("error: no git checkout found for %s (pass --base)"
+                     % args.plan)
+        tree = BaseTree(repo)
+    base, sha = tree.repo, tree.commit_sha()
     if not sha:
         sys.exit("error: %s is not a git checkout" % base)
 
