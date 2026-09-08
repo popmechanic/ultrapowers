@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -126,7 +126,7 @@
       ]
     ],
     "waveLabels": [
-      "A base-moved 405 folds again until the PUT is accepted,\u2026"
+      "A base-moved 405 folds again until the PUT is accepted,…"
     ],
     "mode": "sequential",
     "degrade_reason": "Sequential mode: 1 implementation tasks",
@@ -135,7 +135,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The Check above is the scope pin: the fold itself is untouched. `fleet/publish-fold.mjs` already\n  floors attempt N on the highest prior attempt's `candidate` and records `tip unmoved` against\n  the prior attempt's `tip`, so a third and a fourth attempt need nothing from it; Amendment 10\n  holds \u2014 every git command, ref move, push and REST call in this change is the boot script's,\n  and no model is dispatched by anything this plan adds.\n- No token in any argv and no direct Anthropic API call: the fold unit's envelope\n  (`env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=\u2026 CLAUDE_CODE_OAUTH_TOKEN=placeholder`) is\n  the same for every attempt, whatever its number.\n- The vocabulary of `publish:hold` and `publish:merge` is unchanged: a hold's `why` is the\n  phase's text after `left open: `, a refused merge's `left` is `refused` and its `detail` the\n  account, and the LAST `publish:merge` line is what became of the PR.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The Check above is the scope pin: the fold itself is untouched. `fleet/publish-fold.mjs` already\n  floors attempt N on the highest prior attempt's `candidate` and records `tip unmoved` against\n  the prior attempt's `tip`, so a third and a fourth attempt need nothing from it; Amendment 10\n  holds — every git command, ref move, push and REST call in this change is the boot script's,\n  and no model is dispatched by anything this plan adds.\n- No token in any argv and no direct Anthropic API call: the fold unit's envelope\n  (`env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=… CLAUDE_CODE_OAUTH_TOKEN=placeholder`) is\n  the same for every attempt, whatever its number.\n- The vocabulary of `publish:hold` and `publish:merge` is unchanged: a hold's `why` is the\n  phase's text after `left open: `, a refused merge's `left` is `refused` and its `detail` the\n  account, and the LAST `publish:merge` line is what became of the PR.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/publish-fold.mjs fleet/run-engine.mjs fleet/run-waves.mjs fleet/roles",
@@ -150,11 +150,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-68/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-68/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-68/acceptance.log"
 }

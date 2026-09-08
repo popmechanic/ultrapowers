@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-68.md run-68 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/sandbox-boot.sh fold-again loop against a live GitHub Enterprise edge and real systemd units — in particular the default 3600 s `FOLD_AGAIN_WAIT` window, which no exam exercises (M1's stub stops itself on the fourth PUT and every still-refusing case pins `FLEET_FOLD_AGAIN_WAIT: '0'`). — Every leg proving the loop runs against the sim rig's stub `curl`/`git`/`systemd-run` PATH in `fleet/tests/_sandbox_boot_helpers.mjs` with no network. The driver's evidence settles the sims (`$ node fleet/tests/test_sandbox_boot_exams.mjs | grep -q 'ALL TESTS PASSED'` and the selfmerge sim, both exit 0, plus the passing suite that bridges `test_sandbox_boot_merge.mjs`); what cannot be executed in this environment is a real base moving under a real merge PUT and a real one-hour wall clock elapsing. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
