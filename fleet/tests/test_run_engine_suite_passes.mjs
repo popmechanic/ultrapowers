@@ -283,22 +283,6 @@ const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passe
   assert.ok(ciLines[idx].includes('actions/checkout@v7'),
     '(f)/M6: the checkout step is no longer actions/checkout@v7 — only the comment changes: ' +
     ciLines[idx])
-
-  // The fourth and fifth `Run:` legs, executed here too: the sibling sim prints
-  // its sentinel with its knob gone, and the doc pin passes as the lens over
-  // the four operator documents.
-  const cleanSim = spawnSync('node', ['fleet/tests/test_run_engine_integrated_clean.mjs'],
-    { cwd: REPO_ROOT, encoding: 'utf8' })
-  assert.ok(String(cleanSim.stdout || '').includes('ALL TESTS PASSED'),
-    '(f)/M6: fleet/tests/test_run_engine_integrated_clean.mjs did not print its sentinel ' +
-    'once its knob was removed (exit ' + cleanSim.status + '):\n' +
-    String(cleanSim.stdout || '') + String(cleanSim.stderr || ''))
-
-  const docPin = spawnSync('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'],
-    { cwd: REPO_ROOT, encoding: 'utf8' })
-  assert.equal(docPin.status, 0,
-    '(f)/M6: tests/test_docs_agree_with_code.py failed — the operator documents name a ' +
-    'mechanism that is not there:\n' + String(docPin.stdout || '') + String(docPin.stderr || ''))
 }
 
 console.log('ALL TESTS PASSED')

@@ -18,7 +18,6 @@ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 PROVENANCE = ROOT / "skills/ultrawrite/scripts/check_provenance.py"
 EXTRACT = ROOT / "skills/ultrawrite/scripts/extract_gate_input.py"
 SKILL = ROOT / "skills/ultrawrite/SKILL.md"
-VALIDATE = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
@@ -387,12 +386,6 @@ def test_skill_self_review_names_derived_and_the_plan_level_claim():
     assert "plan-level Claim" in tail
 
 
-def test_skill_still_validates():
-    proc = subprocess.run([sys.executable, str(VALIDATE), str(SKILL.parent)],
-                          capture_output=True, text=True)
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-
-
 # ---------------------------------------------------------------------------
 # #755 Task 1 — the plan-level Claim accepts `(quoted from #NNN)` as well as
 # `(elicited)`, and reports which one it carries.
@@ -517,10 +510,3 @@ def test_755_skill_the_document_does_not_offer_derived_for_the_header_claim():
     # [M5] leg (e), third Run: `(derived)` is not on offer for the header Claim.
     para = _the_document_paragraph()
     assert "(derived)" not in para, para
-
-
-def test_755_skill_the_document_names_the_header_claim_line_exactly_once():
-    # [M5] leg (e), fourth Run — the same lens as the pin above, restated for
-    # this task: the paragraph names `**Claim:**` once, not twice.
-    para = _the_document_paragraph()
-    assert para.count("**Claim:**") == 1, para

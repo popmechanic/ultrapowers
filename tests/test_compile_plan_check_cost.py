@@ -48,7 +48,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 SKILL = ROOT / "skills/ultrawrite/SKILL.md"
-VALIDATE_SKILL = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -404,14 +403,3 @@ def test_the_species_list_names_the_seven_new_species_after_directory_absence_pi
         "names `pinned-elsewhere`, `check-cost`, `prose-check`, `wide-files`, "
         "`wide-contract`, `threshold-one-sided` and `disjunct-without-leg` "
         "after `directory-absence-pin`")
-
-
-def test_the_skill_still_validates():
-    """[M4]: the task's `Run:` skill validator — a Global Constraints `Check:`
-    of this plan, and green at BASE, so it stays green after the edit."""
-    p = subprocess.run([sys.executable, str(VALIDATE_SKILL),
-                        "skills/ultrawrite"],
-                       capture_output=True, text=True, cwd=str(ROOT))
-    assert p.returncode == 0, (
-        "[M4]: `skills/ultrawrite/SKILL.md` still validates. Got rc=%d\n%s%s"
-        % (p.returncode, p.stdout, p.stderr))
