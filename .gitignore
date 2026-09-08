@@ -22,3 +22,9 @@ docs/superpowers/observations/ledger.md
 # ab_runner eval-cell evidence (#165): run dirs + transcripts copied out of the
 # OS temp dir per cell; multi-MB, operator-read locally, never committed.
 evals/results/cells/
+
+# frontier corpus + eval readings (#544 §Roadmap step 4): 388 files of frozen
+# replay evidence and run readings, kept on the operator's laptop. The tests build
+# their own fixture corpus (corpuslib.make_fixture_corpus); see evals/frontier/README.md.
+evals/frontier/corpus/
+evals/frontier/results/

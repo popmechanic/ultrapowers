@@ -63,7 +63,9 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   seven-slot shape — nothing writes there now.
 - `evals/fixtures/` — 14 sample plan repos (the legacy-grammar compiler corpus — `wide`,
   `chained`, `mixed`, `flawed`, `degrade`, … — plus `claims`, the claims-v1 one) used as test
-  data by the compiler tests; `pytest.ini` keeps pytest from collecting them.
+  data by the compiler tests; `pytest.ini` keeps pytest from collecting them. **Untracked since #544 step 4 (2026-09-08):** `evals/frontier/corpus/` and
+  `evals/frontier/results/` (the frozen fold corpus and its readings, 388 files) are ignored by `.gitignore`, `evals/frontier/README.md` is the tracked stub, the
+  durable copy is the laptop, and the corpus tests read `corpuslib.make_fixture_corpus` (built once per session by `tests/conftest.py`), never those directories.
 - `fleet/` — the fleet in its **target-owns-the-record** shape (0.3.5 lift, 0.3.6 grant collapse,
   #597/#598 the move onto the target; `fleet/CONTRACT.md` is the authority for every literal,
   `fleet/RUNBOOK.md` the operator procedure — the contract wins). `launch.mjs` validates, reads
