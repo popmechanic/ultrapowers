@@ -1,0 +1,66 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "e2c458fc31f629498109e413bae2691bd00c37c735a9d81222ae9cdfdb244869",
+   "verdict": "pass",
+   "reason": "Every clause M1–M8 is discharged by a leg that measures the stated thing directly — the timed run (a), the four literal greps over both files plus the import pin (b), the 73-count and 27-row tag table summing to 73 (c, d), the ppid-scoped ps count at 8 s on a second run (e), the module-loaded SLOW_FIRST/MJS_TIMEOUT and phrase checks (f), the approved-sim run plus export and STUBS byte-diff (g), and the comm -3 assertion-multiset diff pinned to the single nested-loop line (h) — so a passing exam leaves no clause true only by inference."
+  }
+ },
+ "tally": {
+  "dispatched": 4,
+  "rejected": 3,
+  "rounds": {
+   "1": {
+    "dispatched": 1,
+    "pass": 0,
+    "fail": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "pass": 0,
+    "fail": 1
+   },
+   "3": {
+    "dispatched": 1,
+    "pass": 0,
+    "fail": 1
+   },
+   "4": {
+    "dispatched": 1,
+    "pass": 1,
+    "fail": 0
+   }
+  },
+  "note": "Round 1 rejected the concurrency leg: an argv-line count over ps cannot tell two concurrent boots from a wrapper and its child; the author also found on the rig that a boot's own $( ) subshells carry the same argv, so the probe became a count of children of the sim's node pid (measured 1 at BASE three times, 8 of 8 on the concurrent scratch). Round 2 rejected M2 as narrower than the Claim's 'no leg spawns another test_*.mjs': the greps now cover any test_*.mjs path, process.execPath/argv[0]/'node'/readdir, an allowlist of spawn first arguments, and the child_process import shape, over the sim and the rig. Round 3 rejected the missing pin on 'the legs' assertions are unchanged — same shims': the exam gained the assert-line multiset comm against $ULTRA_BASE (272 lines minus the one nested-loop line) and the STUBS block byte-diff; the compiler's wide-contract advisory then folded ten clauses to eight. Round 4 read the folded pair and passed."
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "be4bf979100d535dff89b2eefd27bb0214a87a6b9a24bb7efdd2b629535eb350",
+   "verdict": "fail",
+   "reason": "M5 / leg (e): grep -c over ps -eo args counts argv lines, not distinct boots, so a single serial boot spawned through a shell wrapper or a boot script that re-invokes itself shows >=2 and passes the exam while no two scenarios ever run concurrently — the only leg that proves the claim's concurrency clause does not establish it."
+  },
+  {
+   "round": 2,
+   "task": "1",
+   "hash": "35edd8d71b4b4955c4612b8881f097cb1be6292611748cf7edb780171029bbd7",
+   "verdict": "fail",
+   "reason": "M2 / leg (b) proves less than the Claim's 'no leg spawns another test_*.mjs file': the grep only names test_sandbox_boot*.mjs paths and bans process.execPath, so a leg that spawns node by name on any other sibling sim (or on a sim path built from readdirSync) passes the exam while the sentence is false."
+  },
+  {
+   "round": 3,
+   "task": "1",
+   "hash": "2c6031833b619a7bdf86aaf8be996f6fb7a30dd8df7121c51ec55ba48a548365",
+   "verdict": "fail",
+   "reason": "The Claim's 'legs' assertions are unchanged — same claims, same shims' (and the byte-pins 'listed and kept') has no machine clause and no leg: M3/M4 legs (c)/(d) only count ok ( lines and their tags, which a leg gutted to a bare ok print, or one whose shims were swapped, still satisfies, so the exam can pass while the sentence is false."
+  },
+  {
+   "round": 4,
+   "task": "1",
+   "hash": "e2c458fc31f629498109e413bae2691bd00c37c735a9d81222ae9cdfdb244869",
+   "verdict": "pass",
+   "reason": "Every clause M1–M8 is discharged by a leg that measures the stated thing directly — the timed run (a), the four literal greps over both files plus the import pin (b), the 73-count and 27-row tag table summing to 73 (c, d), the ppid-scoped ps count at 8 s on a second run (e), the module-loaded SLOW_FIRST/MJS_TIMEOUT and phrase checks (f), the approved-sim run plus export and STUBS byte-diff (g), and the comm -3 assertion-multiset diff pinned to the single nested-loop line (h) — so a passing exam leaves no clause true only by inference."
+  }
+ ]
+}
