@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { execSeam } from '../run-main.mjs'
 import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 import { runEngine } from '../run-engine.mjs'
-import { makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-edits-'))
 const REAL_ROLES = fileURLToPath(new URL('../roles/', import.meta.url))
@@ -63,7 +63,9 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
     rolesDir,
     patchBase,
   })
-  return { run, base, repo, runDir, clonesDir, patchesDir, integ }
+  // `stamp` rides along so a sim can read the integration branch this run
+  // folded onto (`ultra/integration-<stamp>`) in the `integ` clone.
+  return { run, base, repo, runDir, clonesDir, patchesDir, integ, stamp }
 }
 
 // One wave entry, six-slot shaped: a Machine line and Proof legs in the body,
@@ -132,6 +134,13 @@ const editExam = (cwd) =>
   // driver appends to the inputs, not on the two words.
   assert.ok(!prompts['review:T1:1'].includes('\nEXAM EDITED: '),
     'and the referee is handed no EXAM EDITED line')
+  // Task 2, leg (f) [M4]: with no edit there is no block to show either. Same
+  // reason as above — rule 8 quotes `EXAM EDITED DIFF <path>:` mid-sentence
+  // when it tells the referee where to read the hunks, so the two words are in
+  // every review prompt. The pin is on the block HEADER LINE the driver
+  // appends, which is the thing that must be absent.
+  assert.ok(!prompts['review:T1:1'].split('\n').some((l) => l.startsWith('EXAM EDITED DIFF ')),
+    'and no EXAM EDITED DIFF block')
   assert.equal(report.coverage.tasks_merged, 1)
   assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_test.sh')), [])
 }
@@ -263,6 +272,165 @@ const twoPathScenario = async (fixFn, paths = ['t1_test.sh', 't1_extra.sh'],
   const named = report.judgmentCalls.filter((j) => j.includes('t1_second.sh'))
   assert.equal(named.length, 1, 'exactly one call names the edited path')
   assert.ok(!named[0].includes('t1_test.sh'), 'and it does not name the untouched one: ' + named[0])
+}
+
+// ── Task 2: the referee sees what an exam edit changed against the peer's
+// bytes (#700 option (a), #556, #551) ───────────────────────────────────────
+// `examEdited` names the path and reviewer.md rule 8 asks the referee to judge
+// the edit — but PATCH diffs the graded clone against BASE, where the Proof
+// path does not exist, so an edited exam reads there as a whole-file add and
+// the referee cannot see which lines the peer wrote. These legs pin the other
+// half: one `EXAM EDITED DIFF <path>:` block per edited path, carrying the
+// unified diff from the bytes the examiner left at that path (empty, when it
+// left the path absent) to the bytes in the graded tree [M1]. On those hunks a
+// strengthening edit can be accepted and a weakening one blocked.
+
+// The strengthening edit: the peer's line kept, one more appended. Green on
+// the tree `writeOne` made, so round 2's exam evidence is green.
+const APPENDED = '[ "$(cat one.txt)" = "from T1" ]'
+const STRENGTHENED = RED_AT_BASE + APPENDED + '\n'
+
+// One block of a review prompt: from its `EXAM EDITED DIFF <path>:` header
+// line up to the next block, the RUN EVIDENCE text, or the end of the prompt.
+const diffBlock = (prompt, p) => {
+  const header = 'EXAM EDITED DIFF ' + p + ':'
+  const at = prompt.indexOf('\n' + header + '\n')
+  if (at < 0) return null
+  const rest = prompt.slice(at + 1)
+  const ends = ['\nEXAM EDITED DIFF ', '\n\nRUN EVIDENCE:', '\n\nEXAM EVIDENCE:']
+    .map((s) => rest.indexOf(s, header.length))
+    .filter((i) => i >= 0)
+  return ends.length ? rest.slice(0, Math.min(...ends)) : rest
+}
+
+// A first review that blocks buys the fix round — the only round that holds
+// the exam (#653) — and `review:T1:2` is the prompt these legs read. A
+// `Run:` proof rides along so the prompt really carries the RUN EVIDENCE text
+// leg (a) orders the block against.
+const fixRoundScenario = async ({ fixFn, review2 = passReview,
+                                  paths = ['t1_test.sh'],
+                                  examFiles = { 't1_test.sh': RED_AT_BASE } }) => {
+  const labels = []
+  const prompts = {}
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    prompts[opts.label] = prompt
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') return examOk(cwd, examFiles)
+    if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
+    if (opts.label === 'review:T1:1') {
+      return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'not yet' }] }
+    }
+    if (opts.label === 'review:T1:2') return review2()
+    if (kind === 'review') return passReview()
+    if (kind === 'fix') { fixFn(cwd); return doneImpl(cwd) }
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run, integ, stamp } = rig({
+    waves: [[entry({ proofTests: paths, proofRuns: ['true'] })]], stub,
+  })
+  const report = await run()
+  return { report, prompts, labels, integ, stamp }
+}
+
+{
+  // (a)+(b)+(c) — a fix round that only STRENGTHENS the exam: the peer's line
+  // survives, one line is appended, the referee sees exactly that and passes.
+  const { report, prompts, labels, integ, stamp } = await fixRoundScenario({
+    fixFn: (cwd) => fs.writeFileSync(path.join(cwd, 't1_test.sh'), STRENGTHENED),
+  })
+  assert.deepEqual(labels.filter((l) => l !== 'integration'),
+    ['exam:T1', 'impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
+    'the fix round proceeds to its re-review: ' + labels.join(','))
+
+  // (a) [M1] the EXAM EDITED line, then the block header, then a @@ hunk
+  // header — all of it before the RUN EVIDENCE text.
+  const prompt = prompts['review:T1:2']
+  const lines = prompt.split('\n')
+  const iEdited = lines.indexOf('EXAM EDITED: t1_test.sh')
+  const iBlock = lines.indexOf('EXAM EDITED DIFF t1_test.sh:')
+  const iRun = lines.findIndex((l) => l.startsWith('RUN EVIDENCE:'))
+  assert.ok(iEdited >= 0, '(a)[M1] the re-review prompt carries the line `EXAM EDITED: t1_test.sh`')
+  assert.ok(iRun >= 0, '(a)[M1] the re-review prompt carries the RUN EVIDENCE text the block precedes')
+  assert.ok(iBlock > iEdited,
+    '(a)[M1] a line `EXAM EDITED DIFF t1_test.sh:` follows the EXAM EDITED line (at ' +
+    iBlock + ' vs ' + iEdited + ')')
+  assert.ok(iBlock < iRun,
+    '(a)[M1] and it comes before the RUN EVIDENCE text (at ' + iBlock + ' vs ' + iRun + ')')
+  const block = diffBlock(prompt, 't1_test.sh')
+  assert.ok(block, '(a)[M1] the block is delimited')
+  const blockLines = block.split('\n')
+  assert.ok(blockLines.some((l) => l.startsWith('@@')),
+    '(a)[M1] and then a @@ hunk header: ' + JSON.stringify(block))
+  assert.ok(blockLines.some((l) => l.startsWith('---')) && blockLines.some((l) => l.startsWith('+++')),
+    '(a)[M1] the block carries the ---/+++ header lines of a unified diff: ' + JSON.stringify(block))
+
+  // (b) [M2] the appended line is a `+` content line, and nothing was removed:
+  // no line of the block begins `-` other than the `---` header.
+  assert.ok(blockLines.includes('+' + APPENDED),
+    '(b)[M2] the block carries the content line `+' + APPENDED + '`: ' + JSON.stringify(block))
+  assert.ok(!/\n-(?!--)/.test(block),
+    '(b)[M2] and no `-` content line — the peer\'s bytes all survive: ' + JSON.stringify(block))
+  const afterPlusPlus = blockLines.slice(blockLines.findIndex((l) => l.startsWith('+++')) + 1)
+  assert.ok(!afterPlusPlus.some((l) => l.startsWith('-')),
+    '(b)[M2] nothing beginning `-` after the +++ header: ' + JSON.stringify(afterPlusPlus))
+
+  // (c) [M2] the strengthened exam is accepted, recorded, and folded.
+  assert.equal(report.tasks[0].status, 'done', '(c)[M2] the row is done: ' + report.tasks[0].notes)
+  assert.equal(report.tasks[0].reviewVerdict, 'fixed', '(c)[M2] reviewVerdict')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'], '(c)[M2] examEdited')
+  assert.equal(report.tasks[0].exam, 'red', '(c)[M2] the value read in the examiner\'s clone at BASE')
+  assert.equal(report.coverage.tasks_merged, 1, '(c)[M2] tasks_merged')
+  const merged = gitSync(['show', 'ultra/integration-' + stamp + ':t1_test.sh'], integ)
+  assert.ok(merged.includes('[ -f one.txt ]'),
+    '(c)[M2] the integration branch keeps the peer\'s line: ' + JSON.stringify(merged))
+  assert.ok(merged.includes(APPENDED),
+    '(c)[M2] and holds the appended one: ' + JSON.stringify(merged))
+}
+
+{
+  // (d) [M3] the same round WEAKENS the exam: the peer's line is gone, the
+  // block shows it as a `-` content line, and the referee blocks on that.
+  const { report, prompts } = await fixRoundScenario({
+    fixFn: editExam,
+    review2: () => ({
+      verdict: 'FIX_REQUIRED',
+      issues: [{ severity: 'blocking',
+                 detail: 'the exam was weakened — the peer\'s [ -f one.txt ] is gone',
+                 actor: 'implementer' }],
+    }),
+  })
+  const block = diffBlock(prompts['review:T1:2'], 't1_test.sh')
+  assert.ok(block, '(d)[M3] the re-review prompt carries the block for the edited path')
+  assert.ok(block.split('\n').includes('-[ -f one.txt ]'),
+    '(d)[M3] whose content line `-[ -f one.txt ]` is the dropped assertion: ' + JSON.stringify(block))
+  assert.equal(report.tasks[0].status, 'failed', '(d)[M3] the row is failed')
+  assert.equal(report.tasks[0].reviewVerdict, 'fix-loop-exhausted', '(d)[M3] reviewVerdict')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'], '(d)[M3] examEdited')
+  assert.equal(report.coverage.tasks_merged, 0, '(d)[M3] nothing merges')
+}
+
+{
+  // (e) [M1] a Proof path the examiner left ABSENT that the fix round creates:
+  // the block diffs from empty, so every content line is an addition.
+  const { report, prompts } = await fixRoundScenario({
+    fixFn: (cwd) => fs.writeFileSync(path.join(cwd, 't1_extra.sh'), 'x\n'),
+    paths: ['t1_test.sh', 't1_extra.sh'],
+  })
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_extra.sh'], '(e)[M1] the created path is the edit')
+  const block = diffBlock(prompts['review:T1:2'], 't1_extra.sh')
+  assert.ok(block, '(e)[M1] a block `EXAM EDITED DIFF t1_extra.sh:` is carried')
+  const blockLines = block.split('\n')
+  const content = blockLines.slice(blockLines.findIndex((l) => l.startsWith('+++')) + 1)
+    .filter((l) => l !== '' && !l.startsWith('@@') && !l.startsWith('\\'))
+  assert.ok(content.length > 0, '(e)[M1] the block has content lines: ' + JSON.stringify(block))
+  for (const l of content) {
+    assert.ok(l.startsWith('+'),
+      '(e)[M1] every content line of an absent-path block begins `+`: ' + JSON.stringify(l))
+  }
+  assert.ok(!diffBlock(prompts['review:T1:2'], 't1_test.sh'),
+    '(e)[M1] and the untouched path gets no block')
 }
 
 console.log('ALL TESTS PASSED')
