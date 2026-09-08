@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -89,7 +89,7 @@
       },
       {
         "id": "3",
-        "title": "The resolver brief carries the frontier sibling's body \u2014 the tag's record laid beside its plan",
+        "title": "The resolver brief carries the frontier sibling's body — the tag's record laid beside its plan",
         "disposition": "implementation",
         "heuristic": false,
         "writes": [
@@ -164,7 +164,7 @@
         },
         {
           "id": "3",
-          "title": "The resolver brief carries the frontier sibling's body \u2014 the tag's record laid beside its plan",
+          "title": "The resolver brief carries the frontier sibling's body — the tag's record laid beside its plan",
           "files": [
             "fleet/CONTRACT.md",
             "fleet/publish-fold-block.mjs",
@@ -237,8 +237,8 @@
       ]
     ],
     "waveLabels": [
-      "fleet \u00b7 2 tasks",
-      "The fold runs the joined paths' own exams before the wh\u2026"
+      "fleet · 2 tasks",
+      "The fold runs the joined paths' own exams before the wh…"
     ],
     "mode": "parallel",
     "degrade_reason": null,
@@ -247,7 +247,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The kernel, the boot script, the resolver role and the wave loop are unchanged (the Check\n  above): the fold's CLI argv is BASE's, `resolveConflicts` is called, never edited, and every\n  new command \u2014 `node --check`, `bash -n`, `python3 -m py_compile`, `node <exam>`, the refold \u2014\n  is the driver's own `exec`. Amendment 10 holds: the only model the fold dispatches is the\n  read-only resolver role answering through `RESOLVER_SCHEMA`.\n- The receipt's disposition vocabulary is still the six words of BASE (`folded`, `nothing to\n  join`, `tip unmoved`, `suite red`, `conflict parked`, `cannot fold`); the new outcomes are\n  reasons under two of them, never a seventh word, so `fold_phrase` and `fold_hold_note` in the\n  boot script read them without change.\n- No committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a 40-hex commit sha.\n- Every assertion that stands at BASE in `fleet/tests/test_publish_fold.mjs` and\n  `fleet/tests/test_publish_fold_block.mjs` still holds, except the ones a task's Context names as\n  re-scoped with what replaces them; the new legs sit under a comment naming their task, in the\n  region the task's Context names.\n- `fleet/CONTRACT.md` is the authority for every literal: a receipt field, a file name or a reason\n  text this plan adds is written there by the task that adds it, and no other document names a\n  mechanism that is not there (`tests/test_docs_agree_with_code.py` is the lens; Task 1 runs it).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The kernel, the boot script, the resolver role and the wave loop are unchanged (the Check\n  above): the fold's CLI argv is BASE's, `resolveConflicts` is called, never edited, and every\n  new command — `node --check`, `bash -n`, `python3 -m py_compile`, `node <exam>`, the refold —\n  is the driver's own `exec`. Amendment 10 holds: the only model the fold dispatches is the\n  read-only resolver role answering through `RESOLVER_SCHEMA`.\n- The receipt's disposition vocabulary is still the six words of BASE (`folded`, `nothing to\n  join`, `tip unmoved`, `suite red`, `conflict parked`, `cannot fold`); the new outcomes are\n  reasons under two of them, never a seventh word, so `fold_phrase` and `fold_hold_note` in the\n  boot script read them without change.\n- No committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a 40-hex commit sha.\n- Every assertion that stands at BASE in `fleet/tests/test_publish_fold.mjs` and\n  `fleet/tests/test_publish_fold_block.mjs` still holds, except the ones a task's Context names as\n  re-scoped with what replaces them; the new legs sit under a comment naming their task, in the\n  region the task's Context names.\n- `fleet/CONTRACT.md` is the authority for every literal: a receipt field, a file name or a reason\n  text this plan adds is written there by the task that adds it, and no other document names a\n  mechanism that is not there (`tests/test_docs_agree_with_code.py` is the lens; Task 1 runs it).\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/run-engine.mjs fleet/run-waves.mjs fleet/roles skills/ultrapowers/kernel",
@@ -262,11 +262,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-49/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-49/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-49/acceptance.log"
 }

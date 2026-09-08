@@ -1,0 +1,2585 @@
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 486545c7f836b34d9072fd2e0a8fffe3296346f8..e9965f2a5c2fc69ac0ac446db2f15fab0d1cc803 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -51,8 +51,14 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     readers slice — is there on the same terms, present when the engine wrote them.
+     The publish fold writes its own `publish-fold/` receipts directory beside them, holding
+     `receipt.json` (the fold's record: `{ engineHead, attempts: { "1": { tip, candidate, pushedHead,
+-    disposition, reason, path, pathsJoined, resolversDispatched, suite } } }`), `engine-head`,
+-    `main.patch`, `run.patch`, `frontier/wave-<attempt>/`, `resolver-brief-<i>-<attempt>.txt`,
++    disposition, reason, path, pathsJoined, resolversDispatched, suite, checks, checkRetries } } }`,
++    where `checks` is the candidate checks the fold ran before the suite — one
++    `{ check, path, result }` per command, and `{ check, exam, path, result }` for an exam a joined
++    path's own task named — and `checkRetries` the number of resolvers a red check
++    sent back), `engine-head`, `main.patch`, `run.patch`, `frontier/wave-<attempt>/`,
++    `frontier/wave-<attempt>-retried/` (the wave a red check re-folded, kept whole),
++    `resolver-brief-<i>-<attempt>.txt`, `resolver-brief-<i>-<attempt>-retry.txt` (the re-brief a red
++    check earned), `exam-<attempt>-<n>.txt` (one per exam run, `n` from 1 in the order they ran),
+     `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
+     Committed from a detached worktree at every transition **and at every `engine:phase` the boot
+     script relays to the page while the engine runs** — one commit per relayed phase, so the
+@@ -75,7 +81,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   the retire sweep also deletes an `ultra/integration-run-<N>` whose PR is closed and not merged,
+   saying so on that run's line. The record is
+   read by tag: `.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>` and
+-  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`.
++  `.ultrapowers/plan.md?ref=ultra/plan/run-<N>`. The publish fold attributes a `Fleet-Run: <N>`
++  frontier commit to its run's tasks only when `ultra/plan/run-<N>` carries the
++  `.ultrapowers/gate-verdicts.json` its plan needs to compile — the record is laid beside the plan as
++  `<stem>.gate-verdicts.json`, a legacy-grammar plan needs none, and a claims-v1 tag without its
++  record compiles to nothing and its commit is a `no plan` line in the contending block.
+ - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
+   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
+   optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`, `hold=1`.
+@@ -179,8 +189,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     It folds, runs the suite, and pushes the head with `push_head` — a plain push on attempt 1,
+     `--force-with-lease=<branch>:<pushedHead>` on attempt 2. Its disposition is one of `folded`,
+     `nothing to join`, `tip unmoved`, `suite red`, `conflict parked` or `cannot fold`, and its receipt is
+-    `.ultrapowers/runs/<N>/publish-fold/receipt.json`. A `hold=1` run still folds — only its merge is
+-    skipped — and keeps `left open: hold=1`. Amendment 10 holds inside the fold: the only model it may
++    `.ultrapowers/runs/<N>/publish-fold/receipt.json`. The candidate checks it runs before the suite
++    are reasons under those words and never a seventh: a joined path that fails its parser is
++    `cannot fold` with `reason: <path> does not parse`, and a joined path whose own exam — a `- Test:`
++    bullet in the Proof of a task whose Files name that path, on either plan — goes red on the
++    candidate is `suite red` with `reason: <exam> red on <path>`, and the whole suite is not run.
++    A `hold=1` run still folds — only its merge is skipped — and keeps `left open: hold=1`. Amendment 10 holds inside the fold: the only model it may
+     dispatch is the read-only `fleet/roles/resolver.md` role answering through `RESOLVER_SCHEMA`, and
+     every git command, ref move and push is the script's.
+   - after the engine: exit 1 WITH a gate receipt is a verdict (parked), not a failure. `ahead = git rev-list
+diff --git a/fleet/publish-fold-block.mjs b/fleet/publish-fold-block.mjs
+index 162a9b3b9402563be84cc82c7d3927d56c83f62b..65a84661bb60ced8b60a0e0a58012feb77d24fa5 100644
+--- a/fleet/publish-fold-block.mjs
++++ b/fleet/publish-fold-block.mjs
+@@ -125,6 +125,19 @@ async function frontierCommits (repo, base, tip, target) {
+   })
+ }
+ 
++// The two blobs a plan tag can carry. The record is optional on the tag — a
++// legacy-grammar plan predates the gate and compiles without one — and
++// mandatory beside the plan when the tag has it, which is the sandbox boot
++// script's own rule for the run's own plan.
++const PLAN_BLOB_PATH = '.ultrapowers/plan.md'
++const VERDICTS_BLOB_PATH = '.ultrapowers/gate-verdicts.json'
++
++// The compiler reads the gate's record from a sibling of the plan named for the
++// plan's stem (`GATE_VERDICTS_SUFFIX` in `compile_plan.py`), so a plan written
++// out as `plan.md` wants its record as `plan.gate-verdicts.json` — the tag's
++// flat blob name is not the name the compiler looks for.
++const GATE_VERDICTS_SUFFIX = '.gate-verdicts.json'
++
+ /**
+  * Run M's plan, off its tag: fetch, read `.ultrapowers/plan.md` out of the tag,
+  * compile it, return the `tasks` array. `null` means "no plan" for any reason —
+@@ -132,6 +145,14 @@ async function frontierCommits (repo, base, tip, target) {
+  * tag carries no plan, or the plan does not compile. Every one of those is a
+  * line, never a throw.
+  *
++ * A claims-v1 plan does not compile alone: the proof gate's verdict is an
++ * artifact and not a memory (spec §4.5), so the compiler refuses a plan whose
++ * record is not beside it. The tag carries that record as
++ * `.ultrapowers/gate-verdicts.json` when the run had one; it is laid into the
++ * temp directory under the name the compiler looks for before the compile, and
++ * its absence is passed over rather than treated as a failure — a legacy tag has
++ * no record and its plan still compiles.
++ *
+  * The refspec names its destination so the fetch LEAVES the tag in the clone
+  * rather than only in FETCH_HEAD, and is forced so a second call over the same
+  * clone is idempotent.
+@@ -141,14 +162,18 @@ async function planTasksFor (repo, run) {
+   const tag = 'refs/tags/ultra/plan/run-' + run
+   const fetched = await git(repo, ['fetch', 'origin', '+' + tag + ':' + tag])
+   if (fetched.code !== 0) return null
+-  const plan = await git(repo, ['show', tag + ':.ultrapowers/plan.md'])
++  const plan = await git(repo, ['show', tag + ':' + PLAN_BLOB_PATH])
+   if (plan.code !== 0) return null
++  const verdicts = await git(repo, ['show', tag + ':' + VERDICTS_BLOB_PATH])
+ 
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-fold-block-'))
+   try {
+     const planFile = path.join(dir, 'plan.md')
+     const launchFile = path.join(dir, 'launch.json')
+     fs.writeFileSync(planFile, plan.stdout)
++    if (verdicts.code === 0) {
++      fs.writeFileSync(path.join(dir, 'plan' + GATE_VERDICTS_SUFFIX), verdicts.stdout)
++    }
+     // `--emit-launch` is the shape that carries verbatim bodies beside
+     // id/title/files — the same object `<run dir>/launch.json` holds, so the
+     // frontier side and this run's side are one shape and one code path.
+@@ -164,37 +189,72 @@ async function planTasksFor (repo, run) {
+ }
+ 
+ /**
+- * The block, resolved.
+- *
+- *   repo   a full clone of the target with an `origin` remote
+- *   base   this run's BASE; `tip`  main as the fold sees it
+- *   run    this run's number (the label the incoming hunk side carries)
+- *   path   the conflicted path
+- *   tasks  this run's `launch.json` tasks — `{ id, title, body, files }`
+- *
+- * Frontier entries come first, oldest to newest; this run's entries follow in
+- * the order `tasks` gives them. A task contributes exactly when its `files`
+- * name the conflicted path.
++ * The block's entries for one path, in the order it renders them: a
++ * `{ run, task }` for every task whose `files` name the path — the frontier
++ * plans' first, oldest commit first, then this run's `tasks` in their order —
++ * and a `{ commit }` wherever a frontier commit is unattributable. The two
++ * shapes share one list because their ORDER is the fact: a plan's tasks stand
++ * where the commit that carried them stands.
+  */
+-export async function contendingBlock ({ repo, base, tip, run, path: target, tasks }) {
++async function blockEntries ({ repo, base, tip, run, path: target, tasks }) {
+   const entries = []
+   const plans = new Map()
+ 
+   for (const commit of await frontierCommits(repo, base, tip, target)) {
+-    if (!commit.run) { entries.push(noPlanLine(commit)); continue }
++    if (!commit.run) { entries.push({ commit }); continue }
+     if (!plans.has(commit.run)) plans.set(commit.run, await planTasksFor(repo, commit.run))
+     const planTasks = plans.get(commit.run)
+-    if (!planTasks) { entries.push(noPlanLine(commit)); continue }
++    if (!planTasks) { entries.push({ commit }); continue }
+     for (const task of planTasks) {
+-      if (filesOf(task).includes(target)) entries.push(taskEntry(commit.run, task))
++      if (filesOf(task).includes(target)) entries.push({ run: commit.run, task })
+     }
+   }
+ 
+   for (const task of (Array.isArray(tasks) ? tasks : [])) {
+-    if (filesOf(task).includes(target)) entries.push(taskEntry(run, task))
++    if (filesOf(task).includes(target)) entries.push({ run, task })
+   }
+ 
+-  return HEADING + '\n' + sideSentence(run) + entries.map((e) => '\n' + e).join('')
++  return entries
++}
++
++/**
++ * The contending TASKS for one path — the same walk the block renders, without
++ * the unattributable commits' lines (#754). Read by the fold's exam check,
++ * which wants the bodies rather than the prose: a task's `Proof:` slot names
++ * the exams that stand for the path it wrote.
++ *
++ *   repo   a full clone of the target with an `origin` remote
++ *   base   this run's BASE; `tip`  main as the fold sees it
++ *   run    this run's number (the label the incoming hunk side carries)
++ *   path   the path in question
++ *   tasks  this run's `launch.json` tasks — `{ id, title, body, files }`
++ *
++ * Resolves the ordered `{ run, task }` entries: the frontier plans' tasks read
++ * off their tags, oldest commit first, then this run's, each included exactly
++ * when its `files` name the path.
++ */
++export async function contendingTasks ({ repo, base, tip, run, path: target, tasks }) {
++  const entries = await blockEntries({ repo, base, tip, run, path: target, tasks })
++  return entries.filter((e) => e.task).map((e) => ({ run: e.run, task: e.task }))
++}
++
++/**
++ * The block, resolved.
++ *
++ *   repo   a full clone of the target with an `origin` remote
++ *   base   this run's BASE; `tip`  main as the fold sees it
++ *   run    this run's number (the label the incoming hunk side carries)
++ *   path   the conflicted path
++ *   tasks  this run's `launch.json` tasks — `{ id, title, body, files }`
++ *
++ * Frontier entries come first, oldest to newest; this run's entries follow in
++ * the order `tasks` gives them. A task contributes exactly when its `files`
++ * name the conflicted path.
++ */
++export async function contendingBlock ({ repo, base, tip, run, path: target, tasks }) {
++  const entries = await blockEntries({ repo, base, tip, run, path: target, tasks })
++  return HEADING + '\n' + sideSentence(run) +
++    entries.map((e) => '\n' + (e.task ? taskEntry(e.run, e.task) : noPlanLine(e.commit))).join('')
+ }
+ 
+ export default contendingBlock
+diff --git a/fleet/publish-fold.mjs b/fleet/publish-fold.mjs
+index 024f6f57b2078212da59b86eb771df9194f196f3..6797792506f405456b5ff4afd661bc54cfd5e60d 100644
+--- a/fleet/publish-fold.mjs
++++ b/fleet/publish-fold.mjs
+@@ -40,7 +40,9 @@ import {
+ } from './run-main.mjs'
+ import { loadRoles, parseCliJson, resolveConflicts } from './run-engine.mjs'
+ import { makeEventLog } from './run-waves.mjs'
+-import { contendingBlock as buildContendingBlock } from './publish-fold-block.mjs'
++import {
++  contendingBlock as buildContendingBlock, contendingTasks,
++} from './publish-fold-block.mjs'
+ 
+ // Resolved against the ENGINE checkout, exactly as `runEngine` resolves it:
+ // the kernel ships with the code that is running, never with `--repo`.
+@@ -65,6 +67,182 @@ const planTitleOf = (planPath) => {
+   return undefined
+ }
+ 
++// ── the candidate's checks (#751) ────────────────────────────────────────────
++// A check is a function of the joined files alone: no model, and never the
++// whole suite. The folder runs the whole list, in order, on every candidate it
++// materializes — BEFORE it spends the suite — so a candidate that cannot even
++// be parsed costs a parser invocation rather than a full test run, and one whose
++// joined paths fail their own exams (#754) costs those exams rather than all of
++// them.
++//
++// `ctx` is
++//   { repo, base, tip, run, tasks, candidate, joined, conflicted, integ, exec,
++//     foldEvidence, attemptKey }
++// with `joined` the ordered joined paths, `conflicted` the paths carrying a
++// `conflicts.json` entry and `integ` the integration clone already laid on the
++// candidate's tree. `run(ctx)` resolves either
++//   { ok: true, checks }
++// or
++//   { ok: false, checks, path, message, disposition, reason }
++// — the folder appends `checks` to the receipt row either way, and on
++// `ok: false` either retries that path's resolver once (when the path is one a
++// resolver owns and has not been retried this attempt) or records the
++// disposition and the reason and runs no suite.
++
++/**
++ * The parse command for a joined path, by extension, as an argv — or `null`
++ * for a path no parser owns, for which nothing is run at all.
++ */
++export function parseArgvFor (p) {
++  const file = String(p == null ? '' : p)
++  const ext = (/\.[^./\\]*$/.exec(file) || [''])[0].toLowerCase()
++  if (ext === '.mjs' || ext === '.js') return ['node', '--check', file]
++  if (ext === '.sh') return ['bash', '-n', file]
++  if (ext === '.py') return ['python3', '-m', 'py_compile', file]
++  return null
++}
++
++export const PARSE_CHECK = {
++  name: 'parse',
++  run: async (ctx) => {
++    const checks = []
++    for (const p of ctx.joined) {
++      const argv = parseArgvFor(p)
++      if (!argv) continue
++      const r = await ctx.exec(argv[0], argv.slice(1), { cwd: ctx.integ })
++      const ok = Boolean(r) && r.code === 0
++      checks.push({ check: 'parse', path: p, result: ok ? 'pass' : 'fail' })
++      if (ok) continue
++      return {
++        ok: false,
++        checks,
++        path: p,
++        // What the parser said, which is what the re-briefed resolver is told.
++        message: tail(String((r && r.stderr) || '') + String((r && r.stdout) || '')),
++        disposition: 'cannot fold',
++        reason: p + ' does not parse',
++      }
++    }
++    return { ok: true, checks }
++  },
++}
++
++// ── the exam check (#754) ────────────────────────────────────────────────────
++// A joined path is a path two runs both wrote, and the run that wrote main's
++// side left behind the exam that stands for it: the `- Test:` bullets of the
++// Proof slot in the task whose Files name that path. Those exams are the
++// cheapest true measurement of the candidate there is — they are about the very
++// file the fold just joined — so they run after the parse check and before the
++// whole suite, and a red one is `suite red` without ever spending the suite.
++
++/**
++ * The exam paths a task body names: the `- Test:` bullets of its `**Proof:**`
++ * slot, in the body's own order, backticks stripped.
++ *
++ * The slot runs from the `**Proof:**` line to the line before the first later
++ * line beginning `**Stale-if:**`, or to the body's end. That boundary is the
++ * whole reason this is a reader and not a grep: a `Stale-if:` predicate may
++ * name a path in the same bullet shape, and it is a staleness condition rather
++ * than an exam. A body with no `**Proof:**` line names none.
++ */
++export function proofExams (body) {
++  const lines = String(body == null ? '' : body).split('\n')
++  const start = lines.findIndex((l) => l.startsWith('**Proof:**'))
++  if (start < 0) return []
++  let end = lines.length
++  for (let i = start + 1; i < lines.length; i++) {
++    if (lines[i].startsWith('**Stale-if:**')) { end = i; break }
++  }
++  const exams = []
++  for (const line of lines.slice(start, end)) {
++    const m = /^\s*-\s*Test:\s*(.+?)\s*$/.exec(line)
++    if (!m) continue
++    const exam = m[1].replace(/`/g, '').trim()
++    if (exam) exams.push(exam)
++  }
++  return exams
++}
++
++/**
++ * The command that runs one exam, as an argv — or `null` for an exam whose
++ * extension no runner owns, which is recorded and not run.
++ */
++export function examArgvFor (exam) {
++  const file = String(exam == null ? '' : exam)
++  if (/\.test\.ts$/i.test(file)) return ['bun', 'test', file]
++  const ext = (/\.[^./\\]*$/.exec(file) || [''])[0].toLowerCase()
++  if (ext === '.mjs' || ext === '.js') return ['node', file]
++  if (ext === '.py') return ['python3', '-m', 'pytest', '-q', file]
++  return null
++}
++
++// `n` counts every exam RUN in the attempt, across both passes of a retry, so
++// it is read off the evidence directory rather than kept in a closure the retry
++// rebuilds: the first pass's `exam-1-1.txt` is the red output a reader goes
++// looking for, and the second pass's runs continue the sequence.
++const nextExamIndex = (dir, attemptKey) => {
++  let names = []
++  try { names = fs.readdirSync(dir) } catch { return 1 }
++  const re = new RegExp('^exam-' + String(attemptKey).replace(/[^A-Za-z0-9_-]/g, '.') +
++    '-(\\d+)\\.txt$')
++  let max = 0
++  for (const name of names) {
++    const m = re.exec(name)
++    if (m && Number(m[1]) > max) max = Number(m[1])
++  }
++  return max + 1
++}
++
++export const EXAM_CHECK = {
++  name: 'exam',
++  run: async (ctx) => {
++    const checks = []
++    // Each exam ONCE per pass, in first-seen order, under the joined path that
++    // brought it: one task can name an exam for two joined paths, and running
++    // it twice would say nothing the first run did not.
++    const seen = new Set()
++    let n = nextExamIndex(ctx.foldEvidence, ctx.attemptKey)
++    for (const p of ctx.joined) {
++      const contenders = await contendingTasks({
++        repo: ctx.repo, base: ctx.base, tip: ctx.tip, run: ctx.run, path: p, tasks: ctx.tasks,
++      })
++      for (const { task } of contenders) {
++        for (const exam of proofExams(task && task.body)) {
++          if (seen.has(exam)) continue
++          seen.add(exam)
++          const argv = examArgvFor(exam)
++          if (!argv) {
++            checks.push({ check: 'exam', exam, path: p, result: 'skipped' })
++            continue
++          }
++          const r = await ctx.exec(argv[0], argv.slice(1), { cwd: ctx.integ })
++          const out = String((r && r.stdout) || '') + String((r && r.stderr) || '')
++          fs.writeFileSync(
++            path.join(ctx.foldEvidence, 'exam-' + ctx.attemptKey + '-' + n + '.txt'), out)
++          n += 1
++          const ok = Boolean(r) && r.code === 0
++          checks.push({ check: 'exam', exam, path: p, result: ok ? 'pass' : 'fail' })
++          if (ok) continue
++          // The first red exam stops the pass: the candidate has already been
++          // measured false, and the exams after it would measure the same one.
++          return {
++            ok: false,
++            checks,
++            path: p,
++            exam,
++            message: tail(out),
++            disposition: 'suite red',
++            reason: exam + ' red on ' + p,
++          }
++        }
++      }
++    }
++    return { ok: true, checks }
++  },
++}
++
++export const CANDIDATE_CHECKS = [PARSE_CHECK, EXAM_CHECK]
++
+ /**
+  * One attempt of the publish fold.
+  *
+@@ -222,6 +400,7 @@ export async function publishFold (opts, deps = {}) {
+       disposition, reason, conflictPath, candidate, pushedHead = '', suite = 'none',
+       tip = '', pathsJoined = 0, pathsConflicted = 0,
+       resolversDispatched = 0, resolverRetries = 0,
++      checks = [], checkRetries = 0,
+     } = fields
+     const row = rowOf(attemptKey)
+     if (tip) row.tip = tip
+@@ -235,13 +414,19 @@ export async function publishFold (opts, deps = {}) {
+     row.pathsJoined = pathsJoined
+     row.resolversDispatched = resolversDispatched
+     row.suite = suite
++    // The candidate checks (#751): every entry every pass appended, in order,
++    // and the number of resolvers a red check sent back. Both stand on every
++    // row — `[]` and 0 on a fold with no joined path.
++    row.checks = checks
++    row.checkRetries = checkRetries
+     writeReceipt()
+     collectWave()
+     eventLog.onEvent({
+       kind: 'driver:publish-fold',
+       run, attempt, base, tip, candidate,
++      ...(reason ? { reason } : {}),
+       pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+-      suite, disposition,
++      suite, disposition, checks, checkRetries,
+     })
+     return receipt
+   }
+@@ -341,12 +526,17 @@ export async function publishFold (opts, deps = {}) {
+         run, attempt, base,
+         tip: row.tip || '',
+         candidate: row.candidate || '',
++        ...(row.reason ? { reason: row.reason } : {}),
+         pathsJoined: typeof row.pathsJoined === 'number' ? row.pathsJoined : 0,
+         pathsConflicted: 0,
+         resolversDispatched: typeof row.resolversDispatched === 'number' ? row.resolversDispatched : 0,
+         resolverRetries: 0,
+         suite: row.suite || 'none',
+         disposition: row.disposition,
++        // Replayed, never recomputed: a re-entry re-reads the row it found, so
++        // a row written before #751 stays a row without these two.
++        ...(Array.isArray(row.checks) ? { checks: row.checks } : {}),
++        ...(typeof row.checkRetries === 'number' ? { checkRetries: row.checkRetries } : {}),
+       })
+       return receipt
+     }
+@@ -427,9 +617,10 @@ export async function publishFold (opts, deps = {}) {
+     const mainPaths = await pathsOf(mainPatch)
+     const runPaths = await pathsOf(runPatch)
+     // Disjoint sides still fold: an empty intersection is a fact about the two
+-    // patches, never a refusal.
+-    let pathsJoined = 0
+-    for (const p of runPaths) if (mainPaths.has(p)) pathsJoined += 1
++    // patches, never a refusal. `joined` keeps run.patch's own path order —
++    // the order the candidate's checks run in.
++    const joined = [...runPaths].filter((p) => mainPaths.has(p))
++    const pathsJoined = joined.length
+ 
+     // ── step 3: the kernel ──────────────────────────────────────────────────
+     const runCli = async (argv) => {
+@@ -444,155 +635,292 @@ export async function publishFold (opts, deps = {}) {
+     // declaration, and a cross-run frontier has no such declaration to read.
+     const commutesArgs = []
+ 
+-    const fold = await runCli(['fold', ...common, '--base', base, ...taskArgs])
+-    const f = fold.parsed
+-    const parked = (reason, conflictPath, extra = {}) => record({
++    // Everything the pass below reads out of the run tree, read once.
++    const launch = readJson(path.join(runDir, 'launch.json'))
++    const tasks = Array.isArray(launch && launch.tasks) ? launch.tasks : []
++    const args = readJson(path.join(runDir, 'args.json')) || {}
++    const planTitle = planTitleOf(
++      typeof args.planPath === 'string' && args.planPath.trim() ? args.planPath : undefined)
++    const subjectArgs = planTitle ? ['--subject', planTitle] : []
++    const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) ? args.testCmd : ''
++
++    // The tallies a pass adds to. `resolversDispatched` counts REAL dispatches
++    // (a replayed reply is not one); `resolverRetries` keeps its meaning — the
++    // replies the kernel rejected; `checkRetries` is the new counter, the
++    // number of times a red check sent a resolver back.
++    let resolversDispatched = 0
++    let resolverRetries = 0
++    let checks = []
++    let checkRetries = 0
++    const retriedPaths = new Set()
++
++    const parked = (reason, conflictPath) => record({
+       disposition: 'conflict parked', reason, conflictPath, candidate: floor, tip,
+-      pathsJoined, pathsConflicted: conflictsIndex().length, ...extra,
++      pathsJoined, pathsConflicted: conflictsIndex().length,
++      resolversDispatched, resolverRetries, checks, checkRetries,
+     })
+-    const cannot = (reason, extra = {}) => record({
++    const cannot = (reason) => record({
+       disposition: 'cannot fold', reason, candidate: floor, tip,
+-      pathsJoined, pathsConflicted: conflictsIndex().length, ...extra,
++      pathsJoined, pathsConflicted: conflictsIndex().length,
++      resolversDispatched, resolverRetries, checks, checkRetries,
+     })
+ 
+-    if (!f) {
+-      return cannot('fold printed no verdict (exit ' + fold.code + '): ' + tail(fold.stderr))
+-    }
+-    if (typeof f.parked === 'number' && f.parked > 0) {
+-      // The kernel narrated a stop no resolver can drain: two sides on one
+-      // binary path, a delete/modify pairing, a kernel-limit park. The
+-      // conflicted path is read off the index it wrote, never guessed.
+-      const entry = conflictsIndex().find((e) => e && e.dispatchable === false) || conflictsIndex()[0]
+-      return parked('fold parked ' + f.parked + ' conflict(s) — ' +
+-        ((entry && entry.reason) || 'see the conflicts index'), entry && entry.path)
+-    }
+-    if (fold.code !== 0 && !(Array.isArray(f.open) && f.open.length)) {
+-      return cannot('fold exited ' + fold.code + ': ' + (f.selfChecks || tail(fold.stderr)))
+-    }
+-    if (typeof f.conflicts !== 'number') {
+-      return cannot('fold reported no conflicts count to verify against')
+-    }
+-    const open = Array.isArray(f.open) ? f.open.slice() : []
+-    if (f.conflicts > 0 && open.length === 0) {
+-      return cannot('fold counted ' + f.conflicts + ' conflict(s) but named none to resolve')
+-    }
+-    const expectOpen = (typeof f.dispatchable === 'number') ? f.dispatchable : f.conflicts
+-    if (open.length !== expectOpen) {
+-      return cannot('fold named ' + open.length + ' open conflict(s) but counted ' +
+-        expectOpen + ' still to resolve')
+-    }
+-    if (open.length === 0 && f.complete !== true) {
+-      return cannot('fold reported no conflicts but did not complete (selfChecks: ' +
+-        (f.selfChecks || 'absent') + ')')
++    // ── the re-brief a red check writes ─────────────────────────────────────
++    // Appended AFTER the contending block, so the retry's prompt begins with
++    // the bytes of the brief the same resolver already answered.
++    // An exam check names the exam that went red as well as the path: the
++    // resolver's own file is the path, but what it has to satisfy is the exam,
++    // and `exam_main.mjs` is a name it can open in its own clone.
++    const failedCheckSection = (r) =>
++      '\n\nPREVIOUS RESOLUTION FAILED A CHECK\n' +
++      'Your previous resolution was folded into the candidate, and ' + r.path +
++      ' then failed the ' + r.check + ' check there' +
++      (r.exam ? ' — the exam ' + r.exam + ' exited non-zero on it' : '') +
++      '. The checker said:\n\n' +
++      r.message + '\n\n' +
++      'Resolve the same hunks again so that ' + r.path + ' passes that check. ' +
++      'Nothing else about this conflict has changed.\n'
++
++    // ── the reply a replayed conflict gives back ────────────────────────────
++    // A retry re-folds the WHOLE wave, so the kernel narrates every conflict
++    // again — but only the red path's resolver is asked again. Every other
++    // conflict answers out of the reply directory it already wrote, matched by
++    // path (never by `i`), with no dispatch.
++    const replayReply = (r, conflictPath) => {
++      const entry = (r.index || []).find((e) => e && e.path === conflictPath)
++      if (!entry) return null
++      let names = []
++      try { names = fs.readdirSync(r.waveDir) } catch { return null }
++      const re = new RegExp('^reply-' + entry.i + '-(\\d+)$')
++      let dir = ''
++      let best = -1
++      for (const name of names) {
++        const m = re.exec(name)
++        if (m && Number(m[1]) > best) { best = Number(m[1]); dir = path.join(r.waveDir, name) }
++      }
++      if (!dir) return null
++      const hunks = []
++      let notes = ''
++      for (const file of fs.readdirSync(dir).sort()) {
++        if (!file.endsWith('.txt')) continue
++        const content = fs.readFileSync(path.join(dir, file), 'utf8')
++        // `resolveConflicts` writes `notes.txt` as the notes plus one newline
++        // and each hunk file newline-terminated: the notes are handed back
++        // without that newline and the hunks with theirs, so the reply
++        // directory the replay produces is the one it was read from, byte for
++        // byte.
++        if (file === 'notes.txt') { notes = content.replace(/\n$/, ''); continue }
++        hunks.push({ id: file.slice(0, -'.txt'.length), content })
++      }
++      return { status: 'RESOLVED', hunks, notes }
+     }
+ 
+-    // ── step 4: the resolvers ───────────────────────────────────────────────
+-    let resolversDispatched = 0
+-    let resolverRetries = 0
+-    if (open.length) {
+-      // The brief, per conflicted path, concatenated in the kernel's own `open`
+-      // order — `resolveConflicts` briefs every dispatch of a multi-path stop
+-      // with ONE string, so a two-path stop's block is the two blocks whole,
+-      // first path first. The folder prepends and appends nothing.
+-      const launch = readJson(path.join(runDir, 'launch.json'))
+-      const tasks = Array.isArray(launch && launch.tasks) ? launch.tasks : []
+-      const blocks = []
+-      for (const c of open) {
+-        blocks.push(await buildContendingBlock({ repo, base, tip, run, path: c.path, tasks }))
++    // ── the pass: the kernel, the resolvers, the candidate, the checks ──────
++    // Run once, and once more when a check goes red on a path a resolver owns
++    // and has not already been sent back this attempt. A retry re-runs the
++    // check list from its first entry on the new candidate, so a candidate is
++    // only ever measured whole.
++    let retry = null   // { path, check, exam, message, index, waveDir }
++    for (;;) {
++      if (retry) {
++        // `cmd_fold` refuses a wave whose `fold_log.jsonl` exists and
++        // `cmd_resolve` refuses an applied conflict, so the fold is re-driven
++        // from a FRESH wave directory: the one that produced the red candidate
++        // is kept whole in the evidence tree and removed from the run tree.
++        const kept = evidenceWaveDirOf(attemptKey + '-retried')
++        fs.rmSync(kept, { recursive: true, force: true })
++        fs.mkdirSync(path.dirname(kept), { recursive: true })
++        fs.cpSync(waveDirOf(attemptKey), kept, { recursive: true })
++        fs.rmSync(waveDirOf(attemptKey), { recursive: true, force: true })
++        retry.waveDir = kept
++        checkRetries += 1
++        retriedPaths.add(retry.path)
++        await restoreInteg()
++      }
++
++      // ── step 3: the kernel ────────────────────────────────────────────────
++      const fold = await runCli(['fold', ...common, '--base', base, ...taskArgs])
++      const f = fold.parsed
++
++      if (!f) {
++        return cannot('fold printed no verdict (exit ' + fold.code + '): ' + tail(fold.stderr))
++      }
++      if (typeof f.parked === 'number' && f.parked > 0) {
++        // The kernel narrated a stop no resolver can drain: two sides on one
++        // binary path, a delete/modify pairing, a kernel-limit park. The
++        // conflicted path is read off the index it wrote, never guessed.
++        const entry = conflictsIndex().find((e) => e && e.dispatchable === false) || conflictsIndex()[0]
++        return parked('fold parked ' + f.parked + ' conflict(s) — ' +
++          ((entry && entry.reason) || 'see the conflicts index'), entry && entry.path)
++      }
++      if (fold.code !== 0 && !(Array.isArray(f.open) && f.open.length)) {
++        return cannot('fold exited ' + fold.code + ': ' + (f.selfChecks || tail(fold.stderr)))
++      }
++      if (typeof f.conflicts !== 'number') {
++        return cannot('fold reported no conflicts count to verify against')
++      }
++      const open = Array.isArray(f.open) ? f.open.slice() : []
++      if (f.conflicts > 0 && open.length === 0) {
++        return cannot('fold counted ' + f.conflicts + ' conflict(s) but named none to resolve')
++      }
++      const expectOpen = (typeof f.dispatchable === 'number') ? f.dispatchable : f.conflicts
++      if (open.length !== expectOpen) {
++        return cannot('fold named ' + open.length + ' open conflict(s) but counted ' +
++          expectOpen + ' still to resolve')
++      }
++      if (open.length === 0 && f.complete !== true) {
++        return cannot('fold reported no conflicts but did not complete (selfChecks: ' +
++          (f.selfChecks || 'absent') + ')')
++      }
++
++      // ── step 4: the resolvers ─────────────────────────────────────────────
++      if (open.length) {
++        // The brief, per conflicted path, concatenated in the kernel's own
++        // `open` order — `resolveConflicts` briefs every dispatch of a
++        // multi-path stop with ONE string, so a two-path stop's block is the
++        // two blocks whole, first path first. The folder prepends nothing, and
++        // appends only the re-brief a red check earned.
++        const blocks = []
++        for (const c of open) {
++          blocks.push(await buildContendingBlock({ repo, base, tip, run, path: c.path, tasks }))
++        }
++        const block = blocks.join('')
++
++        // TIP's tree, in the clone the resolver runs in: the frontier side of
++        // every hunk is main since BASE, so the tree a resolver can open has to
++        // be main's. `read-tree -u --reset` lays the tree down; the `reset --hard`
++        // that follows puts the clone's own head on it, so `HEAD^{tree}` in the
++        // resolver's cwd IS the tip's tree rather than the base it was cut at.
++        await borrowInteg()
++        await gitR(['fetch', repo, 'refs/remotes/origin/' + defaultBranch], integ)
++        await gitR(['read-tree', '-u', '--reset', tip + '^{tree}'], integ)
++        await gitR(['reset', '--hard', tip], integ)
++
++        const roles = loadRoles()
++        const dispatch = buildAgent()
++        // The brief a resolver was handed IS the record of what it was asked, so
++        // it is saved beside the reply directory it wrote, under the same `<i>`
++        // the kernel's index gave the conflict. On a retry only the red path is
++        // asked again, under `-retry`, so the first pass's brief stands.
++        const agent = async (prompt, agentOpts) => {
++          const m = /:(\d+):(\d+)$/.exec(String((agentOpts && agentOpts.label) || ''))
++          const i = m ? m[1] : ''
++          const entry = i ? conflictsIndex().find((e) => e && String(e.i) === i) : null
++          const conflictPath = (entry && entry.path) || ''
++          if (retry && conflictPath && conflictPath !== retry.path) {
++            const replayed = replayReply(retry, conflictPath)
++            if (replayed) return replayed
++          }
++          const text = (retry && conflictPath === retry.path)
++            ? prompt + failedCheckSection(retry)
++            : prompt
++          if (i) {
++            fs.writeFileSync(path.join(foldEvidence, 'resolver-brief-' + i + '-' + attemptKey +
++              (retry ? '-retry' : '') + '.txt'), text)
++          }
++          const reply = await dispatch(text, agentOpts)
++          if (reply) resolversDispatched += 1
++          return reply
++        }
++
++        const resolution = await resolveConflicts({
++          agent, runCli, roles, common, taskArgs, commutesArgs,
++          open, contendingBlock: block,
++          waveDir: waveDirOf(attemptKey),
++          labelPrefix: 'resolve:publish-fold:' + attemptKey,
++        })
++        resolverRetries += resolution.transcripts.filter((t) => t.attempt === 2).length
++        if (!resolution.ok) {
++          const last = resolution.transcripts[resolution.transcripts.length - 1]
++          await restoreInteg()
++          return parked(resolution.reason, (last && last.path) || open[0].path)
++        }
++        await restoreInteg()
+       }
+-      const block = blocks.join('')
+ 
+-      // TIP's tree, in the clone the resolver runs in: the frontier side of
+-      // every hunk is main since BASE, so the tree a resolver can open has to
+-      // be main's. `read-tree -u --reset` lays the tree down; the `reset --hard`
+-      // that follows puts the clone's own head on it, so `HEAD^{tree}` in the
+-      // resolver's cwd IS the tip's tree rather than the base it was cut at.
++      // ── step 5: the candidate ─────────────────────────────────────────────
++      const mat = await runCli(['materialize', ...common, '--prev-head', tip, ...taskArgs, ...subjectArgs])
++      const m = mat.parsed
++      const pathsConflicted = conflictsIndex().length
++      if (!m || !m.candidateSha) {
++        // A `park` here is the cross-run chmod shape: a path whose mode on main
++        // since BASE differs from the mode this run's side carries. The kernel's
++        // own reason is the reason, verbatim.
++        return record({
++          disposition: 'cannot fold',
++          reason: (m && (m.park || m.fallback)) || ('materialize refused (exit ' + mat.code +
++            '): ' + tail(mat.stderr)),
++          candidate: floor, tip, pathsJoined, pathsConflicted,
++          resolversDispatched, resolverRetries, checks, checkRetries,
++        })
++      }
++      const candidate = m.candidateSha
++      // The branch moves BEFORE the checks and the suite: both measure the
++      // candidate, and a red one leaves the branch on it so the PR shows what
++      // failed.
++      await gitR(['update-ref', 'refs/heads/' + branch, candidate])
++
++      // ── step 6: the checks, on the candidate, in the integration clone ────
++      // By NAME, not by sha: the integration clone was cut `--local` at BASE and
++      // holds neither the tip nor the candidate, and a bare sha is not
++      // advertised under every protocol.
+       await borrowInteg()
+-      await gitR(['fetch', repo, 'refs/remotes/origin/' + defaultBranch], integ)
+-      await gitR(['read-tree', '-u', '--reset', tip + '^{tree}'], integ)
+-      await gitR(['reset', '--hard', tip], integ)
+-
+-      const roles = loadRoles()
+-      const dispatch = buildAgent()
+-      // The brief a resolver was handed IS the record of what it was asked, so
+-      // it is saved beside the reply directory it wrote, under the same `<i>`
+-      // the kernel's index gave the conflict.
+-      const agent = async (prompt, agentOpts) => {
+-        const m = /:(\d+):(\d+)$/.exec(String((agentOpts && agentOpts.label) || ''))
+-        if (m) {
+-          fs.writeFileSync(
+-            path.join(foldEvidence, 'resolver-brief-' + m[1] + '-' + attemptKey + '.txt'), prompt)
++      await gitR(['fetch', '--no-tags', repo, 'refs/heads/' + branch], integ)
++      await gitR(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
++
++      const conflicted = conflictsIndex().map((e) => e && e.path).filter(Boolean)
++      const ctx = {
++        repo, base, tip, run, tasks, candidate, joined, conflicted, integ, exec,
++        foldEvidence, attemptKey,
++      }
++      let red = null
++      for (const check of CANDIDATE_CHECKS) {
++        const out = await check.run(ctx)
++        if (out && Array.isArray(out.checks)) checks = checks.concat(out.checks)
++        if (out && out.ok === false) { red = { ...out, check: check.name }; break }
++      }
++
++      if (red) {
++        // One retry per path per attempt, and only where a resolver owns the
++        // path: a red check on a path no resolver wrote has nobody to ask.
++        if (conflicted.includes(red.path) && !retriedPaths.has(red.path)) {
++          retry = {
++            path: red.path, check: red.check, message: red.message || '',
++            exam: red.exam || '', index: conflictsIndex(), waveDir: '',
++          }
++          continue
+         }
+-        return dispatch(prompt, agentOpts)
++        await restoreInteg()
++        return record({
++          disposition: red.disposition, reason: red.reason,
++          candidate, tip, suite: 'none',
++          pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
++          checks, checkRetries,
++        })
+       }
+ 
+-      const resolution = await resolveConflicts({
+-        agent, runCli, roles, common, taskArgs, commutesArgs,
+-        open, contendingBlock: block,
+-        waveDir: waveDirOf(attemptKey),
+-        labelPrefix: 'resolve:publish-fold:' + attemptKey,
+-      })
+-      resolversDispatched = resolution.transcripts.length
+-      resolverRetries = resolution.transcripts.filter((t) => t.attempt === 2).length
+-      if (!resolution.ok) {
+-        const last = resolution.transcripts[resolution.transcripts.length - 1]
++      // ── step 7: the suite ─────────────────────────────────────────────────
++      if (!testCmd) {
+         await restoreInteg()
+-        return parked(resolution.reason, (last && last.path) || open[0].path,
+-          { resolversDispatched, resolverRetries })
++        return record({
++          disposition: 'folded', candidate, tip, suite: 'none',
++          pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
++          checks, checkRetries,
++        })
+       }
++      const suite = await exec('bash', ['-lc', testCmd], { cwd: integ })
++      fs.writeFileSync(path.join(foldEvidence, 'suite-' + attemptKey + '.txt'),
++        String(suite.stdout || '') + String(suite.stderr || ''))
+       await restoreInteg()
+-    }
+ 
+-    // ── step 5: the candidate ───────────────────────────────────────────────
+-    const args = readJson(path.join(runDir, 'args.json')) || {}
+-    const planTitle = planTitleOf(
+-      typeof args.planPath === 'string' && args.planPath.trim() ? args.planPath : undefined)
+-    const subjectArgs = planTitle ? ['--subject', planTitle] : []
+-    const mat = await runCli(['materialize', ...common, '--prev-head', tip, ...taskArgs, ...subjectArgs])
+-    const m = mat.parsed
+-    const pathsConflicted = conflictsIndex().length
+-    if (!m || !m.candidateSha) {
+-      // A `park` here is the cross-run chmod shape: a path whose mode on main
+-      // since BASE differs from the mode this run's side carries. The kernel's
+-      // own reason is the reason, verbatim.
+       return record({
+-        disposition: 'cannot fold',
+-        reason: (m && (m.park || m.fallback)) || ('materialize refused (exit ' + mat.code +
+-          '): ' + tail(mat.stderr)),
+-        candidate: floor, tip, pathsJoined, pathsConflicted,
+-        resolversDispatched, resolverRetries,
+-      })
+-    }
+-    const candidate = m.candidateSha
+-    // The branch moves BEFORE the suite: the suite measures the candidate, and
+-    // a red suite leaves the branch on it so the PR shows what failed.
+-    await gitR(['update-ref', 'refs/heads/' + branch, candidate])
+-
+-    // ── step 6: the suite, on the candidate, in the integration clone ───────
+-    const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) ? args.testCmd : ''
+-    if (!testCmd) {
+-      return record({
+-        disposition: 'folded', candidate, tip, suite: 'none',
++        disposition: suite.code === 0 ? 'folded' : 'suite red',
++        ...(suite.code === 0 ? {} : { reason: 'the candidate\'s suite exited ' + suite.code }),
++        candidate, tip, suite: suite.code === 0 ? 'pass' : 'fail',
+         pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
++        checks, checkRetries,
+       })
+     }
+-    await borrowInteg()
+-    // By NAME, not by sha: the integration clone was cut `--local` at BASE and
+-    // holds neither the tip nor the candidate, and a bare sha is not advertised
+-    // under every protocol.
+-    await gitR(['fetch', '--no-tags', repo, 'refs/heads/' + branch], integ)
+-    await gitR(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
+-    const suite = await exec('bash', ['-lc', testCmd], { cwd: integ })
+-    fs.writeFileSync(path.join(foldEvidence, 'suite-' + attemptKey + '.txt'),
+-      String(suite.stdout || '') + String(suite.stderr || ''))
+-    await restoreInteg()
+-
+-    return record({
+-      disposition: suite.code === 0 ? 'folded' : 'suite red',
+-      ...(suite.code === 0 ? {} : { reason: 'the candidate\'s suite exited ' + suite.code }),
+-      candidate, tip, suite: suite.code === 0 ? 'pass' : 'fail',
+-      pathsJoined, pathsConflicted, resolversDispatched, resolverRetries,
+-    })
+   } finally {
+     // Every exit, parked dispositions included: the integration clone is
+     // borrowed, never kept.
+diff --git a/fleet/tests/test_publish_fold.mjs b/fleet/tests/test_publish_fold.mjs
+index bb75648fed45c9d13ffdf25f8f5ab0a7b7001f5a..a98efe75994f70758a15daf18bd5ec1c923d2269 100644
+--- a/fleet/tests/test_publish_fold.mjs
++++ b/fleet/tests/test_publish_fold.mjs
+@@ -42,7 +42,15 @@ import { fileURLToPath } from 'node:url'
+ import { execFileSync } from 'node:child_process'
+ 
+ import { provisionRunTree, execSeam } from '../run-main.mjs'
+-import { publishFold } from '../publish-fold.mjs'
++// #751 Task 1 — the parse check: `CANDIDATE_CHECKS` and `parseArgvFor` are the
++// two names the folder produces for this seam.
++import { publishFold, CANDIDATE_CHECKS, parseArgvFor } from '../publish-fold.mjs'
++// #754 Task 2 — exams first: the two names the folder produces for the exam
++// check, and the block module's ordered task list behind `contendingBlock`.
++// (An `import` is hoisted, so these stand with the imports above wherever they
++// are written; they sit here so this task's additions read as one region.)
++import { EXAM_CHECK, examArgvFor } from '../publish-fold.mjs'
++import { contendingBlock, contendingTasks } from '../publish-fold-block.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const FOLDER_CLI = path.resolve(HERE, '../publish-fold.mjs')
+@@ -123,6 +131,22 @@ const lines = (over = {}, extra = []) => {
+   for (const [n, v] of Object.entries(over)) l[Number(n) - 1] = v
+   return l.concat(extra).join('\n') + '\n'
+ }
++// #751 Task 1 — the parse check: two more ten-line seeded files, whose
++// extensions the fold's parse check recognizes. Neither side of any leg above
++// touches them, so every case's patches, `pathsJoined` and dispositions are
++// what they were.
++const MJS_TEN =
++  Array.from({ length: 10 }, (_, i) => 'export const l' + (i + 1) + ' = ' + (i + 1)).join('\n') + '\n'
++const PY_TEN =
++  Array.from({ length: 10 }, (_, i) => 'l' + (i + 1) + ' = ' + (i + 1)).join('\n') + '\n'
++/** `lines`, over a different ten-line seed. */
++const overwrite = (ten) => (over = {}, extra = []) => {
++  const l = ten.split('\n').slice(0, 10)
++  for (const [n, v] of Object.entries(over)) l[Number(n) - 1] = v
++  return l.concat(extra).join('\n') + '\n'
++}
++const mjsLines = overwrite(MJS_TEN)
++const pyLines = overwrite(PY_TEN)
+ const write = (dir, name, text) => fs.writeFileSync(path.join(dir, name), text)
+ const PNG = (tail) => Buffer.from([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 0, 0, 0, ...tail])
+ 
+@@ -145,6 +169,8 @@ function buildTemplate() {
+   write(target, 'c.txt', TEN)
+   write(target, 'd.txt', 'dee\n')
+   write(target, 'tool.sh', '#!/bin/sh\necho tool\n')
++  write(target, 'mod.mjs', MJS_TEN)          // #751 Task 1 — the parse check
++  write(target, 'mod.py', PY_TEN)            // #751 Task 1 — the parse check
+   fs.writeFileSync(path.join(target, 'logo.png'), PNG([1, 2, 3]))
+   write(target, 'check.sh', 'echo the suite is green\nexit 0\n')
+   git(['add', '-A'], target)
+@@ -165,7 +191,8 @@ function buildTemplate() {
+   git(['config', 'user.name', 'Fleet Bot'], maker)
+   git(['checkout', '--quiet', '--orphan', 'plan-run-3'], maker)
+   git(['rm', '-r', '--quiet', '--cached', '.'], maker)
+-  for (const f of ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'tool.sh', 'logo.png', 'check.sh']) {
++  for (const f of ['a.txt', 'b.txt', 'c.txt', 'd.txt', 'tool.sh', 'mod.mjs', 'mod.py',
++                   'logo.png', 'check.sh']) {
+     fs.rmSync(path.join(maker, f), { force: true })
+   }
+   fs.mkdirSync(path.join(maker, '.ultrapowers'), { recursive: true })
+@@ -439,6 +466,36 @@ const MOVES = {
+     git(['commit', '--quiet', '-m', 'main marks the tool executable'], fx.maker)
+     pushMain(fx)
+   },
++  // ── #751 Task 1 — the parse check ─────────────────────────────────────────
++  // mod.mjs's second line, main's side.
++  conflictMjs: (fx) => {
++    write(fx.maker, 'mod.mjs', mjsLines({ 2: 'export const l2 = 20' }))
++    git(['add', '-A'], fx.maker)
++    git(['commit', '--quiet', '-m', 'main rewrites mod.mjs\'s second line'], fx.maker)
++    pushMain(fx)
++  },
++  // The same second line on TWO paths, in one commit: mod.mjs and tool.sh.
++  conflictMjsSh: (fx) => {
++    write(fx.maker, 'mod.mjs', mjsLines({ 2: 'export const l2 = 20' }))
++    write(fx.maker, 'tool.sh', '#!/bin/sh\necho tool from main\n')
++    git(['add', '-A'], fx.maker)
++    git(['commit', '--quiet', '-m', 'main rewrites the second line of mod.mjs and tool.sh'], fx.maker)
++    pushMain(fx)
++  },
++  // An eleventh line, far from line 1: no conflict, and a duplicate `l11`
++  // declaration once the run's own line 1 joins it.
++  appendMjs: (fx) => {
++    write(fx.maker, 'mod.mjs', mjsLines({}, ['export const l11 = 11']))
++    git(['add', '-A'], fx.maker)
++    git(['commit', '--quiet', '-m', 'main appends an eleventh line to mod.mjs'], fx.maker)
++    pushMain(fx)
++  },
++  conflictPy: (fx) => {
++    write(fx.maker, 'mod.py', pyLines({ 2: 'l2 = 20' }))
++    git(['add', '-A'], fx.maker)
++    git(['commit', '--quiet', '-m', 'main rewrites mod.py\'s second line'], fx.maker)
++    pushMain(fx)
++  },
+ }
+ const RUN_EDITS = {
+   a2: (d) => write(d, 'a.txt', lines({ 2: 'line2 from run' })),
+@@ -454,6 +511,14 @@ const RUN_EDITS = {
+   binary: (d) => fs.writeFileSync(path.join(d, 'logo.png'), PNG([3, 3, 3])),
+   d: (d) => write(d, 'd.txt', 'dee from run\n'),
+   tool: (d) => write(d, 'tool.sh', '#!/bin/sh\necho tool from run\n'),
++  // ── #751 Task 1 — the parse check ─────────────────────────────────────────
++  mjs2: (d) => write(d, 'mod.mjs', mjsLines({ 2: 'export const l2 = 2000' })),
++  mjsTool2: (d) => {
++    write(d, 'mod.mjs', mjsLines({ 2: 'export const l2 = 2000' }))
++    write(d, 'tool.sh', '#!/bin/sh\necho tool from run\n')
++  },
++  mjs1: (d) => write(d, 'mod.mjs', mjsLines({ 1: 'export const l11 = 1111' })),
++  py2: (d) => write(d, 'mod.py', pyLines({ 2: 'l2 = 2000' })),
+ }
+ 
+ const RESOLVED_H1 = () => ({
+@@ -1211,4 +1276,1136 @@ const plantReceipt = (fx, payload) => {
+     'leg (i) [M4]: and a.txt the same, with main\'s eleventh line')
+ }
+ 
++// ═════════════════════════════════════════════════════════════════════════════
++// #751 Task 1 — the parse check
++// ═════════════════════════════════════════════════════════════════════════════
++// M1. After `materialize` and before any `bash -lc <testCmd>` suite, one parse
++//     command per joined path, in `run.patch`'s path order, in the integration
++//     clone laid on the candidate's tree; `parseArgvFor` is the argv table; one
++//     `{ check, path, result }` per command run lands in the row's `checks`.
++// M2. A red path with a conflicts-index entry, unretried this attempt, is
++//     re-dispatched exactly once — a refold from a fresh wave directory, every
++//     other reply replayed, the red path's resolver briefed with the parser's
++//     message — and a second candidate that parses goes on to the suite.
++// M3. A second failure, or a red path with no conflicts-index entry, is
++//     `cannot fold` / `<path> does not parse` / `suite: 'none'`, no suite is
++//     run, and the branch stays on the candidate.
++// M4. `fleet/CONTRACT.md` carries the four new literals in its receipts
++//     sentence and `does not parse` in its dispositions sentence.
++{
++  // ── the fixture's own task record: the three checkable seeded paths ────────
++  const TASK_MOD = {
++    id: 'F1', title: 'The folding task',
++    files: ['mod.mjs', 'mod.py', 'tool.sh'], body: TASK_BODY,
++  }
++
++  // The stub's replies, by name. `h1` is the kernel's own id for a single
++  // conflicting block (`hunks.derive`), the same id RESOLVED_H1 uses.
++  const KEEP_BOTH = () => ({
++    status: 'RESOLVED',
++    hunks: [{ id: 'h1', content: 'export const l2 = 20\nexport const l2 = 2000' }],
++    notes: 'both second lines, main\'s first',
++  })
++  const L2_2020 = () => ({
++    status: 'RESOLVED',
++    hunks: [{ id: 'h1', content: 'export const l2 = 2020' }],
++    notes: 'one line carrying both',
++  })
++  const SH_UNBALANCED = () => ({
++    status: 'RESOLVED',
++    hunks: [{ id: 'h1', content: 'if true; then echo tool' }],
++    notes: 'an if with no fi',
++  })
++
++  // ── reading the recorder ──────────────────────────────────────────────────
++  // Indices into the WHOLE call list, so the order clauses ("each after a
++  // materialize", "the first before the second fold", "one bash -lc after the
++  // second") are assertions about position and not about counts alone.
++  const withIndex = (rec) => rec.calls.map((c, n) => ({ ...norm(c), n }))
++  const isParse = (c) =>
++    (c.cmd === 'node' && c.argv[0] === '--check') ||
++    (c.cmd === 'bash' && c.argv[0] === '-n') ||
++    (c.cmd === 'python3' && c.argv[0] === '-m' && c.argv[1] === 'py_compile')
++  const word = (c) => [c.cmd, ...c.argv].join(' ')
++  const parseCalls = (rec) => withIndex(rec).filter(isParse)
++  const suiteCalls = (rec) => withIndex(rec).filter((c) => c.cmd === 'bash' && c.argv[0] === '-lc')
++  const verbCalls = (rec, verb) => withIndex(rec).filter((c) => {
++    const k = c.argv.findIndex((a) => String(a).endsWith('fold_wave.py'))
++    return k >= 0 && c.argv[k + 1] === verb
++  })
++  const indexAt = (fx, wave) => {
++    const f = path.join(fx.kernelWaves, wave, 'conflicts.json')
++    return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []
++  }
++  const parse = (p, result) => ({ check: 'parse', path: p, result })
++  const secondLine = (fx, sha, file) => git(['show', sha + ':' + file], fx.target).split('\n')[1]
++
++  // ═══ (a) the argv table ═════════════════════════════════════════════════
++  {
++    const table = [
++      ['x/a.mjs', ['node', '--check', 'x/a.mjs']],
++      ['x/a.js', ['node', '--check', 'x/a.js']],
++      ['x/a.sh', ['bash', '-n', 'x/a.sh']],
++      ['x/a.py', ['python3', '-m', 'py_compile', 'x/a.py']],
++    ]
++    for (const [p, argv] of table) {
++      assert.deepEqual(parseArgvFor(p), argv,
++        'leg (a) [M1]: parseArgvFor(' + JSON.stringify(p) + ') is exactly ' + JSON.stringify(argv))
++    }
++    for (const p of ['x/a.txt', 'x/a.md']) {
++      assert.equal(parseArgvFor(p), null,
++        'leg (a) [M1]: and exactly null for ' + JSON.stringify(p) + ', for which nothing is run')
++    }
++    // The seam itself: the ordered check list the folder runs per candidate.
++    assert.ok(Array.isArray(CANDIDATE_CHECKS) && CANDIDATE_CHECKS.length >= 1,
++      'leg (a) [M1]: CANDIDATE_CHECKS is a non-empty ordered array — got ' +
++      JSON.stringify(CANDIDATE_CHECKS))
++    for (const c of CANDIDATE_CHECKS) {
++      assert.equal(typeof (c && c.name), 'string',
++        'leg (a) [M1]: every CANDIDATE_CHECKS entry has a string `name`')
++      assert.equal(typeof (c && c.run), 'function',
++        'leg (a) [M1]: … and a `run` function')
++    }
++  }
++
++  // ═══ (b) the retried .mjs fold ══════════════════════════════════════════
++  {
++    const fx = newCase('t1-mjs-retry', {
++      mainMoves: MOVES.conflictMjs, runEdits: RUN_EDITS.mjs2, tasks: [TASK_MOD],
++    })
++    const stub = stubAgent((nth) => (nth === 1 ? KEEP_BOTH() : L2_2020()))
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const index = indexAt(fx, 'wave-1')
++    assert.deepEqual(index.map((e) => e.path), ['mod.mjs'],
++      'leg (b) [M2]: the refolded wave narrates the same one conflict, on mod.mjs')
++    const i = index[0].i
++
++    // The two dispatches, and the brief the second one carried.
++    assert.equal(stub.dispatches.length, 2,
++      'leg (b) [M2]: the stub was dispatched exactly twice — the red path is re-dispatched once')
++    const first = stub.dispatches[0].prompt
++    const second = stub.dispatches[1].prompt
++    assert.ok(second.startsWith(first),
++      'leg (b) [M2]: the second prompt starts with the first prompt\'s bytes')
++    const section = second.slice(first.length)
++    for (const s of ['PREVIOUS RESOLUTION FAILED A CHECK', 'mod.mjs', 'already been declared']) {
++      assert.ok(section.includes(s),
++        'leg (b) [M2]: and after the contending block it carries ' + JSON.stringify(s) +
++        ' — got ' + JSON.stringify(section))
++    }
++    assert.equal(fs.readFileSync(path.join(fx.pf, 'resolver-brief-' + i + '-1-retry.txt'), 'utf8'),
++      second, 'leg (b) [M2]: resolver-brief-' + i + '-1-retry.txt holds exactly the second prompt\'s bytes')
++    assert.equal(fs.readFileSync(path.join(fx.pf, 'resolver-brief-' + i + '-1.txt'), 'utf8'),
++      first, 'leg (b) [M2]: and resolver-brief-' + i + '-1.txt the first\'s')
++
++    // Where the parse commands ran, and when.
++    const parses = parseCalls(rec)
++    assert.deepEqual(parses.map(word), ['node --check mod.mjs', 'node --check mod.mjs'],
++      'leg (b) [M1]: exactly two `node --check mod.mjs` calls are recorded')
++    for (const c of parses) {
++      assert.equal(c.cwd, fx.integ,
++        'leg (b) [M1]: each with cwd the integration clone — got ' + String(c.cwd))
++    }
++    const mats = verbCalls(rec, 'materialize')
++    const folds = verbCalls(rec, 'fold')
++    assert.ok(mats.length >= 1 && mats[0].n < parses[0].n,
++      'leg (b) [M1]: the first parse ran after a materialize')
++    assert.ok(mats.some((m) => m.n > parses[0].n && m.n < parses[1].n),
++      'leg (b) [M1][M2]: and the second after a further materialize')
++    assert.equal(folds.length, 2,
++      'leg (b) [M2]: the wave was folded twice — the retry is a refold')
++    assert.ok(parses[0].n < folds[1].n,
++      'leg (b) [M2]: the first parse ran before the second fold')
++    const suites = suiteCalls(rec)
++    assert.equal(suites.length, 1, 'leg (b) [M1]: one bash -lc suite call')
++    assert.ok(suites[0].n > parses[1].n, 'leg (b) [M1]: and it ran after the second parse')
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.disposition, 'folded',
++      'leg (b) [M2]: a second candidate that parses goes on to the suite and ends `folded`')
++    assert.equal(a1.suite, 'pass', 'leg (b) [M2]: on a green one')
++    assert.equal(a1.checkRetries, 1, 'leg (b) [M2]: the row\'s `checkRetries` is 1')
++    assert.equal(a1.resolversDispatched, 2,
++      'leg (b) [M2]: `resolversDispatched` counts real dispatches only — 2')
++    assert.deepEqual(a1.checks, [parse('mod.mjs', 'fail'), parse('mod.mjs', 'pass')],
++      'leg (b) [M1]: `checks` is one entry per command run, in order — got ' +
++      JSON.stringify(a1.checks))
++    assert.equal(secondLine(fx, a1.candidate, 'mod.mjs'), 'export const l2 = 2020',
++      'leg (b) [M2]: the candidate\'s mod.mjs line 2 is the second resolution')
++    assert.deepEqual(
++      git(['rev-list', '--parents', '-n', '1', a1.candidate], fx.target).split(/\s+/).slice(1),
++      [fx.tip], 'leg (b) [M2]: and the candidate\'s only parent is TIP')
++
++    // Both waves are in the evidence tree, and they are different waves.
++    const retried = path.join(fx.pf, 'frontier', 'wave-1-retried')
++    assert.ok(fs.existsSync(path.join(retried, 'reply-' + i + '-1')),
++      'leg (b) [M2]: frontier/wave-1-retried/ in the evidence tree holds a reply-' + i + '-1/ directory')
++    assert.equal(fs.readFileSync(path.join(retried, 'reply-' + i + '-1', 'h1.txt'), 'utf8'),
++      'export const l2 = 20\nexport const l2 = 2000\n',
++      'leg (b) [M2]: … carrying the first pass\'s reply')
++    assert.equal(
++      fs.readFileSync(path.join(fx.pf, 'frontier', 'wave-1', 'reply-' + i + '-1', 'h1.txt'), 'utf8'),
++      'export const l2 = 2020\n',
++      'leg (b) [M2]: and frontier/wave-1/ holds the second pass\'s')
++  }
++
++  // ═══ (c) two failures: `cannot fold`, no suite ══════════════════════════
++  {
++    const fx = newCase('t1-mjs-red', {
++      mainMoves: MOVES.conflictMjs, runEdits: RUN_EDITS.mjs2, tasks: [TASK_MOD],
++    })
++    const stub = stubAgent(() => KEEP_BOTH())
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.disposition, 'cannot fold',
++      'leg (c) [M3]: a path that fails its parse command after a retry is `cannot fold`')
++    assert.equal(a1.reason, 'mod.mjs does not parse',
++      'leg (c) [M3]: with reason `<path> does not parse`')
++    assert.equal(a1.suite, 'none', 'leg (c) [M3]: and suite `none`')
++    assert.equal(a1.checkRetries, 1, 'leg (c) [M3]: `checkRetries` is 1 — the one retry was spent')
++    assert.equal(stub.dispatches.length, 2, 'leg (c) [M2]: two dispatches, and no third')
++    assert.deepEqual(suiteCalls(rec).map(word), [],
++      'leg (c) [M3]: no recorded call whose cmd is `bash` and whose first argument is `-lc`')
++
++    const ev = lastFoldEvent(fx)
++    assert.equal(ev.disposition, 'cannot fold',
++      'leg (c) [M3]: the last driver:publish-fold event carries the same disposition')
++    assert.equal(ev.reason, 'mod.mjs does not parse', 'leg (c) [M3]: … the same reason')
++    assert.equal(ev.suite, 'none', 'leg (c) [M3]: … the same suite')
++    assert.deepEqual(ev.checks, [parse('mod.mjs', 'fail'), parse('mod.mjs', 'fail')],
++      'leg (c) [M3]: … and a two-entry `checks` — got ' + JSON.stringify(ev.checks))
++    assert.equal(ev.checkRetries, 1, 'leg (c) [M3]: … beside `checkRetries`')
++    assert.equal(branchSha(fx), a1.candidate,
++      'leg (c) [M3]: refs/heads/' + BRANCH + ' stays on the candidate, so the PR shows the file that failed')
++  }
++
++  // ═══ (d) the no-resolver row ════════════════════════════════════════════
++  {
++    const fx = newCase('t1-noresolver', {
++      mainMoves: MOVES.appendMjs, runEdits: RUN_EDITS.mjs1, tasks: [TASK_MOD],
++    })
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
++
++    assert.deepEqual(indexAt(fx, 'wave-1'), [],
++      'leg (d) [M3]: the fold completes without a conflict — the conflicts index is empty')
++    assert.deepEqual(parseCalls(rec).map(word), ['node --check mod.mjs'],
++      'leg (d) [M1]: one `node --check mod.mjs` call is recorded')
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.disposition, 'cannot fold',
++      'leg (d) [M3]: a failing path with no conflicts-index entry is `cannot fold` at once')
++    assert.equal(a1.reason, 'mod.mjs does not parse', 'leg (d) [M3]: with `mod.mjs does not parse`')
++    assert.equal(a1.suite, 'none', 'leg (d) [M3]: and suite `none`')
++    assert.equal(a1.checkRetries, 0, 'leg (d) [M3]: `checkRetries` is 0 — there was nothing to re-dispatch')
++    assert.equal(a1.resolversDispatched, 0, 'leg (d) [M3]: and `resolversDispatched` 0')
++    assert.deepEqual(a1.checks, [parse('mod.mjs', 'fail')],
++      'leg (d) [M1]: `checks` is the one command that ran — got ' + JSON.stringify(a1.checks))
++    assert.deepEqual(suiteCalls(rec).map(word), [], 'leg (d) [M3]: and no bash -lc call is recorded')
++  }
++
++  // ═══ (e) the .sh row live, over two joined paths ════════════════════════
++  {
++    const fx = newCase('t1-two-paths', {
++      mainMoves: MOVES.conflictMjsSh, runEdits: RUN_EDITS.mjsTool2, tasks: [TASK_MOD],
++    })
++    const stub = stubAgent((nth, prompt) =>
++      (prompt.includes('conflicted path: tool.sh') ? SH_UNBALANCED() : L2_2020()))
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const index = indexAt(fx, 'wave-1')
++    assert.deepEqual(index.map((e) => e.path), ['mod.mjs', 'tool.sh'],
++      'leg (e) [M2]: the refolded wave narrates both paths, in that order')
++    const iMjs = index.find((e) => e.path === 'mod.mjs').i
++    const iSh = index.find((e) => e.path === 'tool.sh').i
++    assert.equal(att(fx, 1).pathsJoined, 2, 'fixture sanity: both patches touch mod.mjs and tool.sh')
++
++    const parses = parseCalls(rec)
++    assert.deepEqual(parses.map(word), [
++      'node --check mod.mjs', 'bash -n tool.sh', 'node --check mod.mjs', 'bash -n tool.sh',
++    ], 'leg (e) [M1]: one command per joined path, in run.patch\'s path order, both passes')
++    for (const c of parses) {
++      assert.equal(c.cwd, fx.integ,
++        'leg (e) [M1]: all with cwd the integration clone — got ' + String(c.cwd))
++    }
++    const a1 = att(fx, 1)
++    assert.deepEqual(a1.checks, [
++      parse('mod.mjs', 'pass'), parse('tool.sh', 'fail'),
++      parse('mod.mjs', 'pass'), parse('tool.sh', 'fail'),
++    ], 'leg (e) [M1]: `checks` names every joined path both times — a folder that checks only the ' +
++       'first records no tool.sh entry — got ' + JSON.stringify(a1.checks))
++
++    assert.equal(stub.dispatches.length, 3,
++      'leg (e) [M2]: the stub was dispatched exactly three times')
++    assert.deepEqual(stub.dispatches.map((d) => String(d.label).split(':')[3]),
++      [String(iMjs), String(iSh), String(iSh)],
++      'leg (e) [M2]: once with a label for mod.mjs\'s <i> and twice for tool.sh\'s — mod.mjs\'s ' +
++      'reply was replayed, not re-asked — got ' + stub.dispatches.map((d) => d.label).join(', '))
++    const retryPrompt = stub.dispatches[2].prompt
++    assert.ok(retryPrompt.startsWith(stub.dispatches[1].prompt),
++      'leg (e) [M2]: the retry prompt begins with tool.sh\'s first brief')
++    for (const s of ['PREVIOUS RESOLUTION FAILED A CHECK', 'tool.sh', 'syntax error']) {
++      assert.ok(retryPrompt.slice(stub.dispatches[1].prompt.length).includes(s),
++        'leg (e) [M2]: and its appended section carries ' + JSON.stringify(s) + ' — got ' +
++        JSON.stringify(retryPrompt.slice(stub.dispatches[1].prompt.length)))
++    }
++    assert.deepEqual(
++      fs.readFileSync(path.join(fx.pf, 'frontier', 'wave-1', 'reply-' + iMjs + '-1', 'notes.txt')),
++      fs.readFileSync(path.join(fx.pf, 'frontier', 'wave-1-retried', 'reply-' + iMjs + '-1', 'notes.txt')),
++      'leg (e) [M2]: the second pass\'s reply-' + iMjs + '-1/notes.txt equals the retried wave\'s')
++
++    assert.equal(a1.disposition, 'cannot fold', 'leg (e) [M3]: the second tool.sh failure is `cannot fold`')
++    assert.equal(a1.reason, 'tool.sh does not parse', 'leg (e) [M3]: with `tool.sh does not parse`')
++    assert.equal(a1.resolversDispatched, 3, 'leg (e) [M2]: `resolversDispatched` 3')
++    assert.equal(a1.checkRetries, 1, 'leg (e) [M2]: and `checkRetries` 1')
++  }
++
++  // ═══ (f) the .py row live ═══════════════════════════════════════════════
++  {
++    const fx = newCase('t1-py', {
++      mainMoves: MOVES.conflictPy, runEdits: RUN_EDITS.py2, tasks: [TASK_MOD],
++    })
++    const stub = stubAgent((nth) => (nth === 1
++      ? { status: 'RESOLVED', hunks: [{ id: 'h1', content: 'def f(:' }], notes: 'a broken def' }
++      : { status: 'RESOLVED', hunks: [{ id: 'h1', content: 'l2 = 2020' }], notes: 'one line carrying both' }))
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    assert.deepEqual(parseCalls(rec).map(word),
++      ['python3 -m py_compile mod.py', 'python3 -m py_compile mod.py'],
++      'leg (f) [M1]: `python3 -m py_compile mod.py` is recorded twice')
++    assert.equal(stub.dispatches.length, 2, 'leg (f) [M2]: the red path was re-dispatched once')
++    assert.ok(stub.dispatches[1].prompt.slice(stub.dispatches[0].prompt.length).includes('SyntaxError'),
++      'leg (f) [M2]: the retry prompt carries the parser\'s `SyntaxError` — got ' +
++      JSON.stringify(stub.dispatches[1].prompt.slice(stub.dispatches[0].prompt.length)))
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.disposition, 'folded', 'leg (f) [M2]: the second candidate parses and folds')
++    assert.equal(a1.checkRetries, 1, 'leg (f) [M2]: with `checkRetries` 1')
++    assert.deepEqual(a1.checks, [parse('mod.py', 'fail'), parse('mod.py', 'pass')],
++      'leg (f) [M1]: and `checks` one entry per command run — got ' + JSON.stringify(a1.checks))
++  }
++
++  // ═══ (g) a .txt joined path is not checked, and the suite still runs ════
++  {
++    const fx = newCase('t1-txt', { mainMoves: MOVES.conflictA, runEdits: RUN_EDITS.a2 })
++    const stub = stubAgent(() => RESOLVED_H1())
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
++    assert.deepEqual(a1.checks, [],
++      'leg (g) [M1]: `checks` is exactly [] — parseArgvFor returns null for .txt, so nothing is run')
++    assert.equal(a1.checkRetries, 0, 'leg (g) [M1]: and `checkRetries` 0')
++    assert.deepEqual(
++      withIndex(rec).filter((c) => c.cmd === 'node' && c.argv.includes('--check')).map(word), [],
++      'leg (g) [M1]: no call whose cmd is `node` with --check')
++    assert.deepEqual(suiteCalls(rec).map(word), ['bash -lc bash check.sh'],
++      'leg (g) [M1]: and its bash -lc suite call still runs')
++    assert.equal(a1.disposition, 'folded', 'leg (g) [M1]: the fold ends `folded`')
++    assert.equal(a1.suite, 'pass', 'leg (g) [M1]: on a green suite')
++  }
++
++  // ═══ (h) the contract's two sentences, and the Proof's two Run: legs ════
++  {
++    const REPO = path.resolve(HERE, '..', '..')
++    const CONTRACT = path.join(REPO, 'fleet', 'CONTRACT.md')
++    const LITERALS = ['does not parse', 'checkRetries', 'wave-<attempt>-retried',
++      'resolver-brief-<i>-<attempt>-retry.txt']
++    // The Proof's second `Run:`, verbatim.
++    const GREP =
++      'grep -q "does not parse" fleet/CONTRACT.md && grep -q checkRetries fleet/CONTRACT.md && ' +
++      'grep -q "wave-<attempt>-retried" fleet/CONTRACT.md && ' +
++      'grep -q "resolver-brief-<i>-<attempt>-retry.txt" fleet/CONTRACT.md'
++    const runIn = (cmd, argv, cwd) => {
++      try {
++        execFileSync(cmd, argv, { cwd, env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
++        return { code: 0, out: '' }
++      } catch (e) {
++        return { code: typeof e.status === 'number' ? e.status : 1,
++          out: String(e.stdout || '') + String(e.stderr || '') }
++      }
++    }
++
++    const text = fs.readFileSync(CONTRACT, 'utf8')
++    // The two sentences M4 names, sliced on BASE anchors this plan does not move.
++    const sentence = (from, to, which) => {
++      const a = text.indexOf(from)
++      assert.ok(a >= 0, 'leg (h) [M4]: fleet/CONTRACT.md still opens its ' + which +
++        ' sentence with ' + JSON.stringify(from))
++      const b = text.indexOf(to, a)
++      assert.ok(b > a, 'leg (h) [M4]: … and still closes the region at ' + JSON.stringify(to))
++      return text.slice(a, b)
++    }
++    const receipts = sentence(
++      'The publish fold writes its own `publish-fold/` receipts directory',
++      '\n    Committed from a detached worktree', 'receipts')
++    for (const lit of ['checks', 'checkRetries', 'resolver-brief-<i>-<attempt>-retry.txt',
++                       'frontier/wave-<attempt>-retried/']) {
++      assert.ok(receipts.includes(lit),
++        'leg (h) [M4]: the `publish-fold/` receipts sentence names ' + JSON.stringify(lit) +
++        ' — got ' + JSON.stringify(receipts))
++    }
++    const dispositions = sentence(
++      'Its disposition is one of `folded`', 'A `hold=1` run still folds', 'dispositions')
++    assert.ok(dispositions.includes('does not parse'),
++      'leg (h) [M4]: and the dispositions sentence carries the phrase `does not parse` — got ' +
++      JSON.stringify(dispositions))
++
++    // The second `Run:` — 0 on this contract, non-zero with any one literal gone.
++    assert.equal(runIn('bash', ['-c', GREP], REPO).code, 0,
++      'leg (h) [M4]: the second `Run:` exits 0 against fleet/CONTRACT.md')
++    for (const lit of LITERALS) {
++      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-contract-'))
++      CASES.push(dir)
++      fs.mkdirSync(path.join(dir, 'fleet'), { recursive: true })
++      fs.writeFileSync(path.join(dir, 'fleet', 'CONTRACT.md'), text.split(lit).join(''))
++      assert.notEqual(runIn('bash', ['-c', GREP], dir).code, 0,
++        'leg (h) [M4]: … and non-zero on a contract with ' + JSON.stringify(lit) + ' removed')
++    }
++
++    // The first `Run:` — the docs pin reads this file's other literals, so the
++    // edit must leave them in the shape it reads.
++    const pin = runIn('python3', ['-m', 'pytest', '-q', 'tests/test_docs_agree_with_code.py'], REPO)
++    assert.equal(pin.code, 0,
++      'leg (h) [M4]: `python3 -m pytest -q tests/test_docs_agree_with_code.py` passes — got ' +
++      pin.code + '\n' + pin.out)
++  }
++}
++
++// ═════════════════════════════════════════════════════════════════════════════
++// #754 Task 2 — exams first
++// ═════════════════════════════════════════════════════════════════════════════
++// M1. `contendingTasks({ repo, base, tip, run, path, tasks })` resolves the
++//     ordered `{ run, task }` entries whose bodies `contendingBlock` renders for
++//     that path — the frontier plans' tasks read off their tags, oldest commit
++//     first, then this run's `tasks` in their order, each included exactly when
++//     its `files` name the path — and the block's string is what it was.
++// M2. `EXAM_CHECK`, the second entry of `CANDIDATE_CHECKS`, runs after the
++//     parse check on every candidate: for each joined path in order, for each
++//     contending task whose `files` name it, the `- Test:` bullets of the
++//     `**Proof:**` slot of the task's body (the slot ends at a later
++//     `**Stale-if:**` line), each exam once in first-seen order; `examArgvFor`
++//     is the runner table; each exam runs in the integration clone on the
++//     candidate's tree, its output written to `exam-<attempt>-<n>.txt` and
++//     recorded as `{ check: 'exam', exam, path, result }`; an exam with no
++//     runner is `skipped` and not run; the first red exam stops the pass.
++// M3. A red exam whose `path` has a conflicts-index entry unretried this
++//     attempt re-dispatches that path's resolver once, the retry brief naming
++//     the exam and carrying its output tail; `checkRetries` is 1 and a green
++//     second pass goes on to the suite.
++// M4. A red exam after a retry, or one whose path has no conflicts-index entry,
++//     is `suite red` / `<exam> red on <path>` / `suite: 'none'` in the row and
++//     the `driver:publish-fold` event, no `bash -lc` suite is run, and the
++//     branch stays on the candidate.
++// M5. `fleet/CONTRACT.md`'s receipts sentence names `exam-<attempt>-<n>.txt`
++//     and its dispositions sentence carries the phrase `red on`.
++{
++  // ── run 5's plan, as it lives on its tag ──────────────────────────────────
++  // Legacy grammar (no `**Grammar:**` line, so no gate record is needed). T1's
++  // Files name `a.txt` and its own exam — a `Test:` path is in `files` — and
++  // its Proof names the exam. BELOW a `**Stale-if:**` line sits a decoy
++  // `- Test:` bullet naming a file that does not exist: the Proof slot ends at
++  // that line, so the decoy is not an exam.
++  const PLAN_RUN5 = [
++    '# Plan: run five',
++    '',
++    '**Acceptance:** suite — the committed suite is the verification.',
++    '',
++    '### Task T1: The first task of run five',
++    '',
++    '**Type:** implementation',
++    '**Review:** lean',
++    '',
++    '**Files:**',
++    '- Modify: `a.txt`',
++    '- Test: `exam_main.mjs`',
++    '',
++    '**Claim:** the first task of run five rewrites the second line of a.txt.',
++    '',
++    '**Proof:**',
++    '- Test: `exam_main.mjs`',
++    '',
++    '**Stale-if:**',
++    '- path-absent: `a.txt`',
++    '- Test: `ghost.mjs`',
++    '',
++    '- [ ] rewrite the second line',
++    '',
++  ].join('\n')
++  // The same plan over the template's ten-line module.
++  const PLAN_RUN5_MOD = [
++    '# Plan: run five',
++    '',
++    '**Acceptance:** suite — the committed suite is the verification.',
++    '',
++    '### Task T1: The first task of run five',
++    '',
++    '**Type:** implementation',
++    '**Review:** lean',
++    '',
++    '**Files:**',
++    '- Modify: `mod.mjs`',
++    '- Test: `exam_mod.mjs`',
++    '',
++    '**Claim:** the first task of run five rewrites the second line of mod.mjs.',
++    '',
++    '**Proof:**',
++    '- Test: `exam_mod.mjs`',
++    '',
++    '- [ ] rewrite the second line',
++    '',
++  ].join('\n')
++  // Two tasks, one path each: T1 names only `a.txt`, T2 only `mod.mjs`.
++  const PLAN_RUN5_TWO = [
++    '# Plan: run five',
++    '',
++    '**Acceptance:** suite — the committed suite is the verification.',
++    '',
++    '### Task T1: The first task of run five',
++    '',
++    '**Type:** implementation',
++    '**Review:** lean',
++    '',
++    '**Files:**',
++    '- Modify: `a.txt`',
++    '- Test: `exam_main.mjs`',
++    '',
++    '**Claim:** the first task of run five rewrites the second line of a.txt.',
++    '',
++    '**Proof:**',
++    '- Test: `exam_main.mjs`',
++    '',
++    '- [ ] rewrite the second line',
++    '',
++    '### Task T2: The second task of run five',
++    '',
++    '**Type:** implementation',
++    '**Review:** lean',
++    '',
++    '**Files:**',
++    '- Modify: `mod.mjs`',
++    '- Test: `exam_mod.mjs`',
++    '',
++    '**Claim:** the second task of run five rewrites the second line of mod.mjs.',
++    '',
++    '**Proof:**',
++    '- Test: `exam_mod.mjs`',
++    '',
++    '- [ ] rewrite the second line',
++    '',
++  ].join('\n')
++
++  // ── the exams themselves: an exit code is the verdict ─────────────────────
++  // `exam_main.mjs` prints `exam_main: line 2 is <the line>` and exits 0
++  // exactly when a.txt's line 2 is `line2 from main` — the wrong resolution
++  // order puts the run's line there and it goes red.
++  const EXAM_MAIN_L2 = [
++    "import fs from 'node:fs'",
++    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[1]",
++    "console.log('exam_main: line 2 is ' + line)",
++    "process.exit(line === 'line2 from main' ? 0 : 1)",
++    '',
++  ].join('\n')
++  // The same exam over line 1, for the fold that has no conflict at all.
++  const EXAM_MAIN_L1 = [
++    "import fs from 'node:fs'",
++    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[0]",
++    "console.log('exam_main: line 1 is ' + line)",
++    "process.exit(line === 'line1 from main' ? 0 : 1)",
++    '',
++  ].join('\n')
++  // The run's own exam: 0 exactly when some line is `line2 from run`.
++  const EXAM_RUN_L2 = [
++    "import fs from 'node:fs'",
++    "const ls = fs.readFileSync('a.txt', 'utf8').split('\\n')",
++    "console.log('exam_run: a.txt has ' + ls.length + ' lines')",
++    "process.exit(ls.includes('line2 from run') ? 0 : 1)",
++    '',
++  ].join('\n')
++  // The run's exam for the no-resolver row: 1 whenever line 1 is not `line1`.
++  const EXAM_RUN_L1 = [
++    "import fs from 'node:fs'",
++    "const line = fs.readFileSync('a.txt', 'utf8').split('\\n')[0]",
++    "console.log('exam_run: line 1 is ' + line)",
++    "process.exit(line === 'line1' ? 0 : 1)",
++    '',
++  ].join('\n')
++  // The module exam: it imports the joined module and reads its `l2`.
++  const EXAM_MOD = [
++    "import { l2 } from './mod.mjs'",
++    "console.log('exam_mod: l2 is ' + l2)",
++    "process.exit(l2 === 2020 ? 0 : 1)",
++    '',
++  ].join('\n')
++
++  // ── the fixtures' own main-side move ──────────────────────────────────────
++  /** Run 5's plan tag, pushed the way `buildTemplate` pushes run 3's. */
++  const tagRun5 = (maker, planText) => {
++    git(['checkout', '--quiet', '--orphan', 'plan-run-5'], maker)
++    git(['rm', '-r', '--quiet', '--cached', '.'], maker)
++    for (const f of fs.readdirSync(maker)) {
++      if (f !== '.git') fs.rmSync(path.join(maker, f), { recursive: true, force: true })
++    }
++    fs.mkdirSync(path.join(maker, '.ultrapowers'), { recursive: true })
++    write(path.join(maker, '.ultrapowers'), 'plan.md', planText)
++    git(['add', '-A'], maker)
++    git(['commit', '--quiet', '-m', 'the plan of run 5'], maker)
++    git(['tag', 'ultra/plan/run-5'], maker)
++    git(['push', '--quiet', 'origin', 'refs/tags/ultra/plan/run-5'], maker)
++    git(['checkout', '--quiet', '--force', 'main'], maker)
++  }
++  /**
++   * One `Fleet-Run: 5` commit writing `files`, an optional HUMAN commit after
++   * it (a.txt's eleventh line — the region `RESOLVED_A` carries), then main and
++   * run 5's plan tag pushed.
++   */
++  const run5Move = ({ files, plan, human = null }) => (fx) => {
++    for (const [name, text] of Object.entries(files)) write(fx.maker, name, text)
++    git(['add', '-A'], fx.maker)
++    git(['commit', '--quiet', '-m', 'run five rewrites the second line', '-m', 'Fleet-Run: 5'],
++      fx.maker)
++    if (human) {
++      write(fx.maker, 'a.txt', human)
++      git(['add', '-A'], fx.maker)
++      git(['-c', 'user.name=A Human', 'commit', '--quiet', '-m', 'tidy the tail'], fx.maker)
++    }
++    pushMain(fx)
++    tagRun5(fx.maker, plan)
++  }
++  /** `runEdits`: the named files, written on the integration branch. */
++  const runWrites = (files) => (d) => {
++    for (const [name, text] of Object.entries(files)) write(d, name, text)
++  }
++
++  // The a.txt fixture of the Context: main's `Fleet-Run: 5` rewrite of line 2
++  // beside `exam_main.mjs`, the human tail, and the run's `a2` beside its own
++  // `exam_run.mjs`.
++  const MAIN_A = run5Move({
++    files: { 'a.txt': lines({ 2: 'line2 from main' }), 'exam_main.mjs': EXAM_MAIN_L2 },
++    plan: PLAN_RUN5,
++    human: lines({ 2: 'line2 from main' }, ['line11 human']),
++  })
++  const RUN_A = runWrites({ 'a.txt': lines({ 2: 'line2 from run' }), 'exam_run.mjs': EXAM_RUN_L2 })
++
++  // ── this run's `launch.json` tasks ────────────────────────────────────────
++  // `TASK_A`-shaped, with a `**Proof:**` slot ending the body.
++  const EXAM_TASK_BODY = [
++    '### Task F1: The folding task',
++    '',
++    '**Claim:** the run rewrites the second line of a.txt.',
++    '',
++    '**Proof:**',
++    '- Test: `exam_run.mjs`',
++  ].join('\n')
++  const EXAM_TASK = {
++    id: 'F1', title: 'The folding task',
++    files: ['a.txt', 'exam_run.mjs'], body: EXAM_TASK_BODY,
++  }
++  // The same task, with a Proof bullet no runner answers.
++  const SKIP_TASK = {
++    id: 'F1', title: 'The folding task',
++    files: ['a.txt', 'exam_run.mjs', 'notes.txt'],
++    body: [
++      '### Task F1: The folding task',
++      '',
++      '**Claim:** the run rewrites the second line of a.txt.',
++      '',
++      '**Proof:**',
++      '- Test: `notes.txt`',
++      '- Test: `exam_run.mjs`',
++    ].join('\n'),
++  }
++  // The two-path task: one task, both joined paths, one exam.
++  const TWO_PATH_TASK = {
++    id: 'F1', title: 'The folding task',
++    files: ['a.txt', 'mod.mjs', 'exam_run.mjs'], body: EXAM_TASK_BODY,
++  }
++  // A body with no `**Proof:**` line contributes no exam.
++  const MOD_TASK = { id: 'F1', title: 'The folding task', files: ['mod.mjs'], body: TASK_BODY }
++  const TASK_B5 = { id: 'F2', title: 'The other task', files: ['b.txt'], body: TASK_BODY }
++
++  // ── the stub's replies ────────────────────────────────────────────────────
++  // The wrong order: the run's line first, which `exam_main.mjs` rejects.
++  const WRONG_ORDER = () => ({
++    status: 'RESOLVED',
++    hunks: [{ id: 'h1', content: 'line2 from run\nline2 from main' }],
++    notes: 'both second lines, the run\'s first',
++  })
++  const MOD_2000 = () => ({
++    status: 'RESOLVED',
++    hunks: [{ id: 'h1', content: 'export const l2 = 2000' }],
++    notes: 'the run\'s line',
++  })
++  const MOD_2020 = () => ({
++    status: 'RESOLVED',
++    hunks: [{ id: 'h1', content: 'export const l2 = 2020' }],
++    notes: 'one line carrying both',
++  })
++
++  // ── reading the recorder ──────────────────────────────────────────────────
++  const withIndex = (rec) => rec.calls.map((c, n) => ({ ...norm(c), n }))
++  const word = (c) => [c.cmd, ...c.argv].join(' ')
++  // An exam run: `node <file>`, which the parse check's `node --check <file>`
++  // is not.
++  const examCalls = (rec) => withIndex(rec)
++    .filter((c) => c.cmd === 'node' && !String(c.argv[0] || '').startsWith('-'))
++  const parseCalls = (rec) => withIndex(rec)
++    .filter((c) => c.cmd === 'node' && c.argv[0] === '--check')
++  const suiteCalls = (rec) => withIndex(rec).filter((c) => c.cmd === 'bash' && c.argv[0] === '-lc')
++  const verbCalls = (rec, verb) => withIndex(rec).filter((c) => {
++    const k = c.argv.findIndex((a) => String(a).endsWith('fold_wave.py'))
++    return k >= 0 && c.argv[k + 1] === verb
++  })
++  const named = (rec, needle) => rec.calls
++    .filter((c) => [c.cmd, ...c.argv].some((a) => String(a).includes(needle)))
++    .map((c) => word(norm(c)))
++  const indexAt = (fx, wave) => {
++    const f = path.join(fx.kernelWaves, wave, 'conflicts.json')
++    return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []
++  }
++  const parse = (p, result) => ({ check: 'parse', path: p, result })
++  const exam = (e, p, result) => ({ check: 'exam', exam: e, path: p, result })
++  const examFile = (fx, n) => path.join(fx.pf, 'exam-1-' + n + '.txt')
++  const secondLine = (fx, sha, file) => git(['show', sha + ':' + file], fx.target).split('\n')[1]
++
++  // ═══ (a) the runner table ═══════════════════════════════════════════════
++  {
++    const table = [
++      ['t/e.mjs', ['node', 't/e.mjs']],
++      ['t/e.js', ['node', 't/e.js']],
++      ['t/e.py', ['python3', '-m', 'pytest', '-q', 't/e.py']],
++      ['t/e.test.ts', ['bun', 'test', 't/e.test.ts']],
++    ]
++    for (const [p, argv] of table) {
++      assert.deepEqual(examArgvFor(p), argv,
++        'leg (a) [M2]: examArgvFor(' + JSON.stringify(p) + ') is exactly ' + JSON.stringify(argv))
++    }
++    for (const p of ['t/e.txt', 't/e.sh']) {
++      assert.equal(examArgvFor(p), null,
++        'leg (a) [M2]: and exactly null for ' + JSON.stringify(p) + ', which is recorded skipped')
++    }
++  }
++
++  // ═══ (b) the ordered contending tasks behind the block ══════════════════
++  {
++    const fx = newCase('t2-contending', {
++      // No human tail here: every frontier commit on a.txt is run 5's, so the
++      // block is the heading, the sentence and the two task entries.
++      mainMoves: run5Move({
++        files: { 'a.txt': lines({ 2: 'line2 from main' }), 'exam_main.mjs': EXAM_MAIN_L2 },
++        plan: PLAN_RUN5,
++      }),
++      runEdits: RUN_A, tasks: [EXAM_TASK, TASK_B5],
++    })
++    // This leg calls the export directly instead of through the folder, so it
++    // fetches TIP into the target clone itself.
++    git(['fetch', '--quiet', '--no-tags', 'origin', 'main'], fx.target)
++    const args = {
++      repo: fx.target, base: fx.base, tip: fx.tip, run: RUN, path: 'a.txt',
++      tasks: [EXAM_TASK, TASK_B5],
++    }
++
++    const pending = contendingTasks({ ...args })
++    assert.ok(pending && typeof pending.then === 'function',
++      'leg (b) [M1]: contendingTasks resolves — it answers a promise')
++    const entries = await pending
++    assert.ok(Array.isArray(entries), 'leg (b) [M1]: … of an array — got ' + JSON.stringify(entries))
++    assert.deepEqual(entries.map((e) => [String(e.run), e.task && e.task.id]),
++      [['5', 'T1'], ['7', EXAM_TASK.id]],
++      'leg (b) [M1]: the frontier plan\'s task first, then this run\'s, each included exactly ' +
++      'when its `files` name a.txt — got ' + JSON.stringify(entries.map((e) => [e.run, e.task])))
++
++    const T1_5 = compiledTask(PLAN_RUN5, 'T1')
++    for (const k of ['id', 'title', 'files', 'body']) {
++      assert.deepEqual(entries[0].task[k], T1_5[k],
++        'leg (b) [M1]: the frontier entry\'s task carries the plan\'s own `' + k + '`')
++      assert.deepEqual(entries[1].task[k], EXAM_TASK[k],
++        'leg (b) [M1]: and this run\'s entry carries launch.json\'s `' + k + '`')
++    }
++    assert.deepEqual(T1_5.files, ['a.txt', 'exam_main.mjs'],
++      'fixture sanity: a `Test:` path is in `files`, and the decoy below `**Stale-if:**` is not')
++
++    const block = await contendingBlock({ ...args })
++    assert.equal(block,
++      HEADING + '\n' + SIDE_SENTENCE + '\n' + taskEntry('5', T1_5) + '\n' + taskEntry(RUN, EXAM_TASK),
++      'leg (b) [M1]: contendingBlock\'s string for the same arguments is what it was — the ' +
++      'heading, the side sentence and those two entries, each body embedded verbatim')
++    assert.ok(block.includes('**Proof:**\n- Test: `exam_main.mjs`'),
++      'leg (b) [M1]: so the frontier task\'s Proof slot rides in the block — got ' +
++      JSON.stringify(block))
++  }
++
++  // ═══ (c) the retried fold: a red exam is re-dispatched once ═════════════
++  {
++    const fx = newCase('t2-exam-retry', {
++      mainMoves: MAIN_A, runEdits: RUN_A, tasks: [EXAM_TASK],
++    })
++    const stub = stubAgent((nth) => (nth === 1 ? WRONG_ORDER() : RESOLVED_H1()))
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
++
++    assert.equal(stub.dispatches.length, 2,
++      'leg (c) [M3]: the stub was dispatched exactly twice — the red exam\'s path is ' +
++      're-dispatched once')
++    const first = stub.dispatches[0].prompt
++    const second = stub.dispatches[1].prompt
++    assert.ok(second.startsWith(first),
++      'leg (c) [M3]: the second prompt starts with the first prompt\'s bytes')
++    const section = second.slice(first.length)
++    for (const s of ['PREVIOUS RESOLUTION FAILED A CHECK', 'exam_main.mjs',
++                     'exam_main: line 2 is line2 from run']) {
++      assert.ok(section.includes(s),
++        'leg (c) [M3]: and its appended section names the exam and carries its output tail — ' +
++        JSON.stringify(s) + ' is missing from ' + JSON.stringify(section))
++    }
++
++    const exams = examCalls(rec)
++    assert.deepEqual(exams.map(word),
++      ['node exam_main.mjs', 'node exam_main.mjs', 'node exam_run.mjs'],
++      'leg (c) [M2]: `node exam_main.mjs` once in the first pass — the first red exam stops it — ' +
++      'then `node exam_main.mjs` and `node exam_run.mjs` in the second')
++    for (const c of exams) {
++      assert.equal(c.cwd, fx.integ,
++        'leg (c) [M2]: each with cwd the integration clone — got ' + String(c.cwd))
++    }
++    const mats = verbCalls(rec, 'materialize')
++    assert.ok(mats.length >= 1 && mats[0].n < exams[0].n,
++      'leg (c) [M2]: the first exam ran after a materialize, on the candidate\'s tree')
++    assert.ok(mats.some((m) => m.n > exams[0].n && m.n < exams[1].n),
++      'leg (c) [M2][M3]: and the second pass\'s after a further materialize')
++    const suites = suiteCalls(rec)
++    assert.equal(suites.length, 1, 'leg (c) [M2]: one bash -lc suite call')
++    assert.ok(suites[0].n > exams[2].n,
++      'leg (c) [M2]: and it ran after every exam — the exams come before the whole suite')
++
++    assert.deepEqual(a1.checks, [
++      exam('exam_main.mjs', 'a.txt', 'fail'),
++      exam('exam_main.mjs', 'a.txt', 'pass'),
++      exam('exam_run.mjs', 'a.txt', 'pass'),
++    ], 'leg (c) [M2]: `checks` is one entry per exam, `path` the joined path that brought it, ' +
++       'both passes on the one row — got ' + JSON.stringify(a1.checks))
++
++    assert.ok(fs.readFileSync(examFile(fx, 1), 'utf8').includes('line2 from run'),
++      'leg (c) [M2]: exam-1-1.txt holds the red exam\'s output — got ' +
++      JSON.stringify(fs.readFileSync(examFile(fx, 1), 'utf8')))
++    for (const n of [2, 3]) {
++      assert.ok(fs.existsSync(examFile(fx, n)),
++        'leg (c) [M2]: and exam-1-' + n + '.txt exists — `n` counts every exam run in the attempt')
++    }
++
++    assert.deepEqual(a1.checks.filter((c) => c.exam === 'ghost.mjs'), [],
++      'leg (c) [M2]: no `checks` entry names ghost.mjs — the Proof slot ends at `**Stale-if:**`')
++    assert.deepEqual(named(rec, 'ghost.mjs'), [],
++      'leg (c) [M2]: and no recorded call names it — a reader that runs past the `**Stale-if:**` ' +
++      'line fails this leg')
++
++    assert.equal(a1.disposition, 'folded',
++      'leg (c) [M3]: a green second pass goes on to the suite and ends `folded`')
++    assert.equal(a1.suite, 'pass', 'leg (c) [M3]: on a green suite')
++    assert.equal(a1.checkRetries, 1, 'leg (c) [M3]: the row\'s `checkRetries` is 1')
++    assert.equal(git(['show', a1.candidate + ':a.txt'], fx.target) + '\n', RESOLVED_A,
++      'leg (c) [M3]: and the candidate\'s a.txt is the second resolution')
++  }
++
++  // ═══ (d) two red exams: `suite red`, no suite ═══════════════════════════
++  {
++    const fx = newCase('t2-exam-red', {
++      mainMoves: MAIN_A, runEdits: RUN_A, tasks: [EXAM_TASK],
++    })
++    const stub = stubAgent(() => WRONG_ORDER())
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.disposition, 'suite red',
++      'leg (d) [M4]: an exam still red after the retry is `suite red`')
++    assert.equal(a1.reason, 'exam_main.mjs red on a.txt',
++      'leg (d) [M4]: with reason `<exam> red on <path>`')
++    assert.equal(a1.suite, 'none', 'leg (d) [M4]: and suite `none`')
++    assert.equal(a1.checkRetries, 1, 'leg (d) [M4]: `checkRetries` is 1 — the one retry was spent')
++    assert.deepEqual(a1.checks, [
++      exam('exam_main.mjs', 'a.txt', 'fail'), exam('exam_main.mjs', 'a.txt', 'fail'),
++    ], 'leg (d) [M2]: `checks` carries the red exam from both passes — got ' +
++       JSON.stringify(a1.checks))
++    assert.deepEqual(suiteCalls(rec).map(word), [],
++      'leg (d) [M4]: no recorded call whose cmd is `bash` and whose first argument is `-lc`')
++
++    const ev = lastFoldEvent(fx)
++    assert.equal(ev.disposition, 'suite red',
++      'leg (d) [M4]: the last driver:publish-fold event carries the same disposition')
++    assert.equal(ev.reason, 'exam_main.mjs red on a.txt', 'leg (d) [M4]: … the same reason')
++    assert.equal(ev.suite, 'none', 'leg (d) [M4]: … and the same suite')
++    assert.equal(branchSha(fx), a1.candidate,
++      'leg (d) [M4]: refs/heads/' + BRANCH + ' stays on the candidate, so the PR shows the tree ' +
++      'the exam failed on')
++  }
++
++  // ═══ (e) the no-resolver row: a red exam with no conflict to re-ask ═════
++  {
++    const fx = newCase('t2-noresolver', {
++      mainMoves: run5Move({
++        files: { 'a.txt': lines({ 1: 'line1 from main' }), 'exam_main.mjs': EXAM_MAIN_L1 },
++        plan: PLAN_RUN5,
++      }),
++      runEdits: runWrites({ 'a.txt': lines({ 10: 'a10' }), 'exam_run.mjs': EXAM_RUN_L1 }),
++      tasks: [EXAM_TASK],
++    })
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: noAgent() })
++
++    assert.deepEqual(indexAt(fx, 'wave-1'), [],
++      'leg (e) [M4]: the fold completes without a conflict — the conflicts index is empty, and ' +
++      'no resolver was dispatched')
++    const a1 = att(fx, 1)
++    assert.equal(a1.resolversDispatched, 0, 'leg (e) [M4]: `resolversDispatched` is 0')
++    assert.deepEqual(a1.checks, [
++      exam('exam_main.mjs', 'a.txt', 'pass'), exam('exam_run.mjs', 'a.txt', 'fail'),
++    ], 'leg (e) [M2]: both contending tasks\' exams ran, in first-seen order, and the red one ' +
++       'stopped the pass — got ' + JSON.stringify(a1.checks))
++    assert.equal(a1.disposition, 'suite red',
++      'leg (e) [M4]: a red exam whose path has no conflicts-index entry is `suite red` at once')
++    assert.equal(a1.reason, 'exam_run.mjs red on a.txt',
++      'leg (e) [M4]: with `exam_run.mjs red on a.txt`')
++    assert.equal(a1.suite, 'none', 'leg (e) [M4]: and suite `none`')
++    assert.equal(a1.checkRetries, 0,
++      'leg (e) [M4]: `checkRetries` is 0 — there was nothing to re-dispatch')
++    assert.deepEqual(suiteCalls(rec).map(word), [],
++      'leg (e) [M4]: and no bash -lc call is recorded')
++  }
++
++  // ═══ (f) an exam with no runner is recorded, not run ════════════════════
++  {
++    const fx = newCase('t2-skipped', {
++      mainMoves: MAIN_A, runEdits: RUN_A, tasks: [SKIP_TASK],
++    })
++    const stub = stubAgent(() => RESOLVED_H1())
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.deepEqual(a1.checks, [
++      exam('exam_main.mjs', 'a.txt', 'pass'),
++      exam('notes.txt', 'a.txt', 'skipped'),
++      exam('exam_run.mjs', 'a.txt', 'pass'),
++    ], 'leg (f) [M2]: `checks` carries the runner-less exam as `skipped`, in its Proof\'s own ' +
++       'place, and the exams after it still run — got ' + JSON.stringify(a1.checks))
++    assert.deepEqual(named(rec, 'notes.txt'), [],
++      'leg (f) [M2]: and no recorded call names notes.txt — a skipped exam is not run')
++    assert.equal(a1.disposition, 'folded', 'leg (f) [M2]: the row is `folded`')
++    assert.equal(a1.checkRetries, 0, 'leg (f) [M2]: with no retry spent')
++  }
++
++  // ═══ (g) a body with no `**Proof:**` contributes no exam ════════════════
++  {
++    const fx = newCase('t2-noproof', { mainMoves: MOVES.conflictA, runEdits: RUN_EDITS.a2 })
++    const stub = stubAgent(() => RESOLVED_H1())
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.pathsJoined, 1, 'fixture sanity: a.txt is the one joined path')
++    assert.deepEqual((a1.checks || []).filter((c) => c.check === 'exam'), [],
++      'leg (g) [M2]: `checks` has no entry whose `check` is `exam` — neither PLAN_RUN3\'s T1 nor ' +
++      'TASK_A carries a `**Proof:**` line — got ' + JSON.stringify(a1.checks))
++    assert.deepEqual(
++      examCalls(rec).filter((c) => c.cwd === fx.integ &&
++        c.argv.some((a) => String(a).endsWith('.mjs'))).map(word), [],
++      'leg (g) [M2]: and no recorded `node <…>.mjs` call in the integration clone')
++    assert.deepEqual(suiteCalls(rec).map(word), ['bash -lc bash check.sh'],
++      'leg (g) [M2]: the whole suite still runs')
++    assert.equal(a1.disposition, 'folded', 'leg (g) [M2]: and the fold ends `folded`')
++    assert.equal(a1.suite, 'pass', 'leg (g) [M2]: on a green suite')
++  }
++
++  // ═══ (h) the contract's two sentences, and the Proof's `Run:` ═══════════
++  {
++    const REPO = path.resolve(HERE, '..', '..')
++    const CONTRACT = path.join(REPO, 'fleet', 'CONTRACT.md')
++    const LITERALS = ['exam-<attempt>-<n>.txt', 'red on <path>']
++    // The Proof's `Run:`, verbatim.
++    const GREP =
++      'grep -q "exam-<attempt>-<n>.txt" fleet/CONTRACT.md && ' +
++      'grep -q "red on <path>" fleet/CONTRACT.md'
++    const runIn = (cmd, argv, cwd) => {
++      try {
++        execFileSync(cmd, argv, { cwd, env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
++        return { code: 0, out: '' }
++      } catch (e) {
++        return { code: typeof e.status === 'number' ? e.status : 1,
++          out: String(e.stdout || '') + String(e.stderr || '') }
++      }
++    }
++
++    const text = fs.readFileSync(CONTRACT, 'utf8')
++    // The two sentences M5 names, sliced on BASE anchors this plan does not move.
++    const sentence = (from, to, which) => {
++      const a = text.indexOf(from)
++      assert.ok(a >= 0, 'leg (h) [M5]: fleet/CONTRACT.md still opens its ' + which +
++        ' sentence with ' + JSON.stringify(from))
++      const b = text.indexOf(to, a)
++      assert.ok(b > a, 'leg (h) [M5]: … and still closes the region at ' + JSON.stringify(to))
++      return text.slice(a, b)
++    }
++    const receipts = sentence(
++      'The publish fold writes its own `publish-fold/` receipts directory',
++      '\n    Committed from a detached worktree', 'receipts')
++    assert.ok(receipts.includes('exam-<attempt>-<n>.txt'),
++      'leg (h) [M5]: the `publish-fold/` receipts sentence names `exam-<attempt>-<n>.txt` — got ' +
++      JSON.stringify(receipts))
++    const dispositions = sentence(
++      'Its disposition is one of `folded`', 'A `hold=1` run still folds', 'dispositions')
++    assert.ok(dispositions.includes('red on'),
++      'leg (h) [M5]: and the dispositions sentence carries the phrase `red on` — got ' +
++      JSON.stringify(dispositions))
++
++    assert.equal(runIn('bash', ['-c', GREP], REPO).code, 0,
++      'leg (h) [M5]: the Proof\'s `Run:` exits 0 against fleet/CONTRACT.md')
++    for (const lit of LITERALS) {
++      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-contract-t2-'))
++      CASES.push(dir)
++      fs.mkdirSync(path.join(dir, 'fleet'), { recursive: true })
++      fs.writeFileSync(path.join(dir, 'fleet', 'CONTRACT.md'), text.split(lit).join(''))
++      assert.notEqual(runIn('bash', ['-c', GREP], dir).code, 0,
++        'leg (h) [M5]: … and non-zero on a contract with ' + JSON.stringify(lit) + ' removed')
++    }
++  }
++
++  // ═══ (i) the parse check first, then the exam ═══════════════════════════
++  {
++    assert.deepEqual(CANDIDATE_CHECKS.map((c) => c.name), ['parse', 'exam'],
++      'leg (i) [M2]: CANDIDATE_CHECKS is exactly the parse check then the exam check — got ' +
++      JSON.stringify(CANDIDATE_CHECKS.map((c) => c && c.name)))
++    assert.equal(CANDIDATE_CHECKS[1], EXAM_CHECK,
++      'leg (i) [M2]: and its second entry is EXAM_CHECK itself')
++    assert.equal(typeof (EXAM_CHECK && EXAM_CHECK.run), 'function',
++      'leg (i) [M2]: which carries the `run` the folder calls')
++
++    const fx = newCase('t2-parse-then-exam', {
++      mainMoves: run5Move({
++        files: { 'mod.mjs': mjsLines({ 2: 'export const l2 = 20' }), 'exam_mod.mjs': EXAM_MOD },
++        plan: PLAN_RUN5_MOD,
++      }),
++      runEdits: runWrites({ 'mod.mjs': mjsLines({ 2: 'export const l2 = 2000' }) }),
++      tasks: [MOD_TASK],
++    })
++    const stub = stubAgent((nth) => (nth === 1
++      ? { status: 'RESOLVED',
++          hunks: [{ id: 'h1', content: 'export const l2 = 20\nexport const l2 = 2000' }],
++          notes: 'both second lines, main\'s first' }
++      : MOD_2020()))
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.deepEqual(a1.checks, [
++      parse('mod.mjs', 'fail'), parse('mod.mjs', 'pass'),
++      exam('exam_mod.mjs', 'mod.mjs', 'pass'),
++    ], 'leg (i) [M2]: the exam check runs after the parse check, so a candidate that does not ' +
++       'parse records no exam entry — got ' + JSON.stringify(a1.checks))
++    const parses = parseCalls(rec)
++    const exams = examCalls(rec)
++    assert.ok(parses.length >= 1, 'leg (i) [M2]: `node --check mod.mjs` was recorded')
++    assert.deepEqual(exams.map(word), ['node exam_mod.mjs'],
++      'leg (i) [M2]: exactly one `node exam_mod.mjs` call is recorded — the exam runs once, on ' +
++      'the candidate that parses')
++    assert.ok(parses[0].n < exams[0].n,
++      'leg (i) [M2]: the first `node --check mod.mjs` precedes every `node exam_mod.mjs`')
++    assert.equal(exams[0].cwd, fx.integ,
++      'leg (i) [M2]: which ran in the integration clone — got ' + String(exams[0].cwd))
++    assert.equal(a1.disposition, 'folded', 'leg (i) [M2]: the row is `folded`')
++    assert.equal(a1.checkRetries, 1, 'leg (i) [M2]: with `checkRetries` 1')
++    assert.equal(secondLine(fx, a1.candidate, 'mod.mjs'), 'export const l2 = 2020',
++      'leg (i) [M2]: on the candidate the second resolution wrote')
++  }
++
++  // ═══ (j) two joined paths, live ═════════════════════════════════════════
++  {
++    const fx = newCase('t2-two-paths', {
++      mainMoves: run5Move({
++        files: {
++          'a.txt': lines({ 2: 'line2 from main' }),
++          'mod.mjs': mjsLines({ 2: 'export const l2 = 20' }),
++          'exam_main.mjs': EXAM_MAIN_L2,
++          'exam_mod.mjs': EXAM_MOD,
++        },
++        plan: PLAN_RUN5_TWO,
++      }),
++      runEdits: runWrites({
++        'a.txt': lines({ 2: 'line2 from run' }),
++        'mod.mjs': mjsLines({ 2: 'export const l2 = 2000' }),
++        'exam_run.mjs': EXAM_RUN_L2,
++      }),
++      tasks: [TWO_PATH_TASK],
++    })
++    let mods = 0
++    const stub = stubAgent((nth, prompt) => {
++      if (!prompt.includes('conflicted path: mod.mjs')) return RESOLVED_H1()
++      mods += 1
++      return mods === 1 ? MOD_2000() : MOD_2020()
++    })
++    const rec = recorder()
++    await publishFold(opts(fx, 1), { exec: rec, rename: renameSpy(), makeAgent: stub.makeAgent })
++
++    const a1 = att(fx, 1)
++    assert.equal(a1.pathsJoined, 2, 'fixture sanity: a.txt and mod.mjs are both joined')
++    const index = indexAt(fx, 'wave-1')
++    assert.deepEqual(index.map((e) => e.path), ['a.txt', 'mod.mjs'],
++      'fixture sanity: two conflicts, a.txt first in run.patch')
++    const iA = index.find((e) => e.path === 'a.txt').i
++    const iMod = index.find((e) => e.path === 'mod.mjs').i
++
++    assert.equal(stub.dispatches.length, 3,
++      'leg (j) [M3]: the stub was dispatched exactly three times')
++    assert.deepEqual(stub.dispatches.map((d) => String(d.label).split(':')[3]),
++      [String(iA), String(iMod), String(iMod)],
++      'leg (j) [M3]: once for a.txt\'s <i> and twice for mod.mjs\'s — a.txt\'s reply was ' +
++      'replayed, not re-asked — got ' + stub.dispatches.map((d) => d.label).join(', '))
++    const retry = stub.dispatches[2].prompt.slice(stub.dispatches[1].prompt.length)
++    for (const s of ['exam_mod.mjs', 'mod.mjs']) {
++      assert.ok(retry.includes(s),
++        'leg (j) [M3]: the retry prompt names ' + JSON.stringify(s) + ' — got ' +
++        JSON.stringify(retry))
++    }
++
++    const exams = examCalls(rec)
++    assert.deepEqual(exams.map(word), [
++      'node exam_main.mjs', 'node exam_run.mjs', 'node exam_mod.mjs',
++      'node exam_main.mjs', 'node exam_run.mjs', 'node exam_mod.mjs',
++    ], 'leg (j) [M2]: every joined path\'s exams, in path order, once each per pass')
++    for (const c of exams) {
++      assert.equal(c.cwd, fx.integ,
++        'leg (j) [M2]: all with cwd the integration clone — got ' + String(c.cwd))
++    }
++    assert.deepEqual(a1.checks, [
++      parse('mod.mjs', 'pass'),
++      exam('exam_main.mjs', 'a.txt', 'pass'),
++      exam('exam_run.mjs', 'a.txt', 'pass'),
++      exam('exam_mod.mjs', 'mod.mjs', 'fail'),
++      parse('mod.mjs', 'pass'),
++      exam('exam_main.mjs', 'a.txt', 'pass'),
++      exam('exam_run.mjs', 'a.txt', 'pass'),
++      exam('exam_mod.mjs', 'mod.mjs', 'pass'),
++    ], 'leg (j) [M2]: a folder that examines only the first joined path records no exam_mod.mjs ' +
++       'entry, and one that runs exam_run.mjs once per path that names it records it twice in a ' +
++       'pass — got ' + JSON.stringify(a1.checks))
++
++    assert.equal(a1.disposition, 'folded', 'leg (j) [M3]: the second pass is green and folds')
++    assert.equal(a1.suite, 'pass', 'leg (j) [M3]: the whole suite ran and was green')
++    assert.equal(a1.checkRetries, 1, 'leg (j) [M3]: with `checkRetries` 1')
++    assert.equal(a1.resolversDispatched, 3, 'leg (j) [M3]: and `resolversDispatched` 3')
++    assert.equal(secondLine(fx, a1.candidate, 'mod.mjs'), 'export const l2 = 2020',
++      'leg (j) [M3]: the candidate\'s mod.mjs line 2 is the second resolution')
++  }
++}
++
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_publish_fold_block.mjs b/fleet/tests/test_publish_fold_block.mjs
+index ffa3882c60661e2f131ad853c5407b4906928800..fab92653ab1a9dde91d54aa1003331948af77603 100644
+--- a/fleet/tests/test_publish_fold_block.mjs
++++ b/fleet/tests/test_publish_fold_block.mjs
+@@ -30,6 +30,9 @@ import { fileURLToPath } from 'node:url'
+ import { execFileSync } from 'node:child_process'
+ 
+ import { contendingBlock } from '../publish-fold-block.mjs'
++// #754 Task 2 — exams first: the ordered task list the block renders from, and
++// the list the fold's exam check reads its `- Test:` bullets out of.
++import { contendingTasks } from '../publish-fold-block.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const COMPILER = path.resolve(HERE, '../../skills/ultrapowers/scripts/compile_plan.py')
+@@ -333,4 +336,440 @@ const taskEntry = (run, t) =>
+   fs.rmSync(fx.root, { recursive: true, force: true })
+ }
+ 
++// #757 Task 3 — the tag's record beside its plan
++//
++// M1. A frontier `Fleet-Run: <M>` commit whose tag `ultra/plan/run-<M>` carries
++//     a claims-v1 `.ultrapowers/plan.md` AND, beside it, the
++//     `.ultrapowers/gate-verdicts.json` signed for it, is attributed: every task
++//     of that plan whose `files` name the path renders through the same entry
++//     template this run's own `tasks` use — title line, newline, verbatim body
++//     with its `**Proof:**` slot.
++// M2. The same tag WITHOUT the record renders one `- main <sha7> "<subject>"
++//     (<author>, no plan)` line, no `- run <M> ` entry, and throws nothing.
++// M3. A legacy-grammar tag with no record renders what it rendered at BASE, and
++//     the BASE fixture's block is the string it was.
++// M4. `fleet/CONTRACT.md`'s `The two tags` bullet says the attribution needs the
++//     record, and that a claims-v1 tag without it is a `no plan` line.
++//
++// The oracles are not this exam's paraphrase of the plans. Run 11's entry is the
++// COMPILER's own output over the pinned claims-v1 corpus sample — the plan and
++// the record it is signed for, `evals/fixtures/claims/plan.md` beside
++// `evals/fixtures/claims/plan.gate-verdicts.json`, reached the way this file
++// reaches the compiler. Run 13's is BASE's `compiledTask`. Nothing below the
++// export is stubbed here either: three real tags on a real origin, and the clone
++// under test is fetched `--no-tags`, so every tag the block reads it fetched.
++
++// The claims-v1 corpus sample, from disk. `pytest.ini` keeps pytest out of
++// `evals/` and nothing there is executed — these are two text files.
++const CLAIMS_DIR = path.resolve(HERE, '../../evals/fixtures/claims')
++const CLAIMS_PLAN = fs.readFileSync(path.join(CLAIMS_DIR, 'plan.md'), 'utf8')
++const CLAIMS_RECORD = fs.readFileSync(path.join(CLAIMS_DIR, 'plan.gate-verdicts.json'), 'utf8')
++
++// Run 13's plan, `PLAN_RUN3`'s legacy shape with T1 naming the widget module:
++// it compiles with no record beside it, the way run 3's does at BASE.
++const PLAN_RUN13 = [
++  '# Plan: run thirteen',
++  '',
++  '**Acceptance:** suite — the committed suite is the verification.',
++  '',
++  '### Task T1: The first task of run thirteen',
++  '',
++  '**Type:** implementation',
++  '**Review:** lean',
++  '',
++  '**Files:**',
++  '- Modify: `widgetkit/widget.py`',
++  '',
++  '**Claim:** the first task of run thirteen rewrites the widget module.',
++  '',
++  '- [ ] rewrite the widget module',
++  '',
++  '### Task T2: The second task of run thirteen',
++  '',
++  '**Type:** implementation',
++  '**Review:** lean',
++  '',
++  '**Files:**',
++  '- Modify: `z.txt`',
++  '',
++  '**Claim:** the second task of run thirteen rewrites z.txt and nothing else.',
++  '',
++  '- [ ] rewrite z',
++  '',
++].join('\n')
++
++// The oracle for an attributed claims-v1 entry: the compiler, on the plan text
++// with its record laid beside it under the name the compiler looks for
++// (`<stem>.gate-verdicts.json`). This is the only difference from BASE's
++// `compiledTask`, and it is the whole of what M1 asks the block to do.
++function compiledTaskWithRecord (planText, recordText, id) {
++  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fold-plan-record-'))
++  const planFile = path.join(dir, 'plan.md')
++  const out = path.join(dir, 'launch.json')
++  fs.writeFileSync(planFile, planText)
++  fs.writeFileSync(path.join(dir, 'plan.gate-verdicts.json'), recordText)
++  execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
++    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++  const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
++  fs.rmSync(dir, { recursive: true, force: true })
++  const t = (payload.tasks || []).find((x) => x.id === id)
++  assert.ok(t, 'fixture sanity: the compiler found task ' + id + ' in the claims-v1 plan')
++  assert.ok(t.body.startsWith('### Task ' + id + ':'),
++    'fixture sanity: ' + id + '\'s body is its verbatim section')
++  return t
++}
++
++// A second origin, all of its own. Frontier on `main` since its base, oldest to
++// newest, three commits each rewriting `widgetkit/widget.py`:
++//   1. `Fleet-Run: 11` — its tag carries the claims plan AND the record
++//   2. `Fleet-Run: 12` — its tag carries that same plan ALONE
++//   3. `Fleet-Run: 13` — its tag carries a legacy plan, no record
++// All three tags reach the origin; the clone under test fetches `--no-tags`.
++function buildRecordFixture () {
++  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fold-block-record-'))
++  const origin = path.join(root, 'origin.git')
++  git(['init', '--bare', '--initial-branch=main', origin], root)
++
++  const repo = path.join(root, 'clone-under-test')
++  git(['clone', '--quiet', origin, repo], root)
++  git(['config', 'user.email', 'seed@fleet.test'], repo)
++  git(['config', 'user.name', 'Seed'], repo)
++  fs.mkdirSync(path.join(repo, 'widgetkit'), { recursive: true })
++  fs.writeFileSync(path.join(repo, 'widgetkit', 'widget.py'), 'size = 1\n')
++  fs.writeFileSync(path.join(repo, 'b.txt'), 'bee\n')
++  git(['add', '-A'], repo)
++  git(['commit', '--quiet', '-m', 'seed the record fixture'], repo)
++  git(['push', '--quiet', 'origin', 'main'], repo)
++  const base = git(['rev-parse', 'HEAD'], repo)
++
++  const maker = path.join(root, 'frontier-maker')
++  git(['clone', '--quiet', origin, maker], root)
++  git(['config', 'user.email', 'bot@fleet.test'], maker)
++  git(['config', 'user.name', 'Fleet Bot'], maker)
++
++  const widgetCommit = (text, runLabel, subject) => {
++    fs.writeFileSync(path.join(maker, 'widgetkit', 'widget.py'), text)
++    git(['add', '-A'], maker)
++    git(['commit', '--quiet', '-m', subject, '-m', 'Fleet-Run: ' + runLabel], maker)
++    return git(['rev-parse', 'HEAD'], maker)
++  }
++  const run11 = widgetCommit('size = 11\n', '11', 'run eleven rewrites the widget module')
++  const run12 = widgetCommit('size = 12\n', '12', 'run twelve rewrites the widget module')
++  const run13 = widgetCommit('size = 13\n', '13', 'run thirteen rewrites the widget module')
++  git(['push', '--quiet', 'origin', 'main'], maker)
++  const tip = run13
++
++  // Each tag on its own orphan commit, the way `record_tags` pushes one after
++  // the merge — the same shape BASE's `makeTag` uses, with one more blob.
++  const makeTag = (tag, blobs) => {
++    git(['checkout', '--quiet', '--orphan', 'plan-' + tag.replace(/\W/g, '-')], maker)
++    git(['rm', '-r', '--quiet', '--cached', '.'], maker)
++    fs.rmSync(path.join(maker, 'widgetkit'), { recursive: true, force: true })
++    fs.rmSync(path.join(maker, 'b.txt'), { force: true })
++    fs.mkdirSync(path.join(maker, '.ultrapowers'), { recursive: true })
++    for (const [name, text] of Object.entries(blobs)) {
++      fs.writeFileSync(path.join(maker, '.ultrapowers', name), text)
++    }
++    git(['add', '-A'], maker)
++    git(['commit', '--quiet', '-m', 'the plan of ' + tag], maker)
++    git(['tag', tag], maker)
++    git(['checkout', '--quiet', '--force', 'main'], maker)
++  }
++  makeTag('ultra/plan/run-11', { 'plan.md': CLAIMS_PLAN, 'gate-verdicts.json': CLAIMS_RECORD })
++  makeTag('ultra/plan/run-12', { 'plan.md': CLAIMS_PLAN })
++  makeTag('ultra/plan/run-13', { 'plan.md': PLAN_RUN13 })
++  for (const n of [11, 12, 13]) {
++    git(['push', '--quiet', 'origin', 'refs/tags/ultra/plan/run-' + n], maker)
++  }
++
++  // Fixture sanity: the tags carry exactly the blobs the three cases need.
++  assert.equal(git(['show', 'ultra/plan/run-11:.ultrapowers/gate-verdicts.json'], maker).trim(),
++    CLAIMS_RECORD.trim(), 'fixture sanity: run 11\'s tag carries the record signed for its plan')
++  assert.equal(hasRef(maker, 'ultra/plan/run-12:.ultrapowers/gate-verdicts.json'), false,
++    'fixture sanity: run 12\'s tag carries the plan alone')
++  assert.equal(hasRef(maker, 'ultra/plan/run-13:.ultrapowers/gate-verdicts.json'), false,
++    'fixture sanity: run 13\'s legacy tag carries no record')
++
++  git(['fetch', '--quiet', '--no-tags', 'origin', 'main'], repo)
++  git(['merge', '--quiet', '--ff-only', 'FETCH_HEAD'], repo)
++  assert.equal(git(['rev-parse', 'HEAD'], repo), tip, 'fixture sanity: the clone under test is at the tip')
++  for (const n of [11, 12, 13]) {
++    assert.equal(hasRef(repo, 'refs/tags/ultra/plan/run-' + n), false,
++      'fixture sanity: the clone has no plan tag before the call — every tag the block reads it fetched')
++  }
++
++  const meta = (sha) => ({
++    sha,
++    sha7: sha.slice(0, 7),
++    subject: git(['log', '-1', '--format=%s', sha], repo),
++    author: git(['log', '-1', '--format=%an', sha], repo),
++  })
++  return { root, origin, repo, maker, base, tip, run11: meta(run11), run12: meta(run12), run13: meta(run13) }
++}
++
++// This run's tasks for the record fixture: a `TASK_A`-shaped task naming the
++// widget module, and `TASK_B`, which names only `b.txt` and so contributes
++// nothing to a `widgetkit/widget.py` block.
++const TASK_W = {
++  id: 'W',
++  title: 'The widget task',
++  files: ['widgetkit/widget.py'],
++  body: 'W body, first line.\nW body, second line.',
++}
++
++// ═════ legs (a)–(d) — the block over the three-tag frontier ═══════════════
++{
++  const fx = buildRecordFixture()
++
++  // The oracle's premise, and the reason the fixture is the real claims-v1
++  // sample: this plan does NOT compile without its record beside it. BASE's
++  // `compiledTask` is exactly "compile the plan alone", so if it succeeded the
++  // record would be proving nothing.
++  assert.throws(() => compiledTask(CLAIMS_PLAN, '1'),
++    'fixture sanity [M1]: the claims-v1 plan alone does not compile — the record is what unlocks it')
++  const t1 = compiledTaskWithRecord(CLAIMS_PLAN, CLAIMS_RECORD, '1')
++  assert.deepStrictEqual(t1.files, ['tests/test_widget.py', 'widgetkit/widget.py'],
++    'fixture sanity [M1]: the claims fixture\'s task 1 names the path under test')
++  const legacyT1 = compiledTask(PLAN_RUN13, 'T1')
++  assert.deepStrictEqual(legacyT1.files, ['widgetkit/widget.py'],
++    'fixture sanity [M3]: run 13\'s legacy T1 names the path under test')
++
++  const pending = contendingBlock({
++    repo: fx.repo, base: fx.base, tip: fx.tip, run: RUN, path: 'widgetkit/widget.py',
++    tasks: [TASK_W, TASK_B],
++  })
++  // M2's "throws nothing" is this: run 12's tag has a plan that will not
++  // compile, and the call still resolves.
++  assert.ok(pending && typeof pending.then === 'function', 'leg (a) [M1]: contendingBlock returns a promise')
++  const block = await pending
++  assert.equal(typeof block, 'string', 'leg (a) [M1][M2]: it resolves a string — the uncompilable tag is not a throw')
++
++  // ── leg (a): the whole string, byte for byte [M1][M2][M3] ──────────────
++  // heading, side sentence, then the frontier oldest to newest — run 11
++  // attributed through its record, run 12 a no-plan line, run 13 the legacy
++  // entry — then this run's entries.
++  const expected =
++    heading(RUN) +
++    taskEntry(11, t1) +
++    noPlanLine(fx.run12) +
++    taskEntry(13, legacyT1) +
++    taskEntry(RUN, TASK_W)
++  assert.strictEqual(block, expected,
++    'leg (a) [M1][M2][M3]: the block is the heading, the side sentence, `taskEntry(11, t1)` with t1 the ' +
++    'claims fixture\'s task 1 as the compiler emits it WITH the record beside the plan, then run 12\'s ' +
++    'no-plan line, then the legacy run 13 entry, then this run\'s entry — byte for byte. A `planTasksFor` ' +
++    'that compiles run 11\'s plan alone renders run 11 as a no-plan line, and fails here')
++
++  // ── leg (b): the body the entry carries is the plan's own [M1] ─────────
++  const entry11 = taskEntry(11, t1)
++  assert.ok(block.includes(entry11),
++    'leg (b) [M1]: run 11\'s entry is present, through the same template this run\'s tasks use')
++  assert.ok(entry11.includes('**Proof:**'),
++    'leg (b) [M1]: the run 11 entry carries the task\'s `**Proof:**` slot')
++  assert.ok(entry11.includes('- Test: `tests/test_widget.py`'),
++    'leg (b) [M1]: the run 11 entry carries the Proof\'s `- Test: ` line with the test path in backticks')
++  assert.ok(block.includes('**Proof:**') && block.includes('- Test: `tests/test_widget.py`'),
++    'leg (b) [M1]: and so does the block the brief is built from')
++  // The claims plan's tasks 2 and 3 name `widgetkit/catalog.py` and
++  // `widgetkit/format.py`, never the path under test: a run whose plan compiles
++  // contributes the tasks that name the path and no others.
++  assert.ok(!block.includes('- run 11 task 2:'),
++    'leg (b) [M1]: task 2 names widgetkit/catalog.py, so it contributes nothing')
++  assert.ok(!block.includes('- run 11 task 3:'),
++    'leg (b) [M1]: task 3 names widgetkit/format.py, so it contributes nothing')
++  assert.ok(!block.includes('widgetkit/catalog.py') && !block.includes('widgetkit/format.py'),
++    'leg (b) [M1]: neither of the other two tasks\' bodies leaked into the block')
++
++  // ── leg (c): the recordless claims-v1 tag is one `- main` line [M2] ────
++  const mainLines = block.split('\n').filter((l) => l.startsWith('- main '))
++  assert.deepStrictEqual(mainLines, [noPlanLine(fx.run12).slice(1)],
++    'leg (c) [M2]: exactly one `- main ` line, and it is run 12\'s ' +
++    '`- main <sha7> "<subject>" (<author>, no plan)` — the tag carries the plan but not its record')
++  assert.ok(block.includes(noPlanLine(fx.run12)),
++    'leg (c) [M2]: run 12 contributes that line and the call resolved rather than threw')
++  assert.ok(!block.includes('- run 12 '),
++    'leg (c) [M2]: a claims-v1 tag with no record yields no `- run 12 ` entry')
++  assert.ok(!block.includes('- main ' + fx.run11.sha7),
++    'leg (c) [M1]: run 11 is attributed, not a no-plan line')
++  assert.ok(!block.includes('- main ' + fx.run13.sha7),
++    'leg (c) [M3]: run 13 is attributed, not a no-plan line')
++
++  // ── leg (d), first half: run 13 renders what it rendered at BASE [M3] ──
++  assert.ok(block.includes(taskEntry(13, legacyT1)),
++    'leg (d) [M3]: the run 13 entry\'s bytes are `taskEntry(13, compiledTask(PLAN_RUN13, \'T1\'))` — a ' +
++    'legacy tag with no record still compiles, exactly as it did at BASE')
++  assert.ok(!block.includes('task T2:'),
++    'leg (d) [M3]: run 13\'s T2 names only z.txt, so it contributes nothing')
++  assert.ok(!block.includes('task B:'),
++    'leg (d) [M3]: TASK_B names only b.txt, so it contributes nothing')
++  // The block still carries no branch name, no plan path and no repository path.
++  for (const forbidden of ['refs/', 'ultra/', '.ultrapowers/', 'launch.json', 'gate-verdicts', fx.root]) {
++    assert.ok(!block.includes(forbidden),
++      'leg (d) [M1]: the block carries no ' + JSON.stringify(forbidden))
++  }
++
++  fs.rmSync(fx.root, { recursive: true, force: true })
++}
++
++// ═════ leg (d), second half — the BASE fixture's block is unchanged [M3] ══
++{
++  const fx = buildFixture()
++  const t1 = compiledTask(PLAN_RUN3, 'T1')
++  const block = await contendingBlock({
++    repo: fx.repo, base: fx.base, tip: fx.tip, run: RUN, path: 'a.txt',
++    tasks: [TASK_A, TASK_B, TASK_C],
++  })
++  assert.strictEqual(block,
++    heading(RUN) +
++    taskEntry(3, t1) +
++    noPlanLine(fx.human) +
++    noPlanLine(fx.merge) +
++    noPlanLine(fx.run4) +
++    taskEntry(RUN, TASK_A) +
++    taskEntry(RUN, TASK_C),
++    'leg (d) [M3]: the block over the BASE fixture — a run-3 legacy tag, a human commit, a merge, an ' +
++    'untagged run 4 — is the string it was: the heading, `taskEntry(3, t1)`, the three no-plan lines ' +
++    'and this run\'s two entries')
++  fs.rmSync(fx.root, { recursive: true, force: true })
++}
++
++// ═════ leg (e) — the CONTRACT bullet [M4] ════════════════════════════════
++{
++  // The same reading as the Proof's `Run:`: the `The two tags` bullet, from its
++  // own line up to the next `- **` bullet, flattened to one line.
++  const contractPath = path.resolve(HERE, '..', 'CONTRACT.md')
++  const lines = fs.readFileSync(contractPath, 'utf8').split('\n')
++  const start = lines.findIndex((l) => l.startsWith('- **The two tags**'))
++  assert.ok(start >= 0, 'leg (e) [M4]: fleet/CONTRACT.md has a `- **The two tags**` bullet')
++  let end = start + 1
++  while (end < lines.length && !lines[end].startsWith('- **')) end += 1
++  const bullet = lines.slice(start, end).join(' ')
++
++  assert.ok(bullet.includes('gate-verdicts.json'),
++    'leg (e) [M4]: the `The two tags` bullet names `gate-verdicts.json` — the record a claims-v1 plan ' +
++    'needs on its tag before a `Fleet-Run: <N>` frontier commit is attributed to that run\'s tasks')
++  assert.match(bullet, /gate-verdicts\.json[\s\S]*no plan/,
++    'leg (e) [M4]: and, after it, says a claims-v1 tag without that record is a `no plan` line — the ' +
++    'Proof\'s `Run:` greps this bullet for `gate-verdicts.json.*no plan` and exits 0 only then')
++}
++
++// #754 Task 2 — exams first
++//
++// M1. `contendingTasks({ repo, base, tip, run, path, tasks })` resolves the
++//     ordered array of `{ run, task }` entries whose bodies `contendingBlock`
++//     renders for that path — the frontier plans' tasks read off their tags,
++//     oldest commit first, then this run's `tasks` in their order, each
++//     included exactly when its `files` name the path — and `contendingBlock`'s
++//     string for the same arguments is what it was.
++//
++// The exam check of `fleet/publish-fold.mjs` reads the contending tasks rather
++// than the rendered string, so the ordered list is a named export of this
++// module; every leg below calls it over the fixtures this file already builds,
++// and pins the block over the same arguments byte for byte beside it. The
++// unattributable frontier commits (a human commit, a merge, an untagged run, a
++// claims-v1 tag with no record) contribute `- main …` lines to the block and NO
++// entry to this list — the list is tasks, and a no-plan line has none.
++{
++  const fx = buildFixture()
++  const t1 = compiledTask(PLAN_RUN3, 'T1')
++  const args = {
++    repo: fx.repo, base: fx.base, tip: fx.tip, run: RUN, path: 'a.txt',
++    tasks: [TASK_A, TASK_B, TASK_C],
++  }
++
++  const pending = contendingTasks({ ...args })
++  assert.ok(pending && typeof pending.then === 'function',
++    'leg (b) [M1]: contendingTasks returns a promise')
++  const entries = await pending
++  assert.ok(Array.isArray(entries),
++    'leg (b) [M1]: it resolves an array — got ' + JSON.stringify(entries))
++  assert.deepStrictEqual(entries.map((e) => [String(e.run), e.task && e.task.id]),
++    [['3', 'T1'], ['7', 'A'], ['7', 'C']],
++    'leg (b) [M1]: the frontier plan\'s task first — oldest commit first — then this run\'s ' +
++    'tasks in the order `tasks` gives them, each included exactly when its `files` name a.txt: ' +
++    'a list that drops the frontier entry, or orders this run\'s first, fails here — got ' +
++    JSON.stringify(entries.map((e) => [e.run, e.task && e.task.id])))
++  for (const k of ['id', 'title', 'files', 'body']) {
++    assert.deepStrictEqual(entries[0].task[k], t1[k],
++      'leg (b) [M1]: the frontier entry\'s task carries the compiler\'s own `' + k + '`')
++  }
++  assert.deepStrictEqual(entries[1].task, TASK_A,
++    'leg (b) [M1]: and this run\'s entries carry `launch.json`\'s own task objects')
++  assert.deepStrictEqual(entries[2].task, TASK_C,
++    'leg (b) [M1]: … both of them, in order')
++
++  // The block over the same arguments: what it was, byte for byte, and its
++  // task entries are exactly these, in this order.
++  const block = await contendingBlock({ ...args })
++  assert.strictEqual(block,
++    heading(RUN) +
++    taskEntry(3, t1) +
++    noPlanLine(fx.human) +
++    noPlanLine(fx.merge) +
++    noPlanLine(fx.run4) +
++    taskEntry(RUN, TASK_A) +
++    taskEntry(RUN, TASK_C),
++    'leg (b) [M1]: `contendingBlock`\'s string for the same arguments is what it was — the same ' +
++    'four-commit frontier, byte for byte, now rendered from the list')
++  let at = -1
++  for (const e of entries) {
++    const rendered = taskEntry(e.run, e.task)
++    const found = block.indexOf(rendered)
++    assert.ok(found > at,
++      'leg (b) [M1]: `taskEntry(' + e.run + ', ' + JSON.stringify(e.task.id) + ')` is in the ' +
++      'block, after the entry before it — the block renders these bodies and in this order')
++    at = found
++  }
++
++  // A path no frontier commit touched: this run's entries alone, and none at
++  // all when no task names the path.
++  const untouched = await contendingTasks({
++    repo: fx.repo, base: fx.base, tip: fx.tip, run: RUN, path: 'c.txt',
++    tasks: [TASK_A, TASK_B, TASK_C, TASK_D],
++  })
++  assert.deepStrictEqual(untouched.map((e) => [String(e.run), e.task.id]), [['7', 'D']],
++    'leg (b) [M1]: an untouched path yields this run\'s naming tasks only — got ' +
++    JSON.stringify(untouched))
++  assert.deepStrictEqual(await contendingTasks({
++    repo: fx.repo, base: fx.base, tip: fx.tip, run: RUN, path: 'c.txt', tasks: [TASK_A, TASK_B],
++  }), [], 'leg (b) [M1]: and `tasks` naming no task whose files contain the path yields []')
++
++  fs.rmSync(fx.root, { recursive: true, force: true })
++}
++
++{
++  // The three-tag frontier: run 11 is attributed through its record, run 12's
++  // recordless claims-v1 tag contributes no task, run 13's legacy tag does.
++  const fx = buildRecordFixture()
++  const t1 = compiledTaskWithRecord(CLAIMS_PLAN, CLAIMS_RECORD, '1')
++  const legacyT1 = compiledTask(PLAN_RUN13, 'T1')
++  const args = {
++    repo: fx.repo, base: fx.base, tip: fx.tip, run: RUN, path: 'widgetkit/widget.py',
++    tasks: [TASK_W, TASK_B],
++  }
++
++  const entries = await contendingTasks({ ...args })
++  assert.deepStrictEqual(entries.map((e) => [String(e.run), e.task && e.task.id]),
++    [['11', '1'], ['13', 'T1'], ['7', 'W']],
++    'leg (b) [M1]: the tags are read oldest commit first, an uncompilable one contributes no ' +
++    'entry rather than throwing, and this run\'s task comes last — got ' +
++    JSON.stringify(entries.map((e) => [e.run, e.task && e.task.id])))
++  assert.deepStrictEqual(entries[0].task.body, t1.body,
++    'leg (b) [M1]: the attributed entry carries the plan\'s verbatim body, `**Proof:**` slot and ' +
++    'all — which is where the exam check reads its `- Test:` bullets')
++  assert.ok(entries[0].task.body.includes('- Test: `tests/test_widget.py`'),
++    'leg (b) [M1]: … including that `- Test:` line')
++
++  const block = await contendingBlock({ ...args })
++  assert.strictEqual(block,
++    heading(RUN) +
++    taskEntry(11, t1) +
++    noPlanLine(fx.run12) +
++    taskEntry(13, legacyT1) +
++    taskEntry(RUN, TASK_W),
++    'leg (b) [M1]: and the block over the same arguments is the string it was')
++
++  fs.rmSync(fx.root, { recursive: true, force: true })
++}
++
+ console.log('ALL TESTS PASSED')

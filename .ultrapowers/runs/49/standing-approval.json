@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-49.md run-49 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/publish-fold.mjs — examArgvFor's non-node runner branches: ['python3','-m','pytest','-q',<exam>] for .py and ['bun','test',<exam>] for .test.ts — Leg (a) of Task 2 pins these argvs, and every live exam leg in fleet/tests/test_publish_fold.mjs runs a .mjs exam through `node`, so no committed leg ever executes a .py or .test.ts exam end to end. The parse check's python3 branch IS exercised live (Task 1 leg (f)); the exam check's pytest and bun branches are structurally complete but unexecuted here, and bun in particular only exists on the provisioned sandbox VM (fleet/setup-script.mjs), not necessarily in this environment. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
