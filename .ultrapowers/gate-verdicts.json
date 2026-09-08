@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "e9e0088676b4de3e90e035362be143b685b926c0c61f1d3bcf7d9a8f555aeae3",
+      "verdict": "pass",
+      "reason": "Each clause M1–M5 has a leg that would fail if the clause were false, at the CLI/subprocess layer the sentence speaks at, including the flagless BASE behaviour and worktree cleanup after both flagged and unflagged invocations."
+    },
+    "2": {
+      "hash": "d874e4b1ddae8d619aab836926f068defb790719c927f24bc9a07349772a723e",
+      "verdict": "pass",
+      "reason": "Each leg falsifies its cited clause at the driver's exec boundary: (a) pins the single --validate-knobs exec and its --no-baseline flag, (b) enumerates every exec before runEngineFn and excludes both a second ultra_run.py and any testCmd/shell invocation, and (c) shows the knob failure returns before the engine or any clones directory exists."
+    }
+  },
+  "tally": {"dispatched": 5, "rejected": 1, "rounds": 3, "round0": {"dispatched": 1, "rejected": 0}, "round1": {"dispatched": 2, "rejected": 1}, "round2": {"dispatched": 2, "rejected": 0}},
+  "history": [
+    {"round": 0, "task": "2", "hash": "8af8b18661a9dd7442bd9c29915cfa3f862b5332e3341d2ba219cc6e6cef3a22", "verdict": "pass", "reason": "Each clause has a leg that would fail if it were false at the stubbed-exec layer the plan chose: (a) pins the single --validate-knobs argv with --no-baseline, (b) pins exactly two ultra_run.py execs and no suite/shell command before engine entry, (c) pins the exit-1 knob-validate path to code/verdict/detail, non-entry of runEngineFn and the absent clones dir.", "findings": ["M2: the first (preflight) ultra_run.py exec's argv is not pinned at all, so a baseline suite run inside that call would be invisible to the exec stub — the sentence's 'without having run the suite' is only established for execs the driver issues directly, which is the layer chosen but worth noting."], "note": "arrived at the parent session; superseded by the round-1 edit that pinned the preflight argv"},
+    {"round": 1, "task": "1", "hash": "6f4d12b7bb75170ebe08b1c806294630c1a6641999974569c4063a17fbc46161", "verdict": "pass", "reason": "Each clause has a leg at the CLI/JSON-line layer that would fail if the clause were false.", "findings": ["M5: leg (f) skipped the flagless baseline-running invocations of leg (b) — fixed in round 2 by extending (f) to all five previous legs.", "Leg (i) asserts exit 1 and testCmdRunner.ok false but not the line's top-level ok false (implied by the exit code).", "Leg (c) relies on 'opus' being an unknown tier; fails loudly rather than vacuously if not."]},
+    {"round": 1, "task": "2", "hash": "3577e8deb9994af1cc0b3489e4f0334b1c8fe6132f3f5311a50fe6a8b665dab6", "verdict": "fail", "reason": "The 'without the driver having run the suite' half is proven only at the Node argv layer with ultra_run.py stubbed out — nothing exercises that ultra_run.py honors --no-baseline, nor that the preflight invocation does not itself run the baseline suite inside Python.", "findings": ["Layer mismatch between the sentence and the stubbed-exec exam — fixed in round 2 by narrowing the derived Claim to the driver's half (asks the check to skip the baseline, issues no suite command itself); the Python half is Task 1's contract and the plan Claim is their conjunction."]},
+    {"round": 2, "task": "1", "hash": "e9e0088676b4de3e90e035362be143b685b926c0c61f1d3bcf7d9a8f555aeae3", "verdict": "pass", "findings": ["M2: the command -v fallback is only exercised on its failing branch (h); a non-TASK_RUNNERS runner that resolves and reports ok true is never shown.", "M2: leg (i) asserts exit 1 and testCmdRunner.ok false but not the line's top-level ok false.", "M5: leg (l) relies on assert_no_probe_left(repo) whose checks are not restated in the exam."]},
+    {"round": 2, "task": "2", "hash": "d874e4b1ddae8d619aab836926f068defb790719c927f24bc9a07349772a723e", "verdict": "pass", "findings": ["Leg (b) only sees commands routed through the stubbed exec seam; the stub is the driver's own boundary so the layer is right.", "Leg (c) proves 'no clone is cut' via absence of runDir/clones, a convention-based proxy; the never-entered runEngineFn makes this acceptable."]}
+  ]
+}
