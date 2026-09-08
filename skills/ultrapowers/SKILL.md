@@ -148,15 +148,19 @@ approved plan, **is** the authorization to execute — no further approval pause
    measurement run; the sandbox then publishes and does not merge.
 
 3. **Walk away.** The run outlives this session; there is nothing to tail. Its
-   state is `status.json`, the same bytes on the VM's status page and on the
-   run's evidence branch at every transition: `booting` → `running` →
+   state is `status.json`, written at every transition: `booting` → `running` →
    `publishing` → `done`, or `parked` or `failed`. When the user asks how the
-   run is doing, read `status.json` off the evidence branch — it is there from
-   the first transition and stays after the VM is reaped:
+   run is doing, read `status.json` by tag: a finished run's record is
+   `ultra/evidence/run-<N>`, the one spelling that keeps working after the VM
+   is reaped and after the run's branches are gone.
 
    ```bash
-   gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence-run-<N>' --jq .content | base64 -d
+   gh api 'repos/<repo>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>' --jq .content | base64 -d
    ```
+
+   While the run is in flight that tag is not written yet and the same bytes
+   are on its `ultra/evidence-run-<N>` branch, a working surface that goes at
+   publish.
 
    The page at https://<vm>.exe.xyz/status.json is the operator's own: a
    browser logged in to exe.dev reads it, this agent does not.
@@ -165,9 +169,11 @@ approved plan, **is** the authorization to execute — no further approval pause
    done and the branch is ahead of base, the sandbox pushes it and opens the
    PR itself, through the target's integration attached at launch. The run's
    code is the `ultra/integration-run-<N>` branch, which is the PR head; its
-   evidence is `ultra/evidence-run-<N>`, under `.ultrapowers/runs/<N>/`, never
-   merged and linked from the PR body. Gate-green → a ready PR and `done`.
-   Parked → a draft PR carrying the gate receipt and `parked`. `pr` and
+   evidence is under `.ultrapowers/runs/<N>/`, on the `ultra/evidence-run-<N>`
+   branch while the run is in flight and at the tag `ultra/evidence/run-<N>`
+   once it ends, never merged and linked from the PR body. Gate-green → a
+   ready PR and `done`. Parked → a draft PR carrying the gate receipt and
+   `parked`. `pr` and
    `prAuthor` in `status.json` are the PR's URL and who GitHub says opened it —
    read both back to the user, and say so when the author is the installation
    bot rather than them (their GitHub account is not yet linked on exe.dev's
@@ -176,8 +182,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    on the launch line keeps it open for the operator; a draft PR is the
    operator's to merge or close; a parked run is
    acknowledged by marking it ready, or re-driven as a narrower plan. A parked
-   run with nothing to publish opens no PR; its evidence branch is still
-   pushed. The laptop never fetches a run branch.
+   run with nothing to publish opens no PR; its record is still pushed and
+   still tagged `ultra/evidence/run-<N>`. The laptop never fetches a run
+   branch.
 
 5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs
    that finished over an hour ago, and reports the stale ones rather than
