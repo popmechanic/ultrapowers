@@ -358,6 +358,44 @@ export const integratedCheckEvidenceBlock = (checks) => {
     checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
       '\n' + c.stdout).join('')
 }
+// #700 — the hunks behind an EXAM EDITED line. Naming the edited paths is not
+// showing them, and the PATCH cannot: `patchAgainstBase` diffs the graded clone
+// against BASE, where the Proof path does not exist, so an edited exam reads
+// there as a whole-file add and the peer's own lines are nowhere in it. The
+// referee is then deciding on OWNERSHIP — the graded party touched the exam —
+// when the only question worth asking is what the edit did: an edit that only
+// strengthens the exam can be accepted and recorded, one that drops an
+// assertion blocked, and both verdicts live in the hunks.
+// One block per edited path, each beginning `EXAM EDITED DIFF <path>:` — a
+// literal shared with the reviewer's own exam-edit rule, so changing it here
+// changes what `fleet/roles/reviewer.md` tells the referee to look for —
+// followed by a unified diff from the bytes the PEER left at that path to the
+// bytes in the graded tree.
+// Empty renders nothing at all (the run-51 rule), so a task whose exam nobody
+// touched keeps the reviewer prompt it had before this existed, byte for byte.
+export const examEditedDiffBlock = (diffs) => {
+  if (!Array.isArray(diffs) || diffs.length === 0) return ''
+  return diffs.map((d) => '\nEXAM EDITED DIFF ' + d.path + ':\n' + d.diff).join('')
+}
+// git's own preamble names the two clones by absolute path — `diff --git`,
+// `index`, `new file mode` — which tells a referee nothing the block header did
+// not already say, and invites it to read the filenames instead of the hunks.
+// So the preamble is dropped and the file headers are rewritten to `peer/` and
+// `graded/`, which is what the two sides ARE. What remains is the unified diff
+// itself: `---`/`+++`, `@@` hunk headers, `-`/`+` content lines.
+const hunksOnly = (p, stdout, stderr) => {
+  const header = '--- peer/' + p + '\n+++ graded/' + p
+  const lines = String(stdout || '').split('\n')
+  const at = lines.findIndex((l) => l.startsWith('@@'))
+  // No hunks at all: a binary blob, or git itself failed. Say which — an empty
+  // block would read as "nothing changed", which is the one thing it is not
+  // (the path is on the EXAM EDITED line because its blob moved).
+  if (at < 0) {
+    return header + '\n(no textual hunks — ' +
+      (String(stdout || '').trim() || String(stderr || '').trim() || 'git printed nothing') + ')'
+  }
+  return header + '\n' + lines.slice(at).join('\n').replace(/\n+$/, '')
+}
 export const priorAdvisoriesBlock = (minors) => {
   if (!Array.isArray(minors) || minors.length === 0) return ''
   return '\nPRIOR-ROUND ADVISORIES (minor findings from the previous review round, already ' +
@@ -845,6 +883,11 @@ export async function runEngine({
   // the reviews raised them. They drive no fix round — they become gate
   // deferrals once the run knows which tasks finished `done`.
   const planDefects = []
+  // Tasks the implementer's own leg-labelled `plan-defect:` concern parked
+  // before any fix round: `{ task, why }`, one per parked task. They are the
+  // one FAILED row that still carries a plan question, so they reach the gate
+  // beside `planDefects` rather than through it (#722).
+  const parkedForPlan = []
   // ── what a reviewer-minute bought ──────────────────────────────────────────
   // The run spends most of its wall clock in referees, and until now the report
   // said how many rounds ran but never what they returned per minute spent —
@@ -1156,6 +1199,28 @@ export async function runEngine({
           'reads the patch, exam hunks included')
       }
     }
+    // The hunks the referee reads (#700). The peer's bytes survive in the
+    // examiner's own clone — nothing removes `examDir` during the task — at the
+    // same relative path they were copied from at the handoff, so the two sides
+    // of the diff are files on disk: `<examDir>/<p>` and `<cloneDir>/<p>`. A
+    // side the examiner never wrote (a path it left absent) or the graded party
+    // deleted is `/dev/null`, which is how an added or removed exam file diffs
+    // from empty. `git diff --no-index` exits 1 when the files differ, which is
+    // the expected exit here rather than an error — so its code is not branched
+    // on at all; what it printed is what the block carries.
+    const examEditedDiffs = async () => {
+      if (!(examEdited && examEdited.length)) return []
+      const diffs = []
+      for (const p of examEdited) {
+        const peer = path.resolve(examDir, p)
+        const graded = path.resolve(cloneDir, p)
+        const r = await exec('git', ['diff', '--no-index', '--no-color', '--',
+          fs.existsSync(peer) ? peer : '/dev/null',
+          fs.existsSync(graded) ? graded : '/dev/null'], { cwd: cloneDir })
+        diffs.push({ path: p, diff: hunksOnly(p, r.stdout, r.stderr) })
+      }
+      return diffs
+    }
 
     let baseCorrected = null
     // The pair (#653). Both dispatches are made here with nothing awaited
@@ -1421,6 +1486,37 @@ export async function runEngine({
       }
       let reds = await prePass()
       if (reds.length) {
+        // ── the implementer's own plan-defect against a Proof leg (#722) ────
+        // The actor question the reviews already answer (`routeToPlan`) is
+        // asked one round earlier here, by the one agent that read the leg and
+        // the tree together. A leg no implementation can satisfy — one that
+        // reads state the patch creates, or asserts a shape a sibling's
+        // contract forbids — is not a red the implementer can clear: it may
+        // not edit the exam (#663), so a fix round buys a second agent that
+        // lands exactly where the first did. When the reply names the leg by
+        // its label in a `plan-defect:` concern AND the pass found that same
+        // exam red, the task is parked for the plan instead of billed for the
+        // round: `failed`, actor `plan`, and the concern travels to the gate
+        // as a `deferred:plan-defect` item. A red `Run:` or `Check:` beside
+        // the red exam does not change the answer — the exam's red plus the
+        // leg-naming concern is the whole condition.
+        const examRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
+        const examIsRed = Boolean(examRedLine) && reds.some((r) => r.line === examRedLine)
+        const legDefects = (examIsRed && impl.status === 'DONE_WITH_CONCERNS' &&
+          Array.isArray(impl.concerns))
+          ? impl.concerns.map(String).filter((c) => /^plan-defect:[\s\S]*\([a-z]\)/.test(c))
+          : []
+        if (legDefects.length) {
+          const notes = legDefects.join('; ')
+          parkedForPlan.push({ task: task.id, why: notes })
+          judgmentCalls.push('task ' + task.id + ': plan-defect against a Proof leg named by ' +
+            'the implementer — no fix round dispatched; failed with actor plan — ' + notes)
+          log('task ' + task.id + ' parked for the plan — ' + notes)
+          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                   reviewVerdict: 'plan-defect', notes, actor: 'plan',
+                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                   ...examEditedField() }
+        }
         proofFixes = 1
         judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
           reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
@@ -1484,12 +1580,17 @@ export async function runEngine({
       // tree that predates it.
       const examEvidence = iter === 1 ? preExam : await runExam(iter)
       const checkEvidence = iter === 1 ? preChecks : await runChecks(iter)
+      // Recomputed per round, because the round that edits the exam is usually
+      // the fix round between them: round 2's blocks are the hunks of the tree
+      // round 2 is reading, never round 1's.
+      const editedDiffs = await examEditedDiffs()
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
         globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
+        examEditedDiffBlock(editedDiffs) +
         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
         checkEvidenceBlock(checkEvidence)
       const reviewOpts = (pass) => ({
@@ -2267,6 +2368,13 @@ export async function runEngine({
     if (!doneTaskIds.has(p.task)) continue
     planDeferred.push({ deliverable: p.task, reason: 'plan-defect', why: p.detail })
     judgmentCalls.push('task ' + p.task + ': plan-defect deferred to the gate — ' + p.detail)
+  }
+  // The parked rows are the exception the loop above is right to exclude: they
+  // failed, but they failed BECAUSE of a plan question, and their files are
+  // already under missingDeliverables. Their judgment call was pushed at the
+  // park, so only the item is added here (#722).
+  for (const p of parkedForPlan) {
+    planDeferred.push({ deliverable: p.task, reason: 'plan-defect', why: p.why })
   }
   const deferredVerification = (Array.isArray(review.deferredVerification)
     ? review.deferredVerification : [])

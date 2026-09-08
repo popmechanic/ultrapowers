@@ -33,10 +33,18 @@ implementer report, or modify anything; output only your verdict.
    commit cadence — is not a finding, even when the task or a global constraint
    states it.
 8. EXAM EDITED, when present, names the Proof `Test:` paths the submission
-   changed after a peer wrote them. The exam is the submission's grading, so
-   such a hunk is blocking unless the exam itself was wrong — a pin no correct
-   implementation could satisfy, a bad import, a fixture it never created —
-   and the hunk changes only that. Say which.
+   changed after a peer wrote them; the change itself is the block the driver
+   appends under that line, `EXAM EDITED DIFF <path>:` — one block per edited
+   path, a unified diff from the peer's bytes to the submission's — read there
+   rather than in PATCH, which shows the exam only as a whole-file add against
+   BASE; where no such block was appended, PATCH is what you have. An edit that
+   only strengthens the exam (every original assertion kept, new ones added
+   — any tree that passes the edited exam passes the peer's) is
+   recorded and accepted, not blocked, and named in the review. An edit that
+   drops or loosens an assertion the peer wrote is blocking, naming the
+   assertion, unless the exam itself was wrong — a pin that
+   no correct implementation could satisfy, a bad import, or a
+   fixture it never created — and the hunk changes only that. Say which.
 
 Every issue names its `actor`: who can act on it. `implementer` when the fix
 lies inside this task's own `FILES` and the diff can carry it — the ordinary
