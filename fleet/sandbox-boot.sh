@@ -1138,6 +1138,36 @@ plan_closes() {
   ' "$PLAN_FILE"
 }
 
+# The failing test's own block of a suite file, printed to stdout.
+#
+# A fixed-length tail is the wrong excerpt: a suite whose failing leg is early
+# and whose diagnostics are long puts the one line a reader needs above the
+# window, and the reader is shown a run is held without being told by what. So
+# the block is found by its markers instead of by its length:
+#
+#   start — the first line matching /^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)/
+#   end   — the line before the first LATER line matching
+#           /^(___+ .+ ___+$|===+ |(not )?ok [0-9])/, or the file's last line
+#   fallback — a file with no start line is printed whole
+#
+# The same rule, literal for literal, is `fleet/failing-block.mjs`'s: the two
+# must agree line for line on the same file. POSIX awk only — the sandbox is
+# Ubuntu's mawk and the boot sims run on BSD awk — so no `{n,m}` intervals, no
+# `\d`, and no gawk-only functions. `node` is never called here: on the sandbox
+# `node` is argv to `systemd-run` and nothing else.
+failing_block() { # $1 = the suite file
+  awk '
+    { line[NR] = $0 }
+    !start && /^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)/ { start = NR; next }
+    start && !stop && /^(___+ .+ ___+$|===+ |(not )?ok [0-9])/ { stop = NR - 1 }
+    END {
+      if (!start) { start = 1; stop = NR }
+      if (!stop) stop = NR
+      for (i = start; i <= stop; i++) print line[i]
+    }
+  ' "$1"
+}
+
 # The fold's section of the PR body, or nothing at all. It is the reader's only
 # account of what happened between the engine's commit and the head this PR
 # carries, so it appears whenever that account is not "it just folded": on any
@@ -1176,11 +1206,13 @@ fold_section() {
   case "$MERGE_NOTE" in "left open:"*) printf -- '- merge: %s\n' "$MERGE_NOTE" ;; esac
   printf '\n'
   # The suite the fold ran on the folded head is the whole of a `suite red`:
-  # without its tail the section says a run is held and not by what.
+  # without the failing test's own block the section says a run is held and not
+  # by what. The whole file stays on the evidence branch either way; this is
+  # only what the reader is shown.
   suite="$(fold_dir)/suite-$a.txt"
   if [ "$d" = "suite red" ] && [ -f "$suite" ]; then
     printf '```\n'
-    tail -n 20 "$suite"
+    failing_block "$suite"
     printf '```\n\n'
   fi
   printf 'https://github.com/%s/tree/ultra/evidence/%s/%s/publish-fold/receipt.json\n\n' \

@@ -43,6 +43,15 @@ import { fileURLToPath } from 'node:url'
 // clone is cut at dispatch time (only the engine knows which tasks have an
 // exam), and the implementer's capture is retaken after the handoff.
 import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
+// A red suite's output is quoted, not tailed (#763 part 2): every reader below
+// who is handed a failing suite's text — a judgment call, the critic's brief,
+// the reconcile agent's brief, a blocked wave's detail — gets the failing
+// test's own block, so the assertion that named the failing leg survives however
+// long the trailing summary runs. `tail` stays for everything that is not a red
+// suite: git and fold stderr, bootstrap failures, and the Run:/Check:/exam
+// evidence records. The record itself is untouched — the whole output is still
+// on disk beside the excerpt.
+import { failingBlock } from './failing-block.mjs'
 
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
@@ -404,7 +413,10 @@ export const suiteLine = (suite, cmd) => {
     'do not re-derive it by reading tests.' +
     '\ncommand: ' + (cmd || '(unknown)') +
     '\npassed: ' + Boolean(suite.passed) +
-    (suite.passed === false ? '\noutput: ' + tail(suite.output, 500) : '')
+    // A red suite's output arrives here already narrowed to the failing block,
+    // so it is carried whole: re-tailing it would cut the very lines the block
+    // was chosen to keep.
+    (suite.passed === false ? '\noutput: ' + suite.output : '')
 }
 const siblingLine = (task, wave) => {
   const sibs = wave
@@ -924,11 +936,17 @@ export async function runEngine({
     await git(['read-tree', '-u', '--reset', baseSha + '^{tree}'], integ)
     const r = await sh(testCmd, integ)
     await git(['read-tree', '-u', '--reset', restoreTree + '^{tree}'], integ)
-    baseline = { passed: r.code === 0, output: tail(r.stdout + r.stderr, 2000) }
+    // A green baseline keeps BASE's record — a tail of the summary. A red one
+    // records the failing test's own block, which is what every reader of
+    // `baseline.output` below is quoting.
+    baseline = { passed: r.code === 0,
+                 output: r.code === 0
+                   ? tail(r.stdout + r.stderr, 2000)
+                   : failingBlock(r.stdout + r.stderr) }
     log('baseline: ' + (baseline.passed ? 'green' : 'RED') + ' on ' + baseSha)
     if (!baseline.passed) {
       judgmentCalls.push('baseline: the suite is RED on BASE (' +
-        tail(baseline.output, 500) + ') — this wave\'s red is inherited, not the diff\'s')
+        baseline.output + ') — this wave\'s red is inherited, not the diff\'s')
     }
   }
 
@@ -1838,7 +1856,7 @@ export async function runEngine({
       try {
         rec = await agent(
           roles.reconcile + '\nTEST COMMAND: ' + testCmd +
-            '\n\nFailing output:\n' + tail(suite.stdout + suite.stderr, 3000),
+            '\n\nFailing output:\n' + failingBlock(suite.stdout + suite.stderr),
           { label: 'reconcile:wave' + waveNumber + ':' + attempt,
             model: TIER.mostCapable, schema: RECONCILE_SCHEMA })
       } catch (e) {
@@ -1893,7 +1911,7 @@ export async function runEngine({
     frontier.push(entry())
     return { status: 'TEST_FAILED',
              detail: 'candidate suite failed after reconcile attempts: ' +
-               tail(suite.stdout + suite.stderr, 800) }
+               failingBlock(suite.stdout + suite.stderr) }
   }
 
   // ── wave loop (ported: chunking, lost sweep, barrier retry, cascade) ───────
@@ -2158,7 +2176,7 @@ export async function runEngine({
           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
           suiteLine(lastSuite, testCmd) +
           (baseline && baseline.passed === false
-            ? '\nBaseline: the suite is RED on BASE — ' + tail(baseline.output, 500)
+            ? '\nBaseline: the suite is RED on BASE — ' + baseline.output
             : '') +
           integratedRunEvidenceBlock(integratedRuns) +
           integratedCheckEvidenceBlock(integratedChecks),

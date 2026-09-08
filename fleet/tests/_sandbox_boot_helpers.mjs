@@ -101,10 +101,20 @@ export const HEAD_SHA_2 = FOLD_CANDIDATE_2
 /** The one line the fold stub prints, which is therefore the last line of
  *  `publish-fold/publish-fold-<attempt>.log`. */
 export const FOLD_STUB_LINE = 'fold stub speaking'
-/** What the stub writes to `publish-fold/suite-<attempt>.txt` on `suite red`. */
-export const FOLD_SUITE_TEXT = 'FAIL fleet/tests/test_fold.py::test_join\n1 failed, 12 passed in 3.10s'
+/** What the stub writes to `publish-fold/suite-<attempt>.txt` on `suite red`:
+ *  twenty-eight TAP-shaped lines whose failing leg is the SECOND, buried under
+ *  twenty-six diagnostic lines. A fixed-length tail of this file cannot carry
+ *  the `not ok 2` line, so the excerpt the PR body quotes has to be the
+ *  failing test's own block. */
+export const FOLD_SUITE_TEXT = [
+  'ok 1 - join',
+  'not ok 2 - the recorded text names the failing leg',
+  ...Array.from({ length: 24 }, (_, i) => `  diagnostic line ${i + 1}`),
+  '  ...',
+  '# fail 1',
+].join('\n')
 /** Its last line — the one the PR body has to carry. */
-export const FOLD_SUITE_LAST = '1 failed, 12 passed in 3.10s'
+export const FOLD_SUITE_LAST = '# fail 1'
 /** Where the fold's receipts live inside the evidence worktree. */
 export const FOLD_PATH = `${RUN_PATH}/publish-fold`
 /** The link the `## Publish fold` section points a reader at. */
