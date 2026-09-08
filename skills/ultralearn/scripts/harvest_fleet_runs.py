@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import subprocess
 import sys
 import tarfile
@@ -46,6 +47,14 @@ AUDIT_UNIT_NOTE = ("outputTokens = the worker:end meter's output field, summed "
 EVIDENCE_FILES = ("status.json", "receipt.json", "gate-receipt.json",
                   "report.json", "events.jsonl", "engine.log")
 GH_TIMEOUT = 120               # seconds; one contents read is a few KB
+
+# The marker the #702 reducer writes ahead of a tool_result's text, e.g.
+# `[tool_result: 727 chars, is_error] `. It is the slicer's bookkeeping, not
+# the denial's reason, so it comes off before the line is kept.
+_RESULT_PREFIX = re.compile(r"^\[tool_result: \d+ chars(?:, is_error)?\]\s*")
+# What a denied tool call reads as in a transcript slice — the CLI's own
+# wording, the only marker a reduced record carries.
+DENIAL_MARKER = "Permission to use"
 
 
 def _warn(msg):
@@ -111,6 +120,13 @@ def _evidence_api_path(target, run, name, ref=None):
             f"?ref={ref or evidence_branch(run)}")
 
 
+def _commit_api_path(target, ref):
+    """The commits read that turns a ref into the sha it points at. The
+    endpoint answers a commit object for a branch name, a tag name or a sha
+    alike, so one path serves both refs."""
+    return f"repos/{target}/commits/{ref}"
+
+
 def _gh_api(api_path):
     """`gh api <path>` decoded to the file's bytes, or None when gh answered
     non-zero — an `HTTP 404` is an *answer*: that path is not on the branch,
@@ -164,6 +180,27 @@ def _gh_api_listing(api_path):
         # Same standing as a 404: there is no directory here to walk.
         return None
     return listing
+
+
+def _gh_api_object(api_path):
+    """The JSON OBJECT a non-contents read answers, or None.
+
+    Neither existing reader can serve this: `_gh_api` decodes a `content` field
+    the commits endpoint does not carry, and `_gh_api_listing` refuses a body
+    that is not a list. The absence rule is theirs — gh answering non-zero is an
+    *answer* (that ref is not there), not a failure.
+    """
+    proc = subprocess.run(["gh", "api", api_path], capture_output=True,
+                          text=True, timeout=GH_TIMEOUT)
+    if proc.returncode != 0:
+        return None
+    try:
+        body = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        swallow("gh api answered a non-JSON body for an object read; "
+                "treating the answer as absent", exc)
+        return None
+    return body if isinstance(body, dict) else None
 
 
 def fetch_evidence(target: str, run: str, dest: Path) -> Path:
@@ -225,6 +262,15 @@ def fetch_evidence(target: str, run: str, dest: Path) -> Path:
             f"{target} run {number}: no events.jsonl on {ref} "
             f"— a run with no timeline cannot bundle")
 
+    # The sha the record was read at, resolved once at the ref the six files
+    # above landed on — after both raises, so a run with nothing readable or no
+    # timeline never spends the call. It is what the incremental skip compares:
+    # a cached bundle whose `evidenceSha` differs from this one was built from a
+    # record that has since moved, and is rebuilt rather than skipped.
+    sha = _fetch_commit_sha(target, run, ref, number)
+    (dest / "evidence-ref.json").write_text(
+        json.dumps({"target": target, "ref": ref, "sha": sha}))
+
     # The worker slices under `transcripts/` (#702), read LAST and at the ref
     # the six files above resolved: a run that raised — nothing readable, or no
     # timeline — never spends the call, and a swept run's listing goes to the
@@ -248,6 +294,28 @@ def fetch_evidence(target: str, run: str, dest: Path) -> Path:
         (dest / "transcripts").mkdir(parents=True, exist_ok=True)
         (dest / "transcripts" / name).write_bytes(body)
     return dest
+
+
+def _fetch_commit_sha(target, run, ref, number):
+    """The 40-hex commit sha `ref` points at, or None when it cannot be read.
+
+    A ref that answers nothing is advisory, exactly as an absent evidence file
+    is: one line on stderr naming the run and the ref, a `null` sha in the
+    bundle, and the run still bundles. Only a read that could not be made at
+    all — no `gh`, a timeout — is a `FailedLookup`, the same standing the six
+    file reads give it.
+    """
+    try:
+        commit = _gh_api_object(_commit_api_path(target, ref))
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise FailedLookup(
+            f"{target} run {number}: cannot read {ref} with gh ({exc})") from exc
+    sha = commit.get("sha") if commit else None
+    if not isinstance(sha, str) or not sha:
+        _warn(f"{target} run {number}: no commit sha for {ref}; "
+              f"the bundle records evidenceSha null")
+        return None
+    return sha
 
 
 def _fetch_listing(target, run, ref, number):
@@ -360,6 +428,116 @@ def _trim_report(report):
     return out
 
 
+def _worker_index(workers):
+    """`sessionId` -> that worker attempt, for the label/role join."""
+    return {w.get("sessionId"): w for w in workers
+            if isinstance(w, dict) and w.get("sessionId")}
+
+
+def _envelope_denials(run_dir, by_session):
+    """One line per `permission_denials` entry in every `workers/*/envelope.json`.
+
+    The worker's own record, and the complete one: the confine hook is attached
+    to the write-capable roles only, so a reviewer's denial exists here and
+    nowhere else. Shaped exactly as `fleet/run-worker.mjs`'s
+    `recordEnvelopeDenials` shapes the lines it appends to
+    `confine-denials.jsonl`, so a run that has both sources reads uniformly.
+    """
+    lines = []
+    for path in sorted(Path(run_dir).glob("workers/*/envelope.json")):
+        envelope = _read_json(path)
+        if not isinstance(envelope, dict):
+            continue
+        denials = envelope.get("permission_denials")
+        if not isinstance(denials, list):
+            continue
+        # Session id is the join (a retried label owns two worker dirs); the
+        # directory name is the fallback the driver's own naming affords.
+        worker = by_session.get(envelope.get("session_id")) or {}
+        label = worker.get("label") or path.parent.name.replace("_", ":")
+        role = worker.get("role")
+        for d in denials:
+            if not isinstance(d, dict):
+                continue
+            tool_input = d.get("tool_input")
+            lines.append({
+                "source": "envelope", "label": label, "role": role,
+                "tool": d.get("tool_name") or d.get("tool") or None,
+                "reason": d.get("reason") or d.get("message") or None,
+                "toolInput": (json.dumps(tool_input, default=str)
+                              if tool_input is not None else None),
+            })
+    return lines
+
+
+def _transcript_denials(run_dir, by_session):
+    """One line per denied tool call visible in the #702 worker slices.
+
+    A harvested run carries no envelopes at all — `receipt.json`, `status.json`
+    and `worker:end` all omit `permission_denials` — so the slice under
+    `transcripts/` is the only denial source the evidence tag has. It is a
+    FLOOR, not a census: the slice's head/tail cut can drop a denial.
+    """
+    lines = []
+    for path in sorted(Path(run_dir).glob("transcripts/*.jsonl")):
+        try:
+            records = _readers.records(path)
+        except (OSError, ValueError) as exc:
+            swallow("an unreadable transcript slice contributes no denials; "
+                    "the other slices still do", exc)
+            _warn(f"unreadable {path}: {exc}")
+            continue
+        session_id = next((r["sessionId"] for r in records
+                           if isinstance(r, dict) and isinstance(r.get("sessionId"), str)),
+                          path.stem)
+        worker = by_session.get(session_id) or {}
+        tools = {}
+        for _idx, _record, block in _readers.iter_blocks_indexed(
+                [r for r in records if isinstance(r, dict)]):
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                # Seen earlier in the file than the result that names its id —
+                # the assistant's call is what gives the denial a tool name.
+                tools[block.get("id")] = block.get("name")
+                continue
+            if block.get("type") != "tool_result" or not block.get("is_error"):
+                continue
+            text = _readers.block_text(block)
+            if DENIAL_MARKER not in text:
+                continue
+            lines.append({
+                "source": "transcript", "label": worker.get("label"),
+                "role": worker.get("role"), "sessionId": session_id,
+                "tool": tools.get(block.get("tool_use_id")),
+                "reason": _RESULT_PREFIX.sub("", text),
+            })
+    return lines
+
+
+def _confine_denials(run_dir, workers):
+    """`bundle.confineDenials`: envelope + transcript + file lines, or None.
+
+    None is not zero. `confine-denials.jsonl` is the hook's own ledger and a
+    harvested run has none — before this, every fetched run reported `[]`, and
+    `[]` reads as "counted, and none happened" when the truth was "the record
+    carries nothing to count". So the empty list is reserved for a run that has
+    at least one source and no denials in it, and a run with no source at all
+    answers `null`.
+    """
+    run_dir = Path(run_dir)
+    by_session = _worker_index(workers)
+    envelopes = _envelope_denials(run_dir, by_session)
+    transcripts = _transcript_denials(run_dir, by_session)
+    file_lines = _read_jsonl(run_dir / "confine-denials.jsonl")
+    has_source = (any(run_dir.glob("workers/*/envelope.json"))
+                  or any(run_dir.glob("transcripts/*.jsonl"))
+                  or (run_dir / "confine-denials.jsonl").exists())
+    if not has_source:
+        return None
+    return envelopes + transcripts + file_lines
+
+
 def _carries_a_finding(bundle):
     """Whether the bundle holds anything a lens could learn from.
 
@@ -371,9 +549,33 @@ def _carries_a_finding(bundle):
         or bundle["gateReport"] is not None or bool(bundle["confineDenials"])
 
 
+def cache_key(run_id, opened_at):
+    """The cache directory one run's bundle is written under: `run-30-2026-08-30`
+    — the fleet `runId` and the UTC day its event log opened.
+
+    The bare `runId` was ambiguous: fleet numbering restarts, so `run-30` names
+    more than one run over time and the second one's harvest read as already
+    cached. The opening day disambiguates them. A run whose log carries no
+    timestamp at all has no day to name and keeps the bare id.
+    """
+    if isinstance(opened_at, (int, float)) and not isinstance(opened_at, bool):
+        date = (datetime.fromtimestamp(opened_at / 1000, timezone.utc)
+                .strftime("%Y-%m-%d"))
+        return f"{run_id}-{date}"
+    return str(run_id)
+
+
+def read_evidence_ref(run_dir):
+    """The `{target, ref, sha}` record `fetch_evidence` leaves beside the six
+    files, or `{}` for a local run directory that never had one."""
+    path = Path(run_dir) / "evidence-ref.json"
+    record = _read_json(path) if path.exists() else None
+    return record if isinstance(record, dict) else {}
+
+
 def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None,
                        budget=fleet_slice.WORKER_BUDGET):
-    """Write <cache_dir>/runs/<runId>/{bundle.json,slice.md}. Returns the
+    """Write <cache_dir>/runs/<runId>-<date>/{bundle.json,slice.md}. Returns the
     directory, or None when the run dir carries no usable event log — in which
     case nothing is written and the refusal is a `FAILED-LOOKUP:` naming the
     run."""
@@ -413,6 +615,10 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
     else:
         engine = _readers.engine_epoch_at(as_of, origin)
 
+    # The record this run was read at — absent for a local run directory, which
+    # was never read off a ref at all, and `None` in all three keys there.
+    evidence_ref = read_evidence_ref(run_dir)
+
     projects_root = run_dir / "claude" / "projects"
     bundle = {
         "runId": run_id,
@@ -430,15 +636,24 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
         "report": _trim_report(_read_json(run_dir / "report.json")
                                if (run_dir / "report.json").exists() else None),
         "events": summary,
+        # #759: the fold rows as parsed, never re-shaped and never cut — a fold
+        # decision is read off `pathsJoined`/`pathsConflicted`/
+        # `resolversDispatched`/`suite`/`disposition`, and `events` only counts
+        # them. `events` is already id-sorted, so this list is too.
+        "publishFold": [e for e in events
+                        if e.get("kind") == "driver:publish-fold"],
         "planningFound": False,
-        "confineDenials": _read_jsonl(run_dir / "confine-denials.jsonl"),
+        "confineDenials": _confine_denials(run_dir, summary.get("workers") or []),
+        "evidenceSha": evidence_ref.get("sha"),
+        "evidenceRef": evidence_ref.get("ref"),
+        "target": evidence_ref.get("target"),
     }
 
     if not _carries_a_finding(bundle):
         report_looked_empty(f"{run_id}: bundle carries no worker, report, "
                             f"gate receipt, or confine-denial evidence")
 
-    out = Path(cache_dir).expanduser() / "runs" / run_id
+    out = Path(cache_dir).expanduser() / "runs" / cache_key(run_id, opened)
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
     # #415: the worker's verdict is its envelope, not a transcript turn — pass
@@ -451,6 +666,26 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
         projects_root, budget, workers_root=run_dir / "workers",
         run_dir=run_dir))
     return out
+
+
+def _is_already_cached(cache, key, run_dir):
+    """Whether the bundle at `key` was built from the very record this run dir
+    was just read at.
+
+    A bundle at the key is not enough: a run's record moves — a re-publish, a
+    re-tag, a swept run's tag pointing at a new commit — and a harvest that
+    skipped on the key alone kept serving the stale bundle forever. So the
+    fetched sha must equal the cached bundle's `evidenceSha`; a mismatch is a
+    rebuild. A local run directory has no record and no sha, and `None ==
+    None` keeps its second harvest a skip rather than a rebuild.
+    """
+    cached = Path(cache) / "runs" / key / "bundle.json"
+    if not cached.exists():
+        return False
+    bundle = _read_json(cached)
+    if not isinstance(bundle, dict):
+        return False
+    return bundle.get("evidenceSha") == read_evidence_ref(run_dir).get("sha")
 
 
 def main(argv=None):
@@ -507,9 +742,10 @@ def main(argv=None):
             run_dirs += found
 
         for d in run_dirs:
-            run_id = fleet_events.summarize_events(
-                fleet_events.read_events(d)).get("runId")
-            if run_id and not args.force and (cache / "runs" / run_id / "bundle.json").exists():
+            summary = fleet_events.summarize_events(fleet_events.read_events(d))
+            run_id = summary.get("runId")
+            if run_id and not args.force and _is_already_cached(
+                    cache, cache_key(run_id, summary.get("openedAt")), d):
                 skipped += 1
                 continue
             if build_fleet_bundle(d, cache, origin=args.origin,

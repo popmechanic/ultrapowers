@@ -280,3 +280,93 @@ def test_bundle_lookups_expands_tilde(tmp_path, monkeypatch):
     origin, engine = m.bundle_lookups("~/.claude/ultralearn")
     assert origin("r9") == "home"
     assert engine("r9") == "0.1.12"
+
+
+# ---------- Task 3 (#761, recording #698): the lookup reads the dated key ----
+#
+# The harvester's cache key is now `run-<N>-<date>`, but the ledger's `runId` is
+# still the bare `run-30`. A lookup that reads `runs/<runId>/bundle.json` alone
+# would fail closed to 'foreign' for every fleet run harvested under the new
+# key — dropping the engine-version stamp and re-redacting home findings.
+#
+#   M5 / leg (e)  `bundle_lookups(cache)` answers `origin_lookup("run-30")` and
+#                 `engine_lookup("run-30")` from the bundle under
+#                 `<cache>/runs/*/bundle.json` whose `runId` field is `run-30`,
+#                 choosing the greatest `events.openedAt` when more than one
+#                 carries that id; a directory named exactly `run-30` is a
+#                 candidate too; and an id no bundle carries still answers
+#                 'foreign' and None.
+
+def _t3_write_bundle(cache, key, *, run_id, origin, opened_at, epoch):
+    """One cached bundle at `<cache>/runs/<key>/bundle.json`, carrying the three
+    fields the lookup reads: `runId`, `origin`/`engineVersion.epoch`, and
+    `events.openedAt` (the tie-break)."""
+    d = cache / "runs" / key
+    d.mkdir(parents=True)
+    (d / "bundle.json").write_text(json.dumps({
+        "runId": run_id,
+        "origin": origin,
+        "engineVersion": {"epoch": epoch, "asOf": None, "basis": "explicit"},
+        "events": {"runId": run_id, "openedAt": opened_at},
+    }))
+    return d
+
+
+def test_t3_bundle_lookups_take_the_latest_opened_bundle_for_one_run_id(tmp_path):
+    """M5, leg (e): a cache holding BOTH `runs/run-24/bundle.json` (August's
+    bare key: origin 'home', openedAt 1756500000000, epoch 0.2.25) and
+    `runs/run-24-2026-09-05/bundle.json` (origin 'foreign', openedAt
+    1788600000000, epoch 0.3.17) answers for the LATER of the two — the lookup
+    reads past a restarted numbering's older namesake rather than migrating it."""
+    _t3_write_bundle(tmp_path, "run-24", run_id="run-24", origin="home",
+                     opened_at=1756500000000, epoch="0.2.25")
+    _t3_write_bundle(tmp_path, "run-24-2026-09-05", run_id="run-24",
+                     origin="foreign", opened_at=1788600000000, epoch="0.3.17")
+
+    origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
+
+    assert origin_lookup("run-24") == "foreign"
+    assert engine_lookup("run-24") == "0.3.17"
+
+
+def test_t3_bundle_lookups_find_a_run_under_its_dated_key(tmp_path):
+    """M5, leg (e): a cache holding only `runs/run-30-2026-08-30/bundle.json`
+    with `runId` `run-30` answers `origin_lookup("run-30") == "home"`. This is
+    the whole point: the ledger says `run-30`, the cache says
+    `run-30-2026-08-30`, and a lookup keyed on the directory name alone fails
+    closed to 'foreign' for every fleet run."""
+    _t3_write_bundle(tmp_path, "run-30-2026-08-30", run_id="run-30",
+                     origin="home", opened_at=1788130000000, epoch="0.3.0")
+
+    origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
+
+    assert origin_lookup("run-30") == "home"
+    assert engine_lookup("run-30") == "0.3.0"
+
+
+def test_t3_bundle_lookups_still_read_a_bare_run_directory(tmp_path):
+    """M5, leg (e): a cache holding only the BARE directory
+    `runs/run-30/bundle.json` (`runId` `run-30`, origin 'home', openedAt
+    1788130000000) still answers 'home' — August's un-migrated bundles keep
+    resolving. An implementation that globs only dated directories fails this."""
+    _t3_write_bundle(tmp_path, "run-30", run_id="run-30", origin="home",
+                     opened_at=1788130000000, epoch="0.3.0")
+
+    origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
+
+    assert origin_lookup("run-30") == "home"
+    assert engine_lookup("run-30") == "0.3.0"
+
+
+def test_t3_bundle_lookups_still_fail_closed_for_an_id_no_bundle_carries(tmp_path):
+    """M5, leg (e): on that same cache, an id no bundle carries still fails
+    closed — `origin_lookup("run-99") == "foreign"` and `engine_lookup("run-99")
+    is None`. Scanning the directory widens what can be FOUND, never what is
+    trusted when nothing is."""
+    _t3_write_bundle(tmp_path, "run-30", run_id="run-30", origin="home",
+                     opened_at=1788130000000, epoch="0.3.0")
+
+    origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
+
+    assert origin_lookup("run-99") == "foreign"
+    assert engine_lookup("run-99") is None

@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/ultralearn/scripts"))
 import fleet_events  # noqa: E402
 
@@ -235,3 +237,72 @@ def test_an_interrupted_retry_never_yields_a_negative_wallsec(tmp_path):
     assert all(w["wallSec"] is None or w["wallSec"] >= 0 for w in got)
     assert got[1]["endId"] is None
     assert s["unpaired"] == ["impl:1"]
+
+
+# ---------- #759 Task 1, M3: five kinds render whole; every other kind is
+# ---------- capped exactly as at BASE (`test_render_timeline_caps_a_long_
+# ---------- summary` above is the negative row, leg (d), unchanged).
+
+SUMMARY_MAX = 200  # the cap the five allowlisted kinds are exempt from
+
+# The allowlist the Claim names, and the field each kind's summary renders the
+# long value in: `driver:ack-decision` renders `approve=… <reason>`; the other
+# four fall to the JSON rendering of the record minus kind/id/ts.
+WHOLE_KINDS = (
+    ("driver:publish-fold", "disposition"),
+    ("publish:pr", "detail"),
+    ("publish:hold", "detail"),
+    ("publish:merge", "detail"),
+    ("driver:ack-decision", "reason"),
+)
+
+
+def _long_value(kind):
+    """A distinct value well past the 200-character cap, plain ASCII so it
+    survives a JSON rendering verbatim."""
+    value = f"{kind} decision: " + ("paths joined and resolvers dispatched; " * 8)
+    assert len(value) > SUMMARY_MAX
+    return value
+
+
+def _whole_row(index, kind, field):
+    row = {"kind": kind, field: _long_value(kind)}
+    if kind == "driver:publish-fold":
+        row.update(run="43", attempt="1", base="9cd8190", tip="9cd8190",
+                   candidate="09577d3", pathsJoined=3, pathsConflicted=0,
+                   resolversDispatched=1, resolverRetries=0, suite="green")
+    if kind == "driver:ack-decision":
+        row["approve"] = True
+    return _ev(index, 10 * index, **row)
+
+
+@pytest.mark.parametrize("kind,field", WHOLE_KINDS)
+def test_render_timeline_keeps_an_allowlisted_kind_whole(tmp_path, kind, field):
+    """M3: a row of one of the five allowlisted kinds whose rendered summary
+    exceeds 200 characters is one line carrying every string value the row
+    has — the long one whole — and does not end in `…`."""
+    row = _whole_row(9, kind, field)
+    md = fleet_events.render_timeline(fleet_events.read_events(
+        _write_log(tmp_path / "run-run-43", [EVENTS[0], row])))
+
+    lines = [ln for ln in md.splitlines() if row["id"] in ln]
+    assert len(lines) == 1, f"{kind}: expected one timeline line, got {len(lines)}"
+    line = lines[0]
+    assert row[field] in line, (
+        f"{kind}: the {len(row[field])}-char {field} was cut. Line was:\n{line}")
+    assert not line.endswith("…"), f"{kind}: the line was elided:\n{line}"
+    for value in (v for v in row.values() if isinstance(v, str)):
+        assert value in line, f"{kind}: line is missing the value {value!r}"
+    assert len(line) > SUMMARY_MAX
+
+
+def test_render_timeline_still_caps_a_kind_outside_the_allowlist(tmp_path):
+    """M3: the exemption is an allowlist of five kinds, not a lifted cap — a
+    neighbouring `publish:comment` row is capped exactly as at BASE."""
+    row = _ev(9, 10, kind="publish:comment", detail="y" * 500)
+    md = fleet_events.render_timeline(fleet_events.read_events(
+        _write_log(tmp_path / "run-run-43", [EVENTS[0], row])))
+
+    line = md.splitlines()[1]
+    assert line.endswith("…")
+    assert len(line) < 260

@@ -19,12 +19,15 @@ runs inside Claude Code — no API key, no external calls.
    reads each run's committed record off its `ultra/evidence-run-<N>` branch,
    or pass an unpacked run directory as a positional argument. It writes
    `bundle.json` + `slice.md` into the gitignored cache
-   `~/.claude/ultralearn/runs/<runId>/`, keyed by the fleet `runId` (`run-30`),
-   so step 2 and step 3 are unchanged. `--run` is repeatable and restricts the
-   pull; `--force` rebuilds a cached bundle. A fleet run directory is one
-   holding an `events.jsonl`; runs 10–23 predate it and are the commissioned
-   read's.
-   Incremental: a cached bundle is left alone, so a re-run only builds new runs.
+   `~/.claude/ultralearn/runs/run-<N>-<date>/` — the run id and its opening day
+   in UTC (`run-30-2026-08-30`), so a restarted numbering never lands on an
+   older run's bundle. Step 2 and step 3 are unchanged. `--run` is repeatable
+   and restricts the pull; `--force` rebuilds a cached bundle. A fleet run
+   directory is one holding an `events.jsonl`; runs 10–23 predate it and are
+   the commissioned read's.
+   Incremental: a cached bundle is "already cached" only when the record's sha
+   matches its `evidenceSha` — a record that has moved since (a re-publish, a
+   re-tagged run) is rebuilt, not skipped.
    Sequential-engine drains (subagent-driven, inline) write no `events.jsonl`
    and are **invisible to this harvester by design** — "0 new" there is
    correct, not a bug. Drains are sensed by **commissioned transcript

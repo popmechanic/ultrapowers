@@ -8,26 +8,32 @@ the five lenses below and return findings as a JSON array. Return raw data only.
 1. **friction** — where the run broke or strained: merge conflicts, blocked or
    cascade-blocked waves, fix-loop exhaustion, gate rejections, lost
    coordinates, operator interventions, re-runs.
-   For a FLEET bundle, read the drive's structured artifact first:
-   `detail.errors`, `detail.timedOut`, `detail.neverClaimed`, and
-   `detail.publishTimedOut` in `gate-read-<runId>.detail.json` name the
-   drive-layer seam (lease expiry, transport death, publish loss) that
-   `shim.log` then evidences.
-   For **permission denials**, `confine-denials.jsonl` is now the one place to
-   look, and each line carries a `source` (#476). `source: 'hook'` lines come
-   from the confine hook, which is attached to the write-capable roles ONLY —
-   before this discriminator existed, the file was silently just those lines,
-   and a reviewer or critic denial could not appear in it at all. `source:
-   'envelope'` lines are the driver folding in each worker's own
-   `permission_denials`, tagged with the label and role. If you ever read this
-   file and see no reviewer denials, check the `source` mix before concluding
-   there were none — that zero was wrong for five consecutive runs.
-   **THE TWO SOURCES OVERLAP: count `envelope` lines, never the total.** A hook
-   denial appears twice — once as the hook wrote it, once inside the worker's
-   own envelope — so a run-32-shaped run yields 23 lines for 20 denials. The
-   `envelope` set is the complete one; the `hook` lines are a subset, kept
-   because they carry the hook's own reason text and survive a worker that dies
-   before writing an envelope.
+   For a FLEET bundle, read the publish fold first — `bundle.publishFold` holds
+   every `driver:publish-fold` row whole, and a fold decision is read from its
+   `pathsJoined`, `pathsConflicted`, `resolversDispatched`, `suite` and
+   `disposition`.
+   For **permission denials**, read `bundle.confineDenials` — the harvester
+   derives it from every source the record does carry, and each line says which
+   one it came from in its `source` (#476). The three are not interchangeable.
+   `envelope` is the worker's own `permission_denials`, folded in with its
+   label and role: the complete record, because the worker itself wrote it.
+   `transcript` is a denied tool call read out of the #702 worker slice — the
+   only source a HARVESTED run carries, and a floor rather than a census,
+   because the slice's head/tail cut can drop a denial. `hook` is the confine
+   hook's own ledger, attached to the write-capable roles ONLY — before this
+   discriminator existed, `confine-denials.jsonl` was silently just those
+   lines, and a reviewer or critic denial could not appear in it at all. If you
+   ever read a run and see no reviewer denials, check the `source` mix before
+   concluding there were none — that zero was wrong for five consecutive runs.
+   **THE SOURCES OVERLAP: count `envelope` lines when they are present, never
+   the total.** A hook denial appears twice — once as the hook wrote it, once
+   inside the worker's own envelope — so a run-32-shaped run yields 23 lines
+   for 20 denials. The `envelope` set is the complete one; the `hook` lines are
+   a subset, kept because they carry the hook's own reason text and survive a
+   worker that dies before writing an envelope.
+   `bundle.confineDenials` is `null` when the record carried no source at all —
+   unknown, NOT zero. `[]` is the other fact: a source was there and it counted
+   none. Never read the two as the same number.
 2. **routing** — was ultrapowers the right call; did the routing recommendation
    match how the run actually went; was the task shaping good — legacy plans:
    Type/Depends-on markers and wave shape; claims-grammar plans: the

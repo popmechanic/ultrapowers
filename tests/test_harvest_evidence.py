@@ -62,8 +62,11 @@ BASE_BUNDLE_KEYS = frozenset({
     "runId", "sessionId", "projectSlug", "origin", "sessionKind",
     "engineVersion", "planPath", "transcriptDir", "gateReport", "terminus",
     "truncated", "audit", "report", "events", "planningFound",
-    "confineDenials"})
-
+    "confineDenials", "publishFold",
+    # This task: the record each bundle was read at — the resolved ref, its
+    # 40-hex commit sha, and the target it was read from. `None` in all three
+    # for a local run directory, which was never read off a ref.
+    "evidenceSha", "evidenceRef", "target"})
 T0 = 1788130000000
 
 
@@ -137,12 +140,22 @@ def _api_path(name, run=RUN, target=TARGET):
             f"?ref=ultra/evidence-run-{run}")
 
 
+def _commit_path(run=RUN, target=TARGET):
+    """The read that turns the resolved ref into the sha the record was read
+    at — the commits endpoint, not a contents path, so no `?ref=`."""
+    return f"repos/{target}/commits/ultra/evidence-run-{run}"
+
+
 def _expected_paths(run=RUN, target=TARGET):
     # #702 Task 2: the six files, then the `transcripts/` listing — one more
     # read, issued once the six have resolved a ref and `events.jsonl` has
     # landed. The stub answers no listing key here, so it is a 404: an absence,
     # and the run still bundles.
+    # This task: and the commits read between them, at the same resolved ref.
+    # The stub answers no commits key either, so every bundle here carries
+    # `evidenceSha: None` — the advisory half of the sha read.
     return ([_api_path(n, run, target) for n in EVIDENCE_FILES]
+            + [_commit_path(run, target)]
             + [_api_path("transcripts", run, target)])
 
 
@@ -261,13 +274,13 @@ def test_evidence_run_fetches_exactly_the_six_contents_paths_and_bundles(
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     calls = _calls(log)
     # #702 Task 2: seven, not six — the six files plus the `transcripts/`
-    # listing.
-    assert len(calls) == 7, f"expected seven gh api calls, got {calls}"
+    # listing. This task: eight — and the commits read at the resolved ref.
+    assert len(calls) == 8, f"expected eight gh api calls, got {calls}"
     assert sorted(c[-1] for c in calls) == sorted(_expected_paths()), calls
     # M2 spells the command exactly: `gh api <path>`, nothing else.
     assert [c for c in calls if c != ["api", c[-1]]] == [], calls
 
-    bundle = cache / "runs" / "run-7" / "bundle.json"
+    bundle = cache / "runs" / "run-7-2026-08-30" / "bundle.json"
     assert bundle.exists(), f"no bundle at {bundle}; stderr:\n{cap.err}"
     b = json.loads(bundle.read_text())
     assert b["runId"] == "run-7"
@@ -275,7 +288,7 @@ def test_evidence_run_fetches_exactly_the_six_contents_paths_and_bundles(
     assert b["gateReport"]["gateCheck"]["verdict"] == "NEEDS_ACK"
     assert b["report"]["baseSha"] == "3fa4936"
     assert b["audit"]["totals"]["outputTokens"] == 6463
-    assert (cache / "runs" / "run-7" / "slice.md").exists()
+    assert (cache / "runs" / "run-7-2026-08-30" / "slice.md").exists()
     assert _lines(cap.err, "FAILED-LOOKUP:") == []
 
 
@@ -292,7 +305,7 @@ def test_run_spelled_run_dash_n_normalises_to_the_same_six_paths(
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert sorted(c[-1] for c in _calls(log)) == sorted(_expected_paths())
-    assert (cache / "runs" / "run-7" / "bundle.json").exists()
+    assert (cache / "runs" / "run-7-2026-08-30" / "bundle.json").exists()
 
 
 def test_two_run_flags_fetch_two_runs(tmp_path, monkeypatch, capsys):
@@ -309,8 +322,8 @@ def test_two_run_flags_fetch_two_runs(tmp_path, monkeypatch, capsys):
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert sorted(c[-1] for c in _calls(log)) == sorted(
         _expected_paths("7") + _expected_paths("8"))
-    assert (cache / "runs" / "run-7" / "bundle.json").exists()
-    assert (cache / "runs" / "run-8" / "bundle.json").exists()
+    assert (cache / "runs" / "run-7-2026-08-30" / "bundle.json").exists()
+    assert (cache / "runs" / "run-8-2026-08-30" / "bundle.json").exists()
 
 
 def test_evidence_without_run_is_exit_two_and_a_usage_line(
@@ -374,9 +387,10 @@ def test_absent_engine_log_and_receipt_are_skips_and_the_run_still_bundles(
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     # #702 Task 2: seven — all six paths are still asked for, and the
-    # `transcripts/` listing after them.
-    assert len(_calls(log)) == 7, "all six paths are still asked for"
-    assert (cache / "runs" / "run-7" / "bundle.json").exists(), cap.err
+    # `transcripts/` listing after them. This task: eight, with the commits
+    # read between.
+    assert len(_calls(log)) == 8, "all six paths are still asked for"
+    assert (cache / "runs" / "run-7-2026-08-30" / "bundle.json").exists(), cap.err
     assert "engine.log" in cap.err, f"absent engine.log went unmarked: {cap.err}"
     assert "receipt.json" in cap.err, f"absent receipt.json went unmarked: {cap.err}"
     assert _lines(cap.err, "FAILED-LOOKUP:") == [], cap.err
@@ -395,9 +409,11 @@ def test_absent_events_jsonl_is_a_failed_lookup_naming_the_run_and_branch(
     cap = capsys.readouterr()
 
     # #702 Task 2: the count does not move here — a run whose `events.jsonl`
-    # never landed raises before the `transcripts/` listing is ever read.
+    # never landed raises before the `transcripts/` listing is ever read. This
+    # task leaves it at six too: the sha read sits after the same raises.
     assert len(_calls(log)) == 6, _calls(log)
     assert [c for c in _calls(log) if "transcripts" in c[-1]] == [], _calls(log)
+    assert [c for c in _calls(log) if "/commits/" in c[-1]] == [], _calls(log)
     failed = _lines(cap.err, "FAILED-LOOKUP:")
     assert len(failed) == 1, f"expected one FAILED-LOOKUP line, got: {cap.err}"
     assert BRANCH in failed[0], failed[0]
@@ -462,8 +478,9 @@ def test_a_healthy_positional_beside_a_failing_evidence_still_exits_zero(
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
     assert len(_lines(cap.err, "FAILED-LOOKUP:")) == 1, cap.err
-    assert (cache / "runs" / "run-30" / "bundle.json").exists()
-    assert not (cache / "runs" / "run-7").exists()
+    assert (cache / "runs" / "run-30-2026-08-30" / "bundle.json").exists()
+    assert sorted(p.name for p in (cache / "runs").iterdir()) == [
+        "run-30-2026-08-30"]
     assert "1 bundle" in cap.out
 
 
@@ -540,7 +557,7 @@ def test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did(
     cap = capsys.readouterr()
 
     assert rc == 0, f"expected exit 0, got {rc}\nstderr:\n{cap.err}"
-    out = cache / "runs" / "run-30"
+    out = cache / "runs" / "run-30-2026-08-30"
     b = json.loads((out / "bundle.json").read_text())
     assert set(b) == set(BASE_BUNDLE_KEYS), (
         "bundle keys drifted from BASE: "
@@ -554,5 +571,9 @@ def test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did(
                                   "basis": "explicit"}
     assert b["sessionKind"] == "engine"
     assert b["truncated"] is True
+    # A local run directory was never read off a ref, so it carries no record.
+    assert b["evidenceSha"] is None
+    assert b["evidenceRef"] is None
+    assert b["target"] is None
     assert b["confineDenials"] == [{"tool": "Bash", "reason": "outside clone"}]
     assert (out / "slice.md").exists()
