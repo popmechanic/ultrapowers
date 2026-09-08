@@ -1,0 +1,22 @@
+{
+  "plan": "2026-09-08-red-suite-receipt-is-the-failing-tests-own-block.md",
+  "base": "d26bbdc1c1603d9865390e9890440e5c4c77422c",
+  "tasks": {
+    "1": {
+      "hash": "aebc0d65b1df548c8ed3120839ffc2494a155eb86f39600b02cf64e7a47da09f",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a leg whose assert.equal/=== oracle against the exact expected slice (or the untouched input, or the full-block length plus header first line) would fail on any violation, and the exam sits at the same unit layer as the function-level sentence."
+    },
+    "2": {
+      "hash": "fc7ebd90dae435cdc67d0adefd6317a6ea4af7c1863551bbfcbbec88d007dfb0",
+      "verdict": "pass",
+      "reason": "Each clause M1-M6 has a dedicated leg (a)-(f) whose oracle would fail on a violation - header/line/padding checks for the four recorded surfaces, the whole-output check on suiteLine past 8000 characters, and the strict-null/unchanged-record checks for the green run - at the engine-sim layer the sentence is written at."
+    },
+    "3": {
+      "hash": "ed72973ebaccaaa58c6b2e8b81d152e2574e68ad5a39d9971125d2764dd66cd4",
+      "verdict": "pass",
+      "reason": "Each Machine clause has a leg whose oracle fails on its violation - (a) fails on a tail-20 excerpt, (b) deep-equals the block to the file slice from not ok 2 through # fail 1 and rejects ok 1 - join, (c) reads the evidence worktree copy for all twenty-eight lines whole, (d) renders the no-start-rule fixture as its three lines, (e) greps the boot log for the absence of node DIRECT - all at the live boot-script layer the sentence names."
+    }
+  },
+  "tally": { "dispatched": 3, "rejected": 0, "rounds": 1, "round1": { "dispatched": 3, "rejected": 0 } }
+}
