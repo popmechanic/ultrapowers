@@ -1,0 +1,40 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "6da59a0c013b2ce5d6f55a6a403625d71649814c1948740ae3bddc5818c0c32f",
+      "verdict": "pass",
+      "reason": "The seven M1 lines are exactly what the clauses' own rules yield from the fixtures (2 external acks with the runtime one dropped, 2 minor critic findings with the blocking one dropped, 2+1 notes from the two done tasks with the failed one dropped, split on '; '), the newline case collapses consistently to one line, the placement/ordering constraints are mutually satisfiable with M2's trailing Closes lines, and legs (a)-(g) exercise the sandbox boot itself through its stubbed engine and captured PR post."
+    },
+    "2": {
+      "hash": "a0e544b7689b25d25891990d44d1782a4325757b9aa25e5e01a0f8987f933e1f",
+      "verdict": "pass",
+      "reason": "Legs (a)-(j) pin every M1-M5 literal at the boot-script layer (stubbed curl argv, issues.log, events.jsonl, stream ordering) and each literal computes consistently: watch-item + the two program labels in first-seen order with enhancement dropped, items: 7 cross-checked by deepEqual against the PR body's seven lines, issues/9 from the rig's reply, and the 422/404/no-Closes/no-residual/parked branches each have a leg."
+    },
+    "3": {
+      "hash": "531476586e9e5e8683bf1948ad466aa2ac68c4af4ce76a20b0a393472766fcd0",
+      "verdict": "pass",
+      "reason": "Every clause is a literal-presence/order/absence fact about one sed-scoped range of fleet/CONTRACT.md with a runnable leg encoding exactly that fact, and the literals are jointly satisfiable by one edit inside the range that leaves the existing pinned literals untouched."
+    }
+  },
+  "tally": {
+    "dispatched": 7,
+    "rejected": 3,
+    "rounds": {
+      "1": "3 dispatched: task 1 fail (M4 knob rule vs legs f/g inconsistent), task 2 pass (superseded by a later hash), task 3 fail (bare Residuals grep; grep -qw fleet satisfied by fleet-r<N>)",
+      "2": "2 dispatched: task 1 fail (fixture had one external ack and one minor finding, so 'every' was unexercised), task 3 pass",
+      "3": "2 dispatched: task 1 pass, task 2 fail (the POST's position in the stream was unasserted)",
+      "4": "1 dispatched: task 2 pass"
+    },
+    "history": [
+      { "round": 1, "task": "1", "hash": "0dd0f088e5b23f084fb98f015a9cd212235ac93a3a8d22dc273a6704b952c8da", "verdict": "fail" },
+      { "round": 1, "task": "2", "hash": "bc25019bd0b12cc7fdc3b36a24393b07945503d0710c588df5b46482aa6ae852", "verdict": "pass" },
+      { "round": 1, "task": "3", "hash": "54aecfc3fcc204827e15a353319c72f56fdc70d24606ea11b401f4241439c0df", "verdict": "fail" },
+      { "round": 2, "task": "1", "hash": "52fd555e123295cb89893556a3d73e88558f0441a6900595d0aca7f23990728a", "verdict": "fail" },
+      { "round": 2, "task": "3", "hash": "531476586e9e5e8683bf1948ad466aa2ac68c4af4ce76a20b0a393472766fcd0", "verdict": "pass" },
+      { "round": 3, "task": "1", "hash": "6da59a0c013b2ce5d6f55a6a403625d71649814c1948740ae3bddc5818c0c32f", "verdict": "pass" },
+      { "round": 3, "task": "2", "hash": "d63770c8afbfed4fef63fa17043af848e7c3704fd9828cd3a50a77c77e111b1d", "verdict": "fail" },
+      { "round": 4, "task": "2", "hash": "a0e544b7689b25d25891990d44d1782a4325757b9aa25e5e01a0f8987f933e1f", "verdict": "pass" }
+    ],
+    "note": "Authored 2026-09-08 for #711 (bundle B6) on main 1c97ba442c65d882354953d16590b1f8eb0c7a7a (v0.3.21); every reader saw only extract_gate_input.py --task <id>, dispatched in the foreground (#789)."
+  }
+}
