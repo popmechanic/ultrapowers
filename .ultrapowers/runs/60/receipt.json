@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -225,7 +225,7 @@
       ]
     ],
     "waveLabels": [
-      "skills/ultrawrite \u00b7 3 tasks"
+      "skills/ultrawrite · 3 tasks"
     ],
     "mode": "parallel",
     "degrade_reason": null,
@@ -234,7 +234,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The skill addresses the authoring agent in the register it already has: rules, each with the\n  reason that makes it a rule, never a shouted imperative \u2014 `tests/test_ultrawrite_surface_rules_implementer_check.py`\n  pins the three shouted words at zero in `SKILL.md`, and the reference keeps the same voice.\n- Every lesson in `references/authoring-gotchas.md` is a rule with its one-line reason, naming\n  the run or sitting that cost it; a lesson the compiler already enforces names the advisory\n  species or refusal it became, so an author learns to read the compiler's line rather than\n  re-learning the rule.\n- `skills/ultrawrite/SKILL.md` keeps every section heading it has at BASE, in order, and every\n  sentence a test already pins: the `**Claim:**`-line paragraph opening `Above the first\n  task:`, the six-slot Proof bullet, rule 4 of \u00a7Decomposition judgment, the species sentence\n  and the compile line of \u00a7The proof gate, and \u00a7Self-review's `(derived)` and `plan-level\n  Claim` words.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The skill addresses the authoring agent in the register it already has: rules, each with the\n  reason that makes it a rule, never a shouted imperative — `tests/test_ultrawrite_surface_rules_implementer_check.py`\n  pins the three shouted words at zero in `SKILL.md`, and the reference keeps the same voice.\n- Every lesson in `references/authoring-gotchas.md` is a rule with its one-line reason, naming\n  the run or sitting that cost it; a lesson the compiler already enforces names the advisory\n  species or refusal it became, so an author learns to read the compiler's line rather than\n  re-learning the rule.\n- `skills/ultrawrite/SKILL.md` keeps every section heading it has at BASE, in order, and every\n  sentence a test already pins: the `**Claim:**`-line paragraph opening `Above the first\n  task:`, the six-slot Proof bullet, rule 4 of §Decomposition judgment, the species sentence\n  and the compile line of §The proof gate, and §Self-review's `(derived)` and `plan-level\n  Claim` words.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/ tests/ skills/ultrapowers/",
@@ -253,11 +253,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-60/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-60/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-60/acceptance.log"
 }

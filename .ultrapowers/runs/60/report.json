@@ -1,0 +1,301 @@
+{
+  "integrationBranch": "ultra/integration-run-60",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "206542f04c38c1419d9b428a46804e79ec1f7b8c",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-60/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "5eee1bb06307f055207ed37049127e71eedceb7a",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-60/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Style, `skills/ultrawrite/SKILL.md` (rewritten \u00a7The proof gate dispatch paragraph): the second sentence opens `Dispatch it with the Agent tool, \u2026` where the nearest antecedent for `it` is ambiguous \u2014 the preceding clause makes `Dispatch` a noun (`Dispatch is **per task**, not per round`), so `it` reads as either the dispatch or `every reader`. Naming the object keeps the rule unambiguous for the authoring agent that reads it, and no exam leg pins the pronoun (leg (c)'s sixth `Run:` only requires `Agent tool` in this paragraph), so the wording change is exam-neutral.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "835124a50b31da3c7afa0ca7f64df19d93bb7c28",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-60/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Prose/register (Global Constraint 1, whose `Check:` \u2014 three shouted words at zero \u2014 exited 0; this finding is my reading of the rule-with-its-reason register, not a failed check). The new reason clause reads \"\u2026without ever computing the number, where a reader asked exactly this computed six on the re-read\u2026\". `where` is used as a bare contrastive connective and `asked exactly this computed six` stacks two verbs with no relative pronoun, so the sentence that carries the rule's reason is the hardest sentence in \u00a7The proof gate to parse. The fix is a semicolon and one added word; it touches no literal any `Run:` greps (the first `Run:` cuts the section at `revised.`, before this clause) and leaves every line break intact, so the compile line stays on its own line for `tests/test_compile_plan_base_tree.py`. File: skills/ultrawrite/SKILL.md (\u00a7The proof gate, first paragraph).; unverified: the Acceptance line is `suite \u2014 the committed suite is the verification`, and no EXAM EVIDENCE was supplied \u2014 the committed suite was not shown executed on this tree. The Proof's four `Run:` commands and both constraint `Check:` commands are settled at exit 0, and I read the tests that pin the two regions this diff touches: `tests/test_compile_plan_integration_hostile.py` (species sentence, joined-section scope), `tests/test_compile_plan_base_tree.py` (compile line and the `--base` both-forms sentence), `tests/test_ultrawrite_surface_rules_implementer_check.py` (\u00a7Self-review's exam-file-naming line, shouted-word zeros), `tests/test_plan_level_claim.py` (\u00a7Self-review's `(derived)` / `plan-level Claim` tail) and `tests/test_ultrawrite_skill.py` (frontmatter/slot-order/validate) \u2014 none pins the rewritten first sentence, none requires the `**Closes:**` bullet to be \u00a7Self-review's last bullet, and no test caps the file's length, so all survive by inspection. A full `pytest tests/` run on this tree would settle it.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-60/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1813 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 19%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 304.31s (0:05:04) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test -f skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'folded tree' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-72' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'backtick' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'command substitution' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-74' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'never see Context' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-75' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'one leg per row' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'named exclusions' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'ALL TESTS PASSED' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'decorator' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'for each of' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'sed -n' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'two triggers' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'negative row' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'existing fixture' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'collect-only' skills/ultrawrite/references/authoring-gotchas.md && grep -q '__pycache__' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-4,' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'own Files' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'fix round' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-2,' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'plan-level Claim' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'authorship' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'git grep' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'fleet/tests/' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-8' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'frozen sim' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'byte-pins' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'field name' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'run-10' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -F -q 'merge(main, branch)' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'rejection rounds' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'whitespace' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'verbatim substring' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'asterisks' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^- \\*\\*' skills/ultrawrite/references/authoring-gotchas.md)\" -ge 11",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'suite-total-pin' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'directory-absence-pin' skills/ultrawrite/references/authoring-gotchas.md && grep -q 'command carries a backtick' skills/ultrawrite/references/authoring-gotchas.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | sed '/^- /,$d' | tr -s '[:space:]' ' ' | grep -q 'references/authoring-gotchas.md.*before.*dispatched'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite)\" = \"skill ok\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -F -q 'run_in_background: false'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'foreground'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one call per task'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'verdict.*returns.*author'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'written by the author.*never by the reader'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'Agent tool' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -F -q 'run_in_background: false' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'never by the reader'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 're-extract' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q 'one reader' && sed -n '/^Dispatch is \\*\\*per task\\*\\*/,/^$/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | grep -q '13 of the 22 minutes'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite)\" = \"skill ok\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## The proof gate/,/^## The worktree-pure contract/p' skills/ultrawrite/SKILL.md | tr -s '[:space:]' ' ' | sed 's/revised\\..*//' | grep -q 'necessarily true.*at the right layer.*every concrete literal.*satisfiable.*compute it'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | awk '/^- /{n++} {b[n]=b[n] \" \" $0} END{print b[n]}' | tr -s '[:space:]' ' ' | grep -q 'every pinned literal was computed, not assumed'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test -n \"$ULTRA_BASE\" && git diff --quiet \"$ULTRA_BASE\" -- skills/ultrawrite/scripts/extract_gate_input.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite)\" = \"skill ok\"",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/ tests/ skills/ultrapowers/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(grep -c -w -e NEVER -e ALWAYS -e MUST skills/ultrawrite/SKILL.md)\" = 0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 348236,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "6aca44f8df8e7bc6b4d2632dd36dc930ccd6ea31",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-60/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-60/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.782,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
