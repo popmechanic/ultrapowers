@@ -5,3 +5,11 @@
 {"kind":"driver:stage","stage":"engine","detail":"waves 3, width bound 12, patch input armed","id":"01M1ZX2HQ400009EE5P5V68NRJ","ts":1788850816740}
 {"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -p no:xdist","id":"01M1ZX2HQ80000SMAJ9H7EK42T","ts":1788850816744}
 {"kind":"engine:phase","phase":"Setup","id":"01M1ZX2HQ80001F482MB62AZ47","ts":1788850816744}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-48 at 9395cd11d6b6e0e1b1e5195b5702956d6faf88f6; baseline green","id":"01M1ZXCPEA0000PXM7V6SKNRSN","ts":1788851149258}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M1ZXCPEB00007EQ7W75MQ3B4","ts":1788851149259}
+{"kind":"worker:start","label":"exam:3","role":"examiner","sessionId":"7972963f-f98d-4382-971c-2fcb17853c92","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/exam-3","model":"opus","id":"01M1ZXCPGT0000HCGHHRDX7EFE","ts":1788851149338}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"8c62809a-d175-4033-981b-0eef0364bfbe","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/task-3","model":"opus","id":"01M1ZXCPGV0000G6PV9GG73Q8Z","ts":1788851149339}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"2b63fb70-2251-4b6b-ae96-78939c32905a","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/exam-1","model":"opus","id":"01M1ZXCPKW0000CXQRXM5VJY7Q","ts":1788851149436}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"d54176c4-8c33-40f4-ab1c-e8d2345102df","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/task-1","model":"opus","id":"01M1ZXCPKZ00008P017CZR3EJ6","ts":1788851149439}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"9928956c-038e-4ec9-a4f7-cf7421c6e130","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/exam-2","model":"opus","id":"01M1ZXCPQG00008NEC682DM44B","ts":1788851149552}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"31bb921c-b5b5-495b-a940-8d60a0d557ab","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/task-2","model":"opus","id":"01M1ZXCPQH00007SPQFC0RKV9S","ts":1788851149553}
