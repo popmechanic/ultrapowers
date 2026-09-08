@@ -1,0 +1,222 @@
+{
+  "ok": true,
+  "stamp": "run-46",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-46"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The driver runs a green proof once before the first review",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_exam_evidence.mjs",
+          "fleet/tests/test_run_engine_implementer_suite.mjs",
+          "fleet/tests/test_run_engine_integrated_runs.mjs",
+          "fleet/tests/test_run_engine_pre_review.mjs",
+          "fleet/tests/test_run_engine_review_economy.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`runEngine({ args, agent, parallel, exec, paths, log, phase, rolesDir, patchBase })`"
+          ],
+          "produces": [
+            "nothing a sibling consumes \u2014 the event record and the review prompt are read by the referee and by a sense pass, never by a task"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A manual ack settled by the driver's own executed Run: is pre-authorized",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/critic.md",
+          "fleet/run-main.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`acksOf(gateReceipt)`",
+            "`criticDecision(report)`"
+          ],
+          "produces": [
+            "`ackDecision(gateReceipt, report)`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The driver runs a green proof once before the first review",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_implementer_suite.mjs",
+            "fleet/tests/test_run_engine_integrated_runs.mjs",
+            "fleet/tests/test_run_engine_pre_review.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`runEngine({ args, agent, parallel, exec, paths, log, phase, rolesDir, patchBase })`"
+            ],
+            "produces": [
+              "nothing a sibling consumes \u2014 the event record and the review prompt are read by the referee and by a sense pass, never by a task"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_implementer_suite.mjs",
+            "fleet/tests/test_run_engine_integrated_runs.mjs",
+            "fleet/tests/test_run_engine_pre_review.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_proof_runs.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_proof_runs.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_implementer_suite.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "A manual ack settled by the driver's own executed Run: is pre-authorized",
+          "files": [
+            "fleet/roles/critic.md",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`acksOf(gateReceipt)`",
+              "`criticDecision(report)`"
+            ],
+            "produces": [
+              "`ackDecision(gateReceipt, report)`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/critic.md",
+            "fleet/run-main.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_main.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_main.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -n 'verbatim' fleet/roles/critic.md",
+            "grep -n 'deferred:manual' skills/ultrapowers/references/report-format.md",
+            "python3 -m pytest -q tests/test_fleet_events.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Drivers"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0): the gate scripts named in the Check above are\n  byte-identical to BASE \u2014 the ack's `type` and `detail` are still the strings\n  `gate_check.py` writes today.\n- No leg this plan adds to any `fleet/tests/test_*.mjs` compares the tree to BASE, reads\n  `ULTRA_BASE` as a base to diff against, or embeds a 40-hex commit sha; the `BASE_SHA` constant\n  `fleet/tests/test_run_engine_proof_runs.mjs` already carries at BASE stays exactly as it is.\n- The run record stays data: `driver:proof-run`, `driver:exam-run` and `driver:check-run` events\n  keep their BASE fields (`task`, `cmd`, `exit`, `iter`, and `minor` on a check), and\n  `driver:ack-decision` keeps `approve` and `reason`.\n- The parked reason literal `non-pre-authorized ack(s): deferred:manual` is unchanged for a manual\n  ack that cites no executed evidence (`tests/test_fleet_events.py` pins it).\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the ones\n  that task's Context names as re-scoped with what replaces them; the new legs sit under a comment\n  naming their task.\n- `fleet/roles/critic.md` keeps the shape `fleet/tests/test_roles_peer.mjs` pins: it opens with\n  `You are the editor's completeness read of the whole submission.`, carries `1. Claim` and\n  `2. Context` exactly once each, no line beginning `3. `, `4. ` or `5. `, and neither the word\n  `checklist` nor `cannot-verify` in any case.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-46/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-46/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-46/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-46/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
