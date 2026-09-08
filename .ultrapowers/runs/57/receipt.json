@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -60,7 +60,7 @@
             "none"
           ],
           "produces": [
-            "`_confine_denials(run_dir, workers) -> list | None` \u2014 the reconciled `bundle.confineDenials`"
+            "`_confine_denials(run_dir, workers) -> list | None` — the reconciled `bundle.confineDenials`"
           ]
         }
       }
@@ -90,7 +90,7 @@
               "none"
             ],
             "produces": [
-              "`_confine_denials(run_dir, workers) -> list | None` \u2014 the reconciled `bundle.confineDenials`"
+              "`_confine_denials(run_dir, workers) -> list | None` — the reconciled `bundle.confineDenials`"
             ]
           },
           "tier": null,
@@ -113,7 +113,7 @@
       ]
     ],
     "waveLabels": [
-      "The file's envelope rows are dropped when the envelopes\u2026"
+      "The file's envelope rows are dropped when the envelopes…"
     ],
     "mode": "sequential",
     "degrade_reason": "Sequential mode: 1 implementation tasks",
@@ -122,7 +122,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- `fleet/` is untouched: `recordEnvelopeDenials` keeps writing its `source: \"envelope\"` lines\n  (they are what a worker that dies before the harvester runs leaves behind); the harvester is\n  the side that reconciles. The verification periphery is frozen (0.1.0). The first two Checks\n  pin both.\n- The bundle is the interface: `confineDenials` keeps its name and its three values \u2014 a list of\n  denial lines each carrying `source`, `[]` for counted-zero, `null` for no source at all \u2014 and\n  every existing pin of it in `tests/test_harvest_fleet_runs.py`,\n  `tests/test_harvest_evidence.py` and `tests/test_harvest_fleet_runs_confine_denials.py` still\n  passes unedited.\n- The harvester stays advisory and loud: no new failure mode raises; an unreadable source is a\n  stderr line, never a traceback.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- `fleet/` is untouched: `recordEnvelopeDenials` keeps writing its `source: \"envelope\"` lines\n  (they are what a worker that dies before the harvester runs leaves behind); the harvester is\n  the side that reconciles. The verification periphery is frozen (0.1.0). The first two Checks\n  pin both.\n- The bundle is the interface: `confineDenials` keeps its name and its three values — a list of\n  denial lines each carrying `source`, `[]` for counted-zero, `null` for no source at all — and\n  every existing pin of it in `tests/test_harvest_fleet_runs.py`,\n  `tests/test_harvest_evidence.py` and `tests/test_harvest_fleet_runs_confine_denials.py` still\n  passes unedited.\n- The harvester stays advisory and loud: no new failure mode raises; an unreadable source is a\n  stderr line, never a traceback.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/",
@@ -145,11 +145,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-57/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-57/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-57/acceptance.log"
 }

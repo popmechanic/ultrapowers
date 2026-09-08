@@ -1,0 +1,122 @@
+{
+  "integrationBranch": "ultra/integration-run-57",
+  "baseSha": "4396591a32c7b8a42f7ffc3a9b63cedf742cc232",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "59876f475a33d70769d253dff75ff79e12be8e18",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-57/patches/task-1.patch",
+      "reviewVerdict": "fixed",
+      "notes": "The drop is run-wide rather than per-worker: `has_envelopes = any(run_dir.glob(\"workers/*/envelope.json\"))` makes one worker's captured envelope suppress EVERY `source: \"envelope\"` file row, including rows recorded for a worker whose own `envelope.json` never landed. That is exactly the rule the task's Context mandates (\"the glob matched at all, whatever its `permission_denials` held\"), so the diff is faithful; noting it because `fleet/run-worker.mjs:856-858` writes `envelope.json` and calls `recordEnvelopeDenials` in the same block only when `dir` is truthy, so a run dir with a partially captured `workers/` under-reports those denials silently. A label-keyed drop would satisfy M1 and M2 as written, but changing it here would be an undisclosed divergence from the plan.; unverified: the second global constraint requires every existing pin of `confineDenials` in `tests/test_harvest_fleet_runs.py` and `tests/test_harvest_evidence.py` to still pass unedited, but the driver's exam evidence covers only `tests/test_harvest_fleet_runs_confine_denials.py` (18 passed, exit 0). Static inspection settles it as far as reading can: the change only ever removes file lines whose `source == \"envelope\"`, and no fixture outside the exam file writes such a row \u2014 `tests/test_harvest_fleet_runs.py:59`, `tests/test_harvest_evidence.py:132` and `tests/test_harvest_fleet_runs_cache_key.py:132` all write a source-less `{\"tool\": \"Bash\", \"reason\": \"outside clone\"}`, and the one `source: \"envelope\"` file row in the exam file (line 293, leg (c)) sits in a run dir with no `workers/`. A full `python3 -m pytest` run at the suite-mode gate would settle it outright.; Coarse drop key. `_confine_denials` keys the drop on `has_envelopes = any(run_dir.glob(\"workers/*/envelope.json\"))` \u2014 the plan's own operative wording (\"the glob matched, whatever its `permission_denials` held\"), so this is a faithful transcription, not a divergence. But the plan's other phrasing in the same Context slot is \"when `_envelope_denials` was able to READ at least one `workers/*/envelope.json`\", and the two differ in two reachable shapes: (1) a run whose only `workers/impl_1/envelope.json` will not parse \u2014 the exact fixture `test_an_unreadable_envelope_is_a_diagnostic_and_never_a_traceback` builds \u2014 still sets `has_envelopes`, so the file's `source: \"envelope\"` rows are dropped even though no derived line replaces them, and a denial the file uniquely records is lost silently (the unreadable envelope itself is still reported on stderr, so the loud-not-raising constraint holds); (2) a run dir where some workers' envelopes persisted and others' did not drops the missing workers' file rows too, since the key is per-run, not per-worker/per-label. Neither is exercised by M1/M2, and neither has a fix that stays inside the rule the plan mandates, so this is advisory: settling it means the plan choosing per-worker (or parsed-envelope-keyed) reconciliation, then `harvest_fleet_runs.py` following. Note that keying the drop on `bool(envelopes)` instead is NOT the fix \u2014 it would break the counted-zero leg `test_a_present_but_empty_source_is_an_empty_list`.; unverified: the second global constraint requires that every existing pin of `confineDenials` in `tests/test_harvest_fleet_runs.py` and `tests/test_harvest_evidence.py` still passes unedited, and it carries no `Check:` the driver ran \u2014 the EXAM EVIDENCE covers only `tests/test_harvest_fleet_runs_confine_denials.py` (18 passed, exit 0). I confirmed by inspection rather than execution that the drop cannot reach them: the `confine-denials.jsonl` fixtures in those two files write `{\"tool\": \"Bash\"}` / `{\"tool\": \"Bash\", \"reason\": \"outside clone\"}` with no `source` key at all (test_harvest_fleet_runs.py:59,323,326; test_harvest_evidence.py:132,578), none of them pairs a file row with a `workers/*/envelope.json`, and the new filter drops only lines whose `source` is exactly the string `\"envelope\"`. What would settle it: the driver's suite-mode acceptance run over the full committed suite, which is this task's stated Acceptance.; Docstring summary line is now stale. `_confine_denials`'s one-line summary in skills/ultralearn/scripts/harvest_fleet_runs.py still reads \"`bundle.confineDenials`: envelope + transcript + file lines, or None\", which is exactly the unreconciled concatenation the task removes; the new behaviour (the file's `source: \"envelope\"` rows are dropped when this run's envelopes were read) is only described three paragraphs down. In a module whose docstrings are read as the contract, the summary should carry the reconciliation. Nothing in the exam depends on it, so this is advisory.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-57/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1795 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 72%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...................................................................      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1795 passed, 5 warnings in 287.16s (0:04:47) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | tr '\\n' ' ' | grep -q 'counted once.*drops.*envelope.*hook'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | grep -c 'never the total' | grep -qx 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^1\\. \\*\\*friction\\*\\*/,/^2\\. \\*\\*routing\\*\\*/p' skills/ultralearn/references/reading-lenses.md | grep -c '23 lines' | grep -qx 0",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 512219,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.11713739630900064,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "bcab4d6f3f469dd0c91d7aed000739b5a10f2037",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-57/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-57/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.493,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
