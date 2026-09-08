@@ -96,8 +96,7 @@ const eventsOf = (runDir) => {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'])]], stub, stamp: 're1',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'])]], stub, stamp: 're1' })
   const report = await run()
   assert.equal(report.coverage.complete, true,
     'an unread extra field must not fail the task: ' + JSON.stringify(report.tasks))
@@ -139,7 +138,7 @@ const eventsOf = (runDir) => {
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { review: 'peer' })]],
-                        stub, stamp: 're2', extraArgs: { shallowLeg: false } })
+                        stub, stamp: 're2' })
   const report = await run()
   const eco = report.reviewEconomy
   assert.equal(report.coverage.complete, true, 'sim precondition: the task merged')
@@ -187,7 +186,7 @@ const eventsOf = (runDir) => {
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { review: 'peer' })]],
-                        stub, stamp: 're3', extraArgs: { shallowLeg: false } })
+                        stub, stamp: 're3' })
   const report = await run()
   const eco = report.reviewEconomy
   assert.equal(report.tasks.find((r) => r.task === 'A').reviewVerdict, 'fixed',
@@ -240,7 +239,7 @@ const eventsOf = (runDir) => {
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { proofRuns: [TOGGLE] })]],
-                        stub, stamp: 're4', extraArgs: { shallowLeg: false } })
+                        stub, stamp: 're4' })
   const report = await run()
   const row = report.tasks.find((r) => r.task === 'A')
   const proofRuns = eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run' && e.task === 'A')
@@ -321,7 +320,7 @@ async function pinRun(engine, tasks) {
       waves: [tasks], edges: [], testCmd: 'bash check.sh',
       acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
       integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
-      patchInput: patchesDir, shallowLeg: false,
+      patchInput: patchesDir,
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),

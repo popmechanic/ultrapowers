@@ -505,8 +505,9 @@ export function parseCliJson(stdout) {
 const tail = (s, n = 4000) => String(s || '').slice(-n)
 
 // ── the integration clone's cache sweep (#631 option (d)) ────────────────────
-// The driver runs the suite in the integration clone — baseline, then each
-// wave's candidate — so a python suite leaves `__pycache__` and `.pytest_cache`
+// The driver runs the suite in the integration clone — each wave's candidate,
+// and BASE's tree once if one of them is red — so a python suite leaves
+// `__pycache__` and `.pytest_cache`
 // behind there before the integrated `Run:` pass reads the tree. That litter is
 // the driver's own: a task whose proof asserts a cache directory is ABSENT
 // would be parked by the suite run rather than by anything in the adopted tree.
@@ -870,8 +871,8 @@ export async function runEngine({
 
   // ── SETUP — driver git (was: a haiku agent told to run `git worktree add`;
   // run-25's park class). The integration clone sits detached at BASE; the
-  // branch is created there, bootstraps run, and the baseline is established,
-  // all through exec. No prompt exists for any of this to be misread. ────────
+  // branch is created there and the bootstraps run, all through exec. No
+  // prompt exists for any of this to be misread. ────────────────────────────
   phase('Setup')
   const branchExists = await exec('git', ['show-ref', '--verify', '--quiet',
     'refs/heads/' + integrationBranch], { cwd: integ })
@@ -883,7 +884,7 @@ export async function runEngine({
   const baseSha = await git(['rev-parse', 'HEAD'], integ)
   if (bootstrapCmd) {
     // Every fresh clone needs its dependencies before a suite can run there —
-    // the integration clone (baseline, reconcile, driver suite runs) and each
+    // the integration clone (candidate, baseline, reconcile suite runs) and each
     // task clone (implementer red-green cycles). Driver-run, so the warm-cache
     // prompt choreography does not exist on this path.
     for (const dir of [integ, ...WAVES.flat().map((t) => path.join(clonesDir, 'task-' + t.id))]) {
@@ -895,15 +896,41 @@ export async function runEngine({
       }
     }
   }
-  const baselineRun = await sh(testCmd, integ)
-  const baseline = { passed: baselineRun.code === 0, output: tail(baselineRun.stdout + baselineRun.stderr, 2000) }
-  if (!baseline.passed) {
-    judgmentCalls.push('baseline: test suite was already failing before any task ran (' +
-      tail(baseline.output, 500) + ') — task results inherit a red suite')
-    log('setup: baseline tests FAILED before any work began')
+  // The suite on BASE is LAZY (#712): a run whose every wave goes green never
+  // runs it at all — green runs pay nothing — and the first wave whose
+  // candidate is red pays for it once, because only then is the question
+  // ("the diff's red, or BASE's own?") worth a suite's wall clock. `null`
+  // until `runBaseline()` answers it; `{ passed, output }` after.
+  let baseline = null
+  log('setup: branch ' + integrationBranch + ' at ' + baseSha)
+
+  // Run the suite on BASE's tree, at most once per run. Called from the wave
+  // site the moment a candidate suite comes back red and before the first
+  // `reconcile:` dispatch, so the note the reconcile agent and the critic read
+  // is settled before either of them speaks; a no-op once `baseline` is set,
+  // which is why a second red wave costs nothing.
+  //
+  // BASE and not the previous wave's head: that head was judged green when it
+  // was adopted, so a later wave's red is the diff's unless BASE itself moved
+  // under the run, which it cannot.
+  //
+  // The clone's index and worktree hold `restoreTree` (the candidate) at the
+  // call site, so BASE's tree is swapped in for the run and swapped back out
+  // before returning — the reconcile agent edits files in that worktree and
+  // the driver commits whatever `git add -A` finds there, so leaving BASE's
+  // tree behind would silently revert the wave.
+  const runBaseline = async (restoreTree) => {
+    if (baseline !== null) return
+    await git(['read-tree', '-u', '--reset', baseSha + '^{tree}'], integ)
+    const r = await sh(testCmd, integ)
+    await git(['read-tree', '-u', '--reset', restoreTree + '^{tree}'], integ)
+    baseline = { passed: r.code === 0, output: tail(r.stdout + r.stderr, 2000) }
+    log('baseline: ' + (baseline.passed ? 'green' : 'RED') + ' on ' + baseSha)
+    if (!baseline.passed) {
+      judgmentCalls.push('baseline: the suite is RED on BASE (' +
+        tail(baseline.output, 500) + ') — this wave\'s red is inherited, not the diff\'s')
+    }
   }
-  log('setup: branch ' + integrationBranch + ' at ' + baseSha + '; baseline ' +
-    (baseline.passed ? 'green' : 'RED'))
 
   // ── dependency cascade (ported) ────────────────────────────────────────────
   const blockedByDep = new Set()
@@ -1750,6 +1777,9 @@ export async function runEngine({
       return { status: 'MERGED', headSha: candidate,
                suite: { passed: true, output: tail(suite.stdout + suite.stderr) } }
     }
+    // Red candidate: settle whether BASE itself is red before dispatching
+    // anyone at it. Restores the candidate tree before returning.
+    await runBaseline(candidate)
     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
       let rec
@@ -2044,84 +2074,6 @@ export async function runEngine({
     break
   }
 
-  // ── the depth-1 leg (#465) ────────────────────────────────────────────────
-  // The gate is the operator's single pre-merge checkpoint, and until this leg
-  // it certified against a clone the merge target does not match: the sandbox
-  // clone carries full history, `actions/checkout@v4` defaults to fetch-depth
-  // 1, and git reports a shallow boundary commit as INTRODUCING EVERY FILE —
-  // so `git log -- <path>` returns the tip commit for any path that exists.
-  // Run-32 gated green (7/7 checks, 979 tests) and CI went red on exactly that;
-  // a human diagnosed and patched it, which is the work the single-gate promise
-  // is supposed to absorb. The class is wider than the instance: any test
-  // coupled to repository state — history, tags, remotes, tree cleanliness —
-  // passes here and fails on main.
-  //
-  // Cost is one suite pass (~90 s at 16 vCPU), paid only when there is a green
-  // adopted tree to re-certify. A red leg becomes a `deferred:manual` item, not
-  // a failed `tests` field: the driver's full-clone run really did pass, and a
-  // depth-1 degradation can legitimately be correct behaviour in a consumer
-  // clone (#465's own reading of `_release_timeline` returning None there). Which
-  // it is, is a human judgment — so it reaches the gate as the one ack type that
-  // is NOT pre-authorized (run-main's ackDecision), and the run parks on real
-  // evidence instead of surprising the operator after the merge.
-  //
-  // The leg runs BESIDE the completeness critic below (#654, re-shaped on the
-  // operator's call 2026-09-05), not ahead of it: neither reads the other's
-  // result — the critic's inputs are `lastSuite`, the plan, the contracts and
-  // the integrated Run:/Check: evidence, while `shallowSuite` and
-  // `shallowDeferred` are consumed further down, after both have settled — so
-  // serially the leg's ~90 s was wall clock nobody was waiting on. Its
-  // judgment calls land in a local array and are appended in BASE order once
-  // both sides are done, so a concurrent run's `judgmentCalls` stay
-  // deterministic (leg first, then critic) rather than racing.
-  let shallowSuite = null
-  let shallowDeferred = null
-  const shallowCalls = []
-  const runShallowLeg = async () => {
-    if (!(args.shallowLeg !== false && waveMerges.some((m) => m && m.status === 'MERGED') &&
-          lastSuite && lastSuite.passed)) return
-    phase('Depth-1 Leg')
-    // Under clonesDir on purpose: it is a full repo copy (plus whatever
-    // bootstrapCmd installs), and drive.mjs's evidence pull excludes exactly
-    // `run-*/clones` from the tarball — "never the repo itself" is that
-    // command's whole rule. A sibling directory would ride home in every bundle.
-    const shallowDir = path.join(clonesDir, 'shallow')
-    fs.rmSync(shallowDir, { recursive: true, force: true })
-    // `file://` is load-bearing: git IGNORES --depth on a plain local path clone
-    // (it hardlinks the whole object store), so a path form would silently
-    // certify a second full clone and always agree. The path is resolved because
-    // a `file://` URL is only a URL when it is absolute (repoDir is resolved for
-    // the same reason); clonesDir arrives from the caller unnormalized.
-    const cl = await exec('git', ['clone', '--quiet', '--depth', '1', '--branch',
-      integrationBranch, 'file://' + path.resolve(integ), shallowDir], { cwd: runDir })
-    if (cl.code !== 0) {
-      shallowCalls.push('depth-1 leg: cloning ' + integrationBranch + ' at depth 1 failed (' +
-        tail(cl.stderr || cl.stdout, 300) + ') — the shallow-clone class is unchecked this run')
-    } else {
-      if (bootstrapCmd) {
-        const b = await sh(bootstrapCmd, shallowDir)
-        if (b.code !== 0) {
-          shallowCalls.push('depth-1 leg: bootstrap failed in the shallow clone (exit ' + b.code +
-            ') — a red leg below may be a missing dependency rather than a history coupling')
-        }
-      }
-      const s = await sh(testCmd, shallowDir)
-      shallowSuite = { depth: 1, command: testCmd, passed: s.code === 0,
-                       output: tail(s.stdout + s.stderr, 2000) }
-      log('depth-1 leg: ' + (shallowSuite.passed ? 'green' : 'RED'))
-      if (!shallowSuite.passed) {
-        const why = 'the suite passed on the full clone and failed on a depth-1 clone of ' +
-          integrationBranch + ' — CI checks out at fetch-depth 1, so the merge target will not ' +
-          'reproduce this run\'s green. Either a test is coupled to repository history (fix the ' +
-          'test) or the degradation is correct for a shallow consumer (ack it): ' +
-          tail(shallowSuite.output, 800)
-        shallowCalls.push('depth-1 leg: ' + why)
-        shallowDeferred = { deliverable: 'depth-1 clone of ' + integrationBranch,
-                            reason: 'manual', why }
-      }
-    }
-  }
-
   // ── completeness critic — read-only judgment; the driver already ran the
   // suite (per adopted wave) and derives gitVerified below from receipts. ────
   const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
@@ -2153,8 +2105,8 @@ export async function runEngine({
           contractsBlock(WAVES, EDGES, wavesPath) +
           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
           suiteLine(lastSuite, testCmd) +
-          (baseline.passed === false
-            ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
+          (baseline && baseline.passed === false
+            ? '\nBaseline: the suite is RED on BASE — ' + tail(baseline.output, 500)
             : '') +
           integratedRunEvidenceBlock(integratedRuns) +
           integratedCheckEvidenceBlock(integratedChecks),
@@ -2174,13 +2126,12 @@ export async function runEngine({
     }
   }
 
-  // Started together, both awaited here — every line below reads one side's
-  // result or the other's, so this is the barrier and there is no other. Plain
-  // `Promise.all`, not the `parallel` seam: run-main hands the engine
-  // `boundedParallel(WIDTH)`, and at WIDTH 1 that seam would quietly serialize
-  // these two again and put the leg back on the critical path.
-  await Promise.all([runShallowLeg(), runCritic()])
-  judgmentCalls.push(...shallowCalls, ...criticCalls)
+  // The critic runs alone here — every line below reads its result, so this is
+  // the barrier and there is no other. Its judgment calls land in a local array
+  // and are appended once it is done, so their order in `judgmentCalls` does
+  // not depend on when the call returned.
+  await runCritic()
+  judgmentCalls.push(...criticCalls)
 
   // A red integrated `Run:` proof outranks whatever the critic returned, and it
   // is folded into the SAME list the #474 brake already reads — appended after
@@ -2249,7 +2200,6 @@ export async function runEngine({
   }
   const deferredVerification = (Array.isArray(review.deferredVerification)
     ? review.deferredVerification : [])
-    .concat(shallowDeferred ? [shallowDeferred] : [])
     .concat(planDeferred)
 
   // tests: the DRIVER's own suite run on the adopted tree (was: the critic's).
@@ -2308,7 +2258,6 @@ export async function runEngine({
       pairRounds,
       r2MarginalBlocking,
     },
-    shallowSuite,
     acceptance,
     baseline,
     waveMerges,

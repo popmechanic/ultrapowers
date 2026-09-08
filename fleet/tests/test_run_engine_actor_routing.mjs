@@ -79,7 +79,7 @@ const oneTaskRun = ({ name, files = ['a.txt'], reviews, fixWrites = false }) => 
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, integ } = rig({ repo, runDir, waves: [[mkTask('T1', files)]], stub,
-                               stamp: name, extraArgs: { shallowLeg: false } })
+                               stamp: name })
   return { run, calls, prompts, repo, runDir, integ, branch: 'ultra/integration-' + name }
 }
 

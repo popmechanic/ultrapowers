@@ -72,7 +72,10 @@ assert.ok(report.waveMerges.every((m) => m.status === 'MERGED' && m.headSha))
 assert.equal(report.tests.passed, true, 'the DRIVER ran the suite: ' + report.tests.output)
 assert.equal(report.acceptance.mode, 'suite')
 assert.equal(report.acceptance.passed, true)
-assert.equal(report.baseline.passed, true)
+// #712 — the baseline is lazy: every wave here is green, so the suite never
+// ran on BASE and the field stays null. Strict, so an engine that drops the
+// key entirely (undefined) fails this line rather than passing it.
+assert.strictEqual(report.baseline, null)
 assert.equal(report.gitVerified, true, 'receipt-derived gitVerified holds on a clean run')
 assert.deepEqual(report.ancestryMisses, [])
 assert.equal(report.frontier.length, 2, 'one frontier entry per folded wave')

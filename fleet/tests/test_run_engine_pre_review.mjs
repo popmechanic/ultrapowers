@@ -183,7 +183,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr1',
-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
+                        extraArgs: { constraintChecks: CHECKS } })
   const report = await run()
 
   // The pre-review pass ran before ANY review worker was dispatched.
@@ -220,7 +220,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr2',
-                        extraArgs: { shallowLeg: false, constraintChecks: 'nope' } })
+                        extraArgs: { constraintChecks: 'nope' } })
   const report = await run()
   assert.equal(report.coverage.complete, true,
     'a malformed constraintChecks must not fail the run')
@@ -245,7 +245,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr3',
-                        extraArgs: { shallowLeg: false, constraintChecks: [
+                        extraArgs: { constraintChecks: [
                           { cmd: 'test -e a.txt' },
                           { cmd: 'test -e z.txt', minor: 1 },
                         ] } })
@@ -285,7 +285,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr4',
-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS,
+                        extraArgs: { constraintChecks: CHECKS,
                                      globalConstraints: 'the periphery is frozen' } })
   const report = await run()
 
@@ -360,7 +360,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr5',
-                        extraArgs: { shallowLeg: false,
+                        extraArgs: {
                                      constraintChecks: [{ cmd: 'test -e c.txt', minor: false }] } })
   const report = await run()
   const row = report.tasks.find((r) => r.task === 'T1')
@@ -391,8 +391,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr6',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr6' })
   const report = await run()
   assert.deepEqual(calls.filter((l) => !l.startsWith('exam:') && l !== 'integration'),
     ['impl:T1', 'fix:T1:0', 'review:T1:1'],
@@ -424,8 +423,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr7',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr7' })
   const report = await run()
   const row = report.tasks.find((r) => r.task === 'T1')
   assert.equal(row.status, 'failed', JSON.stringify(row))
@@ -455,7 +453,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr8',
-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
+                        extraArgs: { constraintChecks: CHECKS } })
   const report = await run()
 
   // [M2] a green first pass costs no fix round; a red MINOR check never does.
@@ -540,7 +538,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr9',
-                        extraArgs: { shallowLeg: false,
+                        extraArgs: {
                                      constraintChecks: [{ cmd: 'test -e c.txt', minor: false }] } })
   const report = await run()
   assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0).map((e) => e.exit),
@@ -580,8 +578,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr10',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr10' })
   const report = await run()
   assert.equal(report.coverage.complete, true, 'sim precondition: the task merged')
   // A RENDERED block is what this leg forbids, and a rendered block opens with
@@ -614,7 +611,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr11',
-                        extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
+                        extraArgs: { constraintChecks: CHECKS } })
   const report = await run()
   assert.equal(report.coverage.complete, true, 'sim precondition: the wave was adopted')
 
@@ -671,7 +668,7 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr12',
-                        extraArgs: { shallowLeg: false,
+                        extraArgs: {
                                      constraintChecks: [{ cmd: CMD, minor: false }] } })
   const report = await run()
   assert.deepEqual(calls.filter((l) => l.startsWith('fix:')), [],
@@ -761,7 +758,7 @@ const segmentOf = (block, cmd) => {
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, base } = rig({ repo, runDir, waves, stub, stamp: 'ub1',
-                              extraArgs: { shallowLeg: false, constraintChecks: CHECKS } })
+                              extraArgs: { constraintChecks: CHECKS } })
   const report = await run()
   assert.match(base, /^[0-9a-f]{40}$/, 'sim precondition: the rig\'s base is a 40-hex sha')
 
@@ -855,7 +852,7 @@ const segmentOf = (block, cmd) => {
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2',
-                              extraArgs: { shallowLeg: false,
+                              extraArgs: {
                                            constraintChecks: [{ cmd: CBASE, minor: false }] } })
   const report = await run()
 
