@@ -45,6 +45,8 @@ export const TARGET = 'popmechanic/smoke'
 export const VM_NAME = 'fleet-r7-2609032215-a1b2'
 export const PR_URL = 'https://github.com/popmechanic/smoke/pull/1'
 export const PR_AUTHOR = 'popmechanic'
+/** The follow-up issue GitHub answers the `POST …/issues` with. */
+export const FOLLOWUP_URL = 'https://github.com/popmechanic/smoke/issues/9'
 /** The squash commit GitHub answers a merge PUT with. */
 export const MERGE_SHA = 'f6'.repeat(20)
 
@@ -251,6 +253,22 @@ case "$url" in
       printf '{"number":1,"state":"open","mergeable":%s,"html_url":"%s"}\\n%s\\n' \\
         "$m" "${PR_URL}" "\${STUB_PR_READ_CODE:-200}"
     fi ;;
+  *github.int.exe.xyz/api/v3/repos/*/issues/[0-9]*)
+    # One ticket's document, for the labels the follow-up issue inherits. The
+    # arm sits ABOVE the collection arm because \`/issues/660\` matches both.
+    # STUB_ISSUE_LABELS is the array the document carries as \`labels\` — the
+    # default \`[]\` is a ticket carrying none — and STUB_ISSUE_READ_CODE is how
+    # a case answers a ticket the reader cannot see.
+    num="\${url##*/}"; say "curl issue read $num"
+    printf '{"number":%s,"labels":%s}\\n%s\\n' \\
+      "$num" "\${STUB_ISSUE_LABELS:-[]}" "\${STUB_ISSUE_READ_CODE:-200}" ;;
+  *github.int.exe.xyz/api/v3/repos/*/issues)
+    # The follow-up issue's POST, logged the way the PR's is: the payload to
+    # \`issues.log\`, one line per call, and GitHub's answer with the status code
+    # riding as its last line. STUB_ISSUE_CODE is how a case refuses it.
+    say "curl issue create"; printf '%s\\n' "$payload" >>"$FLEET_HOME/issues.log"
+    printf '{"html_url":"%s","number":9}\\n%s\\n' \\
+      "${FOLLOWUP_URL}" "\${STUB_ISSUE_CODE:-201}" ;;
   *notify.int.exe.xyz*)
     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
@@ -546,8 +564,24 @@ fi
 printf 'run-main: preflight\\n'
 printf 'run-main: knob-validate-failed\\n' >&2
 if [ -z "\${STUB_NO_RECEIPT:-}" ]; then
-  printf '{"verdict":"%s"}\\n' "$STUB_VERDICT" >"$run_dir/gate-receipt.json"
-  printf '{"stamp":"run-7"}\\n' >"$run_dir/report.json"
+  # The two records the boot script reads back out of the evidence copy, each
+  # replaceable whole by a knob: UNSET is the one-field default this stub has
+  # always written, SET is that value and one newline.
+  if [ -n "\${STUB_GATE_RECEIPT+set}" ]; then
+    printf '%s\\n' "$STUB_GATE_RECEIPT" >"$run_dir/gate-receipt.json"
+  else
+    printf '{"verdict":"%s"}\\n' "$STUB_VERDICT" >"$run_dir/gate-receipt.json"
+  fi
+  # An EMPTY \`STUB_REPORT\` means NO REPORT AT ALL — not an empty file: an
+  # engine that died between its receipt and its report leaves the path absent,
+  # and that is the case a reader of the report has to survive.
+  if [ -n "\${STUB_REPORT+set}" ]; then
+    if [ -n "$STUB_REPORT" ]; then
+      printf '%s\\n' "$STUB_REPORT" >"$run_dir/report.json"
+    fi
+  else
+    printf '{"stamp":"run-7"}\\n' >"$run_dir/report.json"
+  fi
   printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
 fi
 [ -n "\${STUB_ENGINE_SLEEP:-}" ] && sleep "$STUB_ENGINE_SLEEP"

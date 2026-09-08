@@ -125,6 +125,12 @@ PLAN_BLOB_PATH=".ultrapowers/plan.md"
 # name `<plan-stem>.gate-verdicts.json` — so it lands next to the plan under
 # that name, and a plan branch without one is a legacy-grammar plan, not a fault.
 VERDICTS_BLOB_PATH=".ultrapowers/gate-verdicts.json"
+# The label names a follow-up issue may inherit from the tickets its run closed
+# — the programs work is filed under, and nothing else. A ticket's OWN kind
+# (`bug`, `enhancement`) is not the follow-up's: the follow-up is a
+# `watch-item`. An allowlist and not a denylist, so a label the target adds
+# tomorrow lands on no issue this script files.
+PROGRAM_LABELS="merge-frontier experience-compiler verification-frontier peer-review fleet determinism"
 
 # Poll cadences. The defaults are the contract's; the tests set them to 0 so the
 # whole state machine runs in a second.
@@ -1157,6 +1163,123 @@ plan_closes() {
   ' "$PLAN_FILE"
 }
 
+# What the run finished WITHOUT: one `- [ ] ` checklist line per residual, or
+# nothing at all. The PR body is the run's index, so the things a reader must
+# still do belong in it — a deferral the sandbox could not execute against the
+# target, a critic finding that did not block, a reviewer note a merged task
+# carried anyway. Nothing that FAILED is here: a blocking finding held the gate
+# and a failed task's notes are its blocking findings, so both are already the
+# verdict's business, and a `deferred:runtime` ack is the engine's own re-run,
+# not a person's errand.
+#
+# The two documents are the ones `collect_evidence` already copied into the
+# evidence directory — the same `$dest` `render_card` reads the receipt from,
+# never the run directory, so the card and the checklist quote one record.
+#
+# ONE READER, in `python3` with the paths in argv, as `fold_receipt` reads its
+# receipt: `json_field` answers the first match only and cannot walk an array,
+# and the acks live one level down at `.gateCheck.acks[]`. An absent,
+# unparsable or oddly-shaped document answers empty rather than failing a
+# `set -e` script — a run whose engine died before its report still renders a
+# card.
+#
+# Every item is ONE line: a newline inside a detail becomes a space, or the
+# checklist would grow lines no reader could tick.
+residual_items() {
+  local dest
+  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+  # The em dash is written `—` and the lines go out as UTF-8 bytes: this
+  # runs under whatever locale the unit inherited, and a `C` one would other-
+  # wise refuse to read the detail it is quoting.
+  python3 -c '
+import json, sys
+
+DASH = " — "
+
+def load(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception:
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+def listing(doc, key):
+    got = doc.get(key)
+    return got if isinstance(got, list) else []
+
+def flat(value):
+    text = value if isinstance(value, str) else ""
+    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+items = []
+
+# Every ack whose type is exactly `deferred:external`, its detail whole: the
+# structural-false-green sentence included, since that sentence is the reason
+# the item needs a person rather than another run.
+receipt = load(sys.argv[1])
+check = receipt.get("gateCheck")
+for ack in listing(check if isinstance(check, dict) else {}, "acks"):
+    if isinstance(ack, dict) and ack.get("type") == "deferred:external":
+        items.append("deferred:external" + DASH + flat(ack.get("detail")))
+
+report = load(sys.argv[2])
+# Minor findings from the critic. A blocking one never reaches a green run.
+for finding in listing(report, "completenessFindings"):
+    if isinstance(finding, dict) and finding.get("severity") == "minor":
+        items.append("critic" + DASH + flat(finding.get("detail")))
+
+# Every `; `-separated piece of the notes of every merged task: minor findings
+# from the reviewers, then the plan-defect and concern entries. A task that is
+# not done was not merged, and its notes are its blocking findings.
+for row in listing(report, "tasks"):
+    if not isinstance(row, dict) or row.get("status") != "done":
+        continue
+    for piece in flat(row.get("notes")).split("; "):
+        if piece:
+            items.append("task " + str(row.get("task")) + " reviewer" + DASH + piece)
+
+out = "".join("- [ ] " + item + "\n" for item in items)
+sys.stdout.buffer.write(out.encode("utf-8"))
+' "$dest/gate-receipt.json" "$dest/report.json"
+}
+
+# The receipt as the `### Checks` fence shows it: the document the engine wrote,
+# byte for byte, except that a `gateCheck.acks` array is dropped.
+#
+# The acks are the checklist now. A card that also dumped them inside the fence
+# would carry, beside a list a reader is meant to work, a second copy holding
+# the ones that are NOT on it — a `deferred:runtime` ack is the engine's own
+# re-run, and reading it beside seven boxes to tick is reading it as an eighth.
+# Nothing is lost: `### Evidence` links the receipt whole, on the branch.
+#
+# A receipt this cannot parse, or one with no acks — the shape every run before
+# this had — is printed byte for byte, so the fence of a card with no acks is
+# the fence it always was.
+receipt_fence() { # $1 = the receipt file
+  python3 -c '
+import json, sys
+
+raw = open(sys.argv[1], "rb").read()
+
+def verbatim():
+    sys.stdout.buffer.write(raw)
+    sys.exit(0)
+
+try:
+    doc = json.loads(raw.decode("utf-8"))
+except Exception:
+    verbatim()
+if not isinstance(doc, dict):
+    verbatim()
+check = doc.get("gateCheck")
+if not isinstance(check, dict) or not isinstance(check.get("acks"), list):
+    verbatim()
+doc["gateCheck"] = dict((k, v) for k, v in check.items() if k != "acks")
+sys.stdout.buffer.write((json.dumps(doc) + "\n").encode("utf-8"))
+' "$1" || cat "$1"
+}
+
 # The failing test's own block of a suite file, printed to stdout.
 #
 # A fixed-length tail is the wrong excerpt: a suite whose failing leg is early
@@ -1240,12 +1363,16 @@ fold_section() {
 }
 
 render_card() { # $1 = outcome; prints the body file's path
-  local body dest verdict receipt
+  local body dest verdict receipt residuals
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   body="$dest/pr-body.md"
   verdict="$(gate_verdict)"
   receipt="$dest/gate-receipt.json"
+  # Read before the block, so a reader that cannot answer takes down neither
+  # the card nor a `set -e` script. A run with no residuals gets NO section at
+  # all — no heading, no blank line — and its card is the card it always was.
+  residuals="$(residual_items || true)"
   {
     printf '## fleet %s — %s\n\n' "$RUN_ID" "$1"
     printf '| | |\n|---|---|\n'
@@ -1258,7 +1385,7 @@ render_card() { # $1 = outcome; prints the body file's path
     printf '### Checks\n\n'
     if [ -f "$receipt" ]; then
       printf '```json\n'
-      cat "$receipt"
+      receipt_fence "$receipt"
       printf '\n```\n\n'
     else
       printf 'No gate receipt was produced.\n\n'
@@ -1275,6 +1402,12 @@ render_card() { # $1 = outcome; prints the body file's path
     printf '%s\n\n' "$(ls "$dest" | sed 's/^/- /')"
     printf '### Plan\n\n'
     printf 'https://github.com/%s/blob/ultra/plan/%s/%s\n' "$TARGET_REPO" "$RUN_ID" "$PLAN_BLOB_PATH"
+    # What the run left for a person, under the plan it was given and above the
+    # issues it closes: a reader who is about to close #660 sees first what
+    # closing it does not finish.
+    if [ -n "$residuals" ]; then
+      printf '\n### Residuals\n\n%s\n\n' "$residuals"
+    fi
     # Last of all, so the self-merge closes what the plan named.
     plan_closes
   } >"$body"
@@ -1449,6 +1582,108 @@ publish() { # $1 = outcome (gate-green|parked)
   # reader of the log can tell a parked run's draft from a ready PR without the
   # page. A run that opens no PR reaches none of this and records none of it.
   append_event publish:pr "url=s:$PR_URL" "number=i:$(pr_number)" "draft=b:$draft"
+  # And the inverse of the `Closes #` lines this card ends with: what the run
+  # did NOT finish, filed as its own ticket. Here, so that one PR is one filing
+  # — `do_boot`'s re-entry branch skips this whole function when the page
+  # already names a PR — and before the merge, which is what closes the PR the
+  # follow-up links back to.
+  file_followup
+}
+
+# --- the follow-up issue -----------------------------------------------------
+#
+# The program labels the plan's tickets carry, one per line, each once, in the
+# order first seen across the tickets in the plan's order.
+#
+# The tickets are the ones `plan_closes` names and nothing else in the plan is
+# read: one `GET /repos/<owner>/<repo>/issues/<n>` each through the same edge
+# `publish` POSTs to. A read that answers non-2xx, does not parse, or names
+# nothing keeps nothing — the filing is worth more than its labels, so a ticket
+# the reader cannot see costs the issue a label and never the POST.
+followup_labels() {
+  local kept name n answer code
+  plan_closes | sed 's/^Closes #//' | {
+    kept=""
+    while read -r n; do
+      [ -n "$n" ] || continue
+      answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues/$n" \
+        -w '\n%{http_code}' 2>/dev/null || true)"
+      code="$(printf '%s' "$answer" | tail -n 1)"
+      case "$code" in 2[0-9][0-9]) : ;; *) continue ;; esac
+      # `json_field` answers the first match only and cannot walk an array, and
+      # `labels` is an array of `{ "name": … }` objects — so `python3` walks it,
+      # exactly as `residual_items` walks the receipt's acks. A name carrying
+      # whitespace is dropped rather than word-split into two.
+      for name in $(printf '%s' "$answer" | sed '$d' | python3 -c '
+import json, sys
+try:
+    doc = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+labels = doc.get("labels") if isinstance(doc, dict) else None
+for item in labels if isinstance(labels, list) else []:
+    name = item.get("name") if isinstance(item, dict) else item
+    if isinstance(name, str) and name and name.split() == [name]:
+        print(name)
+' 2>/dev/null); do
+        case " $kept " in *" $name "*) continue ;; esac
+        case " $PROGRAM_LABELS " in *" $name "*) kept="$kept $name" ;; esac
+      done
+    done
+    for name in $kept; do printf '%s\n' "$name"; done
+  }
+}
+
+# The inverse of the `**Closes:**` machinery: one issue per run listing what the
+# run did NOT finish, or no issue at all.
+#
+# The PR body already carries the same lines under `### Residuals`, but a PR is
+# closed by its merge and the checklist closes with it. So the items go out a
+# second time as a ticket of their own — `watch-item`, titled for the run, its
+# first line the PR that produced it — which is still open tomorrow.
+#
+# The sink is never a gate. A `fleet_curl` that does not complete, a non-2xx,
+# an answer with no `html_url`: each is one log line and `return 0`. What
+# becomes of this run is the merge's business, not the filing's.
+file_followup() {
+  local items count heading title labels name body payload answer code reply url
+  items="$(residual_items || true)"
+  # Nothing to hand on is no issue — and no REST call to make one with.
+  [ -n "$items" ] || return 0
+  count="$(printf '%s\n' "$items" | wc -l | tr -d ' ')"
+  heading="$(plan_title)"
+  [ -n "$heading" ] || heading="$RUN_ID"
+  title="fleet $RUN_ID residuals: $heading"
+  # `watch-item` first — the follow-up's own kind, the one label every one of
+  # these carries — then the programs its tickets are filed under, so the issue
+  # lands in the same reader's lane the work did.
+  labels="\"watch-item\""
+  for name in $(followup_labels); do
+    labels="$labels,\"$(json_escape "$name")\""
+  done
+  # The PR, a blank line, then the checklist byte for byte: a reader who opens
+  # this issue first can reach the run that filed it in one click.
+  body="$(printf '%s\n\n%s' "$PR_URL" "$items")"
+  payload="{\"title\":\"$(json_escape "$title")\",\"body\":\"$(json_escape "$body")\",\"labels\":[$labels]}"
+  answer="$(fleet_curl -sS -X POST "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues" \
+    -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  reply="$(printf '%s' "$answer" | sed '$d')"
+  case "$code" in
+    2[0-9][0-9]) : ;;
+    *) log "followup: POST /repos/$TARGET_REPO/issues answered ${code:-<no answer>}"; return 0 ;;
+  esac
+  url="$(printf '%s' "$reply" | json_field html_url)"
+  [ -n "$url" ] || {
+    log "followup: POST /repos/$TARGET_REPO/issues answered $code with no html_url"
+    return 0
+  }
+  log "followup: $url"
+  # The filing's own record, beside the PR's: the ticket and how many boxes it
+  # carries. No cell on the status page — the log line and this event are the
+  # follow-up's record.
+  append_event publish:followup "url=s:$url" "items=i:$count"
+  return 0
 }
 
 # A disposition that lands AFTER the PR was opened — a second attempt's, or the
