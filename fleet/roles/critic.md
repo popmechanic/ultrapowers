@@ -30,6 +30,10 @@ The INTEGRATED RUN EVIDENCE block, when present, is authoritative for every
 integration tree. A request for their re-execution is settled by that block —
 report what it shows; it is not a `deferredVerification` item, and `manual` is
 for human judgment (aesthetic, product-fit), not for a command the driver ran.
+When that evidence settles the presence of a deliverable and only the judgment
+is left, the `manual` item's `why` quotes the settling command verbatim, as the
+`$ <cmd>` line of the block gives it; a paraphrase is not a citation, and an
+item that carries one parks at the gate as it does today.
 
 The INTEGRATED CHECK EVIDENCE block is the same for the global constraints that
 carry a `Check:` command: the driver ran each one itself on the adopted

@@ -246,10 +246,12 @@ export const acceptanceWrap = (testCmd, runDir) =>
 
 // ── the two-move rule (SKILL.md step 5, made deterministic) ──────────────────
 // NEEDS_ACK approves iff EVERY ack is a deferredVerification item with reason
-// runtime or external (ack.type is "deferred:<reason>", gate_check.py:134).
-// Anything else — coverage acks, unknown types — leaves the gate receipt as
-// the terminal artifact. Pre-authorized by the #243 grilling (manual acks
-// pre-authorized, parks → 0) for exactly this closed list, nothing wider.
+// runtime or external (ack.type is "deferred:<reason>", gate_check.py:134) —
+// or a `deferred:manual` ack the driver's own executed evidence already
+// settles (#753, below). Anything else — coverage acks, deferred:plan-defect,
+// unknown types — leaves the gate receipt as the terminal artifact.
+// Pre-authorized by the #243 grilling (manual acks pre-authorized, parks → 0)
+// for exactly this closed list, widened by #753's one mechanical case.
 //
 // The acks live at `gateCheck.acks`: gate_check.py emits {verdict,checks,acks}
 // and ultra_gate.py embeds that whole object one level down under `gateCheck`
@@ -259,11 +261,43 @@ export const acceptanceWrap = (testCmd, runDir) =>
 export const acksOf = (gateReceipt) =>
   (gateReceipt && gateReceipt.gateCheck && gateReceipt.gateCheck.acks) || []
 
-export function ackDecision(gateReceipt) {
+// A `deferred:manual` ack is pre-authorized when the critic's `why` cites, in
+// the ack's frozen `detail` (`deliverable — why`, gate_check.py:132-140), a
+// command the driver itself re-ran on the adopted tree and that exited 0
+// (#753). `report.integratedRuns` is that execution record — `{ task, cmd,
+// exit, stdout }`, rendered to the critic as the `$ <cmd>` lines it quotes
+// from — so the citation test is a verbatim substring of an executed command.
+// A detail that also names a RED command is not pre-authorized however many
+// green ones it cites: the settled part of the item is the green evidence, and
+// a red run is the opposite of settling. Citing is the critic's act, verifying
+// is the driver's; a paraphrase is not a citation and parks, which is the safe
+// failure. `report` defaults to `{}` — with no report nothing is cited.
+export function ackDecision(gateReceipt, report = {}) {
   const acks = acksOf(gateReceipt)
-  const bad = acks.filter((a) => a.type !== 'deferred:runtime' && a.type !== 'deferred:external')
+  const runs = (report && Array.isArray(report.integratedRuns)) ? report.integratedRuns : []
+  const cmdsWithExit = (ok) => runs
+    .filter((r) => r && typeof r.cmd === 'string' && r.cmd !== '' && (ok ? r.exit === 0 : r.exit !== 0))
+    .map((r) => r.cmd)
+  const green = cmdsWithExit(true)
+  const red = cmdsWithExit(false)
+  const citesExecutedGreen = (a) => a.type === 'deferred:manual' &&
+    typeof a.detail === 'string' &&
+    green.some((cmd) => a.detail.includes(cmd)) &&
+    !red.some((cmd) => a.detail.includes(cmd))
+
+  const citing = acks.filter(citesExecutedGreen)
+  const bad = acks.filter((a) =>
+    a.type !== 'deferred:runtime' && a.type !== 'deferred:external' && !citesExecutedGreen(a))
   if (bad.length) {
     return { approve: false, reason: 'non-pre-authorized ack(s): ' + bad.map((a) => a.type).join(', ') }
+  }
+  if (citing.length) {
+    return {
+      approve: true,
+      reason: citing.length + ' deferred manual ack(s) citing green integrated Run: evidence — ' +
+        'pre-authorized (#753); ' + (acks.length - citing.length) +
+        ' deferred runtime/external ack(s) — pre-authorized (#243)',
+    }
   }
   return { approve: true, reason: acks.length + ' deferred runtime/external ack(s) — pre-authorized (#243)' }
 }
@@ -721,7 +755,10 @@ export async function runMain(parsed, deps = {}) {
   // is deliberate. #243 pre-authorizes "the sandbox could not execute this"; it
   // was never a licence to merge a named defect. The report is read from
   // resultPath — the gate receipt does not carry the field.
-  const critic = criticDecision(readJson(resultPath))
+  // One read, two readers: the critic brake reads `completenessFindings` and
+  // the ack decision reads `integratedRuns` off the same report object.
+  const resultReport = readJson(resultPath)
+  const critic = criticDecision(resultReport)
   eventLog.onEvent({ kind: 'driver:critic-decision', approve: critic.approve, reason: critic.reason })
   if (!critic.approve) {
     let gateVerdict = gate.code === 0 ? 'PASS' : 'NEEDS_ACK'
@@ -736,7 +773,7 @@ export async function runMain(parsed, deps = {}) {
 
   if (gate.code === 2) {
     const gr = readJson(path.join(runDir, 'gate-receipt.json'))
-    const decision = ackDecision(gr)
+    const decision = ackDecision(gr, resultReport)
     eventLog.onEvent({ kind: 'driver:ack-decision', approve: decision.approve, reason: decision.reason })
     if (!decision.approve) {
       return fail('needs-ack', decision.reason + ' — gate receipt is the terminal artifact')

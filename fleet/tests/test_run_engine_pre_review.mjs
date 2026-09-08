@@ -23,7 +23,8 @@
 //        green ⇒ review proceeds with `proofFixes: 1`. An all-green first pass
 //        dispatches no fix and reports `proofFixes: 0`. A red MINOR check
 //        never dispatches a fix; it pushes one judgment call.
-//   M3 — every review round re-executes both, and the reviewer prompt carries
+//   M3 — round 1 reads the driver's own pass and round 2 — which follows
+//        `fix:<id>:1` — re-executes both (#713 Task 1), and the reviewer prompt carries
 //        the CHECK EVIDENCE block directly after the RUN EVIDENCE block; a red
 //        non-minor check in a review round is a blocking issue exactly as a red
 //        Run: is; with no checks the block is absent.
@@ -321,11 +322,20 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
   assert.deepEqual(zero.map((e) => e.exit), [1, 0],
     'the check is executed once before the fix and once after it, both at iter 0: ' +
     JSON.stringify(zero))
+  // #713 Task 1: there is no third execution for the green pass to precede —
+  // round 1 reads the pass. So the green reading is the task's LAST
+  // `driver:check-run`, nothing of T1's is recorded at iter 1, and the proof
+  // that the pass preceded the dispatch is that `review:T1:1` was handed it.
   const evs = eventsOf(runDir)
-  const iSecondPass = evs.findIndex((e) => e.kind === 'driver:check-run' && e.task === 'T1' &&
-    e.cmd === 'test -e c.txt' && e.iter === 0 && e.exit === 0)
-  assert.ok(iSecondPass !== -1 && iSecondPass < evs.findIndex((e) => e.iter === 1 && e.task === 'T1'),
-    'the green second pass precedes the review round\'s own execution')
+  const t1Checks = evs.filter((e) => e.kind === 'driver:check-run' && e.task === 'T1' &&
+    e.cmd === 'test -e c.txt')
+  assert.deepEqual(t1Checks.map((e) => e.exit), [1, 0],
+    'the check is executed exactly twice, the green reading last: ' + JSON.stringify(t1Checks))
+  assert.equal(evs.some((e) => e.task === 'T1' && e.iter === 1), false,
+    'nothing of T1\'s is executed at iter 1: ' + JSON.stringify(evs.filter((e) => e.iter === 1)))
+  assert.ok(prompts['review:T1:1'].includes('\n\n$ test -e c.txt\nexit 0'),
+    'the review round reads the green second pass: ' +
+    JSON.stringify(prompts['review:T1:1'].slice(-400)))
 
   const row = report.tasks.find((r) => r.task === 'T1')
   assert.equal(row.status, 'done', 'the repaired task merges: ' + JSON.stringify(row))
@@ -466,11 +476,13 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
   assert.ok(String(minorCalls[0]).startsWith(WANT),
     'and it begins with that literal: ' + JSON.stringify(minorCalls[0]))
 
-  // [M3] the review round re-executes both, at its own iter.
-  assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 1).map(checkShape), [
-    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e c.txt', exit: 0, minor: false, iter: 1 },
-    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e m.txt', exit: 1, minor: true, iter: 1 },
-  ], 'each review round runs the checks again, carrying the round number')
+  // [M3] #713 Task 1: the green pass is not re-executed for round 1 — each
+  // check has exactly one event, at iter 0, and that is what the round reads.
+  assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.task === 'T1')
+    .map(checkShape), [
+    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e c.txt', exit: 0, minor: false, iter: 0 },
+    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e m.txt', exit: 1, minor: true, iter: 0 },
+  ], 'one execution of each check, on the driver\'s own pass, carrying its iter')
 
   // [M3] the reviewer prompt: RUN EVIDENCE, then the CHECK EVIDENCE block.
   const rp = prompts['review:T1:1']
@@ -497,11 +509,13 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
 }
 
 // ── leg (c): a check that goes red inside a review round is a blocking issue ──
-// The pre-review pass and the review round differ only in time, so the tree has
-// to change between them — and the only actor between them is a command the
-// driver itself runs. This Run: is a no-op the first time and deletes c.txt the
-// second, which is exactly the "green in the clone the implementer left, red
-// when the referee is about to read it" case the clause is about.
+// The pre-review pass and round 1 read the same tree, so the round that can
+// differ from the pass is round 2 — it follows `fix:T1:1` and executes afresh
+// (#713 Task 1). This Run: is a no-op on the pass and deletes c.txt on that
+// fresh execution, which is exactly the "green in the clone the implementer
+// left, red when the referee is about to read it" case the clause is about:
+// the round-1 referee asks for a fix, and the round-2 referee says PASS while
+// the driver's own check reads red.
 {
   const TOGGLE = "sh -c 'if [ -e seen.txt ]; then rm -f c.txt; else : > seen.txt; fi'"
   const repo = bareRepo(path.join(tmp, 'repo-c2'))
@@ -515,23 +529,41 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') { write(cwd, 'a.txt'); write(cwd, 'c.txt'); return doneImpl(cwd) }
     if (kind === 'fix') return doneImpl(cwd)
-    if (kind === 'review') return passReview()          // the referee says PASS anyway
+    // Round 1 asks for a fix; round 2's referee says PASS anyway.
+    if (kind === 'review') {
+      return opts.label === 'review:T1:1'
+        ? { verdict: 'FIX_REQUIRED',
+            issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
+        : passReview()
+    }
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr9',
                         extraArgs: { shallowLeg: false,
                                      constraintChecks: [{ cmd: 'test -e c.txt', minor: false }] } })
-  await run()
+  const report = await run()
   assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0).map((e) => e.exit),
     [0], 'sim precondition: the pre-review pass was green, so no fix:T1:0 ran')
   assert.ok(!calls.includes('fix:T1:0'), 'sim precondition: no pre-review fix: ' + calls.join(','))
-  assert.ok(calls.includes('fix:T1:1'),
-    'a check that exits non-zero in a review round drives the fix round exactly as a red ' +
-    'Run: does, whatever the reviewer returned: ' + calls.join(','))
-  assert.ok(prompts['fix:T1:1'].includes(checkFailLine('test -e c.txt', 1)),
-    'and the fix round is told which check failed, in the same words: ' +
-    JSON.stringify(prompts['fix:T1:1'].slice(-500)))
+  assert.deepEqual(calls.filter((l) => l !== 'integration'),
+    ['impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
+    'sim precondition: the reviewer\'s blocking issue bought the one fix round: ' + calls.join(','))
+  assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.task === 'T1')
+    .map((e) => [e.iter, e.exit]), [[0, 0], [2, 1]],
+    'the check is executed once on the pass and once after the fix round: ' +
+    JSON.stringify(ofKind(runDir, 'driver:check-run')))
+  const row = report.tasks.find((r) => r.task === 'T1')
+  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
+    'a check that exits non-zero in a review round blocks exactly as a red Run: does, ' +
+    'whatever the reviewer returned: ' + JSON.stringify(row))
+  assert.ok(String(row.notes).includes(checkFailLine('test -e c.txt', 1).slice(2)),
+    'and the row names which check failed, in the same words: ' + JSON.stringify(row.notes))
+  assert.ok(report.judgmentCalls.some((j) => String(j) ===
+    'task T1: Check: `test -e c.txt` exited 1 in review round 2 — blocking, whatever the ' +
+    'reviewer returned'),
+    'and the judgment call names the round it was read in: ' +
+    JSON.stringify(report.judgmentCalls))
 }
 
 // ── legs (c) + (d): no checks ⇒ no block anywhere, and an empty report key ────

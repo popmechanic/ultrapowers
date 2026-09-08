@@ -545,12 +545,13 @@ async function pinRun(engine, tasks) {
     'sim precondition: the candidate suite went red and was never adopted')
   assert.deepEqual(report.tasks.map((r) => r.status), ['done', 'done'],
     'sim precondition: both tasks passed their own review and carried proofRuns')
-  // Two per task: the driver's pre-review pass (`iter: 0`) and review round 1.
-  assert.equal(eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run').length, 4,
+  // One per task: the driver's pre-review pass (`iter: 0`), which review
+  // round 1 reads rather than re-executing (#713 Task 1).
+  assert.equal(eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run').length, 2,
     'sim precondition: the per-task runs still happened in the clones')
   assert.equal(eventsOf(runDir)
-    .filter((e) => e.kind === 'driver:proof-run' && e.iter === 1).length, 2,
-    'sim precondition: one per task in its review round')
+    .filter((e) => e.kind === 'driver:proof-run' && e.iter === 0).length, 2,
+    'sim precondition: one per task, on the driver\'s own pass')
 
   // [M4] no adopted tree, no integrated runs.
   assert.deepEqual(report.integratedRuns, [],
