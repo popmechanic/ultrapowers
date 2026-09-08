@@ -1,0 +1,98 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "df50f6ac88c53373036c69c9841b42210dbfa3b54d4d2fe83d2afcc743ac70f5",
+   "verdict": "pass",
+   "reason": "Each Machine clause is falsified by a named leg — M1/M2 by the tag rows (a)/(b) with the exact PLAN OK / grammar: plan-level Claim lines, M3 by the rewrapped body plus the single-line --gh log and the 2 claim quotes count, M4 by the missing-word body, the failing #7 and the empty elicited log, and M5 by the four Run: probes on the Above the first task: paragraph — and the Machine restatement stays in the operator sentence's register."
+  },
+  "2": {
+   "hash": "9a0c4d150471f0443c99546d795506d0892e1446f0965c356529b047bce40672",
+   "verdict": "pass",
+   "reason": "Every clause is pinned by a falsifying leg — M1 by the backticked-vs-elsewhere contrast, M2 by same-file/same-position controls per skip kind (publishings! isolating vocabulary from length), M3 by the nine-file and declared-Test: rows, M4 by the exact two-span line texts and the three-task row, M5 by the fixture runs with (q) checking content, tracking, extension and non-declaration of every named file — the only softness being (j)-(o)'s total-lines-<=-tasks bound, which (g) and (i) already close per task."
+  },
+  "3": {
+   "hash": "8ec5c9632d55e839fd9e35358978dab192e92931493ccb13a39f76732747acf9",
+   "verdict": "pass",
+   "reason": "Every Machine clause is pinned by a leg that names what fails — M1 by (a)/(b) (whole-word, first-line, per-task-per-Test order), M2 by (c)/(d)/(e) (full sha, distinct first-occurrence, sha-before-token), M3 by (f)'s empty-list rows for each silent case, M4 by (g)'s exit-0-with-PLAN-OK-first, M5 by (h)'s two Run: greps in order — and the operator sentence is only narrowed, not drifted, by the Machine's resolving-commit qualifier."
+  }
+ },
+ "tally": {
+  "dispatched": 8,
+  "rejected": 4,
+  "rounds": {
+   "1": {
+    "1": "fail: M3's whitespace-folded match never falsified (verbatim body only) and (c) counted lines containing issue view 1, not the exact argv",
+    "2": "fail: operator clause (a) 'backticked in a Machine clause' had no negative — an unbackticked or elsewhere-backticked literal was never shown silent",
+    "3": "fail: M5's second Run pinned only co-occurrence of ULTRA_BASE and Run:, never the 'never reads … or freezes a commit sha' sentence; (f)'s 'the same two tokens' ambiguous"
+   },
+   "2": {
+    "1": "fail: M5 names (elicited) or (quoted from #NNN) but leg (e)'s Runs grepped only the quoted form",
+    "2": "pass",
+    "3": "fail: M1's first-line and whole-word rows only mentioned — one token per probe, so last-occurrence or substring renders pass"
+   },
+   "3": {
+    "1": "pass",
+    "3": "pass"
+   },
+   "4": {
+    "2": "pass (cap-free reshape: one line per task, no floor, no file-count threshold, no per-plan bar — operator decision 2026-09-07)"
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "a5348da3fbd9d09744526d014322acc89a41ea7a3316f3d7ec24f69fa596bec8",
+   "verdict": "fail"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "abf3fa02f075700f45c4aacd451933889ac52c1e351164426be6b42ea0371637",
+   "verdict": "fail"
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "hash": "3821857ac741c7ec6e0a4711b1d4502058d7fe2312ff8782be932392ff6f60f1",
+   "verdict": "fail"
+  },
+  {
+   "round": 2,
+   "task": "1",
+   "hash": "883d04e43360e9dc0a421151455e35451733e69f70bcbb6dcc405b0a61be0ce1",
+   "verdict": "fail"
+  },
+  {
+   "round": 2,
+   "task": "2",
+   "hash": "1749b161b7cdc9683da35c0c6a31e8c25e183359797fa45bf53872f94d25854c",
+   "verdict": "pass"
+  },
+  {
+   "round": 3,
+   "task": "1",
+   "hash": "df50f6ac88c53373036c69c9841b42210dbfa3b54d4d2fe83d2afcc743ac70f5",
+   "verdict": "pass"
+  },
+  {
+   "round": 2,
+   "task": "3",
+   "hash": "8af2216f3a03deef1219ffb3b88d82d397f178b2dc431992257e9687b0895252",
+   "verdict": "fail"
+  },
+  {
+   "round": 3,
+   "task": "3",
+   "hash": "8ec5c9632d55e839fd9e35358978dab192e92931493ccb13a39f76732747acf9",
+   "verdict": "pass"
+  },
+  {
+   "round": 4,
+   "task": "2",
+   "hash": "9a0c4d150471f0443c99546d795506d0892e1446f0965c356529b047bce40672",
+   "verdict": "pass"
+  }
+ ]
+}
