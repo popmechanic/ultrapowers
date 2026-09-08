@@ -19,9 +19,10 @@ derives it from a contract and an exam, against real code the plan never saw.
 
 Above the first task: `**Grammar:** claims-v1` (absent, the compiler parses the legacy
 grammar — that is the rollback path, not a choice), one `**Claim:**` line — the operator's
-own do:/see: sentence about what they will see after the run, elicited and closed
-`(elicited)` — then `**Goal:**`, `**Tech Stack:**`, the spec path, `## Global Constraints`,
-and one `**Acceptance:**` line.
+own do:/see: sentence about what they will see after the run, closed `(elicited)` when they
+said it to you and `(quoted from #NNN)` when an issue already carries that sentence
+verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
+`## Global Constraints`, and one `**Acceptance:**` line.
 
 Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
 tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
@@ -113,6 +114,11 @@ derivation.
   written into the exam, or a full **40-hex sha** fetched with
   `git fetch --depth=1 origin <sha>`, because `actions/checkout` leaves the clone at
   depth 1 and a short or unfetched sha is not in it.
+  That frozen literal is the *only* lawful sha in an exam: a committed exam
+  **never reads ULTRA_BASE** and never **freezes a commit sha** of this repository, because
+  a BASE comparison is a `Run:` — the driver hands that command the sha, and a depth-1
+  clone holds no other commit to compare against. A `Test:` file that does either draws
+  `base-sha-in-suite`.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
   is a refusal; an undecidable staleness test is inert prose.
@@ -234,7 +240,7 @@ rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose
 `default-unpinned`, `universal-as-count-floor`, `duration-without-clock`,
 `suite-total-pin`, `directory-absence-pin`, `pinned-elsewhere`, `check-cost`,
 `prose-check`, `wide-files`, `wide-contract`, `threshold-one-sided`,
-`disjunct-without-leg`. Read each one
+`disjunct-without-leg`, `base-sha-in-suite`. Read each one
 and repair the slot it points at *before* a reader is dispatched at that task: a reader
 spending its one question on a species the compiler already named is a reader wasted.
 
@@ -363,10 +369,10 @@ task-by-task from contract plus proof.
 ## Self-review
 
 - Every task carries all six slots, in order, none empty, and no checkbox steps.
-- The plan carries one `**Claim:**` above the first task, elicited. Every task Claim is
-  either the operator's words with a provenance tag or `(derived)` under the
-  plan-level Claim, paired with a machine restatement at the same layer, and its gate
-  verdict is recorded and fresh.
+- The plan carries one `**Claim:**` above the first task, elicited or quoted from an
+  issue. Every task Claim is either the operator's words with a provenance tag or
+  `(derived)` under the plan-level Claim, paired with a machine restatement at the same
+  layer, and its gate verdict is recorded and fresh.
 - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
   task's own writes; every fence sits in Proof.
 - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
