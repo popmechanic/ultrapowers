@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -119,7 +119,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The pair sweep's commands and their order are BASE's: the status read, then the open-PR read,\n  then the two tag POSTs, the `ls-remote --tags` verify and the two branch DELETEs; this run\n  changes what one read's answer means and adds no read and no write.\n- The status read's own lines are unchanged: an unreadable status page still prints\n  `run N: live (no status page) \u2014 skipped`, a live state still prints `run N: live (<state>) \u2014\n  skipped`, and an open pull request still prints `run N: live (PR #<number> open) \u2014 skipped`.\n- HARD: no committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a literal\n  40-hex commit sha \u2014 a fixture gets its object names from the file's `sha(seed)` helper, as\n  every existing fixture in `fleet/tests/test_retire.mjs` does.\n- Every assertion that stands at BASE in `fleet/tests/test_retire.mjs` still holds as written;\n  the new legs sit in a fresh region under a comment naming this task.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The pair sweep's commands and their order are BASE's: the status read, then the open-PR read,\n  then the two tag POSTs, the `ls-remote --tags` verify and the two branch DELETEs; this run\n  changes what one read's answer means and adds no read and no write.\n- The status read's own lines are unchanged: an unreadable status page still prints\n  `run N: live (no status page) — skipped`, a live state still prints `run N: live (<state>) —\n  skipped`, and an open pull request still prints `run N: live (PR #<number> open) — skipped`.\n- HARD: no committed sim compares the tree to BASE, reads `ULTRA_BASE`, or embeds a literal\n  40-hex commit sha — a fixture gets its object names from the file's `sha(seed)` helper, as\n  every existing fixture in `fleet/tests/test_retire.mjs` does.\n- Every assertion that stands at BASE in `fleet/tests/test_retire.mjs` still holds as written;\n  the new legs sit in a fresh region under a comment naming this task.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/janitor.mjs fleet/lobby.mjs fleet/tests/_lobby_helpers.mjs",
@@ -134,11 +134,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-47/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-47/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-47/acceptance.log"
 }
