@@ -1,0 +1,266 @@
+{
+  "ok": true,
+  "stamp": "run-53",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-53"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The failing test's own block, as one function",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/failing-block.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`failingBlock(text: string) -> string`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The engine quotes the block wherever it quoted a tail",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_critic_inputs.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`failingBlock(text: string) -> string`"
+          ],
+          "produces": [
+            "nothing a sibling consumes \u2014 the excerpt is read by agents and the operator, never by a task"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The pull request quotes the fold suite's failing block",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing a sibling consumes \u2014 the excerpt is read by the operator on the pull request"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "2",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "3"
+      ],
+      [
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The failing test's own block, as one function",
+          "files": [
+            "fleet/failing-block.mjs",
+            "fleet/tests/test_failing_block.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`failingBlock(text: string) -> string`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/failing-block.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_failing_block.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_failing_block.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_failing_block.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The pull request quotes the fold suite's failing block",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing a sibling consumes \u2014 the excerpt is read by the operator on the pull request"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_merge.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+            "bash -n fleet/sandbox-boot.sh"
+          ]
+        }
+      ],
+      [
+        {
+          "id": "2",
+          "title": "The engine quotes the block wherever it quoted a tail",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_critic_inputs.mjs",
+            "fleet/tests/test_run_engine_red_suite_record.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`failingBlock(text: string) -> string`"
+            ],
+            "produces": [
+              "nothing a sibling consumes \u2014 the excerpt is read by agents and the operator, never by a task"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_critic_inputs.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_red_suite_record.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_red_suite_record.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_red_suite_record.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_critic_inputs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_baseline.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Failings",
+      "The engine quotes the block wherever it quoted a tail"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0); the first Check is its pin. The gate receipt's\n  own tail of the acceptance run is the frozen scripts' and is not what this plan changes.\n- The whole output stays on the record where it is: `<run dir>/acceptance.log` is still the\n  gate suite's full output (#739) and `publish-fold/suite-<attempt>.txt` is still the fold\n  suite's full stdout+stderr as `publish-fold.mjs` writes it \u2014 the second Check pins both\n  writers. What changes is the excerpt a reader is shown, never the record.\n- A green suite's record keeps its BASE shape and text: `report.tests`, `report.baseline`\n  (`null` on an all-green run; `{ passed, output }` otherwise), `waveMerges[].suite`, and the\n  green branch of `suiteLine` are as at BASE.\n- No excerpt of a red suite is a fixed-length tail or head: no `.slice(-N)`, `tail(\u2026, N)`,\n  `tail -n`, `tail -c` or `head` is applied to a red suite's output on its way into a judgment\n  call, a brief, a wave detail or the pull-request body.\n- `fleet/sandbox-boot.sh` invokes `node` only as argv to `systemd-run`, as at BASE \u2014 the boot\n  sims stub `node` and record a direct call as a `node DIRECT` finding.\n- The run record stays data: no new event kind, no new report field; the existing fields keep\n  their names and types.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped with what replaces them.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/publish-fold.mjs fleet/run-main.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-53/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-53/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-53/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-53/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
