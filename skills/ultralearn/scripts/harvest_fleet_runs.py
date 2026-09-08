@@ -524,13 +524,28 @@ def _confine_denials(run_dir, workers):
     carries nothing to count". So the empty list is reserved for a run that has
     at least one source and no denials in it, and a run with no source at all
     answers `null`.
+
+    Each denial is counted once. `fleet/run-worker.mjs`'s
+    `recordEnvelopeDenials` appends a `source: "envelope"` line to that same
+    file for every `permission_denials` entry, so a run directory holding both
+    the envelopes and the file describes each envelope denial twice — once per
+    reader. When this run's envelopes were read directly (the glob matched at
+    all, whatever the envelopes held), the file's `envelope` rows are the
+    duplicate and are dropped. When no envelope file exists they are the only
+    record of those denials — a worker that died before the harvester ran — and
+    are kept, as is every file line with some other `source` or none at all.
     """
     run_dir = Path(run_dir)
     by_session = _worker_index(workers)
+    has_envelopes = any(run_dir.glob("workers/*/envelope.json"))
     envelopes = _envelope_denials(run_dir, by_session)
     transcripts = _transcript_denials(run_dir, by_session)
     file_lines = _read_jsonl(run_dir / "confine-denials.jsonl")
-    has_source = (any(run_dir.glob("workers/*/envelope.json"))
+    if has_envelopes:
+        file_lines = [line for line in file_lines
+                      if not (isinstance(line, dict)
+                              and line.get("source") == "envelope")]
+    has_source = (has_envelopes
                   or any(run_dir.glob("transcripts/*.jsonl"))
                   or (run_dir / "confine-denials.jsonl").exists())
     if not has_source:

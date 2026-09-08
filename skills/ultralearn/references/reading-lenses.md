@@ -25,12 +25,23 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    lines, and a reviewer or critic denial could not appear in it at all. If you
    ever read a run and see no reviewer denials, check the `source` mix before
    concluding there were none — that zero was wrong for five consecutive runs.
-   **THE SOURCES OVERLAP: count `envelope` lines when they are present, never
-   the total.** A hook denial appears twice — once as the hook wrote it, once
-   inside the worker's own envelope — so a run-32-shaped run yields 23 lines
-   for 20 denials. The `envelope` set is the complete one; the `hook` lines are
-   a subset, kept because they carry the hook's own reason text and survive a
-   worker that dies before writing an envelope.
+   **THE SOURCES OVERLAP, and the harvester reconciles them: each denial is
+   counted once.** It drops the file's `envelope` rows when it read this run's
+   envelopes itself — `fleet/run-worker.mjs` writes one such row per
+   `permission_denials` entry, so the two readers describe the same denial
+   twice — and it keeps the `hook` lines, which carry the hook's own reason
+   text and survive a worker that dies before writing an envelope. That
+   reconciliation covers the file's duplicate rows and nothing else: a `hook`
+   line and a `transcript` line each still describe a denial the envelope
+   already reported — the hook denies, and the worker's own
+   `permission_denials` then lists that same denial — so on a run carrying
+   more than one source the length of `bundle.confineDenials` is still NOT
+   the denial count. Read the `source` mix before you count: on a local run
+   the `envelope`-sourced lines are the census, and the `hook` and
+   `transcript` lines beside them are second readings of denials already in
+   it, worth reading for their own reason text. When a run
+   carries no envelope at all, the file's `envelope` rows are the only record
+   of those denials and stay.
    `bundle.confineDenials` is `null` when the record carried no source at all —
    unknown, NOT zero. `[]` is the other fact: a source was there and it counted
    none. Never read the two as the same number.
