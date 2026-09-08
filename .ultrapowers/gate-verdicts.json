@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1": {"hash": "37c32255f6853069b6f59c55f65a8fcbd60f6d1fc3bc299238094d954aa08324", "verdict": "pass", "reason": "Every clause has a leg at the launcher layer: stale/absent/two-pin refusals name path+pinned+real, the slice pin is computed against the base tree with cleanup asserted, refusal precedes any ssh/push/ultra ref, and the no-pin, non-Check/Run-line, 39- and 41-hex negatives launch."},
+    "2": {"hash": "997d09e7d1eab24a16d857f1dfe58e1c9ce9cdd4810b281f428dc12faf75a9b4", "verdict": "pass", "reason": "Push counts, ls-remote ordering after the refused push, the BASE-refusal negatives with and without --run, and the run-2 identity threaded through comment/VM/branch/stdin/origin ref observe the mechanism; the M5 grep is satisfiable."},
+    "3": {"hash": "609f6674b03985c06c1813a93908fa837870a753fae007c03446a07593bdac05", "verdict": "pass", "reason": "Seven detectable and five undetectable trees, the base-tree-not-working-tree rows, the no-ssh/no-push/no-ultra-ref conditions and the five sim sentinels cover M1-M4, and every literal computes."},
+    "4": {"hash": "f7c9ee58f4d434010c827cc49df96818e1bf835da7b1f4c7514a3fe0b4b56ab3", "verdict": "pass", "reason": "The first-offender literals compute under the word rule, the green templates are all in-class, and the refusal is pinned at both the --check layer (exit 2, exact messages, byte-identity kept) and the launch layer."},
+    "5": {"hash": "5c0e9dae56f31e28538fa29384c1bd9236aedf97e2ab45c667961e943abf76a0", "verdict": "pass", "reason": "Four scoped greps plus two BASE negative controls establish the section newly states the re-drive shape in the pinned span, and test_docs_agree_with_code.py at 23 collected keeps the doc pinned to the code."}
+  },
+  "tally": {"dispatched": 8, "rejected": 2, "rounds": {"1": {"dispatched": 5, "rejected": 2}, "2": {"dispatched": 3, "rejected": 0}}},
+  "history": [
+    {"round": 1, "task": "2", "verdict": "fail", "reason": "leg (c) demanded no second ls-remote after a hook-declined push while M1 required a re-read on every refused push; M3 and leg (c) rewritten so the re-read is made and not acted on"},
+    {"round": 1, "task": "4", "verdict": "fail", "reason": "the sentence says any non-command characters on the line; M2 checked only the first word; rewritten to a word-by-word class over the whole value with ;, |, $( and 2>&1 rows"}
+  ]
+}
