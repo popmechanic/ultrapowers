@@ -21,7 +21,7 @@
 // homes under one temp root and `runTests` removes it when the process is done.
 
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -624,10 +624,12 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true 
   return { home, bin }
 }
 
-export function boot(ctx, args = ['boot'], env = {}) {
-  return spawnSync('bash', [SCRIPT, ...args], {
-    encoding: 'utf8',
-    env: {
+/**
+ * The environment a boot runs under, `env` last so a case can override any of
+ * it. One object, read by both the blocking `boot` and the promised
+ * `bootAsync`, so the two start the script exactly alike.
+ */
+const bootEnv = (ctx, env) => ({
       PATH: process.env.PATH,
       HOME: ctx.home,
       FLEET_HOME: ctx.home,
@@ -654,8 +656,46 @@ export function boot(ctx, args = ['boot'], env = {}) {
       STUB_FOLD_LINE: FOLD_STUB_LINE,
       STUB_FOLD_SUITE: FOLD_SUITE_TEXT,
       ...env,
-    },
+})
+
+export function boot(ctx, args = ['boot'], env = {}) {
+  return spawnSync('bash', [SCRIPT, ...args], {
+    encoding: 'utf8',
+    env: bootEnv(ctx, env),
     timeout: 60000,
+  })
+}
+
+/**
+ * `boot` as a promise: the same command, the same environment and a result of
+ * the same shape (`status`, `signal`, `stdout`, `stderr`), without holding the
+ * process while the script runs.
+ *
+ * Every scenario of a boot exam is independent of every other — its own
+ * `home`, its own stub counters, its own logs — so a sim with many of them can
+ * start them all and wait once. That is the difference between forty-seven
+ * boots one after another and forty-seven at once, and it is the only reason
+ * this exists: `boot` above is unchanged and still the way a synchronous case
+ * runs the script.
+ *
+ * The promise resolves on ANY exit — a non-zero status is the leg's to assert
+ * on, exactly as `boot`'s is — and rejects only when the child could not be
+ * started at all.
+ */
+export function bootAsync(ctx, args = ['boot'], env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('bash', [SCRIPT, ...args], {
+      env: bootEnv(ctx, env),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.on('error', reject)
+    child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }))
   })
 }
 
@@ -871,19 +911,39 @@ export const green = () => {
   return GREEN
 }
 
+// The same one green run, for a sim whose legs run their boots side by side.
+// What is memoised is the PROMISE and not its result: a dozen legs asking for
+// the green context while the boot is still in flight all join the one boot,
+// where a memo of the result would have started a dozen.
+let GREEN_ASYNC = null
+export const greenAsync = () => {
+  if (!GREEN_ASYNC) {
+    const ctx = makeHome()
+    GREEN_ASYNC = bootAsync(ctx).then((r) => {
+      assert.equal(r.status, 0, r.stdout + r.stderr)
+      return ctx
+    })
+  }
+  return GREEN_ASYNC
+}
+
 // ── the runner ───────────────────────────────────────────────────────────────
 
 /**
  * Run `tests` — `[name, fn]` pairs — in order, printing one `ok (<ms> ms) —
  * <name>` line per passing case. Removes the temp root, then prints
  * `ALL TESTS PASSED`, or the failure count and `FAILED` with exit 1.
+ *
+ * A case may return a promise, which is awaited before the next one starts; a
+ * case that returns nothing runs to completion inside its own turn, exactly as
+ * it always has. The registration order is the running order either way.
  */
-export function runTests(tests) {
+export async function runTests(tests) {
   let failures = 0
   for (const [name, fn] of tests) {
     const started = Date.now()
     try {
-      fn()
+      await fn()
       console.log(`ok (${Date.now() - started} ms) — ${name}`)
     } catch (error) {
       failures += 1

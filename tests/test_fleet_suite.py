@@ -2,19 +2,24 @@ import fcntl
 import glob, os, subprocess, pytest
 
 FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
-# Measured wall at 0.3.18: 106 s, 83.5 s, 40.9 s, 27.0 s, 9.8 s, 8.1 s, 6.4 s.
-# Under `--dist load` a worker that picks up a 106 s sim last holds the whole
-# suite open, so the seven longest go out first, longest first; the rest follow
-# alphabetically. A name that leaves fleet/tests/ simply drops out of the list.
-# test_sandbox_boot_merge.mjs leads it because leg (j) re-runs seven sibling
-# sims inside itself: its wall is theirs plus its own, so it is the longest sim
-# there is and it grows whenever any of the seven does — every leg added to a
-# sibling lands on it twice, which is also why `timeout` below reads
-# MJS_TIMEOUT rather than a literal.
-SLOW_FIRST = ('test_sandbox_boot_merge.mjs', 'test_run_engine_examiner.mjs',
-              'test_sandbox_boot.mjs',
-              'test_exam_edited_patches.mjs', 'test_run_engine_integrated_runs.mjs',
-              'test_run_engine_proof_runs.mjs', 'test_deadline_slack.mjs')
+# Measured wall at 0.3.19 under `-n 6`: 40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s,
+# 12.6 s, 10.6 s.
+# Under `--dist load` a worker that picks up a 40 s sim last holds the whole
+# suite open, so the seven longest go out first; the rest follow alphabetically.
+# A name that leaves fleet/tests/ simply drops out of the list.
+# test_sandbox_boot_selfmerge.mjs leads it as the longest sim that boots
+# fleet/sandbox-boot.sh — the pole test_sandbox_boot_merge.mjs used to hide.
+# The merge sim ran it and six other boot siblings inside itself and no longer
+# does, so the wall that used to be charged to the merge sim is this one's now,
+# out where the bridge can dispatch it first. test_run_engine_proof_runs.mjs is
+# longer still and follows it: the head of this list goes out in one dispatch
+# round, so the order WITHIN it is not what keeps a worker from stranding —
+# membership is. `timeout` below reads MJS_TIMEOUT rather than a literal so the
+# cap and this list keep being read together.
+SLOW_FIRST = ('test_sandbox_boot_selfmerge.mjs', 'test_run_engine_proof_runs.mjs',
+              'test_sandbox_boot.mjs', 'test_sandbox_boot_merge.mjs',
+              'test_sandbox_boot_edges.mjs', 'test_run_engine_exam_evidence.mjs',
+              'test_publish_fold.mjs')
 
 
 def _slowest_first(paths):
@@ -45,11 +50,14 @@ def _ensure_node_modules():
 
 # The cap is per sim, and it is a hang detector, not a budget: a sim that has
 # not spoken in this long is wedged, not slow. 120 s was a fit for a fleet whose
-# longest sim was 83.5 s, and it stopped being one when the nesting above made
-# `test_sandbox_boot_merge.mjs` the sum of eight sims — ~130 s of wall on an idle
-# four-core box, and every core busy with a peer worker under `-n auto` puts it
-# near 150 s. 300 s keeps roughly the margin over the longest pole that 120 s
-# had over 83.5 s.
+# longest sim was 83.5 s, and it stopped being one when the merge sim's nesting
+# put ~130 s of wall on one name on an idle four-core box. That nesting is gone:
+# the longest pole among the boot sims is test_sandbox_boot_selfmerge.mjs at
+# ~33 s here, and test_run_engine_proof_runs.mjs at ~41 s is the longest of any
+# sim. The cap stays 300 s because it is sized for the slowest box the suite
+# runs on rather than this one — a four-vCPU sandbox with every core busy under
+# `-n auto` takes several times these walls — and because a hang detector is
+# worth nothing if it fires on a slow box instead of a wedged sim.
 MJS_TIMEOUT = 300
 
 
@@ -57,10 +65,10 @@ MJS_TIMEOUT = 300
 def test_fleet_mjs(path):
     _ensure_node_modules()
     # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
-    # contention, and that sim is now test_sandbox_boot_merge.mjs, which spends
-    # most of its own wall re-running seven siblings one after another. A wall
-    # only a little above that sim's honest runtime reports a slow box as a
-    # broken suite; this one is a deadlock catcher, not a budget.
+    # contention on the slowest box the suite runs on, not on the box that
+    # measured the numbers above. A wall only a little over an honest runtime
+    # reports a slow box as a broken suite; this one is a deadlock catcher,
+    # not a budget.
     r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ALL TESTS PASSED" in r.stdout
