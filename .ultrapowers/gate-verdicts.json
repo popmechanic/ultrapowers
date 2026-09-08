@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "7aaac851923ecd5f412aa6cfa8b3660c3d75fda3a973b43613b2572af655d9ec",
+      "verdict": "pass",
+      "reason": "The engine sim pins every dispatched label, row field, deferredVerification item, judgmentCalls string and the frozen gate's BLOCKED/ack output at the driver layer the sentence lives on, and every literal (the /^plan-defect:[\\s\\S]*\\([a-z]\\)/ match on a leg-labelled concern vs. the paren-free M5 concern, the '; '-joined single-concern notes, the one-row report-format greps) is jointly satisfiable under the clauses' own rules."
+    },
+    "2": {
+      "hash": "4ac8f8ad004edfadcabd69bce2b345529a3c94972c04c723a54378e919d0808f",
+      "verdict": "pass",
+      "reason": "The legs stub the referee and assert the diff block's presence, its +/- content lines, the absent-path all-+ case, and the resulting rows for the accept and block paths, so a passing exam makes the sentence true at the prompt/record layer; the only unasserted literals (M1's 'directly after' placement and the --- header) are ordinary unified-diff facts and every pinned literal, including M2's no-minus-line condition, is satisfiable under the test's own fixture (a peer file with a trailing newline)."
+    },
+    "3": {
+      "hash": "85b1b0c6e85527686820d6213ce00d159fdc614ef410b28860e5a71b6ea67224",
+      "verdict": "pass",
+      "reason": "Within the sed-bounded item 8, the ordered grep pins establish M1-M3 verbatim (parentheses literal in basic grep, tr joins wrapped lines), the four suites cover M4's shout walk and rule-6/evidence pins, and the added prose introduces no NEVER/ALWAYS/MUST, so every literal is satisfiable and a passing exam makes the sentence true at the rule-text layer."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 0,
+    "rounds": 1,
+    "note": "compile_plan.py --check ran first and its advisories were repaired (leg-named-in-prose x2, enumerated M7, negation/universal legs for M8/M4/M3, Produces symbol leaks, a path-prefix false positive on tasks[].actor) before any reader was dispatched; readers were foreground general-purpose agents fed only the extractor output (#789)."
+  }
+}
