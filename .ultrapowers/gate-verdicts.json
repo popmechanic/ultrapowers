@@ -1,0 +1,94 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "06383baea1cc4b3114d2419abd2a5d6fe418c23444c800d6533fa0592dc56c0b",
+   "verdict": "pass",
+   "reason": "Every operator clause has a falsifying leg at the same layer: the argv table with null extensions, the single retry with the parser message in the brief and the suite only after a parsing candidate, the per-joined-path check with a stated checks-only-the-first-path failure and replay-not-redispatch, cannot fold / <path> does not parse in row and event with no bash -lc and the branch on the candidate, and the four contract literals."
+  },
+  "2": {
+   "hash": "4f9742af0f6292f278b968193f170eb751b492171e34c871059551fa137d6e18",
+   "verdict": "pass",
+   "reason": "Every Machine clause has a leg a wrong implementation of exactly that clause would fail: order via (i), the Stale-if bound via the ghost.mjs decoy, no-Proof via (g), skipped via (f), first-red-stops via (c), once-per-pass and every joined path via (j), retry-once / second-red / no-resolver / no-suite via (c)(d)(e) with the event and branch pinned, and both CONTRACT literals via (h)."
+  },
+  "3": {
+   "hash": "2ee3cb431b21ba87638a3480ed76c16b92939a2658545ab2fb0a4d6bbb8e84c0",
+   "verdict": "pass",
+   "reason": "Each Machine clause has a leg a wrong implementation fails: (a)+(b) pin M1 byte for byte with a named falsifier (the plan compiled without its record collapses to a no-plan line) plus the Proof-slot and exclusion checks, (c) pins M2's no-throw no-plan line for a claims-v1 tag lacking verdicts, (d) pins M3's legacy and BASE-fixture bytes, (e)'s scoped grep pins M4's bullet; the quantifier is tested by inclusion and exclusion at the contendingBlock layer the sentence lives at."
+  }
+ },
+ "tally": {
+  "dispatched": 8,
+  "rejected": 3,
+  "rounds": {
+   "1": {
+    "1": "fail: M1 'every joined path' and M2's replay never exercised with a second joined path — a folder checking only the first path passes",
+    "2": "fail: M2 'after the parse check' never falsified (no leg orders a parse call before an exam call); the Stale-if boundary only mentioned",
+    "3": "pass"
+   },
+   "2": {
+    "1": "pass",
+    "2": "pass"
+   },
+   "3": {
+    "2": "fail: every fixture joins exactly one path — a folder examining only the first joined path, or de-duplicating exams wrongly across paths, passes M2 unfalsified"
+   },
+   "4": {
+    "2": "pass"
+   },
+   "5": {
+    "3": "pass"
+   }
+  },
+  "note": "Round 1's task 3 (#754 move 2) was dropped by operator decision 2026-09-07; its round-1 pass stays in history under the old hash. Round 5 (2026-09-08): the operator added #757 as the new Task 3; one reader, pass. Tasks 1 and 2 kept their hashes through the round-5 edits (header, rationale, Task 2 Context only), so their round-2/round-4 verdicts stand."
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "hash": "9edb5fe81848a34c3ba3321a85573b2b318ba61889305a2085d6dfd0b74d1aa4",
+   "verdict": "fail"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "hash": "8270de0b38e1f38cbee865437af73cd88a427df60390647af48b6b6eb4c4af6f",
+   "verdict": "fail"
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "hash": "4b575e81ff4dde657f4aac1c3b1718866baa8fa768c2784e6ffd15bab0d10a5f",
+   "verdict": "pass"
+  },
+  {
+   "round": 2,
+   "task": "1",
+   "hash": "06383baea1cc4b3114d2419abd2a5d6fe418c23444c800d6533fa0592dc56c0b",
+   "verdict": "pass"
+  },
+  {
+   "round": 2,
+   "task": "2",
+   "hash": "ca2146aa4ccfd36ff0fde4c683130ba30aeefd635c086a08415dd028100ff9d5",
+   "verdict": "pass"
+  },
+  {
+   "round": 3,
+   "task": "2",
+   "hash": "7199219578917b9c55dae301e410760aeb48fe5100f9648040b7804e5003f604",
+   "verdict": "fail"
+  },
+  {
+   "round": 4,
+   "task": "2",
+   "hash": "4f9742af0f6292f278b968193f170eb751b492171e34c871059551fa137d6e18",
+   "verdict": "pass"
+  },
+  {
+   "round": 5,
+   "task": "3",
+   "hash": "2ee3cb431b21ba87638a3480ed76c16b92939a2658545ab2fb0a4d6bbb8e84c0",
+   "verdict": "pass"
+  }
+ ]
+}
