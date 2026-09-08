@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "060967eb0b48353c30cf45c97ffee9e93435e1ba1260a5296f485227dc5968f0",
+      "verdict": "pass",
+      "reason": "Each Machine clause is checked exactly as it defines itself — M1's contents/.ultrapowers/runs tokens must all end in the tag and evidence-run- is barred from every fenced or command-shaped line of SKILL.md and from all of first-run.md, M2's period-delimited sentences naming the branch must carry in flight with §Client positively naming both the qualified branch and the tag in prose, and M3 is the pytest exit — with BASE counts stated for each falsifier, so no read recipe at the branch, main, a sha, or no ref, and no unqualified branch sentence, can survive all ten legs."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 3,
+    "rounds": {
+      "1": "1 dispatched, 1 fail (task 1, hash 1336354e…) — leg (a) only forbade evidence-run- on recipe lines; a recipe at ?ref=main, a sha, or no ref passed. Revised: per-line positive pin on the tag.",
+      "2": "1 dispatched, 1 fail (task 1, hash e166673b…) — a line carrying two refs (branch then tag) passed the per-line pin. Revised: each contents/.ultrapowers/runs path is one space-delimited token that must end in the tag; token count equals tagged-token count.",
+      "3": "1 dispatched, 1 fail (task 1, hash c4ac6349…) — a recipe spelled without the literal path (shell variable, raw.githubusercontent URL, git show <branch>:<path>) escaped the token leg. Revised: new leg (c) — evidence-run- on no fenced line and no line carrying gh api, curl, git , ?ref= or githubusercontent; legs relabelled to single letters (the compiler counts only those).",
+      "4": "1 dispatched, 1 pass (task 1, hash 060967eb…)"
+    },
+    "history": [
+      { "round": 1, "task": "1", "hash": "1336354e8103539ef0a9134d79d16547c4a6051c5675d0ae87b6d1ad47fed4f1", "verdict": "fail", "reason": "M1's 'every line that reads status.json … names ?ref=ultra/evidence/run-<N>' is never checked per line — a recipe added to first-run.md (or a second one in SKILL.md) that reads contents/.ultrapowers/runs/<N>/status.json with ?ref=main, a bare sha, or no ref at all carries no evidence-run- (legs a/b/4th pass), leaves SKILL.md's one tagged line intact (3rd leg passes), and names no branch sentence (M2 legs pass), so every leg is green while the Claim's 'every read-state recipe says the tag' is false." },
+      { "round": 2, "task": "1", "hash": "e166673b9ff9c92b6fafb416c7d3cc479ef815f91c9debbbc01763e0dc3755e0", "verdict": "fail", "reason": "M1's 'so none names the branch, a sha, main, or no ref' is only inferred from the tag's presence, so a single line in SKILL.md carrying the branch recipe 'while in flight, then' the tag recipe (or one carrying ?ref=main beside the tag) passes leg (a)'s grep -v -F -c with 0, passes leg (c) because the sentence contains in flight, and passes every other leg — while a read recipe at the branch (or at main) still stands." },
+      { "round": 3, "task": "1", "hash": "c4ac634929f05e09fcd381cea070d04dbb26a05f4f6a7f2c2f08f5b62c8fba12", "verdict": "fail", "reason": "M1/Claim — a read-state recipe at the branch whose path is not the literal token contents/.ultrapowers/runs… (a gh api with $DIR in the path, a raw.githubusercontent.com/…/ultra/evidence-run-<N>/… curl, or git show ultra/evidence-run-<N>:.ultrapowers/runs/<N>/status.json) placed in a sentence that also says in flight is invisible to legs (a)–(b), satisfies (c)–(e), and leaves (f) untouched, so every leg passes while a read of the record still names the branch instead of the tag." },
+      { "round": 4, "task": "1", "hash": "060967eb0b48353c30cf45c97ffee9e93435e1ba1260a5296f485227dc5968f0", "verdict": "pass" }
+    ],
+    "note": "Authored 2026-09-08 for #710 on main 1c2c89e340ec099a8c94571cdd60f79e3e5c5a00 (the confidence run for #712's two suite deletions); each reader saw only extract_gate_input.py --task 1. Every Run: was executed at BASE before dispatch: the eight falsifiers exit 1 there and the two controls (first-run.md's, the pytest pin) exit 0; the token, fence and command-line legs were also probed on an edited copy (tag-only recipe → 0; two refs on one line, a git show in prose, a raw URL in a fence → 1). Not bundled: #683 (ultrawrite SKILL.md + compiler advisories — different files, code change) and #697 (ultralearn SKILL.md + tests/test_ultralearn_docs.py — different files). first-run.md carries no read recipe and no evidence-run- at BASE despite the issue's title; README.md line 211 ('links the evidence branch') is prose, not a recipe, and stays out."
+  }
+}
