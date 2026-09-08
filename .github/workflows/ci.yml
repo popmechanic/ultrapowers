@@ -15,9 +15,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      # fetch-depth stays DEFAULT (1). The shallow clone is deliberate: it is the
-      # real consumer shape #465's depth-1 gate leg exists to predict. Setting
-      # fetch-depth: 0 would make CI and the gate agree by making CI stop testing
+      # fetch-depth stays DEFAULT (1), and since #712 deleted the engine's
+      # depth-1 rehearsal this checkout IS the guard for a history-coupled
+      # test: a test that reads repository history passes in the fleet's full
+      # clone and fails here, where a shallow boundary commit looks like it
+      # introduced every file (#465, the class that took main red). Setting
+      # depth 0 would make CI and the gate agree by making CI stop testing
       # the case that broke main.
       - uses: actions/checkout@v7
 

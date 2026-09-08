@@ -172,7 +172,7 @@ async function scenario ({ waves, testCmd = RUN_WIDE, examScript = RED_AT_BASE,
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, base, clonesDir, patchesDir, integ, logs } = rig({
-    repo, runDir, waves, stub, testCmd, stamp, extraArgs: { shallowLeg: false },
+    repo, runDir, waves, stub, testCmd, stamp,
   })
   const report = await run()
   const rowOf = (id) => report.tasks.find((t) => t.task === id)

@@ -144,8 +144,7 @@ const blockOf = (prompt) => {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir1',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir1' })
   const report = await run()
   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
   assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
@@ -213,8 +212,7 @@ const blockOf = (prompt) => {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run, integ, clonesDir } = rig({ repo, runDir, waves, stub, stamp: 'ir2',
-                                          extraArgs: { shallowLeg: false } })
+  const { run, integ, clonesDir } = rig({ repo, runDir, waves, stub, stamp: 'ir2' })
   const report = await run()
   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
   assert.equal(report.integratedRuns.length, 6,
@@ -351,7 +349,7 @@ async function pinRun(engine, tasks) {
       waves: [tasks], edges: [], testCmd: 'bash check.sh',
       acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
       integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
-      patchInput: patchesDir, shallowLeg: false,
+      patchInput: patchesDir,
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
@@ -426,8 +424,7 @@ async function pinRun(engine, tasks) {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir3',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir3' })
   const report = await run()
   // The clone-local run was green: no fix round, and A merged.
   assert.ok(!calls.some((l) => l.startsWith('fix:')),
@@ -498,8 +495,7 @@ async function pinRun(engine, tasks) {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir4',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir4' })
   const report = await run()
   const rowB = report.tasks.find((r) => r.task === 'B')
   assert.equal(rowB.status, 'failed', 'sim precondition: B never merged')
@@ -538,8 +534,7 @@ async function pinRun(engine, tasks) {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir5',
-                        extraArgs: { shallowLeg: false } })
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ir5' })
   const report = await run()
   assert.equal(report.waveMerges[0].status, 'TEST_FAILED',
     'sim precondition: the candidate suite went red and was never adopted')

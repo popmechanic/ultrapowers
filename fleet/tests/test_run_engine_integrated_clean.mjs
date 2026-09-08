@@ -111,8 +111,7 @@ const stub = (prompt, opts, cwd) => {
   if (opts.label === 'integration') return cleanCritic()
   throw new Error('unexpected dispatch: ' + opts.label)
 }
-const { run, integ } = rig({ repo, runDir, waves, stub, testCmd: PLANT, stamp: 'ic1',
-                             extraArgs: { shallowLeg: false } })
+const { run, integ } = rig({ repo, runDir, waves, stub, testCmd: PLANT, stamp: 'ic1' })
 const report = await run()
 
 // ── sim preconditions ────────────────────────────────────────────────────────

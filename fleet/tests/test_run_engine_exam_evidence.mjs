@@ -161,7 +161,7 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
   }
   const { run } = rig({
     repo, runDir, waves: [tasks], stub, stamp,
-    extraArgs: { shallowLeg: false, ...extraArgs },
+    extraArgs: { ...extraArgs },
   })
   const report = await run()
   const rowOf = (id) => report.tasks.find((t) => t.task === id)

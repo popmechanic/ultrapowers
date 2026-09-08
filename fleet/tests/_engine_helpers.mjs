@@ -51,8 +51,8 @@ export function provision({ repo, runDir, taskIds }) {
 // real diff, exactly as in production.
 export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash check.sh',
                       acceptance = { mode: 'suite', reason: 'sim' }, stamp = 'sim',
-                      // Extra runEngine args merged last (the depth-1 leg's
-                      // shallowLeg knob, and whatever the next one is).
+                      // Extra runEngine args merged last (constraintChecks,
+                      // patchInput, and whatever the next knob is).
                       extraArgs = {} }) {
   const taskIds = waves.flat().map((t) => t.id)
   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
@@ -64,6 +64,10 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
     taskIdOf: defaultTaskIdOf,
   })
   const logs = []
+  // The phases the engine announced, in order. The rig left `phase` a no-op
+  // until #712: a sim that wants the phase sequence should read it here rather
+  // than infer it from the suite command's side effects.
+  const phases = []
   const run = () => runEngine({
     args: {
       waves, edges, testCmd, acceptance, stamp,
@@ -77,9 +81,10 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
     exec: execSeam,
     paths: { repoDir: repo, runDir, clonesDir },
     log: (l) => logs.push(String(l)),
+    phase: (p) => phases.push(String(p)),
     patchBase,
   })
-  return { run, base, clonesDir, patchesDir, integ, logs, patchBase }
+  return { run, base, clonesDir, patchesDir, integ, logs, phases, patchBase }
 }
 
 // Common canned judgments.

@@ -53,7 +53,7 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
     args: {
       waves, edges: [], testCmd, acceptance: { mode: 'suite', reason: 'sim' }, stamp,
       integrationBranch: 'ultra/integration-' + stamp,
-      dependencyEdges: [], patchInput: patchesDir, shallowLeg: false,
+      dependencyEdges: [], patchInput: patchesDir,
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),

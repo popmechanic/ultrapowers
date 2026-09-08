@@ -128,7 +128,7 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
   }
   const { run, clonesDir } = rig({
     repo, runDir, waves: [[task]], stub, stamp,
-    extraArgs: { shallowLeg: false, constraintChecks },
+    extraArgs: { constraintChecks },
   })
   const report = await run()
   return { report, row: report.tasks[0], calls, prompts, runDir, clonesDir,
@@ -265,11 +265,11 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
 // imported from there, is driven by the same canned agents through the same run
 // directory (the review prompt names the patch FILE, so a second directory
 // would differ in bytes that are not this change).
-// The byte-pin needs BASE in the object store. A depth-1 clone — the engine's
-// own shallow leg (run-engine.mjs:1437) and `actions/checkout`'s default — has
-// no 0a3559a; there the leg has nothing to say and says so, rather than failing
-// for a reason unrelated to the tree (test_run_engine_exam_fix_edit.mjs guards
-// the same way, after run-54's depth-1 leg caught exactly this).
+// The byte-pin needs BASE in the object store. A depth-1 clone — the shape
+// `actions/checkout` gives CI by default — has no 0a3559a; there the pin has
+// nothing to say and says so, rather than failing for a reason unrelated to
+// the tree (test_run_engine_exam_fix_edit.mjs guards the same way; the engine's
+// own depth-1 rehearsal, deleted in #712, caught exactly this back in run-54).
 const haveBase = (() => {
   try {
     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
@@ -318,7 +318,7 @@ async function pinPrompt(engine, task) {
       waves: [[task]], edges: [], testCmd: 'bash check.sh',
       acceptance: { mode: 'suite', reason: 'sim' }, stamp: 'pin',
       integrationBranch: 'ultra/integration-pin', dependencyEdges: [],
-      patchInput: patchesDir, shallowLeg: false,
+      patchInput: patchesDir,
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
@@ -510,7 +510,7 @@ const segmentOf = (block, cmd) => {
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, base: rigBase } = rig({
-    repo, runDir, stub, stamp: 'ub1', extraArgs: { shallowLeg: false },
+    repo, runDir, stub, stamp: 'ub1',
     waves: [[entry({ proofRuns: [PRINTENV, TEST_EQ] })]],
   })
   assert.equal(rigBase, base, 'sim precondition: every clone was provisioned at that sha')
@@ -573,8 +573,7 @@ const segmentOf = (block, cmd) => {
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2',
-                              extraArgs: { shallowLeg: false } })
+  const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2' })
   const report = await run()
 
   assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
@@ -901,7 +900,7 @@ const probeSource = ({ tag, runs = [], checks = [], exam = false, pin, why }) =>
   const _r = _h.rig({
     repo: _h.makeRepo(_pp.join(_tmp, 'repo')), runDir: _pp.join(_tmp, 'run'),
     waves: [[_task]], stub: _stub, stamp: '${tag}',
-    extraArgs: { shallowLeg: false, constraintChecks: ${JSON.stringify(checks)} },
+    extraArgs: { constraintChecks: ${JSON.stringify(checks)} },
   })
   await _r.run()
   const evs = _fs.readFileSync(_pp.join(_tmp, 'run', 'events.jsonl'), 'utf8')

@@ -169,7 +169,7 @@ async function scenario({ exam = (cwd) => writeExam(cwd), onImpl = writeOne, onF
   }
   const { run, base, clonesDir, patchesDir, integ } = rig({
     repo, runDir, waves: [[entry()]], stub, stamp,
-    extraArgs: { shallowLeg: false, ...extraArgs },
+    extraArgs: { ...extraArgs },
   })
   const report = await run()
   return { report, row: report.tasks[0], labels, seen, base, runDir, clonesDir, patchesDir,

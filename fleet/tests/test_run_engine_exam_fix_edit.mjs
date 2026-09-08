@@ -55,7 +55,7 @@ function rig({ waves, stub, testCmd = 'bash check.sh' }) {
     args: {
       waves, edges: [], testCmd, acceptance: { mode: 'suite', reason: 'sim' }, stamp,
       integrationBranch: 'ultra/integration-' + stamp,
-      dependencyEdges: [], patchInput: patchesDir, shallowLeg: false,
+      dependencyEdges: [], patchInput: patchesDir,
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
@@ -278,8 +278,9 @@ assert.equal(skipsShoutScan('skills/ultrapowers/SKILL.md'), false,
   // The leg is a pin against BASE, so it needs BASE in the object store. A
   // depth-1 clone (the shape `actions/checkout` gives CI, #465) has no
   // `d6efce4` to diff against; there the leg has nothing to say and says so,
-  // rather than failing for a reason unrelated to the tree's words. run-54's
-  // depth-1 leg caught exactly this on the first cut of this file.
+  // rather than failing for a reason unrelated to the tree's words. The
+  // engine's own depth-1 rehearsal, deleted in #712, caught exactly this on
+  // the first cut of this file back in run-54.
   const haveBase = git(['cat-file', '-e', BASE_SHA + '^{commit}']).code === 0
   const diff = haveBase ? git(['diff', '--name-only', BASE_SHA]) : { code: 0, out: '' }
   if (!haveBase) console.log('(g)/M7: BASE ' + BASE_SHA + ' not in this clone (shallow) — leg skipped')
