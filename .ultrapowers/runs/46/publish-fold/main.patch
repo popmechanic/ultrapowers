@@ -1,0 +1,346 @@
+diff --git a/fleet/retire.mjs b/fleet/retire.mjs
+index 61bb0aed128cc882fa1f02fd7783f6ece8af560a..3c94125938d40015800fb68ea88365aa88454964 100644
+--- a/fleet/retire.mjs
++++ b/fleet/retire.mjs
+@@ -59,7 +59,11 @@
+  * only a page whose `state` is one of `REAPABLE_STATES` earns the sweep. A live
+  * page, an unreadable one, or an open pull request on the run's integration
+  * branch prints `run <N>: live (<why>) — skipped` and the sweep moves to the
+- * next N. The states are imported from `./janitor.mjs`, which is the one place
++ * next N. The open-PR read takes that same allowlist posture: only a JSON array
++ * is an answer about pull requests, so a non-2xx exit, an error object and a
++ * truncated stream alike print `run <N>: unreadable (pulls) — skipped` — never
++ * "no open PR", which would let an unread run through to the tags and the
++ * deletes. The states are imported from `./janitor.mjs`, which is the one place
+  * they are spelled: the test is membership, never a denylist of the live words,
+  * so a `state` the boot never writes is skipped rather than swept.
+  *
+@@ -186,11 +190,22 @@ function liveReason (page) {
+   return REAPABLE_STATES.includes(state) ? null : state
+ }
+ 
++/** The word the pulls read's unreadable answer is recorded and printed under. */
++const PULLS_UNREADABLE = 'unreadable (pulls)'
++
+ /**
+  * The run's open pull request, if it has one. `head=<owner>:<ref>` matches on
+  * the head ref's NAME; `state=open` is the only difference from the closed read
+  * below. A run whose integration PR is still open is a run somebody is still
+  * looking at, and its branches are what its links resolve through.
++ *
++ * The answer is `{ unreadable, pull }`, not a bare row, because "no open PR" and
++ * "no answer" are different facts and only the first earns the sweep. The list
++ * endpoint answers a JSON ARRAY and nothing else, so an array is the whole
++ * allowlist — the same posture the status page is read with: a non-2xx exit and
++ * a truncated stream both arrive here as `null`, an error body arrives as an
++ * object, and every one of those is unreadable. An empty array is still an
++ * answer, and it says the run has no open pull request.
+  */
+ async function openPullOf (exec, target, run) {
+   const owner = String(target).split('/')[0]
+@@ -198,8 +213,8 @@ async function openPullOf (exec, target, run) {
+     exec,
+     `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
+   )
+-  const rows = Array.isArray(payload) ? payload : []
+-  return rows.length > 0 ? rows[0] : null
++  if (!Array.isArray(payload)) return { unreadable: true, pull: null }
++  return { unreadable: false, pull: payload.length > 0 ? payload[0] : null }
+ }
+ 
+ /** Create one tag at one sha through the refs API. */
+@@ -381,12 +396,22 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
+     // is a run in flight. Skipping it is the same decision under `--dry-run`
+     // and without it — the sweep never asks what it would do to a run it is not
+     // going to touch.
+-    let why = liveReason(await readStatusPage(exec, target, run))
+-    if (why === null) {
+-      const open = await openPullOf(exec, target, run)
+-      if (open !== null) why = `PR #${open.number} open`
++    const pageWhy = liveReason(await readStatusPage(exec, target, run))
++    if (pageWhy !== null) {
++      live.push({ run, why: pageWhy })
++      return `live (${pageWhy}) — skipped`
++    }
++    // The second read of the gate, and the same posture: an answer that is not a
++    // list of pull requests is no answer at all. Its line names the read rather
++    // than the run's state — the sweep did not learn one — but the run joins
++    // `live` all the same, because `live` is what the sweep declined to touch.
++    const open = await openPullOf(exec, target, run)
++    if (open.unreadable) {
++      live.push({ run, why: PULLS_UNREADABLE })
++      return `${PULLS_UNREADABLE} — skipped`
+     }
+-    if (why !== null) {
++    if (open.pull !== null) {
++      const why = `PR #${open.pull.number} open`
+       live.push({ run, why })
+       return `live (${why}) — skipped`
+     }
+diff --git a/fleet/tests/test_retire.mjs b/fleet/tests/test_retire.mjs
+index 12a9bf2e4748b351e94caf15e8368f349568507e..b372ccca75893c4cde94864260558a33fe50ee33 100644
+--- a/fleet/tests/test_retire.mjs
++++ b/fleet/tests/test_retire.mjs
+@@ -344,6 +344,11 @@ const runOfApiCall = (argv) => {
+  * that carry no page at all; `openPulls` is what the `state=open` read answers,
+  * empty for every run unless a leg says otherwise.
+  *
++ * #752 Task 1 adds `openPullAnswers`, the same override one level up from
++ * `openPulls`: a run's whole `state=open` answer, checked before `openPulls`, so
++ * a leg can make that one read exit non-zero or answer a shape that is not an
++ * array at all.
++ *
+  * #724 Task 1 adds two options and one rule. `listing` is the heads-and-tags
+  * listing the one `ls-remote` answers — every leg above leaves it at
+  * `HEADS_LISTING`, and the task's legs pass their own — and `fatePulls` is what
+@@ -360,6 +365,7 @@ function makeSeam ({
+   pages = DONE_PAGES,
+   contentsAnswers = {},
+   openPulls = {},
++  openPullAnswers = {},
+   listing = HEADS_LISTING,
+   fatePulls = {}
+ } = {}) {
+@@ -385,6 +391,10 @@ function makeSeam ({
+       when: (c, argv) => c === 'gh' && /\/pulls\?[^ ]*state=open/.test(argv.map(String).join(' ')),
+       answer: (c, argv) => {
+         const run = runOfApiCall(argv)
++        // #752 Task 1: the whole-answer override, checked before `openPulls`.
++        if (run !== null && Object.prototype.hasOwnProperty.call(openPullAnswers, run)) {
++          return openPullAnswers[run]
++        }
+         return answer(run === null ? [] : (openPulls[run] ?? []))
+       }
+     },
+@@ -995,6 +1005,231 @@ const loggingShims = (name, { state = 'done' } = {}) => {
+     '(a)/M1 and starts no gh and no git')
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// #752 Task 1 — the open-PR read takes the status read's posture
++//
++// A non-2xx exit or a non-array payload on
++// `gh api repos/<t>/pulls?state=open&head=<owner>:ultra/integration-run-<N>` is
++// not "no open PR". It is a read the sweep could not make sense of, and the run
++// is skipped exactly as an unreadable status page is skipped — the allowlist
++// posture #706 gave the status read. The one line is
++// `run <N>: unreadable (pulls) — skipped`; the segment is the literal the Claim
++// names and NOT `live (unreadable (pulls))`. The run lands under `live` as
++// `{ run, why: 'unreadable (pulls)' }`, is neither `kept` nor `skipped`, sets no
++// exit code, and `--dry-run` prints the same line byte for byte.
++//
++// Every leg here runs over BASE's own listing — runs 3, 5 and 12 — so it grades
++// the fixture the legs above were written for, and no leg builds an integration
++// head: the end-of-file sweeps over `SEAMS` still find what they found.
++// ════════════════════════════════════════════════════════════════════════════
++
++/** M1: the `why` the resolved value carries, and the segment the line prints —
++ *  the two are the same words, but the line is NOT `live (<why>)`. */
++const WHY_PULLS = 'unreadable (pulls)'
++/** M1: the one line an unreadable open-PR read prints, exact. */
++const pullsSkip = (run) => `run ${run}: ${WHY_PULLS} — skipped`
++
++/** M1 (ii): the body GitHub answers a rate-limited list read with — an object,
++ *  not an array. No single quote in it, so a shell shim can hold it (M5). */
++const RATE_LIMIT_OBJECT = {
++  message: 'API rate limit exceeded',
++  documentation_url: 'https://docs.github.com/rest'
++}
++/** M1 (iii): a stream that stops mid-row — not JSON at all. */
++const TRUNCATED_PULLS = '[{"number": 41'
++
++/** The three answers of M1, in the order the Machine clause names them. */
++const UNREADABLE_PULLS = [
++  ['(a)', 'row (i): exit 1, empty stdout, `gh: API rate limit exceeded (HTTP 403)` on stderr',
++    answer('', { code: 1, stderr: 'gh: API rate limit exceeded (HTTP 403)' })],
++  ['(b)', 'row (ii): exit 0 with the rate-limit OBJECT as stdout',
++    answer(RATE_LIMIT_OBJECT)],
++  ['(c)', `row (iii): exit 0 with the truncated stream \`${TRUNCATED_PULLS}\`, which is not JSON`,
++    answer(TRUNCATED_PULLS)]
++]
++
++// Fixture self-checks: the three answers really are the three shapes M1 names,
++// or the legs below would be graded against something else.
++assert.equal(UNREADABLE_PULLS[0][2].code, 1,
++  '#752 Task 1 fixture: row (i) answers non-zero')
++assert.equal(UNREADABLE_PULLS[0][2].stdout, '',
++  '#752 Task 1 fixture: row (i) answers empty stdout')
++assert.ok(!Array.isArray(JSON.parse(UNREADABLE_PULLS[1][2].stdout)),
++  '#752 Task 1 fixture: row (ii) is a JSON object, not an array')
++assert.equal(UNREADABLE_PULLS[2][2].stdout, TRUNCATED_PULLS,
++  '#752 Task 1 fixture: row (iii) is passed through as the raw string it is')
++assert.throws(() => JSON.parse(TRUNCATED_PULLS), SyntaxError,
++  '#752 Task 1 fixture: row (iii) is not parsable JSON')
++
++/** Run 3's line, captured under the object answer and compared byte for byte
++ *  under `--dry-run` (M3). */
++const captured752 = {}
++
++// ── #752 Task 1 (a)(b)(c)/M1: the three answers, one assertion set ───────────
++
++for (const [leg, what, pullAnswer] of UNREADABLE_PULLS) {
++  const exec = seam({ openPullAnswers: { 3: pullAnswer } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++  if (leg === '(b)') captured752.object3 = runLine(out, 3)
++
++  assert.equal(runLine(out, 3), pullsSkip(3),
++    `#752 Task 1 ${leg}/M1 ${what}: run 3's one line is exactly \`${pullsSkip(3)}\` — not \`live (${WHY_PULLS})\`, and never a retired line; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3)), [contentsLine(3), openPullsLine(3)],
++    `#752 Task 1 ${leg}/M1 ${what}: the calls naming run 3 are exactly its status read then its open-PR read, in that order — no POST, no ls-remote --tags, no DELETE, no PATCH and no state=closed read; got ${JSON.stringify(linesOf(exec, (l) => namesRun(l, 3)))}`)
++  assert.deepEqual(out.result.live, [{ run: 3, why: WHY_PULLS }],
++    `#752 Task 1 ${leg}/M1 ${what}: the resolved value carries the run under \`live\` as { run, why } with why \`${WHY_PULLS}\`; got ${JSON.stringify(out.result.live)}`)
++  assert.deepEqual(out.result.retired, [12],
++    `#752 Task 1 ${leg}/M1 ${what}: the sweep goes on to the next N — a tool that returns after the skip fails here; got ${JSON.stringify(out.result.retired)}`)
++  assert.deepEqual(out.result.kept, [],
++    `#752 Task 1 ${leg}/M1 ${what}: an unreadable read is not a kept run — \`kept\` keeps its tag-verify meaning; got ${JSON.stringify(out.result.kept)}`)
++  assert.equal(Array.isArray(out.result.skipped) && out.result.skipped.length, 1,
++    `#752 Task 1 ${leg}/M1 ${what}: \`skipped\` still names only the lone half; got ${JSON.stringify(out.result.skipped)}`)
++  assert.ok(/(^|\D)5(\D|$)/.test(out.result.skipped.join(' ')),
++    `#752 Task 1 ${leg}/M1 ${what}: and that lone half is run 5; got ${JSON.stringify(out.result.skipped)}`)
++  assert.deepEqual(sweepOf(exec, 12), sweepLines(12),
++    `#752 Task 1 ${leg}/M1 ${what}: the healthy pair behind it is swept in full — two POSTs, the verify, two DELETEs, in BASE's order`)
++  assert.ok(runLine(out, 12).includes('retired'),
++    `#752 Task 1 ${leg}/M1 ${what}: and run 12's line says retired; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.ok(out.lines.indexOf(runLine(out, 12)) > out.lines.indexOf(runLine(out, 3)),
++    `#752 Task 1 ${leg}/M1 ${what}: run 12's line is printed after run 3's; got ${JSON.stringify(out.lines)}`)
++  assert.notEqual(out.exitCode, 1,
++    `#752 Task 1 ${leg}/M1 ${what}: a skipped run is not a kept run, so process.exitCode is not set to 1`)
++}
++
++// ── #752 Task 1 (d)/M2: the mirror, the unreadable read on the LAST pair ─────
++
++{
++  const exec = seam({ openPullAnswers: { 12: answer(RATE_LIMIT_OBJECT) } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.deepEqual(out.result.retired, [3],
++    `#752 Task 1 (d)/M2 the mirror: the healthy pair before it is retired; got ${JSON.stringify(out.result.retired)}`)
++  assert.equal(runLine(out, 12), pullsSkip(12),
++    `#752 Task 1 (d)/M2 the mirror: run 12's one line is exactly \`${pullsSkip(12)}\`; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.deepEqual(out.result.live, [{ run: 12, why: WHY_PULLS }],
++    `#752 Task 1 (d)/M2 the mirror: \`live\` carries run 12 with why \`${WHY_PULLS}\`; got ${JSON.stringify(out.result.live)}`)
++}
++
++// ── #752 Task 1 (e)/M3: --dry-run says the same thing and reads the same ─────
++
++for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target', TARGET]]) {
++  const spelling = JSON.stringify(argv)
++  const exec = seam({ openPullAnswers: { 3: answer(RATE_LIMIT_OBJECT) } })
++  const out = await captured(() => retire({ argv, exec }))
++
++  assert.deepEqual(lines(exec), [
++    LIST_LINE,
++    contentsLine(3), openPullsLine(3),
++    contentsLine(12), openPullsLine(12), pullsLine(12)
++  ],
++  `#752 Task 1 (e)/M3 ${spelling}: the calls through the seam are exactly the one heads-and-tags listing, then run 3's status read and open-PR read, then run 12's status read, open-PR read and state=closed read — six lines, nothing else; got ${JSON.stringify(lines(exec))}`)
++  assert.equal(runLine(out, 3), captured752.object3,
++    `#752 Task 1 (e)/M3 ${spelling}: the skip line is byte-identical to the one printed without the flag — a dry run that says \`would\` for run 3, or prints a different skip line, fails here; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.ok(runLine(out, 12).includes('would'),
++    `#752 Task 1 (e)/M3 ${spelling}: the healthy pair behind it still says what it would do — a tool that stops after the skip fails here; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
++    `#752 Task 1 (e)/M3 ${spelling}: no gh call carries -X`)
++  assert.deepEqual(linesOf(exec, (l) => l.startsWith('git ') && l !== LIST_LINE), [],
++    `#752 Task 1 (e)/M3 ${spelling}: no git call but the one listing is made`)
++  assert.notEqual(out.exitCode, 1,
++    `#752 Task 1 (e)/M3 ${spelling}: a dry run keeps nothing, so it does not set process.exitCode to 1`)
++}
++
++// ── #752 Task 1 (f)/M4: an empty array is still the answer it was ────────────
++
++{
++  const exec = seam({ openPulls: { 3: [] } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.deepEqual(sweepOf(exec, 3), sweepLines(3),
++    '#752 Task 1 (f)/M4 an empty JSON array is a readable answer meaning "no open PR": run 3 goes through to the whole sweep — the two POSTs, the verify, the two DELETEs, in BASE\'s order. A tool that reads an empty array as unreadable fails here')
++  assert.ok(runLine(out, 3).includes('retired'),
++    `#752 Task 1 (f)/M4 and run 3's line says retired; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(out.result.live, [],
++    `#752 Task 1 (f)/M4 and nothing is live; got ${JSON.stringify(out.result.live)}`)
++}
++
++// ── #752 Task 1 (g)/M4: a non-empty array still names the open PR ────────────
++
++{
++  const exec = seam({ openPulls: { 3: [{ number: PR_3, body: '' }] } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.equal(runLine(out, 3), liveSkip(3, `PR #${PR_3} open`),
++    `#752 Task 1 (g)/M4 an array with a row is still an open pull request: run 3's line is exactly \`${liveSkip(3, `PR #${PR_3} open`)}\`, not the pulls-unreadable line; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(
++    linesOf(exec, (l) => namesRun(l, 3) && (l.includes('POST') || l.includes('DELETE'))), [],
++    '#752 Task 1 (g)/M4 and no line naming run 3 carries POST or DELETE')
++}
++
++// ── #752 Task 1 (h)/M4: the status read's own line is not renamed ────────────
++
++{
++  const exec = seam({
++    contentsAnswers: { 3: answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' }) }
++  })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.equal(runLine(out, 3), liveSkip(3, 'no status page'),
++    `#752 Task 1 (h)/M4 a status read that answers non-zero still prints exactly \`${liveSkip(3, 'no status page')}\` — a tool that renames the status read's line to the pulls one fails here; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(linesOf(exec, (l) => l.includes('state=open') && namesRun(l, 3)), [],
++    '#752 Task 1 (h)/M4 and a run skipped for its status page is asked no open-PR read at all')
++}
++
++// ── #752 Task 1 (i)/M5: the same skip as a process, against PATH shims ───────
++
++{
++  const dir = shimDir('pulls-unreadable', { git: '', gh: '' })
++  const ghLog = path.join(dir, 'gh.log')
++  const listing =
++    `${HEAD[3].plan}\\trefs/heads/${planBranchFor(3)}\\n${HEAD[3].evidence}\\trefs/heads/${evidenceBranchFor(3)}\\n`
++  // Both documents are JSON with no single quote in them, so each fits in a
++  // single-quoted shell string.
++  const page = JSON.stringify({
++    content: Buffer.from(JSON.stringify({ run: 3, state: 'done' }), 'utf8').toString('base64'),
++    sha: sha('b10b')
++  })
++  const rateLimit = JSON.stringify(RATE_LIMIT_OBJECT)
++  assert.ok(!page.includes("'") && !rateLimit.includes("'"),
++    '#752 Task 1 (i)/M5 fixture: neither shim document carries a single quote')
++
++  fs.writeFileSync(path.join(dir, 'git'),
++    `#!/bin/sh\nprintf '${listing}'\nexit 0\n`, { mode: 0o755 })
++  fs.writeFileSync(path.join(dir, 'gh'),
++    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${ghLog}"\n` +
++    'case "$*" in\n' +
++    `  *contents/*) printf '%s\\n' '${page}' ;;\n` +
++    `  *state=open*) printf '%s\\n' '${rateLimit}' ;;\n` +
++    "  *) printf '[]\\n' ;;\nesac\nexit 0\n", { mode: 0o755 })
++  fs.chmodSync(path.join(dir, 'git'), 0o755)
++  fs.chmodSync(path.join(dir, 'gh'), 0o755)
++
++  const res = runProcess(['--target', TARGET], dir)
++  const ghLogged = logLines(ghLog)
++
++  assert.equal(res.status, 0,
++    `#752 Task 1 (i)/M5 a sweep whose open-PR read cannot be read exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
++  assert.ok(res.stdout.split('\n').map((l) => l.trimEnd()).includes(pullsSkip(3)),
++    `#752 Task 1 (i)/M5 and prints exactly \`${pullsSkip(3)}\` on its own stdout — the CLI layer, not only the seam; got ${JSON.stringify(res.stdout)}`)
++  for (const line of ghLogged) {
++    assert.ok(!line.includes('-X') && !line.includes('--delete'),
++      `#752 Task 1 (i)/M5 a run skipped this way is tagged by nothing and deleted by nothing; got ${line} (log: ${JSON.stringify(ghLogged)})`)
++  }
++}
++
++// ── #752 Task 1 (j)/M6: the header comment names the line ────────────────────
++
++for (const [command, why] of [
++  [`sed -n '1,/^import /p' fleet/retire.mjs | grep -q 'unreadable (pulls)'`,
++    'the prose before the first `import` of fleet/retire.mjs names the line `unreadable (pulls)` beside the sentence that names `live (<why>)` — a header that names the new line nowhere fails here'],
++  [`sed -n '1,/^import /p' fleet/retire.mjs | tr '\\n' ' ' | grep -q 'open-PR read per terminal candidate'`,
++    "and its `--dry-run` paragraph still says the open-PR read is made per terminal candidate — that is a stays, not a change: a rewrite that says the read is per pair again fails here"]
++]) {
++  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000 })
++  assert.equal(res.status, 0,
++    `#752 Task 1 (j)/M6 \`${command}\` exits 0: ${why}; status ${res.status}, stderr: ${res.stderr}`)
++}
++
+ cleanup(cliRoot)
+ 
+ // ════════════════════════════════════════════════════════════════════════════

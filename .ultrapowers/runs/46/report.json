@@ -1,0 +1,192 @@
+{
+  "integrationBranch": "ultra/integration-run-46",
+  "baseSha": "9395cd11d6b6e0e1b1e5195b5702956d6faf88f6",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "c409261097336b10ed97931bc4b0d4a334371dd1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-46/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Two re-scopes the diff had to make are not enumerated in the task's Context, which Global Constraint 5 requires (\"except the ones that task's Context names as re-scoped with what replaces them\"). Context names for `fleet/tests/test_run_engine_exam_evidence.mjs` only the order pin at 192-196 and the `events.length, 2` / `[0, 1]` pins at 198-206, but leg (c) at BASE lines 373-410 (\"a red exam in a REVIEW ROUND outranks the reviewer's PASS\") also had to change: with round 1 reading the pass, a driver-minted red can only surface at `iter: 2`, so the leg's canned reviewer now returns FIX_REQUIRED in round 1 and the row becomes `failed` / `fix-loop-exhausted` instead of `done` / `fixed`, and the two `prompts['fix:T1:1']` assertions (the round-1 blocking issue naming EXAM_CMD and `exit 1`) are dropped. Likewise Context names for `fleet/tests/test_run_engine_pre_review.mjs` only line 327 and lines 469-472, not leg (c) at 497-537, whose `calls.includes('fix:T1:1')` and `prompts['fix:T1:1'].includes(checkFailLine(...))` assertions are replaced. Both re-scopes are forced by the Claim (no driver-minted red can reach a fix prompt in a review round any more, because the only pre-review evidence round 1 sees is a pass that was green by construction), both are disclosed in comments naming `#713 Task 1`, and both re-pin the behavior they gave up \u2014 the CHECK_FAIL/EXAM_FAIL wording is now asserted through `row.notes` and `report.judgmentCalls`, and the pre-review fix-prompt formatting of a driver-minted red is still pinned unchanged at `fleet/tests/test_run_engine_pre_review.mjs:308`. So nothing is left unverified; the defect is the Context's enumeration, not the diff, and no edit inside this task's FILES answers it. Recorded so the operator reading Global Constraint 5 sees the two extra re-scopes and their justification.; Comment re-wrapping: two rewritten header lines now run past the ~80-column wrap the rest of these files hold. `fleet/tests/test_run_engine_exam_evidence.mjs` line ~74 (`//        and again after a review fix (\\`iter: 2\\`); each execution is recorded as { cmd, exit, stdout } with`) is ~105 chars, and `fleet/tests/test_run_engine_pre_review.mjs` line ~317 (`//        \\`fix:<id>:1\\` \u2014 re-executes both (#713 Task 1), and the reviewer prompt carries`) is ~88. No lint enforces this (I grepped the tree for a length check and found none), so nothing fails \u2014 it is house style only. Fix: break after `(\\`iter: 2\\`);` and after `(#713 Task 1),` respectively so the continuation starts a fresh `//        ` line.; unverified: the task's Acceptance is `suite \u2014 the committed suite is the verification`, but the driver's evidence covers only this task's six named commands (the exam plus five `Run:`), not the whole committed suite. The engine change is purely subtractive (one fewer execution of each Run:/exam/Check: before review round 1), so the only collateral risk is a sim outside FILES that counts driver executions or re-runs a command whose result changes on a second execution. I checked by inspection: the only such sim is `fleet/tests/test_run_engine_exam_together.mjs`, whose `driver:exam-run` pins are a `findIndex` ordering pin (line ~288\u2013292) and two empty-array pins (line ~336\u2013339), all of which survive the removal of the second execution. What would settle it outright is the run-wide suite at the gate.; concern: The one suite failure is `tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_proof_runs.mjs]`, the Proof's `Test:` path \u2014 reserved for the peer's exam and excluded from this task's `writes`, so I left it byte-identical to BASE. Its BASE pins (the `['impl:T1','proof-run','proof-run','review:T1:1','proof-run']` order at line 143 and the `[0,1]`/`[0,0,1,1]`/`[0,0,1]` iter pins) assert the behaviour this task removes, so it fails until the peer's rewritten exam is laid over it. Everything else in the run is green.; concern: Three legs the Context did not enumerate also relied on the round-1 execution and had to be re-scoped the same way, since M5 governs any assertion that pinned a second execution at `iter: 1`: `test_run_engine_pre_review.mjs`'s TOGGLE leg (c), `test_run_engine_exam_evidence.mjs`'s \"red exam in a REVIEW ROUND outranks the reviewer's PASS\" leg, and the `[0, 0, 1]` / `[0, 1]` exam-run iter pins beside them. Each keeps the clause it tested \u2014 a driver-minted red outranks a PASS verdict \u2014 by surfacing the red at `iter: 2` after a reviewer-driven `fix:<id>:1`, and asserts it through the row's `fix-loop-exhausted` verdict, its notes and the round-2 judgment-call literal rather than through a `fix:<id>:1` prompt the driver no longer builds from that red.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "c0987a7555ff4fea2afed973cbe2a06638304678",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-46/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/tests/test_run_main.mjs: the leg (c) header comment says \"pure, four rows\" but the `rows` array holds five (non-citing detail, report `{}`, `{ integratedRuns: [] }`, no second argument, green+red detail). The count is transcribed from the plan's own \"(c) pure, four rows\" wording, whose enumeration also lists five cases; the code is right and the comment is off by one. Cosmetic only \u2014 the assertions themselves cover every M2 case.; unverified: the live end-to-end leg \u2014 a real completeness critic emitting a `manual` deferredVerification whose `why` actually quotes the `$ <cmd>` line verbatim, so that gate_check.py's `deliverable \u2014 why` detail contains an executed green command \u2014 is not exercised by any committed test; the sims supply the ack detail directly. The static half is settled (integratedRunEvidenceBlock at fleet/run-engine.mjs:321 renders `'$ ' + r.cmd` verbatim, gate_check.py:132-140 concatenates `why` untruncated, and finalize_report.py round-trips the whole report so `integratedRuns` survives to `readJson(resultPath)`), and the failure mode of a paraphrasing critic is parking, i.e. fail-closed. What would settle it: one integrated run whose critic returns such an item, checked against the resulting driver:ack-decision event.; Stale assertion message left behind by the widening. `fleet/tests/test_run_main.mjs:78` still reads `assert.ok(!ackDecision(gr([{ type: 'deferred:manual' }])).approve, 'manual is never pre-authorized')`. The assertion itself still holds after this diff \u2014 the ack carries no `detail`, so `citesExecutedGreen` returns false on the `typeof a.detail === 'string'` guard \u2014 so the global constraint that BASE assertions still stand is satisfied. But the message now states the opposite of the behavior the file's own leg (a) proves twenty lines later, and a future reader hitting this failure will be told a rule that no longer exists. Rewording the string changes no assertion.; Prose outside FILES is now stale against the new rule. `fleet/fitness.mjs:147` tells a plan author that a doc-only task's evidence \"the gate can only ack as deferred:manual (outside the fleet standing grant)\", which after this diff is true only when the item cites no green integrated `Run:` verbatim. The fix lies in `fleet/fitness.mjs`, which is neither in this task's FILES nor a sibling's, so no edit inside this tree's scope answers it; the task's Context enumerated `fleet/CONTRACT.md` as the other prose site to consider and did not name `fleet/fitness.mjs`. Advisory: worth a follow-up that adds \"\u2026unless its `why` quotes a green integrated `Run:` verbatim (#753)\" to that finding's `reason`. Nothing here blocks the merge \u2014 the heuristic still fires on exactly the tasks it fired on at BASE, since a task with no `Test:` entry has no exam evidence to cite.; unverified: leg (f) proves the two prose deliverables by shelling out from inside the exam to `node fleet/tests/test_roles_peer.mjs`, `node fleet/tests/test_exam_edited_patches.mjs` and `python3 -m pytest -q tests/test_fleet_events.py`, so `fleet/tests/test_run_main.mjs` now fails whenever any of those three fail for reasons unrelated to this change, and it inherits their runtime. The task's Proof leg (f) asks for exactly this, so it is not a defect \u2014 recording it because the coupling is a real maintenance cost the exam did not carry at BASE. What would settle whether it is worth keeping: the three commands are already the Proof's own `Run:` entries and the driver executed all three at exit 0 (RUN EVIDENCE above), so the leg is redundant with the driver's execution; dropping the three `spawnSync` sub-suite invocations and keeping only the two greps would prove M4 without the coupling.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-46/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1666 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 17%]\n........................................................................ [ 21%]\n........................................................................ [ 25%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 38%]\n........................................................................ [ 43%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 389.38s (0:06:29) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_implementer_suite.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "grep -n 'verbatim' fleet/roles/critic.md",
+      "exit": 0,
+      "stdout": "34:is left, the `manual` item's `why` quotes the settling command verbatim, as the\n"
+    },
+    {
+      "task": "2",
+      "cmd": "grep -n 'deferred:manual' skills/ultrapowers/references/report-format.md",
+      "exit": 0,
+      "stdout": "107:| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` \u2014 `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit \u2014 a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim \u2014 or quotes a red one as well \u2014 is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task referee returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no referee can wave it through, so the task merges as reviewed and the defect travels here \u2014 one item per distinct detail, on tasks whose final `status` is `done`; `deliverable` is the task id and `why` is the reviewer's detail verbatim. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |\n150:- **Approve** \u2014 the two-move rule (`fleet/run-engine.mjs`'s gate phase is the executable form since 0.3.0; the fleet's launch directive is the standing instruction). `PASS` \u2192 approve. `NEEDS_ACK` \u2192 approve iff every ack is a `deferredVerification` item with reason `runtime` or `external`, or a `deferred:manual` ack whose detail quotes verbatim the command of an integrated `Run:` the driver executed that exited 0, and quotes no red one (#753 \u2014 the driver executed it, so only the judgment was ever deferred); a `deferred:manual` ack that quotes no green integrated `Run:` verbatim is not pre-authorized, and neither is `deferred:plan-defect`. Approve only after writing `run-<stamp>/standing-approval.json` (`{grantedAt, instruction, ackList}`, the launch directive verbatim as `instruction`) FIRST \u2014 the rendered gate presentation lists the same ack list and instruction, so the transcript and the disk agree. Anything else (`BLOCKED`, any other ack type, a `coverage.complete: false`) \u2192 do not approve; the gate receipt is the terminal artifact. Approve runs `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py --approve --stamp <stamp>` (checkout of the integration branch + re-verified tests) and saves its JSON output verbatim to `run-<stamp>/approve-receipt.json`; the fleet shim's `readGateGreen` greens the run only on that receipt with a matching stamp. The orchestrator publishes the branch and opens the PR \u2014 the session never pushes and never hands off to `superpowers:finishing-a-development-branch` (superpowers does not run in a sandbox); the post-merge runbook rides in the PR body.\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest -q tests/test_fleet_events.py",
+      "exit": 0,
+      "stdout": "................                                                         [100%]\n16 passed in 0.04s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 827903,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n.....................................................s.................. [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1665 passed, 1 skipped, 5 warnings in 396.79s (0:06:36) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n..........                                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 335.68s (0:05:35) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5e1f9b80a919c7c685753865b6b1553080088e80",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-46/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-46/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.5579999999999998,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: The one suite failure is `tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_proof_runs.mjs]`, the Proof's `Test:` path \u2014 reserved for the peer's exam and excluded from this task's `writes`, so I left it byte-identical to BASE. Its BASE pins (the `['impl:T1','proof-run','proof-run','review:T1:1','proof-run']` order at line 143 and the `[0,1]`/`[0,0,1,1]`/`[0,0,1]` iter pins) assert the behaviour this task removes, so it fails until the peer's rewritten exam is laid over it. Everything else in the run is green.",
+    "task 1: Three legs the Context did not enumerate also relied on the round-1 execution and had to be re-scoped the same way, since M5 governs any assertion that pinned a second execution at `iter: 1`: `test_run_engine_pre_review.mjs`'s TOGGLE leg (c), `test_run_engine_exam_evidence.mjs`'s \"red exam in a REVIEW ROUND outranks the reviewer's PASS\" leg, and the `[0, 0, 1]` / `[0, 1]` exam-run iter pins beside them. Each keeps the clause it tested \u2014 a driver-minted red outranks a PASS verdict \u2014 by surfacing the red at `iter: 2` after a reviewer-driven `fix:<id>:1`, and asserts it through the row's `fix-loop-exhausted` verdict, its notes and the round-2 judgment-call literal rather than through a `fix:<id>:1` prompt the driver no longer builds from that red."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2 (Claim/Context): the tree now states the manual-ack rule two ways. `fleet/run-main.mjs:264-302` conditionally pre-authorizes `deferred:manual`, and `fleet/roles/critic.md:33-36` / `skills/ultrapowers/references/report-format.md:107,150` say so \u2014 but four sites still assert the pre-#753 absolute: `fleet/run-engine.mjs:2064-2066` (\"it reaches the gate as the one ack type that is NOT pre-authorized (run-main's ackDecision)\"), `fleet/tests/test_run_engine_shallow.mjs:61-63` (\"a red leg is a `manual` ack, which run-main's ackDecision does NOT pre-authorize\"), `fleet/tests/test_run_engine_depth1_beside_critic.mjs:152` (\"it is the `manual` ack the gate does not pre-authorize\") and the assertion label at `fleet/tests/test_run_main.mjs:78` (\"manual is never pre-authorized\"). None is in either task's Files and no assertion is false for its own input, so behaviour is single-sourced and correct; the prose is stale for the next reader of the depth-1 leg."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 2, Context slot: the citation test is a plain substring of the ack `detail`, but not every `deferred:manual` ack is a critic's citation. `fleet/run-engine.mjs:2113-2120` mints one itself for a red depth-1 leg, and its `why` ends with `tail(shallowSuite.output, 800)` \u2014 up to 800 characters of arbitrary suite output. If that tail happens to contain, verbatim, the `cmd` of a green `integratedRuns` entry (a plan whose `Run:` is a bare command the suite output echoes), `ackDecision` pre-authorizes the very ack the depth-1 leg exists to park on, and a run whose suite fails at CI's fetch-depth 1 approves silently. The Context reasons only about a critic's paraphrase as the safe failure and does not scope the engine-minted ack; worth an issue (e.g. exempting engine-minted acks, or matching only a fenced quote) rather than a merge stop."
+    }
+  ],
+  "blockedWaves": []
+}
