@@ -5,8 +5,8 @@ FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
 # Measured wall at 0.3.19 under `-n 6`: 40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s,
 # 12.6 s, 10.6 s.
 # Under `--dist load` a worker that picks up a 40 s sim last holds the whole
-# suite open, so the seven longest go out first; the rest follow alphabetically.
-# A name that leaves fleet/tests/ simply drops out of the list.
+# suite open, so the seven longest go out first; the rest follow in relative-path
+# order. A name that leaves fleet/tests/ simply drops out of the list.
 # test_sandbox_boot_selfmerge.mjs leads it as the longest sim that boots
 # fleet/sandbox-boot.sh — the pole test_sandbox_boot_merge.mjs used to hide.
 # The merge sim ran it and six other boot siblings inside itself and no longer
@@ -22,15 +22,50 @@ SLOW_FIRST = ('test_sandbox_boot_selfmerge.mjs', 'test_run_engine_proof_runs.mjs
               'test_publish_fold.mjs')
 
 
-def _slowest_first(paths):
-    """`paths` ordered SLOW_FIRST-then-alphabetical by basename."""
-    by_name = {os.path.basename(p): p for p in paths}
-    ordered = [by_name[name] for name in SLOW_FIRST if name in by_name]
-    ordered += [by_name[name] for name in sorted(by_name) if name not in SLOW_FIRST]
-    return ordered
+def _sim_id(fleet_dir, path):
+    """`path` as the bridge names it: relative to `<fleet_dir>/tests`, /-joined.
+
+    `test_x.mjs` for a curated sim, `exams/run_7/test_x.mjs` for an exam. The
+    basename alone was the id while every sim sat in one directory; it stopped
+    being an identity the moment a run's exams could carry a curated sim's name.
+    """
+    rel = os.path.relpath(path, os.path.join(fleet_dir, "tests"))
+    return rel.replace(os.sep, "/")
 
 
-TESTS = _slowest_first(glob.glob(os.path.join(FLEET, "tests", "test_*.mjs")))
+def _order_key(rel):
+    """SLOW_FIRST members in SLOW_FIRST order, then the rest by relative path.
+
+    Membership is by basename — SLOW_FIRST is a list of wall measurements, and a
+    sim's wall does not change because a run copied it into `exams/`. The
+    relative path is the tiebreaker, so two files of one basename in different
+    directories order deterministically instead of one displacing the other.
+    """
+    name = rel.rsplit("/", 1)[-1]
+    rank = SLOW_FIRST.index(name) if name in SLOW_FIRST else len(SLOW_FIRST)
+    return (rank, rel)
+
+
+def collect_sims(fleet_dir):
+    """Every sim `<fleet_dir>/tests/` offers, slowest-first then alphabetical.
+
+    Two sources, one list: the curated `tests/test_*.mjs`, and the exams a run
+    writes into the reserved `tests/exams/<slug>/` (#777). The reserved
+    directory does not exist on main, so the second glob is empty there and CI
+    keeps running the curated tree with no workflow edit; inside a run the
+    branch carries the exams and the suite collects them by the same rule.
+
+    Returns paths under `fleet_dir` (what `node` is handed), ordered by the
+    relative name (what the parametrize id shows).
+    """
+    tests_dir = os.path.join(fleet_dir, "tests")
+    paths = (glob.glob(os.path.join(tests_dir, "test_*.mjs"))
+             + glob.glob(os.path.join(tests_dir, "exams", "*", "test_*.mjs")))
+    return sorted(paths, key=lambda p: _order_key(_sim_id(fleet_dir, p)))
+
+
+TESTS = collect_sims(FLEET)
+IDS = [_sim_id(FLEET, path) for path in TESTS]
 
 
 def _ensure_node_modules():
@@ -61,7 +96,7 @@ def _ensure_node_modules():
 MJS_TIMEOUT = 300
 
 
-@pytest.mark.parametrize("path", TESTS, ids=[os.path.basename(p) for p in TESTS])
+@pytest.mark.parametrize("path", TESTS, ids=IDS)
 def test_fleet_mjs(path):
     _ensure_node_modules()
     # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`

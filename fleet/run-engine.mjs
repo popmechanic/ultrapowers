@@ -52,6 +52,12 @@ import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
 // evidence records. The record itself is untouched — the whole output is still
 // on disk beside the excerpt.
 import { failingBlock } from './failing-block.mjs'
+// Where a peer's exam lands (#777). The Proof names the path the exam is
+// written FOR; the reserved directory under the matching test root is where the
+// run writes it TO, so the integration branch keeps the run's measurements out
+// of the project's own test paths. One module, because the engine, the
+// examiner's prompt and `fleet/strip-exams.sh` all have to agree on the slug.
+import { examSlug, reservedExamPath } from './exam-paths.mjs'
 
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
@@ -1061,14 +1067,54 @@ export async function runEngine({
         '" — fell back to standard (valid: standard, mostCapable/most-capable)')
     }
 
+    // ── where this task's exam lands (#777) ─────────────────────────────────
+    // The Proof's `Test:` path is the path the exam is written FOR; unless the
+    // Proof marked it `Guard:` — in which case the file AT that path is the
+    // deliverable and it lands at itself — the run writes it to the reserved
+    // directory under the matching test root. `proofGuards` is read exactly as
+    // `proofTests` is, and a task compiled before the field existed has none.
+    const proofTests = Array.isArray(task.proofTests)
+      ? task.proofTests.filter((p) => typeof p === 'string' && p.trim() !== '')
+      : []
+    const proofGuards = Array.isArray(task.proofGuards)
+      ? task.proofGuards.filter((p) => typeof p === 'string' && p.trim() !== '')
+      : []
+    const examTestCmd = (typeof task.testCmd === 'string' && task.testCmd.trim())
+      ? task.testCmd : null
+    const landingOf = (p) => (proofGuards.includes(p) ? p : reservedExamPath(p, stamp))
+    // Proof order, and only the paths that actually move. A task whose paths
+    // are under neither test root — every sim at BASE, whose Proof names
+    // `t1_test.sh` — has an empty list here and takes every branch below with
+    // the bytes it had before this existed.
+    const examMoves = proofTests.map((p) => [p, landingOf(p)]).filter(([p, land]) => land !== p)
+    // The exam's command, pointed at where the exam lands. Substring
+    // replacement is the same honest predicate `namesProofTest` reads by: every
+    // spelling `derive_task_test_cmd` emits carries the Proof path verbatim,
+    // and a command that names none comes back unchanged.
+    const examRunCmd = examTestCmd
+      ? examMoves.reduce((cmd, [p, land]) => cmd.split(p).join(land), examTestCmd)
+      : null
+    // One line per moved path, in Proof order, directly after the TEST COMMAND
+    // line and before FILES — the examiner's only instruction about where to
+    // write, and a line the implementer's prompt never carries.
+    const examPathsBlock = examMoves
+      .map(([p, land]) => '\nEXAM PATHS: ' + p + ' -> ' + land).join('')
+
     // Everything after the TEST COMMAND line is one string both workers get,
     // byte for byte: the same BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS,
     // INTERFACES and TASK blocks. Only that one line can differ (#663), and it
     // differs only for a task whose own command is its peer's exam.
     const sharedInputs = filesLine(task) + siblingsStr +
       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
-    const examinerInputs = testCmdLine(task, workerTestCmd) + sharedInputs
+    // The examiner's line is the remapped command; a task with no command of
+    // its own falls back to the run-wide one exactly as it did.
+    const examCmdTask = examRunCmd ? { testCmd: examRunCmd } : task
+    const examinerInputs = testCmdLine(examCmdTask, workerTestCmd) + examPathsBlock + sharedInputs
     const implementerInputs = implTestCmdLine(task, workerTestCmd) + sharedInputs
+    // The fix rounds run in the GRADED clone, which holds the exam at its
+    // landing path after the handoff — so they are handed the remapped command
+    // too, and no `EXAM PATHS:` line: nothing there writes an exam.
+    const fixTestCmdLine = () => testCmdLine(examCmdTask, workerTestCmd)
 
     // ── the exam (#553, #653) ────────────────────────────────────────────────
     // A worker writes the tests the Proof names, in a clone of its OWN at BASE,
@@ -1095,9 +1141,6 @@ export async function runEngine({
     // (Amendment 10) — no prompt asks anyone to run git or report a sha.
     const cloneDir = path.join(clonesDir, 'task-' + task.id)
     const examDir = path.join(clonesDir, 'exam-' + task.id)
-    const proofTests = Array.isArray(task.proofTests)
-      ? task.proofTests.filter((p) => typeof p === 'string' && p.trim() !== '')
-      : []
     // The Proof's `Run:` commands, in Proof order (#589). Absent or empty for
     // every task compiled before the slot existed — and M6: a `Run:`-only
     // proof leaves `proofTests` empty, so it dispatches no examiner by the
@@ -1105,8 +1148,6 @@ export async function runEngine({
     const proofRuns = Array.isArray(task.proofRuns)
       ? task.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
       : []
-    const examTestCmd = (typeof task.testCmd === 'string' && task.testCmd.trim())
-      ? task.testCmd : null
     // `git hash-object` on the path as it stands in a clone; an absent path is
     // recorded as null, which is itself a value the drift check compares
     // (creating a path the examiner declined to write IS an edit).
@@ -1115,6 +1156,45 @@ export async function runEngine({
       return r.code === 0 ? String(r.stdout || '').trim() : null
     }
     const blobShaOf = (p) => blobShaIn(cloneDir, p)
+    // Put a path back the way BASE left it — deleted when BASE had none. Used
+    // on the Proof path once its exam has landed somewhere else: whatever the
+    // implementer wrote there is its own file, not an exam, and the branch is
+    // not to carry a second copy of the measurement at the path the Proof
+    // named. `git checkout <sha> -- <path>` stages the base content, so the
+    // re-capture's `add -A`/`diff --cached` sees no hunk for it; a path absent
+    // at BASE is a failing pathspec, and then removing it is the restore.
+    const restoreToBase = async (dir, p) => {
+      const r = await exec('git', ['checkout', baseShaForTask, '--', p], { cwd: dir })
+      if (r.code === 0) return
+      fs.rmSync(path.resolve(dir, p), { recursive: true, force: true })
+    }
+    // The reserved Python root for this run, and the packaging it needs.
+    // pytest collects `tests/exams/<slug>/test_a.py` beside a curated
+    // `tests/test_a.py` only when the exam's directories are a real package:
+    // every other shape aborts collection with `import file mismatch`, and
+    // `--import-mode=importlib`, which also collects both, breaks the curated
+    // tests that import a sibling test module by name. So each directory from
+    // the reserved root down to the file gets an empty `__init__.py`, written
+    // only where none exists. `fleet/tests/` is a bare node-runner glob with no
+    // package semantics and gets none.
+    const pyExamRoot = 'tests/exams/' + examSlug(stamp)
+    const ensurePackageInits = (dir, landings) => {
+      const dirs = new Set()
+      for (const land of landings) {
+        if (!land.endsWith('.py') || !land.startsWith(pyExamRoot + '/')) continue
+        let at = pyExamRoot
+        dirs.add(at)
+        for (const seg of land.slice(pyExamRoot.length + 1).split('/').slice(0, -1)) {
+          at += '/' + seg
+          dirs.add(at)
+        }
+      }
+      for (const d of dirs) {
+        const f = path.resolve(dir, d, '__init__.py')
+        fs.mkdirSync(path.dirname(f), { recursive: true })
+        if (!fs.existsSync(f)) fs.writeFileSync(f, '')
+      }
+    }
     let exam = null
     // The blobs the drift check compares against — recorded from the graded
     // clone at the HANDOFF, never before it (see below).
@@ -1326,9 +1406,17 @@ export async function runEngine({
           (ex ? (ex.status + ' (' + (ex.summary || 'no summary') + ')') : 'returned no reply') +
           ' — no exam recorded; the implementer proceeds unexamined')
       } else {
+        // Read at the LANDING paths: that is where the `EXAM PATHS:` lines sent
+        // the examiner, and where the handoff, the drift check and every exam
+        // run read from. A path that never moved is its own landing path, so
+        // this is the same read it always was for the sims.
         examinerBlobs = []
-        for (const p of proofTests) examinerBlobs.push([p, await blobShaIn(examDir, p)])
-        const atBase = await sh(examTestCmd, examDir)
+        for (const p of proofTests) {
+          const land = landingOf(p)
+          examinerBlobs.push([land, await blobShaIn(examDir, land)])
+        }
+        ensurePackageInits(examDir, examinerBlobs.map(([p]) => p))
+        const atBase = await sh(examRunCmd, examDir)
         if (atBase.code === 0) {
           exam = 'green-at-base'
           judgmentCalls.push('task ' + task.id + ': exam is green at BASE — it establishes nothing')
@@ -1361,6 +1449,11 @@ export async function runEngine({
         fs.copyFileSync(path.resolve(examDir, p), dest)
         handed.push(p)
       }
+      // …and the Proof path is put back to BASE wherever the exam landed
+      // somewhere else, so the branch holds the measurement once, where the
+      // reserved directory says, and nothing at the path the Proof named.
+      for (const [p] of examMoves) await restoreToBase(cloneDir, p)
+      ensurePackageInits(cloneDir, handed)
       appendEvent({ kind: 'driver:exam-handoff', task: task.id, paths: handed })
       if (hasCoordinates(impl)) {
         try {
@@ -1380,7 +1473,7 @@ export async function runEngine({
         }
       }
       examBlobs = []
-      for (const p of proofTests) examBlobs.push([p, await blobShaOf(p)])
+      for (const [p] of examinerBlobs) examBlobs.push([p, await blobShaOf(p)])
       examEdited = []
     }
 
@@ -1428,9 +1521,9 @@ export async function runEngine({
     const examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)
     const runExam = async (iter) => {
       if (!examRunnable) return null
-      const r = await sh(examTestCmd, cloneDir)
-      appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examTestCmd, exit: r.code, iter })
-      return { cmd: examTestCmd, exit: r.code, stdout: tail(r.stdout + r.stderr) }
+      const r = await sh(examRunCmd, cloneDir)
+      appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examRunCmd, exit: r.code, iter })
+      return { cmd: examRunCmd, exit: r.code, stdout: tail(r.stdout + r.stderr) }
     }
     const runChecks = async (iter) => {
       const checks = []
@@ -1521,7 +1614,7 @@ export async function runEngine({
         judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
           reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
         impl = await agent(
-          roles.fix + taskBodyBlock(task, wavesPath) + testCmdLine(task, workerTestCmd) +
+          roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
             filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
             '\n\nBlocking issues to resolve:\n' +
             reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
@@ -1743,7 +1836,7 @@ export async function runEngine({
       // prior work is simply the tree's state; capture stays cumulative
       // against the task BASE by construction (withPatchCapture).
       impl = await agent(
-        roles.fix + taskBodyBlock(task, wavesPath) + testCmdLine(task, workerTestCmd) +
+        roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
           '\n\nBlocking issues to resolve:\n' + blocking.map((b) => {
             const patch = patchOf(b)

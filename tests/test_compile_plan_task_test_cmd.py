@@ -182,6 +182,9 @@ def test_entry_keeps_every_other_key_at_its_base_value(tmp_path):
         # The Proof `Run:` commands (#589) — `[]` here, because this fixture
         # task's Proof names an exam file and no command.
         "proofRuns": [],
+        # The Proof `Guard:` paths (#777) — `[]` here, because this fixture
+        # task's Proof names no guard.
+        "proofGuards": [],
     }
 
 

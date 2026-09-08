@@ -43,6 +43,9 @@ import { makeEventLog } from './run-waves.mjs'
 import {
   contendingBlock as buildContendingBlock, contendingTasks,
 } from './publish-fold-block.mjs'
+// The one rule for where a run's exams land, shared with the engine's handoff
+// and `strip-exams.sh` so the writer and this reader cannot drift (#777).
+import { reservedExamPath } from './exam-paths.mjs'
 
 // Resolved against the ENGINE checkout, exactly as `runEngine` resolves it:
 // the kernel ships with the code that is running, never with `--repo`.
@@ -206,13 +209,36 @@ export const EXAM_CHECK = {
       const contenders = await contendingTasks({
         repo: ctx.repo, base: ctx.base, tip: ctx.tip, run: ctx.run, path: p, tasks: ctx.tasks,
       })
-      for (const { task } of contenders) {
+      for (const { run: contenderRun, task } of contenders) {
         for (const exam of proofExams(task && task.body)) {
-          if (seen.has(exam)) continue
-          seen.add(exam)
-          const argv = examArgvFor(exam)
-          if (!argv) {
+          // A Proof names the path its exam was written FOR; the engine's
+          // handoff writes it to the reserved directory of the run that
+          // produced it, so the fold looks there FIRST — under the contender's
+          // OWN run, which for a main-side task is the number its frontier
+          // commit carries. The Proof path is the fallback: a `Guard:` exam
+          // keeps its own path, and a path under neither test root maps to
+          // itself, which is why the rig's root-level exams are unaffected.
+          const landed = reservedExamPath(exam, 'run-' + contenderRun)
+          const where = [landed, exam].find(
+            (c) => fs.existsSync(path.join(ctx.integ, c)))
+          if (!where) {
+            // Present at neither path — a main-side run's exams were stripped
+            // onto its evidence tag when it published, so they ride no later
+            // tree. That is recorded, not run, and is not a red: the fold
+            // cannot measure what was never meant to be here, and the seam it
+            // covered stays with CI on the merge commit (#767 decision 1).
+            if (seen.has(exam)) continue
+            seen.add(exam)
             checks.push({ check: 'exam', exam, path: p, result: 'skipped' })
+            continue
+          }
+          // Deduped by the path actually run, so one task naming one exam for
+          // two joined paths still runs it once.
+          if (seen.has(where)) continue
+          seen.add(where)
+          const argv = examArgvFor(where)
+          if (!argv) {
+            checks.push({ check: 'exam', exam: where, path: p, result: 'skipped' })
             continue
           }
           const r = await ctx.exec(argv[0], argv.slice(1), { cwd: ctx.integ })
@@ -221,7 +247,9 @@ export const EXAM_CHECK = {
             path.join(ctx.foldEvidence, 'exam-' + ctx.attemptKey + '-' + n + '.txt'), out)
           n += 1
           const ok = Boolean(r) && r.code === 0
-          checks.push({ check: 'exam', exam, path: p, result: ok ? 'pass' : 'fail' })
+          // The recorded `exam` is the path that ran, not the path the Proof
+          // named: a reader following the receipt to a file must find one.
+          checks.push({ check: 'exam', exam: where, path: p, result: ok ? 'pass' : 'fail' })
           if (ok) continue
           // The first red exam stops the pass: the candidate has already been
           // measured false, and the exams after it would measure the same one.
@@ -229,10 +257,10 @@ export const EXAM_CHECK = {
             ok: false,
             checks,
             path: p,
-            exam,
+            exam: where,
             message: tail(out),
             disposition: 'suite red',
-            reason: exam + ' red on ' + p,
+            reason: where + ' red on ' + p,
           }
         }
       }

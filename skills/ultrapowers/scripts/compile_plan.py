@@ -69,6 +69,13 @@ FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)
 # derive_task_test_cmd. It rides verbatim to the engine, which executes it in
 # the task's clone through the same `sh` seam as the run-wide test command.
 RUN_LINE = re.compile(r"^-\s*Run:\s*(.+)$")
+# A Proof `Guard:` bullet (#777): the exam path a task asserts it holds the
+# guard on — the file it is answerable for keeping honest. Like `Run:`, it is
+# deliberately NOT a FILE_LINE alternative: a `Guard:` names no NEW obligation
+# the compiler enforces, so it must never reach proof_tests, derive_task_test_
+# cmd, or the disjointness set. It rides to the wave entry as `proofGuards` and
+# earns at most an ADVISORY (see `_render_guard`) — never a `grammar:` refusal.
+GUARD_LINE = re.compile(r"^-\s*Guard:\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
 # overlap edge that prevents a same-wave write race.
@@ -955,15 +962,25 @@ def parse_claims_body(body, task_id, plan_claim=None):
     # not sorted, and not checked for existence. The same command named twice
     # is two runs, because running it twice is what the Proof asked for.
     proof_runs = []
+    # The fourth view: the Proof's `Guard:` paths in Proof order (#777). A
+    # guard is a path like a `Test:` value and is read by the same reader, but
+    # it is deduplicated (first occurrence kept) because naming the same guard
+    # twice is one guard named twice, not two.
+    proof_guards = []
     for line, fenced in lines[proof_start:proof_end]:
         stripped = line.strip()
         f = None if fenced else FILE_LINE.match(stripped)
         r = None if fenced else RUN_LINE.match(stripped)
+        g = None if fenced else GUARD_LINE.match(stripped)
         if f and f.group(1) == "Test":
             for path in _claims_file_paths(f.group(2)):
                 if path not in proof_tests:
                     proof_tests_ordered.append(path)
                 proof_tests.add(path)
+        elif g:
+            for path in _claims_file_paths(g.group(1)):
+                if path not in proof_guards:
+                    proof_guards.append(path)
         elif r:
             command = _claims_run_command(r.group(1))
             proof_runs.append(command)
@@ -996,6 +1013,7 @@ def parse_claims_body(body, task_id, plan_claim=None):
             "proof_tests": sorted(proof_tests),
             "proof_tests_ordered": proof_tests_ordered,
             "proof_runs": proof_runs,
+            "proof_guards": proof_guards,
             "machine_clauses": machine_clauses,
             "proof_legs": proof_legs,
             "violations": violations}
@@ -4007,6 +4025,57 @@ def _render_base_sha_in_suite(tasks, ctx):
 ADVISORY_RENDERS.append((BASE_SHA_IN_SUITE, _render_base_sha_in_suite))
 
 
+# P9 — a `Guard:` names a file the task is answerable for, and a task can only
+# be answerable for a file it declares (#777; #767 decisions 3 and 7). The
+# compiler checks that pairing and says so; it does not refuse it. That is the
+# whole of the bullet's enforcement, and it is deliberate — `Guard:` adds no
+# word to the frozen diagnostic vocabulary, so a mis-aimed guard is an ADVISORY
+# a reader weighs, never a `grammar:` line that stops a compile.
+#
+# Its own render, appended last: `check-cost`'s neighbour is pinned to be
+# `sha-unguarded` (tests/test_compile_plan_sha_unguarded.py [M1]), so a new
+# render joins the registry at the end, where it displaces nobody.
+#
+# Two ways a guard can be mis-aimed, in precedence order. A path the task's
+# Files block does not name is the coarser miss and wins: the task cannot touch
+# it at all, so asking whether its Proof runs it is moot. A path the Files block
+# DOES name but the Proof never names as a `Test:` is the finer one: the task
+# owns the file, but nothing in its own Proof exercises it, so the guard is a
+# claim with no exam behind it. A guard that is both a Files path and a Proof
+# `Test:` path is exactly what a guard should be, and prints nothing — as does
+# every task naming no `Guard:` at all, which is every task at BASE.
+GUARD_NOT_IN_FILES = "not in its Files"
+GUARD_NO_PROOF_TEST = "the Proof names no Test: at that path"
+
+
+def _render_guard(tasks, ctx):
+    lines = []
+    for task in tasks:
+        claims = task.get("claims") or {}
+        guards = claims.get("proof_guards") or []
+        if not guards:
+            continue
+        # The Files block's paths, all three labels: `creates`/`modifies` are
+        # its writes, `reads` its `Test:` bullets.
+        files = (set(task.get("creates") or ())
+                 | set(task.get("modifies") or ())
+                 | set(task.get("reads") or ()))
+        proof_tests = set(claims.get("proof_tests_ordered") or ())
+        for path in guards:
+            if path not in files:
+                reason = GUARD_NOT_IN_FILES
+            elif path not in proof_tests:
+                reason = GUARD_NO_PROOF_TEST
+            else:
+                continue
+            lines.append("ADVISORY guard: task %s names `%s` — %s"
+                         % (task["id"], path, reason))
+    return lines
+
+
+ADVISORY_RENDERS.append(("guard", _render_guard))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
@@ -4350,7 +4419,13 @@ def main(argv=None):
           # they are additive to testCmd, which still derives from `Test:`
           # paths alone.
           "proofRuns": list(
-              (by_id[tid].get("claims") or {}).get("proof_runs", []))}
+              (by_id[tid].get("claims") or {}).get("proof_runs", [])),
+          # The Proof `Guard:` paths (#777), in Proof order, [] for a task that
+          # names none (and for every legacy-grammar body). An advisory, not an
+          # obligation: the engine reads it with `Array.isArray` and an absent
+          # key as [], and no `grammar:` line is ever drawn from it.
+          "proofGuards": list(
+              (by_id[tid].get("claims") or {}).get("proof_guards", []))}
          for tid in wave]
         for wave in waves]
 

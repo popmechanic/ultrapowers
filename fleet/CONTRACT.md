@@ -50,6 +50,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     wrote it, beside the receipt that quotes only its 4000-char tail.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
+    `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
+    and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
+    `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
+    pull request's diff never carries one.
     The publish fold writes its own `publish-fold/` receipts directory beside them, holding
     `receipt.json` (the fold's record: `{ engineHead, attempts: { "1": { tip, candidate, pushedHead,
     disposition, reason, path, pathsJoined, resolversDispatched, suite, checks, checkRetries } } }`,
