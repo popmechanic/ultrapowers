@@ -58213,6 +58213,686 @@ index 846ee631ea00d0a6a97914fe7edeacd04ae7eaec..00000000000000000000000000000000
 -- `c-1a58ed29`: reconciliation commit ebc522a8403777aaf3280826916602155951ffc8 on integration chain
 -- `c-31339f70`: reconciliation commit 60b02846b1f6268c61a6716c30af074a05ccfbac on integration chain
 -- `c-13e97401`: reconciliation commit c92a3d03423e7e8b0e526d4e5cc30e00094380c7 on integration chain
+diff --git a/skills/ultralearn/SKILL.md b/skills/ultralearn/SKILL.md
+index 63f9ad4b4f0bfbe6da983d0af18d1d5d28b9e42f..9232914c8a96d902ed49fcf1124181aa7c27a563 100644
+--- a/skills/ultralearn/SKILL.md
++++ b/skills/ultralearn/SKILL.md
+@@ -16,15 +16,20 @@ runs inside Claude Code — no API key, no external calls.
+    transcript on this machine — the driver runs in a sandbox, so nothing local
+    ever sees one:
+    `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --evidence <owner>/<repo> --run <N>`
+-   reads each run's committed record off its `ultra/evidence-run-<N>` branch,
+-   or pass an unpacked run directory as a positional argument. It writes
+-   `bundle.json` + `slice.md` into the gitignored cache
++   reads each run's committed record off its `ultra/evidence/run-<N>` tag —
++   since #624 the tag is the record of every finished run — and falls back to
++   the `ultra/evidence-run-<N>` branch, which exists only while that run is in
++   flight. Or pass an unpacked run directory as a positional argument — the
++   positional `paths` also takes a tree holding several of them, or a
++   sandbox-logs tarball. It writes `bundle.json` + `slice.md` into the
++   gitignored cache
+    `~/.claude/ultralearn/runs/run-<N>-<date>/` — the run id and its opening day
+    in UTC (`run-30-2026-08-30`), so a restarted numbering never lands on an
+-   older run's bundle. Step 2 and step 3 are unchanged. `--run` is repeatable
+-   and restricts the pull; `--force` rebuilds a cached bundle. A fleet run
+-   directory is one holding an `events.jsonl`; runs 10–23 predate it and are
+-   the commissioned read's.
++   older run's bundle. `--run` is repeatable and restricts the pull; `--force`
++   rebuilds a cached bundle. `--engine-version <release>` stamps the bundle's
++   version explicitly; without it that version is a date guess, and the merge
++   will not stamp a finding from it. A fleet run directory is one holding an
++   `events.jsonl`.
+    Incremental: a cached bundle is "already cached" only when the record's sha
+    matches its `evidenceSha` — a record that has moved since (a re-publish, a
+    re-tagged run) is rebuilt, not skipped.
+@@ -40,40 +45,37 @@ runs inside Claude Code — no API key, no external calls.
+    — accepted. Promote trigger for a drain detector: a sense pass where
+    commissioned reads **miss or misread** drain evidence; record the miss as
+    a ledger finding.
+-   **Runs 10–23 only — fleet evidence bundles read the commissioned way**
+-   (#292). Superseded for any run carrying an `events.jsonl` (24+), which
+-   `harvest_fleet_runs.py` above harvests mechanically. For the older runs the
+-   drive layer is invisible to every harvester, so the evidence dir is
+-   first-class sense input, read the commissioned way. Layout (per run, under the repo's
+-   `.claude/ultrapowers/fleet-runs-<date>/` or the orchestrator's
+-   `<dbDir>-evidence/`): `gate-read-<runId>.json` (the §W1d read, verbatim) +
+-   `gate-read-<runId>.detail.json` (triage detail), `stat-<runId>.json`
+-   (the raw control-plane payload), and `sandbox-logs/<vm>-<stamp>/sandbox-logs.tgz`
+-   holding `shim.log`, `fleet-run.json`, the engine transcripts under the
+-   sandbox's Claude project dir, and the in-repo `run-*/` dirs. Dispatch one reader per
+-   fleet run with the bundle contents; readers set `evidenceAbstracted: true`,
+-   use the fleet `runId` as `runId`, and stamp `engineVersion` from the run's
+-   version stamp. Pilot corpus: `.claude/ultrapowers/fleet-runs-2026-08-26/`
+-   (four distinct drive failure modes + one green engine run) and
+-   `fleet-runs-2026-08-27/` (run-13, green).
+ 2. **Read.** For each new bundle, dispatch a subagent with
+    `references/reading-lenses.md` as its instructions plus the bundle's
+    `bundle.json` and `slice.md`. The agent returns a JSON array of findings.
+    Dispatch readers in parallel. Every reader applies all five lenses,
+    including the open-ended `frontier` pass that catches emergent behavior.
+ 3. **Merge.** Collect the findings and merge them behind the redaction guard.
+-   Build both bundle lookups once and pass them to `merge_findings`:
++   Build both bundle lookups once, read the released-version set, and pass all
++   three to `merge_findings`:
+    `origin_lookup, engine_lookup = bundle_lookups("~/.claude/ultralearn")`, then
+-   `merge_findings(findings, "docs/superpowers/observations/ledger.jsonl", origin_lookup, engine_lookup)`.
++   `released = released_versions()` (from `_readers`), then
++   `merge_findings(findings, "docs/superpowers/observations/ledger.jsonl", origin_lookup, engine_lookup, released=released)`.
+    `origin_lookup(runId)` reads `origin` from the cached `bundle.json` (fail
+    closed to `foreign`); `engine_lookup(runId)` reads `engineVersion.epoch`, so
+    each ledger entry records the ultrapowers version the finding was observed
+-   under — letting `distill` weigh whether a finding predates a fix. Then
++   under — letting `distill` weigh whether a finding predates a fix. A bundle
++   whose epoch was guessed from the run's date stamps no version at all, and a
++   finding stamped with a version this plugin never released is refused — never
++   written, and counted under the returned `refused`. Then
+    `regenerate_digest(...)` rewrites `docs/superpowers/observations/ledger.md`
+    (the version shows as `_(vX.Y.Z)_`). **Foreign verbatim evidence never
+    lands** — the guard drops it.
+    Script: `python3 skills/ultralearn/scripts/merge_ledger.py`
+ 
++**Historical corpus** — runs 10–23 predate `events.jsonl` (pre-#421), so no
++harvester reads them and no sense pass expects to. Their evidence survives as
++archaeology only, in `.claude/ultrapowers/fleet-evidence-archive/`: one
++`sandbox-logs/fleet-run-<N>-<stamp>/sandbox-logs.tgz` tarball per run (18 of
++them, run 10 onward), beside that era’s per-run gate reads and control-plane
++payloads. The archive is untracked and absent from every sandbox — read it on
++the laptop, or not at all.
++
+ ## Verb 2 — `ultralearn distill` (propose)
+ 
+ Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
+diff --git a/skills/ultralearn/scripts/_readers.py b/skills/ultralearn/scripts/_readers.py
+index f722f84d65239cbd2464d7b8d539b839fce79205..1fb5545547f912694741a4fefd3380356cf11184 100644
+--- a/skills/ultralearn/scripts/_readers.py
++++ b/skills/ultralearn/scripts/_readers.py
+@@ -129,6 +129,21 @@ def release_timeline():
+         return ()
+ 
+ 
++def released_versions():
++    """The set of version strings this plugin actually released, read off
++    `release_timeline()` — or None when that history is not there to judge by
++    (no git, not a repo, a shallow clone whose log holds nothing).
++
++    None and the empty set are different answers: None means "cannot judge",
++    and a caller must not refuse a version merely because it cannot check.
++    Deliberately NOT cached — `release_timeline` carries the one cache, and a
++    caller that swaps the timeline must see the new answer here too."""
++    timeline = release_timeline()
++    if not timeline:
++        return None
++    return frozenset(ver for _, ver in timeline)
++
++
+ def collapse_timeline(rows):
+     """Collapse CONSECUTIVE runs of one version, keeping the first of each run.
+ 
+diff --git a/skills/ultralearn/scripts/census_many.py b/skills/ultralearn/scripts/census_many.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c026b73025376d5e11ed0c45780dddbafb917793
+--- /dev/null
++++ b/skills/ultralearn/scripts/census_many.py
+@@ -0,0 +1,473 @@
++#!/usr/bin/env python3
++"""ultralearn many-run census — one table, one row per run directory.
++
++The laptop's single-run `census.py` answers "what did this run cost?"; an
++operator comparing a season of runs wants that answer thirty times over, side
++by side, in run order. This is the tracked sibling that does it: point it at
++run directories (or a tree holding them) and it emits one row per run under a
++fixed 31-column schema, as CSV or as a Markdown pipe table.
++
++A run directory is any directory holding at least one of `events.jsonl`,
++`report.json`, `status.json`. A run whose log was never written still gets its
++row — what its receipt (`report.json`) and status (`status.json`) say, and the
++empty string everywhere the log would have spoken. Blank means "nothing to
++read", never "zero": a run with no `events.jsonl` shows `""` for its role
++minutes, while a run whose log carries no examiner shows `0.0`.
++
++Read-only and advisory: an unreadable record costs its own columns, not the
++table. The event log is read through `fleet_events.read_events` (id-sorted,
++malformed lines skipped) — the parser lives there, never here.
++"""
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import os
++import re
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
++from fleet_events import read_events  # noqa: E402
++
++# The table's schema, in order. The exam pins both the names and the order, and
++# the CSV header, the Markdown header and every row dict are all built from
++# this one tuple so they cannot drift apart.
++COLUMNS = (
++    "run", "era", "engine", "terminus", "tasks", "width", "minutes_total",
++    "cost_usd", "start", "setup_min", "wave_min", "fold_min", "critic_min",
++    "gate_min", "publish_min", "min_examiner", "usd_examiner",
++    "min_implementer", "usd_implementer", "min_reviewer", "usd_reviewer",
++    "min_critic", "usd_critic", "min_resolver", "usd_resolver",
++    "longest_chain_min", "fix_rounds", "launched_at", "pr", "merged",
++    "status_min")
++
++# Holding any one of these makes a directory a run; a directory with none of
++# them is scaffolding (the fixture root itself is such a directory) and yields
++# no row.
++RUN_FILES = ("events.jsonl", "report.json", "status.json")
++
++# The roles that get a `min_`/`usd_` column pair. `writeSide` workers are real
++# but have no column, so their minutes land only in `minutes_total`.
++ROLES = ("examiner", "implementer", "reviewer", "critic", "resolver")
++
++# Worker label prefixes that name a task: the label's second colon-field is the
++# task id, so `review:1:2:1` and `fix:1:1` both belong to task `1`.
++TASK_PREFIXES = ("exam", "impl", "fix", "review")
++
++_RUN_NUMBER = re.compile(r"^run-(\d+)")
++
++_PUBLISH_KINDS = ("publish:pr", "publish:merge", "publish:hold")
++_TERMINAL_KINDS = ("driver:approved", "driver:fail")
++
++
++# --- formatting ------------------------------------------------------------
++#
++# Every cell is a string. A rule whose inputs are missing yields the empty
++# string rather than a zero, so "not measured" never reads as "measured zero".
++
++def _number(value):
++    """The value as a float, or None when it is not a usable number.
++
++    `True` is an `int` in Python and would otherwise sum as 1; reject it."""
++    if isinstance(value, bool) or not isinstance(value, (int, float)):
++        return None
++    return float(value)
++
++
++def _minutes(ms):
++    return "%.1f" % (ms / 60000.0)
++
++
++def _dollars(usd):
++    return "%.2f" % usd
++
++
++def _span_min(start_ts, end_ts):
++    """`end - start` as minutes, or the empty string when either end is
++    missing — a half-known interval is not a duration."""
++    a, b = _number(start_ts), _number(end_ts)
++    if a is None or b is None:
++        return ""
++    return _minutes(b - a)
++
++
++def _iso(ts):
++    """A millisecond epoch as the engine's ISO UTC spelling."""
++    value = _number(ts)
++    if value is None:
++        return ""
++    return datetime.fromtimestamp(value / 1000.0, timezone.utc).strftime(
++        "%Y-%m-%dT%H:%M:%SZ")
++
++
++def _parse_iso(text):
++    """A status timestamp as a datetime, or None. Tolerates the fractional
++    seconds a real `updatedAt` sometimes carries."""
++    if not isinstance(text, str) or not text.strip():
++        return None
++    try:
++        return datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
++    except ValueError as exc:
++        swallow("status timestamp is not an ISO instant; its span stays empty",
++                exc)
++        return None
++
++
++def _text(value):
++    """A record field as a cell: `null` and absent both read as empty."""
++    return "" if value is None else str(value)
++
++
++# --- inputs ----------------------------------------------------------------
++
++def _read_json(path):
++    """One JSON record, or None. A missing file is a normal absence; an
++    unreadable or malformed one costs its own columns, not the table."""
++    if not os.path.isfile(path):
++        return None
++    try:
++        with open(path, encoding="utf-8") as handle:
++            return json.load(handle)
++    except (OSError, ValueError) as exc:
++        swallow("run record unreadable; its columns stay empty", exc)
++        return None
++
++
++def find_run_dirs(paths):
++    """Every run directory at or under `paths`, each reported once.
++
++    Each path is walked with `os.walk`, so a path may be a run directory or a
++    tree holding them. Overlapping arguments do not duplicate a run."""
++    found, seen = [], set()
++    for path in paths:
++        for dirpath, dirnames, filenames in os.walk(path):
++            dirnames.sort()
++            if not any(name in filenames for name in RUN_FILES):
++                continue
++            key = os.path.realpath(dirpath)
++            if key in seen:
++                continue
++            seen.add(key)
++            found.append(dirpath)
++    return found
++
++
++# --- the log ---------------------------------------------------------------
++
++def _paired_workers(events):
++    """`(start, end)` per finished worker, in `worker:end` order.
++
++    A retry reuses its label, so an end pairs with the most recent unmatched
++    start of the same label — never with the label's first start, which would
++    mix attempt 2's end into attempt 1's span."""
++    open_by_label, pairs = {}, []
++    for event in events:
++        kind = event.get("kind")
++        if kind == "worker:start":
++            open_by_label.setdefault(str(event.get("label")), []).append(event)
++        elif kind == "worker:end":
++            stack = open_by_label.get(str(event.get("label")))
++            pairs.append((stack.pop() if stack else None, event))
++    return pairs
++
++
++def _duration_ms(start, end):
++    if start is None or end is None:
++        return None
++    a, b = _number(start.get("ts")), _number(end.get("ts"))
++    return None if a is None or b is None else b - a
++
++
++def _cost_usd(end):
++    meter = end.get("meter")
++    if not isinstance(meter, dict):
++        return 0.0
++    return _number(meter.get("costUsd")) or 0.0
++
++
++def _max_width(events):
++    """The most workers alive at once.
++
++    Sweep every start and end by `ts`, an end at time `t` before a start at
++    time `t` — a worker handed off at the same millisecond is a handoff, not an
++    overlap, while two workers *starting* at one millisecond are genuinely
++    concurrent."""
++    marks = []
++    for event in events:
++        kind = event.get("kind")
++        if kind not in ("worker:start", "worker:end"):
++            continue
++        ts = _number(event.get("ts"))
++        if ts is None:
++            continue
++        marks.append((ts, 1 if kind == "worker:start" else 0))
++    marks.sort(key=lambda m: (m[0], m[1]))
++    alive = width = 0
++    for _, is_start in marks:
++        alive += 1 if is_start else -1
++        width = max(width, alive)
++    return width
++
++
++def _task_id(label):
++    """The task a worker label names, or None when it names no task."""
++    fields = str(label).split(":")
++    if len(fields) < 2 or fields[0] not in TASK_PREFIXES:
++        return None
++    return fields[1]
++
++
++def _phase_ts(events, predicate, last=False):
++    """The `ts` of the first (or last) `engine:phase` whose phase matches."""
++    found = None
++    for event in events:
++        if event.get("kind") != "engine:phase":
++            continue
++        if not predicate(str(event.get("phase") or "")):
++            continue
++        found = event.get("ts")
++        if not last:
++            break
++    return found
++
++
++def _stage_ts(events, stage, last=False):
++    """The `ts` of the first (or last) `driver:stage` of that stage."""
++    found = None
++    for event in events:
++        if event.get("kind") == "driver:stage" and event.get("stage") == stage:
++            found = event.get("ts")
++            if not last:
++                break
++    return found
++
++
++def _last_ts(events, kinds):
++    found = None
++    for event in events:
++        if event.get("kind") in kinds:
++            found = event.get("ts")
++    return found
++
++
++def _is_wave_phase(phase):
++    """`Wave 1`, `Wave 2`… — the phases the engine announces while the waves
++    run. #712 left `Wave` as the only spelling an engine emits."""
++    return phase.startswith("Wave")
++
++
++def _event_columns(events):
++    """Every column the log speaks for, as a dict of strings."""
++    cells = {}
++
++    opened = next((e for e in events if e.get("kind") == "run:open"), None)
++    if opened is not None and opened.get("runId") not in (None, ""):
++        cells["run"] = str(opened.get("runId"))
++    cells["start"] = _iso(events[0].get("ts"))
++
++    pairs = _paired_workers(events)
++
++    total_ms = 0.0
++    for start, end in pairs:
++        span = _duration_ms(start, end)
++        if span is not None:
++            total_ms += span
++    cells["minutes_total"] = _minutes(total_ms)
++
++    total_usd = 0.0
++    for event in events:
++        if event.get("kind") == "worker:end":
++            total_usd += _cost_usd(event)
++    cells["cost_usd"] = _dollars(total_usd)
++
++    # A role with no worker on a run that HAS a log is a measured zero, so the
++    # accumulators start at zero rather than absent.
++    role_ms = {role: 0.0 for role in ROLES}
++    role_usd = {role: 0.0 for role in ROLES}
++    chain_ms = {}
++    for start, end in pairs:
++        role = (start or {}).get("role") or end.get("role")
++        span = _duration_ms(start, end) or 0.0
++        if role in role_ms:
++            role_ms[role] += span
++            role_usd[role] += _cost_usd(end)
++        task = _task_id(end.get("label"))
++        if task is not None:
++            chain_ms[task] = chain_ms.get(task, 0.0) + span
++    for role in ROLES:
++        cells["min_" + role] = _minutes(role_ms[role])
++        cells["usd_" + role] = _dollars(role_usd[role])
++    cells["longest_chain_min"] = _minutes(max(chain_ms.values(), default=0.0))
++
++    tasks = {_task_id(e.get("label")) for e in events
++             if e.get("kind") in ("worker:start", "worker:end")}
++    tasks.discard(None)
++    cells["tasks"] = str(len(tasks))
++    cells["width"] = str(_max_width(events))
++    cells["fix_rounds"] = str(sum(
++        1 for e in events if e.get("kind") == "worker:start"
++        and str(e.get("label")).startswith("fix:")))
++
++    setup_at = _phase_ts(events, lambda p: p == "Setup")
++    wave_at = _phase_ts(events, _is_wave_phase)
++    review_at = _phase_ts(events, lambda p: p == "Integration Review")
++    terminal_at = _last_ts(events, _TERMINAL_KINDS)
++    cells["setup_min"] = _span_min(setup_at, wave_at)
++    cells["wave_min"] = _span_min(wave_at, review_at)
++    cells["critic_min"] = _span_min(review_at,
++                                    _stage_ts(events, "engine-done", last=True))
++    cells["gate_min"] = _span_min(_stage_ts(events, "gate", last=True),
++                                  terminal_at)
++    cells["fold_min"] = _span_min(
++        terminal_at, _last_ts(events, ("driver:publish-fold",)))
++    cells["publish_min"] = _span_min(terminal_at,
++                                     _last_ts(events, _PUBLISH_KINDS))
++    return cells
++
++
++# --- the record columns ----------------------------------------------------
++
++def _record_columns(report, status, has_events):
++    """Every column the receipt and the status speak for.
++
++    `engine` and the status columns are read the same way whether or not the
++    run has a log; `tasks` is only the receipt's business when the log is
++    absent, since a log counts the tasks that actually ran."""
++    cells = {}
++    if isinstance(report, dict):
++        version = report.get("engineVersion")
++        if isinstance(version, str):
++            cells["engine"] = version
++        if not has_events and isinstance(report.get("tasks"), list):
++            cells["tasks"] = str(len(report["tasks"]))
++    if isinstance(status, dict):
++        cells["terminus"] = _text(status.get("state"))
++        cells["launched_at"] = _text(status.get("startedAt"))
++        cells["pr"] = _text(status.get("pr"))
++        cells["merged"] = _text(status.get("merged"))
++        started = _parse_iso(status.get("startedAt"))
++        updated = _parse_iso(status.get("updatedAt"))
++        if started is not None and updated is not None:
++            cells["status_min"] = "%.1f" % (
++                (updated - started).total_seconds() / 60.0)
++    return cells
++
++
++def census_row(run_dir, labels=None):
++    """One run directory's row: every one of `COLUMNS`, every value a string."""
++    row = {column: "" for column in COLUMNS}
++    row["run"] = os.path.basename(os.path.normpath(run_dir))
++
++    events = []
++    if os.path.isfile(os.path.join(run_dir, "events.jsonl")):
++        events = read_events(run_dir)
++    if events:
++        row.update(_event_columns(events))
++    row.update(_record_columns(_read_json(os.path.join(run_dir, "report.json")),
++                               _read_json(os.path.join(run_dir, "status.json")),
++                               bool(events)))
++    row["era"] = (labels or {}).get(row["run"], "")
++    return row
++
++
++def _run_order(row):
++    """Ascending by the `run-<N>` integer, whatever order argv named them.
++    A run whose name carries no number sorts after the numbered ones, by name,
++    so the order is total and never depends on the walk."""
++    match = _RUN_NUMBER.match(row["run"])
++    if match:
++        return (0, int(match.group(1)), row["run"])
++    return (1, 0, row["run"])
++
++
++def census_rows(paths, labels=None):
++    """The whole table: one row dict per run directory found at or under
++    `paths`, in run order."""
++    rows = [census_row(run_dir, labels) for run_dir in find_run_dirs(paths)]
++    rows.sort(key=_run_order)
++    return rows
++
++
++# --- rendering -------------------------------------------------------------
++
++def markdown_table(rows, header=True):
++    """The rows as a Markdown pipe table, trailing newline included, so the
++    text written to `--md` and the text printed to stdout are the same bytes."""
++    lines = []
++    if header:
++        lines.append("| " + " | ".join(COLUMNS) + " |")
++        lines.append("| " + " | ".join(["---"] * len(COLUMNS)) + " |")
++    for row in rows:
++        lines.append("| " + " | ".join(
++            str(row.get(column, "")) for column in COLUMNS) + " |")
++    return "".join(line + "\n" for line in lines)
++
++
++def _appending_to(path, append):
++    """True when this write must continue an existing table rather than start
++    one — the prior bytes stay, and no second header is written."""
++    return bool(append) and os.path.isfile(path) and os.path.getsize(path) > 0
++
++
++def write_csv(rows, path, append=False):
++    continuing = _appending_to(path, append)
++    with open(path, "a" if continuing else "w", encoding="utf-8",
++              newline="") as handle:
++        writer = csv.DictWriter(handle, fieldnames=list(COLUMNS),
++                                lineterminator="\n")
++        if not continuing:
++            writer.writeheader()
++        for row in rows:
++            writer.writerow({column: row.get(column, "") for column in COLUMNS})
++
++
++def write_md(rows, path, append=False):
++    continuing = _appending_to(path, append)
++    with open(path, "a" if continuing else "w", encoding="utf-8") as handle:
++        handle.write(markdown_table(rows, header=not continuing))
++
++
++# --- CLI -------------------------------------------------------------------
++
++def _parse_labels(parser, items):
++    labels = {}
++    for item in items or []:
++        run, separator, text = item.partition("=")
++        if not separator or not run:
++            parser.error("--label expects RUN=TEXT, got %r" % item)
++        labels[run] = text
++    return labels
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(
++        prog="census_many.py",
++        description="One row per fleet run, across many run directories.")
++    parser.add_argument("paths", nargs="+", metavar="PATH",
++                        help="a run directory, or a tree containing them")
++    parser.add_argument("--csv", dest="csv_path", metavar="PATH",
++                        help="write the table as CSV")
++    parser.add_argument("--md", dest="md_path", metavar="PATH",
++                        help="write the table as a Markdown pipe table")
++    parser.add_argument("--append", action="store_true",
++                        help="append rows to an existing table, no new header")
++    parser.add_argument("--label", action="append", metavar="RUN=TEXT",
++                        default=[], help="fill one run's `era` column")
++    args = parser.parse_args(argv)
++
++    rows = census_rows(args.paths, _parse_labels(parser, args.label))
++    if args.csv_path:
++        write_csv(rows, args.csv_path, args.append)
++    if args.md_path:
++        write_md(rows, args.md_path, args.append)
++    if not args.csv_path and not args.md_path:
++        sys.stdout.write(markdown_table(rows))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skills/ultralearn/scripts/merge_ledger.py b/skills/ultralearn/scripts/merge_ledger.py
+index 5db7a06e2472eb3ca0ddf78bbb28fa99c7fa4679..b3c4ae5696609efa5ba8c435319e45abe4400077 100644
+--- a/skills/ultralearn/scripts/merge_ledger.py
++++ b/skills/ultralearn/scripts/merge_ledger.py
+@@ -14,6 +14,16 @@ from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
+ 
+ LENSES = ["friction", "routing", "operator", "cost", "frontier"]
+ 
++# #696: a bundle whose engineVersion.basis is one of these carries a version
++# GUESSED from the run's date, not read from anything. The guess dated whole
++# eras of findings to versions the plugin never released, so a date-basis
++# bundle now stamps no version at all: an absent stamp is honest, a wrong one
++# is not. The read bases — "explicit" (the harvester was told), and
++# "plugin-cache-path" (a foreign run's own cache directory named it) — stay
++# trusted, as does a bundle with no basis key (August's, written before the
++# field existed).
++DATE_GUESS_BASES = frozenset({"home-repo-date", "foreign-date-upper-bound"})
++
+ 
+ def finding_id(finding):
+     key = json.dumps({k: finding.get(k) for k in ("runId", "lens", "title")},
+@@ -55,14 +65,30 @@ def _read_jsonl(path):
+     return out
+ 
+ 
+-def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None):
++def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None,
++                   released=None):
++    """Append the committable findings to the ledger; return counts.
++
++    `released` is the set of version strings this plugin actually released
++    (`_readers.released_versions()`). When it is given, a finding whose engine
++    lookup answers a version outside it is refused — not written, and counted
++    under `refused`. A lookup answering None is not refused on that ground:
++    an unknown version is a missing stamp, not a false one. When `released` is
++    None the history is not there to judge by, so nothing is refused for its
++    version. `skipped` stays `len(findings) - added`, so a refused finding is
++    skipped too."""
+     ledger_path = Path(ledger_path)
+     existing = _read_jsonl(ledger_path)
+     seen = {f.get("id") for f in existing}
+     added = []
++    refused = 0
+     for f in findings:
+         origin = origin_lookup(f.get("runId"))
+         engine_version = engine_lookup(f.get("runId")) if engine_lookup else None
++        if (released is not None and isinstance(engine_version, str)
++                and engine_version not in released):
++            refused += 1
++            continue
+         red = redact_finding(f, origin, engine_version)
+         if red is None or red["id"] in seen:
+             continue
+@@ -73,7 +99,8 @@ def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None):
+         with ledger_path.open("a") as fh:
+             for f in added:
+                 fh.write(json.dumps(f, sort_keys=True) + "\n")
+-    return {"added": len(added), "skipped": len(findings) - len(added)}
++    return {"added": len(added), "skipped": len(findings) - len(added),
++            "refused": refused}
+ 
+ 
+ def _redirect_rate_table(findings):
+@@ -159,7 +186,9 @@ def _opened_at(bundle):
+ def bundle_lookups(cache_dir):
+     """Build (origin_lookup, engine_lookup) over the cached run bundles under
+     <cache_dir>/runs/*/bundle.json. origin fails closed to 'foreign'; the engine
+-    epoch is None when the bundle or field is missing. Each bundle is read at
++    epoch is None when the bundle or field is missing, and None again when the
++    bundle's `engineVersion.basis` says the epoch was guessed from a date
++    (DATE_GUESS_BASES) rather than read. Each bundle is read at
+     most once. Pass both to merge_findings so ledger entries carry the
+     ultrapowers version a finding was observed under, surfaced in the digest.
+ 
+@@ -214,6 +243,10 @@ def bundle_lookups(cache_dir):
+ 
+     def engine_lookup(run_id):
+         ev = _bundle(run_id).get("engineVersion")
+-        return ev.get("epoch") if isinstance(ev, dict) else None
++        if not isinstance(ev, dict):
++            return None
++        if ev.get("basis") in DATE_GUESS_BASES:
++            return None            # a date guess is not a version this reads
++        return ev.get("epoch")
+ 
+     return origin_lookup, engine_lookup
 diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
 index b86897b9a8d63058885a17b27202d9d978067cd3..5bd97145af75755d2ecaf901cbdc934cfbf3d5a6 100644
 --- a/skills/ultrawrite/SKILL.md
@@ -58401,3 +59081,708 @@ index 0000000000000000000000000000000000000000..5880aee9aa047721a6be2ba2fc40d8af
 +  under-enumerates, and a contract that assumes a consumed function's behaviour
 +  — raising where it only advises — so read the consumed symbol before writing
 +  the clause that depends on it (run-45, 2026-09-01).
+diff --git a/tests/fixtures/ultralearn/census/run-101/events.jsonl b/tests/fixtures/ultralearn/census/run-101/events.jsonl
+new file mode 100644
+index 0000000000000000000000000000000000000000..a1773bc4b94e3d2902223b49f5c7577e5c4d2c94
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-101/events.jsonl
+@@ -0,0 +1,19 @@
++{"kind": "run:open", "id": "01AAA001", "ts": 1788130000000, "runId": "run-101", "base": "", "source": "fleet/run-main.mjs"}
++{"kind": "driver:stage", "id": "01AAA002", "ts": 1788130000000, "stage": "provision"}
++{"kind": "engine:phase", "id": "01AAA003", "ts": 1788130060000, "phase": "Setup"}
++{"kind": "engine:phase", "id": "01AAA004", "ts": 1788130120000, "phase": "Wave 1"}
++{"kind": "worker:start", "id": "01AAA005", "ts": 1788130120000, "label": "exam:1", "role": "examiner", "sessionId": "s-101-1", "cwd": "/c/exam:1", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA006", "ts": 1788130180000, "label": "exam:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.25, "models": ["claude-opus-5"]}}
++{"kind": "worker:start", "id": "01AAA007", "ts": 1788130180000, "label": "impl:1", "role": "implementer", "sessionId": "s-101-2", "cwd": "/c/impl:1", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA008", "ts": 1788130420000, "label": "impl:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 1.0, "models": ["claude-opus-5"]}}
++{"kind": "worker:start", "id": "01AAA009", "ts": 1788130420000, "label": "review:1:1:1", "role": "reviewer", "sessionId": "s-101-3", "cwd": "/c/review:1:1:1", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA010", "ts": 1788130540000, "label": "review:1:1:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.5, "models": ["claude-opus-5"]}}
++{"kind": "engine:phase", "id": "01AAA011", "ts": 1788130540000, "phase": "Integration Review"}
++{"kind": "worker:start", "id": "01AAA012", "ts": 1788130540000, "label": "integration", "role": "critic", "sessionId": "s-101-4", "cwd": "/c/integration", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA013", "ts": 1788130600000, "label": "integration", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.75, "models": ["claude-opus-5"]}}
++{"kind": "driver:stage", "id": "01AAA014", "ts": 1788130600000, "stage": "engine-done"}
++{"kind": "driver:stage", "id": "01AAA015", "ts": 1788130600000, "stage": "gate"}
++{"kind": "driver:approved", "id": "01AAA016", "ts": 1788130720000, "stamp": "run-101"}
++{"kind": "driver:publish-fold", "id": "01AAA017", "ts": 1788130780000, "attempt": 1, "disposition": "folded"}
++{"kind": "publish:pr", "id": "01AAA018", "ts": 1788130840000, "url": "https://github.com/o/r/pull/1"}
++{"kind": "publish:merge", "id": "01AAA019", "ts": 1788130900000, "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+diff --git a/tests/fixtures/ultralearn/census/run-101/report.json b/tests/fixtures/ultralearn/census/run-101/report.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e5ec9841dfcf99baea2392cc65e27b6c25a5470
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-101/report.json
+@@ -0,0 +1,12 @@
++{
++  "baseSha": "dddddddddddddddddddddddddddddddddddddddd",
++  "integrationBranch": "ultra/integration-run-101",
++  "tasks": [
++    {
++      "task": "1"
++    }
++  ],
++  "tests": {
++    "passed": true
++  }
++}
+diff --git a/tests/fixtures/ultralearn/census/run-101/status.json b/tests/fixtures/ultralearn/census/run-101/status.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..93baf5a29780c1ca70501e844100c88de5489b45
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-101/status.json
+@@ -0,0 +1,13 @@
++{
++  "run": "101",
++  "state": "done",
++  "phase": "merged",
++  "pr": "https://github.com/o/r/pull/1",
++  "prAuthor": "o",
++  "merged": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++  "branch": "ultra/integration-run-101",
++  "vm": "fleet-r101-x",
++  "startedAt": "2026-08-30T22:40:00Z",
++  "updatedAt": "2026-08-30T23:00:00Z",
++  "error": null
++}
+diff --git a/tests/fixtures/ultralearn/census/run-102/events.jsonl b/tests/fixtures/ultralearn/census/run-102/events.jsonl
+new file mode 100644
+index 0000000000000000000000000000000000000000..48677caf79f4d0a326efe681ffc94ad2cd36d8b7
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-102/events.jsonl
+@@ -0,0 +1,19 @@
++{"kind": "run:open", "id": "01AAA001", "ts": 1788130000000, "runId": "run-102", "base": "", "source": "fleet/run-main.mjs"}
++{"kind": "engine:phase", "id": "01AAA002", "ts": 1788130000000, "phase": "Setup"}
++{"kind": "engine:phase", "id": "01AAA003", "ts": 1788130060000, "phase": "Wave 1"}
++{"kind": "worker:start", "id": "01AAA004", "ts": 1788130060000, "label": "impl:1", "role": "implementer", "sessionId": "s-102-1", "cwd": "/c/impl:1", "model": "opus"}
++{"kind": "worker:start", "id": "01AAA005", "ts": 1788130060000, "label": "impl:2", "role": "implementer", "sessionId": "s-102-2", "cwd": "/c/impl:2", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA006", "ts": 1788130180000, "label": "impl:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 1.0, "models": ["claude-opus-5"]}}
++{"kind": "worker:end", "id": "01AAA007", "ts": 1788130240000, "label": "impl:2", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 1.5, "models": ["claude-opus-5"]}}
++{"kind": "worker:start", "id": "01AAA008", "ts": 1788130240000, "label": "review:1:1:1", "role": "reviewer", "sessionId": "s-102-3", "cwd": "/c/review:1:1:1", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA009", "ts": 1788130300000, "label": "review:1:1:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.5, "models": ["claude-opus-5"]}}
++{"kind": "worker:start", "id": "01AAA010", "ts": 1788130300000, "label": "fix:1:1", "role": "implementer", "sessionId": "s-102-4", "cwd": "/c/fix:1:1", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA011", "ts": 1788130360000, "label": "fix:1:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.5, "models": ["claude-opus-5"]}}
++{"kind": "worker:start", "id": "01AAA012", "ts": 1788130360000, "label": "review:1:2:1", "role": "reviewer", "sessionId": "s-102-5", "cwd": "/c/review:1:2:1", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA013", "ts": 1788130420000, "label": "review:1:2:1", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 0.5, "models": ["claude-opus-5"]}}
++{"kind": "engine:phase", "id": "01AAA014", "ts": 1788130420000, "phase": "Integration Review"}
++{"kind": "worker:start", "id": "01AAA015", "ts": 1788130420000, "label": "integration", "role": "critic", "sessionId": "s-102-6", "cwd": "/c/integration", "model": "opus"}
++{"kind": "worker:end", "id": "01AAA016", "ts": 1788130480000, "label": "integration", "exitCode": 0, "timedOut": false, "outcome": "ok", "class": "success", "status": null, "meter": {"input": 1, "output": 1, "cacheRead": 0, "cacheCreation": 0, "costUsd": 1.0, "models": ["claude-opus-5"]}}
++{"kind": "driver:stage", "id": "01AAA017", "ts": 1788130480000, "stage": "engine-done"}
++{"kind": "driver:stage", "id": "01AAA018", "ts": 1788130480000, "stage": "gate"}
++{"kind": "driver:fail", "id": "01AAA019", "ts": 1788130540000, "verdict": "needs-ack", "detail": "deferred:manual"}
+diff --git a/tests/fixtures/ultralearn/census/run-102/report.json b/tests/fixtures/ultralearn/census/run-102/report.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..fc7483a299f3bd99acb43c4f27b0e7edf92e2e6e
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-102/report.json
+@@ -0,0 +1,15 @@
++{
++  "baseSha": "dddddddddddddddddddddddddddddddddddddddd",
++  "integrationBranch": "ultra/integration-run-102",
++  "tasks": [
++    {
++      "task": "1"
++    },
++    {
++      "task": "2"
++    }
++  ],
++  "tests": {
++    "passed": false
++  }
++}
+diff --git a/tests/fixtures/ultralearn/census/run-102/status.json b/tests/fixtures/ultralearn/census/run-102/status.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..6db434b94401d3beaa0999390ea16385bb022cb8
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-102/status.json
+@@ -0,0 +1,13 @@
++{
++  "run": "102",
++  "state": "parked",
++  "phase": "needs-ack",
++  "pr": null,
++  "prAuthor": null,
++  "merged": null,
++  "branch": "ultra/integration-run-102",
++  "vm": "fleet-r102-x",
++  "startedAt": "2026-08-30T23:10:00Z",
++  "updatedAt": "2026-08-30T23:25:00Z",
++  "error": null
++}
+diff --git a/tests/fixtures/ultralearn/census/run-103/report.json b/tests/fixtures/ultralearn/census/run-103/report.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a8c2604438c8f2be53852179cf6f51e7df9e2d8
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-103/report.json
+@@ -0,0 +1,19 @@
++{
++  "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
++  "integrationBranch": "ultra/integration-run-103",
++  "engineVersion": "0.3.17",
++  "tasks": [
++    {
++      "task": "1"
++    },
++    {
++      "task": "2"
++    },
++    {
++      "task": "3"
++    }
++  ],
++  "tests": {
++    "passed": true
++  }
++}
+diff --git a/tests/fixtures/ultralearn/census/run-103/status.json b/tests/fixtures/ultralearn/census/run-103/status.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d1d2ddfb4625625b7dfc1166506ad1e88560ffc
+--- /dev/null
++++ b/tests/fixtures/ultralearn/census/run-103/status.json
+@@ -0,0 +1,13 @@
++{
++  "run": "103",
++  "state": "done",
++  "phase": "merged",
++  "pr": "https://github.com/o/r/pull/3",
++  "prAuthor": "o",
++  "merged": "cccccccccccccccccccccccccccccccccccccccc",
++  "branch": "ultra/integration-run-103",
++  "vm": "fleet-r103-x",
++  "startedAt": "2026-08-30T23:30:00Z",
++  "updatedAt": "2026-08-30T23:42:00Z",
++  "error": null
++}
+diff --git a/tests/test_census_many.py b/tests/test_census_many.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b6c2ded73151ed2e655347972e82917293d22ef
+--- /dev/null
++++ b/tests/test_census_many.py
+@@ -0,0 +1,297 @@
++"""Exam for task 1 — one row per run, across many run directories.
++
++Every assertion below names the Proof leg (a)–(f) and the Machine clause it
++comes from. The three rows are the ones the task pins verbatim in Context; the
++column list is the one M1 pins, in M1's order.
++
++The script and the three fixture run directories are this task's deliverables,
++so at BASE this file is red because they do not exist yet — `_require_fixtures`
++says so in as many words rather than letting the absence surface as a stray
++parse error.
++"""
++import csv
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++REPO = Path(__file__).resolve().parents[1]
++SCRIPT = REPO / "skills/ultralearn/scripts/census_many.py"
++SCRIPTS_DIR = REPO / "skills/ultralearn/scripts"
++CENSUS = REPO / "tests/fixtures/ultralearn/census"
++RUN_DIRS = {n: CENSUS / n for n in ("run-101", "run-102", "run-103")}
++
++# M1: exactly these 31 columns, in this order.
++COLUMNS = (
++    "run", "era", "engine", "terminus", "tasks", "width", "minutes_total",
++    "cost_usd", "start", "setup_min", "wave_min", "fold_min", "critic_min",
++    "gate_min", "publish_min", "min_examiner", "usd_examiner",
++    "min_implementer", "usd_implementer", "min_reviewer", "usd_reviewer",
++    "min_critic", "usd_critic", "min_resolver", "usd_resolver",
++    "longest_chain_min", "fix_rounds", "launched_at", "pr", "merged",
++    "status_min",
++)
++
++EMPTY = {c: "" for c in COLUMNS}
++
++# The three rows, verbatim from the task's Context. An unlisted column is the
++# empty string, which is what `EMPTY` supplies.
++ROW_101 = dict(
++    EMPTY, run="run-101", terminus="done", tasks="1", width="1",
++    minutes_total="8.0", cost_usd="2.50", start="2026-08-30T22:46:40Z",
++    setup_min="1.0", wave_min="7.0", fold_min="1.0", critic_min="1.0",
++    gate_min="2.0", publish_min="3.0", min_examiner="1.0",
++    usd_examiner="0.25", min_implementer="4.0", usd_implementer="1.00",
++    min_reviewer="2.0", usd_reviewer="0.50", min_critic="1.0",
++    usd_critic="0.75", min_resolver="0.0", usd_resolver="0.00",
++    longest_chain_min="7.0", fix_rounds="0",
++    launched_at="2026-08-30T22:40:00Z", pr="https://github.com/o/r/pull/1",
++    merged="a" * 40, status_min="20.0",
++)
++
++ROW_102 = dict(
++    EMPTY, run="run-102", terminus="parked", tasks="2", width="2",
++    minutes_total="9.0", cost_usd="5.00", start="2026-08-30T22:46:40Z",
++    setup_min="1.0", wave_min="6.0", critic_min="1.0", gate_min="1.0",
++    min_examiner="0.0", usd_examiner="0.00", min_implementer="6.0",
++    usd_implementer="3.00", min_reviewer="2.0", usd_reviewer="1.00",
++    min_critic="1.0", usd_critic="1.00", min_resolver="0.0",
++    usd_resolver="0.00", longest_chain_min="5.0", fix_rounds="1",
++    launched_at="2026-08-30T23:10:00Z", status_min="15.0",
++)
++
++ROW_103 = dict(
++    EMPTY, run="run-103", engine="0.3.17", terminus="done", tasks="3",
++    launched_at="2026-08-30T23:30:00Z", pr="https://github.com/o/r/pull/3",
++    merged="c" * 40, status_min="12.0",
++)
++
++
++def _require_fixtures():
++    """The tracked fixture is part of this task; say so when it is absent."""
++    missing = [str(p.relative_to(REPO)) for p in RUN_DIRS.values()
++               if not p.is_dir()]
++    assert not missing, (
++        "the census fixture run directories are deliverables of this task and "
++        "are absent: " + ", ".join(missing))
++
++
++def _run(tmp_path, *args):
++    """Invoke the CLI with `sys.executable`, cwd = tmp_path (Proof legs)."""
++    _require_fixtures()
++    assert SCRIPT.is_file(), (
++        "%s is a deliverable of this task and does not exist"
++        % SCRIPT.relative_to(REPO))
++    proc = subprocess.run(
++        [sys.executable, str(SCRIPT), *[str(a) for a in args]],
++        cwd=str(tmp_path), capture_output=True, text=True)
++    assert proc.returncode == 0, (
++        "census_many exited %d\nstdout:\n%s\nstderr:\n%s"
++        % (proc.returncode, proc.stdout, proc.stderr))
++    return proc
++
++
++def _read_csv(path):
++    with open(str(path), newline="", encoding="utf-8") as fh:
++        return list(csv.reader(fh))
++
++
++def _rows(path):
++    """(header, [row dict, ...]) from a CSV the CLI wrote."""
++    table = _read_csv(path)
++    assert table, "the CSV is empty"
++    header = table[0]
++    return header, [dict(zip(header, r)) for r in table[1:]]
++
++
++# ---------------------------------------------------------------- leg (a) M1
++
++def test_tree_positional_yields_the_31_columns_and_one_row_per_run(tmp_path):
++    """(a)/M1: the tree as the one positional — header is the 31 columns in the
++    pinned order, and exactly one row per run directory found, run-101,
++    run-102, run-103 in that order. The fixture root itself holds none of the
++    three files and so is not a run: a fourth row fails."""
++    _run(tmp_path, CENSUS, "--csv", "out.csv")
++    header, rows = _rows(tmp_path / "out.csv")
++    assert header == list(COLUMNS)
++    assert [r["run"] for r in rows] == ["run-101", "run-102", "run-103"]
++
++
++def test_row_order_is_run_number_not_argv_order(tmp_path):
++    """(a)/M1: three run directories passed as three positionals in the order
++    103, 102, 101 still come out 101, 102, 103 — ordered by the integer in
++    `run-<N>`, regardless of argv order."""
++    _run(tmp_path, RUN_DIRS["run-103"], RUN_DIRS["run-102"],
++         RUN_DIRS["run-101"], "--csv", "out.csv")
++    header, rows = _rows(tmp_path / "out.csv")
++    assert header == list(COLUMNS)
++    assert [r["run"] for r in rows] == ["run-101", "run-102", "run-103"]
++
++
++# ---------------------------------------------------------------- leg (b) M2
++
++def test_run_101_row_is_the_pinned_row(tmp_path):
++    """(b)/M2: the run-101 row equals the pinned dict, all 31 columns. The
++    critic's minute belongs to `critic_min`, not to `wave_min` (`7.0`), and
++    `cost_usd` is `2.50`, not `2.5`."""
++    _run(tmp_path, CENSUS, "--csv", "out.csv")
++    _, rows = _rows(tmp_path / "out.csv")
++    by_run = {r["run"]: r for r in rows}
++    assert by_run["run-101"] == ROW_101
++
++
++# ---------------------------------------------------------------- leg (c) M2
++
++def test_run_102_row_is_the_pinned_row(tmp_path):
++    """(c)/M2: the run-102 row equals the pinned dict — `width` `2` (two starts
++    at an equal `ts` are concurrent), `fix_rounds` `1`, `longest_chain_min`
++    `5.0` (the fix and its re-review chain onto task 1), and `fold_min` the
++    empty string (the run never folded)."""
++    _run(tmp_path, CENSUS, "--csv", "out.csv")
++    _, rows = _rows(tmp_path / "out.csv")
++    by_run = {r["run"]: r for r in rows}
++    assert by_run["run-102"] == ROW_102
++
++
++# ---------------------------------------------------------------- leg (d) M3
++
++def test_run_103_without_an_event_log_still_gets_its_row(tmp_path):
++    """(d)/M3: a run directory with no `events.jsonl` is never omitted. Its row
++    equals the pinned dict: `tasks` `3` (len of report's `tasks`), `engine`
++    `0.3.17`, `terminus` `done`, `status_min` `12.0`, and the empty string —
++    not `0.0` — in every timing and role column."""
++    _run(tmp_path, CENSUS, "--csv", "out.csv")
++    _, rows = _rows(tmp_path / "out.csv")
++    by_run = {r["run"]: r for r in rows}
++    assert "run-103" in by_run, "the log-less run directory was skipped"
++    assert by_run["run-103"] == ROW_103
++    for column in ("width", "minutes_total", "cost_usd", "start", "setup_min",
++                   "wave_min", "fold_min", "critic_min", "gate_min",
++                   "publish_min", "min_examiner", "usd_examiner",
++                   "min_implementer", "usd_implementer", "min_reviewer",
++                   "usd_reviewer", "min_critic", "usd_critic", "min_resolver",
++                   "usd_resolver", "longest_chain_min", "fix_rounds"):
++        assert by_run["run-103"][column] == "", column
++
++
++# ---------------------------------------------------------------- leg (e) M4
++
++def _md_lines(text):
++    return text.rstrip("\n").split("\n")
++
++
++def _cells(line):
++    parts = line.split("|")
++    assert parts[0].strip() == "" and parts[-1].strip() == "", (
++        "not a pipe-delimited row: %r" % line)
++    return [p.strip() for p in parts[1:-1]]
++
++
++def test_md_flag_writes_a_pipe_table(tmp_path):
++    """(e)/M4: `--md PATH` writes a header line beginning `| run | era |
++    engine |`, a separator line of 31 `---` cells, then exactly three rows."""
++    _run(tmp_path, CENSUS, "--md", "out.md")
++    lines = _md_lines((tmp_path / "out.md").read_text(encoding="utf-8"))
++    assert lines[0].startswith("| run | era | engine |")
++    assert _cells(lines[0]) == list(COLUMNS)
++    assert _cells(lines[1]) == ["---"] * 31
++    assert len(lines) == 5, "expected header, separator and three rows"
++    assert [_cells(l)[0] for l in lines[2:]] == [
++        "run-101", "run-102", "run-103"]
++
++
++def test_stdout_with_no_flag_is_the_markdown_table(tmp_path):
++    """(e)/M4: with neither `--csv` nor `--md`, the Markdown table goes to
++    stdout — the same text the `--md` file holds."""
++    _run(tmp_path, CENSUS, "--md", "out.md")
++    md_text = (tmp_path / "out.md").read_text(encoding="utf-8")
++    proc = _run(tmp_path, CENSUS)
++    assert proc.stdout.rstrip("\n") == md_text.rstrip("\n")
++
++
++def test_csv_append_keeps_prior_bytes_and_writes_no_second_header(tmp_path):
++    """(e)/M4: `--csv out.csv --append` a second time over the same three run
++    directories leaves the first run's bytes as an exact prefix, adds no second
++    header line, and appends one row per run — six data rows in all."""
++    out = tmp_path / "out.csv"
++    _run(tmp_path, CENSUS, "--csv", "out.csv")
++    first = out.read_bytes()
++    assert first, "the first write produced an empty CSV"
++
++    _run(tmp_path, CENSUS, "--csv", "out.csv", "--append")
++    second = out.read_bytes()
++    assert second.startswith(first), (
++        "--append rewrote the file rather than appending to it")
++
++    text = second.decode("utf-8")
++    headers = [l for l in text.splitlines() if l.startswith("run,era,")]
++    assert len(headers) == 1, "expected exactly one header line, got %d" % len(
++        headers)
++    header, rows = _rows(out)
++    assert header == list(COLUMNS)
++    assert [r["run"] for r in rows] == [
++        "run-101", "run-102", "run-103"] * 2
++
++
++# ---------------------------------------------------------------- leg (f) M5
++
++def test_label_fills_era_on_that_run_only(tmp_path):
++    """(f)/M5: `--label run-101=lift` puts `lift` in run-101's `era` and leaves
++    `era` empty on the other two rows."""
++    _run(tmp_path, CENSUS, "--label", "run-101=lift", "--csv", "out.csv")
++    _, rows = _rows(tmp_path / "out.csv")
++    by_run = {r["run"]: r for r in rows}
++    assert by_run["run-101"] == dict(ROW_101, era="lift")
++    assert by_run["run-102"]["era"] == ""
++    assert by_run["run-103"]["era"] == ""
++
++
++def test_engine_is_report_engine_version_only_when_it_is_a_string(tmp_path):
++    """(f)/M5: `engine` is `report.json`'s `engineVersion` when that key holds a
++    string and the empty string otherwise — run-101's report has no such key,
++    run-103's has `0.3.17`."""
++    _run(tmp_path, CENSUS, "--csv", "out.csv")
++    _, rows = _rows(tmp_path / "out.csv")
++    by_run = {r["run"]: r for r in rows}
++    assert by_run["run-101"]["engine"] == ""
++    assert by_run["run-102"]["engine"] == ""
++    assert by_run["run-103"]["engine"] == "0.3.17"
++
++
++# ------------------------------------------------- Produces / M1 / M2 / M3 /
++# M5: the importable contract later tasks rely on.
++
++def _module():
++    _require_fixtures()
++    assert SCRIPT.is_file(), (
++        "%s is a deliverable of this task and does not exist"
++        % SCRIPT.relative_to(REPO))
++    sys.path.insert(0, str(SCRIPTS_DIR))
++    try:
++        import census_many
++    except ImportError as exc:  # pragma: no cover - red-at-BASE path
++        pytest.fail("census_many is not importable: %s" % exc)
++    return census_many
++
++
++def test_columns_is_a_module_level_tuple_of_the_31_names():
++    """M1 / Produces: `COLUMNS` is a module-level tuple naming the 31 columns
++    in the pinned order."""
++    census_many = _module()
++    assert isinstance(census_many.COLUMNS, tuple)
++    assert census_many.COLUMNS == COLUMNS
++
++
++def test_census_rows_returns_the_three_pinned_row_dicts():
++    """Produces `census_rows(paths, labels) -> list[dict]`: the same table the
++    CLI writes, keyed by the 31 columns, in run order, with `labels` filling
++    `era` (M5)."""
++    census_many = _module()
++    rows = census_many.census_rows([str(CENSUS)], {})
++    assert [r["run"] for r in rows] == ["run-101", "run-102", "run-103"]
++    assert [sorted(r) for r in rows] == [sorted(COLUMNS)] * 3
++    assert rows == [ROW_101, ROW_102, ROW_103]
++
++    labelled = census_many.census_rows([str(CENSUS)], {"run-101": "lift"})
++    assert labelled == [dict(ROW_101, era="lift"), ROW_102, ROW_103]
+diff --git a/tests/test_ledger_engine_stamp.py b/tests/test_ledger_engine_stamp.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d5dcb53c73c8beeff45e9ea1d47d1cc9f9288d28
+--- /dev/null
++++ b/tests/test_ledger_engine_stamp.py
+@@ -0,0 +1,210 @@
++"""Exam for task 2 — "The ledger stamps only a true version and refuses an
++unreleased one".
++
++Each test names the Proof leg it encodes and the Machine clause that leg comes
++from, so the file reads back against the contract:
++
++* [a] M1 — `released` given, a stamp outside it is refused, counted, unwritten;
++  a stamp inside it is written and kept verbatim.
++* [b] M1 — a `None` epoch is never refused on version grounds.
++* [c] M2 — `released` omitted or `None`: BASE behaviour, `0.4.0` still stamped.
++* [d] M3 — `bundle_lookups`' `engine_lookup` distrusts the two date bases and
++  trusts `explicit`, `plugin-cache-path` and a basis-less (August) bundle.
++* [e] M4 — `_readers.released_versions()` is the timeline's version set, `None`
++  on an empty timeline, and does not cache.
++* [f] M5 — the re-scoped pin in `tests/test_merge_ledger.py` passes against the
++  new lookup, and §Verb 1 step 3 of `SKILL.md` names `released_versions` and
++  `released=` (the two `sed | grep` Run: lines, in-process).
++"""
++import importlib.util
++import json
++import re
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++SCRIPTS = ROOT / "skills" / "ultralearn" / "scripts"
++sys.path.insert(0, str(SCRIPTS))
++import merge_ledger as m  # noqa: E402
++import _readers  # noqa: E402
++
++SKILL = ROOT / "skills" / "ultralearn" / "SKILL.md"
++MERGE_LEDGER_TESTS = ROOT / "tests" / "test_merge_ledger.py"
++
++
++def _finding(**kw):
++    """A home finding, verbatim evidence — the redaction guard passes it."""
++    base = {"runId": "r1", "lens": "frontier", "title": "t", "novelty": 2,
++            "severity": 1, "evidence": "raw quote", "evidenceAbstracted": False,
++            "implication": "x", "surface": "SKILL.md"}
++    base.update(kw)
++    return base
++
++
++def _home(run_id):
++    return "home"
++
++
++def _rows(ledger):
++    ledger = Path(ledger)
++    if not ledger.exists():
++        return []
++    return [json.loads(line) for line in ledger.read_text().splitlines()
++            if line.strip()]
++
++
++# --- leg (a) [M1] ---------------------------------------------------------
++
++def test_leg_a_unreleased_stamp_is_refused_and_counted(tmp_path):
++    """[a][M1] released={"0.3.17"}, lookup says "0.3.18": nothing is written and
++    the finding is counted under `refused`."""
++    ledger = tmp_path / "ledger.jsonl"
++    stats = m.merge_findings([_finding(title="a")], ledger, _home,
++                             lambda rid: "0.3.18", released={"0.3.17"})
++    assert stats == {"added": 0, "skipped": 1, "refused": 1}
++    assert _rows(ledger) == []
++
++
++def test_leg_a_released_stamp_is_written_verbatim(tmp_path):
++    """[a][M1] the same `released`, lookup says "0.3.17": the row lands and its
++    engineVersion is exactly that string."""
++    ledger = tmp_path / "ledger.jsonl"
++    stats = m.merge_findings([_finding(title="a")], ledger, _home,
++                             lambda rid: "0.3.17", released={"0.3.17"})
++    assert stats == {"added": 1, "skipped": 0, "refused": 0}
++    rows = _rows(ledger)
++    assert len(rows) == 1
++    assert rows[0]["engineVersion"] == "0.3.17"
++
++
++# --- leg (b) [M1] ---------------------------------------------------------
++
++def test_leg_b_unknown_epoch_is_not_refused(tmp_path):
++    """[b][M1] a lookup answering None is not a version outside `released`: the
++    finding is added, refused stays 0, and the row carries no engineVersion."""
++    ledger = tmp_path / "ledger.jsonl"
++    stats = m.merge_findings([_finding(title="a")], ledger, _home,
++                             lambda rid: None, released={"0.3.17"})
++    assert stats["added"] == 1
++    assert stats["refused"] == 0
++    assert stats["skipped"] == 0
++    rows = _rows(ledger)
++    assert len(rows) == 1
++    assert "engineVersion" not in rows[0]
++
++
++# --- leg (c) [M2] ---------------------------------------------------------
++
++def test_leg_c_released_omitted_keeps_base_stamp(tmp_path):
++    """[c][M2] the BASE four-argument call still stamps the arbitrary "0.4.0"
++    and refuses nothing."""
++    ledger = tmp_path / "ledger.jsonl"
++    stats = m.merge_findings([_finding(title="a")], ledger, _home,
++                             lambda rid: "0.4.0")
++    assert stats["added"] == 1
++    assert stats.get("refused", 0) == 0
++    rows = _rows(ledger)
++    assert len(rows) == 1
++    assert rows[0]["engineVersion"] == "0.4.0"
++
++
++def test_leg_c_released_none_keeps_base_stamp(tmp_path):
++    """[c][M2] passing released=None explicitly is the same BASE behaviour."""
++    ledger = tmp_path / "ledger.jsonl"
++    stats = m.merge_findings([_finding(title="b")], ledger, _home,
++                             lambda rid: "0.4.0", released=None)
++    assert stats["added"] == 1
++    assert stats.get("refused", 0) == 0
++    rows = _rows(ledger)
++    assert len(rows) == 1
++    assert rows[0]["engineVersion"] == "0.4.0"
++
++
++# --- leg (d) [M3] ---------------------------------------------------------
++
++def test_leg_d_engine_lookup_distrusts_the_date_bases(tmp_path):
++    """[d][M3] five home bundles, one per basis: the two date bases answer None,
++    `explicit`, `plugin-cache-path` and a basis-less bundle keep the epoch.
++    `origin_lookup` is unchanged — home for all five."""
++    cases = [
++        ("d1", {"epoch": "0.3.0", "basis": "home-repo-date"}, None),
++        ("d2", {"epoch": "0.3.0", "basis": "foreign-date-upper-bound"}, None),
++        ("d3", {"epoch": "0.3.0", "basis": "explicit"}, "0.3.0"),
++        ("d4", {"epoch": "0.3.0", "basis": "plugin-cache-path"}, "0.3.0"),
++        ("d5", {"epoch": "0.3.0"}, "0.3.0"),
++    ]
++    for run_id, engine_version, _expected in cases:
++        run = tmp_path / "runs" / run_id
++        run.mkdir(parents=True)
++        (run / "bundle.json").write_text(json.dumps(
++            {"origin": "home", "engineVersion": engine_version}))
++    origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
++    assert [engine_lookup(r) for r, _ev, _e in cases] == \
++        [expected for _r, _ev, expected in cases]
++    assert [origin_lookup(r) for r, _ev, _e in cases] == ["home"] * 5
++
++
++# --- leg (e) [M4] ---------------------------------------------------------
++
++TIMELINE = (("2026-08-28T10:52:30-07:00", "0.2.26"),
++            ("2026-08-29T14:03:52-07:00", "0.3.0"),
++            ("2026-09-08T00:00:00Z", "0.3.0"))
++
++
++def test_leg_e_released_versions_is_the_set_and_none_on_empty(monkeypatch):
++    """[e][M4] the version set of the timeline (repeats collapse into the set),
++    None when the timeline is empty, and no caching of either answer."""
++    monkeypatch.setattr(_readers, "release_timeline", lambda: TIMELINE)
++    first = _readers.released_versions()
++    assert first == frozenset({"0.2.26", "0.3.0"})
++    assert isinstance(first, frozenset)
++
++    monkeypatch.setattr(_readers, "release_timeline", lambda: ())
++    assert _readers.released_versions() is None
++
++    # back again: a cached first answer would show up here
++    monkeypatch.setattr(_readers, "release_timeline", lambda: TIMELINE)
++    assert _readers.released_versions() == frozenset({"0.2.26", "0.3.0"})
++
++
++# --- leg (f) [M5] ---------------------------------------------------------
++
++def _sed_slice(text, start, end):
++    """`sed -n '/start/,/end/p'` — from the first line matching `start` through
++    the first later line matching `end`, both inclusive."""
++    lines = text.splitlines()
++    begin = next((i for i, line in enumerate(lines)
++                  if re.search(start, line)), None)
++    assert begin is not None, f"no line matches {start!r}"
++    stop = next((i for i in range(begin + 1, len(lines))
++                 if re.search(end, lines[i])), None)
++    assert stop is not None, f"no line matches {end!r} after {start!r}"
++    return "\n".join(lines[begin:stop + 1])
++
++
++def _step3():
++    return _sed_slice(SKILL.read_text(), r"^3\. \*\*Merge", r"^## Verb 2")
++
++
++def test_leg_f_merge_ledger_date_basis_pin_is_rescoped():
++    """[f][M5] `test_bundle_lookups_reads_cache_and_fails_closed` — the pin that
++    owns the `home-repo-date` bundle — passes against the new lookup. Run
++    directly (it takes only tmp_path), so a pin left asserting "0.0.12" fails
++    here as it would in its own file."""
++    spec = importlib.util.spec_from_file_location(
++        "_exam_test_merge_ledger", MERGE_LEDGER_TESTS)
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    import tempfile
++    with tempfile.TemporaryDirectory() as tmp:
++        module.test_bundle_lookups_reads_cache_and_fails_closed(Path(tmp))
++
++
++def test_leg_f_skill_step3_names_released_versions():
++    """[f][M5] second Run: the step-3 slice contains `released_versions`."""
++    assert "released_versions" in _step3()
++
++
++def test_leg_f_skill_step3_names_the_released_keyword():
++    """[f][M5] third Run: the step-3 slice contains `released=`."""
++    assert "released=" in _step3()
+diff --git a/tests/test_merge_ledger.py b/tests/test_merge_ledger.py
+index e3f65b2df45511e6f1f4aba299c91d5085c11af6..0bc76c33d4f74021a1a10adbf718a75db56999e2 100644
+--- a/tests/test_merge_ledger.py
++++ b/tests/test_merge_ledger.py
+@@ -109,7 +109,9 @@ def test_bundle_lookups_reads_cache_and_fails_closed(tmp_path):
+          "engineVersion": {"epoch": "0.0.12", "asOf": "t", "basis": "home-repo-date"}}))
+     origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
+     assert origin_lookup("r1") == "home"
+-    assert engine_lookup("r1") == "0.0.12"
++    # #696: basis 'home-repo-date' is a guess from the run's date, not a read
++    # version — the lookup no longer trusts it, so this bundle stamps nothing.
++    assert engine_lookup("r1") is None
+     # missing bundle: origin fails closed to foreign, epoch is unknown
+     assert origin_lookup("missing") == "foreign"
+     assert engine_lookup("missing") is None
