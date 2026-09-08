@@ -1,0 +1,33 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1e9b13b4ace81717aed8a9ddbc0a70f1cce59278393d7f5f0cd17d05f0037954",
+      "verdict": "pass",
+      "reason": "The column list counts to exactly 31, the pinned run-101/102/103 values are mutually consistent, and legs (a)-(f) drive the real script via sys.executable over the tracked fixtures to pin ordering-regardless-of-argv, no root row, exact rows, no-log rows never omitted, CSV/MD/stdout/append shapes and --label, so a passing exam makes the operator-layer sentence necessarily true."
+    },
+    "2": {
+      "hash": "0256146024b7c4848bff28726704129ce7456a063ab7ca4f39a6b90627118cdc",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a leg whose observable can only be produced by the stated behaviour (a's counts satisfy skipped = len - added; e's frozenset collapses the duplicate 0.3.0 and () -> None; d enumerates all five bases; c pins the BASE four-argument call and the explicit released=None separately), and the Run: lines prove M5 by a green file that can only be green if the date pin was re-scoped against the new lookup and by sed/grep over exactly the slice the clause names."
+    },
+    "3": {
+      "hash": "e1d8497ea1851abca248520ddde77036ff4e0b1cb598751e7a1e9964b8625b3f",
+      "verdict": "pass",
+      "reason": "Each Machine clause is pinned by an executable Run: whose exit status can only be 0 if the text has the tag-before-branch ordering, the single ultralearn/runs/ spelling, the four flag/positional words, none of the eight retired literals, and a lone Historical corpus paragraph that owns every 10-23 line; the literals are jointly satisfiable, and validate_skill.py plus the docs pin cover the 'only what exists' layer."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 0,
+    "rounds": {
+      "1": {"dispatched": 3, "rejected": 0},
+      "2": {"dispatched": 1, "rejected": 0, "note": "task 3 re-dispatched after its cache-path Run: was tightened from a line count to an occurrence count on the round-1 reader's remark"}
+    }
+  },
+  "history": [
+    {"round": 1, "task": "1", "hash": "1e9b13b4ace81717aed8a9ddbc0a70f1cce59278393d7f5f0cd17d05f0037954", "verdict": "pass"},
+    {"round": 1, "task": "2", "hash": "0256146024b7c4848bff28726704129ce7456a063ab7ca4f39a6b90627118cdc", "verdict": "pass"},
+    {"round": 1, "task": "3", "hash": "43ea2702e565e6753a9c4cfdfb24684e3064ca33cec1391462c7227f08f86019", "verdict": "pass", "remark": "grep -c counts lines, not occurrences"},
+    {"round": 2, "task": "3", "hash": "e1d8497ea1851abca248520ddde77036ff4e0b1cb598751e7a1e9964b8625b3f", "verdict": "pass"}
+  ]
+}
