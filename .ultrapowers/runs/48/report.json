@@ -1,0 +1,205 @@
+{
+  "integrationBranch": "ultra/integration-run-48",
+  "baseSha": "9395cd11d6b6e0e1b1e5195b5702956d6faf88f6",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "264b7f2c8404133752b737d68fff237832e990c4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-48/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "check_provenance.py has no plan-level twin of the task-level \"defense in depth\" guard. A task Claim carrying an unrecognizable tag draws `provenance: task <id> claim carries no recognizable provenance tag \u2026` (check_provenance.py:120-128), but a header Claim whose tag this grammar does not know \u2014 `**Claim:** \u2026 (derived)`, or a tag wrapped past recognition \u2014 makes `plan_claim_provenance` return None, so `plan_provenance` is \"\" and the header is skipped silently by the layer that runs FIRST. The compiler's `plan_claim_violations` is still the second wall (and M2 pins that it refuses), so nothing this task's Machine clauses require is unmet; the asymmetry is only against the file's own stated doctrine (\"the first layer must not bless what it cannot classify\"). If you want the symmetry, add, beside the header block at check_provenance.py:98: `elif _plan_claim_raw-ish presence and not plan_provenance: failures.append(\"provenance: plan-level claim carries no recognizable provenance tag \u2014 `(elicited)` or `(quoted from #NNN)`\")` \u2014 which needs `parse_plan_claim(md_text) is not None` as the presence test.; The plan-level empty-sentence guard (check_provenance.py:107-113, `provenance: plan-level claim quotes #N with an empty operator sentence \u2026`) is added code that no test in tests/test_check_provenance.py exercises: delete that `elif not sentence:` branch and the exam stays green (a header that is nothing but `(quoted from #1)` folds to \"\", which is a substring of every body, so it would then pass vacuously). Its task-level twin is pinned by test_claim_that_is_only_its_provenance_tag_refuses:223. No Machine clause names this row \u2014 M4 names only the not-verbatim and does-not-resolve lines \u2014 so it is advisory, but a four-line test modelled on the task-level one would close it.; Documentation drift inside this task's own FILES: tests/test_plan_level_claim.py:3 still opens \"A claims-v1 plan carries ONE elicited operator sentence above the first task\", which the same file now pins as false \u2014 test_755_a_quoted_header_claim_earns_no_grammar_violation:437 accepts a header signed `(quoted from #1)`. The module docstring should say \"elicited or quoted from an issue\", matching the SKILL.md \u00a7The document and \u00a7Self-review rewordings the diff already makes.; Duplicated logic: the new plan-level block in `skills/ultrawrite/scripts/check_provenance.py` (lines ~96-116 of the patched file) reproduces the task-level quote-resolution structure verbatim \u2014 same `issue_body(number, gh, cache)` fetch, same `fold(...)` comparison, same three branches (unresolvable / empty sentence / not verbatim) \u2014 differing only in the failure-line subject (`plan-level claim` vs `task %s claim`). A future change to the matching rule (a different fold, a new branch) has to be made in two places. Extract one helper used by both, e.g. `def _resolve_quote(subject, number, sentence, gh, cache) -> list[str]` returning the failure lines with `subject` interpolated (`\"plan-level claim\"` / `\"task %s claim\" % task[\"id\"]`), and call it from the header block and from the task loop. Behavior-preserving: the four existing task-level pins in `tests/test_check_provenance.py` and the four new `#755 Task 1` pins keep the exact line strings.; Uncovered branch: the plan-level `provenance: plan-level claim quotes #%s with an empty operator sentence \u2014 the Claim is nothing but its provenance tag` failure in `skills/ultrawrite/scripts/check_provenance.py` has no leg in the exam. M4 names only the not-verbatim and does-not-resolve lines, so this is not a missing criterion \u2014 but the branch is a real guard (check_provenance runs ahead of the compiler that refuses a tag-only header, and without it `\"\"` is a substring of every body, so a header quoting nothing would pass), and deleting it today leaves both `tests/test_check_provenance.py` and `tests/test_plan_level_claim.py` green. One row under the `#755 Task 1` comment closes it: `_plan_with_header(tmp_path, \"(quoted from #1)\", _task(\"1\", TASK_SENTENCE + \" (elicited)\", SPEC_ANCHOR))` against `_fake_gh(tmp_path, {\"1\": ISSUE_1})`, asserting exit 2 and that stdout line \u2014 the plan-level twin of the existing task-level vacuous-pass pin.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "af27e70f1fc31954e920be80b10dfca0f6e68cd2",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-48/patches/task-2.patch",
+      "reviewVerdict": "fixed",
+      "notes": "tests/test_compile_plan_pinned_elsewhere.py: `_task_prose` is a verbatim copy of `_task` (the whole six-slot template, ~26 lines) differing only in that the Claim sentence and the Context body are caller-supplied. Give `_task` two optional keyword parameters (`claim=`, `context=`) defaulting to today's hard-coded strings and drop `_task_prose`; otherwise the two templates drift the next time the plan grammar moves and only one of them is updated.; unverified: the task's Acceptance is `suite` (the committed suite is the verification), but the evidence covers only this task's exam (`tests/test_compile_plan_pinned_elsewhere.py`, exit 0) and the three constraint checks \u2014 the rest of the suite was not run against this tree. The line shape this diff changes is a rendered advisory, so any suite pinning `--check --renders` stdout is the risk surface. Reading the tree: no file outside this exam mentions `pinned-elsewhere` except species-NAME lists (`tests/test_compile_plan_check_cost.py:29,399,404`, `skills/ultrawrite/SKILL.md:235`), `PINNED_EVERYWHERE`/`PINNED_ELSEWHERE_DETAIL` have no other reader, and the corpus render pin keeps only `PLAN OK` and `ADVISORY grammar:` lines (`tests/test_check_renders_pin_is_tree_independent.py`), so the exposure looks nil. A full `pytest -q tests` (plus the fleet sims) on the merged tree would settle it.; Task text contradiction, correctly and visibly resolved by the implementer: the Context lists \"`test_c` (lines 554/566, the trailing slash)\" among the pins that \"hold unchanged\", but M2 skips any span holding a `/` anywhere, which makes BASE's control row `test_c_the_same_span_without_its_trailing_slash_draws_one_line` (`fleet/tests`, no trailing slash) unsatisfiable by any correct implementation. The patch flips that row to a silence and discloses why in a `#756 Task 2` comment above it \u2014 lawful. Consequence worth recording: `_clause_spans`'s `span.endswith(\"/\")` drop (compile_plan.py:3166) is now wholly subsumed by `_is_pinnable_span`, so no row isolates it; behaviour is identical either way, so nothing needs to change in this diff.; unverified: acceptance is `suite \u2014 the committed suite is the verification`, but the evidence covers only this task's own exam (`tests/test_compile_plan_pinned_elsewhere.py`, exit 0) and the three Global Constraint checks. This diff changes the shape and the population of `pinned-elsewhere` output (per-(task, span, path) lines become one folded line per task; the eight-file vocabulary threshold is gone, so spans BASE silenced now print), and roughly a dozen other suites run the compiler with `--base` and count or shape-check `ADVISORY proof-species:` lines \u2014 e.g. tests/test_compile_plan_proof_species.py, tests/test_compile_plan_one_sided.py, tests/test_compile_plan_wide_files.py, tests/test_compile_plan_check_cost.py, tests/test_compile_plan_integration_hostile.py. A full `python3 -m pytest -q tests/` on the patched tree would settle it; nothing in the diff itself shows those counts are undisturbed.; plan-defect: M2's bare-file-name skip, transcribed faithfully as `BARE_FILE_NAME_RE = re.compile(r\"[\\w.\\-]+\\.[A-Za-z]{1,4}\")` + `fullmatch` (skills/ultrapowers/scripts/compile_plan.py, `_is_pinnable_span`), also swallows dotted code identifiers that are not paths: `ctx.run`, `os.path`, `f.write`, `t.reads` all fullmatch (word/dot run, dot, one-to-four letters) and are silently dropped even when an undeclared code test asserts them. That is in tension with the Claim's own doctrine (\"never a path \u2026 no floor, no file-count threshold and no per-plan bar decides for them\") \u2014 a `<pkg>.<attr>` literal is a strict-equality pin, not a file name. The diff is a correct transcription of M2 as written, and M5 leg (q) enforces the rule on rendered lines, so the fix is in the task text (M2's bare-file-name clause), not inside this task's FILES: narrow it to spans whose extension is a known file suffix, or require the span to look like a name with no adjacent identifier semantics. Recorded for the operator; nothing in this diff needs to change.; tests/test_compile_plan_pinned_elsewhere.py: M3 says a pinning file is one \"that no task's Files (Create:, Modify: or Test:) names\", but every ownership row in the exam \u2014 BASE's `test_silent_when_the_pinning_file_is_named_in_some_tasks_files`, the new `test_756_f_a_single_pinning_file_in_some_tasks_files_draws_nothing` and `test_756_f_with_one_of_the_nine_declared_the_other_eight_are_named` \u2014 declares the pinning file through a `- Test:` bullet only. `_declared_files` (unchanged by this diff) unions `writes` and `reads`, so the Create:/Modify: half of that clause is real behaviour with no row behind it; deleting the `writes` half of `_declared_files` leaves all 50 tests green. One extra row \u2014 the `repo` fixture with `PLAN` where task 2 carries `- Modify: `tests/test_probe.py`` instead of `- Test:`, asserting silence \u2014 would close it. Advisory: the clause's Test: reading is the one M3's own example exercises, and the exam exits 0 as it stands.; concern: suite-not-green: `python3 -m pytest -p no:xdist` ends 5 failed, 1661 passed. All five failures are in the BASE copy of `tests/test_compile_plan_pinned_elsewhere.py`, which is the peer's exam path and so was not edited by me. Four are exactly the rows the task's Context says this task re-scopes rather than deletes: `test_one_line_per_pinning_file_sorted_by_path` (four files are now one line naming four paths), `test_d_a_span_in_nine_tracked_test_files_draws_nothing`, `test_e_the_count_is_taken_before_the_declared_filter` and `test_f_a_span_in_eight_tracked_test_files_draws_eight_lines` (the deleted file-count ceiling). Everything else in the suite passes, including the frozen-periphery byte-pin in `tests/test_compile_plan_proof_runs.py` and `tests/test_plan_level_claim.py:378`.; concern: plan-defect: the fifth failure contradicts the Context. The Context lists `test_c` (lines 554/566, the trailing slash) among the rows that \"hold unchanged\", but its second half, `test_c_the_same_span_without_its_trailing_slash_draws_one_line`, asserts that the span `fleet/tests` (slash-bearing, no trailing slash) draws one line. M2 says a candidate is skipped when \"the span contains `/`\", leg (b) names `ultra/evidence-run-32` as drawing nothing, and leg (q)/M5 asserts every named span \"contains no `/`\" \u2014 so under the Machine clauses that row must now be silent. I implemented M2/M5 as written; only the trailing-slash half of test_c (line 554) survives unchanged. The peer's exam, written from the same clauses, should expect the silence.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 2,
+      "proofFixes": 0,
+      "examEdited": [
+        "tests/test_compile_plan_pinned_elsewhere.py"
+      ]
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a9c4f679703115b0580ed9fc235c788b876cd47f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-48/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "`_test_paths_in_order` (compile_plan.py, new block after the sha-unguarded registration) reimplements path extraction from a Files bullet with `PATH_RE.findall(rest)` + a manual `p.split(\":\")[0]`, where the compiler already has `_claims_file_paths(value)` (compile_plan.py:422) doing exactly that \u2014 backticked path-like tokens, else the first token when it is path-like, `:line-range` stripped \u2014 and already used by `proof_tests_ordered` for the same document-order-deduped shape. Two consequences beyond the duplication: (1) the render silently misses a legal but unbackticked Files bullet (`- Test: tests/foo.py`), which `_files_violations` explicitly declines to flag (compile_plan.py:1698-1701) and which the legacy Files parser still folds into `t[\"reads\"]` via its first-token fallback (compile_plan.py:1355-1362) \u2014 so for such a plan M1's \"each of its `Test:` paths\" draws nothing; (2) it skips the `_is_pathlike` filter, so a backticked non-path token in a Test bullet is only kept out by the `accepted` re-filter rather than by the same rule everything else uses. The exam cannot catch either: `_exam_task` backticks every path. Fix is one line, and the `accepted` re-filter still keeps the result a subset of `reads`.; unverified: acceptance is `suite`, but the evidence here is this task's own exam only (`tests/test_compile_plan_base_sha_in_suite.py`, 25 passed) plus the three constraint checks. The new render fires on every `--renders` run, so the global constraint that no other `--renders` consumer changes is not settled by this diff. Two things I could check statically and that hold: no fixture plan under `tests/fixtures/plans/` names any of the five BASE suites the task's Context lists as carrying a repository commit sha, nor either token-reading suite, under `Test:` \u2014 so no corpus plan gains a base-sha-in-suite line; and the bare-`--check` path never reaches `ADVISORY_RENDERS` (`render_advisories`, compile_plan.py:2563, is the only consumer), so the Run-less byte-pin is structurally safe. What would settle the rest is a full `python3 -m pytest -q tests` plus the fleet suite on this tree \u2014 in particular `tests/test_check_renders.py`, `tests/test_check_renders_pin_is_tree_independent.py`, `tests/test_compile_plan_proof_species.py` and `tests/test_compile_plan_proof_tests.py`, the four that read `--renders` output over shared fixtures.; M1 says the render reads \"each of its `Test:` paths that is a tracked file of the checkout\", but `_test_paths_in_order` (compile_plan.py, new block) collects paths only from `PATH_RE.findall(rest)` \u2014 backticked tokens. BASE's Files parser also admits an unbackticked first token (compile_plan.py:1354-1362, the `- Test: tests/foo.py \u2014 the suite` shape), so such a path lands in `task[\"reads\"]` yet never reaches the render: a tracked, unbackticked `Test:` file carrying the token or a resolving sha draws no line. The exam's fixtures backtick every probe (`_exam_task`), so no leg catches it. Narrow and advisory-only \u2014 the species' positive legs are all evidenced \u2014 hence minor, but the render is silent on a shape the Files parser accepts. The fallback filters back through `accepted`, so it cannot fabricate a path the parser rejected.; plan-defect: M2 and the Context specify the commit test as `_git(base, \"cat-file\", \"-e\", sha + \"^{commit}\")`, claiming it \"returns `\\\"\\\"` on a miss\". It also returns `\"\"` on a hit \u2014 `cat-file -e` prints nothing either way and BASE's `_git` (compile_plan.py:2507-2515) returns `p.stdout` on success \u2014 so a literal transcription would make the render unconditionally silent and every M2 leg fail. The implementer diverged to `rev-parse --verify --quiet <sha>^{commit}` and disclosed the reason in `_resolves_as_commit`'s docstring; that divergence is correct and lawful, and the exam confirms it (exit 0). Recorded so the operator can correct the plan text rather than the diff \u2014 the fix lies in the task's own Machine/Context wording, outside FILES.; The exam's module docstring asserts \"only the Proof's `Test:` bullets carry document order, which leg (b) turns on\", but the render reads the **Files:** block's `files_raw` pairs, and `_exam_task` emits the probes in the same order in both blocks \u2014 so leg (b) cannot in fact discriminate Proof order from Files order. The leg still pins what M1 requires (`Test:` order, not path order, with per-file line numbers), so nothing is left unverified; the comment just misdescribes which view the render consumes and would mislead the next editor of this file. Reword it to say the Files block's verbatim `(label, rest)` pairs are what carry the order.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-48/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 4/4 workers\n4 workers [1737 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 29%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1737 passed, 5 warnings in 361.58s (0:06:01) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "bash -c 'sed -n \"/^Above the first task:/,/^$/p\" skills/ultrawrite/SKILL.md | tr \"\\n\" \" \" | grep -q \"quoted from #NNN\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'sed -n \"/^Above the first task:/,/^$/p\" skills/ultrawrite/SKILL.md | tr \"\\n\" \" \" | grep -q \"(elicited)\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c '! sed -n \"/^Above the first task:/,/^$/p\" skills/ultrawrite/SKILL.md | tr \"\\n\" \" \" | grep -q \"(derived)\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "bash -c 'test \"$(sed -n \"/^Above the first task:/,/^$/p\" skills/ultrawrite/SKILL.md | grep -o \"\\*\\*Claim:\\*\\*\" | wc -l | tr -d \" \")\" = 1'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "bash -c 'sed -n \"/^The .ADVISORY proof-species:. lines/,/^$/p\" skills/ultrawrite/SKILL.md | tr \"\\n\" \" \" | grep -q \"base-sha-in-suite\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "bash -c 'sed -n \"/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p\" skills/ultrawrite/SKILL.md | tr \"\\n\" \" \" | grep -q \"never reads ULTRA_BASE.*freezes a commit sha.*BASE comparison is a .*Run:\"'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- evals/fixtures tests/fixtures/plans/2026-09-01-511-attempt-racing.md tests/fixtures/plans/2026-09-02-papercut-drain-2.md tests/test_compile_plan_proof_runs.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 2053938,
+    "blockingFindings": 2,
+    "blockingPerReviewerMinute": 0.05842435360755777,
+    "pairRounds": 4,
+    "r2MarginalBlocking": 1
+  },
+  "shallowSuite": {
+    "depth": 1,
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": ".................................................... [ 49%]\n......................................................................... [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n.............................................s.......................... [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n........                                                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1736 passed, 1 skipped, 5 warnings in 357.34s (0:05:57) ============\n"
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1666 passed, 5 warnings in 332.28s (0:05:32) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "f92389fb81c8dc28ad6b00356c9d390155b7bc6b",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-48/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-48/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.62,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "skills/ultrawrite/scripts/check_provenance.py \u2014 plan-level `(quoted from #NNN)` resolution against real GitHub (Task 1, Claim clause 2 / M3 / M4)",
+      "reason": "external",
+      "why": "The header-quote fetch, the `2 claim quotes` success line and both `provenance: plan-level claim \u2026` failure lines are exercised only through the `_fake_gh` `/bin/sh` seam in tests/test_check_provenance.py. No run in this environment invoked a real `gh issue view \u2026 --json body -q .body`, and this plan's own header is tagged `(elicited)`, so the live path (network, `gh` auth, actual issue #755 body) has not been executed anywhere in the run. The seam pins the argument vector exactly, so the risk is confined to `gh`'s real output shape, not to the script's logic."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: suite-not-green: `python3 -m pytest -p no:xdist` ends 5 failed, 1661 passed. All five failures are in the BASE copy of `tests/test_compile_plan_pinned_elsewhere.py`, which is the peer's exam path and so was not edited by me. Four are exactly the rows the task's Context says this task re-scopes rather than deletes: `test_one_line_per_pinning_file_sorted_by_path` (four files are now one line naming four paths), `test_d_a_span_in_nine_tracked_test_files_draws_nothing`, `test_e_the_count_is_taken_before_the_declared_filter` and `test_f_a_span_in_eight_tracked_test_files_draws_eight_lines` (the deleted file-count ceiling). Everything else in the suite passes, including the frozen-periphery byte-pin in `tests/test_compile_plan_proof_runs.py` and `tests/test_plan_level_claim.py:378`.",
+    "task 2: plan-defect: the fifth failure contradicts the Context. The Context lists `test_c` (lines 554/566, the trailing slash) among the rows that \"hold unchanged\", but its second half, `test_c_the_same_span_without_its_trailing_slash_draws_one_line`, asserts that the span `fleet/tests` (slash-bearing, no trailing slash) draws one line. M2 says a candidate is skipped when \"the span contains `/`\", leg (b) names `ultra/evidence-run-32` as drawing nothing, and leg (q)/M5 asserts every named span \"contains no `/`\" \u2014 so under the Machine clauses that row must now be silent. I implemented M2/M5 as written; only the trailing-slash half of test_c (line 554) survives unchanged. The peer's exam, written from the same clauses, should expect the silence.",
+    "task 2: examiner: Context: \"`test_c` (lines 554/566, the trailing slash) ... hold unchanged\" \u2014 Only line 554 can hold. Line 566's control row asserts that `fleet/tests` \u2014 the same span minus its trailing slash \u2014 draws one line, but M2 skips any span that CONTAINS a `/`, not only one ending in it, so that row contradicts M2. M2 governs: the row is rewritten in place as `test_c_the_same_span_without_its_trailing_slash_is_a_path_too`, asserting silence and citing leg (b) [M2], with a comment recording that #671's control pair is subsumed and that the surviving controlled pair is #671's own length pair (`abcde` / `abcdef`).",
+    "task 2: the fix round edited the exam \u2014 tests/test_compile_plan_pinned_elsewhere.py no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2, Claim slot \u2014 the operator's sentence in `tests/fixtures/plans/.../` scope (plan /home/exedev/plans/run-48.md:177) reads \"no floor, no file-count threshold and no per-plan bar decides for them\", but `skills/ultrapowers/scripts/compile_plan.py:3154` keeps `MIN_SPAN = 6` and `_clause_spans` (:3226) still drops every backticked span under six characters, so a floor does decide which literals reach the reader. The Machine restatement (M1, \"no longer floor is added\"), the Context (\"MIN_SPAN = 6 \u2026 the grep-noise floor, kept\"; \"there is no floor above BASE's six\") and the exam's `test_b` five-vs-six rows all settle this the same way \u2014 the deleted caps are the 12-character floor, the `PINNED_EVERYWHERE` vocabulary threshold and the \u22645 bar, and those are in fact gone (no `PINNED_EVERYWHERE` remains in the file). The tree implements what M1 and Context specify; only the Claim's prose overstates it. Worth an issue against the Claim wording, not a merge stopper."
+    }
+  ],
+  "blockedWaves": []
+}

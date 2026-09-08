@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-48.md run-48 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "skills/ultrawrite/scripts/check_provenance.py — plan-level `(quoted from #NNN)` resolution against real GitHub (Task 1, Claim clause 2 / M3 / M4) — The header-quote fetch, the `2 claim quotes` success line and both `provenance: plan-level claim …` failure lines are exercised only through the `_fake_gh` `/bin/sh` seam in tests/test_check_provenance.py. No run in this environment invoked a real `gh issue view … --json body -q .body`, and this plan's own header is tagged `(elicited)`, so the live path (network, `gh` auth, actual issue #755 body) has not been executed anywhere in the run. The seam pins the argument vector exactly, so the risk is confined to `gh`'s real output shape, not to the script's logic. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

@@ -108,3 +108,17 @@
 {"kind":"engine:phase","phase":"Depth-1 Leg","id":"01M200J7700000ZK1H73C4S16Z","ts":1788854476000}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M200J7720000DAVC2MZZ11HZ","ts":1788854476002}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"558edc62-ae68-45ab-b62e-d1cd5abdcbbe","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-48/clones/integration","model":"opus","id":"01M200J7730000TACPVQE1FWST","ts":1788854476003}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"558edc62-ae68-45ab-b62e-d1cd5abdcbbe","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4285,"output":13016,"cacheRead":757267,"cacheCreation":49900,"costUsd":1.2244585,"models":["claude-opus-5"]},"id":"01M200QG62000072Q0MEVKRE2T","ts":1788854649026}
+{"kind":"transcript:slice","label":"integration","sessionId":"558edc62-ae68-45ab-b62e-d1cd5abdcbbe","bytes":11631,"id":"01M200QG670000D5HXXAH7GDPE","ts":1788854649031}
+{"kind":"engine:log","line":"depth-1 leg: green","id":"01M200X4Q40000WQY7ED68XAW7","ts":1788854833892}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M200X4QC0000YQZSNFFX65KZ","ts":1788854833900}
+{"kind":"driver:stage","stage":"finalize","id":"01M200X4RD000009GQFQ6JH4AH","ts":1788854833933}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-48/acceptance.log","id":"01M200X4T000006KM9H61V0A8D","ts":1788854833984}
+{"kind":"driver:stage","stage":"gate","id":"01M200X4T00001X6QVFWCZ4JS1","ts":1788854833984}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M2017Z8F0000NSJWSQ07FW15","ts":1788855188751}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M2017Z8F0001S7ZGJK8YHD23","ts":1788855188751}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M2017Z8G0000DP3F1A7TZRAD","ts":1788855188752}
+{"kind":"driver:stage","stage":"approve","id":"01M2017Z8G0001B51G2SAHPTER","ts":1788855188752}
+{"kind":"driver:approved","stamp":"run-48","integrationBranch":"ultra/integration-run-48","id":"01M2017ZA20000F0KWPFMK6RRE","ts":1788855188802}
+{"kind":"run:open","runId":"run-48","base":"9395cd11d6b6e0e1b1e5195b5702956d6faf88f6","source":"fleet/publish-fold.mjs","id":"01M2017ZGK0000Q6WPZM8DF4NH","ts":1788855189011}
+{"kind":"driver:publish-fold","run":"48","attempt":"1","base":"9395cd11d6b6e0e1b1e5195b5702956d6faf88f6","tip":"5acdb723ce8d9e2b3069141db9ba7e91bf8734dc","candidate":"1e76492d98fedee97bd17172f16a38502f8a7c08","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","id":"01M201M6DR0000JX28W86ZN847","ts":1788855589304}

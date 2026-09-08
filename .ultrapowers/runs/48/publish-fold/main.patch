@@ -1,0 +1,1771 @@
+diff --git a/fleet/retire.mjs b/fleet/retire.mjs
+index 61bb0aed128cc882fa1f02fd7783f6ece8af560a..3c94125938d40015800fb68ea88365aa88454964 100644
+--- a/fleet/retire.mjs
++++ b/fleet/retire.mjs
+@@ -59,7 +59,11 @@
+  * only a page whose `state` is one of `REAPABLE_STATES` earns the sweep. A live
+  * page, an unreadable one, or an open pull request on the run's integration
+  * branch prints `run <N>: live (<why>) — skipped` and the sweep moves to the
+- * next N. The states are imported from `./janitor.mjs`, which is the one place
++ * next N. The open-PR read takes that same allowlist posture: only a JSON array
++ * is an answer about pull requests, so a non-2xx exit, an error object and a
++ * truncated stream alike print `run <N>: unreadable (pulls) — skipped` — never
++ * "no open PR", which would let an unread run through to the tags and the
++ * deletes. The states are imported from `./janitor.mjs`, which is the one place
+  * they are spelled: the test is membership, never a denylist of the live words,
+  * so a `state` the boot never writes is skipped rather than swept.
+  *
+@@ -186,11 +190,22 @@ function liveReason (page) {
+   return REAPABLE_STATES.includes(state) ? null : state
+ }
+ 
++/** The word the pulls read's unreadable answer is recorded and printed under. */
++const PULLS_UNREADABLE = 'unreadable (pulls)'
++
+ /**
+  * The run's open pull request, if it has one. `head=<owner>:<ref>` matches on
+  * the head ref's NAME; `state=open` is the only difference from the closed read
+  * below. A run whose integration PR is still open is a run somebody is still
+  * looking at, and its branches are what its links resolve through.
++ *
++ * The answer is `{ unreadable, pull }`, not a bare row, because "no open PR" and
++ * "no answer" are different facts and only the first earns the sweep. The list
++ * endpoint answers a JSON ARRAY and nothing else, so an array is the whole
++ * allowlist — the same posture the status page is read with: a non-2xx exit and
++ * a truncated stream both arrive here as `null`, an error body arrives as an
++ * object, and every one of those is unreadable. An empty array is still an
++ * answer, and it says the run has no open pull request.
+  */
+ async function openPullOf (exec, target, run) {
+   const owner = String(target).split('/')[0]
+@@ -198,8 +213,8 @@ async function openPullOf (exec, target, run) {
+     exec,
+     `repos/${target}/pulls?state=open&head=${owner}:${integrationBranchFor(run)}`
+   )
+-  const rows = Array.isArray(payload) ? payload : []
+-  return rows.length > 0 ? rows[0] : null
++  if (!Array.isArray(payload)) return { unreadable: true, pull: null }
++  return { unreadable: false, pull: payload.length > 0 ? payload[0] : null }
+ }
+ 
+ /** Create one tag at one sha through the refs API. */
+@@ -381,12 +396,22 @@ export async function retire ({ argv = [], exec = defaultExec } = {}) {
+     // is a run in flight. Skipping it is the same decision under `--dry-run`
+     // and without it — the sweep never asks what it would do to a run it is not
+     // going to touch.
+-    let why = liveReason(await readStatusPage(exec, target, run))
+-    if (why === null) {
+-      const open = await openPullOf(exec, target, run)
+-      if (open !== null) why = `PR #${open.number} open`
++    const pageWhy = liveReason(await readStatusPage(exec, target, run))
++    if (pageWhy !== null) {
++      live.push({ run, why: pageWhy })
++      return `live (${pageWhy}) — skipped`
++    }
++    // The second read of the gate, and the same posture: an answer that is not a
++    // list of pull requests is no answer at all. Its line names the read rather
++    // than the run's state — the sweep did not learn one — but the run joins
++    // `live` all the same, because `live` is what the sweep declined to touch.
++    const open = await openPullOf(exec, target, run)
++    if (open.unreadable) {
++      live.push({ run, why: PULLS_UNREADABLE })
++      return `${PULLS_UNREADABLE} — skipped`
+     }
+-    if (why !== null) {
++    if (open.pull !== null) {
++      const why = `PR #${open.pull.number} open`
+       live.push({ run, why })
+       return `live (${why}) — skipped`
+     }
+diff --git a/fleet/roles/critic.md b/fleet/roles/critic.md
+index 093bda907935e64bf2f2c1bfb4ce6e6e541eb376..13f492579a574ab24198664f3f6e13dcfd804ad4 100644
+--- a/fleet/roles/critic.md
++++ b/fleet/roles/critic.md
+@@ -30,6 +30,10 @@ The INTEGRATED RUN EVIDENCE block, when present, is authoritative for every
+ integration tree. A request for their re-execution is settled by that block —
+ report what it shows; it is not a `deferredVerification` item, and `manual` is
+ for human judgment (aesthetic, product-fit), not for a command the driver ran.
++When that evidence settles the presence of a deliverable and only the judgment
++is left, the `manual` item's `why` quotes the settling command verbatim, as the
++`$ <cmd>` line of the block gives it; a paraphrase is not a citation, and an
++item that carries one parks at the gate as it does today.
+ 
+ The INTEGRATED CHECK EVIDENCE block is the same for the global constraints that
+ carry a `Check:` command: the driver ran each one itself on the adopted
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 8694de1eb49d02fa6398ca9a8f9f246a7157df89..9bfc31705896901bd78a1026dec3646d50ce59c0 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -1296,15 +1296,26 @@ export async function runEngine({
+     // A red exam is a red of the same standing as a red `Run:`: the Proof's
+     // `Test:` paths are the task's contract just as its `Run:` commands are.
+     const EXAM_FAIL = (e) => 'the Proof\'s exam failed: ' + e.cmd + ' — exit ' + e.exit
++    // #713 Task 1: the pass's evidence is KEPT, not discarded. Round 1 reads
++    // the tree the pass measured — no fix stands between them — so executing
++    // again would record the same commands twice and bill the clone for it.
++    // A task with no `Run:`, no `Check:` and no runnable exam leaves these
++    // empty, which is exactly what its round-1 blocks carried at BASE.
++    let preRuns = []
++    let preExam = null
++    let preChecks = []
+     if (proofRuns.length || constraintChecks.length || examRunnable) {
+       const prePass = async () => {
+         const reds = []
+-        for (const r of await runCommands(0)) {
++        preRuns = await runCommands(0)
++        for (const r of preRuns) {
+           if (r.exit !== 0) reds.push({ line: RUN_FAIL(r), stdout: r.stdout })
+         }
+-        const e = await runExam(0)
++        preExam = await runExam(0)
++        const e = preExam
+         if (e && e.exit !== 0) reds.push({ line: EXAM_FAIL(e), stdout: e.stdout })
+-        for (const c of await runChecks(0)) {
++        preChecks = await runChecks(0)
++        for (const c of preChecks) {
+           if (c.exit === 0) continue
+           if (c.minor) { noteMinorCheck(c); continue }
+           reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
+@@ -1364,16 +1375,18 @@ export async function runEngine({
+     const priorMinors = []
+     for (let iter = 1; iter <= 2; iter++) {
+       // ── the `Run:` proofs (#589) ─────────────────────────────────────────
+-      // Once per review round, not once per task: a fix round is measured by a
+-      // FRESH execution, so round 2's evidence replaces round 1's rather than
++      // Once per FIX, not once per round (#713 Task 1): round 1 reads the
++      // pre-review pass's evidence, because nothing edited the tree between
++      // that pass and this dispatch; round 2 follows `fix:<id>:1`, so it
++      // executes afresh and its evidence replaces round 1's rather than
+       // re-quoting a run that predates the repair. Same `sh` seam as the
+       // run-wide suite (`bash -lc`, SHELL_TIMEOUT_MS), same cwd the implementer
+       // just wrote to, same tail-truncation the rest of the evidence uses.
+-      const runEvidence = await runCommands(iter)
+-      // The exam, freshly executed for this round on the same terms (#638):
+-      // round 2 grades the repair, not the tree that predates it.
+-      const examEvidence = await runExam(iter)
+-      const checkEvidence = await runChecks(iter)
++      const runEvidence = iter === 1 ? preRuns : await runCommands(iter)
++      // The exam, on the same terms (#638): round 2 grades the repair, not the
++      // tree that predates it.
++      const examEvidence = iter === 1 ? preExam : await runExam(iter)
++      const checkEvidence = iter === 1 ? preChecks : await runChecks(iter)
+       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
+         '\nPATCH: ' + impl.patch +
+         '\nHEAD: ' + impl.headSha +
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 97baef8790bac9a5d18f9ff96abaa8496e1c48e0..60f6e304ff7778cd24fca896eac3677e8b3ebacb 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -246,10 +246,12 @@ export const acceptanceWrap = (testCmd, runDir) =>
+ 
+ // ── the two-move rule (SKILL.md step 5, made deterministic) ──────────────────
+ // NEEDS_ACK approves iff EVERY ack is a deferredVerification item with reason
+-// runtime or external (ack.type is "deferred:<reason>", gate_check.py:134).
+-// Anything else — coverage acks, unknown types — leaves the gate receipt as
+-// the terminal artifact. Pre-authorized by the #243 grilling (manual acks
+-// pre-authorized, parks → 0) for exactly this closed list, nothing wider.
++// runtime or external (ack.type is "deferred:<reason>", gate_check.py:134) —
++// or a `deferred:manual` ack the driver's own executed evidence already
++// settles (#753, below). Anything else — coverage acks, deferred:plan-defect,
++// unknown types — leaves the gate receipt as the terminal artifact.
++// Pre-authorized by the #243 grilling (manual acks pre-authorized, parks → 0)
++// for exactly this closed list, widened by #753's one mechanical case.
+ //
+ // The acks live at `gateCheck.acks`: gate_check.py emits {verdict,checks,acks}
+ // and ultra_gate.py embeds that whole object one level down under `gateCheck`
+@@ -259,12 +261,44 @@ export const acceptanceWrap = (testCmd, runDir) =>
+ export const acksOf = (gateReceipt) =>
+   (gateReceipt && gateReceipt.gateCheck && gateReceipt.gateCheck.acks) || []
+ 
+-export function ackDecision(gateReceipt) {
++// A `deferred:manual` ack is pre-authorized when the critic's `why` cites, in
++// the ack's frozen `detail` (`deliverable — why`, gate_check.py:132-140), a
++// command the driver itself re-ran on the adopted tree and that exited 0
++// (#753). `report.integratedRuns` is that execution record — `{ task, cmd,
++// exit, stdout }`, rendered to the critic as the `$ <cmd>` lines it quotes
++// from — so the citation test is a verbatim substring of an executed command.
++// A detail that also names a RED command is not pre-authorized however many
++// green ones it cites: the settled part of the item is the green evidence, and
++// a red run is the opposite of settling. Citing is the critic's act, verifying
++// is the driver's; a paraphrase is not a citation and parks, which is the safe
++// failure. `report` defaults to `{}` — with no report nothing is cited.
++export function ackDecision(gateReceipt, report = {}) {
+   const acks = acksOf(gateReceipt)
+-  const bad = acks.filter((a) => a.type !== 'deferred:runtime' && a.type !== 'deferred:external')
++  const runs = (report && Array.isArray(report.integratedRuns)) ? report.integratedRuns : []
++  const cmdsWithExit = (ok) => runs
++    .filter((r) => r && typeof r.cmd === 'string' && r.cmd !== '' && (ok ? r.exit === 0 : r.exit !== 0))
++    .map((r) => r.cmd)
++  const green = cmdsWithExit(true)
++  const red = cmdsWithExit(false)
++  const citesExecutedGreen = (a) => a.type === 'deferred:manual' &&
++    typeof a.detail === 'string' &&
++    green.some((cmd) => a.detail.includes(cmd)) &&
++    !red.some((cmd) => a.detail.includes(cmd))
++
++  const citing = acks.filter(citesExecutedGreen)
++  const bad = acks.filter((a) =>
++    a.type !== 'deferred:runtime' && a.type !== 'deferred:external' && !citesExecutedGreen(a))
+   if (bad.length) {
+     return { approve: false, reason: 'non-pre-authorized ack(s): ' + bad.map((a) => a.type).join(', ') }
+   }
++  if (citing.length) {
++    return {
++      approve: true,
++      reason: citing.length + ' deferred manual ack(s) citing green integrated Run: evidence — ' +
++        'pre-authorized (#753); ' + (acks.length - citing.length) +
++        ' deferred runtime/external ack(s) — pre-authorized (#243)',
++    }
++  }
+   return { approve: true, reason: acks.length + ' deferred runtime/external ack(s) — pre-authorized (#243)' }
+ }
+ 
+@@ -721,7 +755,10 @@ export async function runMain(parsed, deps = {}) {
+   // is deliberate. #243 pre-authorizes "the sandbox could not execute this"; it
+   // was never a licence to merge a named defect. The report is read from
+   // resultPath — the gate receipt does not carry the field.
+-  const critic = criticDecision(readJson(resultPath))
++  // One read, two readers: the critic brake reads `completenessFindings` and
++  // the ack decision reads `integratedRuns` off the same report object.
++  const resultReport = readJson(resultPath)
++  const critic = criticDecision(resultReport)
+   eventLog.onEvent({ kind: 'driver:critic-decision', approve: critic.approve, reason: critic.reason })
+   if (!critic.approve) {
+     let gateVerdict = gate.code === 0 ? 'PASS' : 'NEEDS_ACK'
+@@ -736,7 +773,7 @@ export async function runMain(parsed, deps = {}) {
+ 
+   if (gate.code === 2) {
+     const gr = readJson(path.join(runDir, 'gate-receipt.json'))
+-    const decision = ackDecision(gr)
++    const decision = ackDecision(gr, resultReport)
+     eventLog.onEvent({ kind: 'driver:ack-decision', approve: decision.approve, reason: decision.reason })
+     if (!decision.approve) {
+       return fail('needs-ack', decision.reason + ' — gate receipt is the terminal artifact')
+diff --git a/fleet/tests/test_retire.mjs b/fleet/tests/test_retire.mjs
+index 12a9bf2e4748b351e94caf15e8368f349568507e..b372ccca75893c4cde94864260558a33fe50ee33 100644
+--- a/fleet/tests/test_retire.mjs
++++ b/fleet/tests/test_retire.mjs
+@@ -344,6 +344,11 @@ const runOfApiCall = (argv) => {
+  * that carry no page at all; `openPulls` is what the `state=open` read answers,
+  * empty for every run unless a leg says otherwise.
+  *
++ * #752 Task 1 adds `openPullAnswers`, the same override one level up from
++ * `openPulls`: a run's whole `state=open` answer, checked before `openPulls`, so
++ * a leg can make that one read exit non-zero or answer a shape that is not an
++ * array at all.
++ *
+  * #724 Task 1 adds two options and one rule. `listing` is the heads-and-tags
+  * listing the one `ls-remote` answers — every leg above leaves it at
+  * `HEADS_LISTING`, and the task's legs pass their own — and `fatePulls` is what
+@@ -360,6 +365,7 @@ function makeSeam ({
+   pages = DONE_PAGES,
+   contentsAnswers = {},
+   openPulls = {},
++  openPullAnswers = {},
+   listing = HEADS_LISTING,
+   fatePulls = {}
+ } = {}) {
+@@ -385,6 +391,10 @@ function makeSeam ({
+       when: (c, argv) => c === 'gh' && /\/pulls\?[^ ]*state=open/.test(argv.map(String).join(' ')),
+       answer: (c, argv) => {
+         const run = runOfApiCall(argv)
++        // #752 Task 1: the whole-answer override, checked before `openPulls`.
++        if (run !== null && Object.prototype.hasOwnProperty.call(openPullAnswers, run)) {
++          return openPullAnswers[run]
++        }
+         return answer(run === null ? [] : (openPulls[run] ?? []))
+       }
+     },
+@@ -995,6 +1005,231 @@ const loggingShims = (name, { state = 'done' } = {}) => {
+     '(a)/M1 and starts no gh and no git')
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// #752 Task 1 — the open-PR read takes the status read's posture
++//
++// A non-2xx exit or a non-array payload on
++// `gh api repos/<t>/pulls?state=open&head=<owner>:ultra/integration-run-<N>` is
++// not "no open PR". It is a read the sweep could not make sense of, and the run
++// is skipped exactly as an unreadable status page is skipped — the allowlist
++// posture #706 gave the status read. The one line is
++// `run <N>: unreadable (pulls) — skipped`; the segment is the literal the Claim
++// names and NOT `live (unreadable (pulls))`. The run lands under `live` as
++// `{ run, why: 'unreadable (pulls)' }`, is neither `kept` nor `skipped`, sets no
++// exit code, and `--dry-run` prints the same line byte for byte.
++//
++// Every leg here runs over BASE's own listing — runs 3, 5 and 12 — so it grades
++// the fixture the legs above were written for, and no leg builds an integration
++// head: the end-of-file sweeps over `SEAMS` still find what they found.
++// ════════════════════════════════════════════════════════════════════════════
++
++/** M1: the `why` the resolved value carries, and the segment the line prints —
++ *  the two are the same words, but the line is NOT `live (<why>)`. */
++const WHY_PULLS = 'unreadable (pulls)'
++/** M1: the one line an unreadable open-PR read prints, exact. */
++const pullsSkip = (run) => `run ${run}: ${WHY_PULLS} — skipped`
++
++/** M1 (ii): the body GitHub answers a rate-limited list read with — an object,
++ *  not an array. No single quote in it, so a shell shim can hold it (M5). */
++const RATE_LIMIT_OBJECT = {
++  message: 'API rate limit exceeded',
++  documentation_url: 'https://docs.github.com/rest'
++}
++/** M1 (iii): a stream that stops mid-row — not JSON at all. */
++const TRUNCATED_PULLS = '[{"number": 41'
++
++/** The three answers of M1, in the order the Machine clause names them. */
++const UNREADABLE_PULLS = [
++  ['(a)', 'row (i): exit 1, empty stdout, `gh: API rate limit exceeded (HTTP 403)` on stderr',
++    answer('', { code: 1, stderr: 'gh: API rate limit exceeded (HTTP 403)' })],
++  ['(b)', 'row (ii): exit 0 with the rate-limit OBJECT as stdout',
++    answer(RATE_LIMIT_OBJECT)],
++  ['(c)', `row (iii): exit 0 with the truncated stream \`${TRUNCATED_PULLS}\`, which is not JSON`,
++    answer(TRUNCATED_PULLS)]
++]
++
++// Fixture self-checks: the three answers really are the three shapes M1 names,
++// or the legs below would be graded against something else.
++assert.equal(UNREADABLE_PULLS[0][2].code, 1,
++  '#752 Task 1 fixture: row (i) answers non-zero')
++assert.equal(UNREADABLE_PULLS[0][2].stdout, '',
++  '#752 Task 1 fixture: row (i) answers empty stdout')
++assert.ok(!Array.isArray(JSON.parse(UNREADABLE_PULLS[1][2].stdout)),
++  '#752 Task 1 fixture: row (ii) is a JSON object, not an array')
++assert.equal(UNREADABLE_PULLS[2][2].stdout, TRUNCATED_PULLS,
++  '#752 Task 1 fixture: row (iii) is passed through as the raw string it is')
++assert.throws(() => JSON.parse(TRUNCATED_PULLS), SyntaxError,
++  '#752 Task 1 fixture: row (iii) is not parsable JSON')
++
++/** Run 3's line, captured under the object answer and compared byte for byte
++ *  under `--dry-run` (M3). */
++const captured752 = {}
++
++// ── #752 Task 1 (a)(b)(c)/M1: the three answers, one assertion set ───────────
++
++for (const [leg, what, pullAnswer] of UNREADABLE_PULLS) {
++  const exec = seam({ openPullAnswers: { 3: pullAnswer } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++  if (leg === '(b)') captured752.object3 = runLine(out, 3)
++
++  assert.equal(runLine(out, 3), pullsSkip(3),
++    `#752 Task 1 ${leg}/M1 ${what}: run 3's one line is exactly \`${pullsSkip(3)}\` — not \`live (${WHY_PULLS})\`, and never a retired line; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(linesOf(exec, (l) => namesRun(l, 3)), [contentsLine(3), openPullsLine(3)],
++    `#752 Task 1 ${leg}/M1 ${what}: the calls naming run 3 are exactly its status read then its open-PR read, in that order — no POST, no ls-remote --tags, no DELETE, no PATCH and no state=closed read; got ${JSON.stringify(linesOf(exec, (l) => namesRun(l, 3)))}`)
++  assert.deepEqual(out.result.live, [{ run: 3, why: WHY_PULLS }],
++    `#752 Task 1 ${leg}/M1 ${what}: the resolved value carries the run under \`live\` as { run, why } with why \`${WHY_PULLS}\`; got ${JSON.stringify(out.result.live)}`)
++  assert.deepEqual(out.result.retired, [12],
++    `#752 Task 1 ${leg}/M1 ${what}: the sweep goes on to the next N — a tool that returns after the skip fails here; got ${JSON.stringify(out.result.retired)}`)
++  assert.deepEqual(out.result.kept, [],
++    `#752 Task 1 ${leg}/M1 ${what}: an unreadable read is not a kept run — \`kept\` keeps its tag-verify meaning; got ${JSON.stringify(out.result.kept)}`)
++  assert.equal(Array.isArray(out.result.skipped) && out.result.skipped.length, 1,
++    `#752 Task 1 ${leg}/M1 ${what}: \`skipped\` still names only the lone half; got ${JSON.stringify(out.result.skipped)}`)
++  assert.ok(/(^|\D)5(\D|$)/.test(out.result.skipped.join(' ')),
++    `#752 Task 1 ${leg}/M1 ${what}: and that lone half is run 5; got ${JSON.stringify(out.result.skipped)}`)
++  assert.deepEqual(sweepOf(exec, 12), sweepLines(12),
++    `#752 Task 1 ${leg}/M1 ${what}: the healthy pair behind it is swept in full — two POSTs, the verify, two DELETEs, in BASE's order`)
++  assert.ok(runLine(out, 12).includes('retired'),
++    `#752 Task 1 ${leg}/M1 ${what}: and run 12's line says retired; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.ok(out.lines.indexOf(runLine(out, 12)) > out.lines.indexOf(runLine(out, 3)),
++    `#752 Task 1 ${leg}/M1 ${what}: run 12's line is printed after run 3's; got ${JSON.stringify(out.lines)}`)
++  assert.notEqual(out.exitCode, 1,
++    `#752 Task 1 ${leg}/M1 ${what}: a skipped run is not a kept run, so process.exitCode is not set to 1`)
++}
++
++// ── #752 Task 1 (d)/M2: the mirror, the unreadable read on the LAST pair ─────
++
++{
++  const exec = seam({ openPullAnswers: { 12: answer(RATE_LIMIT_OBJECT) } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.deepEqual(out.result.retired, [3],
++    `#752 Task 1 (d)/M2 the mirror: the healthy pair before it is retired; got ${JSON.stringify(out.result.retired)}`)
++  assert.equal(runLine(out, 12), pullsSkip(12),
++    `#752 Task 1 (d)/M2 the mirror: run 12's one line is exactly \`${pullsSkip(12)}\`; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.deepEqual(out.result.live, [{ run: 12, why: WHY_PULLS }],
++    `#752 Task 1 (d)/M2 the mirror: \`live\` carries run 12 with why \`${WHY_PULLS}\`; got ${JSON.stringify(out.result.live)}`)
++}
++
++// ── #752 Task 1 (e)/M3: --dry-run says the same thing and reads the same ─────
++
++for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target', TARGET]]) {
++  const spelling = JSON.stringify(argv)
++  const exec = seam({ openPullAnswers: { 3: answer(RATE_LIMIT_OBJECT) } })
++  const out = await captured(() => retire({ argv, exec }))
++
++  assert.deepEqual(lines(exec), [
++    LIST_LINE,
++    contentsLine(3), openPullsLine(3),
++    contentsLine(12), openPullsLine(12), pullsLine(12)
++  ],
++  `#752 Task 1 (e)/M3 ${spelling}: the calls through the seam are exactly the one heads-and-tags listing, then run 3's status read and open-PR read, then run 12's status read, open-PR read and state=closed read — six lines, nothing else; got ${JSON.stringify(lines(exec))}`)
++  assert.equal(runLine(out, 3), captured752.object3,
++    `#752 Task 1 (e)/M3 ${spelling}: the skip line is byte-identical to the one printed without the flag — a dry run that says \`would\` for run 3, or prints a different skip line, fails here; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.ok(runLine(out, 12).includes('would'),
++    `#752 Task 1 (e)/M3 ${spelling}: the healthy pair behind it still says what it would do — a tool that stops after the skip fails here; got ${JSON.stringify(runLine(out, 12))}`)
++  assert.deepEqual(linesOf(exec, (l) => l.includes(' -X ')), [],
++    `#752 Task 1 (e)/M3 ${spelling}: no gh call carries -X`)
++  assert.deepEqual(linesOf(exec, (l) => l.startsWith('git ') && l !== LIST_LINE), [],
++    `#752 Task 1 (e)/M3 ${spelling}: no git call but the one listing is made`)
++  assert.notEqual(out.exitCode, 1,
++    `#752 Task 1 (e)/M3 ${spelling}: a dry run keeps nothing, so it does not set process.exitCode to 1`)
++}
++
++// ── #752 Task 1 (f)/M4: an empty array is still the answer it was ────────────
++
++{
++  const exec = seam({ openPulls: { 3: [] } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.deepEqual(sweepOf(exec, 3), sweepLines(3),
++    '#752 Task 1 (f)/M4 an empty JSON array is a readable answer meaning "no open PR": run 3 goes through to the whole sweep — the two POSTs, the verify, the two DELETEs, in BASE\'s order. A tool that reads an empty array as unreadable fails here')
++  assert.ok(runLine(out, 3).includes('retired'),
++    `#752 Task 1 (f)/M4 and run 3's line says retired; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(out.result.live, [],
++    `#752 Task 1 (f)/M4 and nothing is live; got ${JSON.stringify(out.result.live)}`)
++}
++
++// ── #752 Task 1 (g)/M4: a non-empty array still names the open PR ────────────
++
++{
++  const exec = seam({ openPulls: { 3: [{ number: PR_3, body: '' }] } })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.equal(runLine(out, 3), liveSkip(3, `PR #${PR_3} open`),
++    `#752 Task 1 (g)/M4 an array with a row is still an open pull request: run 3's line is exactly \`${liveSkip(3, `PR #${PR_3} open`)}\`, not the pulls-unreadable line; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(
++    linesOf(exec, (l) => namesRun(l, 3) && (l.includes('POST') || l.includes('DELETE'))), [],
++    '#752 Task 1 (g)/M4 and no line naming run 3 carries POST or DELETE')
++}
++
++// ── #752 Task 1 (h)/M4: the status read's own line is not renamed ────────────
++
++{
++  const exec = seam({
++    contentsAnswers: { 3: answer('', { code: 1, stderr: 'gh: Not Found (HTTP 404)' }) }
++  })
++  const out = await captured(() => retire({ argv: ['--target', TARGET], exec }))
++
++  assert.equal(runLine(out, 3), liveSkip(3, 'no status page'),
++    `#752 Task 1 (h)/M4 a status read that answers non-zero still prints exactly \`${liveSkip(3, 'no status page')}\` — a tool that renames the status read's line to the pulls one fails here; got ${JSON.stringify(runLine(out, 3))}`)
++  assert.deepEqual(linesOf(exec, (l) => l.includes('state=open') && namesRun(l, 3)), [],
++    '#752 Task 1 (h)/M4 and a run skipped for its status page is asked no open-PR read at all')
++}
++
++// ── #752 Task 1 (i)/M5: the same skip as a process, against PATH shims ───────
++
++{
++  const dir = shimDir('pulls-unreadable', { git: '', gh: '' })
++  const ghLog = path.join(dir, 'gh.log')
++  const listing =
++    `${HEAD[3].plan}\\trefs/heads/${planBranchFor(3)}\\n${HEAD[3].evidence}\\trefs/heads/${evidenceBranchFor(3)}\\n`
++  // Both documents are JSON with no single quote in them, so each fits in a
++  // single-quoted shell string.
++  const page = JSON.stringify({
++    content: Buffer.from(JSON.stringify({ run: 3, state: 'done' }), 'utf8').toString('base64'),
++    sha: sha('b10b')
++  })
++  const rateLimit = JSON.stringify(RATE_LIMIT_OBJECT)
++  assert.ok(!page.includes("'") && !rateLimit.includes("'"),
++    '#752 Task 1 (i)/M5 fixture: neither shim document carries a single quote')
++
++  fs.writeFileSync(path.join(dir, 'git'),
++    `#!/bin/sh\nprintf '${listing}'\nexit 0\n`, { mode: 0o755 })
++  fs.writeFileSync(path.join(dir, 'gh'),
++    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${ghLog}"\n` +
++    'case "$*" in\n' +
++    `  *contents/*) printf '%s\\n' '${page}' ;;\n` +
++    `  *state=open*) printf '%s\\n' '${rateLimit}' ;;\n` +
++    "  *) printf '[]\\n' ;;\nesac\nexit 0\n", { mode: 0o755 })
++  fs.chmodSync(path.join(dir, 'git'), 0o755)
++  fs.chmodSync(path.join(dir, 'gh'), 0o755)
++
++  const res = runProcess(['--target', TARGET], dir)
++  const ghLogged = logLines(ghLog)
++
++  assert.equal(res.status, 0,
++    `#752 Task 1 (i)/M5 a sweep whose open-PR read cannot be read exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
++  assert.ok(res.stdout.split('\n').map((l) => l.trimEnd()).includes(pullsSkip(3)),
++    `#752 Task 1 (i)/M5 and prints exactly \`${pullsSkip(3)}\` on its own stdout — the CLI layer, not only the seam; got ${JSON.stringify(res.stdout)}`)
++  for (const line of ghLogged) {
++    assert.ok(!line.includes('-X') && !line.includes('--delete'),
++      `#752 Task 1 (i)/M5 a run skipped this way is tagged by nothing and deleted by nothing; got ${line} (log: ${JSON.stringify(ghLogged)})`)
++  }
++}
++
++// ── #752 Task 1 (j)/M6: the header comment names the line ────────────────────
++
++for (const [command, why] of [
++  [`sed -n '1,/^import /p' fleet/retire.mjs | grep -q 'unreadable (pulls)'`,
++    'the prose before the first `import` of fleet/retire.mjs names the line `unreadable (pulls)` beside the sentence that names `live (<why>)` — a header that names the new line nowhere fails here'],
++  [`sed -n '1,/^import /p' fleet/retire.mjs | tr '\\n' ' ' | grep -q 'open-PR read per terminal candidate'`,
++    "and its `--dry-run` paragraph still says the open-PR read is made per terminal candidate — that is a stays, not a change: a rewrite that says the read is per pair again fails here"]
++]) {
++  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000 })
++  assert.equal(res.status, 0,
++    `#752 Task 1 (j)/M6 \`${command}\` exits 0: ${why}; status ${res.status}, stderr: ${res.stderr}`)
++}
++
+ cleanup(cliRoot)
+ 
+ // ════════════════════════════════════════════════════════════════════════════
+diff --git a/fleet/tests/test_run_engine_exam_evidence.mjs b/fleet/tests/test_run_engine_exam_evidence.mjs
+index 7ab5c73b98715868f36a8c304500dac436546fff..53e0d3cbd06f2d4bdbe7324dd931be54f25411a7 100644
+--- a/fleet/tests/test_run_engine_exam_evidence.mjs
++++ b/fleet/tests/test_run_engine_exam_evidence.mjs
+@@ -14,9 +14,9 @@
+ // Machine clauses under test:
+ //   M1 — for a task with a non-empty `testCmd` and at least one `proofTests`
+ //        path, `testCmd` runs in the task's clone through the engine's `sh`
+-//        seam after the implementer and before any referee (`iter: 0`) and
+-//        again once per review round (`iter: 1`, and `iter: 2` for a second
+-//        round); each execution is recorded as { cmd, exit, stdout } with
++//        seam after the implementer and before any referee (`iter: 0`) — which
++//        review round 1 then READS rather than re-executing (#713 Task 1) —
++//        and again after a review fix (`iter: 2`); each execution is recorded as { cmd, exit, stdout } with
+ //        stdout and stderr combined and tail-truncated to 4,000 characters,
+ //        and appended to events.jsonl as one `driver:exam-run` event carrying
+ //        task, cmd, exit and iter.
+@@ -181,29 +181,30 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
+     orderFile,
+   })
+ 
+-  // [M1] the exam ran after the implementer and before the first review, twice:
+-  // the driver's own pre-review pass and review round 1's fresh execution. The
+-  // FIRST `exam-run` is wave 0's red-at-BASE probe, which M5 leaves as it was —
+-  // and since #653 it lands after `impl:T1` rather than before it: the pair is
+-  // dispatched together, so the verdict is read in the examiner's clone once
+-  // BOTH have returned, not while the implementer is still working.
++  // [M1] the exam ran after the implementer and before the first review, once
++  // (#713 Task 1): the driver's own pre-review pass, whose evidence round 1
++  // reads rather than re-executing. The FIRST `exam-run` is wave 0's
++  // red-at-BASE probe, which M5 leaves as it was — and since #653 it lands
++  // after `impl:T1` rather than before it: the pair is dispatched together, so
++  // the verdict is read in the examiner's clone once BOTH have returned, not
++  // while the implementer is still working.
+   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
+     .filter(Boolean).filter((l) => l !== 'integration')
+   assert.deepEqual(order,
+-    ['exam:T1', 'impl:T1', 'exam-run', 'exam-run', 'exam-run', 'review:T1:1'],
++    ['exam:T1', 'impl:T1', 'exam-run', 'exam-run', 'review:T1:1'],
+     'the exam runs at BASE for the wave-0 verdict once the pair is back, then ' +
+-    'twice on the patch — the pre-review pass and the review round — both before any referee')
++    'once on the patch — the driver\'s pre-review pass — before any referee')
+ 
+   // [M1] one `driver:exam-run` record per post-patch execution, and only those.
+-  assert.equal(events.length, 2,
+-    'both post-patch executions are recorded, and the wave-0 BASE probe is not: ' +
++  assert.equal(events.length, 1,
++    'the one post-patch execution is recorded, and the wave-0 BASE probe is not: ' +
+     JSON.stringify(events))
+-  assert.deepEqual(events.map((e) => e.cmd), [EXAM_CMD, EXAM_CMD],
++  assert.deepEqual(events.map((e) => e.cmd), [EXAM_CMD],
+     'the exam command is recorded verbatim')
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0])
+-  assert.deepEqual(events.map((e) => e.task), ['T1', 'T1'])
+-  assert.deepEqual(events.map((e) => e.iter), [0, 1],
+-    'the driver\'s own pass is iter 0; the first review round is iter 1')
++  assert.deepEqual(events.map((e) => e.exit), [0])
++  assert.deepEqual(events.map((e) => e.task), ['T1'])
++  assert.deepEqual(events.map((e) => e.iter), [0],
++    'the driver\'s own pass is iter 0, and review round 1 reads it rather than re-running')
+ 
+   // [M1] the recorded output: stdout AND stderr, from the task's own clone.
+   const ev = examEvidenceOf(prompts['review:T1:1'])
+@@ -229,8 +230,9 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
+     tasks: [entry()],
+     exams: { T1: bulkExamScript(5000) },
+   })
+-  assert.deepEqual(events.map((e) => e.iter), [0, 1])
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0])
++  // #713 Task 1: one post-patch execution, the driver's own pass.
++  assert.deepEqual(events.map((e) => e.iter), [0])
++  assert.deepEqual(events.map((e) => e.exit), [0])
+   const runs = (prompts['review:T1:1'].match(/x+/g) || []).map((r) => r.length)
+   assert.equal(Math.max(0, ...runs), 4000,
+     'a 5,000-character exam output is tail-truncated to exactly 4,000 characters')
+@@ -364,8 +366,10 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
+   assert.ok(ev.includes('exit 0'), 'the referee reads a fresh, green execution: ' + ev.slice(0, 400))
+   assert.ok(!ev.includes('exit 1'),
+     'and the new evidence REPLACES the red one: ' + ev.slice(0, 400))
+-  assert.deepEqual(events.map((e) => e.exit), [1, 0, 0])
+-  assert.deepEqual(events.map((e) => e.iter), [0, 0, 1])
++  // #713 Task 1: the repeat of the pass is the last execution before review —
++  // round 1 reads it rather than executing a third time.
++  assert.deepEqual(events.map((e) => e.exit), [1, 0])
++  assert.deepEqual(events.map((e) => e.iter), [0, 0])
+   assert.equal(row.status, 'done')
+   assert.equal(row.reviewVerdict, 'clean')
+   assert.equal(row.proofFixes, 1)
+@@ -373,40 +377,47 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
+ 
+ // ── leg (c): a red exam in a REVIEW ROUND outranks the reviewer's PASS [M3] ─
+ // The exam passes the pre-review pass and then demands `round2.txt` from its
+-// first green run onward — the tree is identical across those two executions,
+-// so nothing but the exam's own state can tell them apart. Round 1 is therefore
+-// red on a tree the driver already cleared, and the canned reviewer says PASS
+-// to both rounds: the blocking issue is the driver's, not the referee's.
++// first green run onward. Round 1 reads that pass (#713 Task 1), so the round
++// that can differ from it is round 2 — the fresh execution after `fix:T1:1`,
++// which the reviewer's own blocking issue bought. The fix writes no
++// `round2.txt`, so round 2's execution is red on a tree round 2's referee
++// answers PASS on: the blocking issue is the driver's, not the referee's.
+ {
+   const stampFile = path.join(tmp, 'round2-stamp')
+-  const { row, calls, prompts, events } = await scenario({
++  const { report, row, calls, prompts, events } = await scenario({
+     tasks: [entry()],
+     exams: { T1: examScript({ stampFile }) },
+-    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'round2.txt'), 'from the fix round\n'),
+-    review: () => passReview(),
++    review: (n) => (n === 1
++      ? { verdict: 'FIX_REQUIRED',
++          issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
++      : passReview()),
+   })
+   assert.ok(!calls.includes('fix:T1:0'),
+     'the pre-review pass was green, so it bought no repair round: ' + calls.join(','))
+-  assert.ok(calls.includes('fix:T1:1'),
+-    'round 1 was FIX_REQUIRED although the reviewer answered PASS: ' + calls.join(','))
++  assert.deepEqual(calls.filter((l) => l !== 'integration'),
++    ['exam:T1', 'impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
++    'the referee\'s blocking issue bought the one fix round: ' + calls.join(','))
+   assert.equal(row.proofFixes, 0)
+ 
+-  const fixPrompt = prompts['fix:T1:1']
+-  assert.ok(fixPrompt.includes(EXAM_CMD),
+-    'the round-1 blocking issue names the exam command: ' + fixPrompt.slice(-600))
+-  assert.ok(fixPrompt.includes('exit 1'),
+-    'and its exit code: ' + fixPrompt.slice(-600))
+-
+-  // [M1] one execution per round, numbered by round: 0, then 1, then 2.
+-  assert.deepEqual(events.map((e) => e.iter), [0, 1, 2],
+-    'the pre-review pass and one fresh execution per review round')
+-  assert.deepEqual(events.map((e) => e.exit), [0, 1, 0],
+-    'green before review, red in round 1, green again in round 2')
+-  assert.equal(examEvidenceOf(prompts['review:T1:2']).includes('exit 0'), true,
+-    'round 2 reads the repaired execution')
+-  assert.equal(row.status, 'done')
+-  assert.equal(row.reviewVerdict, 'fixed')
++  // [M1] one execution for the driver's own pass, one for the round that
++  // follows a fix: 0, then 2. Round 1 reads the pass.
++  assert.deepEqual(events.map((e) => e.iter), [0, 2],
++    'the pre-review pass, then one fresh execution after the review fix')
++  assert.deepEqual(events.map((e) => e.exit), [0, 1],
++    'green before review, red on the execution the fix round bought')
++  assert.equal(examEvidenceOf(prompts['review:T1:2']).includes('exit 1'), true,
++    'round 2 reads the fresh, red execution: ' +
++    examEvidenceOf(prompts['review:T1:2']).slice(0, 400))
++  assert.equal(row.status, 'failed')
++  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
++    'the red exam blocks whatever round 2\'s referee returned: ' + JSON.stringify(row))
+   assert.equal(row.fixIterations, 1)
++  assert.ok(String(row.notes).includes('the Proof\'s exam failed: ' + EXAM_CMD + ' — exit 1'),
++    'and the row names the exam and its exit code: ' + JSON.stringify(row.notes))
++  assert.ok(report.judgmentCalls.some((j) => String(j) === 'task T1: the Proof\'s exam `' +
++    EXAM_CMD + '` exited 1 in review round 2 — blocking, whatever the reviewer returned'),
++    'and the judgment call names the round it was read in: ' +
++    JSON.stringify(report.judgmentCalls))
+ }
+ 
+ // ── leg (d): the reviewer role's paragraph [M4] ─────────────────────────────
+diff --git a/fleet/tests/test_run_engine_implementer_suite.mjs b/fleet/tests/test_run_engine_implementer_suite.mjs
+index 7f142f7ba2ce6f5f479c696acc8150825b9ca818..28d22488dc945534eb2c0ba74f8798cc50c71bdb 100644
+--- a/fleet/tests/test_run_engine_implementer_suite.mjs
++++ b/fleet/tests/test_run_engine_implementer_suite.mjs
+@@ -17,13 +17,14 @@
+ //        role text differ from the implementer's in that one line only: the
+ //        examiner's tail with its `TEST COMMAND:` line replaced by the
+ //        implementer's is byte-equal to the implementer's tail.
+-//   M3 — the exam's command is `task.testCmd` at each of the four places the
++//   M3 — the exam's command is `task.testCmd` at each of the three places the
+ //        driver or a referee touches it: the examiner's red-at-BASE run
+ //        executes it in `<clonesDir>/exam-<id>`; the pre-review pass's
+ //        `driver:exam-run` event (`iter: 0`) carries `cmd` equal to
+-//        `task.testCmd`; the review-round `driver:exam-run` event (`iter: 1`)
+-//        carries the same `cmd`; and the reviewer's prompt carries
+-//        `EXAM EVIDENCE` with the line `$ <task.testCmd>`.
++//        `task.testCmd`, and it is the only post-patch execution before the
++//        first review (#713 Task 1 — round 1 reads that pass); and the
++//        reviewer's prompt carries `EXAM EVIDENCE` with the line
++//        `$ <task.testCmd>`.
+ //   M4 — a task whose `testCmd` contains none of its `proofTests` paths keeps
+ //        that `testCmd` as its implementer's `TEST COMMAND:` line, and a task
+ //        with no `testCmd` receives `TEST COMMAND: <workerTestCmd>`, both as at
+@@ -36,7 +37,7 @@
+ //
+ // Proof legs, and where each is asserted below: (a) the implementer's line is
+ // the run-wide command [M1]; (b) the examiner's line, and the one-line
+-// difference between the two tails [M2]; (c) the exam's command at all four
++// difference between the two tails [M2]; (c) the exam's command at all three
+ // places the driver or a referee touches it [M3]; (d) the two rows that do not
+ // move [M4]; (e) the two fix prompts [M5]; (f) the sharer count [M6]; (g) the
+ // sentinel.
+@@ -225,7 +226,7 @@ const AB = await scenario({ waves: [[T1()]] })
+   assert.equal(examTail.startsWith('\nBASE: ' + AB.base), true, 'both tails open at the BASE block')
+ }
+ 
+-// ── (c) the exam's command at all four places [M3] ──────────────────────────
++// ── (c) the exam's command at all three places [M3] ──────────────────────────
+ // The exam script appends `exam-run <pwd>` to a file outside every clone, so
+ // only an execution of `bash t1_test.sh` can write a line there — the run-wide
+ // `bash check.sh` cannot. It exits 0 only when `one.txt` exists, so it is red
+@@ -246,16 +247,18 @@ const AB = await scenario({ waves: [[T1()]] })
+     'the examiner\'s red-at-BASE run executed the task\'s own testCmd in ' + examDir +
+     ' — saw ' + JSON.stringify(order))
+ 
+-  // [M3] places two and three: the two driver:exam-run events.
++  // [M3] place two: the one driver:exam-run event. #713 Task 1 — the driver's
++  // pre-review pass is the only post-patch execution before the first review;
++  // round 1 reads it rather than running the command again.
+   const examRuns = readEvents(runDir).filter((e) => e.kind === 'driver:exam-run' && e.task === 'T1')
+   const pre = examRuns.filter((e) => e.iter === 0)
+   const round1 = examRuns.filter((e) => e.iter === 1)
+   assert.equal(pre.length, 1, 'one pre-review driver:exam-run: ' + JSON.stringify(examRuns))
+   assert.equal(pre[0].cmd, T1_CMD, 'the pre-review pass ran the task\'s own testCmd')
+-  assert.equal(round1.length, 1, 'one review-round driver:exam-run: ' + JSON.stringify(examRuns))
+-  assert.equal(round1[0].cmd, T1_CMD, 'the review round ran the same command')
++  assert.equal(round1.length, 0,
++    'and no second execution for review round 1: ' + JSON.stringify(examRuns))
+ 
+-  // [M3] place four: the reviewer's EXAM EVIDENCE block.
++  // [M3] place three: the reviewer's EXAM EVIDENCE block.
+   const reviewPrompt = prompts['review:T1:1']
+   assert.equal(typeof reviewPrompt, 'string', 'a referee read the patch')
+   const at = reviewPrompt.indexOf('EXAM EVIDENCE')
+diff --git a/fleet/tests/test_run_engine_integrated_runs.mjs b/fleet/tests/test_run_engine_integrated_runs.mjs
+index aec720f4df94b9b31fad7282117f13a40b631921..71e98f503a29ae2f8a6306e5ec3895d01a1f029f 100644
+--- a/fleet/tests/test_run_engine_integrated_runs.mjs
++++ b/fleet/tests/test_run_engine_integrated_runs.mjs
+@@ -545,12 +545,13 @@ async function pinRun(engine, tasks) {
+     'sim precondition: the candidate suite went red and was never adopted')
+   assert.deepEqual(report.tasks.map((r) => r.status), ['done', 'done'],
+     'sim precondition: both tasks passed their own review and carried proofRuns')
+-  // Two per task: the driver's pre-review pass (`iter: 0`) and review round 1.
+-  assert.equal(eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run').length, 4,
++  // One per task: the driver's pre-review pass (`iter: 0`), which review
++  // round 1 reads rather than re-executing (#713 Task 1).
++  assert.equal(eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run').length, 2,
+     'sim precondition: the per-task runs still happened in the clones')
+   assert.equal(eventsOf(runDir)
+-    .filter((e) => e.kind === 'driver:proof-run' && e.iter === 1).length, 2,
+-    'sim precondition: one per task in its review round')
++    .filter((e) => e.kind === 'driver:proof-run' && e.iter === 0).length, 2,
++    'sim precondition: one per task, on the driver\'s own pass')
+ 
+   // [M4] no adopted tree, no integrated runs.
+   assert.deepEqual(report.integratedRuns, [],
+diff --git a/fleet/tests/test_run_engine_pre_review.mjs b/fleet/tests/test_run_engine_pre_review.mjs
+index b2dccabbf9c698fe0a25acb201b51797d351c147..12afbec8ed6aad74938bd716b8b83de7b621b711 100644
+--- a/fleet/tests/test_run_engine_pre_review.mjs
++++ b/fleet/tests/test_run_engine_pre_review.mjs
+@@ -23,7 +23,8 @@
+ //        green ⇒ review proceeds with `proofFixes: 1`. An all-green first pass
+ //        dispatches no fix and reports `proofFixes: 0`. A red MINOR check
+ //        never dispatches a fix; it pushes one judgment call.
+-//   M3 — every review round re-executes both, and the reviewer prompt carries
++//   M3 — round 1 reads the driver's own pass and round 2 — which follows
++//        `fix:<id>:1` — re-executes both (#713 Task 1), and the reviewer prompt carries
+ //        the CHECK EVIDENCE block directly after the RUN EVIDENCE block; a red
+ //        non-minor check in a review round is a blocking issue exactly as a red
+ //        Run: is; with no checks the block is absent.
+@@ -321,11 +322,20 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+   assert.deepEqual(zero.map((e) => e.exit), [1, 0],
+     'the check is executed once before the fix and once after it, both at iter 0: ' +
+     JSON.stringify(zero))
++  // #713 Task 1: there is no third execution for the green pass to precede —
++  // round 1 reads the pass. So the green reading is the task's LAST
++  // `driver:check-run`, nothing of T1's is recorded at iter 1, and the proof
++  // that the pass preceded the dispatch is that `review:T1:1` was handed it.
+   const evs = eventsOf(runDir)
+-  const iSecondPass = evs.findIndex((e) => e.kind === 'driver:check-run' && e.task === 'T1' &&
+-    e.cmd === 'test -e c.txt' && e.iter === 0 && e.exit === 0)
+-  assert.ok(iSecondPass !== -1 && iSecondPass < evs.findIndex((e) => e.iter === 1 && e.task === 'T1'),
+-    'the green second pass precedes the review round\'s own execution')
++  const t1Checks = evs.filter((e) => e.kind === 'driver:check-run' && e.task === 'T1' &&
++    e.cmd === 'test -e c.txt')
++  assert.deepEqual(t1Checks.map((e) => e.exit), [1, 0],
++    'the check is executed exactly twice, the green reading last: ' + JSON.stringify(t1Checks))
++  assert.equal(evs.some((e) => e.task === 'T1' && e.iter === 1), false,
++    'nothing of T1\'s is executed at iter 1: ' + JSON.stringify(evs.filter((e) => e.iter === 1)))
++  assert.ok(prompts['review:T1:1'].includes('\n\n$ test -e c.txt\nexit 0'),
++    'the review round reads the green second pass: ' +
++    JSON.stringify(prompts['review:T1:1'].slice(-400)))
+ 
+   const row = report.tasks.find((r) => r.task === 'T1')
+   assert.equal(row.status, 'done', 'the repaired task merges: ' + JSON.stringify(row))
+@@ -466,11 +476,13 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+   assert.ok(String(minorCalls[0]).startsWith(WANT),
+     'and it begins with that literal: ' + JSON.stringify(minorCalls[0]))
+ 
+-  // [M3] the review round re-executes both, at its own iter.
+-  assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 1).map(checkShape), [
+-    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e c.txt', exit: 0, minor: false, iter: 1 },
+-    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e m.txt', exit: 1, minor: true, iter: 1 },
+-  ], 'each review round runs the checks again, carrying the round number')
++  // [M3] #713 Task 1: the green pass is not re-executed for round 1 — each
++  // check has exactly one event, at iter 0, and that is what the round reads.
++  assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.task === 'T1')
++    .map(checkShape), [
++    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e c.txt', exit: 0, minor: false, iter: 0 },
++    { kind: 'driver:check-run', task: 'T1', cmd: 'test -e m.txt', exit: 1, minor: true, iter: 0 },
++  ], 'one execution of each check, on the driver\'s own pass, carrying its iter')
+ 
+   // [M3] the reviewer prompt: RUN EVIDENCE, then the CHECK EVIDENCE block.
+   const rp = prompts['review:T1:1']
+@@ -497,11 +509,13 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+ }
+ 
+ // ── leg (c): a check that goes red inside a review round is a blocking issue ──
+-// The pre-review pass and the review round differ only in time, so the tree has
+-// to change between them — and the only actor between them is a command the
+-// driver itself runs. This Run: is a no-op the first time and deletes c.txt the
+-// second, which is exactly the "green in the clone the implementer left, red
+-// when the referee is about to read it" case the clause is about.
++// The pre-review pass and round 1 read the same tree, so the round that can
++// differ from the pass is round 2 — it follows `fix:T1:1` and executes afresh
++// (#713 Task 1). This Run: is a no-op on the pass and deletes c.txt on that
++// fresh execution, which is exactly the "green in the clone the implementer
++// left, red when the referee is about to read it" case the clause is about:
++// the round-1 referee asks for a fix, and the round-2 referee says PASS while
++// the driver's own check reads red.
+ {
+   const TOGGLE = "sh -c 'if [ -e seen.txt ]; then rm -f c.txt; else : > seen.txt; fi'"
+   const repo = bareRepo(path.join(tmp, 'repo-c2'))
+@@ -515,23 +529,41 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+     const kind = opts.label.split(':')[0]
+     if (kind === 'impl') { write(cwd, 'a.txt'); write(cwd, 'c.txt'); return doneImpl(cwd) }
+     if (kind === 'fix') return doneImpl(cwd)
+-    if (kind === 'review') return passReview()          // the referee says PASS anyway
++    // Round 1 asks for a fix; round 2's referee says PASS anyway.
++    if (kind === 'review') {
++      return opts.label === 'review:T1:1'
++        ? { verdict: 'FIX_REQUIRED',
++            issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
++        : passReview()
++    }
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run } = rig({ repo, runDir, waves, stub, stamp: 'pr9',
+                         extraArgs: { shallowLeg: false,
+                                      constraintChecks: [{ cmd: 'test -e c.txt', minor: false }] } })
+-  await run()
++  const report = await run()
+   assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0).map((e) => e.exit),
+     [0], 'sim precondition: the pre-review pass was green, so no fix:T1:0 ran')
+   assert.ok(!calls.includes('fix:T1:0'), 'sim precondition: no pre-review fix: ' + calls.join(','))
+-  assert.ok(calls.includes('fix:T1:1'),
+-    'a check that exits non-zero in a review round drives the fix round exactly as a red ' +
+-    'Run: does, whatever the reviewer returned: ' + calls.join(','))
+-  assert.ok(prompts['fix:T1:1'].includes(checkFailLine('test -e c.txt', 1)),
+-    'and the fix round is told which check failed, in the same words: ' +
+-    JSON.stringify(prompts['fix:T1:1'].slice(-500)))
++  assert.deepEqual(calls.filter((l) => l !== 'integration'),
++    ['impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
++    'sim precondition: the reviewer\'s blocking issue bought the one fix round: ' + calls.join(','))
++  assert.deepEqual(ofKind(runDir, 'driver:check-run').filter((e) => e.task === 'T1')
++    .map((e) => [e.iter, e.exit]), [[0, 0], [2, 1]],
++    'the check is executed once on the pass and once after the fix round: ' +
++    JSON.stringify(ofKind(runDir, 'driver:check-run')))
++  const row = report.tasks.find((r) => r.task === 'T1')
++  assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
++    'a check that exits non-zero in a review round blocks exactly as a red Run: does, ' +
++    'whatever the reviewer returned: ' + JSON.stringify(row))
++  assert.ok(String(row.notes).includes(checkFailLine('test -e c.txt', 1).slice(2)),
++    'and the row names which check failed, in the same words: ' + JSON.stringify(row.notes))
++  assert.ok(report.judgmentCalls.some((j) => String(j) ===
++    'task T1: Check: `test -e c.txt` exited 1 in review round 2 — blocking, whatever the ' +
++    'reviewer returned'),
++    'and the judgment call names the round it was read in: ' +
++    JSON.stringify(report.judgmentCalls))
+ }
+ 
+ // ── legs (c) + (d): no checks ⇒ no block anywhere, and an empty report key ────
+diff --git a/fleet/tests/test_run_engine_proof_runs.mjs b/fleet/tests/test_run_engine_proof_runs.mjs
+index 7d57d3fe16e861d24cfc5f1d62164faa51b4a1b6..25b9304cf94c20ecca416bbc19d80eb0b77de3ce 100644
+--- a/fleet/tests/test_run_engine_proof_runs.mjs
++++ b/fleet/tests/test_run_engine_proof_runs.mjs
+@@ -12,12 +12,14 @@
+ //   M1 — after the implementer, before the first review, each `task.proofRuns`
+ //        string is executed in order with the engine's `sh` seam in the task's
+ //        clone, recording { cmd, exit, stdout }, stdout combined and truncated
+-//        to 4,000 characters. Since the pre-review pass landed, that execution
+-//        happens TWICE before the first review on a task that starts green:
+-//        once as the driver's own pass (`iter: 0`) and once for the review
+-//        round (`iter: 1`). A red `iter: 0` pass buys one `fix:<id>:0` round
+-//        before any referee is dispatched, and a task still red after it never
+-//        reaches a reviewer at all (`reviewVerdict: 'proof-red'`) —
++//        to 4,000 characters. Since #713 that execution happens ONCE before
++//        the first review on a task that starts green: the driver's own pass
++//        (`iter: 0`), whose evidence review round 1 reads rather than
++//        re-measuring a tree no agent has touched since. A fresh execution
++//        comes only at `iter: 2`, after a review-round fix. A red `iter: 0`
++//        pass buys one `fix:<id>:0` round before any referee is dispatched
++//        (its re-execution is `iter: 0` too), and a task still red after it
++//        never reaches a reviewer at all (`reviewVerdict: 'proof-red'`) —
+ //        test_run_engine_pre_review.mjs owns that contract; this file is
+ //        pinned to it so the two cannot drift.
+ //   M2 — the review prompt carries a `RUN EVIDENCE:` block (command verbatim,
+@@ -35,7 +37,7 @@ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+-import { execFileSync } from 'node:child_process'
++import { execFileSync, spawnSync } from 'node:child_process'
+ import { fileURLToPath, pathToFileURL } from 'node:url'
+ import { execSeam } from '../run-main.mjs'
+ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+@@ -81,10 +83,27 @@ const evidenceOf = (prompt) => {
+   return i === -1 ? '' : prompt.slice(i)
+ }
+ 
++// Every record the run wrote, in the order it wrote them — the `driver:exam-run`
++// and `driver:check-run` kinds the #713 legs count beside the `Run:` ones.
++const allEvents = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++const ofKind = (evs, kind, task = 'T1') =>
++  evs.filter((e) => e.kind === kind && e.task === task)
++
+ // ── the sim rig: the shared one, plus a call log the proof command can join ──
+ let seq = 0
++// `examScript`, when given, is what the canned examiner writes at the task's
++// one Proof `Test:` path (`t1_test.sh`) — the only way to give a sim a RUNNABLE
++// exam, since `examRunnable` needs proofTests, a testCmd and blobs the examiner
++// actually left. `constraintChecks` is the run's executable Global Constraints.
+ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+-                          onFix = () => {}, orderFile = null }) {
++                          onFix = () => {}, orderFile = null, examScript = null,
++                          constraintChecks = [] }) {
+   seq += 1
+   const stamp = 'pr' + seq
+   const repo = makeRepo(path.join(tmp, 'repo-' + stamp))
+@@ -97,18 +116,23 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+     prompts[opts.label] = prompt
+     if (orderFile) fs.appendFileSync(orderFile, opts.label + '\n')
+     const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, 't1_test.sh'), String(examScript))
++      return { status: 'DONE', summary: 'exam written' }
++    }
+     if (kind === 'impl') { onImpl(cwd); return doneImpl(cwd) }
+-    if (kind === 'fix') { onFix(cwd); return doneImpl(cwd) }
++    if (kind === 'fix') { onFix(cwd, opts.label); return doneImpl(cwd) }
+     if (kind === 'review') { reviews += 1; return review(reviews) }
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+   const { run, clonesDir } = rig({
+-    repo, runDir, waves: [[task]], stub, stamp, extraArgs: { shallowLeg: false },
++    repo, runDir, waves: [[task]], stub, stamp,
++    extraArgs: { shallowLeg: false, constraintChecks },
+   })
+   const report = await run()
+   return { report, row: report.tasks[0], calls, prompts, runDir, clonesDir,
+-           events: proofRunEvents(runDir) }
++           events: proofRunEvents(runDir), evs: allEvents(runDir) }
+ }
+ 
+ // ── legs (a), (b), (d), (e), (f): one command — order, clone, evidence, event ─
+@@ -138,20 +162,20 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+   // integrated pass move without any pin noticing.
+   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
+     .filter(Boolean).filter((l) => l !== 'integration')
+-  // The first `proof-run` is the driver's own pre-review pass, the second is
+-  // review round 1's fresh execution, and the last is the integrated pass on
+-  // the adopted tree.
+-  assert.deepEqual(order, ['impl:T1', 'proof-run', 'proof-run', 'review:T1:1', 'proof-run'],
+-    'the Run: command executes between the implementer and the first review, ' +
++  // The single `proof-run` before the review is the driver's own pre-review
++  // pass, whose evidence round 1 reads (#713); the last is the integrated pass
++  // on the adopted tree.
++  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
++    'the Run: command executes ONCE between the implementer and the first review, ' +
+     'and again on the adopted tree after it')
+ 
+   // [M1, M5] one record per execution, exit 0, the command verbatim.
+-  assert.equal(events.length, 2, 'both pre-review executions recorded: ' + JSON.stringify(events))
+-  assert.deepEqual(events.map((e) => e.cmd), [CMD, CMD], 'the command is recorded verbatim')
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0])
+-  assert.deepEqual(events.map((e) => e.task), ['T1', 'T1'])
+-  assert.deepEqual(events.map((e) => e.iter), [0, 1],
+-    'the driver\'s own pass is iter 0; the first review round is iter 1')
++  assert.equal(events.length, 1, 'the one pre-review execution recorded: ' + JSON.stringify(events))
++  assert.deepEqual(events.map((e) => e.cmd), [CMD], 'the command is recorded verbatim')
++  assert.deepEqual(events.map((e) => e.exit), [0])
++  assert.deepEqual(events.map((e) => e.task), ['T1'])
++  assert.deepEqual(events.map((e) => e.iter), [0],
++    'the driver\'s own pass is iter 0, and round 1 reads it rather than re-executing')
+ 
+   // [M1, M2] the evidence the reviewer reads: the block, the command, the exit,
+   // the output — including the line only the TASK'S OWN CLONE could print.
+@@ -184,10 +208,10 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+     task: entry({ proofRuns: [FIRST, SECOND] }),
+     onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
+   })
+-  assert.deepEqual(events.map((e) => e.cmd), [FIRST, SECOND, FIRST, SECOND],
+-    'recorded in Proof order, in the pre-review pass and again for the review round')
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0, 0, 0])
+-  assert.deepEqual(events.map((e) => e.iter), [0, 0, 1, 1])
++  assert.deepEqual(events.map((e) => e.cmd), [FIRST, SECOND],
++    'recorded in Proof order, once, in the driver\'s own pre-review pass')
++  assert.deepEqual(events.map((e) => e.exit), [0, 0])
++  assert.deepEqual(events.map((e) => e.iter), [0, 0])
+   const ev = evidenceOf(prompts['review:T1:1'])
+   assert.ok(ev.includes(FIRST) && ev.includes(SECOND), 'both commands are in the block')
+   assert.ok(ev.indexOf(FIRST) < ev.indexOf(SECOND), 'and in the order the Proof gave them')
+@@ -228,8 +252,8 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+     task: entry({ proofRuns: [CMD] }),
+     onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
+   })
+-  assert.equal(events.length, 2, 'the pre-review pass and the review round')
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0])
++  assert.equal(events.length, 1, 'the driver\'s own pre-review pass, once')
++  assert.deepEqual(events.map((e) => e.exit), [0])
+   const runs = (prompts['review:T1:1'].match(/x+/g) || []).map((r) => r.length)
+   assert.equal(Math.max(0, ...runs), 4000,
+     'a 6,000-character output is truncated to exactly 4,000 characters')
+@@ -363,8 +387,8 @@ async function pinPrompt(engine, task) {
+ 
+ // ── leg (c): the fix round's work is re-run, new evidence replaces old [M3] ─
+ {
+-  // The command READS a file the fix round writes, so round 2's output is a
+-  // string the command text itself does not contain: fresh evidence, not the
++  // The command READS a file the fix round writes, so the post-repair output is
++  // a string the command text itself does not contain: fresh evidence, not the
+   // same block twice.
+   // No digit in the command text, so an exit code found in the block is one the
+   // driver recorded rather than the command quoted back.
+@@ -388,13 +412,15 @@ async function pinPrompt(engine, task) {
+   assert.ok(repair.includes('exit 1'), 'the repair round read the failing run')
+   assert.ok(!repair.includes('repaired-by-the-fix-round'),
+     'and nothing from a run that had not happened yet')
+-  assert.ok(reviewed.includes('exit 0'), 'the review round reads a fresh execution')
++  assert.ok(reviewed.includes('exit 0'), 'the review round reads the repeated pass')
+   assert.ok(reviewed.includes('repaired-by-the-fix-round'),
+     'carrying what the command printed after the fix round')
+   assert.ok(!reviewed.includes('exit 1'),
+     'the new evidence REPLACES the old: ' + reviewed.slice(0, 400))
+-  assert.deepEqual(events.map((e) => e.exit), [1, 0, 0])
+-  assert.deepEqual(events.map((e) => e.iter), [0, 0, 1])
++  assert.deepEqual(events.map((e) => e.exit), [1, 0])
++  assert.deepEqual(events.map((e) => e.iter), [0, 0],
++    'the red pass and the repeat that follows the repair round, both iter 0 — and no ' +
++    'third execution before round 1')
+ }
+ 
+ // ── leg (d): all-zero runs leave the reviewer's verdict alone [M4] ──────────
+@@ -408,8 +434,10 @@ async function pinPrompt(engine, task) {
+     review: () => ({ verdict: 'FIX_REQUIRED',
+                      issues: [{ severity: 'blocking', detail: 'the reviewer is not satisfied' }] }),
+   })
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0, 0],
+-    'green in the driver\'s pass and in both review rounds')
++  assert.deepEqual(events.map((e) => e.exit), [0, 0],
++    'green in the driver\'s pass and in the fresh execution round 2 takes after the fix')
++  assert.deepEqual(events.map((e) => e.iter), [0, 2],
++    'round 1 reads the pass; only the post-fix round executes afresh')
+   assert.ok(calls.includes('fix:T1:1'), 'the reviewer\'s FIX_REQUIRED still drives the fix loop')
+   assert.equal(row.status, 'failed')
+   assert.equal(row.reviewVerdict, 'fix-loop-exhausted')
+@@ -429,7 +457,7 @@ async function pinPrompt(engine, task) {
+     'no exam worker starts for a Run:-only proof')
+   assert.equal(row.exam, null)
+   assert.equal('examEdited' in row, false, 'and no exam-edited entry is recorded')
+-  assert.equal(events.length, 2, 'the command still ran, in both passes')
++  assert.equal(events.length, 1, 'the command still ran, once, in the driver\'s own pass')
+   assert.equal(row.status, 'done')
+ }
+ 
+@@ -456,8 +484,7 @@ const segmentOf = (block, cmd) => {
+ // `printenv ULTRA_BASE` carries no `$` anywhere in its text, so a value that
+ // appears in the evidence cannot have been substituted into the command by the
+ // shell or quoted back by the driver — only the process environment can have
+-// supplied it. The second command is the same fact as an exit code, at every
+-// `iter`.
++// supplied it. The second command is the same fact as an exit code.
+ {
+   const PRINTENV = 'printenv ULTRA_BASE'
+   const repo = makeRepo(path.join(tmp, 'repo-ub1'))
+@@ -491,17 +518,17 @@ const segmentOf = (block, cmd) => {
+   const row = report.tasks[0]
+   const events = proofRunEvents(runDir)
+ 
+-  // [M1] both commands are green on the driver's own pass (`iter: 0`) and on
+-  // the review round (`iter: 1`) — `test "$ULTRA_BASE" = <BASE>` exits 0 at
+-  // every iter only if the engine put that sha in the environment.
+-  assert.deepEqual(events.map((e) => e.exit), [0, 0, 0, 0],
++  // [M1] both commands are green on the driver's own pass (`iter: 0`), whose
++  // evidence round 1 reads — `test "$ULTRA_BASE" = <BASE>` exits 0 only if the
++  // engine put that sha in the environment.
++  assert.deepEqual(events.map((e) => e.exit), [0, 0],
+     'each Proof `Run:` executes with ULTRA_BASE set to the task clone\'s BASE — an unset ' +
+     'variable makes `printenv ULTRA_BASE` and `test "$ULTRA_BASE" = <BASE>` both red: ' +
+     JSON.stringify(events.map((e) => ({ cmd: e.cmd, exit: e.exit, iter: e.iter }))))
+-  assert.deepEqual(events.map((e) => e.cmd), [PRINTENV, TEST_EQ, PRINTENV, TEST_EQ],
+-    'both commands, in Proof order, on both passes')
+-  assert.deepEqual(events.map((e) => e.iter), [0, 0, 1, 1],
+-    'the driver\'s own pass is iter 0; the first review round is iter 1')
++  assert.deepEqual(events.map((e) => e.cmd), [PRINTENV, TEST_EQ],
++    'both commands, in Proof order, on the one pre-review pass')
++  assert.deepEqual(events.map((e) => e.iter), [0, 0],
++    'the driver\'s own pass is iter 0, and round 1 reads it rather than re-executing')
+   assert.equal(row.status, 'done', 'the task merges: ' + JSON.stringify(row))
+   assert.equal(row.reviewVerdict, 'clean', JSON.stringify(row))
+ 
+@@ -597,6 +624,362 @@ const segmentOf = (block, cmd) => {
+     JSON.stringify(header.slice(-400)))
+ }
+ 
+-// [M5] leg (f): the sentinel below is this sim's — its existing legs and the
+-// new ones. It is printed only if every assertion above held.
++// ════════════════════════════════════════════════════════════════════════════
++// #713 Task 1 — the driver runs a green proof ONCE before the first review.
++//
++// The BASE mechanism, by line: `prePass` calls `runCommands(0)`, `runExam(0)`
++// and `runChecks(0)` and returns only the reds, discarding the evidence; the
++// review loop then calls all three again at `iter: 1` before building the round-1
++// prompt, on the same clone and the same tree the pass just measured, with no
++// agent in between. So every command a green task declares is executed twice
++// before its first referee. The clauses below pin the single execution: round 1
++// READS the pass's evidence, and a fresh execution happens only at `iter: 2`,
++// after a review-round fix.
++//
++//   M1 — a task whose every proofRuns command, exam and non-minor Check: exits 0
++//        on the pre-review pass records exactly one `driver:proof-run` per
++//        proofRuns entry, one `driver:exam-run` when the exam is runnable and
++//        one `driver:check-run` per Check:, all at `iter: 0` and all before the
++//        first `review:` dispatch; and the `review:<id>:1` prompt's RUN, EXAM
++//        and CHECK EVIDENCE blocks carry that pass's commands, exits and outputs.
++//   M2 — a red pass buys one `fix:<id>:0` round and one re-execution, both at
++//        `iter: 0`, and round 1 reads the re-execution — no third execution.
++//   M3 — a review-round fix (`fix:<id>:1`) is followed by one fresh execution at
++//        `iter: 2`, and `review:<id>:2` carries it and not round 1's.
++//   M4 — the order around the referee and the row's proofFixes / fixIterations /
++//        reviewVerdict / status are BASE's for the same canned judgments.
++//   M5 — the five sims this re-scopes still print `ALL TESTS PASSED`, and a copy
++//        of each that still asserts its BASE-era second execution prints none.
++
++// ── #713 Task 1 leg (a): two Run:, one Check:, one runnable exam, all green [M1]
++// Every execution the driver makes appends its own line to the dispatch log, so
++// how many there are and where they sit relative to `review:T1:1` is read off
++// what the driver actually ran rather than off anything it reports about itself.
++{
++  const orderFile = path.join(tmp, 'order-713a.log')
++  const EXAM_CMD = 'bash t1_test.sh'
++  const FIRST = "sh -c 'echo first-command; cat where.txt; echo run-1 >> " + orderFile + "'"
++  const SECOND = "sh -c 'echo second-command; echo run-2 >> " + orderFile + "'"
++  const CHECK = "sh -c 'echo check-line; echo check-run >> " + orderFile + "'"
++  // Red at BASE (no `one.txt` in the examiner's clone), green on the patch.
++  const EXAM = '#!/bin/bash\n' +
++    "echo exam-run >> '" + orderFile + "'\n" +
++    'echo exam-line\n' +
++    '[ -f one.txt ]\n'
++  const { row, prompts, evs } = await scenario({
++    task: entry({ proofRuns: [FIRST, SECOND], proofTests: ['t1_test.sh'], testCmd: EXAM_CMD }),
++    examScript: EXAM,
++    constraintChecks: [{ cmd: CHECK, minor: false }],
++    onImpl: (cwd) => {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      fs.writeFileSync(path.join(cwd, 'where.txt'), 'inside-task-clone\n')
++    },
++    orderFile,
++  })
++
++  // [M1] one execution of each kind, all of them before the first referee. The
++  // FIRST `exam-run` is the examiner's own red-at-BASE probe in the examiner's
++  // clone, which this change leaves exactly as it was.
++  const order = fs.readFileSync(orderFile, 'utf8').split('\n')
++    .filter(Boolean).filter((l) => l !== 'integration')
++  assert.deepEqual(order.slice(0, order.indexOf('review:T1:1') + 1),
++    ['exam:T1', 'impl:T1', 'exam-run', 'run-1', 'run-2', 'exam-run', 'check-run', 'review:T1:1'],
++    'both Run: commands, the exam and the Check: each execute ONCE, in that order, between ' +
++    'the implementer and the first review: ' + JSON.stringify(order))
++
++  // [M1] exactly one `driver:proof-run` per proofRuns entry, in Proof order.
++  const runs = ofKind(evs, 'driver:proof-run')
++  assert.deepEqual(runs.map((e) => e.cmd), [FIRST, SECOND],
++    'exactly two driver:proof-run events, the first command then the second: ' +
++    JSON.stringify(runs.map((e) => [e.cmd, e.exit, e.iter])))
++  assert.deepEqual(runs.map((e) => e.exit), [0, 0])
++  assert.deepEqual(runs.map((e) => e.iter), [0, 0])
++
++  // [M1] exactly one `driver:exam-run` and exactly one `driver:check-run`.
++  const exams = ofKind(evs, 'driver:exam-run')
++  assert.deepEqual(exams.map((e) => [e.cmd, e.exit, e.iter]), [[EXAM_CMD, 0, 0]],
++    'one driver:exam-run for a task with a runnable exam, at iter 0: ' + JSON.stringify(exams))
++  const checks = ofKind(evs, 'driver:check-run')
++  assert.deepEqual(checks.map((e) => [e.cmd, e.exit, e.iter]), [[CHECK, 0, 0]],
++    'one driver:check-run per Check:, at iter 0: ' + JSON.stringify(checks))
++
++  // [M1] and nothing of the three kinds belongs to a review round at all.
++  const KINDS = ['driver:proof-run', 'driver:exam-run', 'driver:check-run']
++  assert.deepEqual(
++    evs.filter((e) => KINDS.indexOf(e.kind) !== -1 && e.task === 'T1' && e.iter === 1), [],
++    'no driver execution of any of the three kinds carries iter 1 — round 1 reads the pass ' +
++    'the driver already made rather than measuring the same tree twice')
++
++  // [M1] the three evidence blocks the referee reads are that pass's bytes.
++  const prompt = prompts['review:T1:1']
++  const ev = evidenceOf(prompt)
++  assert.ok(ev.includes('\n\n$ ' + FIRST + '\nexit 0\n'),
++    'the RUN EVIDENCE block quotes the first command with exit 0: ' + ev.slice(0, 600))
++  assert.ok(ev.includes('\n\n$ ' + SECOND + '\nexit 0\n'),
++    'and the second: ' + ev.slice(0, 600))
++  assert.ok(ev.indexOf(FIRST) < ev.indexOf(SECOND), 'in the order the Proof gave them')
++  assert.ok(ev.includes('first-command') && ev.includes('second-command'),
++    'with what each printed')
++  assert.ok(ev.includes('inside-task-clone'),
++    'including the line only the task\'s own clone could print — the pass ran there, after ' +
++    'the implementer wrote it: ' + ev.slice(0, 600))
++  assert.ok(prompt.includes('\n\n$ ' + EXAM_CMD + '\nexit 0\n') && prompt.includes('exam-line'),
++    'the EXAM EVIDENCE block carries the pass\'s exam command, exit and output')
++  assert.ok(prompt.includes('\n\n$ ' + CHECK + '\nexit 0\n') && prompt.includes('check-line'),
++    'and the CHECK EVIDENCE block the pass\'s Check: command, exit and output')
++
++  assert.equal(row.status, 'done', JSON.stringify(row))
++  assert.equal(row.proofFixes, 0)
++}
++
++// ── #713 Task 1 leg (b): one green command, the whole order, the whole row [M1, M4]
++{
++  const orderFile = path.join(tmp, 'order-713b.log')
++  const CMD = "sh -c 'echo green-every-time; echo proof-run >> " + orderFile + "'"
++  const { row, calls, events } = await scenario({
++    task: entry({ proofRuns: [CMD] }),
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
++    orderFile,
++  })
++  const order = fs.readFileSync(orderFile, 'utf8').split('\n')
++    .filter(Boolean).filter((l) => l !== 'integration')
++  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
++    'the implementer, ONE pre-review execution, the first review, and the integrated pass ' +
++    'on the adopted tree — a BASE engine records a second execution before the review: ' +
++    JSON.stringify(order))
++  assert.deepEqual(events.map((e) => e.iter), [0], JSON.stringify(events))
++  // [M4] the row is BASE's for the same canned judgments.
++  assert.equal(row.status, 'done', JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'clean')
++  assert.equal(row.fixIterations, 0)
++  assert.equal(row.proofFixes, 0)
++  assert.ok(!calls.some((l) => l.startsWith('fix:')), 'no fix: label was dispatched: ' + calls.join(','))
++}
++
++// ── #713 Task 1 leg (c): a red pass, its repair round, and its ONE repeat [M2] ─
++// The command reads a file only the repair round writes, so the second reading
++// is a string the command text does not contain: the evidence round 1 is handed
++// is the re-execution's, and no third execution happened before it.
++{
++  const CMD = "sh -c 'cat repaired.txt'"
++  const { row, calls, prompts, events } = await scenario({
++    task: entry({ proofRuns: [CMD] }),
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
++    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'repaired.txt'), 'written-by-the-repair-round\n'),
++  })
++  assert.deepEqual(calls.filter((l) => l !== 'integration'),
++    ['impl:T1', 'fix:T1:0', 'review:T1:1'],
++    'implementer, one repair round, the first review: ' + calls.join(','))
++  assert.equal(events.length, 2,
++    'exactly two executions — the red pass and the repeat after the repair; an engine that ' +
++    'executes a third time before round 1 records three: ' + JSON.stringify(events))
++  assert.deepEqual(events.map((e) => e.exit), [1, 0])
++  assert.deepEqual(events.map((e) => e.iter), [0, 0], 'both belong to the driver\'s own pass')
++  const ev = evidenceOf(prompts['review:T1:1'])
++  assert.ok(ev.includes('exit 0'), 'round 1 reads the green re-execution: ' + ev.slice(0, 400))
++  assert.ok(ev.includes('written-by-the-repair-round'),
++    'carrying what the command printed after the repair: ' + ev.slice(0, 400))
++  assert.ok(!ev.includes('exit 1'), 'and not the red reading it replaced: ' + ev.slice(0, 400))
++  assert.equal(row.proofFixes, 1)
++  assert.equal(row.fixIterations, 0, 'a pre-review repair is not a review fix iteration')
++}
++
++// ── #713 Task 1 leg (d): a review-round fix buys the fresh execution [M3] ────
++// The command prints a file the review fix rewrites — the only thing that can
++// tell round 2's evidence from round 1's, since no agent runs between the pass
++// and round 1.
++{
++  const CMD = "sh -c 'cat v.txt'"
++  const BEFORE = 'content-before-the-review-fix'
++  const AFTER = 'content-after-the-review-fix'
++  const { row, calls, prompts, events } = await scenario({
++    task: entry({ proofRuns: [CMD] }),
++    onImpl: (cwd) => {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      fs.writeFileSync(path.join(cwd, 'v.txt'), BEFORE + '\n')
++    },
++    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'v.txt'), AFTER + '\n'),
++    review: (n) => (n === 1
++      ? { verdict: 'FIX_REQUIRED',
++          issues: [{ severity: 'blocking', detail: 'round 1 wants v.txt rewritten' }] }
++      : passReview()),
++  })
++  assert.deepEqual(calls.filter((l) => l !== 'integration'),
++    ['impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
++    'no pre-review repair round, one review fix, two rounds: ' + calls.join(','))
++  assert.equal(events.length, 2,
++    'two executions in all: the pre-review pass and round 2\'s fresh one: ' + JSON.stringify(events))
++  assert.deepEqual(events.map((e) => e.iter), [0, 2],
++    'the pass is iter 0 and the post-fix execution is iter 2 — the number of the round that ' +
++    'produced it, so a sense pass counting executions per iter keeps its meaning')
++  const r1 = evidenceOf(prompts['review:T1:1'])
++  assert.ok(r1.includes(BEFORE), 'round 1 read the pre-review pass\'s own output: ' + r1.slice(0, 400))
++  const r2 = evidenceOf(prompts['review:T1:2'])
++  assert.ok(r2.includes(AFTER),
++    'round 2 reads the execution that followed the fix: ' + r2.slice(0, 400))
++  assert.ok(!r2.includes(BEFORE),
++    'and not round 1\'s, which predates the repair: ' + r2.slice(0, 400))
++  assert.equal(row.fixIterations, 1, JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'fixed', JSON.stringify(row))
++}
++
++// ── #713 Task 1 leg (e): red on every execution — BASE's shape, unchanged [M2, M4]
++{
++  const CMD = "sh -c 'echo still-broken; exit 3'"
++  const { row, calls, events } = await scenario({
++    task: entry({ proofRuns: [CMD] }),
++    onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
++  })
++  assert.deepEqual(calls.filter((l) => l !== 'integration'), ['impl:T1', 'fix:T1:0'],
++    'one repair round and no referee at all: ' + calls.join(','))
++  assert.ok(!calls.some((l) => l.startsWith('review:')), calls.join(','))
++  assert.equal(events.length, 2, JSON.stringify(events))
++  assert.deepEqual(events.map((e) => e.exit), [3, 3])
++  assert.deepEqual(events.map((e) => e.iter), [0, 0])
++  assert.equal(row.status, 'failed', JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'proof-red')
++  assert.equal(row.proofFixes, 1)
++}
++
++// ── #713 Task 1 legs (f)–(j): the five re-scoped sims, and their controls [M5] ─
++// Each leg has two halves. The first is the `Run:` proof itself — the sim still
++// prints `ALL TESTS PASSED` — and the driver executes those five commands. The
++// second is the half a green sentinel cannot show on its own: that the sim's
++// re-scoped pin is a pin and not a deletion. So each sim is COPIED, its own
++// sentinel line is preceded by a marker and by a self-contained probe that still
++// asserts the BASE-era second execution the leg names, and the copy must print
++// the marker (its own legs held, exactly as its sentinel says) and NOT the
++// sentinel (the BASE-era pin no longer holds). At BASE both are printed, which
++// is the reading of "prints none" that has any content.
++//
++// The copy is rebased rather than moved: relative specifiers become absolute
++// URLs into the real fleet/ and fleet/tests/, and `import.meta.url` becomes the
++// original file's URL, so the copy reads the same helpers, roles and repo root
++// the sim does and nothing is written inside the repo.
++const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))
++const TESTS_URL = new URL('.', import.meta.url).href
++const FLEET_URL = new URL('..', import.meta.url).href
++const HELPERS_URL = new URL('./_engine_helpers.mjs', import.meta.url).href
++const BODY_GREEN = 'SIM-BODY-GREEN'
++
++// The probe spliced into a copy: its own imports, its own repo and its own run
++// directory (so it cannot collide with the sim it sits in), one task through the
++// real engine, then `pin` — an expression over `evs`, the run's own records.
++const probeSource = ({ tag, runs = [], checks = [], exam = false, pin, why }) => `
++{ // #713 Task 1 — the BASE-era pin this copy still asserts
++  const _assert = (await import('node:assert/strict')).default
++  const _fs = (await import('node:fs')).default
++  const _os = (await import('node:os')).default
++  const _pp = (await import('node:path')).default
++  const _h = await import(${JSON.stringify(HELPERS_URL)})
++  const _tmp = _fs.mkdtempSync(_pp.join(_os.tmpdir(), 'probe-${tag}-'))
++  const _task = {
++    id: 'T1', title: 'probe', files: ['one.txt'], tier: 'standard', review: 'lean',
++    writes: ['one.txt'], commutes: [],
++    interfaces: { consumes: ['\`BASE_FACTS\`'], produces: ['\`ONE\`'] },
++    testCmd: ${exam ? "'bash t1_test.sh'" : "'bash check.sh'"},
++    proofTests: ${exam ? "['t1_test.sh']" : '[]'},
++    proofRuns: ${JSON.stringify(runs)},
++    body: '**Claim:** the tree gains one.txt\\n' +
++      'Machine: M1. The tree holds \\\`one.txt\\\`.\\n\\n' +
++      '**Proof:**\\n- Legs: (a) it does [M1]',
++  }
++  const _stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      _fs.writeFileSync(_pp.join(cwd, 't1_test.sh'), '#!/bin/bash\\n[ -f one.txt ]\\n')
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl' || kind === 'fix') {
++      _fs.writeFileSync(_pp.join(cwd, 'one.txt'), 'from T1\\n')
++      return _h.doneImpl(cwd)
++    }
++    if (kind === 'review') return _h.passReview()
++    if (opts.label === 'integration') return _h.cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const _r = _h.rig({
++    repo: _h.makeRepo(_pp.join(_tmp, 'repo')), runDir: _pp.join(_tmp, 'run'),
++    waves: [[_task]], stub: _stub, stamp: '${tag}',
++    extraArgs: { shallowLeg: false, constraintChecks: ${JSON.stringify(checks)} },
++  })
++  await _r.run()
++  const evs = _fs.readFileSync(_pp.join(_tmp, 'run', 'events.jsonl'), 'utf8')
++    .split('\\n').filter(Boolean).map((l) => JSON.parse(l))
++  _fs.rmSync(_tmp, { recursive: true, force: true })
++  _assert.ok(${pin}, ${JSON.stringify(why)} + ': ' +
++    JSON.stringify(evs.filter((e) => String(e.kind).indexOf('driver:') === 0)
++      .map((e) => [e.kind, e.iter, e.exit])))
++}
++`
++
++const rebase = (text, simName) => text
++  .replace(/from '\.\.\//g, () => 'from \'' + FLEET_URL)
++  .replace(/from '\.\//g, () => 'from \'' + TESTS_URL)
++  .replace(/import\.meta\.url/g, () => JSON.stringify(new URL(simName, TESTS_URL).href))
++
++const copyWithProbe = (simName, probe) => {
++  const lines = fs.readFileSync(path.join(TESTS_DIR, simName), 'utf8').split('\n')
++  let k = -1
++  for (let i = 0; i < lines.length; i++) {
++    if (lines[i].startsWith('console.log(') && lines[i].includes('ALL TESTS PASSED')) k = i
++  }
++  assert.ok(k !== -1,
++    simName + ' ends with a top-level `console.log` of its sentinel — the copy is built ' +
++    'by splicing the probe in ahead of that line')
++  const out = path.join(tmp, 'copy-' + simName)
++  fs.writeFileSync(out,
++    rebase(lines.slice(0, k).join('\n'), simName) +
++    '\nconsole.log(' + JSON.stringify(BODY_GREEN) + ')\n' + probe + '\n' +
++    rebase(lines.slice(k).join('\n'), simName) + '\n')
++  return out
++}
++
++const TOGGLE = "sh -c 'if [ -e seen.txt ]; then exit 1; else : > seen.txt; fi'"
++for (const [leg, simName, probe, pinName] of [
++  // (f) the pre-review sim: its `[M3]` review-round `driver:check-run` at iter 1.
++  ['f', 'test_run_engine_pre_review.mjs',
++    probeSource({ tag: 'f713', checks: [{ cmd: 'test -e one.txt', minor: false }],
++      pin: 'evs.some((e) => e.kind === \'driver:check-run\' && e.task === \'T1\' && e.iter === 1)',
++      why: 'BASE ran the Check: again for the review round' }),
++    'a `driver:check-run` at `iter` 1'],
++  // (g) the exam-evidence sim: two post-patch `driver:exam-run` events.
++  ['g', 'test_run_engine_exam_evidence.mjs',
++    probeSource({ tag: 'g713', exam: true,
++      pin: 'evs.filter((e) => e.kind === \'driver:exam-run\' && e.task === \'T1\').length === 2',
++      why: 'BASE recorded two post-patch driver:exam-run events' }),
++    'two post-patch `driver:exam-run` events'],
++  // (h) the implementer-suite sim: a `driver:exam-run` at iter 1.
++  ['h', 'test_run_engine_implementer_suite.mjs',
++    probeSource({ tag: 'h713', exam: true,
++      pin: 'evs.some((e) => e.kind === \'driver:exam-run\' && e.task === \'T1\' && e.iter === 1)',
++      why: 'BASE ran the exam again for the review round' }),
++    'a `driver:exam-run` at `iter` 1'],
++  // (i) the review-economy sim: the TOGGLE's second execution inside round 1.
++  ['i', 'test_run_engine_review_economy.mjs',
++    probeSource({ tag: 'i713', runs: [TOGGLE],
++      pin: 'evs.some((e) => e.kind === \'driver:proof-run\' && e.iter === 1 && e.exit !== 0)',
++      why: 'BASE surfaced the toggle\'s red second execution in review round 1' }),
++    'the toggle\'s second execution in round 1'],
++  // (j) the integrated-runs sim: four `driver:proof-run` events, two at iter 1.
++  ['j', 'test_run_engine_integrated_runs.mjs',
++    probeSource({ tag: 'j713', runs: ["sh -c 'echo one'", "sh -c 'echo two'"],
++      pin: 'evs.filter((e) => e.kind === \'driver:proof-run\' && e.task === \'T1\').length === 4 && ' +
++        'evs.filter((e) => e.kind === \'driver:proof-run\' && e.iter === 1).length === 2',
++      why: 'BASE recorded four driver:proof-run events, two of them at iter 1' }),
++    'four `driver:proof-run` events with two at `iter` 1'],
++]) {
++  const copy = copyWithProbe(simName, probe)
++  const r = spawnSync(process.execPath, [copy], { encoding: 'utf8' })
++  const out = String(r.stdout || '')
++  assert.ok(out.includes(BODY_GREEN),
++    'leg (' + leg + '): every leg of ' + simName + ' holds — the sim prints its sentinel: ' +
++    String(r.stderr || '').slice(-1200))
++  assert.ok(!out.includes('ALL TESTS PASSED'),
++    'leg (' + leg + '): a copy of ' + simName + ' still asserting ' + pinName +
++    ' prints no sentinel — the re-scoped pin is a pin and not a deletion')
++}
++
++// [M5] leg (f): the sentinel below is this sim's — its existing legs, the #632
++// ones and the #713 ones. It is printed only if every assertion above held.
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_review_economy.mjs b/fleet/tests/test_run_engine_review_economy.mjs
+index ec3fc9b966db35ce9056d1d92228ba81a04a9f4a..f538c3f0efa68d3555355dfbf603fe5884ef2dcb 100644
+--- a/fleet/tests/test_run_engine_review_economy.mjs
++++ b/fleet/tests/test_run_engine_review_economy.mjs
+@@ -211,21 +211,31 @@ const eventsOf = (runDir) => {
+ }
+ 
+ // ── a driver-minted red is not a reviewer's finding [M7] ─────────────────────
+-// The Run: is green on the pre-review pass (so the patch reaches a referee) and
+-// red on every review round after it — the reviewers return PASS throughout, so
+-// every blocking issue in the run is the driver's own.
++// The Run: is green on the driver's pre-review pass (so the patch reaches a
++// referee) and red on the next execution. Since #713 Task 1 round 1 READS that
++// pass, so the next execution is round 2's, after `fix:A:1` — which round 1's
++// canned reviewer buys with one blocking issue of its own. Round 2's referee
++// returns PASS, the fresh `iter: 2` execution reads red, and the task dies on
++// that red: exactly one blocking finding in the run belongs to a reviewer.
+ {
+   const TOGGLE = "sh -c 'if [ -e seen.txt ]; then exit 1; else : > seen.txt; fi'"
+   const repo = makeRepo(path.join(tmp, 'repo-g4'))
+   const runDir = path.join(tmp, 'run-g4')
++  const calls = []
+   const stub = (prompt, opts, cwd) => {
++    calls.push(opts.label)
+     const kind = opts.label.split(':')[0]
+     if (kind === 'impl') {
+       fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
+       return doneImpl(cwd)
+     }
+     if (kind === 'fix') return doneImpl(cwd)
+-    if (kind === 'review') return passReview()
++    if (kind === 'review') {
++      return opts.label === 'review:A:1'
++        ? { verdict: 'FIX_REQUIRED',
++            issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
++        : passReview()
++    }
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+   }
+@@ -233,16 +243,21 @@ const eventsOf = (runDir) => {
+                         stub, stamp: 're4', extraArgs: { shallowLeg: false } })
+   const report = await run()
+   const row = report.tasks.find((r) => r.task === 'A')
+-  assert.ok(eventsOf(runDir).some((e) => e.kind === 'driver:proof-run' && e.exit !== 0),
+-    'the driver recorded a red Run: of its own (M1 ran the command once before review, so ' +
+-    'every round after it reads red): ' + JSON.stringify(eventsOf(runDir).map((e) => [e.kind, e.iter, e.exit])))
++  const proofRuns = eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run' && e.task === 'A')
++  assert.deepEqual(proofRuns.map((e) => [e.iter, e.exit]), [[0, 0], [2, 1]],
++    'one green execution on the driver\'s pass, one red on the round the fix bought: ' +
++    JSON.stringify(proofRuns))
++  assert.deepEqual(calls.filter((l) => l !== 'integration'),
++    ['impl:A', 'review:A:1', 'fix:A:1', 'review:A:2'],
++    'sim precondition: the reviewer\'s blocking issue bought the one fix round: ' + calls.join(','))
+   assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
+-    'and that driver-minted red drove the fix loop by itself: ' + JSON.stringify(row))
++    'and that driver-minted red ended the task, whatever round 2\'s referee returned: ' +
++    JSON.stringify(row))
+   assert.ok(report.reviewEconomy.reviewerMs >= 0,
+     'the reviewers still ran and were still measured: ' + JSON.stringify(report.reviewEconomy))
+-  assert.equal(report.reviewEconomy.blockingFindings, 0,
+-    'a driver-minted Run:/Check: red is never counted as a reviewer\'s finding: ' +
+-    JSON.stringify(report.reviewEconomy))
++  assert.equal(report.reviewEconomy.blockingFindings, 1,
++    'a driver-minted Run:/Check: red is never counted as a reviewer\'s finding — only ' +
++    'round 1\'s referee issue is: ' + JSON.stringify(report.reviewEconomy))
+ }
+ 
+ // ── leg (h): empty evidence changes nothing [M8] ─────────────────────────────
+diff --git a/fleet/tests/test_run_main.mjs b/fleet/tests/test_run_main.mjs
+index 20959b2f3350637690600daafce1442f42c51caf..ef647cbe99be62bc187c8723a120acd4e574679a 100644
+--- a/fleet/tests/test_run_main.mjs
++++ b/fleet/tests/test_run_main.mjs
+@@ -733,5 +733,194 @@ function freshRepo(name) {
+   assert.equal(noTests.json.passed, false, 'leg (d) [M3]: the no-tests guard still refuses to green')
+ }
+ 
++// ── #753 Task 2 — a manual ack settled by the driver's own executed Run: ─────
++// Claim: the ack decision pre-authorizes a `deferred:manual` ack whose `detail`
++// cites `Run:` evidence the driver executed and that exited 0. Citing is the
++// critic's act; verifying is the driver's — the citation test is a verbatim
++// substring of an executed command carried in `report.integratedRuns`.
++const CMD_GREEN = "sh -c 'grep -q sweep fleet/RUNBOOK.md'"
++const CMD_RED = "sh -c 'grep -q nosuchtoken fleet/RUNBOOK.md'"
++const R = {
++  integratedRuns: [
++    { task: 'T1', cmd: CMD_GREEN, exit: 0, stdout: '' },
++    { task: 'T1', cmd: CMD_RED, exit: 2, stdout: '' },
++  ],
++}
++const CITING_ACK = {
++  type: 'deferred:manual',
++  detail: 'fleet/RUNBOOK.md §Rollback — settled by `' + CMD_GREEN +
++    '`; whether it reads well is judgment',
++}
++const NONCITING_ACK = {
++  type: 'deferred:manual',
++  detail: 'fleet/RUNBOOK.md §Rollback — whether it reads well is judgment',
++}
++const BOTH_ACK = {
++  type: 'deferred:manual',
++  detail: 'fleet/RUNBOOK.md §Rollback — settled by `' + CMD_GREEN + '` and `' + CMD_RED +
++    '`; whether it reads well is judgment',
++}
++const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
++
++// Leg (a) [M1] — pure: a citing manual ack against a report whose
++// `integratedRuns` carries that command green is pre-authorized, and the reason
++// names #753. BASE parks on any `deferred:manual` type, so BASE fails both rows.
++{
++  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
++  const d = ackDecision(gr([CITING_ACK]), R)
++  assert.equal(d.approve, true,
++    'leg (a) [M1]: a deferred:manual ack whose detail quotes a green integratedRuns cmd verbatim ' +
++    'is pre-authorized')
++  assert.match(d.reason, /#753/,
++    'leg (a) [M1]: the reason names #753 when a manual ack was pre-authorized this way')
++  const d2 = ackDecision(gr([CITING_ACK, { type: 'deferred:external' }]), R)
++  assert.equal(d2.approve, true,
++    'leg (a) [M1]: a citing manual ack beside a deferred:external ack still approves')
++  assert.match(d2.reason, /#753/,
++    'leg (a) [M1]: the reason still names #753 when a manual ack rode with an external one')
++}
++
++// Leg (b) [M1] — flow: runMain over a NEEDS_ACK gate carrying that manual ack,
++// with the engine's report supplying the integrated runs that settle it.
++{
++  const repoDir = freshRepo('flow-ack-manual-cited')
++  const runId = 'run-98'
++  const { exec, calls, runDir } = makeExecStub({
++    repoDir, runId, gateExit: 2, acks: [CITING_ACK], waves: WAVES,
++  })
++  const out = await runMain(
++    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
++    {
++      exec, log: () => {},
++      runEngineFn: async () => ({
++        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
++        integratedRuns: R.integratedRuns,
++      }),
++      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
++    },
++  )
++  assert.equal(out.code, 0, 'leg (b) [M1]: exit code 0 — ' + out.verdict + ': ' + out.detail)
++  assert.equal(out.verdict, 'approved', 'leg (b) [M1]: the verdict is approved')
++  const saPath = path.join(runDir, 'standing-approval.json')
++  assert.ok(fs.existsSync(saPath),
++    'leg (b) [M1]: the pre-authorization record is written before the approve')
++  const sa = JSON.parse(fs.readFileSync(saPath, 'utf8'))
++  assert.equal(sa.ackList.length, 1, 'leg (b) [M1]: standing-approval.json holds the one ack')
++  assert.equal(sa.ackList[0].type, 'deferred:manual',
++    'leg (b) [M1]: the recorded ack is the deferred:manual one that was pre-authorized')
++  const ev = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8')
++    .trim().split('\n').map((l) => JSON.parse(l))
++  const dec = ev.find((e) => e.kind === 'driver:ack-decision')
++  assert.ok(dec, 'leg (b) [M1]: the ack decision is on the event log')
++  assert.equal(dec.approve, true, 'leg (b) [M1]: driver:ack-decision carries approve true')
++  assert.ok(calls.some((c) => c.includes('--approve')),
++    'leg (b) [M1]: the run reached ultra_gate.py --approve')
++}
++
++// Leg (c) [M2] — pure, four rows: what is NOT pre-authorized. Each parks with
++// the frozen reason literal, verbatim.
++{
++  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
++  const rows = [
++    ['a manual ack whose detail names no executed command',
++      ackDecision(gr([NONCITING_ACK]), R)],
++    ['the citing ack against a report with no integratedRuns',
++      ackDecision(gr([CITING_ACK]), {})],
++    ['the citing ack against a report whose integratedRuns is empty',
++      ackDecision(gr([CITING_ACK]), { integratedRuns: [] })],
++    ['the citing ack with no report at all — a receipt read with no report',
++      ackDecision(gr([CITING_ACK]))],
++    ['a manual ack citing a red entry as well as a green one',
++      ackDecision(gr([BOTH_ACK]), R)],
++  ]
++  for (const [what, d] of rows) {
++    assert.equal(d.approve, false, 'leg (c) [M2]: ' + what + ' is not pre-authorized')
++    assert.equal(d.reason, PARKED_REASON,
++      'leg (c) [M2]: ' + what + ' parks with the frozen literal ' + PARKED_REASON)
++  }
++}
++
++// Leg (d) [M2] — flow: the non-citing manual ack parks the run, whatever the
++// report's integratedRuns holds.
++{
++  const repoDir = freshRepo('flow-ack-manual-uncited')
++  const runId = 'run-99'
++  const { exec, calls, runDir } = makeExecStub({
++    repoDir, runId, gateExit: 2, acks: [NONCITING_ACK], waves: WAVES,
++  })
++  const out = await runMain(
++    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
++    {
++      exec, log: () => {},
++      runEngineFn: async () => ({
++        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
++        integratedRuns: R.integratedRuns,
++      }),
++      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
++    },
++  )
++  assert.equal(out.code, 1, 'leg (d) [M2]: exit code 1')
++  assert.equal(out.verdict, 'needs-ack', 'leg (d) [M2]: the verdict is needs-ack')
++  assert.ok(!fs.existsSync(path.join(runDir, 'standing-approval.json')),
++    'leg (d) [M2]: a parked run writes no standing-approval.json')
++  assert.ok(!calls.some((c) => c.includes('--approve')),
++    'leg (d) [M2]: a parked run never calls --approve')
++}
++
++// Leg (e) [M3] — pure: BASE's approving branch and BASE's parking types are
++// untouched, and `acksOf` still reads `gateCheck.acks` only. A decision keyed on
++// the detail alone — rather than on the ack TYPE plus the citation — fails the
++// coverage and plan-defect rows.
++{
++  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
++  const d = ackDecision(gr([{ type: 'deferred:runtime' }, { type: 'deferred:external' }]), R)
++  assert.equal(d.approve, true, 'leg (e) [M3]: runtime + external still approve')
++  assert.equal(d.reason, '2 deferred runtime/external ack(s) — pre-authorized (#243)',
++    "leg (e) [M3]: BASE's reason literal is unchanged when no manual ack was pre-authorized")
++  assert.equal(ackDecision(gr([{ type: 'coverage', detail: CMD_GREEN }]), R).approve, false,
++    'leg (e) [M3]: a coverage ack parks whatever the report holds')
++  assert.equal(ackDecision(gr([{ type: 'deferred:plan-defect', detail: CMD_GREEN }]), R).approve, false,
++    'leg (e) [M3]: a deferred:plan-defect ack is never pre-authorized')
++  assert.deepEqual(acksOf({ acks: [{ type: 'coverage' }] }), [],
++    'leg (e) [M3]: acksOf reads gateCheck.acks only — a flat acks is not the ack channel')
++}
++
++// Leg (f) [M4] — the prose deliverables prove themselves with the Proof's own
++// `Run:` commands, executed here from the repo root.
++{
++  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
++  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: repoRoot, encoding: 'utf8' })
++
++  const peer = sh("node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'")
++  assert.equal(peer.status, 0,
++    'leg (f) [M4]: the first Run: — test_roles_peer.mjs still passes, so critic.md kept the shape ' +
++    'it pins (no `3. ` duty, no `checklist`): ' + String(peer.stdout + peer.stderr).slice(-500))
++
++  const patches = sh("node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'")
++  assert.equal(patches.status, 0,
++    'leg (f) [M4]: the second Run: — test_exam_edited_patches.mjs still passes, so the ' +
++    'report-format.md edit did not break the proposedPatches row: ' +
++    String(patches.stdout + patches.stderr).slice(-500))
++
++  const criticGrep = sh("grep -n 'verbatim' fleet/roles/critic.md")
++  const criticLines = criticGrep.stdout.split('\n').filter((l) => l.trim() !== '')
++  assert.ok(criticLines.some((l) => /manual/.test(l) && /verbatim/.test(l)),
++    'leg (f) [M4]: the third Run: prints a line of fleet/roles/critic.md naming `manual` on the ' +
++    'same line as `verbatim` — the critic is told to quote the settling command verbatim in the ' +
++    "item's why: " + JSON.stringify(criticLines))
++
++  const rfGrep = sh("grep -n 'deferred:manual' skills/ultrapowers/references/report-format.md")
++  const rfLines = rfGrep.stdout.split('\n').filter((l) => l.trim() !== '')
++  assert.ok(rfLines.some((l) => /deferred:manual/.test(l) && /verbatim/.test(l)),
++    'leg (f) [M4]: the fourth Run: prints a line of report-format.md naming `deferred:manual` and ' +
++    '`verbatim` — the rule says a manual ack quoting a green integrated Run: verbatim is ' +
++    'pre-authorized: ' + JSON.stringify(rfLines))
++
++  const events = sh('python3 -m pytest -q tests/test_fleet_events.py')
++  assert.equal(events.status, 0,
++    'leg (f) [M4]: the fifth Run: — tests/test_fleet_events.py still passes, so the parked reason ' +
++    'literal it pins is unchanged: ' + String(events.stdout + events.stderr).slice(-500))
++}
++
+ fs.rmSync(tmp, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 654d902c64592f4edbcf7a505d5d0d3fef9f42b6..a6cd511351e05a5876e9c6233c18d6b5ca8fbfa6 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -104,7 +104,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `coverage` | no | Structural completeness signal: `{ tasks_merged, tasks_planned, complete }`. `tasks_planned` = total tasks across all waves; `tasks_merged` = count of distinct task branches that landed via a `MERGED` wave; `complete` = `tasks_merged >= tasks_planned`. A `complete: false` with a green `tests.passed` is the false-green the gate must catch — only existing tests can fail, so a dropped/never-merged task leaves the suite green. The engine reports the *count* it can observe; confirming each merged task's files are actually present is the completeness critic's git tree-diff |
+ | `missingDeliverables` | no | One entry per `failed` (or cascade-blocked) task whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The completeness critic reads this list to target its git presence check; the gate renders it under unfinished |
+ | `gitVerified` | no | Boolean: did the completeness critic confirm it reviewed the tree at the integration branch tip it derives itself — `git rev-parse HEAD` inside the integration worktree (already required to be on the integration branch), then `git checkout --detach` and a re-confirm — rather than a recorded slot (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §2)? The model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority — a mismatch against the critic's derived tip also fails the check. True only when the critic returned `onIntegrationHead: true`; false when it returned `onIntegrationHead: false` (it could not confirm — possible checkout drift or a failing detach, #29) or when the critic died/degraded (no flag). A false value also pushes a checkout-drift judgment call. **Step-5 gating:** `gitVerified` MUST be true to Approve — a false value makes the completeness review unverified and is treated as `BLOCKED` pending a manual integration-tree check. This is the report-driven hardening of the gate's `git rev-parse <integrationBranch>` == `waveMerges[last].headSha` check. **Patch-input engine note (Amendment 10, `fleet/run-engine.mjs`):** on the driver path the critic performs no detach and records no `onIntegrationHead` — `gitVerified` is DRIVER-derived instead: true iff at least one wave merged, the integration branch tip equals the last adopt receipt's sha, every task reported merged has a fold event in its wave's fold log (the receipt-based #70 check, surfaced as `ancestryMisses`), AND the completeness critic actually returned a result (a dead critic withholds it, preserving the fail-closed gate invariant). Same Step-5 gating either way |
+-| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual`, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call), `plan-defect` (a per-task referee returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no referee can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`; `deliverable` is the task id and `why` is the reviewer's detail verbatim. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |
++| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task referee returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no referee can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`; `deliverable` is the task id and `why` is the reviewer's detail verbatim. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |
+ | `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314)); **degradation** — verify the affected slice (budget-deferred, integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo (endpoint not in run, dependent before prerequisite, endpoints share a wave). New cases slot into an existing kind rather than lengthening this reference. |
+ | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
+ | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic derives its own detach target — `git rev-parse HEAD` inside the integration worktree — then runs `git checkout --detach` and re-confirms `git rev-parse HEAD` still matches; the model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority, and a mismatch against the derived tip also blocks. If it cannot (an unresolvable branch/HEAD, or the detach itself fails — e.g. a dirty/conflicted integration worktree) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). Each finding is an object `{severity, detail}` (#474): **`blocking`** means the critic found a named defect that must not be merged as-is — an unmet plan requirement, a missing deliverable, a claim the integrated tree contradicts; **`minor`** means everything the operator should see but that does not stop the run. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
+@@ -147,4 +147,4 @@ This pre-merge review is the **second and final gate** (after plan approval; the
+ is rendered for transparency but does not pause for approval). After the summary the session
+ applies the two-move rule:
+ 
+-- **Approve** — the two-move rule (`fleet/run-engine.mjs`'s gate phase is the executable form since 0.3.0; the fleet's launch directive is the standing instruction). `PASS` → approve. `NEEDS_ACK` → approve iff every ack is a `deferredVerification` item with reason `runtime` or `external`, and only after writing `run-<stamp>/standing-approval.json` (`{grantedAt, instruction, ackList}`, the launch directive verbatim as `instruction`) FIRST — the rendered gate presentation lists the same ack list and instruction, so the transcript and the disk agree. Anything else (`BLOCKED`, any other ack type, a `coverage.complete: false`) → do not approve; the gate receipt is the terminal artifact. Approve runs `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py --approve --stamp <stamp>` (checkout of the integration branch + re-verified tests) and saves its JSON output verbatim to `run-<stamp>/approve-receipt.json`; the fleet shim's `readGateGreen` greens the run only on that receipt with a matching stamp. The orchestrator publishes the branch and opens the PR — the session never pushes and never hands off to `superpowers:finishing-a-development-branch` (superpowers does not run in a sandbox); the post-merge runbook rides in the PR body.
++- **Approve** — the two-move rule (`fleet/run-engine.mjs`'s gate phase is the executable form since 0.3.0; the fleet's launch directive is the standing instruction). `PASS` → approve. `NEEDS_ACK` → approve iff every ack is a `deferredVerification` item with reason `runtime` or `external`, or a `deferred:manual` ack whose detail quotes verbatim the command of an integrated `Run:` the driver executed that exited 0, and quotes no red one (#753 — the driver executed it, so only the judgment was ever deferred); a `deferred:manual` ack that quotes no green integrated `Run:` verbatim is not pre-authorized, and neither is `deferred:plan-defect`. Approve only after writing `run-<stamp>/standing-approval.json` (`{grantedAt, instruction, ackList}`, the launch directive verbatim as `instruction`) FIRST — the rendered gate presentation lists the same ack list and instruction, so the transcript and the disk agree. Anything else (`BLOCKED`, any other ack type, a `coverage.complete: false`) → do not approve; the gate receipt is the terminal artifact. Approve runs `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py --approve --stamp <stamp>` (checkout of the integration branch + re-verified tests) and saves its JSON output verbatim to `run-<stamp>/approve-receipt.json`; the fleet shim's `readGateGreen` greens the run only on that receipt with a matching stamp. The orchestrator publishes the branch and opens the PR — the session never pushes and never hands off to `superpowers:finishing-a-development-branch` (superpowers does not run in a sandbox); the post-merge runbook rides in the PR body.

@@ -1,0 +1,2227 @@
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index e86ad064232afecfa8ac13c4dcb223bddb9bbd84..61e814002231d9b6f28bb7d241fbcb712d0754e0 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -301,10 +301,15 @@ def plan_grammar(md_text):
+ 
+ 
+ # The plan-level Claim (#552): ONE operator sentence above the first task, in
+-# the operator's words, about what they will see after the run. It is elicited
+-# — there is no issue to quote a sentence about a run that has not happened —
+-# so `(elicited)` is the only tag it takes.
+-PLAN_CLAIM_ELICITED_RE = re.compile(r"\(elicited\)\s*$", re.I)
++# the operator's words, about what they will see after the run. It closes
++# `(elicited)` when the operator said it to the authoring agent and
++# `(quoted from #NNN)` when an issue already carries that sentence verbatim
++# (#755) — the same two signing forms a task Claim takes. `(derived)` is not
++# among them: there is nothing above the header to descend from.
++# The FORM is the compiler's business; resolving `#NNN` is the provenance
++# script's (§4.4), exactly as for a task-level quote.
++PLAN_CLAIM_PROVENANCE_RE = re.compile(
++    r"\((elicited|quoted from #(\d+))\)\s*$", re.I)
+ 
+ 
+ def _plan_header_value(md_text, read_label):
+@@ -357,7 +362,21 @@ def parse_plan_claim(md_text):
+     raw = _plan_claim_raw(md_text)
+     if raw is None:
+         return None
+-    return PLAN_CLAIM_ELICITED_RE.sub("", raw).strip()
++    return PLAN_CLAIM_PROVENANCE_RE.sub("", raw).strip()
++
++
++def plan_claim_provenance(md_text):
++    """The header Claim's provenance string — `"elicited"` or `"quoted:#NNN"`,
++    the same shapes a task-level tag parses to — or None when the header
++    carries no `**Claim:**` line, or one whose tag this grammar does not know
++    (which `plan_claim_violations` refuses)."""
++    raw = _plan_claim_raw(md_text)
++    if raw is None:
++        return None
++    m = PLAN_CLAIM_PROVENANCE_RE.search(raw)
++    if m is None:
++        return None
++    return "quoted:#" + m.group(2) if m.group(2) else "elicited"
+ 
+ 
+ def plan_claim_violations(md_text):
+@@ -367,13 +386,15 @@ def plan_claim_violations(md_text):
+     raw = _plan_claim_raw(md_text)
+     if raw is None:
+         return []
+-    if not PLAN_CLAIM_ELICITED_RE.search(raw):
++    if not PLAN_CLAIM_PROVENANCE_RE.search(raw):
+         return ["grammar: plan-level Claim carries no provenance tag — the one "
+-                "operator sentence above the first task is elicited, and closes "
+-                "`(elicited)`"]
++                "operator sentence above the first task is elicited or quoted "
++                "from an issue, and closes `(elicited)` or "
++                "`(quoted from #NNN)`"]
+     if not parse_plan_claim(md_text):
+         return ["grammar: plan-level Claim carries no operator sentence — the "
+-                "header Claim is nothing but its `(elicited)` tag"]
++                "header Claim is nothing but its `(elicited)` or "
++                "`(quoted from #NNN)` tag"]
+     return []
+ 
+ 
+@@ -3131,18 +3152,27 @@ BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
+ # Below six characters a span is grep noise: `src/`, `'Ada'`, `M1.` match half
+ # the tree as substrings, and this species greps for a substring, not a word.
+ MIN_SPAN = 6
+-# Above this many tracked test files a span is the tree's vocabulary, not one
+-# sibling's strict-equality pin: measured on this repository, `runner: None`
+-# sits in 1 tracked test file, `deferred:external` in 3, `examEdited` in 5 and
+-# `fix-loop-exhausted` in 7 — each still named — while `PLAN OK` is in 25,
+-# `claims-v1` in 29 and `ALL TESTS PASSED` in 64, none of which a clause could
+-# replace without the implementer grepping anyway. Eight is the line the
+-# compiler already draws elsewhere for width.
+-PINNED_EVERYWHERE = 8
+-PINNED_ELSEWHERE_DETAIL = "%s is asserted in %s, which is in no task's Files"
++# No file-count ceiling: the operator's 2026-09-07 decision on #756 drops the
++# vocabulary threshold along with every other hard cap here — the compiler
++# names each literal and its files, and the author and the gate reader weigh
++# them. `plan_title` sits in 1 tracked test file and `commit` in 83; both are
++# named, and the reader decides what to make of the second.
++PINNED_ELSEWHERE_SEGMENT = "%s is asserted in %s"
++# The closing clause reads off the line's DISTINCT files, not its segments: two
++# spans pinned by the same one file still name one file.
++PINNED_ELSEWHERE_ONE = ", which is in no task's Files"
++PINNED_ELSEWHERE_MANY = ", none of which is in any task's Files"
+ # A test file by path or by basename: under a tests directory the repo keeps
+ # suites in, or named the way a runner discovers one.
+ TEST_DIR_PREFIXES = ("tests/", "fleet/tests/")
++# A span shaped like a bare file name — word, dot and hyphen characters closing
++# on a dot and a short extension (`status-page.json`, `plan.md`).
++BARE_FILE_NAME_RE = re.compile(r"[\w.\-]+\.[A-Za-z]{1,4}")
++# The driver's `state` enum, off CONTRACT.md's `status.json` line: a clause
++# quoting one of these names the state machine the compiler already knows, not
++# a literal a sibling test pins to this task's implementation.
++STATE_WORDS = frozenset(("booting", "running", "publishing",
++                         "done", "parked", "failed"))
+ 
+ 
+ def _is_test_file(path):
+@@ -3151,14 +3181,44 @@ def _is_test_file(path):
+             or basename.startswith("test_") or ".test." in basename)
+ 
+ 
++def _is_pinning_file(path, declared):
++    """A tracked path this species may name: a test file by one of the four
++    shapes, carrying a CODE extension, that no task's Files block declares.
++
++    The extension is what keeps a fixture PLAN out — `_git_substring_files`
++    greps every tracked file whatever its suffix, so the plan corpus under
++    `tests/fixtures/plans/` sits under a `tests/` prefix and would otherwise
++    read as a suite pinning its neighbours' literals."""
++    return (_is_test_file(path) and path.endswith(CODE_EXTS)
++            and path not in declared)
++
++
++def _is_pinnable_span(span):
++    """False for the three candidates a pinning file does not make a pin.
++
++    A PATH (`fleet/tests/x.py`, `status-page.json`) is a name the implementer
++    reads off the Files block, not a literal to break blind; a PLACEHOLDER
++    (`ultra/integration-run-<N>`) is a shape, and the angle brackets say so;
++    and a STATE WORD is the driver's own vocabulary, which the compiler knows
++    without a test to tell it. Length decides none of the three: `publishings!`
++    is twelve characters and drawn, `'done'` is six and skipped."""
++    if "/" in span or BARE_FILE_NAME_RE.fullmatch(span):
++        return False
++    opened = span.find("<")
++    if opened != -1 and span.find(">", opened + 1) != -1:
++        return False
++    return span.strip("'\"").lower() not in STATE_WORDS
++
++
+ def _clause_spans(clauses):
+     """The backticked spans of `MIN_SPAN`+ characters across a task's Machine
+-    clauses, document order, deduped — one line per (task, span, path) means a
+-    span repeated across clauses is still one span.
++    clauses, document order, deduped — a span repeated across clauses is one
++    candidate, and so one segment of the task's line.
+ 
+     A span ending in `/` is dropped whatever its length: that is a directory
+     prefix (`fleet/tests/`, `src/`), which every import line under it contains
+-    and no test pins."""
++    and no test pins. The rest of the path shapes, and the two other kinds a
++    file cannot pin, are `_is_pinnable_span`'s."""
+     spans, seen = [], set()
+     for clause in clauses:
+         for m in BACKTICK_SPAN_RE.finditer(clause["text"]):
+@@ -3180,20 +3240,29 @@ def _declared_files(tasks):
+ 
+ 
+ def _species_pinned_elsewhere(task_id, clauses, base, declared, exclude):
+-    lines = []
++    """At most ONE line per task: every candidate span with a pinning file, in
++    clause order, each naming its files in path order — the whole weighing put
++    in front of the reader at once rather than a line per (task, span, path).
++
++    No count silences a span: nine pinning files are nine names on the line."""
++    segments, named = [], set()
+     for span in _clause_spans(clauses):
+-        pinning = [path for path in _git_substring_files(base, span, exclude)
+-                   if _is_test_file(path)]
+-        # Counted BEFORE the `declared` filter: a span the whole suite carries
+-        # is vocabulary whether or not one of its files happens to be owned.
+-        if len(pinning) > PINNED_EVERYWHERE:
++        if not _is_pinnable_span(span):
+             continue
+-        for path in pinning:
+-            if path not in declared:
+-                lines.append(_species_line(
+-                    "pinned-elsewhere", task_id,
+-                    PINNED_ELSEWHERE_DETAIL % (span, path)))
+-    return lines
++        pinning = sorted(path
++                         for path in _git_substring_files(base, span, exclude)
++                         if _is_pinning_file(path, declared))
++        if not pinning:
++            continue
++        named.update(pinning)
++        segments.append(PINNED_ELSEWHERE_SEGMENT % (span, ", ".join(pinning)))
++    if not segments:
++        return []
++    closing = (PINNED_ELSEWHERE_ONE if len(named) == 1
++               else PINNED_ELSEWHERE_MANY)
++    return [_species_line("pinned-elsewhere", task_id,
++                          "; ".join(segments) + closing)]
++
+ 
+ def _clip_run(command, n=RUN_CLIP):
+     """A command's first `n` characters, whitespace collapsed — the command,
+@@ -3610,6 +3679,112 @@ def _render_sha_unguarded(tasks, ctx):
+ ADVISORY_RENDERS.append(("sha-unguarded", _render_sha_unguarded))
+ 
+ 
++# P8 — a committed exam never reads BASE (#730; map #727 move B3). Run-35 wrote
++# the driver's BASE env var, or-defaulted to a frozen sha, into a committed sim
++# to carry two `Run:`-assigned BASE comparisons as test legs; the peer blocked
++# it twice and the fix cap parked the run. A BASE comparison is a `Run:` — the
++# driver hands that command the sha — so a `Test:` file that reaches for the
++# env var, or that freezes a commit sha of the checkout, is naming a Run:'s job
++# inside the suite.
++#
++# An ADVISORY, never a refusal: the same 40-hex shape is used lawfully (the
++# frozen pre-edit literal the skill teaches is a full sha fetched `--depth=1`),
++# so this render names the shape and the reader decides. It reads the TREE, so
++# it is its own render rather than a PROOF_SPECIES entry — but it prints the
++# same `ADVISORY proof-species:` line every species prints, via _species_line.
++BASE_SHA_IN_SUITE = "base-sha-in-suite"
++BASE_SHA_IN_SUITE_ADVICE = "a BASE comparison is a Run:, never a committed exam"
++# Spelled as a concatenation so no file of this repo carries the whole word by
++# naming the render — a `Test:` file that did would draw a line on itself.
++BASE_SHA_TOKEN = "ULTRA_" + "BASE"
++# Whole word, so a `$` or a `process.env.` prefix still counts and a longer
++# name that merely starts with it (…BASELINE) does not.
++BASE_SHA_TOKEN_RE = re.compile(r"\b%s\b" % BASE_SHA_TOKEN)
++# A full sha and nothing shorter or longer: both bounds are closed against ANY
++# hex digit, so a 39- or 41-hex run matches at no position.
++BASE_SHA_HEX40_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-f]{40}(?![0-9a-fA-F])")
++
++
++def _resolves_as_commit(base, sha, cache):
++    """True when `sha` names a commit of the checkout at `base`. `rev-parse
++    --verify --quiet <sha>^{commit}` prints the peeled sha on a hit and nothing
++    on a miss — `cat-file -e` is silent either way, so it cannot be read through
++    _git, which returns '' for both outcomes."""
++    if sha not in cache:
++        cache[sha] = bool(_git(base, "rev-parse", "--verify", "--quiet",
++                               sha + "^{commit}").strip())
++    return cache[sha]
++
++
++def _test_paths_in_order(task):
++    """A task's `Test:` paths in DOCUMENT order, deduped by first occurrence.
++
++    `task["reads"]` is sorted and setted, which loses the order the Files block
++    declares; the verbatim `files_raw` pairs keep it. Every path is filtered
++    back through `reads`, so this never admits one the Files parser rejected."""
++    accepted = set(task.get("reads") or ())
++    out, seen = [], set()
++    for label, rest in task.get("files_raw", []):
++        if label != "Test":
++            continue
++        for path in (p.split(":")[0] for p in PATH_RE.findall(rest)):
++            if path in accepted and path not in seen:
++                seen.add(path)
++                out.append(path)
++    return out
++
++
++def _base_sha_findings(text, base, cache):
++    """One file's findings: `(sha, line)` for every DISTINCT resolving 40-hex
++    literal in first-occurrence order, then the first line reading the token
++    (None when it reads none). Shas before the token, per M2."""
++    shas, seen, token_line = [], set(), None
++    for n, line in enumerate(text.splitlines(), 1):
++        for m in BASE_SHA_HEX40_RE.finditer(line):
++            sha = m.group(0)
++            if sha in seen:
++                continue
++            seen.add(sha)
++            if _resolves_as_commit(base, sha, cache):
++                shas.append((sha, n))
++        if token_line is None and BASE_SHA_TOKEN_RE.search(line):
++            token_line = n
++    return shas, token_line
++
++
++def _render_base_sha_in_suite(tasks, ctx):
++    # Task order, then `Test:` order — a path named by two tasks draws a line
++    # for each, since each task owns its own exam.
++    base, tracked, cache = ctx["base"], ctx["tracked"], {}
++    lines = []
++    for t in tasks:
++        if not t.get("claims"):
++            continue  # legacy grammar: no claims-v1 task, no proof species
++        for path in _test_paths_in_order(t):
++            if path not in tracked:
++                continue  # an untracked or absent exam is no exam yet
++            try:
++                text = (base / path).read_text(errors="replace")
++            except OSError:
++                continue
++            shas, token_line = _base_sha_findings(text, base, cache)
++            for sha, n in shas:
++                lines.append(_species_line(
++                    BASE_SHA_IN_SUITE, t["id"],
++                    "%s freezes commit %s at line %d — %s"
++                    % (path, sha, n, BASE_SHA_IN_SUITE_ADVICE)))
++            if token_line is not None:
++                lines.append(_species_line(
++                    BASE_SHA_IN_SUITE, t["id"],
++                    "%s reads %s at line %d — %s"
++                    % (path, BASE_SHA_TOKEN, token_line,
++                       BASE_SHA_IN_SUITE_ADVICE)))
++    return lines
++
++
++ADVISORY_RENDERS.append((BASE_SHA_IN_SUITE, _render_base_sha_in_suite))
++
++
+ def main(argv=None):
+     ap = argparse.ArgumentParser()
+     ap.add_argument("plan", type=Path)
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index cde43673eb5686c7a9ec6046b89d4c7f7784e9c7..dfa2fe9173f15111f0f1f14672770517cb4374f2 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -19,9 +19,10 @@ derives it from a contract and an exam, against real code the plan never saw.
+ 
+ Above the first task: `**Grammar:** claims-v1` (absent, the compiler parses the legacy
+ grammar — that is the rollback path, not a choice), one `**Claim:**` line — the operator's
+-own do:/see: sentence about what they will see after the run, elicited and closed
+-`(elicited)` — then `**Goal:**`, `**Tech Stack:**`, the spec path, `## Global Constraints`,
+-and one `**Acceptance:**` line.
++own do:/see: sentence about what they will see after the run, closed `(elicited)` when they
++said it to you and `(quoted from #NNN)` when an issue already carries that sentence
++verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
++`## Global Constraints`, and one `**Acceptance:**` line.
+ 
+ Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
+ tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
+@@ -113,6 +114,11 @@ derivation.
+   written into the exam, or a full **40-hex sha** fetched with
+   `git fetch --depth=1 origin <sha>`, because `actions/checkout` leaves the clone at
+   depth 1 and a short or unfetched sha is not in it.
++  That frozen literal is the *only* lawful sha in an exam: a committed exam
++  **never reads ULTRA_BASE** and never **freezes a commit sha** of this repository, because
++  a BASE comparison is a `Run:` — the driver hands that command the sha, and a depth-1
++  clone holds no other commit to compare against. A `Test:` file that does either draws
++  `base-sha-in-suite`.
+ - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
+   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
+   is a refusal; an undecidable staleness test is inert prose.
+@@ -234,7 +240,7 @@ rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose
+ `default-unpinned`, `universal-as-count-floor`, `duration-without-clock`,
+ `suite-total-pin`, `directory-absence-pin`, `pinned-elsewhere`, `check-cost`,
+ `prose-check`, `wide-files`, `wide-contract`, `threshold-one-sided`,
+-`disjunct-without-leg`. Read each one
++`disjunct-without-leg`, `base-sha-in-suite`. Read each one
+ and repair the slot it points at *before* a reader is dispatched at that task: a reader
+ spending its one question on a species the compiler already named is a reader wasted.
+ 
+@@ -363,10 +369,10 @@ task-by-task from contract plus proof.
+ ## Self-review
+ 
+ - Every task carries all six slots, in order, none empty, and no checkbox steps.
+-- The plan carries one `**Claim:**` above the first task, elicited. Every task Claim is
+-  either the operator's words with a provenance tag or `(derived)` under the
+-  plan-level Claim, paired with a machine restatement at the same layer, and its gate
+-  verdict is recorded and fresh.
++- The plan carries one `**Claim:**` above the first task, elicited or quoted from an
++  issue. Every task Claim is either the operator's words with a provenance tag or
++  `(derived)` under the plan-level Claim, paired with a machine restatement at the same
++  layer, and its gate verdict is recorded and fresh.
+ - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
+   task's own writes; every fence sits in Proof.
+ - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
+diff --git a/skills/ultrawrite/scripts/check_provenance.py b/skills/ultrawrite/scripts/check_provenance.py
+index 8156c433882a577a1e34bb0886742fd0adb400f5..d0f543396a335347ef6a23f3d78ebb7ae2b56dbd 100755
+--- a/skills/ultrawrite/scripts/check_provenance.py
++++ b/skills/ultrawrite/scripts/check_provenance.py
+@@ -34,6 +34,7 @@ from compile_plan import (  # noqa: E402
+     CLAIM_PROVENANCE_RE,
+     parse_claims_body,
+     parse_plan_claim,
++    plan_claim_provenance,
+     plan_grammar,
+     split_tasks,
+ )
+@@ -88,6 +89,31 @@ def check_plan(md_text, gh):
+     failures, cache = [], {}
+     quotes = derived = anchors = 0
+     plan_claim = parse_plan_claim(md_text)
++    # The header Claim signs like a task Claim (#755): `(elicited)` costs no
++    # `gh` call, `(quoted from #NNN)` is string-matched against the issue body
++    # exactly as a task-level quote is. It is resolved BEFORE the task loop and
++    # through the same per-number cache, so a header and a task quoting the
++    # same issue cost one fetch between them, and the failure lines name it
++    # `plan-level claim` where a task's name `task <id> claim`.
++    plan_provenance = plan_claim_provenance(md_text) or ""
++    if plan_provenance.startswith("quoted:#"):
++        quotes += 1
++        number = plan_provenance.split("#", 1)[1]
++        body = issue_body(number, gh, cache)
++        sentence = fold(plan_claim or "")
++        if body is None:
++            failures.append("provenance: plan-level claim quotes #%s, which "
++                            "does not resolve" % number)
++        elif not sentence:
++            # The vacuous pass, as at task level: a header that is nothing but
++            # its tag strips to "", and "" is a substring of every body.
++            failures.append(
++                "provenance: plan-level claim quotes #%s with an empty "
++                "operator sentence — the Claim is nothing but its provenance "
++                "tag" % number)
++        elif sentence not in fold(body):
++            failures.append("provenance: plan-level claim is not verbatim in "
++                            "#%s" % number)
+     for task in split_tasks(md_text):
+         claims = parse_claims_body(task["body"], task["id"], plan_claim)
+         provenance = claims["claim_provenance"] or ""
+diff --git a/tests/test_check_provenance.py b/tests/test_check_provenance.py
+index 3662694f60c2bb848e1abf2e7465e591f6dd5fc9..7f1113cb9e34125c9118412b4c780b32bec9bd7e 100644
+--- a/tests/test_check_provenance.py
++++ b/tests/test_check_provenance.py
+@@ -245,3 +245,108 @@ def test_a_claim_with_no_recognizable_tag_is_a_provenance_failure(tmp_path):
+     proc = _run(plan, gh)
+     assert proc.returncode == 2
+     assert "no recognizable provenance tag" in proc.stderr + proc.stdout
++
++
++# ---------------------------------------------------------------------------
++# #755 Task 1 — a plan-level Claim tagged `(quoted from #NNN)` is string-matched
++# against the issue body exactly as a task-level one is: same fold, same two
++# failure lines, same per-number fetch cache.
++# ---------------------------------------------------------------------------
++
++# The operator's header sentence, in the plan's wrap...
++PLAN_CLAIM_WRAPPED = (
++    "After this run I can hand the catalog a list of sizes and see one\n"
++    "widget back per size.")
++# ... and in issue #1's, which breaks at a different column and carries a run of
++# spaces where the plan has one. Folding is what makes these the same words.
++ISSUE_1 = (
++    "### What we want\n"
++    "\n"
++    "After this run I can hand the catalog a list of sizes\n"
++    "and see one widget    back per size.\n"
++    "\n"
++    "An operator asks for a widget of a given size and gets one.\n"
++    "\n"
++    "Filed after the 2026-08 corpus review.\n"
++)
++# Every word of the header sentence but one: `one` is gone before `widget`.
++ISSUE_1_A_WORD_SHORT = ISSUE_1.replace("and see one widget", "and see widget")
++TASK_SENTENCE = "An operator asks for a widget of a given size and gets one."
++SPEC_ANCHOR = ("spec `docs/superpowers/specs/"
++               "2026-08-31-owned-authoring-skill.md` §3")
++
++
++def _plan_with_header(tmp_path, header_claim, *tasks):
++    """A claims-v1 plan whose header carries a `**Claim:**` line — the shape
++    `HEADER` above deliberately lacks."""
++    path = tmp_path / "plan.md"
++    path.write_text(
++        "# Plan: Widget Kit\n"
++        "\n"
++        "**Grammar:** claims-v1\n"
++        "\n"
++        "**Claim:** " + header_claim + "\n"
++        "\n"
++        "**Acceptance:** waived — inline test plan\n"
++        "\n"
++        "---\n"
++        "\n" + "\n".join(tasks), encoding="utf-8")
++    return path
++
++
++def test_755_a_quoted_plan_level_claim_resolves_and_is_counted(tmp_path):
++    # [M3] leg (c): the header quotes #1 and so does task 1. The rewrapped body
++    # still matches (a script that compares the raw unfolded text fails here),
++    # the success line counts the header among the quotes, and the number is
++    # fetched ONCE, with exactly the documented argv — a script that resolves
++    # the header separately, or with other arguments, fails on the log.
++    plan = _plan_with_header(
++        tmp_path, PLAN_CLAIM_WRAPPED + " (quoted from #1)",
++        _task("1", TASK_SENTENCE + " (quoted from #1)", "#1"))
++    gh, log = _fake_gh(tmp_path, {"1": ISSUE_1})
++    proc = _run(plan, gh)
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert proc.stdout == "provenance: ok — 2 claim quotes and 1 anchor resolve\n"
++    assert _invocations(log) == ["issue view 1 --json body -q .body"]
++
++
++def test_755_a_plan_level_claim_that_is_not_verbatim_refuses(tmp_path):
++    # [M4] leg (d): one word short of the header sentence. The line names the
++    # plan level, not a task — a script that resolves the header through the
++    # task loop reports it as `task 1` and fails this match.
++    plan = _plan_with_header(
++        tmp_path, PLAN_CLAIM_WRAPPED + " (quoted from #1)",
++        _task("1", TASK_SENTENCE + " (elicited)", SPEC_ANCHOR))
++    gh, _log = _fake_gh(tmp_path, {"1": ISSUE_1_A_WORD_SHORT})
++    proc = _run(plan, gh)
++    assert proc.returncode == 2, proc.stdout + proc.stderr
++    assert proc.stdout.splitlines() == [
++        "provenance: plan-level claim is not verbatim in #1"]
++
++
++def test_755_a_plan_level_claim_quoting_an_unresolvable_issue_refuses(tmp_path):
++    # [M4] leg (d): the fake `gh` exits 3 on #7, so the header's issue does not
++    # resolve — the plan-level twin of the task-level line.
++    plan = _plan_with_header(
++        tmp_path, PLAN_CLAIM_WRAPPED + " (quoted from #7)",
++        _task("1", TASK_SENTENCE + " (elicited)", SPEC_ANCHOR))
++    gh, _log = _fake_gh(tmp_path, {"1": ISSUE_1})
++    proc = _run(plan, gh)
++    assert proc.returncode == 2, proc.stdout + proc.stderr
++    assert proc.stdout.splitlines() == [
++        "provenance: plan-level claim quotes #7, which does not resolve"]
++
++
++def test_755_an_elicited_plan_level_claim_costs_no_gh_invocation(tmp_path):
++    # [M4] leg (d): as at BASE — an elicited header has no issue behind it, so
++    # the log is empty and the counts are the ones this plan earned.
++    plan = _plan_with_header(
++        tmp_path,
++        "After this run I can hand the catalog a list of sizes and see one "
++        "widget back per size. (elicited)",
++        _task("1", TASK_SENTENCE + " (elicited)", SPEC_ANCHOR))
++    gh, log = _fake_gh(tmp_path, {"1": ISSUE_1})
++    proc = _run(plan, gh)
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert proc.stdout == "provenance: ok — 0 claim quotes and 0 anchors resolve\n"
++    assert _invocations(log) == []
+diff --git a/tests/test_compile_plan_base_sha_in_suite.py b/tests/test_compile_plan_base_sha_in_suite.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e5f94b6f71bf824c792d408e2cfaa2588b43639
+--- /dev/null
++++ b/tests/test_compile_plan_base_sha_in_suite.py
+@@ -0,0 +1,641 @@
++"""A committed exam that compares against BASE is named before a reader is sent.
++
++A new `proof-species` render, `base-sha-in-suite`, reads each claims-v1 task's
++Proof `Test:` paths that are TRACKED files of the `--base` checkout and names
++two shapes inside them: the BASE environment-variable token, and a 40-hex
++literal that resolves as a commit of that same checkout. Both are the run-35
++shape — a `Run:`-assigned BASE comparison smuggled into a committed test file —
++and both are advisories, never refusals, because the same 40-hex shape is used
++lawfully as a frozen pre-edit literal and the reader decides.
++
++This exam pins the five Machine clauses leg by leg:
++
++  M1 / legs (a), (b) — under `--check --renders --base <checkout>`, for each
++    claims-v1 task and each of its `Test:` paths tracked at `--base`, in task
++    order then `Test:` order, one line per file that contains the token as a
++    WHOLE WORD, naming its FIRST occurrence's 1-based line number:
++
++      `ADVISORY proof-species: base-sha-in-suite — task <id>: <path> reads
++      <token> at line <L> — a BASE comparison is a Run:, never a committed exam`
++
++  M2 / legs (c), (d), (e) — for the same files, one line per DISTINCT 40-hex
++    literal that resolves as a commit of the checkout, in first-occurrence
++    order, each at its own first line:
++
++      `ADVISORY proof-species: base-sha-in-suite — task <id>: <path> freezes
++      commit <sha> at line <L> — a BASE comparison is a Run:, never a committed
++      exam`
++
++    and when one file carries both, its sha line prints before its token line.
++  M3 / leg (f) — silence for: a 40-hex literal naming no commit of the
++    checkout; a 39- or 41-hex run; the token or a resolving sha in a `Modify:`
++    file, in a `Run:` command, or in a Global Constraints `- Check:`; a `Test:`
++    path that is not tracked (untracked on disk, or absent); a legacy-grammar
++    plan; and `--check` without `--renders`.
++  M4 / leg (g) — the render changes no exit code: the plan that draws both
++    lines still prints `PLAN OK` as its first stdout line and exits 0, under
++    bare `--check` and under `--check --renders` alike.
++  M5 / leg (h) — `skills/ultrawrite/SKILL.md` names the species in its
++    `ADVISORY proof-species:` list paragraph, and its **Proof** slot bullet
++    carries `never reads <token>`, then `freezes a commit sha`, then `BASE
++    comparison is a` followed by the `Run:` marker, in that order. The two
++    Proof `Run:` commands are re-run verbatim from here.
++
++Two house rules of this file, both from the plan's Global Constraints:
++
++* it never writes the BASE env-var token as one word in its own source — the
++  token it plants is built by concatenation (`TOKEN`), so this file, once
++  tracked, draws no line on itself;
++* it freezes no commit sha of THIS repository. Every sha it asserts belongs to
++  the throwaway checkout it builds and commits itself (the `_repo` shape of
++  `tests/test_compile_plan_pinned_elsewhere.py`), read back with
++  `git rev-parse HEAD`. Legs (c) and (e) freeze the sha that was HEAD when the
++  probes were written; leg (d) needs two shas whose first-occurrence order is
++  NOT their sorted order, so it plants the lexicographic MAX of the checkout's
++  earlier commits first and the MIN second — a render that sorts shas swaps
++  them and fails, whatever the random shas turn out to be.
++
++Every fixture plan is a signed claims-v1 plan (spec §4.5), and `_rendered`
++asserts the fixture's own health — exit 0, `PLAN OK` first — before reading the
++species lines off it, so a broken fixture never reads as a missing species.
++"""
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
++SKILL = "skills/ultrawrite/SKILL.md"
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++import compile_plan  # noqa: E402
++
++SPECIES = "base-sha-in-suite"
++SPECIES_PREFIX = "ADVISORY proof-species: "
++PREFIX = SPECIES_PREFIX + SPECIES
++
++# The env-var name the render matches as a WHOLE WORD, built by concatenation
++# so this file carries no whole-word occurrence of it (see the module docstring).
++TOKEN = "ULTRA_" + "BASE"
++# The near-token M1's word boundary excludes: the token with `LINE` glued on.
++NEAR_TOKEN = TOKEN + "LINE"
++# The advice half both lines end with, verbatim from M1 and M2.
++ADVICE = "a BASE comparison is a Run:, never a committed exam"
++
++
++def token_line(task_id, path, line):
++    """M1's line, verbatim, with the path and 1-based line number filled in."""
++    return ("ADVISORY proof-species: base-sha-in-suite — task %s: %s reads %s "
++            "at line %d — %s" % (task_id, path, TOKEN, line, ADVICE))
++
++
++def sha_line(task_id, path, sha, line):
++    """M2's line, verbatim, with the path, full 40-hex sha and line filled in."""
++    return ("ADVISORY proof-species: base-sha-in-suite — task %s: %s freezes "
++            "commit %s at line %d — %s" % (task_id, path, sha, line, ADVICE))
++
++
++# --------------------------------------------------------------------------- #
++# The probe files the checkout tracks                                          #
++# --------------------------------------------------------------------------- #
++PROBE_A = "tests/test_probe_a.py"          # token at lines 2 and 4
++PROBE_Z = "tests/test_probe_z.py"          # token at line 5; sorts AFTER PROBE_A
++PROBE_FORTY_A = "tests/test_forty_a.py"    # forty `a`s: 40-hex, no commit
++PROBE_NEAR_HEX = "tests/test_near_hex.py"  # a 39-hex run and a 41-hex run
++PROBE_CLEAN = "tests/test_clean.py"        # neither shape
++PROBE_SHA_ONE = "tests/test_sha_one.py"    # one resolving sha, at line 3
++PROBE_SHA_TWO = "tests/test_sha_two.py"    # shas at lines 3, 6 and a repeat at 8
++PROBE_SHA_TOKEN = "tests/test_sha_then_token.py"  # sha at line 1, token at line 2
++PROBE_UNTRACKED = "tests/test_untracked.py"  # on disk, never added
++PROBE_ABSENT = "tests/test_absent.py"        # never written
++MODIFY_ONLY = "app/mod_probe.py"           # a resolving sha AND the token
++
++
++def _body(*rows):
++    """A file whose i-th row is exactly its line i (1-based)."""
++    return "".join(row + "\n" for row in rows)
++
++
++def _git(repo, *args):
++    return subprocess.run(["git", "-C", str(repo), *args],
++                          capture_output=True, text=True, check=True).stdout
++
++
++def _commit(repo, message):
++    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
++    subprocess.run(["git", "-c", "user.email=exam@example.invalid",
++                    "-c", "user.name=exam", "commit", "-qm", message],
++                   cwd=repo, check=True)
++    return _git(repo, "rev-parse", "HEAD").strip()
++
++
++def _write(repo, rel, text):
++    f = repo / rel
++    f.parent.mkdir(parents=True, exist_ok=True)
++    f.write_text(text)
++
++
++class Checkout:
++    """The throwaway git checkout `--base` names, plus the shas it froze."""
++
++    def __init__(self, path, head, hi, lo):
++        self.path = path
++        self.head = head    # HEAD when the sha probes were written (legs c, e)
++        self.hi = hi        # leg (d): planted FIRST, sorts LAST
++        self.lo = lo        # leg (d): planted SECOND, sorts FIRST
++
++
++@pytest.fixture(scope="module")
++def repo(tmp_path_factory):
++    r = tmp_path_factory.mktemp("base_sha_repo")
++    subprocess.run(["git", "init", "-q"], cwd=r, check=True)
++    _write(r, "README.md", "# base\n")
++    # Line 1 carries the near-token only; the token itself first appears on
++    # line 2 and again on line 4 [M1, leg (a)].
++    _write(r, PROBE_A, _body("# near: %s is not the token" % NEAR_TOKEN,
++                             'base = "%s"' % TOKEN,
++                             "filler = 1",
++                             'again = "%s"' % TOKEN))
++    # Its first (and only) token line is 5, and its path sorts after PROBE_A's
++    # — leg (b)'s discriminator between `Test:` order and path order.
++    _write(r, PROBE_Z, _body("# probe z", "# filler", "# filler", "# filler",
++                             'base = "%s"' % TOKEN))
++    _write(r, PROBE_FORTY_A, _body("# a 40-hex literal naming no commit",
++                                   'sha = "%s"' % ("a" * 40)))
++    _write(r, PROBE_CLEAN, _body("# neither shape", "def test_clean(): pass"))
++    shas = [_commit(r, "probes")]
++    # Two more commits, so leg (d) has three shas to choose its max and min
++    # from and the planted order can be made the reverse of the sorted order.
++    for i, name in enumerate(("notes/one.txt", "notes/two.txt")):
++        _write(r, name, "filler %d\n" % i)
++        shas.append(_commit(r, "filler %d" % i))
++    head, hi, lo = shas[-1], max(shas), min(shas)
++    # A 39-hex run and a 41-hex run, neither of which is a 40-hex literal [M3].
++    _write(r, PROBE_NEAR_HEX, _body("# one hex digit removed",
++                                    'short = "%s"' % head[:-1],
++                                    "# one hex digit appended",
++                                    'long = "%s0"' % head))
++    _write(r, PROBE_SHA_ONE, _body("# one resolving sha", "# filler",
++                                   'sha = "%s"' % head))
++    _write(r, PROBE_SHA_TWO, _body("# two resolving shas", "# filler",
++                                   'first = "%s"' % hi,
++                                   "# filler", "# filler",
++                                   'second = "%s"' % lo,
++                                   "# filler",
++                                   'repeat = "%s"' % hi))
++    _write(r, PROBE_SHA_TOKEN, _body('sha = "%s"' % head,
++                                     'base = "%s"' % TOKEN))
++    _write(r, MODIFY_ONLY, _body('sha = "%s"' % head, 'base = "%s"' % TOKEN))
++    _commit(r, "sha probes")
++    # Written AFTER the last commit: on disk, tracked by nothing [M3, leg (f)].
++    _write(r, PROBE_UNTRACKED, _body("# untracked", 'base = "%s"' % TOKEN))
++    return Checkout(r, head, hi, lo)
++
++
++def test_the_checkouts_two_leg_d_shas_are_planted_against_their_sorted_order(repo):
++    """Leg (d) only discriminates a sha-sorting render when the sha planted
++    first sorts last — this file's fixture guarantees that, so the leg is not
++    at the mercy of two random shas."""
++    assert repo.hi > repo.lo, (
++        "leg (d) [M2] fixture: the sha planted at line 3 must sort AFTER the "
++        "one planted at line 6, so first-occurrence order and sorted order "
++        "disagree; got hi=%s lo=%s" % (repo.hi, repo.lo))
++
++
++# --------------------------------------------------------------------------- #
++# The fixture plans                                                            #
++# --------------------------------------------------------------------------- #
++HEADER = ("# Plan: A committed exam that compares against BASE is named\n"
++          "\n"
++          "**Grammar:** claims-v1\n"
++          "\n"
++          "**Acceptance:** waived — inline test plan\n"
++          "\n")
++
++MACHINE = "M1. The probe reports `ready`."
++LEGS = "- Legs: (a) the probe reports it [M1]."
++PROSE_BULLET = "- The suite is green."
++
++
++def _task(task_id, files, proof):
++    """One claims-v1 task carrying all six slots. `files` is the Files-block
++    bullet lines and `proof` the Proof-slot bullet lines, each without its
++    trailing newline. Every probe is named in BOTH blocks where it is a
++    `Test:` path, so the render may read either view — but only the Proof's
++    `Test:` bullets carry document order, which leg (b) turns on."""
++    return ("### Task %s: Sample %s\n"
++            "\n"
++            "**Type:** implementation\n"
++            "\n"
++            "**Files:**\n"
++            "%s"
++            "\n"
++            "**Claim:** An operator sees a committed exam that compares "
++            "against BASE. (quoted from #730)\n"
++            "Machine: %s\n"
++            "\n"
++            "**Authorized-by:** #730\n"
++            "\n"
++            "**Interfaces:**\n"
++            "- Consumes: nothing\n"
++            "- Produces: `probe_%s(n: int) -> str`\n"
++            "\n"
++            "**Context:** The repo has no render of this species yet, so no "
++            "plan is read this way today.\n"
++            "\n"
++            "**Proof:**\n"
++            "%s"
++            "\n"
++            "**Stale-if:**\n"
++            "- issue-closed: #730\n"
++            % (task_id, task_id, "".join(l + "\n" for l in files), MACHINE,
++               task_id, "".join(l + "\n" for l in proof)))
++
++
++def _exam_task(task_id, *tests, modify=None):
++    """A task whose Proof names `tests` as `Test:` bullets IN ORDER."""
++    impl = modify or "app/impl_%s.py" % task_id
++    return _task(task_id,
++                 ["- Modify: `%s`" % impl]
++                 + ["- Test: `%s`" % t for t in tests],
++                 ["- Test: `%s`" % t for t in tests] + [LEGS])
++
++
++def _plan(*tasks, checks=()):
++    section = ""
++    if checks:
++        section = ("## Global Constraints\n\n"
++                   + "\n".join([PROSE_BULLET]
++                               + ["- Check: " + c for c in checks])
++                   + "\n\n")
++    return HEADER + section + "\n".join(tasks)
++
++
++def _legacy_plan(*tests):
++    """A legacy-grammar plan (no `**Grammar:**` line) naming the same probe
++    files under `Test:`: a legacy task carries no `claims`, so M3 is silent."""
++    return ("# Plan: Legacy\n"
++            "\n"
++            "**Acceptance:** waived — inline test plan\n"
++            "\n"
++            "### Task 1: Legacy sample\n"
++            "\n"
++            "**Type:** implementation\n"
++            "**Depends-on:** none\n"
++            "\n"
++            "**Files:**\n"
++            "- Create: `app/legacy.py`\n"
++            + "".join("- Test: `%s`\n" % t for t in tests)
++            + "\n"
++            "- [ ] **Step 1:** write the probe.\n")
++
++
++# Leg (a): the same tracked probe under task 1's `Test:` and again under
++# task 2's — one line per (task, path), task 1's first.
++PLAN_TWO_TASKS = _plan(_exam_task("1", PROBE_A), _exam_task("2", PROBE_A))
++# Leg (b): one task, two probes, the line-5 probe named FIRST though its path
++# sorts second.
++PLAN_TEST_ORDER = _plan(_exam_task("1", PROBE_Z, PROBE_A))
++# Legs (c), (d), (e).
++PLAN_SHA_ONE = _plan(_exam_task("1", PROBE_SHA_ONE))
++PLAN_SHA_TWO = _plan(_exam_task("1", PROBE_SHA_TWO))
++PLAN_SHA_TOKEN = _plan(_exam_task("1", PROBE_SHA_TOKEN))
++# Leg (f)'s silent rows.
++PLAN_FORTY_A = _plan(_exam_task("1", PROBE_FORTY_A))
++PLAN_NEAR_HEX = _plan(_exam_task("1", PROBE_NEAR_HEX))
++PLAN_MODIFY_ONLY = _plan(_exam_task("1", PROBE_CLEAN, modify=MODIFY_ONLY))
++PLAN_UNTRACKED = _plan(_exam_task("1", PROBE_UNTRACKED))
++PLAN_ABSENT = _plan(_exam_task("1", PROBE_ABSENT))
++LEGACY_PLAN = _legacy_plan(PROBE_A, PROBE_SHA_TWO)
++
++
++def _run_and_check_plan(sha):
++    """Leg (f): the sha rides in a `Run:` command and the token in a Global
++    Constraints `- Check:`; the only `Test:` file carries neither."""
++    task = _task("1",
++                 ["- Modify: `app/impl_1.py`", "- Test: `%s`" % PROBE_CLEAN],
++                 ["- Run: git diff --stat %s -- app/impl_1.py" % sha,
++                  "- Test: `%s`" % PROBE_CLEAN,
++                  LEGS])
++    return _plan(task, checks=["bash -c 'test -n \"$%s\"'" % TOKEN])
++
++
++# --------------------------------------------------------------------------- #
++# Running the compiler                                                         #
++# --------------------------------------------------------------------------- #
++def _write_plan(tmp_path, text, name="plan.md"):
++    p = tmp_path / name
++    p.write_text(text)
++    return p
++
++
++def _sign(plan):
++    """Stamp an all-pass gate-verdict record beside a claims-v1 plan — the
++    compiler refuses to compile one without (spec §4.5)."""
++    record = {"tasks": {}, "tally": {"dispatched": 0, "rejected": 0}}
++    for t in compile_plan.split_tasks(plan.read_text()):
++        claims = compile_plan.parse_claims_body(t["body"], t["id"])
++        record["tasks"][t["id"]] = {
++            "hash": compile_plan.gate_input_hash(claims["claim"],
++                                                 claims["proof"]),
++            "verdict": "pass", "reason": "layer match"}
++        record["tally"]["dispatched"] += 1
++    compile_plan.verdicts_path(plan).write_text(
++        json.dumps(record, indent=2) + "\n")
++    return plan
++
++
++def _check(tmp_path, text, *extra, name="plan.md"):
++    plan = _write_plan(tmp_path, text, name)
++    if "**Grammar:** claims-v1" in text:
++        _sign(plan)
++    return subprocess.run(
++        [sys.executable, str(COMPILER), "--check", str(plan), *extra],
++        capture_output=True, text=True, cwd=str(ROOT))
++
++
++def _rendered(tmp_path, base, text, name="plan.md"):
++    """`--check --renders --base` on a signed fixture plan: its stdout, with
++    the fixture's own health asserted first so a broken fixture never reads as
++    a missing species line."""
++    p = _check(tmp_path, text, "--renders", "--base", str(base), name=name)
++    assert (p.returncode, p.stdout.splitlines()[:1]) == (0, ["PLAN OK"]), (
++        "fixture plan %s must compile clean before its species are read; "
++        "got rc=%d\n%s%s" % (name, p.returncode, p.stdout, p.stderr))
++    return p.stdout
++
++
++def _species(stdout):
++    """Every `base-sha-in-suite` line of a render run, in print order."""
++    return [l for l in stdout.splitlines() if l.startswith(PREFIX)]
++
++
++def _lines(tmp_path, base, text, name="plan.md"):
++    return _species(_rendered(tmp_path, base, text, name))
++
++
++# --------------------------------------------------------------------------- #
++# The Produces contract                                                        #
++# --------------------------------------------------------------------------- #
++def test_the_render_is_registered_under_its_species_name():
++    """Produces: `_render_base_sha_in_suite(tasks, ctx) -> list[str]`,
++    registered with its own `ADVISORY_RENDERS.append` entry."""
++    fn = getattr(compile_plan, "_render_base_sha_in_suite", None)
++    assert callable(fn), (
++        "Produces: `_render_base_sha_in_suite(tasks, ctx) -> list[str]` must "
++        "be defined in compile_plan.py")
++    assert (SPECIES, fn) in compile_plan.ADVISORY_RENDERS, (
++        "the render registers itself with its own "
++        '`ADVISORY_RENDERS.append(("%s", _render_base_sha_in_suite))`; the '
++        "registry holds %r" % (SPECIES,
++                               [name for name, _ in compile_plan.ADVISORY_RENDERS]))
++
++
++# --------------------------------------------------------------------------- #
++# (a) [M1] the token line, its verbatim shape, its first line number, and one  #
++#     line per (task, Test: path) in task order                                #
++# --------------------------------------------------------------------------- #
++def test_a_token_in_a_tracked_test_file_draws_one_line_per_task_in_task_order(
++        tmp_path, repo):
++    lines = _lines(tmp_path, repo.path, PLAN_TWO_TASKS)
++    expected = [token_line("1", PROBE_A, 2), token_line("2", PROBE_A, 2)]
++    assert lines == expected, (
++        "leg (a) [M1]: `%s` carries the near-token at line 1, the token at "
++        "line 2 and again at line 4, and is named under task 1's `Test:` and "
++        "task 2's — exactly two lines, task 1's first, each naming line 2. A "
++        "substring match reports line 1, a last-occurrence match reports line "
++        "4, a per-occurrence render prints four lines, and a per-plan render "
++        "prints one.\ngot:\n%s\nwanted:\n%s"
++        % (PROBE_A, "\n".join(lines), "\n".join(expected)))
++
++
++def test_the_token_line_names_the_first_occurrence_line_number(tmp_path, repo):
++    """[M1]: `<L>` is the token's FIRST line, 1-based — asserted on its own so
++    a wrong line number is not read as a missing line."""
++    lines = _lines(tmp_path, repo.path, PLAN_TWO_TASKS)
++    assert [l.rsplit(" at line ", 1)[-1] for l in lines] == \
++        ["2 — %s" % ADVICE, "2 — %s" % ADVICE], (
++        "leg (a) [M1]: the token's first line in `%s` is 2 (line 1 holds the "
++        "near-token, line 4 a second occurrence). Got:\n%s"
++        % (PROBE_A, "\n".join(lines)))
++
++
++def test_the_near_token_alone_draws_nothing(tmp_path, repo):
++    """[M1]: the match is whole-word, so the near-token on line 1 is not a
++    hit — if it were, leg (a)'s line would name line 1."""
++    lines = _lines(tmp_path, repo.path, PLAN_TWO_TASKS)
++    assert all(" at line 1 " not in l for l in lines), (
++        "leg (a) [M1]: `%s` is not the token — a whole-word match skips line "
++        "1 of `%s`. Got:\n%s" % (NEAR_TOKEN, PROBE_A, "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (b) [M1] two Test: paths of one task print in Test: order, not path order    #
++# --------------------------------------------------------------------------- #
++def test_b_two_test_paths_of_one_task_print_in_test_order(tmp_path, repo):
++    lines = _lines(tmp_path, repo.path, PLAN_TEST_ORDER)
++    expected = [token_line("1", PROBE_Z, 5), token_line("1", PROBE_A, 2)]
++    assert lines == expected, (
++        "leg (b) [M1]: task 1's `Test:` names `%s` (token at line 5) before "
++        "`%s` (token at line 2), so the line-5 probe prints first and each "
++        "line carries its own line number. A render that sorts by path prints "
++        "them the other way round; one that reports the first token line for "
++        "both prints line 2 twice.\ngot:\n%s\nwanted:\n%s"
++        % (PROBE_Z, PROBE_A, "\n".join(lines), "\n".join(expected)))
++
++
++def test_b_the_two_probes_sort_the_other_way_round():
++    """The fixture's own discriminator: `Test:` order and path order disagree,
++    so leg (b) can tell them apart."""
++    assert PROBE_A < PROBE_Z, (
++        "leg (b) [M1] fixture: the probe named SECOND under `Test:` must sort "
++        "FIRST by path")
++
++
++# --------------------------------------------------------------------------- #
++# (c) [M2] one resolving sha draws one line, full sha, with its line number    #
++# --------------------------------------------------------------------------- #
++def test_c_a_resolving_sha_in_a_tracked_test_file_draws_one_line(
++        tmp_path, repo):
++    lines = _lines(tmp_path, repo.path, PLAN_SHA_ONE)
++    expected = [sha_line("1", PROBE_SHA_ONE, repo.head, 3)]
++    assert lines == expected, (
++        "leg (c) [M2]: `%s` freezes a commit of the `--base` checkout at its "
++        "line 3 — exactly one line, carrying the FULL 40-hex sha and the line "
++        "number. An abbreviated sha, or a line with no line number, fails."
++        "\ngot:\n%s\nwanted:\n%s"
++        % (PROBE_SHA_ONE, "\n".join(lines), "\n".join(expected)))
++
++
++# --------------------------------------------------------------------------- #
++# (d) [M2] distinct shas, first-occurrence order, a repeat drawing no line     #
++# --------------------------------------------------------------------------- #
++def test_d_two_distinct_shas_print_in_first_occurrence_order(tmp_path, repo):
++    lines = _lines(tmp_path, repo.path, PLAN_SHA_TWO)
++    expected = [sha_line("1", PROBE_SHA_TWO, repo.hi, 3),
++                sha_line("1", PROBE_SHA_TWO, repo.lo, 6)]
++    assert lines == expected, (
++        "leg (d) [M2]: `%s` carries one commit sha at line 3, a second at "
++        "line 6 and the first again at line 8 — exactly two lines, line 3's "
++        "sha then line 6's. A per-occurrence render prints three; a render "
++        "that sorts shas prints line 6's first (its sha sorts lower)."
++        "\ngot:\n%s\nwanted:\n%s"
++        % (PROBE_SHA_TWO, "\n".join(lines), "\n".join(expected)))
++
++
++def test_d_a_repeated_sha_draws_no_third_line(tmp_path, repo):
++    """[M2]: DISTINCT literals — the line-8 repeat of line 3's sha is not a
++    third finding, asserted on its own count."""
++    lines = _lines(tmp_path, repo.path, PLAN_SHA_TWO)
++    assert len(lines) == 2 and not any(" at line 8 " in l for l in lines), (
++        "leg (d) [M2]: the repeat at line 8 of `%s` draws no third line. "
++        "Got:\n%s" % (PROBE_SHA_TWO, "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (e) [M2] one file carrying both: the sha line before the token line          #
++# --------------------------------------------------------------------------- #
++def test_e_the_sha_line_prints_before_the_token_line(tmp_path, repo):
++    lines = _lines(tmp_path, repo.path, PLAN_SHA_TOKEN)
++    expected = [sha_line("1", PROBE_SHA_TOKEN, repo.head, 1),
++                token_line("1", PROBE_SHA_TOKEN, 2)]
++    assert lines == expected, (
++        "leg (e) [M2]: `%s` freezes a commit sha at its line 1 and reads the "
++        "token at its line 2 — two lines, the sha line first. A render that "
++        "prints the token line first, or one line per file instead of one per "
++        "finding, fails.\ngot:\n%s\nwanted:\n%s"
++        % (PROBE_SHA_TOKEN, "\n".join(lines), "\n".join(expected)))
++
++
++# --------------------------------------------------------------------------- #
++# (f) [M3] the silent rows                                                     #
++# --------------------------------------------------------------------------- #
++def test_f_forty_hex_characters_naming_no_commit_are_silent(tmp_path, repo):
++    assert _lines(tmp_path, repo.path, PLAN_FORTY_A) == [], (
++        "leg (f) [M3]: `%s` carries forty `a`s — a 40-hex literal that names "
++        "no commit of the checkout draws nothing" % PROBE_FORTY_A)
++
++
++def test_f_a_thirty_nine_and_a_forty_one_hex_run_are_silent(tmp_path, repo):
++    assert _lines(tmp_path, repo.path, PLAN_NEAR_HEX) == [], (
++        "leg (f) [M3]: `%s` carries the checkout's sha with one hex digit "
++        "removed and again with one appended — neither is a 40-hex literal, "
++        "so both bounds are closed" % PROBE_NEAR_HEX)
++
++
++def test_f_a_modify_only_file_carrying_both_shapes_is_silent(tmp_path, repo):
++    assert _lines(tmp_path, repo.path, PLAN_MODIFY_ONLY) == [], (
++        "leg (f) [M3]: `%s` carries a resolving sha AND the token, but is "
++        "named under `Modify:`, never `Test:` — the render reads a task's "
++        "`Test:` paths only" % MODIFY_ONLY)
++
++
++def test_f_a_sha_in_a_run_and_the_token_in_a_check_are_silent(tmp_path, repo):
++    text = _run_and_check_plan(repo.head)
++    assert _lines(tmp_path, repo.path, text) == [], (
++        "leg (f) [M3]: a resolving sha inside a `Run:` command and the token "
++        "inside a Global Constraints `- Check:` draw nothing — the render "
++        "reads `Test:` FILES, not plan text")
++
++
++def test_f_an_untracked_test_path_is_silent(tmp_path, repo):
++    assert _lines(tmp_path, repo.path, PLAN_UNTRACKED) == [], (
++        "leg (f) [M3]: `%s` exists on disk under the checkout and reads the "
++        "token, but is untracked — only a tracked file is read" % PROBE_UNTRACKED)
++
++
++def test_f_the_untracked_probe_really_is_on_disk_and_untracked(repo):
++    """The fixture's own discriminator: the untracked row is about tracking,
++    not about a missing file."""
++    assert (repo.path / PROBE_UNTRACKED).exists(), (
++        "leg (f) [M3] fixture: `%s` must exist on disk" % PROBE_UNTRACKED)
++    assert PROBE_UNTRACKED not in _git(repo.path, "ls-files").split(), (
++        "leg (f) [M3] fixture: `%s` must be untracked" % PROBE_UNTRACKED)
++
++
++def test_f_a_test_path_that_does_not_exist_is_silent(tmp_path, repo):
++    assert not (repo.path / PROBE_ABSENT).exists()
++    assert _lines(tmp_path, repo.path, PLAN_ABSENT) == [], (
++        "leg (f) [M3]: `%s` is named under `Test:` and is not a file of the "
++        "checkout at all — the render is silent, not an error" % PROBE_ABSENT)
++
++
++def test_f_a_legacy_grammar_plan_over_the_same_probes_is_silent(
++        tmp_path, repo):
++    assert _lines(tmp_path, repo.path, LEGACY_PLAN, name="legacy.md") == [], (
++        "leg (f) [M3]: the same probe files under a legacy-grammar plan's "
++        "`Test:` bullets draw nothing — a legacy task carries no claims-v1 "
++        "Proof, and the render reads claims-v1 tasks")
++
++
++def test_f_bare_check_prints_no_line_of_this_species(tmp_path, repo):
++    p = _check(tmp_path, PLAN_SHA_TOKEN)
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert [l for l in p.stdout.splitlines() if SPECIES in l] == [], (
++        "leg (f) [M3]: the plan that draws both lines under `--renders` "
++        "prints no line containing `%s` under bare `--check` — the render "
++        "rides behind the flag. Got:\n%s" % (SPECIES, p.stdout))
++
++
++# --------------------------------------------------------------------------- #
++# (g) [M4] the render changes no exit code and prints after the verdict        #
++# --------------------------------------------------------------------------- #
++@pytest.mark.parametrize("flags", [(), ("--renders",)],
++                         ids=["bare-check", "renders"])
++def test_g_the_plan_drawing_both_lines_still_exits_0_with_plan_ok_first(
++        tmp_path, repo, flags):
++    extra = flags + (("--base", str(repo.path)) if flags else ())
++    p = _check(tmp_path, PLAN_SHA_TOKEN, *extra)
++    assert (p.returncode, p.stdout.splitlines()[:1]) == (0, ["PLAN OK"]), (
++        "leg (g) [M4]: the plan whose `Test:` file carries both shapes exits "
++        "0 with `PLAN OK` as its first stdout line, with and without "
++        "`--renders` — a render that raises, or that prints before the "
++        "verdict, fails one of the two. rc=%d\n%s%s"
++        % (p.returncode, p.stdout, p.stderr))
++
++
++def test_g_the_renders_run_really_did_draw_the_two_lines(tmp_path, repo):
++    """[M4]: the exit-code leg is only evidence when the lines were drawn."""
++    assert len(_lines(tmp_path, repo.path, PLAN_SHA_TOKEN)) == 2, (
++        "leg (g) [M4]: the `--renders` half of the leg must be the plan that "
++        "draws both lines")
++
++
++# --------------------------------------------------------------------------- #
++# (h) [M5] the skill names the species and its Proof slot carries the sentence #
++# --------------------------------------------------------------------------- #
++SPECIES_LIST_RUN = (
++    'sed -n "/^The .ADVISORY proof-species:. lines/,/^$/p" ' + SKILL
++    + ' | tr "\\n" " " | grep -q "base-sha-in-suite"')
++PROOF_SLOT_RUN = (
++    'sed -n "/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p" ' + SKILL
++    + ' | tr "\\n" " " | grep -q "never reads ' + TOKEN
++    + '.*freezes a commit sha.*BASE comparison is a .*Run:"')
++
++
++def _bash(command):
++    return subprocess.run(["bash", "-c", command], cwd=str(ROOT),
++                          capture_output=True, text=True)
++
++
++def test_h_the_species_list_paragraph_names_the_species():
++    p = _bash(SPECIES_LIST_RUN)
++    assert p.returncode == 0, (
++        "leg (h) [M5]: the §`ADVISORY proof-species:` list paragraph of `%s` "
++        "must name `%s`; the Proof's first `Run:` is this command:\n%s"
++        % (SKILL, SPECIES, SPECIES_LIST_RUN))
++
++
++def test_h_the_proof_slot_bullet_carries_the_three_phrases_in_order():
++    p = _bash(PROOF_SLOT_RUN)
++    assert p.returncode == 0, (
++        "leg (h) [M5]: the **Proof** slot bullet of `%s` must carry, in this "
++        "order, `never reads <token>`, `freezes a commit sha`, and `BASE "
++        "comparison is a` followed by the `Run:` marker — the sentence that a "
++        "committed exam never reads the token or freezes a commit sha of the "
++        "repository, and a BASE comparison is a `Run:`. A slot that says the "
++        "token may be read in a `Run:`, or that drops the sha half, fails it. "
++        "The Proof's second `Run:` is this command:\n%s" % (SKILL,
++                                                            PROOF_SLOT_RUN))
+diff --git a/tests/test_compile_plan_pinned_elsewhere.py b/tests/test_compile_plan_pinned_elsewhere.py
+index 7f150869512f8a051584d092c37a465b39beb378..3b046b96784b61b9e42d267695392f9cd7fdfea4 100644
+--- a/tests/test_compile_plan_pinned_elsewhere.py
++++ b/tests/test_compile_plan_pinned_elsewhere.py
+@@ -10,8 +10,8 @@ This exam pins the three Machine clauses leg by leg:
+   M1 / leg (a) — under `--check --renders --base <checkout>`, for each
+     claims-v1 task and each backticked span of six or more characters in its
+     Machine clauses, a tracked TEST file under the checkout containing that
+-    span as a SUBSTRING, and named in no task's Files block, draws exactly one
+-    line per (task, span, path):
++    span as a SUBSTRING, and named in no task's Files block, is named on that
++    task's line:
+ 
+       `ADVISORY proof-species: pinned-elsewhere — task <id>: <span> is
+       asserted in <path>, which is in no task's Files`
+@@ -19,7 +19,11 @@ This exam pins the three Machine clauses leg by leg:
+     A test file is one whose path is under `tests/` or `fleet/tests/`, or whose
+     basename starts `test_` or contains `.test.` — so one literal pinned in
+     `tests/test_probe.py`, `fleet/tests/test_probe.mjs`, `src/foo.test.ts` and
+-    `lib/test_x.py` yields four lines, one per pinning file, sorted by path.
++    `lib/test_x.py` names all four, sorted by path. (#756 Task 2 folded the
++    per-file lines into ONE line per task and added the extension rule; the
++    `#756 Task 2` section at the foot of this file carries that contract clause
++    by clause, and the rows this file used to make of the four-file and
++    nine-file checkouts are rewritten there.)
+   M2 / leg (b) — it is silent when the pinning file IS named in some task's
+     Files block, when the literal appears only in a non-test file (`app/x.py`,
+     `src/helpers.py`), and when the plan is not claims-v1 (a legacy-grammar
+@@ -43,7 +47,9 @@ species lines off it, so a broken fixture never reads as a missing species.
+ Each `repo` is a checkout this file commits itself, so the literals it greps
+ for are exactly the ones written here.
+ """
++import inspect
+ import json
++import re
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -279,7 +285,8 @@ def _lines(tmp_path, base, text, name="plan.md"):
+ 
+ 
+ # --------------------------------------------------------------------------- #
+-# (a) [M1] the line, its verbatim shape, and one line per pinning file         #
++# (a) [M1] the line and its verbatim shape (the four-file checkout's row now   #
++# lives in the `#756 Task 2` section below, as leg (e)'s one-line form)         #
+ # --------------------------------------------------------------------------- #
+ def test_a_literal_pinned_by_an_undeclared_test_file_prints_exactly_one_line(
+         tmp_path, repo):
+@@ -300,19 +307,9 @@ def test_the_pinned_elsewhere_line_is_the_only_species_line_the_plan_draws(
+         "task 1. Got:\n" + "\n".join(_species(out)))
+ 
+ 
+-def test_one_line_per_pinning_file_sorted_by_path(tmp_path, repo_four):
+-    lines = _lines(tmp_path, repo_four, PLAN)
+-    expected = [pin_line("1", LITERAL, p) for p in PIN_PATHS]
+-    assert lines == expected, (
+-        "leg (a) [M1]: one line per (task, span, path) — the same literal in "
+-        "`tests/`, `fleet/tests/`, a `.test.` basename and a `test_` basename "
+-        "is four lines, sorted by path. Got:\n%s\nwanted:\n%s"
+-        % ("\n".join(lines), "\n".join(expected)))
+-
+-
+-def test_the_four_line_shape_agrees_with_the_verbatim_single_line():
+-    """The helper leg (a)'s four-line expectation is built from is the same
+-    string the leg spells out in full."""
++def test_the_single_file_helper_agrees_with_the_verbatim_single_line():
++    """The helper the single-file expectations are built from is the same
++    string leg (a) spells out in full."""
+     assert pin_line("1", LITERAL, PROBE_PY) == EXPECTED_ONE
+ 
+ 
+@@ -439,7 +436,11 @@ def test_every_run_less_fixture_plan_still_checks_byte_identically_to_base(
+ #   M4 / legs (d), (e), (f) — a span in MORE THAN EIGHT tracked test files is #
+ #     vocabulary: nine files draw nothing, nine of which one is declared draw #
+ #     nothing (the count is taken BEFORE the `declared` filter), and eight    #
+-#     draw eight lines, one per file in path order.                           #
++#     draw eight lines, one per file in path order. RETIRED by #756 Task 2    #
++#     (the operator's 2026-09-07 decision: no file-count threshold decides    #
++#     for the reader) — the nine-file, nine-with-one-declared and eight-file  #
++#     checkouts are still exercised, rewritten under the `#756 Task 2`        #
++#     section at the foot of this file.                                       #
+ #   M5 / leg (g) — the frozen channel: the three tests directly above, plus   #
+ #     the five-species fixture the Proof's `Run:` bullet runs.                #
+ # =========================================================================== #
+@@ -563,58 +564,797 @@ def test_c_a_span_ending_in_a_slash_draws_nothing_however_long(
+         "Got:\n%s" % (SPAN_DIR, len(SPAN_DIR), PROBE_PY, "\n".join(lines)))
+ 
+ 
+-def test_c_the_same_span_without_its_trailing_slash_draws_one_line(
++# #756 Task 2: #671's control row for the pair above — `fleet/tests`, the same
++# span minus its trailing slash, drawing one line — is SUBSUMED by that task's
++# M2, which skips any span holding a `/` and not only one ending in it. The
++# controlled pair that survives is #671's own length pair (`abcde` / `abcdef`,
++# `test_b` above), and the slash-only rule is pinned below.
++def test_c_the_same_span_without_its_trailing_slash_is_a_path_too(
+         tmp_path, repo_dir_span):
+-    """leg (c) [M3]: the same file, the same span minus its trailing slash —
+-    the skip is the slash and nothing else."""
++    """leg (c) [M3] as #756 Task 2's M2 re-scopes it: `fleet/tests` ends in no
++    slash but still HOLDS one, so it is a path and draws nothing — the skip is
++    the slash wherever in the span it sits."""
+     lines = _lines(tmp_path, repo_dir_span, _span_plan(SPAN_NO_SLASH),
+                    "plan_noslash.md")
+-    expected = [pin_line("1", SPAN_NO_SLASH, PROBE_PY)]
+-    assert lines == expected, (
+-        "leg (c) [M3]: `%s` is %d characters and ends in no slash, so tracked "
+-        "`%s` containing it draws exactly one line:\n%s\ngot:\n%s"
+-        % (SPAN_NO_SLASH, len(SPAN_NO_SLASH), PROBE_PY, expected[0],
+-           "\n".join(lines)))
++    assert lines == [], (
++        "leg (b) [M2] (#756 Task 2): `%s` holds a `/`, so it is a path — the "
++        "trailing-slash rule the row above pins is the narrower case of it. "
++        "Got:\n%s" % (SPAN_NO_SLASH, "\n".join(lines)))
+ 
+ 
+ # --------------------------------------------------------------------------- #
+-# (d) (e) (f) [M4] a span in more than eight tracked test files is vocabulary  #
++# (d) (e) (f) [M4] — the file-count threshold this block pinned is retired by  #
++# #756 Task 2. Its three checkouts are rewritten under `#756 Task 2` below,    #
++# as legs (f) of that task: nine files, nine with one declared, and eight.     #
+ # --------------------------------------------------------------------------- #
+-def test_d_a_span_in_nine_tracked_test_files_draws_nothing(tmp_path):
+-    """leg (d) [M4]: nine tracked test files, none of them declared — over the
+-    eight-file line, so the span is vocabulary and nothing prints."""
+-    base = _many_repo(tmp_path, 9)
+-    lines = _lines(tmp_path, base, PLAN, "plan_nine.md")
++
++
++# =========================================================================== #
++# #756 Task 2 — "pinned-elsewhere renders one line per task naming each       #
++# Machine literal a code test outside every Files block asserts"              #
++#                                                                             #
++# The operator's 2026-09-07 decision on #756: no hard caps. The vocabulary    #
++# threshold (`PINNED_EVERYWHERE = 8`) goes, the per-(task, span, path) lines  #
++# fold into ONE line per task, three kinds of candidate the compiler already  #
++# knows are skipped, and a pinning file must carry a code extension. #671's   #
++# six-character floor and its trailing-slash skip stand unchanged.            #
++#                                                                             #
++#   M1 / leg (a) — a candidate span is what BASE's `_clause_spans` collects   #
++#     from the task's MACHINE clauses, and no longer floor is added:          #
++#     `runner: None` is twelve characters and still draws its line, while the #
++#     same literal unbackticked in the clause, or backticked only in the      #
++#     Claim sentence, the Context and a Proof leg, draws nothing.             #
++#   M2 / legs (b), (c), (d) — three kinds of candidate are skipped even when  #
++#     a tracked undeclared test file asserts them: a path (the span holds a   #
++#     `/`, or is a bare file name), a placeholder (a `<` and a later `>`),    #
++#     and a state word (one of `fleet/CONTRACT.md`'s six, surrounding quotes  #
++#     stripped, case-insensitively). In each row the same file and the same   #
++#     clause position carrying `runner: None` draws one line, so the silence  #
++#     is the skip and nothing else.                                           #
++#   M3 / legs (e), (f) — a pinning file is a test file by BASE's four shapes  #
++#     WITH one of the eight code extensions, that no task's Files names; and  #
++#     no count of pinning files silences a span.                              #
++#   M4 / legs (g), (h), (i) — the line: `ADVISORY proof-species:              #
++#     pinned-elsewhere — task <id>: <detail>`, the candidates in CLAUSE order #
++#     joined by `; `, each `<span> is asserted in <path1>, <path2>` with the  #
++#     paths sorted, closed by `, which is in no task's Files` when the line   #
++#     names exactly one distinct file and `, none of which is in any task's   #
++#     Files` otherwise.                                                       #
++#   M5 / legs (j)–(r) — the six tracked 2026-09-07 fixture plans rendered     #
++#     against this checkout: at most one line per task of the plan, at least  #
++#     one line across the six, every line parsing as M4's grammar with every  #
++#     named span passing M2 and every named file passing M3, and bare         #
++#     `--check` silent and clean.                                             #
++# =========================================================================== #
++
++# The Produces contract, spelled as the task spells it.
++PRODUCES_PARAMS = ["task_id", "clauses", "base", "declared", "exclude"]
++
++# The second span legs (g), (h) and (i) need: twelve characters like
++# `runner: None`, no slash, no bracket, no state word — and, unlike it, in no
++# tracked file of this repository, so a task carrying only it pins nothing.
++SPAN_WAVE = "wave: fold"
++PROBE_PY_TWO = "tests/test_probe_two.py"
++
++# M2's three kinds, one span each per leg, all six-or-more characters so the
++# floor is not what silences them.
++SPAN_SLASH = "ultra/evidence-run-32"           # leg (b): a path
++SPAN_BARE_FILE = "status-page.json"            # leg (b): a bare file name
++SPAN_SLASH_PLACEHOLDER = "ultra/integration-run-<N>"   # leg (c)
++SPAN_BRACKET_ONLY = "run <N> parked"           # leg (c): bracket, no slash
++STATE_WORDS = ("booting", "running", "publishing", "done", "parked", "failed")
++SPAN_NON_STATE = "publishings!"                # leg (d): twelve, not a state
++
++# M3's extension rule: `.md` under `tests/` is a test file by BASE's four
++# shapes and is NOT a pinning file; the two code files are.
++PROBE_MD = "tests/fixtures/plans/probe.md"
++PROBE_MJS = "fleet/tests/test_probe.mjs"
++CODE_EXTS_M3 = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh")
++
++CLOSER_ONE = ", which is in no task's Files"
++CLOSER_MANY = ", none of which is in any task's Files"
++LINE_HEAD = re.compile(
++    "^ADVISORY proof-species: pinned-elsewhere — task ([^:]+): ")
++BARE_FILE_NAME = re.compile(r"^[\w.\-]+\.[A-Za-z]{1,4}$")
++
++
++def species_line(task_id, pairs):
++    """M4's line. `pairs` is [(span, [path, ...]), ...] in CLAUSE order, each
++    path list in path order; the closer is chosen by the number of DISTINCT
++    files the whole line names."""
++    named = {p for _, paths in pairs for p in paths}
++    detail = "; ".join("%s is asserted in %s" % (span, ", ".join(paths))
++                       for span, paths in pairs)
++    return ("ADVISORY proof-species: pinned-elsewhere — task %s: %s%s"
++            % (task_id, detail,
++               CLOSER_ONE if len(named) == 1 else CLOSER_MANY))
++
++
++def _probe_source_both(first, second):
++    """A probe file asserting two literals — the two-candidate row of M4."""
++    return ("def test_header():\n    assert header() == '%s'\n"
++            "\n\ndef test_wave():\n    assert wave() == '%s'\n"
++            % (first, second))
++
++
++def _task_prose(task_id, files, machine, legs, claim, context):
++    """`_task` with the Claim sentence and the Context under the caller's
++    control — leg (a) needs a task whose backticked literal lives everywhere
++    EXCEPT its Machine clause."""
++    return ("### Task %s: Sample %s\n"
++            "\n"
++            "**Type:** implementation\n"
++            "\n"
++            "**Files:**\n"
++            "%s"
++            "\n"
++            "**Claim:** %s\n"
++            "Machine: %s\n"
++            "\n"
++            "**Authorized-by:** #756\n"
++            "\n"
++            "**Interfaces:**\n"
++            "- Consumes: nothing\n"
++            "- Produces: `probe_%s(n: int) -> str`\n"
++            "\n"
++            "**Context:** %s\n"
++            "\n"
++            "**Proof:**\n"
++            "- Run: python3 scripts/probe_%s.py --header\n"
++            "- Legs: %s\n"
++            "\n"
++            "**Stale-if:**\n"
++            "- issue-closed: #756\n"
++            % (task_id, task_id, "".join(l + "\n" for l in files), claim,
++               machine, task_id, context, task_id, legs))
++
++
++def _one_span_lines(tmp_path, span, name):
++    """The lines a one-task plan carrying `span` in `MACHINE_1`'s clause
++    position draws against a checkout whose one tracked file — `PROBE_PY`, the
++    same file and the same position the `repo` fixture gives `runner: None`,
++    and named in no task's Files — asserts it."""
++    base = _repo(tmp_path, "repo_" + name, {PROBE_PY: _probe_source(span)})
++    return _lines(tmp_path, base, _span_plan(span), "plan_%s.md" % name)
++
++
++def test_the_line_builder_agrees_with_the_verbatim_single_file_line():
++    """The builder every expectation below is written with is the same string
++    leg (a) spells out in full."""
++    assert species_line("1", [(LITERAL, [PROBE_PY])]) == EXPECTED_ONE
++
++
++def test_the_produces_signature_is_the_one_the_task_names():
++    """Produces: `_species_pinned_elsewhere(task_id, clauses, base, declared,
++    exclude) -> list[str]` — the entry point keeps its name and its five
++    parameters, in that order."""
++    fn = getattr(compile_plan, "_species_pinned_elsewhere", None)
++    assert fn is not None, (
++        "Produces: the compiler must still expose "
++        "`_species_pinned_elsewhere(%s)`" % ", ".join(PRODUCES_PARAMS))
++    assert list(inspect.signature(fn).parameters) == PRODUCES_PARAMS, (
++        "Produces: `_species_pinned_elsewhere(%s)` — got (%s)"
++        % (", ".join(PRODUCES_PARAMS),
++           ", ".join(inspect.signature(fn).parameters)))
++
++
++# --------------------------------------------------------------------------- #
++# (a) [M1] the candidate span is a MACHINE-clause span, and no longer floor    #
++# --------------------------------------------------------------------------- #
++def test_756_a_the_twelve_character_literal_still_draws_its_exact_line(
++        tmp_path, repo):
++    """leg (a) [M1]: `runner: None` is twelve characters and one undeclared
++    tracked probe file asserts it — BASE's exact line, no longer floor
++    added."""
++    lines = _lines(tmp_path, repo, PLAN, "plan_756_a.md")
++    assert lines == [EXPECTED_ONE], (
++        "leg (a) [M1]: `%s` is %d characters, asserted by tracked undeclared "
++        "`%s`, so exactly BASE's line prints — a floor above six would "
++        "silence it:\n%s\ngot:\n%s"
++        % (LITERAL, len(LITERAL), PROBE_PY, EXPECTED_ONE, "\n".join(lines)))
++
++
++MACHINE_UNBACKTICKED = "M1. The probe header reports runner: None."
++PLAN_UNBACKTICKED = _plan(_task("1", ["- Modify: `app/x.py`"],
++                                MACHINE_UNBACKTICKED, LEGS_1))
++
++
++def test_756_a_the_same_literal_unbackticked_in_the_clause_draws_nothing(
++        tmp_path, repo):
++    """leg (a) [M1]: a candidate span is a BACKTICKED span — the same twelve
++    characters written plain in the Machine clause is not one."""
++    lines = _lines(tmp_path, repo, PLAN_UNBACKTICKED, "plan_756_a_plain.md")
+     assert lines == [], (
+-        "leg (d) [M4]: `%s` is contained by nine tracked test files (%s), "
+-        "more than eight, so no pinned-elsewhere line is printed. Got:\n%s"
+-        % (LITERAL, ", ".join(_probe_paths(9)), "\n".join(lines)))
++        "leg (a) [M1]: the clause reads `%s` with no backticks around `%s`, "
++        "so there is no candidate span and nothing prints, even though "
++        "tracked `%s` asserts the literal. Got:\n%s"
++        % (MACHINE_UNBACKTICKED, LITERAL, PROBE_PY, "\n".join(lines)))
+ 
+ 
+-def test_e_the_count_is_taken_before_the_declared_filter(tmp_path):
+-    """leg (e) [M4]: the same nine files with the first declared as task 2's
+-    `Test:` entry — eight files survive the ownership filter, but the count
+-    that decides the skip is the nine tracked test files among the grep hits,
+-    so still nothing prints."""
+-    base = _many_repo(tmp_path, 9)
+-    lines = _lines(tmp_path, base, PLAN_TASK_2_OWNS_P1, "plan_nine_owned.md")
++PLAN_PROSE_ONLY = _plan(_task_prose(
++    "1", ["- Modify: `app/x.py`"],
++    "M1. The probe header reports the marker the Claim above names.",
++    "(a) the header carries `%s` [M1]." % LITERAL,
++    "An operator is told which test already pins `%s`. (quoted from #756)"
++    % LITERAL,
++    "The marker at issue is `%s`, which the repo asserts in one probe file "
++    "today." % LITERAL))
++
++
++def test_756_a_a_literal_backticked_only_outside_the_machine_clause_is_silent(
++        tmp_path, repo):
++    """leg (a) [M1]: the operator sentence, the Context and a Proof leg all
++    carry `runner: None` backticked; the Machine clause carries no backticked
++    span at all. A render that reads any literal anywhere in the task fails
++    here."""
++    lines = _lines(tmp_path, repo, PLAN_PROSE_ONLY, "plan_756_a_prose.md")
+     assert lines == [], (
+-        "leg (e) [M4]: nine tracked test files contain `%s` and one of them, "
+-        "`tests/test_p1.py`, is task 2's `- Test:` entry — the count is taken "
+-        "over the tracked test files among the grep hits, BEFORE the "
+-        "`declared` filter, so nine is still nine and nothing prints. Got:\n%s"
++        "leg (a) [M1]: `%s` is backticked in the Claim sentence, in the "
++        "Context and in a leg of the Proof, and in NO Machine clause — the "
++        "species reads Machine clauses, so nothing prints. Got:\n%s"
+         % (LITERAL, "\n".join(lines)))
+ 
+ 
+-def test_f_a_span_in_eight_tracked_test_files_draws_eight_lines(tmp_path):
+-    """leg (f) [M4]: eight is the line the compiler already draws for width —
+-    at eight files, none declared, every line still prints, one per file in
+-    path order."""
++# --------------------------------------------------------------------------- #
++# (b) [M2] a path — a slash, or a bare file name — is skipped                  #
++# --------------------------------------------------------------------------- #
++def test_756_b_a_slash_bearing_span_draws_nothing(tmp_path):
++    lines = _one_span_lines(tmp_path, SPAN_SLASH, "756_b_slash")
++    assert lines == [], (
++        "leg (b) [M2]: `%s` holds a `/`, so it is a path and no line prints "
++        "even though tracked undeclared `%s` asserts it. Got:\n%s"
++        % (SPAN_SLASH, PROBE_PY, "\n".join(lines)))
++
++
++def test_756_b_a_bare_file_name_span_draws_nothing(tmp_path):
++    lines = _one_span_lines(tmp_path, SPAN_BARE_FILE, "756_b_bare")
++    assert lines == [], (
++        "leg (b) [M2]: `%s` is a run of word, dot and hyphen characters "
++        "ending in a dot and one to four letters — a bare file name, so a "
++        "path — and draws nothing though tracked undeclared `%s` asserts it. "
++        "Got:\n%s" % (SPAN_BARE_FILE, PROBE_PY, "\n".join(lines)))
++
++
++def test_756_b_the_literal_in_the_same_file_and_position_draws_one_line(
++        tmp_path, repo):
++    """leg (b) [M2]: the control for both silences above — the same probe
++    file, the same clause position, a span that is no path."""
++    lines = _lines(tmp_path, repo, PLAN, "plan_756_b_control.md")
++    assert lines == [EXPECTED_ONE], (
++        "leg (b) [M2]: `%s` in `%s`'s clause position, asserted by the same "
++        "`%s`, draws one line — so the two silences above are the path skip "
++        "and not the fixture:\n%s\ngot:\n%s"
++        % (LITERAL, MACHINE_1, PROBE_PY, EXPECTED_ONE, "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (c) [M2] a placeholder — a `<` and a later `>` — is skipped                  #
++# --------------------------------------------------------------------------- #
++def test_756_c_a_slash_and_placeholder_span_draws_nothing(tmp_path):
++    lines = _one_span_lines(tmp_path, SPAN_SLASH_PLACEHOLDER, "756_c_both")
++    assert lines == [], (
++        "leg (c) [M2]: `%s` holds both a `/` and a `<`…`>` placeholder, so it "
++        "draws nothing though tracked undeclared `%s` asserts it. Got:\n%s"
++        % (SPAN_SLASH_PLACEHOLDER, PROBE_PY, "\n".join(lines)))
++
++
++def test_756_c_a_bracket_only_span_draws_nothing(tmp_path):
++    lines = _one_span_lines(tmp_path, SPAN_BRACKET_ONLY, "756_c_bracket")
++    assert lines == [], (
++        "leg (c) [M2]: `%s` holds no `/` at all — a `<` and a later `>` is "
++        "enough to make it a placeholder — so it draws nothing though tracked "
++        "undeclared `%s` asserts it. Got:\n%s"
++        % (SPAN_BRACKET_ONLY, PROBE_PY, "\n".join(lines)))
++
++
++def test_756_c_the_literal_in_the_same_file_and_position_draws_one_line(
++        tmp_path, repo):
++    """leg (c) [M2]: the control for both placeholder silences."""
++    lines = _lines(tmp_path, repo, PLAN, "plan_756_c_control.md")
++    assert lines == [EXPECTED_ONE], (
++        "leg (c) [M2]: the same file and position with `%s` — no bracket — "
++        "draws one line:\n%s\ngot:\n%s"
++        % (LITERAL, EXPECTED_ONE, "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (d) [M2] a state word, bare or quoted, is skipped                            #
++# --------------------------------------------------------------------------- #
++def test_756_d_each_state_word_bare_or_quoted_draws_nothing(tmp_path):
++    """leg (d) [M2]: the six words of `fleet/CONTRACT.md`'s `state` enum, each
++    bare and each wrapped in single and in double quotes, asserted by a
++    tracked undeclared probe file — every one of them silent."""
++    drawn = []
++    for i, word in enumerate(STATE_WORDS):
++        for j, span in enumerate((word, "'%s'" % word, '"%s"' % word)):
++            lines = _one_span_lines(tmp_path, span, "756_d_%d_%d" % (i, j))
++            if lines:
++                drawn.append("%s -> %s" % (span, lines))
++    assert drawn == [], (
++        "leg (d) [M2]: a span that is one of %s once its surrounding single "
++        "or double quotes are stripped, case-insensitively, is a state word "
++        "the compiler already knows and draws nothing. These drew:\n%s"
++        % (", ".join(STATE_WORDS), "\n".join(drawn)))
++
++
++def test_756_d_a_non_state_twelve_character_word_draws_one_line(tmp_path):
++    """leg (d) [M2]: the control — twelve characters, the same clause
++    position, the same probe file, outside the six words. The silence above is
++    the vocabulary, not the length."""
++    lines = _one_span_lines(tmp_path, SPAN_NON_STATE, "756_d_control")
++    expected = [pin_line("1", SPAN_NON_STATE, PROBE_PY)]
++    assert lines == expected, (
++        "leg (d) [M2]: `%s` is %d characters and is none of the six state "
++        "words, so tracked undeclared `%s` asserting it draws one line:\n%s\n"
++        "got:\n%s" % (SPAN_NON_STATE, len(SPAN_NON_STATE), PROBE_PY,
++                      expected[0], "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (e) [M3] a pinning file carries one of the eight code extensions             #
++# --------------------------------------------------------------------------- #
++def test_756_e_a_markdown_probe_under_tests_is_no_pinning_file(tmp_path):
++    """leg (e) [M3]: `tests/fixtures/plans/probe.md` is a test file by BASE's
++    path rule — it is under `tests/` — but `.md` is none of the eight code
++    extensions, so it pins nothing. (This is what keeps the tracked fixture
++    plans from pinning one another's literals.)"""
++    base = _repo(tmp_path, "repo_756_e_md", {PROBE_MD: _probe_source(LITERAL)})
++    lines = _lines(tmp_path, base, PLAN, "plan_756_e_md.md")
++    assert lines == [], (
++        "leg (e) [M3]: `%s` is the only file asserting `%s`; its extension is "
++        "not one of %s, so it is no pinning file and nothing prints. Got:\n%s"
++        % (PROBE_MD, LITERAL, ", ".join(CODE_EXTS_M3), "\n".join(lines)))
++
++
++def test_756_e_a_py_under_tests_and_an_mjs_under_fleet_tests_are_named(
++        tmp_path):
++    """leg (e) [M3]: the two code files are pinning files, and the one line
++    names both, in path order."""
++    base = _repo(tmp_path, "repo_756_e_code",
++                 {PROBE_MJS: _probe_source(LITERAL),
++                  PROBE_PY: _probe_source(LITERAL)})
++    lines = _lines(tmp_path, base, PLAN, "plan_756_e_code.md")
++    expected = [species_line("1", [(LITERAL, [PROBE_MJS, PROBE_PY])])]
++    assert lines == expected, (
++        "leg (e) [M3]: `%s` (a `.mjs` under `fleet/tests/`) and `%s` (a `.py` "
++        "under `tests/`) both assert `%s` and neither is in any task's Files, "
++        "so one line names both in path order:\n%s\ngot:\n%s"
++        % (PROBE_MJS, PROBE_PY, LITERAL, expected[0], "\n".join(lines)))
++
++
++def test_756_e_the_four_test_file_shapes_are_one_line_naming_four(
++        tmp_path, repo_four):
++    """leg (e) [M3]: BASE's `test_one_line_per_pinning_file_sorted_by_path`,
++    re-scoped to the one-line shape. All four of BASE's test-file shapes —
++    under `tests/`, under `fleet/tests/`, a `test_` basename outside a tests
++    directory (`lib/test_x.py`), a `.test.` infix basename (`src/foo.test.ts`)
++    — carry one of the eight code extensions, so all four are pinning files
++    and the task's ONE line names all four in path order."""
++    lines = _lines(tmp_path, repo_four, PLAN, "plan_756_e_four.md")
++    expected = [species_line("1", [(LITERAL, list(PIN_PATHS))])]
++    assert lines == expected, (
++        "leg (e) [M3]: `%s` is asserted in all four test-file shapes (%s) and "
++        "none of them is declared, so ONE line names the four in path order — "
++        "not four lines, and not a subset:\n%s\ngot:\n%s"
++        % (LITERAL, ", ".join(PIN_PATHS), expected[0], "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (f) [M3] no count of pinning files silences a span                           #
++# --------------------------------------------------------------------------- #
++def test_756_f_nine_undeclared_pinning_files_are_all_nine_named(tmp_path):
++    """leg (f) [M3]: nine tracked undeclared test files — the count BASE
++    silenced — are all nine named on one line, in path order. A render that
++    silences a span above any file count fails here."""
++    base = _many_repo(tmp_path, 9)
++    lines = _lines(tmp_path, base, PLAN, "plan_756_f_nine.md")
++    expected = [species_line("1", [(LITERAL, _probe_paths(9))])]
++    assert lines == expected, (
++        "leg (f) [M3]: nine tracked test files (%s) assert `%s` and none is "
++        "declared, so one line names all nine in path order — no file-count "
++        "threshold decides for the reader:\n%s\ngot:\n%s"
++        % (", ".join(_probe_paths(9)), LITERAL, expected[0],
++           "\n".join(lines)))
++
++
++def test_756_f_with_one_of_the_nine_declared_the_other_eight_are_named(
++        tmp_path):
++    """leg (f) [M3]: the same nine files with `tests/test_p1.py` declared as
++    task 2's `Test:` entry — the line names the other eight and not it."""
++    base = _many_repo(tmp_path, 9)
++    lines = _lines(tmp_path, base, PLAN_TASK_2_OWNS_P1,
++                   "plan_756_f_nine_owned.md")
++    expected = [species_line("1", [(LITERAL, _probe_paths(9)[1:])])]
++    assert lines == expected, (
++        "leg (f) [M3]: `tests/test_p1.py` is task 2's `- Test:` entry, so it "
++        "folds at merge time and is not named; the other eight are:\n%s\n"
++        "got:\n%s" % (expected[0], "\n".join(lines)))
++    assert "tests/test_p1.py" not in lines[0], (
++        "leg (f) [M3]: the declared file must not appear on the line:\n"
++        + lines[0])
++
++
++def test_756_f_eight_undeclared_pinning_files_are_one_line_naming_eight(
++        tmp_path):
++    """leg (f) [M3]: eight files — BASE's threshold value — are one line
++    naming eight, not eight lines."""
+     base = _many_repo(tmp_path, 8)
+-    lines = _lines(tmp_path, base, PLAN, "plan_eight.md")
+-    expected = [pin_line("1", LITERAL, p) for p in _probe_paths(8)]
++    lines = _lines(tmp_path, base, PLAN, "plan_756_f_eight.md")
++    expected = [species_line("1", [(LITERAL, _probe_paths(8))])]
++    assert lines == expected, (
++        "leg (f) [M3]: eight tracked undeclared test files assert `%s`, so "
++        "ONE line names all eight in path order:\n%s\ngot:\n%s"
++        % (LITERAL, expected[0], "\n".join(lines)))
++
++
++def test_756_f_a_single_pinning_file_in_some_tasks_files_draws_nothing(
++        tmp_path, repo):
++    """leg (f) [M3]: the one pinning file is task 2's `- Test:` entry, so the
++    span has no pinning file left and the task draws no line."""
++    lines = _lines(tmp_path, repo, PLAN_TASK_2_OWNS_PROBE,
++                   "plan_756_f_owned.md")
++    assert lines == [], (
++        "leg (f) [M3]: `%s` is named in task 2's Files, so it is no pinning "
++        "file and task 1 draws nothing. Got:\n%s"
++        % (PROBE_PY, "\n".join(lines)))
++
++
++# --------------------------------------------------------------------------- #
++# (g) (h) (i) [M4] one line per task, clause order, and the two closers        #
++# --------------------------------------------------------------------------- #
++MACHINE_TWO_SPANS = ("M1. The probe header reports `%s`, and the wave marker "
++                     "is `%s`." % (LITERAL, SPAN_WAVE))
++PLAN_TWO_SPANS = _plan(_task("1", ["- Modify: `app/x.py`"],
++                             MACHINE_TWO_SPANS, LEGS_1))
++
++# leg (g), verbatim from the task's own words: two candidates, one file.
++EXPECTED_TWO_SPANS_ONE_FILE = (
++    "ADVISORY proof-species: pinned-elsewhere — task 1: "
++    "runner: None is asserted in tests/test_probe.py; "
++    "wave: fold is asserted in tests/test_probe.py, "
++    "which is in no task's Files")
++
++# leg (h), verbatim: two candidates, one file each.
++EXPECTED_TWO_SPANS_TWO_FILES = (
++    "ADVISORY proof-species: pinned-elsewhere — task 1: "
++    "runner: None is asserted in tests/test_probe.py; "
++    "wave: fold is asserted in tests/test_probe_two.py, "
++    "none of which is in any task's Files")
++
++
++def test_756_g_two_candidates_in_one_file_are_one_line_in_clause_order(
++        tmp_path):
++    """leg (g) [M4]: one probe file asserts both spans and task 1's clause
++    carries them in that order — exactly one line, the two candidates joined
++    by `; ` in CLAUSE order, closed by the one-file closer. A render that
++    prints per span, or orders by span, fails here."""
++    base = _repo(tmp_path, "repo_756_g",
++                 {PROBE_PY: _probe_source_both(LITERAL, SPAN_WAVE)})
++    lines = _lines(tmp_path, base, PLAN_TWO_SPANS, "plan_756_g.md")
++    assert lines == [EXPECTED_TWO_SPANS_ONE_FILE], (
++        "leg (g) [M4]: task 1's clause carries `%s` then `%s`, both asserted "
++        "by `%s` alone, so exactly one line prints:\n%s\ngot:\n%s"
++        % (LITERAL, SPAN_WAVE, PROBE_PY, EXPECTED_TWO_SPANS_ONE_FILE,
++           "\n".join(lines)))
++    assert lines == [species_line(
++        "1", [(LITERAL, [PROBE_PY]), (SPAN_WAVE, [PROBE_PY])])]
++
++
++def test_756_h_two_candidates_in_two_files_take_the_plural_closer(tmp_path):
++    """leg (h) [M4]: one file per span — the line names two distinct files, so
++    it closes `, none of which is in any task's Files`."""
++    base = _repo(tmp_path, "repo_756_h",
++                 {PROBE_PY: _probe_source(LITERAL),
++                  PROBE_PY_TWO: _probe_source(SPAN_WAVE)})
++    lines = _lines(tmp_path, base, PLAN_TWO_SPANS, "plan_756_h.md")
++    assert lines == [EXPECTED_TWO_SPANS_TWO_FILES], (
++        "leg (h) [M4]: `%s` asserts `%s` and `%s` asserts `%s`, so one line "
++        "names two distinct files and takes the plural closer:\n%s\ngot:\n%s"
++        % (PROBE_PY, LITERAL, PROBE_PY_TWO, SPAN_WAVE,
++           EXPECTED_TWO_SPANS_TWO_FILES, "\n".join(lines)))
++    assert lines == [species_line(
++        "1", [(LITERAL, [PROBE_PY]), (SPAN_WAVE, [PROBE_PY_TWO])])]
++
++
++def test_756_i_a_task_whose_candidates_pin_nothing_draws_no_line(
++        tmp_path, repo):
++    """leg (i) [M4]: task 1 carries only `wave: fold`, which no tracked file
++    of the `repo` fixture holds — no candidate has a pinning file, so the task
++    draws no line at all rather than an empty one."""
++    lines = _lines(tmp_path, repo, _span_plan(SPAN_WAVE), "plan_756_i.md")
++    assert lines == [], (
++        "leg (i) [M4]: `%s` is in no tracked file of the checkout, so task 1 "
++        "has no candidate with a pinning file and draws nothing. Got:\n%s"
++        % (SPAN_WAVE, "\n".join(lines)))
++
++
++def test_756_i_three_tasks_carrying_the_same_span_draw_three_lines(
++        tmp_path, repo):
++    """leg (i) [M4]: one line PER TASK — three tasks carrying the same span
++    against the same checkout are three lines, in task order."""
++    lines = _lines(tmp_path, repo, PLAN_THREE_TASKS, "plan_756_i_three.md")
++    expected = [species_line(i, [(LITERAL, [PROBE_PY])])
++                for i in ("1", "2", "3")]
+     assert lines == expected, (
+-        "leg (f) [M4]: eight tracked test files contain `%s` and none is "
+-        "declared — eight is not MORE than eight, so eight lines print, one "
+-        "per file in path order. Got:\n%s\nwanted:\n%s"
+-        % (LITERAL, "\n".join(lines), "\n".join(expected)))
++        "leg (i) [M4]: tasks 1, 2 and 3 each carry `%s` and `%s` pins it for "
++        "all three, so three lines print in task order. Got:\n%s\nwanted:\n%s"
++        % (LITERAL, PROBE_PY, "\n".join(lines), "\n".join(expected)))
++    assert expected[0] == EXPECTED_ONE
++
++
++# --------------------------------------------------------------------------- #
++# (j)–(r) [M5] the six tracked 2026-09-07 fixture plans                        #
++# --------------------------------------------------------------------------- #
++FIXTURE_DIR = ROOT / "tests/fixtures/plans/2026-09-07"
++FIXTURES = (
++    ("acceptance-log", "2026-09-07-acceptance-log-on-the-record.md"),
++    ("boot-pipelines", "2026-09-07-boot-pipelines-survive-sigpipe.md"),
++    ("evidence-page", "2026-09-07-evidence-page-per-phase.md"),
++    ("publish-decisions", "2026-09-07-publish-decisions-as-events.md"),
++    ("retire-closed", "2026-09-07-retire-closed-unmerged-branches.md"),
++    ("retire-skips", "2026-09-07-retire-skips-live-runs.md"),
++)
++FILES_BULLET = re.compile(r"^- (?:Create|Modify|Test):\s*`([^`]+)`", re.M)
++
++# This exam file is itself a tracked, undeclared `.py` test file under
++# `tests/`, so a fixture-plan literal spelled whole here would join that
++# literal's own file list. The two the legs name are spelled apart.
++SPAN_TEST_CMD = "test" + "Cmd"
++SPAN_COMMIT_STATES = "commitStates" + "(ctx)"
++BOOT_EDGES = "fleet/tests/test_sandbox_boot_edges.mjs"
++BOOT_DECLARED = "fleet/tests/test_sandbox_boot.mjs"
++
++
++def _pinned_anywhere(stdout):
++    """M5 counts lines CONTAINING `pinned-elsewhere`, not only lines opening
++    with the species prefix."""
++    return [l for l in stdout.splitlines() if "pinned-elsewhere" in l]
++
++
++@pytest.fixture(scope="session")
++def tracked_paths():
++    p = subprocess.run(["git", "-C", str(ROOT), "ls-files"],
++                       capture_output=True, text=True)
++    assert p.returncode == 0, p.stderr
++    return set(p.stdout.splitlines())
++
++
++@pytest.fixture(scope="session")
++def corpus(tmp_path_factory):
++    """Each of the six tracked 2026-09-07 fixture plans, copied beside a
++    gate-verdict record so it compiles, run twice: `--check --renders --base
++    <repo root>` (so the tree the species greps is this checkout) and bare
++    `--check`. The copies are made because signing writes an artifact beside
++    the plan, and this task edits none of the six."""
++    d = tmp_path_factory.mktemp("plans_2026_09_07")
++    runs = {}
++    for key, name in FIXTURES:
++        src = FIXTURE_DIR / name
++        assert src.exists(), (
++            "[M5]: the fixture plan %s is Stale-if path-absent" % src)
++        text = src.read_text()
++        plan = d / name
++        plan.write_text(text)
++        _sign(plan)
++        rendered = _check(plan, "--renders", "--base", str(ROOT))
++        assert (rendered.returncode,
++                rendered.stdout.splitlines()[:1]) == (0, ["PLAN OK"]), (
++            "[M5]: fixture plan %s must compile clean before its species "
++            "lines are read; got rc=%d\n%s%s"
++            % (name, rendered.returncode, rendered.stdout, rendered.stderr))
++        runs[key] = {
++            "name": name,
++            "rendered": rendered,
++            "bare": _check(plan),
++            "task_ids": [t["id"] for t in compile_plan.split_tasks(text)],
++            "declared": set(FILES_BULLET.findall(text)),
++        }
++    return runs
++
++
++def _segments(line):
++    """M4's grammar, read off a printed line: the closer, then the `; `
++    separated segments, each `<span> is asserted in <path>, <path>`. Raises
++    ValueError when the line does not parse that way."""
++    head = LINE_HEAD.match(line)
++    if head is None:
++        raise ValueError("line does not open with M4's head: " + line)
++    detail = line[head.end():]
++    for closer in (CLOSER_MANY, CLOSER_ONE):
++        if detail.endswith(closer):
++            detail = detail[:-len(closer)]
++            break
++    else:
++        raise ValueError("line closes with neither %r nor %r: %s"
++                         % (CLOSER_ONE, CLOSER_MANY, line))
++    segments = []
++    for segment in detail.split("; "):
++        span, sep, rest = segment.partition(" is asserted in ")
++        if not sep:
++            raise ValueError("segment %r is not `<span> is asserted in "
++                             "<files>`: %s" % (segment, line))
++        segments.append((span, rest.split(", ")))
++    return segments, closer
++
++
++def _line_for_task(lines, task_id):
++    for line in lines:
++        head = LINE_HEAD.match(line)
++        if head is not None and head.group(1) == task_id:
++            return line
++    return None
++
++
++def _per_task_bound(corpus, key, leg):
++    """[M5]: at most one line containing `pinned-elsewhere` per task of the
++    plan — and every such line is one of that plan's tasks'."""
++    run = corpus[key]
++    lines = _pinned_anywhere(run["rendered"].stdout)
++    ids = [LINE_HEAD.match(l).group(1) for l in lines if LINE_HEAD.match(l)]
++    assert len(ids) == len(lines), (
++        "leg (%s) [M5]: every line containing `pinned-elsewhere` in %s's "
++        "render is a `%s — task <id>: ` line. Got:\n%s"
++        % (leg, run["name"], PINNED_PREFIX, "\n".join(lines)))
++    assert len(lines) <= len(run["task_ids"]), (
++        "leg (%s) [M5]: %s has %d task(s), so at most %d line(s) containing "
++        "`pinned-elsewhere` may print — a render keeping a per-file or a "
++        "file-count line prints more. Got %d:\n%s"
++        % (leg, run["name"], len(run["task_ids"]), len(run["task_ids"]),
++           len(lines), "\n".join(lines)))
++    assert len(set(ids)) == len(ids), (
++        "leg (%s) [M5]: at most ONE line per task — task ids %s repeat in "
++        "%s's render:\n%s" % (leg, ids, run["name"], "\n".join(lines)))
++    assert set(ids) <= set(run["task_ids"]), (
++        "leg (%s) [M5]: %s's tasks are %s; the render named %s"
++        % (leg, run["name"], run["task_ids"], sorted(set(ids))))
++    return lines
++
++
++def test_756_j_acceptance_log_holds_the_bound_and_names_the_command_literal(
++        corpus):
++    """leg (j) [M5]: the acceptance-log plan — the per-task bound, and its
++    task 1 line names the literal BASE's eight-file line silenced. A render
++    keeping a file-count line fails here."""
++    lines = _per_task_bound(corpus, "acceptance-log", "j")
++    line = _line_for_task(lines, "1")
++    assert line is not None, (
++        "leg (j) [M5]: the acceptance-log plan's task 1 draws a line naming "
++        "`%s`. Got:\n%s" % (SPAN_TEST_CMD, "\n".join(lines)))
++    spans = [span for span, _ in _segments(line)[0]]
++    assert SPAN_TEST_CMD in spans, (
++        "leg (j) [M5]: `%s` is in more tracked test files than BASE's "
++        "eight-file line allowed and in none of that plan's Files, so task "
++        "1's line names it. Its spans were %s\nline: %s"
++        % (SPAN_TEST_CMD, spans, line))
++
++
++def test_756_k_boot_pipelines_holds_the_per_task_bound(corpus):
++    """leg (k) [M5]."""
++    _per_task_bound(corpus, "boot-pipelines", "k")
++
++
++def test_756_l_evidence_page_holds_the_bound_and_applies_declared_filter(
++        corpus):
++    """leg (l) [M5]: the evidence-page plan — the per-task bound, and its task
++    1 line's `commitStates` segment names the undeclared boot-edges test and
++    NOT `fleet/tests/test_sandbox_boot.mjs`, which that plan's Files declares.
++    A render skipping the declared filter fails here."""
++    lines = _per_task_bound(corpus, "evidence-page", "l")
++    line = _line_for_task(lines, "1")
++    assert line is not None, (
++        "leg (l) [M5]: the evidence-page plan's task 1 draws a line naming "
++        "`%s`. Got:\n%s" % (SPAN_COMMIT_STATES, "\n".join(lines)))
++    named = dict(_segments(line)[0]).get(SPAN_COMMIT_STATES)
++    assert named is not None, (
++        "leg (l) [M5]: task 1's line carries a `%s is asserted in …` segment. "
++        "Got:\n%s" % (SPAN_COMMIT_STATES, line))
++    assert BOOT_EDGES in named, (
++        "leg (l) [M5]: `%s` asserts `%s` and no task of that plan declares "
++        "it, so the segment names it. Got: %s"
++        % (BOOT_EDGES, SPAN_COMMIT_STATES, named))
++    assert BOOT_DECLARED not in named, (
++        "leg (l) [M5]: `%s` is that plan's own `Test:` entry — a pin that "
++        "folds at merge time — so the segment must not name it. Got: %s"
++        % (BOOT_DECLARED, named))
++
++
++def test_756_m_publish_decisions_holds_the_per_task_bound(corpus):
++    """leg (m) [M5]."""
++    _per_task_bound(corpus, "publish-decisions", "m")
++
++
++def test_756_n_retire_closed_holds_the_per_task_bound(corpus):
++    """leg (n) [M5]."""
++    _per_task_bound(corpus, "retire-closed", "n")
++
++
++def test_756_o_retire_skips_holds_the_per_task_bound(corpus):
++    """leg (o) [M5]."""
++    _per_task_bound(corpus, "retire-skips", "o")
++
++
++def test_756_p_the_six_runs_together_print_at_least_one_line(corpus):
++    """leg (p) [M5]: a species that went silent fails here."""
++    counted = {run["name"]: len(_pinned_anywhere(run["rendered"].stdout))
++               for run in corpus.values()}
++    assert sum(counted.values()) >= 1, (
++        "leg (p) [M5]: across the six 2026-09-07 fixture plans at least one "
++        "line containing `pinned-elsewhere` prints under `--check --renders "
++        "--base <repo root>`. Counted: %s" % counted)
++
++
++def test_756_q_every_line_of_the_six_runs_names_a_real_span_and_real_files(
++        corpus, tracked_paths):
++    """leg (q) [M5]: the structural row. Every line of the six runs parses as
++    M4's grammar, every named span passes M2's three skips, and every named
++    file is a tracked code test file of this checkout that contains the span
++    and that no Files block of that plan names."""
++    problems = []
++    for key, run in corpus.items():
++        for line in _pinned_anywhere(run["rendered"].stdout):
++            where = "%s: %s" % (run["name"], line)
++            try:
++                segments, closer = _segments(line)
++            except ValueError as exc:
++                problems.append("%s — %s" % (run["name"], exc))
++                continue
++            named = set()
++            for span, paths in segments:
++                if "/" in span:
++                    problems.append("%s\n  span %r holds a `/` — a path [M2]"
++                                    % (where, span))
++                if BARE_FILE_NAME.match(span):
++                    problems.append("%s\n  span %r is a bare file name [M2]"
++                                    % (where, span))
++                opened = span.find("<")
++                if opened != -1 and span.find(">", opened + 1) != -1:
++                    problems.append("%s\n  span %r is a placeholder [M2]"
++                                    % (where, span))
++                if span.strip("'\"").lower() in STATE_WORDS:
++                    problems.append("%s\n  span %r is a state word [M2]"
++                                    % (where, span))
++                for path in paths:
++                    named.add(path)
++                    if path not in tracked_paths:
++                        problems.append("%s\n  %s is not tracked [M5]"
++                                        % (where, path))
++                        continue
++                    if not path.endswith(CODE_EXTS_M3):
++                        problems.append(
++                            "%s\n  %s carries none of the eight code "
++                            "extensions [M3]" % (where, path))
++                    if path in run["declared"]:
++                        problems.append(
++                            "%s\n  %s is declared by that plan's Files [M3]"
++                            % (where, path))
++                    if span.encode() not in (ROOT / path).read_bytes():
++                        problems.append("%s\n  %s does not contain %r [M1]"
++                                        % (where, path, span))
++            want = CLOSER_ONE if len(named) == 1 else CLOSER_MANY
++            if closer != want:
++                problems.append(
++                    "%s\n  names %d distinct file(s), so it closes %r, not "
++                    "%r [M4]" % (where, len(named), want, closer))
++    assert not problems, (
++        "leg (q) [M5]: every line of the six runs must parse as M4's grammar "
++        "with every span past M2 and every file past M3. %d problem(s):\n%s"
++        % (len(problems), "\n".join(problems)))
++
++
++def test_756_r_bare_check_on_each_of_the_six_is_clean_and_silent(corpus):
++    """leg (r) [M5]: the new render prints only under `--renders` — bare
++    `--check` on each of the six exits 0 with no `pinned-elsewhere` line."""
++    problems = []
++    for key, run in corpus.items():
++        bare = run["bare"]
++        if bare.returncode != 0:
++            problems.append("%s: rc=%d\n%s%s"
++                            % (run["name"], bare.returncode, bare.stdout,
++                               bare.stderr))
++        hits = _pinned_anywhere(bare.stdout)
++        if hits:
++            problems.append("%s printed:\n%s" % (run["name"], "\n".join(hits)))
++    assert not problems, (
++        "leg (r) [M5]: bare `--check` on each of the six 2026-09-07 fixture "
++        "plans exits 0 and prints no line containing `pinned-elsewhere`:\n"
++        + "\n".join(problems))
+diff --git a/tests/test_plan_level_claim.py b/tests/test_plan_level_claim.py
+index 994ffd2b360a44b821ac2342d84aadab1975a01f..b298b5ce9b7413fefe4e5bf3e1e4027fc8cf2fae 100644
+--- a/tests/test_plan_level_claim.py
++++ b/tests/test_plan_level_claim.py
+@@ -391,3 +391,136 @@ def test_skill_still_validates():
+     proc = subprocess.run([sys.executable, str(VALIDATE), str(SKILL.parent)],
+                           capture_output=True, text=True)
+     assert proc.returncode == 0, proc.stdout + proc.stderr
++
++
++# ---------------------------------------------------------------------------
++# #755 Task 1 — the plan-level Claim accepts `(quoted from #NNN)` as well as
++# `(elicited)`, and reports which one it carries.
++#
++# The module is reached by attribute here, not by a top-of-file `from ... import`,
++# so the absence of the new export is one red leg rather than a collection error
++# that would take every pin above down with it.
++# ---------------------------------------------------------------------------
++import compile_plan  # noqa: E402
++
++HEADER_QUOTED = "**Claim:** " + PLAN_CLAIM + " (quoted from #1)\n"
++HEADER_QUOTED_WRAPPED = ("**Claim:** After this run I can hand the catalog a "
++                         "list of sizes and see\n"
++                         "one widget back per size. (quoted from #1)\n")
++HEADER_DERIVED = "**Claim:** " + PLAN_CLAIM + " (derived)\n"
++HEADER_UNTAGGED = "**Claim:** " + PLAN_CLAIM + "\n"
++HEADER_TAG_ONLY = "**Claim:** (quoted from #1)\n"
++
++
++def _check(tmp_path, plan_text, name="check.md"):
++    """`--check` on a gate-signed plan, so the only thing left to refuse is the
++    header Claim itself."""
++    return _run(_sign(_write(tmp_path, plan_text, name)), "--check")
++
++
++# --- (a) a quoted header Claim parses, checks clean, and reports `quoted:#1` [M1]
++
++def test_755_a_quoted_header_claim_parses_with_the_tag_stripped():
++    # [M1] leg (a): `parse_plan_claim` gives the bare sentence for a header
++    # tagged `(quoted from #1)`, exactly as it does for an elicited one.
++    text = _plan(HEADER_QUOTED, _task("1", "(derived)"))
++    assert parse_plan_claim(text) == PLAN_CLAIM
++
++
++def test_755_a_quoted_header_claim_parses_when_it_is_hard_wrapped():
++    # [M1] leg (a): the wrap is the authoring agent's, not the operator's — a
++    # wrapped quoted header strips to the same one sentence.
++    text = _plan(HEADER_QUOTED_WRAPPED, _task("1", "(derived)"))
++    assert parse_plan_claim(text) == PLAN_CLAIM
++
++
++def test_755_a_quoted_header_claim_earns_no_grammar_violation():
++    # [M1] leg (a): `plan_claim_violations` is `[]` — the compiler that still
++    # requires `(elicited)` refuses here.
++    text = _plan(HEADER_QUOTED, _task("1", "(derived)"))
++    assert compile_plan.plan_claim_violations(text) == []
++
++
++def test_755_plan_claim_provenance_reads_a_quoted_header_tag():
++    # [M1] leg (a): the new export, in the task-level provenance shape.
++    text = _plan(HEADER_QUOTED, _task("1", "(derived)"))
++    assert compile_plan.plan_claim_provenance(text) == "quoted:#1"
++
++
++def test_755_a_quoted_header_claim_checks_clean(tmp_path):
++    # [M1] leg (a): `--check` exits 0 with `PLAN OK` as its FIRST line (the
++    # advisory tail rides below it, after a blank line).
++    proc = _check(tmp_path, _plan(HEADER_QUOTED, _task("1", "(derived)")))
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert proc.stdout.splitlines()[0] == "PLAN OK", proc.stdout
++
++
++# --- (b) `(elicited)` is unchanged; the other three headers stay refused [M2]
++
++def test_755_an_elicited_header_claim_reports_elicited_and_still_compiles(tmp_path):
++    # [M2] leg (b): the BASE tag keeps its meaning and its clean check.
++    text = _plan(HEADER_ONE_LINE, _task("1", "(derived)"))
++    assert compile_plan.plan_claim_provenance(text) == "elicited"
++    assert parse_plan_claim(text) == PLAN_CLAIM
++    assert compile_plan.plan_claim_violations(text) == []
++    proc = _check(tmp_path, text, "elicited.md")
++    assert proc.returncode == 0, proc.stdout + proc.stderr
++    assert proc.stdout.splitlines()[0] == "PLAN OK", proc.stdout
++
++
++def _refuses_at_check(tmp_path, header, name):
++    """`--check` closes on this header with a `grammar: plan-level Claim` line
++    and a non-zero exit — the refusal vocabulary that stands at BASE."""
++    proc = _check(tmp_path, _plan(header, _task("1", "(quoted from #489)")), name)
++    assert proc.returncode != 0, "expected a refusal, got:\n" + proc.stdout[:400]
++    assert any(line.startswith("grammar: plan-level Claim")
++               for line in proc.stdout.splitlines()), \
++        "--check carries no 'grammar: plan-level Claim' line:\n" + proc.stdout
++
++
++def test_755_a_derived_header_claim_is_refused(tmp_path):
++    # [M2] leg (b), row 1: a plan-level Claim has nothing above it to descend
++    # from — a compiler that admits any tag at all fails here.
++    _refuses_at_check(tmp_path, HEADER_DERIVED, "derived.md")
++
++
++def test_755_an_untagged_header_claim_is_refused(tmp_path):
++    # [M2] leg (b), row 2: no tag is still no provenance.
++    _refuses_at_check(tmp_path, HEADER_UNTAGGED, "untagged.md")
++
++
++def test_755_a_header_claim_that_is_only_a_quoted_tag_is_refused(tmp_path):
++    # [M2] leg (b), row 3: a header that is nothing but `(quoted from #1)`
++    # quotes nothing — a compiler that admits an empty quote fails here.
++    _refuses_at_check(tmp_path, HEADER_TAG_ONLY, "tag-only.md")
++
++
++# --- (e) §The document offers both tags for the header Claim, and only those [M5]
++
++def _the_document_paragraph():
++    return _paragraph(SKILL.read_text(encoding="utf-8"), "Above the first task:")
++
++
++def test_755_skill_the_document_offers_the_quoted_tag():
++    # [M5] leg (e), first Run: the paragraph names `(quoted from #NNN)`.
++    para = _the_document_paragraph()
++    assert "(quoted from #NNN)" in para, para
++
++
++def test_755_skill_the_document_still_offers_the_elicited_tag():
++    # [M5] leg (e), second Run: a rewrite that drops the elicited form fails.
++    para = _the_document_paragraph()
++    assert "(elicited)" in para, para
++
++
++def test_755_skill_the_document_does_not_offer_derived_for_the_header_claim():
++    # [M5] leg (e), third Run: `(derived)` is not on offer for the header Claim.
++    para = _the_document_paragraph()
++    assert "(derived)" not in para, para
++
++
++def test_755_skill_the_document_names_the_header_claim_line_exactly_once():
++    # [M5] leg (e), fourth Run — the same lens as the pin above, restated for
++    # this task: the paragraph names `**Claim:**` once, not twice.
++    para = _the_document_paragraph()
++    assert para.count("**Claim:**") == 1, para

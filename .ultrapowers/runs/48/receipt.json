@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -228,7 +228,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The frozen verification periphery is untouched (the first Check), and so is the byte-pinned\n  corpus and its pin (the second, a `git diff` and nothing more): every Run-less fixture plan's\n  bare `--check` output stays byte-identical to the compiler blob at the frozen sha in\n  `tests/test_compile_plan_proof_runs.py` \u2014 nothing here changes a line a Run-less fixture plan\n  prints, and every new render prints only under `--renders`.\n- The compiler's refusal messages that stand at BASE keep their first words: a plan the BASE\n  compiler refuses with a `grammar:` line is refused with a line of the same prefix.\n- Each new render registers itself with its own `ADVISORY_RENDERS.append` at its own site in\n  its own region of `compile_plan.py`; the three tasks touch three disjoint line ranges of that\n  file, named in each task's Context.\n- No committed exam reads `ULTRA_BASE` or freezes a commit sha of this repository: an exam of\n  the new advisory builds its own commit in a temporary checkout and freezes that sha; the only\n  commit shas in the suite are the ones there at BASE (named in Task 3's Context).\n- The \u00a7The document paragraph of `skills/ultrawrite/SKILL.md` that begins \"Above the first\n  task:\" still names the header Claim line exactly once \u2014 the pin at\n  `tests/test_plan_level_claim.py:378` is the lens.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The frozen verification periphery is untouched (the first Check), and so is the byte-pinned\n  corpus and its pin (the second, a `git diff` and nothing more): every Run-less fixture plan's\n  bare `--check` output stays byte-identical to the compiler blob at the frozen sha in\n  `tests/test_compile_plan_proof_runs.py` — nothing here changes a line a Run-less fixture plan\n  prints, and every new render prints only under `--renders`.\n- The compiler's refusal messages that stand at BASE keep their first words: a plan the BASE\n  compiler refuses with a `grammar:` line is refused with a line of the same prefix.\n- Each new render registers itself with its own `ADVISORY_RENDERS.append` at its own site in\n  its own region of `compile_plan.py`; the three tasks touch three disjoint line ranges of that\n  file, named in each task's Context.\n- No committed exam reads `ULTRA_BASE` or freezes a commit sha of this repository: an exam of\n  the new advisory builds its own commit in a temporary checkout and freezes that sha; the only\n  commit shas in the suite are the ones there at BASE (named in Task 3's Context).\n- The §The document paragraph of `skills/ultrawrite/SKILL.md` that begins \"Above the first\n  task:\" still names the header Claim line exactly once — the pin at\n  `tests/test_plan_level_claim.py:378` is the lens.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
@@ -251,11 +251,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-48/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-48/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-48/acceptance.log"
 }
