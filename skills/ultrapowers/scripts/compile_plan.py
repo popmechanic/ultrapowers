@@ -408,6 +408,20 @@ EXAM_COMMAND_LABEL_RE = re.compile(
     r"^\*\*\s*exam[-\s]?command\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$", re.I)
 EXAM_PATHS_TOKEN = "{paths}"
 
+# What a word of the declared template may be spelled with (#716). The sandbox
+# reads the template as ONE RUNNER AND ITS ARGUMENTS: `ultra_run.py`'s
+# `runner_for` takes `cmd.split()[0]` for a command its `TASK_RUNNERS` table
+# does not know and probes it with `/bin/sh -c 'command -v <word>'`. This class
+# admits what a runner and its flags are spelled with (`-q`, `--tb=short`,
+# `./...`, `pkg:test`, `a,b`) and excludes every shell operator, quote and
+# expansion character — a `;`, `|`, `$(`, `>` or quote anywhere on the line
+# means the first word is not necessarily what runs the suite, so the template
+# is refused rather than handed to a shell that reads it differently.
+EXAM_RUNNER_WORD = re.compile(r"^[A-Za-z0-9_.+/=:@,-]+$")
+EXAM_RUNNER_WORD_NOTE = (" is not a command word — the sandbox reads the "
+                         "template as one runner and its arguments, probing "
+                         "the first word with command -v")
+
 
 def _exam_command_label(stripped):
     m = EXAM_COMMAND_LABEL_RE.match(stripped)
@@ -421,13 +435,39 @@ def parse_exam_command(md_text):
     return _plan_header_value(md_text, _exam_command_label)
 
 
+def _exam_runner_word_violation(template):
+    """The first word of the template that is not a command word, or None.
+
+    The rule is word by word over the value split on whitespace: every word is
+    the `{paths}` token itself or matches `EXAM_RUNNER_WORD`, and the first
+    word is never `{paths}` — a template whose runner is the paths token names
+    no runner at all."""
+    for index, word in enumerate(template.split()):
+        if word == EXAM_PATHS_TOKEN:
+            if index == 0:
+                return word
+            continue
+        if not EXAM_RUNNER_WORD.match(word):
+            return word
+    return None
+
+
 def exam_command_violations(md_text):
-    """The declared template's own refusals. `{paths}` is the whole contract:
-    zero occurrences and the template runs the same files for every task (or
-    none at all), two and the substitution is ambiguous."""
+    """The declared template's own refusals, in the order a reader meets them:
+    a backtick anywhere (the same species, the same wording, as a `Run:`/
+    `Check:` command's — the driver's shell would read it as a command
+    substitution), then a word that is not a command word, then the `{paths}`
+    count. `{paths}` is the substitution's whole contract: zero occurrences and
+    the template runs the same files for every task (or none at all), two and
+    the substitution is ambiguous."""
     template = parse_exam_command(md_text)
     if template is None:
         return []
+    if "`" in template:
+        return [_backtick_command_violation("Exam command", template)]
+    offender = _exam_runner_word_violation(template)
+    if offender is not None:
+        return ["exam-command: %s%s" % (offender, EXAM_RUNNER_WORD_NOTE)]
     if template.count(EXAM_PATHS_TOKEN) != 1:
         return ["exam-command: the template must carry %s exactly once"
                 % EXAM_PATHS_TOKEN]

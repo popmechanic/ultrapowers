@@ -19,13 +19,20 @@ the committed compiler against it.
 """
 import json
 import pathlib
+import re
 import subprocess
 import sys
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import compile_plan  # noqa: E402
+# Task 4 leg (c) [M3]: the frozen-sha byte-identity assertion is that file's,
+# imported and re-run from here.
+import test_compile_plan_proof_runs as proof_runs  # noqa: E402
 from compile_plan import (  # noqa: E402
     gate_input_hash,
     parse_claims_body,
@@ -258,3 +265,225 @@ def test_exam_command_violations_pins_the_token_count(tmp_path):
         found = compile_plan.exam_command_violations(HEADER + line + body)
         assert len(found) == 1, (template, found)
         assert found[0].startswith("exam-command:"), found[0]
+
+
+# =========================================================================== #
+# Task 4 (#716): a backticked or non-command `**Exam command:**` value is a
+# REFUSAL, not an advisory — the compiler half. The blocks below are that
+# task's own Proof legs (a), (b) and (c); its launcher half is
+# `fleet/tests/test_launch_exam_command.mjs`.
+# =========================================================================== #
+
+# The two message tails the refusals carry. The backtick note is the compiler's
+# own `BACKTICK_COMMAND_NOTE`, which `_backtick_command_violation` already
+# writes for a `Run:` and a `Check:` — the same wording, a third caller.
+BACKTICK_NOTE = ("; the driver's shell reads it as a command substitution "
+                 "(run-74)")
+RUNNER_NOTE = (" — the sandbox reads the template as one runner and its "
+               "arguments, probing the first word with command -v")
+
+# The command-word class of M2: the shared literal of the two halves, written
+# `EXAM_RUNNER_WORD` in the compiler and exported under that name from
+# `fleet/launch.mjs`.
+WORD_CLASS = r"^[A-Za-z0-9_.+/=:@,-]+$"
+
+
+def _exam_plan(tmp_path, value, name):
+    """A signed one-task plan whose header carries `value` on its
+    `**Exam command:**` line."""
+    return _plan(tmp_path, HEADER + "**Exam command:** %s\n\n" % value,
+                 [_task("1", ["tests/c.py"])], name=name)
+
+
+def _backtick_line(value):
+    """The `grammar:` line M1 spells, for a value quoted to 80 characters."""
+    return ("grammar: Exam command: command carries a backtick — %s%s"
+            % (value[:80], BACKTICK_NOTE))
+
+
+def _word_line(word):
+    """The `exam-command:` line M2 spells, naming the first offending word."""
+    return "exam-command: %s is not a command word%s" % (word, RUNNER_NOTE)
+
+
+# --- task 4, leg (a) [M1]: a backtick anywhere on the value -----------------
+
+BACKTICKED = "`python3 -m pytest {paths}`"
+# A value past the 80-character quote, so the clipping M1 spells is live.
+LONG_BACKTICKED = ("`python3 -m pytest -q --tb=short tests/test_alpha.py "
+                   "tests/test_beta.py tests/test_gamma.py {paths}`")
+
+
+def test_task4_a_backticked_exam_command_is_refused_with_the_grammar_line(
+        tmp_path):
+    # The plan the sandbox met (#716's finding 2): a template written inside
+    # backticks reached `--validate-knobs` as a runner literally named
+    # `` `python3 ``, after the compiler had printed PLAN OK.
+    plan = _exam_plan(tmp_path, BACKTICKED, "backticked")
+    assert compile_plan.parse_exam_command(plan.read_text()) == BACKTICKED, (
+        "leg (a) [M1]: the fixture's header value is the backticked template, "
+        "verbatim — the header reader keeps the backticks")
+    r = _check(plan)
+    assert r.returncode == 2, (
+        "leg (a) [M1]: a backtick on the `**Exam command:**` line is a "
+        "refusal, so `--check` exits 2\n" + r.stdout + r.stderr)
+    assert _backtick_line(BACKTICKED) in r.stdout.splitlines(), (
+        "leg (a) [M1]: the output carries exactly the line\n  %s\ngot:\n%s"
+        % (_backtick_line(BACKTICKED), r.stdout))
+
+
+def test_task4_the_backtick_line_is_the_wording_run_and_check_already_use():
+    # M1 names the function: `_backtick_command_violation("Exam command",
+    # value)`. One wording, now three callers — an author who has read the
+    # `Run:` refusal has read this one.
+    assert (compile_plan._backtick_command_violation("Exam command", BACKTICKED)
+            == _backtick_line(BACKTICKED)), (
+        "leg (a) [M1]: the `Exam command` line is the shared "
+        "`_backtick_command_violation` wording, not a paraphrase of it")
+
+
+def test_task4_a_long_backticked_value_is_quoted_to_eighty_characters(tmp_path):
+    assert len(LONG_BACKTICKED) > 80, "the fixture must outrun the 80-char quote"
+    plan = _exam_plan(tmp_path, LONG_BACKTICKED, "backticked-long")
+    r = _check(plan)
+    assert r.returncode == 2, (
+        "leg (a) [M1]: still a refusal\n" + r.stdout + r.stderr)
+    assert _backtick_line(LONG_BACKTICKED) in r.stdout.splitlines(), (
+        "leg (a) [M1]: the value is quoted to its first 80 characters — "
+        "expected\n  %s\ngot:\n%s"
+        % (_backtick_line(LONG_BACKTICKED), r.stdout))
+
+
+# --- task 4, leg (b) [M2]: the first word outside the command-word class ----
+
+# Each row is a value and the FIRST word of it that breaks the rule — the word
+# the refusal must name.
+NON_COMMAND_VALUES = [
+    ("$(which node) {paths}", "$(which"),
+    ("'npx' vitest run {paths}", "'npx'"),
+    ("{paths}", "{paths}"),
+    ("node {paths}; rm -rf ~", "{paths};"),
+    ("node $(x) {paths}", "$(x)"),
+    ("node {paths} | tee out", "|"),
+    ("node {paths} 2>&1", "2>&1"),
+]
+
+
+@pytest.mark.parametrize("value,word", NON_COMMAND_VALUES,
+                         ids=[v for v, _ in NON_COMMAND_VALUES])
+def test_task4_a_word_outside_the_command_word_class_is_refused(
+        tmp_path, value, word):
+    # A `;`, `|`, `$(`, `>` or quote anywhere on the line means the first word
+    # is not necessarily what runs the suite — and `runner_for` probes exactly
+    # that first word with `command -v`. `{paths}` first is the same finding:
+    # the template's runner would be a list of test paths.
+    plan = _exam_plan(tmp_path, value, "word")
+    assert compile_plan.parse_exam_command(plan.read_text()) == value, (
+        "leg (b) [M2]: the fixture's header value is %r, verbatim" % value)
+    r = _check(plan)
+    assert r.returncode == 2, (
+        "leg (b) [M2]: %r carries a word outside the command-word class, so "
+        "`--check` exits 2\n%s%s" % (value, r.stdout, r.stderr))
+    blocks = _violations(r.stdout, "exam-command:")
+    assert blocks == [_word_line(word)], (
+        "leg (b) [M2]: %r draws exactly one `exam-command:` refusal, naming "
+        "its first offending word %r:\n  %s\ngot:\n%s"
+        % (value, word, _word_line(word), r.stdout))
+
+
+def test_task4_the_command_word_class_is_the_shared_literal():
+    # The shared literal of the two halves. `fleet/launch.mjs` exports it as
+    # `EXAM_RUNNER_WORD`; the compiler writes it under that same name.
+    assert hasattr(compile_plan, "EXAM_RUNNER_WORD"), (
+        "leg (b) [M2]: the compiler names the class `EXAM_RUNNER_WORD`, the "
+        "literal it shares with fleet/launch.mjs")
+    assert compile_plan.EXAM_RUNNER_WORD.pattern == WORD_CLASS, (
+        "leg (b) [M2]: the class is %s, got %r"
+        % (WORD_CLASS, compile_plan.EXAM_RUNNER_WORD.pattern))
+    # What a runner and its flags are spelled with, and what a shell operator,
+    # a quote or an expansion is spelled with.
+    for word in ("node", "python3", "-q", "--tb=short", "./node_modules/.bin/vitest",
+                 "./...", "pkg:test", "a,b", "go", "test", "user@host", "a+b"):
+        assert compile_plan.EXAM_RUNNER_WORD.match(word), (
+            "leg (b) [M2]: %r is how a runner or its flag is spelled" % word)
+    for word in ("$(which", "'npx'", '"npx"', "{paths};", "$(x)", "|", "2>&1",
+                 ">out", "a&b", "a;b", "*", "?", "!", "#", "back\\slash", "`x`"):
+        assert not compile_plan.EXAM_RUNNER_WORD.match(word), (
+            "leg (b) [M2]: %r carries a shell operator, a quote or an "
+            "expansion character and is not a command word" % word)
+
+
+# --- task 4, leg (c) [M3]: what stays green, and the frozen channel ---------
+
+GREEN_TEMPLATES = [
+    "node {paths}",
+    "./node_modules/.bin/vitest run {paths}",
+    "python3 -m pytest -q --tb=short {paths}",
+    "go test ./... {paths}",
+]
+
+
+@pytest.mark.parametrize("value", GREEN_TEMPLATES, ids=GREEN_TEMPLATES)
+def test_task4_a_well_formed_template_still_checks_ok(tmp_path, value):
+    # Every word either `{paths}` itself or a match of the class, and the first
+    # word a runner: the class admits what a real exam command is spelled with.
+    # (The class is spelled out here rather than imported, so this leg reads
+    # the same whether or not the compiler has grown its copy yet.)
+    for word in value.split():
+        assert word == "{paths}" or re.match(WORD_CLASS, word), (
+            "leg (c) [M3]: %r is a command word of %r" % (word, value))
+    plan = _exam_plan(tmp_path, value, "green")
+    r = _check(plan)
+    assert r.returncode == 0, (
+        "leg (c) [M3]: %r is a well-formed template and must check OK\n%s%s"
+        % (value, r.stdout, r.stderr))
+    assert r.stdout.splitlines()[0] == "PLAN OK", r.stdout
+    assert _violations(r.stdout, "exam-command:") == [], r.stdout
+    assert _violations(r.stdout, "grammar: Exam command") == [], r.stdout
+
+
+def test_task4_a_plan_with_no_exam_command_line_still_checks_ok(tmp_path):
+    # No line at all is not a refusal: every task's command derives from the
+    # built-in shape table exactly as it did before #644.
+    plan = _plan(tmp_path, HEADER, [_task("1", ["tests/c.py"])], name="silent4")
+    r = _check(plan)
+    assert r.returncode == 0, (
+        "leg (c) [M3]: a header carrying no `**Exam command:**` line checks "
+        "OK\n" + r.stdout + r.stderr)
+    assert r.stdout.splitlines()[0] == "PLAN OK", r.stdout
+    assert _violations(r.stdout, "exam-command:") == [], r.stdout
+
+
+def test_task4_two_paths_tokens_still_draw_the_base_refusal(tmp_path):
+    # The BASE `{paths}` count is the third rule, and it is unchanged: every
+    # word of `node {paths} {paths}` is a command word, so the refusal it draws
+    # is the one #644 wrote.
+    plan = _exam_plan(tmp_path, "node {paths} {paths}", "twice4")
+    r = _check(plan)
+    assert r.returncode == 2, (
+        "leg (c) [M3]: two `{paths}` is still a refusal\n" + r.stdout + r.stderr)
+    assert (_violations(r.stdout, "exam-command:")
+            == ["exam-command: the template must carry {paths} exactly once"]), (
+        "leg (c) [M3]: and it is the BASE wording, not the new one:\n"
+        + r.stdout)
+
+
+def _fixture_fn(fixture):
+    """The plain function inside a pytest fixture object, so leg (e) of
+    `tests/test_compile_plan_proof_runs.py` can be re-run from here."""
+    fn = getattr(fixture, "__wrapped__", None)
+    if fn is None and hasattr(fixture, "_get_wrapped_function"):
+        fn = fixture._get_wrapped_function()
+    assert fn is not None, "cannot unwrap %r" % (fixture,)
+    return fn
+
+
+def test_task4_every_run_less_fixture_plan_still_checks_byte_identically(
+        tmp_path_factory):
+    """leg (c) [M3]: the two new rules are additive — every Run-less fixture
+    plan's bare `--check` output stays byte-identical to the compiler at the
+    frozen sha. The assertion is `tests/test_compile_plan_proof_runs.py`'s
+    own, imported and called."""
+    base_compiler = _fixture_fn(proof_runs.base_compiler)(tmp_path_factory)
+    proof_runs.test_every_run_less_fixture_plan_checks_byte_identically_to_base(
+        base_compiler)
