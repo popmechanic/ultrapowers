@@ -200,10 +200,18 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   blessed. Reason: runs 65–69 each died on one VM-side papercut and each got a same-hour hack, and
   every one of them had an exe-native shape she named on first ask (memory
   `trust-shelley-on-exe-dev`, `papercut-ledger-2026-09-03`).
-- **Run in parallel wherever file sets are disjoint** — plans that touch disjoint files are
-  launched concurrently as separate runs; same-file edits fold inside one run, never across two
-  PRs. Reason: allocated vCPU is over-committable (56 on a 16-vCPU plan), so contention, not
-  allocation, bounds concurrent runs, and the fold kernel already owns same-file overlap.
+- **Run in parallel; same-file overlap folds at publish** — plans are launched concurrently whatever
+  files they share: with `strict=true` + `enforce_admins` on main (2026-09-08), a PR whose base moved
+  is refused with a 405 and the sandbox folds its branch onto the new main again, so a second run's
+  edits to the same file meet the first's in the kernel, not in a GitHub squash. Reason: decision 11
+  (#715), read on the 8-wide drain of 2026-09-08 — four kernel-seen pairs (`run-engine.mjs`,
+  `skills/ultrawrite/SKILL.md`, `test_publish_fold.mjs`, `CONTRACT.md` + `compile_plan.py`) all folded
+  green with zero conflicts, which met the pre-registered condition and retired the earlier rule
+  ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one of those
+  joins was line-disjoint, so the resolver's only real fold is still run-36 (2 misses, 2026-09-07);
+  the next drain that produces a conflict is the resolver's measurement, not a reason to serialize.
+  Allocated vCPU stays over-committable (48 on a 16-vCPU plan during that drain), so contention, not
+  allocation, bounds concurrent runs.
 - **Handoffs are opt-in** — a session starts from the operator's intention, never from the last
   session's agenda; read `.claude/ultrapowers/handoffs/` only when asked to resume (operator,
   2026-08-31, reversing #469's auto-discovery).
