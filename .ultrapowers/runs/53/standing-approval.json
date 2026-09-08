@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-53.md run-53 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/sandbox-boot.sh — the `failing_block` awk cut running under the sandbox's own awk (Ubuntu mawk) — The boot sims exercise the real `failing_block` through this machine's awk (`$ node fleet/tests/test_sandbox_boot_merge.mjs | grep -q 'ALL TESTS PASSED'`, exit 0), so the rule itself is executed and verified here; what this environment has no mawk to run is the same program on the production sandbox interpreter the Context names. I read the program for the constructs the Context forbids and found none — no `{n,m}` intervals, no `\\d`, no gawk-only functions, only `___+`, `===+`, `(not )?ok [0-9]`, array indexing by NR and an END block — so this is a portability surface left unexecuted, not a suspected defect. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

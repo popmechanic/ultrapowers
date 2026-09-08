@@ -80,3 +80,16 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/publish-fold.mjs fleet/run-main.mjs","exit":0,"minor":false,"wave":2,"id":"01M20W1R4100006ESCC72EXPVC","ts":1788883296385}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M20W1R420000A2KHTC93K6M6","ts":1788883296386}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"1c0f5a36-81c3-48f5-936c-4c7348e57969","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-53/clones/integration","model":"opus","id":"01M20W1R43000080K6VCRZFEWT","ts":1788883296387}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"1c0f5a36-81c3-48f5-936c-4c7348e57969","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4331,"output":14670,"cacheRead":1375171,"cacheCreation":62111,"costUsd":1.6971005000000003,"models":["claude-opus-5"]},"id":"01M20W7ZA10000HHMSPCQFDA6A","ts":1788883500353}
+{"kind":"transcript:slice","label":"integration","sessionId":"1c0f5a36-81c3-48f5-936c-4c7348e57969","bytes":11404,"id":"01M20W7ZA70000ZHTCSZA7NXZ1","ts":1788883500359}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M20W7ZAJ0000X04C61XF4Q7K","ts":1788883500370}
+{"kind":"driver:stage","stage":"finalize","id":"01M20W7ZCM0000KC9NKZY1ATW1","ts":1788883500436}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-53/acceptance.log","id":"01M20W7ZE50000A6RKJBSS1ENT","ts":1788883500485}
+{"kind":"driver:stage","stage":"gate","id":"01M20W7ZE60000B92CSAV0YX79","ts":1788883500486}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M20WH08W000015E0JN4NGRTD","ts":1788883796252}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M20WH08W0001MKS6C6ESM7S7","ts":1788883796252}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M20WH08W0002J916QY2XZYF1","ts":1788883796252}
+{"kind":"driver:stage","stage":"approve","id":"01M20WH08X0000123X7AFPTQR9","ts":1788883796253}
+{"kind":"driver:approved","stamp":"run-53","integrationBranch":"ultra/integration-run-53","id":"01M20WH0B800007SE9QJ42556R","ts":1788883796328}
+{"kind":"run:open","runId":"run-53","base":"d26bbdc1c1603d9865390e9890440e5c4c77422c","source":"fleet/publish-fold.mjs","id":"01M20WH0JG0000PNR7ACBDVJBC","ts":1788883796560}
+{"kind":"driver:publish-fold","run":"53","attempt":"1","base":"d26bbdc1c1603d9865390e9890440e5c4c77422c","tip":"d26bbdc1c1603d9865390e9890440e5c4c77422c","candidate":"a7f322f6f8cda94eff90d2a5447d9d262fb74395","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M20WH1MX000094D70JYFER2Z","ts":1788883797661}

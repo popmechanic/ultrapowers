@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -78,7 +78,7 @@
             "`failingBlock(text: string) -> string`"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the excerpt is read by agents and the operator, never by a task"
+            "nothing a sibling consumes — the excerpt is read by agents and the operator, never by a task"
           ]
         }
       },
@@ -97,7 +97,7 @@
             "none"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the excerpt is read by the operator on the pull request"
+            "nothing a sibling consumes — the excerpt is read by the operator on the pull request"
           ]
         }
       }
@@ -167,7 +167,7 @@
               "none"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the excerpt is read by the operator on the pull request"
+              "nothing a sibling consumes — the excerpt is read by the operator on the pull request"
             ]
           },
           "tier": null,
@@ -203,7 +203,7 @@
               "`failingBlock(text: string) -> string`"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the excerpt is read by agents and the operator, never by a task"
+              "nothing a sibling consumes — the excerpt is read by agents and the operator, never by a task"
             ]
           },
           "tier": null,
@@ -237,7 +237,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The verification periphery is frozen (0.1.0); the first Check is its pin. The gate receipt's\n  own tail of the acceptance run is the frozen scripts' and is not what this plan changes.\n- The whole output stays on the record where it is: `<run dir>/acceptance.log` is still the\n  gate suite's full output (#739) and `publish-fold/suite-<attempt>.txt` is still the fold\n  suite's full stdout+stderr as `publish-fold.mjs` writes it \u2014 the second Check pins both\n  writers. What changes is the excerpt a reader is shown, never the record.\n- A green suite's record keeps its BASE shape and text: `report.tests`, `report.baseline`\n  (`null` on an all-green run; `{ passed, output }` otherwise), `waveMerges[].suite`, and the\n  green branch of `suiteLine` are as at BASE.\n- No excerpt of a red suite is a fixed-length tail or head: no `.slice(-N)`, `tail(\u2026, N)`,\n  `tail -n`, `tail -c` or `head` is applied to a red suite's output on its way into a judgment\n  call, a brief, a wave detail or the pull-request body.\n- `fleet/sandbox-boot.sh` invokes `node` only as argv to `systemd-run`, as at BASE \u2014 the boot\n  sims stub `node` and record a direct call as a `node DIRECT` finding.\n- The run record stays data: no new event kind, no new report field; the existing fields keep\n  their names and types.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped with what replaces them.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The verification periphery is frozen (0.1.0); the first Check is its pin. The gate receipt's\n  own tail of the acceptance run is the frozen scripts' and is not what this plan changes.\n- The whole output stays on the record where it is: `<run dir>/acceptance.log` is still the\n  gate suite's full output (#739) and `publish-fold/suite-<attempt>.txt` is still the fold\n  suite's full stdout+stderr as `publish-fold.mjs` writes it — the second Check pins both\n  writers. What changes is the excerpt a reader is shown, never the record.\n- A green suite's record keeps its BASE shape and text: `report.tests`, `report.baseline`\n  (`null` on an all-green run; `{ passed, output }` otherwise), `waveMerges[].suite`, and the\n  green branch of `suiteLine` are as at BASE.\n- No excerpt of a red suite is a fixed-length tail or head: no `.slice(-N)`, `tail(…, N)`,\n  `tail -n`, `tail -c` or `head` is applied to a red suite's output on its way into a judgment\n  call, a brief, a wave detail or the pull-request body.\n- `fleet/sandbox-boot.sh` invokes `node` only as argv to `systemd-run`, as at BASE — the boot\n  sims stub `node` and record a direct call as a `node DIRECT` finding.\n- The run record stays data: no new event kind, no new report field; the existing fields keep\n  their names and types.\n- Every assertion that stands at BASE in the sims a task's Files names still holds, except the\n  ones that task's Context names as re-scoped with what replaces them.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
@@ -256,11 +256,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-53/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-53/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-53/acceptance.log"
 }
