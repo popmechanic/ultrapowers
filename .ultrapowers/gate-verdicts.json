@@ -1,0 +1,82 @@
+{
+  "plan": "2026-09-08-suite-memoized-by-tree-hash.md",
+  "shape": "two deletions (depth-1 leg gone; lazy baseline) — the tree-hash memo shape was rejected 2026-09-08 and its verdicts discarded",
+  "base": "1631e87adfa4a0806622454d46aeca2bf6f077bc",
+  "tasks": {
+    "1": {
+      "hash": "104b42f2e0b6859105cb8df2709f73cbca3fed0645c3e9e234f62a5335a61beb",
+      "verdict": "pass",
+      "reason": "Each clause has a leg whose oracle would fail on a violation — M1 by the shallow-path assertion plus the $PWD sweep, M2 by the deep-equal phase array, M3 by the hasOwn/[]/judgmentCalls checks on a suite red only at depth 1, M4 by the once/zero dispatch counts on the merged and BLOCKED runs plus the no-wave-merged finding, M5 by the tracked-file git grep sweep and the two absence tests, and M6 by the eight-line -B8 window, the gate-leg and fetch-depth negations, the sibling sim's sentinel and the docs pin — with document clauses proven by commands and engine clauses by sims."
+    },
+    "2": {
+      "hash": "837e7315df6ea4576e8114e691b15e6e884607d8dccf0440b45a5ba823ef4f8a",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that would fail under a violating engine or document — (a) falsifies M1's count/tree/null, (b)+(d) M2's before-dispatch ordering, candidate-tree cwd, FIXED/BLOCKED endings and {passed, output}, (b)+(c) both M3 polarities including the negation legs, (e) M4's once-per-run, and the six Run: greps plus the sibling sim's sentinel (which cannot print if it still pins report.baseline.passed against a null) cover each M5 literal."
+    }
+  },
+  "tally": {
+    "dispatched": 6,
+    "rejected": 2,
+    "rounds": {
+      "1": {
+        "dispatched": 2,
+        "rejected": 2
+      },
+      "2": {
+        "dispatched": 2,
+        "rejected": 0
+      },
+      "3": {
+        "dispatched": 2,
+        "rejected": 0,
+        "why": "author re-dispatch after negative controls at BASE exposed two tautological Run: pins"
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "hash": "347ff563c1d22f920a4405da8f72516681b41dd458b70c0f050311860fbae341",
+      "verdict": "fail",
+      "reason": "M6's 'checkout comment names #712' is proven only by a file-wide grep -q '#712' on ci.yml, which cannot distinguish a #712 in the checkout step's comment from one written anywhere else in the workflow, so the clause's locus is unproven."
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "7a13f060c9d78757ad6004c696202a9077acf38acbc5b2e125f42e894df68418",
+      "verdict": "fail",
+      "reason": "M5's field-row and Presentation-item-3 legs grep only for null, so a row or item that says nothing about the suite running on BASE 'only when a wave's candidate suite is red' still passes — that half of the clause has no falsifying leg."
+    },
+    {
+      "round": 2,
+      "task": "1",
+      "hash": "065143034ef3b9d5ee73b3ef9b34c2d495e84e3ba27ef46018cae946c9c9a5cd",
+      "verdict": "pass",
+      "reason": "Each clause has a falsifying leg at its layer — sims (a)–(d) fail on a surviving clone, phase, shallowSuite key/manual deferral, or critic dispatch count, and the tracked-file git grep, existence tests, -B8 window check and pytest run falsify M5–M6 at the document layer."
+    },
+    {
+      "round": 2,
+      "task": "2",
+      "hash": "b0e53e2284532cfbe0fb5c7fddb1605627ee64d208474c62e50c3445b3086e7d",
+      "verdict": "pass",
+      "reason": "Each clause has a falsifying leg — (a) pins M1's line count, BASE-tree inequality and strict null; (b)/(d) cover both of M2's FIXED and BLOCKED triggers with the pre-dispatch count and cwd assertion; (c)/(b) cover M3's red and green branches including the absence checks; (e) pins M4's single BASE line across two red waves; and the six Run legs with pytest cover M5's document, engine, sibling-sim and docs-pin rows."
+    },
+    {
+      "round": 3,
+      "task": "1",
+      "note": "re-dispatched by the author: the fetch-depth pin matched ci.yml's own comment and was rewritten to the YAML key",
+      "hash": "104b42f2e0b6859105cb8df2709f73cbca3fed0645c3e9e234f62a5335a61beb",
+      "verdict": "pass",
+      "reason": "Each clause has a leg whose oracle would fail on a violation — M1 by the shallow-path assertion plus the $PWD sweep, M2 by the deep-equal phase array, M3 by the hasOwn/[]/judgmentCalls checks on a suite red only at depth 1, M4 by the once/zero dispatch counts on the merged and BLOCKED runs plus the no-wave-merged finding, M5 by the tracked-file git grep sweep and the two absence tests, and M6 by the eight-line -B8 window, the gate-leg and fetch-depth negations, the sibling sim's sentinel and the docs pin — with document clauses proven by commands and engine clauses by sims."
+    },
+    {
+      "round": 3,
+      "task": "2",
+      "note": "re-dispatched by the author: 'baseline green' never appears whole in the engine source (built from two strings), so the pin was rewritten to BASE's judgment-call literal",
+      "hash": "837e7315df6ea4576e8114e691b15e6e884607d8dccf0440b45a5ba823ef4f8a",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that would fail under a violating engine or document — (a) falsifies M1's count/tree/null, (b)+(d) M2's before-dispatch ordering, candidate-tree cwd, FIXED/BLOCKED endings and {passed, output}, (b)+(c) both M3 polarities including the negation legs, (e) M4's once-per-run, and the six Run: greps plus the sibling sim's sentinel (which cannot print if it still pins report.baseline.passed against a null) cover each M5 literal."
+    }
+  ]
+}
