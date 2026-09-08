@@ -1,0 +1,438 @@
+{
+  "ok": true,
+  "stamp": "run-66",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-66"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "6 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The exam lands under the reserved directory",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/exam-paths.mjs",
+          "fleet/roles/examiner.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing (the `proofGuards` key is a shared literal, below)"
+          ],
+          "produces": [
+            "`reservedExamPath(p: string, runId: string) -> string`",
+            "`examSlug(runId: string) -> string`",
+            "`reservedExamDirs(runId: string) -> string[]`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "`Guard:` in the compiler",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/scripts/compile_plan.py",
+          "tests/test_compile_plan_proof_tests.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`proofGuards` (the wave-entry key; `list[str]`, Proof order)",
+            "`proof_guards` (the `claims` dict key `parse_claims_body` fills)"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The suite collects the reserved directory from the branch",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "tests/test_fleet_suite.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`collect_sims(fleet_dir: str) -> list[str]`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "Publish strips the reserved directory onto the record",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/strip-exams.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "`fleet/strip-exams.sh` (argv: target-clone, branch, run-id, evidence-dest)"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "ultrawrite teaches `Guard:`",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrapowers/references/plan-markers.md",
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The fold finds an exam where the engine wrote it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`reservedExamPath(p: string, runId: string) -> string`"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "6",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      [
+        "6"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The exam lands under the reserved directory",
+          "files": [
+            "fleet/exam-paths.mjs",
+            "fleet/roles/examiner.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reserved_exams.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing (the `proofGuards` key is a shared literal, below)"
+            ],
+            "produces": [
+              "`reservedExamPath(p: string, runId: string) -> string`",
+              "`examSlug(runId: string) -> string`",
+              "`reservedExamDirs(runId: string) -> string[]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/exam-paths.mjs",
+            "fleet/roles/examiner.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_reserved_exams.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_reserved_exams.mjs",
+          "proofRuns": [
+            "grep -q 'EXAM PATHS' fleet/roles/examiner.md",
+            "! git show $ULTRA_BASE:fleet/roles/examiner.md | grep -q 'EXAM PATHS'",
+            "node fleet/tests/test_roles_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "`Guard:` in the compiler",
+          "files": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_guard.py",
+            "tests/test_compile_plan_proof_tests.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`proofGuards` (the wave-entry key; `list[str]`, Proof order)",
+              "`proof_guards` (the `claims` dict key `parse_claims_body` fills)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultrapowers/scripts/compile_plan.py",
+            "tests/test_compile_plan_proof_tests.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_compile_plan_guard.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_compile_plan_guard.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_compile_plan_proof_tests.py tests/test_compile_plan_proof_runs.py tests/test_compile_plan_task_test_cmd.py"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The suite collects the reserved directory from the branch",
+          "files": [
+            "tests/test_fleet_suite.py",
+            "tests/test_fleet_suite_collection.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`collect_sims(fleet_dir: str) -> list[str]`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "tests/test_fleet_suite.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_fleet_suite_collection.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_fleet_suite_collection.py",
+          "proofRuns": []
+        },
+        {
+          "id": "4",
+          "title": "Publish strips the reserved directory onto the record",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/strip-exams.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_exams.mjs",
+            "fleet/tests/test_strip_exams.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "`fleet/strip-exams.sh` (argv: target-clone, branch, run-id, evidence-dest)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/strip-exams.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_strip_exams.mjs",
+            "fleet/tests/test_sandbox_boot_exams.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_strip_exams.mjs && node fleet/tests/test_sandbox_boot_exams.mjs",
+          "proofRuns": [
+            "bash -n fleet/strip-exams.sh",
+            "bash -n fleet/sandbox-boot.sh",
+            "sed -n \"/the run.s record under/,/The publish fold writes its own/p\" fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'transcripts/<sessionId>.jsonl.*exams/'",
+            "node fleet/tests/test_publish_fold.mjs | grep -q 'ALL TESTS PASSED'"
+          ]
+        },
+        {
+          "id": "5",
+          "title": "ultrawrite teaches `Guard:`",
+          "files": [
+            "skills/ultrapowers/references/plan-markers.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrapowers/references/plan-markers.md",
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Guard:.*Test:.*merged'",
+            "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'ultra/evidence/run-<N>'",
+            "! git show $ULTRA_BASE:skills/ultrawrite/SKILL.md | sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' | grep -q 'Guard:'",
+            "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'tests/exams/<run>/.*fleet/tests/exams/<run>/.*relative imports'",
+            "sed -n '/^- \\*\\*Proof:\\*\\*/,/^- \\*\\*Stale-if:\\*\\*/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'Guard:.*later run'",
+            "sed -n '/^## Proof grammar/,$p' skills/ultrapowers/references/plan-markers.md | tr '\\n' ' ' | grep -q 'tests/exams/<run>/.*evidence tag.*Guard:'",
+            "! git show $ULTRA_BASE:skills/ultrapowers/references/plan-markers.md | grep -q 'Guard:'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite | grep -q 'skill ok'",
+            "python3 -m pytest -q tests/test_recommendation_rubric.py"
+          ]
+        }
+      ],
+      [
+        {
+          "id": "6",
+          "title": "The fold finds an exam where the engine wrote it",
+          "files": [
+            "fleet/publish-fold.mjs",
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`reservedExamPath(p: string, runId: string) -> string`"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/publish-fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_publish_fold.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_publish_fold.mjs",
+          "proofRuns": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "5 parallel tasks",
+      "The fold finds an exam where the engine wrote it"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The compiler's diagnostic vocabulary gains no word: `Guard:` is read into an `ADVISORY` line and a task field, never a `grammar:` refusal, and `Acceptance: suite` keeps its meaning (the committed suite, on the branch that includes the exams).\n- No test pins a sentence of a document; a prose deliverable is proven by a scoped `Run:`.\n- The fold kernel (`skills/ultrapowers/kernel/vendor/manyana.py`) is not touched.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- .github/workflows/ci.yml",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-66/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-66/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-66/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-66/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
