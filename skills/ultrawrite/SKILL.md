@@ -193,8 +193,13 @@ could be live at once — a queue authored in parallel is what lifts it.
 ## The proof gate — before any compile
 
 One fresh-context subagent per task, asked one question: *if this exam passes, is the
-sentence necessarily true, at the right layer?* Layer mismatch means no compile until the
-task is revised. Run `compile_plan.py --check` first: the mechanical gaps (an uncited
+sentence necessarily true, at the right layer? And is every concrete literal a Machine
+clause pins satisfiable under the clauses' own rules — compute it.* Layer mismatch means
+no compile until the task is revised. The second half is there because on walk run-10 a
+Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
+passed the legs on shape without ever computing the number, where a reader asked exactly
+this computed six on the re-read and passed the corrected plan.
+Run `compile_plan.py --check` first: the mechanical gaps (an uncited
 clause, an uncited leg) are refusals there, so the gate reads the pair clause by clause
 with those already closed and spends its judgment on the species only it can see — does
 leg (b) actually falsify M2, or merely mention it?
@@ -217,7 +222,18 @@ a memory: the compiler refuses a plan whose record is missing or whose hashes ar
 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
 wave author never chooses which proof a task satisfies.
 
-Dispatch is **per task**, not per round. A task whose verdict lands first gets its next
+Dispatch is **per task**, not per round, and every reader runs in the foreground. Dispatch
+it with the Agent tool, `subagent_type: "general-purpose"`, `run_in_background: false` —
+one call per task, and several such calls may share one message, but none of them is
+backgrounded, because a backgrounded reader's verdict is delivered to the session that
+spawned the author rather than to the author, who then stops to wait for a message that
+never arrives (2026-09-08: of four concurrent authors, three had backgrounded their
+readers and had to be resumed by hand with the verdict pasted in, two of them with no
+`.gate-verdicts.json` written at all). In the foreground the verdict returns to the author
+that dispatched it, as that call's result: the reader answers with its verdict line and one
+sentence, and `<plan-stem>.gate-verdicts.json` is written by the author from that returned
+verdict, never by the reader — the reader sees only the extractor's output and has no plan
+path to write beside. A task whose verdict lands first gets its next
 reader the moment its Claim or Proof is edited: re-extract that one task with
 `extract_gate_input.py`, dispatch one reader for it, and do not wait for the round's
 other verdicts to arrive — the verdict is still keyed on the hash, so the edit is what
@@ -375,6 +391,12 @@ task-by-task from contract plus proof.
 
 ## Self-review
 
+The author reads `references/authoring-gotchas.md` — the lessons every claims-v1 sitting
+since run-45 paid for, each a rule with its reason — before the gate readers are
+dispatched, and checks the plan against each of them; the file also names the compiler
+advisories and refusals that already catch the mechanical half, so those are read off
+`compile_plan.py --check` rather than re-derived here.
+
 - Every task carries all six slots, in order, none empty, and no checkbox steps.
 - The plan carries one `**Claim:**` above the first task, elicited or quoted from an
   issue. Every task Claim is either the operator's words with a provenance tag or
@@ -396,3 +418,6 @@ task-by-task from contract plus proof.
 - Global Constraints state results, not process; the plan carries an Acceptance line.
 - The `**Closes:**` line, when present, sits directly under `**Goal:**` and names only the
   target repository's issues.
+- No pinned number is a guess: every pinned literal was computed, not assumed — the author
+  ran the command or did the arithmetic at BASE and pasted back what it printed, rather
+  than the figure the sentence wanted to be true.
