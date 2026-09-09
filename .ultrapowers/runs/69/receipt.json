@@ -1,0 +1,811 @@
+{
+  "ok": true,
+  "stamp": "run-69",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-69"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "5 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The referee grades a captured patch",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/referee.mjs",
+          "fleet/tests/fixtures/referee/clean-1/base/src/z.ts",
+          "fleet/tests/fixtures/referee/clean-1/base/tests/z.test.ts",
+          "fleet/tests/fixtures/referee/clean-1/expected.json",
+          "fleet/tests/fixtures/referee/clean-1/patch.diff",
+          "fleet/tests/fixtures/referee/clean-1/task.json",
+          "fleet/tests/fixtures/referee/clean-2/base/docs/a.md",
+          "fleet/tests/fixtures/referee/clean-2/expected.json",
+          "fleet/tests/fixtures/referee/clean-2/patch.diff",
+          "fleet/tests/fixtures/referee/clean-2/task.json",
+          "fleet/tests/fixtures/referee/deps-1/base/package.json",
+          "fleet/tests/fixtures/referee/deps-1/base/src/a.ts",
+          "fleet/tests/fixtures/referee/deps-1/expected.json",
+          "fleet/tests/fixtures/referee/deps-1/patch.diff",
+          "fleet/tests/fixtures/referee/deps-1/task.json",
+          "fleet/tests/fixtures/referee/exam-1/base/src/x.ts",
+          "fleet/tests/fixtures/referee/exam-1/expected.json",
+          "fleet/tests/fixtures/referee/exam-1/patch.diff",
+          "fleet/tests/fixtures/referee/exam-1/task.json",
+          "fleet/tests/fixtures/referee/exam-2/base/src/x.ts",
+          "fleet/tests/fixtures/referee/exam-2/expected.json",
+          "fleet/tests/fixtures/referee/exam-2/patch.diff",
+          "fleet/tests/fixtures/referee/exam-2/task.json",
+          "fleet/tests/fixtures/referee/exam-3/base/src/x.ts",
+          "fleet/tests/fixtures/referee/exam-3/expected.json",
+          "fleet/tests/fixtures/referee/exam-3/patch.diff",
+          "fleet/tests/fixtures/referee/exam-3/task.json",
+          "fleet/tests/fixtures/referee/exam-4/base/src/x.ts",
+          "fleet/tests/fixtures/referee/exam-4/expected.json",
+          "fleet/tests/fixtures/referee/exam-4/patch.diff",
+          "fleet/tests/fixtures/referee/exam-4/task.json",
+          "fleet/tests/fixtures/referee/footprint-1/base/README.md",
+          "fleet/tests/fixtures/referee/footprint-1/base/src/snake.ts",
+          "fleet/tests/fixtures/referee/footprint-1/base/tests/snake.test.ts",
+          "fleet/tests/fixtures/referee/footprint-1/expected.json",
+          "fleet/tests/fixtures/referee/footprint-1/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-1/task.json",
+          "fleet/tests/fixtures/referee/footprint-2/base/fleet/run-engine.mjs",
+          "fleet/tests/fixtures/referee/footprint-2/base/fleet/tests/test_run_engine_exam_fix_edit.mjs",
+          "fleet/tests/fixtures/referee/footprint-2/expected.json",
+          "fleet/tests/fixtures/referee/footprint-2/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-2/task.json",
+          "fleet/tests/fixtures/referee/footprint-3/base/skills/ultrapowers/scripts/compile_plan.py",
+          "fleet/tests/fixtures/referee/footprint-3/base/tests/test_compile_plan_engine_self_change.py",
+          "fleet/tests/fixtures/referee/footprint-3/expected.json",
+          "fleet/tests/fixtures/referee/footprint-3/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-3/task.json",
+          "fleet/tests/fixtures/referee/footprint-4/base/fleet/sandbox-boot.sh",
+          "fleet/tests/fixtures/referee/footprint-4/base/fleet/tests/test_sandbox_boot_merge.mjs",
+          "fleet/tests/fixtures/referee/footprint-4/expected.json",
+          "fleet/tests/fixtures/referee/footprint-4/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-4/task.json",
+          "fleet/tests/fixtures/referee/footprint-5/base/README.md",
+          "fleet/tests/fixtures/referee/footprint-5/base/src/kebab.ts",
+          "fleet/tests/fixtures/referee/footprint-5/base/tests/kebab.test.ts",
+          "fleet/tests/fixtures/referee/footprint-5/expected.json",
+          "fleet/tests/fixtures/referee/footprint-5/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-5/task.json",
+          "fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/SKILL.md",
+          "fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/references/first-run.md",
+          "fleet/tests/fixtures/referee/footprint-6/expected.json",
+          "fleet/tests/fixtures/referee/footprint-6/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-6/task.json",
+          "fleet/tests/fixtures/referee/footprint-7/base/fleet/janitor.mjs",
+          "fleet/tests/fixtures/referee/footprint-7/base/fleet/retire.mjs",
+          "fleet/tests/fixtures/referee/footprint-7/expected.json",
+          "fleet/tests/fixtures/referee/footprint-7/patch.diff",
+          "fleet/tests/fixtures/referee/footprint-7/task.json",
+          "fleet/tests/fixtures/referee/secrets-1/base/src/config.ts",
+          "fleet/tests/fixtures/referee/secrets-1/expected.json",
+          "fleet/tests/fixtures/referee/secrets-1/patch.diff",
+          "fleet/tests/fixtures/referee/secrets-1/task.json",
+          "fleet/tests/fixtures/referee/secrets-2/base/tests/config.test.ts",
+          "fleet/tests/fixtures/referee/secrets-2/expected.json",
+          "fleet/tests/fixtures/referee/secrets-2/patch.diff",
+          "fleet/tests/fixtures/referee/secrets-2/task.json",
+          "fleet/tests/fixtures/referee/testcount-1/base/src/a.py",
+          "fleet/tests/fixtures/referee/testcount-1/base/tests/test_a.py",
+          "fleet/tests/fixtures/referee/testcount-1/expected.json",
+          "fleet/tests/fixtures/referee/testcount-1/patch.diff",
+          "fleet/tests/fixtures/referee/testcount-1/task.json",
+          "fleet/tests/fixtures/referee/testcount-2/base/src/a.py",
+          "fleet/tests/fixtures/referee/testcount-2/base/tests/test_a.py",
+          "fleet/tests/fixtures/referee/testcount-2/expected.json",
+          "fleet/tests/fixtures/referee/testcount-2/patch.diff",
+          "fleet/tests/fixtures/referee/testcount-2/task.json"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`referee(opts) -> Promise<{task, n, findings, settled, linker, ms}>`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The interface linker resolves a Produces symbol per language",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/referee-linker.mjs",
+          "fleet/tests/fixtures/referee/linker-mjs-1/base/src/foo.mjs",
+          "fleet/tests/fixtures/referee/linker-mjs-1/expected.json",
+          "fleet/tests/fixtures/referee/linker-mjs-1/patch.diff",
+          "fleet/tests/fixtures/referee/linker-mjs-1/task.json",
+          "fleet/tests/fixtures/referee/linker-mjs-2/base/src/foo.mjs",
+          "fleet/tests/fixtures/referee/linker-mjs-2/expected.json",
+          "fleet/tests/fixtures/referee/linker-mjs-2/patch.diff",
+          "fleet/tests/fixtures/referee/linker-mjs-2/task.json",
+          "fleet/tests/fixtures/referee/linker-mjs-3/base/src/foo.mjs",
+          "fleet/tests/fixtures/referee/linker-mjs-3/expected.json",
+          "fleet/tests/fixtures/referee/linker-mjs-3/patch.diff",
+          "fleet/tests/fixtures/referee/linker-mjs-3/task.json",
+          "fleet/tests/fixtures/referee/linker-mjs-4/base/src/boom.mjs",
+          "fleet/tests/fixtures/referee/linker-mjs-4/expected.json",
+          "fleet/tests/fixtures/referee/linker-mjs-4/patch.diff",
+          "fleet/tests/fixtures/referee/linker-mjs-4/task.json",
+          "fleet/tests/fixtures/referee/linker-py-1/base/pkg/mod.py",
+          "fleet/tests/fixtures/referee/linker-py-1/expected.json",
+          "fleet/tests/fixtures/referee/linker-py-1/patch.diff",
+          "fleet/tests/fixtures/referee/linker-py-1/task.json",
+          "fleet/tests/fixtures/referee/linker-py-2/base/pkg/mod.py",
+          "fleet/tests/fixtures/referee/linker-py-2/expected.json",
+          "fleet/tests/fixtures/referee/linker-py-2/patch.diff",
+          "fleet/tests/fixtures/referee/linker-py-2/task.json",
+          "fleet/tests/fixtures/referee/linker-py-3/base/pkg/mod.py",
+          "fleet/tests/fixtures/referee/linker-py-3/expected.json",
+          "fleet/tests/fixtures/referee/linker-py-3/patch.diff",
+          "fleet/tests/fixtures/referee/linker-py-3/task.json",
+          "fleet/tests/fixtures/referee/linker-ts-1/base/src/foo.ts",
+          "fleet/tests/fixtures/referee/linker-ts-1/expected.json",
+          "fleet/tests/fixtures/referee/linker-ts-1/patch.diff",
+          "fleet/tests/fixtures/referee/linker-ts-1/task.json",
+          "fleet/tests/fixtures/referee/linker-ts-2/base/src/foo.ts",
+          "fleet/tests/fixtures/referee/linker-ts-2/expected.json",
+          "fleet/tests/fixtures/referee/linker-ts-2/patch.diff",
+          "fleet/tests/fixtures/referee/linker-ts-2/task.json",
+          "fleet/tests/fixtures/referee/linker-ts-3/base/src/foo.ts",
+          "fleet/tests/fixtures/referee/linker-ts-3/expected.json",
+          "fleet/tests/fixtures/referee/linker-ts-3/patch.diff",
+          "fleet/tests/fixtures/referee/linker-ts-3/task.json",
+          "fleet/tests/fixtures/referee/linker-unlinked-1/base/fleet/run-engine.mjs",
+          "fleet/tests/fixtures/referee/linker-unlinked-1/expected.json",
+          "fleet/tests/fixtures/referee/linker-unlinked-1/patch.diff",
+          "fleet/tests/fixtures/referee/linker-unlinked-1/task.json",
+          "fleet/tests/fixtures/referee/linker-unlinked-2/base/fleet/sandbox-boot.sh",
+          "fleet/tests/fixtures/referee/linker-unlinked-2/expected.json",
+          "fleet/tests/fixtures/referee/linker-unlinked-2/patch.diff",
+          "fleet/tests/fixtures/referee/linker-unlinked-2/task.json"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`linkProduces({bullet, files, cloneDir, exec, timeoutMs}) -> Promise<{status, symbol, detail}>`"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The engine runs the referee before any reviewer",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`referee(opts) -> Promise<{task, n, findings, settled, linker, ms}>`",
+            "`linkProduces({bullet, files, cloneDir, exec, timeoutMs}) -> Promise<{status, symbol, detail}>`"
+          ],
+          "produces": [
+            "`refereeBlock(result) -> string`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The reviewer reads the referee's facts instead of re-deriving them",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/reviewer.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing a sibling consumes \u2014 the role file is read by the engine at dispatch"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The referee's file reaches the record, and the documents say so",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing a sibling consumes \u2014 the boot script, the contract and the report format are read by operators and by their own sims"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "1",
+        "to": "3",
+        "why": "interface"
+      },
+      {
+        "from": "2",
+        "to": "3",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "4",
+        "5"
+      ],
+      [
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The referee grades a captured patch",
+          "files": [
+            "fleet/referee.mjs",
+            "fleet/tests/fixtures/referee/clean-1/base/src/z.ts",
+            "fleet/tests/fixtures/referee/clean-1/base/tests/z.test.ts",
+            "fleet/tests/fixtures/referee/clean-1/expected.json",
+            "fleet/tests/fixtures/referee/clean-1/patch.diff",
+            "fleet/tests/fixtures/referee/clean-1/task.json",
+            "fleet/tests/fixtures/referee/clean-2/base/docs/a.md",
+            "fleet/tests/fixtures/referee/clean-2/expected.json",
+            "fleet/tests/fixtures/referee/clean-2/patch.diff",
+            "fleet/tests/fixtures/referee/clean-2/task.json",
+            "fleet/tests/fixtures/referee/deps-1/base/package.json",
+            "fleet/tests/fixtures/referee/deps-1/base/src/a.ts",
+            "fleet/tests/fixtures/referee/deps-1/expected.json",
+            "fleet/tests/fixtures/referee/deps-1/patch.diff",
+            "fleet/tests/fixtures/referee/deps-1/task.json",
+            "fleet/tests/fixtures/referee/exam-1/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-1/expected.json",
+            "fleet/tests/fixtures/referee/exam-1/patch.diff",
+            "fleet/tests/fixtures/referee/exam-1/task.json",
+            "fleet/tests/fixtures/referee/exam-2/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-2/expected.json",
+            "fleet/tests/fixtures/referee/exam-2/patch.diff",
+            "fleet/tests/fixtures/referee/exam-2/task.json",
+            "fleet/tests/fixtures/referee/exam-3/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-3/expected.json",
+            "fleet/tests/fixtures/referee/exam-3/patch.diff",
+            "fleet/tests/fixtures/referee/exam-3/task.json",
+            "fleet/tests/fixtures/referee/exam-4/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-4/expected.json",
+            "fleet/tests/fixtures/referee/exam-4/patch.diff",
+            "fleet/tests/fixtures/referee/exam-4/task.json",
+            "fleet/tests/fixtures/referee/footprint-1/base/README.md",
+            "fleet/tests/fixtures/referee/footprint-1/base/src/snake.ts",
+            "fleet/tests/fixtures/referee/footprint-1/base/tests/snake.test.ts",
+            "fleet/tests/fixtures/referee/footprint-1/expected.json",
+            "fleet/tests/fixtures/referee/footprint-1/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-1/task.json",
+            "fleet/tests/fixtures/referee/footprint-2/base/fleet/run-engine.mjs",
+            "fleet/tests/fixtures/referee/footprint-2/base/fleet/tests/test_run_engine_exam_fix_edit.mjs",
+            "fleet/tests/fixtures/referee/footprint-2/expected.json",
+            "fleet/tests/fixtures/referee/footprint-2/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-2/task.json",
+            "fleet/tests/fixtures/referee/footprint-3/base/skills/ultrapowers/scripts/compile_plan.py",
+            "fleet/tests/fixtures/referee/footprint-3/base/tests/test_compile_plan_engine_self_change.py",
+            "fleet/tests/fixtures/referee/footprint-3/expected.json",
+            "fleet/tests/fixtures/referee/footprint-3/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-3/task.json",
+            "fleet/tests/fixtures/referee/footprint-4/base/fleet/sandbox-boot.sh",
+            "fleet/tests/fixtures/referee/footprint-4/base/fleet/tests/test_sandbox_boot_merge.mjs",
+            "fleet/tests/fixtures/referee/footprint-4/expected.json",
+            "fleet/tests/fixtures/referee/footprint-4/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-4/task.json",
+            "fleet/tests/fixtures/referee/footprint-5/base/README.md",
+            "fleet/tests/fixtures/referee/footprint-5/base/src/kebab.ts",
+            "fleet/tests/fixtures/referee/footprint-5/base/tests/kebab.test.ts",
+            "fleet/tests/fixtures/referee/footprint-5/expected.json",
+            "fleet/tests/fixtures/referee/footprint-5/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-5/task.json",
+            "fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/SKILL.md",
+            "fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/references/first-run.md",
+            "fleet/tests/fixtures/referee/footprint-6/expected.json",
+            "fleet/tests/fixtures/referee/footprint-6/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-6/task.json",
+            "fleet/tests/fixtures/referee/footprint-7/base/fleet/janitor.mjs",
+            "fleet/tests/fixtures/referee/footprint-7/base/fleet/retire.mjs",
+            "fleet/tests/fixtures/referee/footprint-7/expected.json",
+            "fleet/tests/fixtures/referee/footprint-7/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-7/task.json",
+            "fleet/tests/fixtures/referee/secrets-1/base/src/config.ts",
+            "fleet/tests/fixtures/referee/secrets-1/expected.json",
+            "fleet/tests/fixtures/referee/secrets-1/patch.diff",
+            "fleet/tests/fixtures/referee/secrets-1/task.json",
+            "fleet/tests/fixtures/referee/secrets-2/base/tests/config.test.ts",
+            "fleet/tests/fixtures/referee/secrets-2/expected.json",
+            "fleet/tests/fixtures/referee/secrets-2/patch.diff",
+            "fleet/tests/fixtures/referee/secrets-2/task.json",
+            "fleet/tests/fixtures/referee/testcount-1/base/src/a.py",
+            "fleet/tests/fixtures/referee/testcount-1/base/tests/test_a.py",
+            "fleet/tests/fixtures/referee/testcount-1/expected.json",
+            "fleet/tests/fixtures/referee/testcount-1/patch.diff",
+            "fleet/tests/fixtures/referee/testcount-1/task.json",
+            "fleet/tests/fixtures/referee/testcount-2/base/src/a.py",
+            "fleet/tests/fixtures/referee/testcount-2/base/tests/test_a.py",
+            "fleet/tests/fixtures/referee/testcount-2/expected.json",
+            "fleet/tests/fixtures/referee/testcount-2/patch.diff",
+            "fleet/tests/fixtures/referee/testcount-2/task.json",
+            "fleet/tests/test_referee_replay.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`referee(opts) -> Promise<{task, n, findings, settled, linker, ms}>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/referee.mjs",
+            "fleet/tests/fixtures/referee/clean-1/base/src/z.ts",
+            "fleet/tests/fixtures/referee/clean-1/base/tests/z.test.ts",
+            "fleet/tests/fixtures/referee/clean-1/expected.json",
+            "fleet/tests/fixtures/referee/clean-1/patch.diff",
+            "fleet/tests/fixtures/referee/clean-1/task.json",
+            "fleet/tests/fixtures/referee/clean-2/base/docs/a.md",
+            "fleet/tests/fixtures/referee/clean-2/expected.json",
+            "fleet/tests/fixtures/referee/clean-2/patch.diff",
+            "fleet/tests/fixtures/referee/clean-2/task.json",
+            "fleet/tests/fixtures/referee/deps-1/base/package.json",
+            "fleet/tests/fixtures/referee/deps-1/base/src/a.ts",
+            "fleet/tests/fixtures/referee/deps-1/expected.json",
+            "fleet/tests/fixtures/referee/deps-1/patch.diff",
+            "fleet/tests/fixtures/referee/deps-1/task.json",
+            "fleet/tests/fixtures/referee/exam-1/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-1/expected.json",
+            "fleet/tests/fixtures/referee/exam-1/patch.diff",
+            "fleet/tests/fixtures/referee/exam-1/task.json",
+            "fleet/tests/fixtures/referee/exam-2/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-2/expected.json",
+            "fleet/tests/fixtures/referee/exam-2/patch.diff",
+            "fleet/tests/fixtures/referee/exam-2/task.json",
+            "fleet/tests/fixtures/referee/exam-3/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-3/expected.json",
+            "fleet/tests/fixtures/referee/exam-3/patch.diff",
+            "fleet/tests/fixtures/referee/exam-3/task.json",
+            "fleet/tests/fixtures/referee/exam-4/base/src/x.ts",
+            "fleet/tests/fixtures/referee/exam-4/expected.json",
+            "fleet/tests/fixtures/referee/exam-4/patch.diff",
+            "fleet/tests/fixtures/referee/exam-4/task.json",
+            "fleet/tests/fixtures/referee/footprint-1/base/README.md",
+            "fleet/tests/fixtures/referee/footprint-1/base/src/snake.ts",
+            "fleet/tests/fixtures/referee/footprint-1/base/tests/snake.test.ts",
+            "fleet/tests/fixtures/referee/footprint-1/expected.json",
+            "fleet/tests/fixtures/referee/footprint-1/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-1/task.json",
+            "fleet/tests/fixtures/referee/footprint-2/base/fleet/run-engine.mjs",
+            "fleet/tests/fixtures/referee/footprint-2/base/fleet/tests/test_run_engine_exam_fix_edit.mjs",
+            "fleet/tests/fixtures/referee/footprint-2/expected.json",
+            "fleet/tests/fixtures/referee/footprint-2/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-2/task.json",
+            "fleet/tests/fixtures/referee/footprint-3/base/skills/ultrapowers/scripts/compile_plan.py",
+            "fleet/tests/fixtures/referee/footprint-3/base/tests/test_compile_plan_engine_self_change.py",
+            "fleet/tests/fixtures/referee/footprint-3/expected.json",
+            "fleet/tests/fixtures/referee/footprint-3/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-3/task.json",
+            "fleet/tests/fixtures/referee/footprint-4/base/fleet/sandbox-boot.sh",
+            "fleet/tests/fixtures/referee/footprint-4/base/fleet/tests/test_sandbox_boot_merge.mjs",
+            "fleet/tests/fixtures/referee/footprint-4/expected.json",
+            "fleet/tests/fixtures/referee/footprint-4/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-4/task.json",
+            "fleet/tests/fixtures/referee/footprint-5/base/README.md",
+            "fleet/tests/fixtures/referee/footprint-5/base/src/kebab.ts",
+            "fleet/tests/fixtures/referee/footprint-5/base/tests/kebab.test.ts",
+            "fleet/tests/fixtures/referee/footprint-5/expected.json",
+            "fleet/tests/fixtures/referee/footprint-5/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-5/task.json",
+            "fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/SKILL.md",
+            "fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/references/first-run.md",
+            "fleet/tests/fixtures/referee/footprint-6/expected.json",
+            "fleet/tests/fixtures/referee/footprint-6/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-6/task.json",
+            "fleet/tests/fixtures/referee/footprint-7/base/fleet/janitor.mjs",
+            "fleet/tests/fixtures/referee/footprint-7/base/fleet/retire.mjs",
+            "fleet/tests/fixtures/referee/footprint-7/expected.json",
+            "fleet/tests/fixtures/referee/footprint-7/patch.diff",
+            "fleet/tests/fixtures/referee/footprint-7/task.json",
+            "fleet/tests/fixtures/referee/secrets-1/base/src/config.ts",
+            "fleet/tests/fixtures/referee/secrets-1/expected.json",
+            "fleet/tests/fixtures/referee/secrets-1/patch.diff",
+            "fleet/tests/fixtures/referee/secrets-1/task.json",
+            "fleet/tests/fixtures/referee/secrets-2/base/tests/config.test.ts",
+            "fleet/tests/fixtures/referee/secrets-2/expected.json",
+            "fleet/tests/fixtures/referee/secrets-2/patch.diff",
+            "fleet/tests/fixtures/referee/secrets-2/task.json",
+            "fleet/tests/fixtures/referee/testcount-1/base/src/a.py",
+            "fleet/tests/fixtures/referee/testcount-1/base/tests/test_a.py",
+            "fleet/tests/fixtures/referee/testcount-1/expected.json",
+            "fleet/tests/fixtures/referee/testcount-1/patch.diff",
+            "fleet/tests/fixtures/referee/testcount-1/task.json",
+            "fleet/tests/fixtures/referee/testcount-2/base/src/a.py",
+            "fleet/tests/fixtures/referee/testcount-2/base/tests/test_a.py",
+            "fleet/tests/fixtures/referee/testcount-2/expected.json",
+            "fleet/tests/fixtures/referee/testcount-2/patch.diff",
+            "fleet/tests/fixtures/referee/testcount-2/task.json"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_referee_replay.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_referee_replay.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_referee_replay.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(ls -d fleet/tests/fixtures/referee/*/ | grep -c -E '/(footprint|exam|testcount|deps|secrets|clean)-[0-9]+/$')\" = 18"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "2",
+          "title": "The interface linker resolves a Produces symbol per language",
+          "files": [
+            "fleet/referee-linker.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-1/base/src/foo.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-1/task.json",
+            "fleet/tests/fixtures/referee/linker-mjs-2/base/src/foo.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-2/task.json",
+            "fleet/tests/fixtures/referee/linker-mjs-3/base/src/foo.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-3/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-3/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-3/task.json",
+            "fleet/tests/fixtures/referee/linker-mjs-4/base/src/boom.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-4/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-4/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-4/task.json",
+            "fleet/tests/fixtures/referee/linker-py-1/base/pkg/mod.py",
+            "fleet/tests/fixtures/referee/linker-py-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-py-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-py-1/task.json",
+            "fleet/tests/fixtures/referee/linker-py-2/base/pkg/mod.py",
+            "fleet/tests/fixtures/referee/linker-py-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-py-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-py-2/task.json",
+            "fleet/tests/fixtures/referee/linker-py-3/base/pkg/mod.py",
+            "fleet/tests/fixtures/referee/linker-py-3/expected.json",
+            "fleet/tests/fixtures/referee/linker-py-3/patch.diff",
+            "fleet/tests/fixtures/referee/linker-py-3/task.json",
+            "fleet/tests/fixtures/referee/linker-ts-1/base/src/foo.ts",
+            "fleet/tests/fixtures/referee/linker-ts-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-ts-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-ts-1/task.json",
+            "fleet/tests/fixtures/referee/linker-ts-2/base/src/foo.ts",
+            "fleet/tests/fixtures/referee/linker-ts-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-ts-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-ts-2/task.json",
+            "fleet/tests/fixtures/referee/linker-ts-3/base/src/foo.ts",
+            "fleet/tests/fixtures/referee/linker-ts-3/expected.json",
+            "fleet/tests/fixtures/referee/linker-ts-3/patch.diff",
+            "fleet/tests/fixtures/referee/linker-ts-3/task.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/base/fleet/run-engine.mjs",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/task.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/base/fleet/sandbox-boot.sh",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/task.json",
+            "fleet/tests/test_referee_linker.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`linkProduces({bullet, files, cloneDir, exec, timeoutMs}) -> Promise<{status, symbol, detail}>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/referee-linker.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-1/base/src/foo.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-1/task.json",
+            "fleet/tests/fixtures/referee/linker-mjs-2/base/src/foo.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-2/task.json",
+            "fleet/tests/fixtures/referee/linker-mjs-3/base/src/foo.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-3/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-3/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-3/task.json",
+            "fleet/tests/fixtures/referee/linker-mjs-4/base/src/boom.mjs",
+            "fleet/tests/fixtures/referee/linker-mjs-4/expected.json",
+            "fleet/tests/fixtures/referee/linker-mjs-4/patch.diff",
+            "fleet/tests/fixtures/referee/linker-mjs-4/task.json",
+            "fleet/tests/fixtures/referee/linker-py-1/base/pkg/mod.py",
+            "fleet/tests/fixtures/referee/linker-py-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-py-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-py-1/task.json",
+            "fleet/tests/fixtures/referee/linker-py-2/base/pkg/mod.py",
+            "fleet/tests/fixtures/referee/linker-py-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-py-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-py-2/task.json",
+            "fleet/tests/fixtures/referee/linker-py-3/base/pkg/mod.py",
+            "fleet/tests/fixtures/referee/linker-py-3/expected.json",
+            "fleet/tests/fixtures/referee/linker-py-3/patch.diff",
+            "fleet/tests/fixtures/referee/linker-py-3/task.json",
+            "fleet/tests/fixtures/referee/linker-ts-1/base/src/foo.ts",
+            "fleet/tests/fixtures/referee/linker-ts-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-ts-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-ts-1/task.json",
+            "fleet/tests/fixtures/referee/linker-ts-2/base/src/foo.ts",
+            "fleet/tests/fixtures/referee/linker-ts-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-ts-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-ts-2/task.json",
+            "fleet/tests/fixtures/referee/linker-ts-3/base/src/foo.ts",
+            "fleet/tests/fixtures/referee/linker-ts-3/expected.json",
+            "fleet/tests/fixtures/referee/linker-ts-3/patch.diff",
+            "fleet/tests/fixtures/referee/linker-ts-3/task.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/base/fleet/run-engine.mjs",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/expected.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/patch.diff",
+            "fleet/tests/fixtures/referee/linker-unlinked-1/task.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/base/fleet/sandbox-boot.sh",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/expected.json",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/patch.diff",
+            "fleet/tests/fixtures/referee/linker-unlinked-2/task.json"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_referee_linker.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_referee_linker.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_referee_linker.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(ls -d fleet/tests/fixtures/referee/linker-*/ | wc -l | tr -d ' ')\" = 12"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "4",
+          "title": "The reviewer reads the referee's facts instead of re-deriving them",
+          "files": [
+            "fleet/roles/reviewer.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing a sibling consumes \u2014 the role file is read by the engine at dispatch"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/roles/reviewer.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c 'FILES is the expected footprint' fleet/roles/reviewer.md)\" = 0",
+            "test \"$(grep -c 'deleting a file present at BASE' fleet/roles/reviewer.md)\" = 0",
+            "test \"$(grep -c 'touching a SIBLING FILES path' fleet/roles/reviewer.md)\" = 0",
+            "test \"$(grep -c '^3\\. ' fleet/roles/reviewer.md)\" = 0",
+            "test \"$(grep -c 'and against INTERFACES' fleet/roles/reviewer.md)\" = 0",
+            "test \"$(grep -c 'the diff produces the named Produces contract' fleet/roles/reviewer.md)\" = 0",
+            "grep -q '^4\\. Gate the diff against each GLOBAL CONSTRAINT given\\.$' fleet/roles/reviewer.md",
+            "grep -q \"^REFEREE, when present, is the driver's own arithmetic\" fleet/roles/reviewer.md",
+            "sed -n '/^REFEREE, when present/,/^$/p' fleet/roles/reviewer.md | tr '\\n' ' ' | grep -q 'A line marked settled is decided.*re-deriving it is not a finding.*leave the routing to the loop that owns it.*missing dependency edge'",
+            "test \"$(grep -c 'missing dependency edge' fleet/roles/reviewer.md)\" = 1",
+            "grep -q '^1\\. Map everything the task requires' fleet/roles/reviewer.md",
+            "grep -q '^2\\. Flag work the task does not require' fleet/roles/reviewer.md",
+            "grep -q '^5\\. Code quality:' fleet/roles/reviewer.md",
+            "grep -q '^6\\. Plan-supplied code is not privileged\\.' fleet/roles/reviewer.md",
+            "grep -q '^7\\. A diff is a result, not a history' fleet/roles/reviewer.md",
+            "grep -q '^8\\. EXAM EDITED, when present' fleet/roles/reviewer.md",
+            "grep -q '^Every issue names its' fleet/roles/reviewer.md",
+            "grep -q '^RUN EVIDENCE, when present' fleet/roles/reviewer.md",
+            "grep -q '^EXAM EVIDENCE, when present' fleet/roles/reviewer.md",
+            "grep -q '^CHECK EVIDENCE, when present' fleet/roles/reviewer.md",
+            "node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "5",
+          "title": "The referee's file reaches the record, and the documents say so",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing a sibling consumes \u2014 the boot script, the contract and the report format are read by operators and by their own sims"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+          "proofRuns": [
+            "bash -n fleet/sandbox-boot.sh",
+            "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/publish-fold/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'referee/task-<id>-<n>\\.json.*present when the engine wrote them'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+            "sed -n '/^| .tasks\\[\\]\\.reviewVerdict./p' skills/ultrapowers/references/report-format.md | grep -q 'proof-red.*referee-red'",
+            "sed -n '/\"reviewEconomy\": { \"type\": \"object\"/,/\"acceptance\":/p' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q '\"refereeFindings\": {\"type\":\"integer\"}.*\"refereeBlocking\": {\"type\":\"integer\"}.*\"refereeSkippedPairs\": {\"type\":\"integer\"}'",
+            "sed -n '/^| .reviewEconomy./p' skills/ultrapowers/references/report-format.md | grep -q 'refereeFindings.*refereeBlocking.*refereeSkippedPairs'",
+            "sed -n '/^| .tasks\\[\\]\\.proofFixes./p' skills/ultrapowers/references/report-format.md | grep -q 'a red command or a blocking referee finding'",
+            "sed -n '/^| .deferredVerification./p' skills/ultrapowers/references/report-format.md | grep -q \"plan-defect.*per-task reviewer or the driver's referee\""
+          ],
+          "proofGuards": []
+        }
+      ],
+      [
+        {
+          "id": "3",
+          "title": "The engine runs the referee before any reviewer",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_referee.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "fleet/tests/test_run_engine_review_pair.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`referee(opts) -> Promise<{task, n, findings, settled, linker, ms}>`",
+              "`linkProduces({bullet, files, cloneDir, exec, timeoutMs}) -> Promise<{status, symbol, detail}>`"
+            ],
+            "produces": [
+              "`refereeBlock(result) -> string`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_referee.mjs",
+            "fleet/tests/test_run_engine_review_pair.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_referee.mjs && node fleet/tests/test_run_engine_review_pair.mjs && node fleet/tests/test_run_engine_review_economy.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_referee.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_pair.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_actor_routing.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_peer.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_fixloop.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks",
+      "The engine runs the referee before any reviewer"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0): the first Check pins the three gate scripts and the\n  compiler, whose diagnostic vocabulary and task JSON are read here and never changed. The second\n  pins the roles this plan does not own \u2014 only `reviewer.md` changes.\n- The referee and the linker are driver code: no model call, no network, no git write, no\n  `anthropic` SDK and no `ANTHROPIC_API_KEY` anywhere in `fleet/`. A subprocess they spawn is\n  `node` or `python3` on a file of the task's own clone, with a timeout, and nothing else.\n- Amendment 10 holds: models never run git; every git command in the sims is the sim's own.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/examiner.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/implementer.md fleet/roles/resolver.md fleet/roles/reconcile.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-69/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-69/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-69/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-69/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
