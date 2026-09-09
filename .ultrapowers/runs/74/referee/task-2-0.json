@@ -1,0 +1,43 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [
+    {
+      "check": "interface",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "Produces: none — tests/test_ultralearn_catch_report.py: declared, not at top level"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_ultralearn_catch_report.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +5 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/catch_report.py": "py",
+    "tests/test_ultralearn_catch_report.py": "py"
+  },
+  "ms": 51
+}

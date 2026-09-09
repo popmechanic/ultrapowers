@@ -1,0 +1,42 @@
+{
+  "task": "3",
+  "n": 1,
+  "findings": [
+    {
+      "check": "interface",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "Produces: none — no export named none in tests/test_ultralearn_docs.py (found: ROOT, SKILL, HARVEST, test_skill_names_the_fleet_harvester_and_its_corpus, test_every_flag_the_skill_advertises_exists, COUNTER, REPORT, VALIDATE, CATCH_HEADING, VERB1_HEADING, VERB2_HEADING, _heading_line, _catch_section, _help, test_catch_counter_heading_sits_between_the_two_verbs, test_catch_section_names_the_scripts_the_row_and_the_ledger, test_catch_section_states_the_rule_and_names_the_two_record_fields, test_catch_section_reads_n_off_the_curve, test_every_flag_the_catch_section_advertises_exists, test_validate_skill_accepts_the_ultralearn_skill, CENSUS, ONLY_FLAG_SENTENCE, COUNTER_NO_LEDGER_LINE, _catch_section_one_line, test_catch_section_names_ledger_as_the_counters_only_flag, test_counter_without_ledger_prints_the_pinned_line_and_appends_nothing, test_record_field_patterns_reject_the_space_delimited_control)"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_ultralearn_docs.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +3 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "tests/test_ultralearn_docs.py": "py"
+  },
+  "ms": 47
+}
