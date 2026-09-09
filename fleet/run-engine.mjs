@@ -98,6 +98,18 @@ export const looksStructural = (msg) =>
   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
 export const isInfraFault = (msg) => String(msg).startsWith('AGENT_NULL')
 
+// ── the infra backoff (#830) ─────────────────────────────────────────────────
+// How long the engine waits between a judgment call's `null` reply and its one
+// re-dispatch. A `null` is a retries-exhausted death, not a first blip: the
+// worker's classify() mints it from an envelope whose `api_error_status` is one
+// of INFRA_STATUSES, and the CLI only writes that envelope after its own ten
+// fast attempts have failed. So the engine's re-dispatch is a second, COARSER
+// tier — a full minute later, long enough that the storm the CLI's seconds-scale
+// backoff sat through has had time to pass — rather than a faster copy of a
+// retry that already ran. `args.infraBackoffMs` overrides it per run (the sims
+// pass 0); anything that is not a finite number ≥ 0 leaves this value standing.
+export const INFRA_BACKOFF_MS = 60000
+
 // #825 — does this set of changed paths change what the project installs? The
 // names are `derive_bootstrap_cmd`'s ladder (skills/ultrapowers/scripts/
 // ultra_run.py) plus `pytest.ini` and the `requirements*.txt` glob: if the
@@ -1085,6 +1097,88 @@ export async function runEngine({
   const linkerFn = (typeof args.linker === 'function') ? args.linker : linkProduces
   const refereeLinker = (o) => linkerFn({ ...o, exec, timeoutMs: SHELL_TIMEOUT_MS })
 
+  // ── one bounded retry for a single-dispatch judgment (#830) ────────────────
+  // Three judgments are dispatched once and have no lane that re-asks them: the
+  // completeness critic (a `null` is fail-closed on the spot, and the run loses
+  // `gitVerified` for what may have been one API blip), the examiner (a `null`
+  // falls to `exam = 'blocked'` and the task proceeds unexamined) and each
+  // reviewer of a review round (a `null` throws AGENT_NULL, which parks the task
+  // and spends a barrier retry re-running the IMPLEMENTER as well). Each gets
+  // exactly one re-dispatch after the backoff, and a second `null` is the answer
+  // it already was at BASE — fail-closed, unexamined, parked.
+  //
+  // Only a `null` REPLY routes here (the AGENT_NULL doctrine above). A throw is
+  // still the lanes that already exist — runTask's same-tier retry, the barrier
+  // retry of a parked task, the examiner-alone re-dispatch on a rejected
+  // examiner — none of which this widens or replaces.
+  const infraBackoffMs = (Number.isFinite(args.infraBackoffMs) && args.infraBackoffMs >= 0)
+    ? args.infraBackoffMs : INFRA_BACKOFF_MS
+  // What the death's status code was. `agent()` returns a bare `null` — the code
+  // travels only in the `worker:end` envelope the worker emitted through
+  // `onEvent`, which run-main's event log appended to the very file this engine
+  // writes its own records to — so the code is read back from there, taking the
+  // last line that names this label. No such line is an honest `unknown`: a
+  // death before the worker got that far, or a sim that canned the reply alone.
+  // The code is carried on AS READ — `worker:end` writes a number, so the
+  // `driver:infra-retry` event repeats that number rather than a stringified
+  // copy of it; the judgment-call text stringifies it on its own.
+  const lastWorkerStatus = (label) => {
+    let text
+    try {
+      text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8')
+    } catch { return 'unknown' }
+    let status = 'unknown'
+    for (const line of text.split('\n')) {
+      const s = line.trim()
+      if (!s || s[0] !== '{') continue
+      let e
+      try { e = JSON.parse(s) } catch { continue /* not an event line */ }
+      if (e && e.kind === 'worker:end' && e.label === label &&
+          e.status !== undefined && e.status !== null) status = e.status
+    }
+    return status
+  }
+  // The wait. The timer is unref'd — a backoff must never be the reason a
+  // finished process is still alive — but an unref'd timer is equally not a
+  // reason for the loop to KEEP running, and node exits out from under an engine
+  // whose only pending work is this wait (measured: exit 13, "unsettled
+  // top-level await"). So a ref'd handle that is NOT a timer holds the loop for
+  // exactly the wait and is closed the moment it ends: the run stays alive while
+  // it waits, and nothing outlives the re-dispatch. `globalThis.setTimeout` by
+  // name, so a sim can substitute its own clock and read back the delay asked
+  // for.
+  const waitInfraBackoff = () => new Promise((resolve) => {
+    let hold = null
+    try { hold = fs.watch(runDir, () => {}) } catch { hold = null }
+    const t = globalThis.setTimeout(() => {
+      if (hold) { try { hold.close() } catch { /* already gone */ } }
+      resolve()
+    }, infraBackoffMs)
+    if (t && typeof t.unref === 'function') t.unref()
+  })
+  // Called with attempt 1's `null` in hand: record what died, wait, re-dispatch
+  // once, record a second death. The re-dispatch is a FRESH worker with the same
+  // prompt — `--resume` after an API error is not documented as reliable — which
+  // each caller supplies as `redispatch`. `scope` is the `task <id>: ` prefix a
+  // per-task judgment carries and the empty string for the run-wide critic.
+  // Returns the second reply, or `null` when there was none.
+  const retryInfraNull = async (label, scope, redispatch) => {
+    const status = lastWorkerStatus(label)
+    judgmentCalls.push(scope + 'infra-retry: ' + label + ' attempt 1 returned null (status ' +
+      status + ') — re-dispatched once after ' + infraBackoffMs + ' ms')
+    log(label + ' returned null (status ' + status + ') — re-dispatching once after ' +
+      infraBackoffMs + ' ms')
+    await waitInfraBackoff()
+    appendEvent({ kind: 'driver:infra-retry', label, attempt: 1, status })
+    const again = await redispatch()
+    if (again === null) {
+      judgmentCalls.push(scope + 'infra-retry: ' + label + ' attempt 2 returned null (status ' +
+        lastWorkerStatus(label) + ') — no third attempt; fail-closed')
+      return null
+    }
+    return again
+  }
+
   // Edge sanity (ported): an unbound / inverted / same-wave edge weakens
   // dependency blocking — surfaced, never thrown.
   {
@@ -1538,6 +1632,31 @@ export async function runEngine({
         ex = null
         log('task ' + task.id + ' examiner died again — proceeding unexamined')
       }
+    } else if (examReady && ex === null) {
+      // The same infra death, arriving as a REPLY rather than a throw (#830).
+      // At BASE this fell straight through to `exam = 'blocked'` — the task
+      // proceeds unexamined and nobody ever re-asks — so it gets the one
+      // re-dispatch the rejected lane above already gets, under the same
+      // kept-reply condition: only a success with driver-captured coordinates
+      // has work a whole-pair retry would throw away. The clone is re-cut at
+      // BASE and bootstrapped again for the same reason it is there — the
+      // second examiner must open its eyes on the tree the first was given.
+      const kept = (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && hasCoordinates(impl)
+      if (kept) {
+        try {
+          ex = await retryInfraNull('exam:' + task.id, 'task ' + task.id + ': ', async () => {
+            await cutExamClone()
+            await bootstrapExamClone()
+            return agent(examPrompt, examOpts)
+          })
+        } catch (e2) {
+          // A clone that could not be re-cut, or a second attempt that threw:
+          // one re-dispatch, never two, and `ex` stays null — which the verdict
+          // block below already reads as an examiner that returned no reply.
+          ex = null
+          log('task ' + task.id + ' examiner died again — proceeding unexamined')
+        }
+      }
     }
     noteConcerns(impl)
     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
@@ -1986,8 +2105,22 @@ export async function runEngine({
         // pre-0.3.0 rule that a task pipeline stays single-agent (so peak
         // concurrency equals wave width) is retired here: the bound it
         // protected was the Workflow tool's, not the API's (#454 measured it).
-        const [r1, r2] = await Promise.all([timedReview(reviewPrompt, reviewOpts(1)),
-                                            timedReview(reviewPrompt, reviewOpts(2))])
+        const opts1 = reviewOpts(1)
+        const opts2 = reviewOpts(2)
+        let [r1, r2] = await Promise.all([timedReview(reviewPrompt, opts1),
+                                          timedReview(reviewPrompt, opts2)])
+        // One re-dispatch for the half that DIED, and only that half (#830): the
+        // other reviewer's verdict is in hand, and re-asking it buys a second
+        // read of a patch that was already read. A second null falls through to
+        // the throw below, which is the park and the barrier retry, as at BASE.
+        if (r1 === null) {
+          r1 = await retryInfraNull(opts1.label, 'task ' + task.id + ': ',
+            () => timedReview(reviewPrompt, opts1))
+        }
+        if (r2 === null) {
+          r2 = await retryInfraNull(opts2.label, 'task ' + task.id + ': ',
+            () => timedReview(reviewPrompt, opts2))
+        }
         if (r1 === null || r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = (r1.issues || []).concat(r2.issues || [])
         verdicts = [r1.verdict, r2.verdict]
@@ -2002,7 +2135,14 @@ export async function runEngine({
         }
       } else {
         if (isPairReview(taskReviewProfile(task))) refereeSkippedPairs += 1
-        const review = await timedReview(reviewPrompt, reviewOpts())
+        const leanOpts = reviewOpts()
+        let review = await timedReview(reviewPrompt, leanOpts)
+        // The lean profile's one reviewer is as single-dispatch as the pair's
+        // halves are, and its death parks the same task: one re-dispatch (#830).
+        if (review === null) {
+          review = await retryInfraNull(leanOpts.label, 'task ' + task.id + ': ',
+            () => timedReview(reviewPrompt, leanOpts))
+        }
         if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = review.issues || []
         verdicts = [review.verdict]
@@ -2691,21 +2831,30 @@ export async function runEngine({
                  deferredVerification: [] }
       return
     }
+    // The prompt and the options are held rather than inlined: the one
+    // re-dispatch below is the SAME judgment asked again, so it must be asked
+    // byte for byte the same way, with the same model and the same schema.
+    const criticPrompt = roles.critic +
+      (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
+      globalConstraintsBlock +
+      '\n\nTasks:\n' + taskList +
+      contractsBlock(WAVES, EDGES, wavesPath) +
+      '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+      suiteLine(lastSuite, testCmd) +
+      (baseline && baseline.passed === false
+        ? '\nBaseline: the suite is RED on BASE — ' + baseline.output
+        : '') +
+      integratedRunEvidenceBlock(integratedRuns) +
+      integratedCheckEvidenceBlock(integratedChecks)
+    const criticOpts = { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA }
     try {
-      review = await agent(
-        roles.critic +
-          (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
-          globalConstraintsBlock +
-          '\n\nTasks:\n' + taskList +
-          contractsBlock(WAVES, EDGES, wavesPath) +
-          '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
-          suiteLine(lastSuite, testCmd) +
-          (baseline && baseline.passed === false
-            ? '\nBaseline: the suite is RED on BASE — ' + baseline.output
-            : '') +
-          integratedRunEvidenceBlock(integratedRuns) +
-          integratedCheckEvidenceBlock(integratedChecks),
-        { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA })
+      review = await agent(criticPrompt, criticOpts)
+      // A dead critic withholds the run's attestation, so it is worth one more
+      // ask before that verdict is spent (#830). A second null keeps the
+      // fail-closed reading below exactly as it is.
+      if (review === null) {
+        review = await retryInfraNull('integration', '', () => agent(criticPrompt, criticOpts))
+      }
     } catch (e) {
       const msg = String((e && e.message) || e)
       criticCalls.push('integration review failed to run: ' + msg)
