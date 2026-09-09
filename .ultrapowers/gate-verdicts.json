@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "7f9e679d4a264148291cf823dc790984bf7509936e3ddda3515ff0d73bc7f706",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that fails if it is false — M3/(d) counts exactly 2 integration dispatches and gate_check.py exit 1 with git-verified failed; M4/(e) pins both literals with the 429-then-503 disambiguation and the unknown fallback; M6/(g,h) observe the re-cut clone and count impl:T1 at 1; M7/(i) counts impl:T1 at 2 only under the barrier retry; M1/(a) and M8/(j) measure the 60000 default and the >=300 ms elapsed (round 4)."
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 3,
+    "rounds": {
+      "1": "fail — M7's second impl dispatch under the barrier retry had no counting leg",
+      "2": "fail — M4's 'most recent worker:end' was indistinguishable from any matching event (both deaths wrote 429)",
+      "3": "fail — M6's re-cut-and-bootstrap of the examiner clone had no observing leg",
+      "4": "pass"
+    }
+  },
+  "history": [
+    {"round": 1, "hash": "73335f259d1f16a0f4133d0064f7a082ad157f1913cce73a800c6c20529d0faa", "verdict": "fail"},
+    {"round": 2, "hash": "3f3a55000e06f2829d1abb102608466056f88ad40dbde10aa8a00e860a1b3f5b", "verdict": "fail"},
+    {"round": 3, "hash": "45efee6e4120904b302ce05743b2fb695cee75484f82fcbb295e8c69c610c4d8", "verdict": "fail"},
+    {"round": 4, "hash": "7f9e679d4a264148291cf823dc790984bf7509936e3ddda3515ff0d73bc7f706", "verdict": "pass"}
+  ]
+}
