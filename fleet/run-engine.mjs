@@ -58,6 +58,16 @@ import { failingBlock } from './failing-block.mjs'
 // of the project's own test paths. One module, because the engine, the
 // examiner's prompt and `fleet/strip-exams.sh` all have to agree on the slug.
 import { examSlug, reservedExamPath } from './exam-paths.mjs'
+// #729 — the mechanical half of a review. Whether the patch touched a path the
+// task was never given, whether every `Produces:` symbol resolves at HEAD,
+// whether the Proof's `Test:` file is on the tree and ran: every one of those
+// is a function of artifacts the driver already holds, so the driver answers
+// them itself and no reviewer is asked. Both modules are driver code — no model
+// call, no network, no git write. The referee never imports the linker (it is
+// injected below, so a sim can substitute its own), and the linker's only
+// subprocess is `node` or `python3` on one file of the task's own clone.
+import { referee } from './referee.mjs'
+import { linkProduces } from './referee-linker.mjs'
 
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
@@ -364,6 +374,27 @@ export const integratedCheckEvidenceBlock = (checks) => {
     checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
       '\n' + c.stdout).join('')
 }
+// #729 — the referee's own record, rendered for the reviewer that reads the
+// same patch. It goes LAST in the review prompt, after CHECK EVIDENCE: the
+// evidence blocks before it are pinned to each other by
+// `test_run_engine_pre_review.mjs` (CHECK follows RUN to the byte), and
+// `test_run_engine_exam_evidence.mjs` asserts a prompt with no such block
+// names none of them — which is why this block must never contain the strings
+// `RUN EVIDENCE:`, `EXAM EVIDENCE:` or `CHECK EVIDENCE:`.
+// A settled line is a check that ran and decided; a finding is already the fix
+// loop's business, so the reviewer is told not to re-derive either. `null`
+// renders nothing at all (the run-51 rule). Pure, and exported for the unit pin.
+export const refereeBlock = (result) => {
+  if (!result || typeof result !== 'object') return ''
+  const findings = Array.isArray(result.findings) ? result.findings : []
+  const settled = Array.isArray(result.settled) ? result.settled : []
+  return '\n\nREFEREE: the driver\'s own arithmetic over the patch — the footprint, ' +
+    'whether every Produces: symbol resolves at HEAD, and whether every exam file ' +
+    'exists and ran. A line marked settled is decided; a line marked as a finding ' +
+    'is already the fix loop\'s.' +
+    findings.map((f) => '\n- ' + f.severity + ': ' + f.detail).join('') +
+    settled.map((s) => '\n- settled (' + s.check + '): ' + s.detail).join('')
+}
 // #700 — the hunks behind an EXAM EDITED line. Naming the edited paths is not
 // showing them, and the PATCH cannot: `patchAgainstBase` diffs the graded clone
 // against BASE, where the Proof path does not exist, so an edited exam reads
@@ -468,6 +499,13 @@ const siblingLine = (task, wave) => {
     .map((t) => t.id + ': ' + t.files.join(', '))
   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
 }
+// The same fact the line above renders, kept STRUCTURED for the referee's
+// footprint check: a path owned by a wave sibling and absent from FILES is a
+// blocking finding, and deciding that from the rendered string would mean
+// parsing prose the prompt owns. Built here, beside the renderer, so the two
+// cannot drift.
+const siblingFilesOf = (task, wave) =>
+  wave.filter((t) => t.id !== task.id).map((t) => t.files || [])
 const taskBodyBlock = (task, wavesPath) => {
   const inlineBody = (typeof task.body === 'string' && task.body.trim() !== '')
   if (inlineBody) return '\nTASK:\n' + task.body
@@ -906,10 +944,24 @@ export async function runEngine({
   let pairRounds = 0
   let r2MarginalBlocking = 0
   const reviewerBlockingKeys = new Set()
+  // …and what the DRIVER's own arithmetic found for free (#729). Every referee
+  // finding of the run, all severities and all rounds; the blocking ones; and
+  // the pair rounds a repaired referee finding bought back — the second
+  // reviewer of a pair whose first blocking issue the driver had already named
+  // is buying a read of a patch that was already repaired once.
+  let refereeFindings = 0
+  let refereeBlocking = 0
+  let refereeSkippedPairs = 0
   const timedReview = async (prompt, opts) => {
     const t0 = Date.now()
     try { return await agent(prompt, opts) } finally { reviewerMs += Date.now() - t0 }
   }
+  // The linker the referee is handed. `args.linker` is the in-process sim seam
+  // (run-main.mjs never sets it); otherwise the real one, closed over the
+  // engine's own `exec` and timeout so the referee passes only the three
+  // arguments it knows about.
+  const linkerFn = (typeof args.linker === 'function') ? args.linker : linkProduces
+  const refereeLinker = (o) => linkerFn({ ...o, exec, timeoutMs: SHELL_TIMEOUT_MS })
 
   // Edge sanity (ported): an unbound / inverted / same-wave edge weakens
   // dependency blocking — surfaced, never thrown.
@@ -1044,7 +1096,7 @@ export async function runEngine({
   }
 
   // ── per-task pipeline: implement → review → bounded fix loop (ported) ──────
-  async function runTaskInner(task, baseShaForTask, siblingsStr, tierOverride) {
+  async function runTaskInner(task, baseShaForTask, siblingsStr, siblingFiles, tierOverride) {
     const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
     const baseModel = resolvedModel(tierName)
     const economics = { tier: baseModel, review: taskReviewProfile(task) }
@@ -1559,97 +1611,169 @@ export async function runEngine({
     let preRuns = []
     let preExam = null
     let preChecks = []
-    if (proofRuns.length || constraintChecks.length || examRunnable) {
-      const prePass = async () => {
-        const reds = []
-        preRuns = await runCommands(0)
-        for (const r of preRuns) {
-          if (r.exit !== 0) reds.push({ line: RUN_FAIL(r), stdout: r.stdout })
+    // ── the referee (#729) ───────────────────────────────────────────────────
+    // The record round 1 renders as its `REFEREE:` block, replaced whenever a
+    // repair round re-grades the tree. Never null past the pass below: that
+    // pass runs for EVERY task, its command, exam and check legs simply empty
+    // when the task declares none, because the driver's arithmetic over the
+    // patch is worth having on a lean task too.
+    let refereeResult = null
+    // The pair decision (M7), set once, in the pass: true when a `fix:<id>:0`
+    // round was dispatched carrying at least one implementer-actor blocking
+    // referee finding. Round 1 of a pair task then buys ONE reviewer — the
+    // driver named the defect and the fix round already answered it, so the
+    // second read is of a patch that has been repaired once already. Round 2
+    // never reads this: a round-2 blocking finding ends the task before any
+    // dispatch, so round 2 of a pair is always a pair.
+    let refereeRepairedPair = false
+    // `n` is the number of fix rounds that preceded the graded patch, and the
+    // suffix of the record the referee writes at `<runDir>/referee/`.
+    const runReferee = async (n, examEvidence) => {
+      const result = await referee({
+        task, patchPath: impl.patch, baseSha: baseShaForTask, headSha: impl.headSha,
+        cloneDir, siblingFiles, exam, examEvidence, n,
+        linker: refereeLinker, runDir,
+      })
+      const found = Array.isArray(result.findings) ? result.findings : []
+      refereeFindings += found.length
+      refereeBlocking += found.filter((f) => f.severity === 'blocking').length
+      // No event of its own: the referee's record is the JSON it just wrote to
+      // `<runDir>/referee/task-<id>-<n>.json`, which carries every finding, every
+      // settled line and the elapsed ms — an events.jsonl line would only be a
+      // lossy copy of a file that is already on disk, and the pre-review pass's
+      // event stream is pinned to the driver's own command executions.
+      return result
+    }
+    // Every blocking referee finding is a judgment call, whichever actor it
+    // names. A `plan`-actor one never becomes a red: nobody a fix round can
+    // reach was ever asked to create the thing it names, so it travels to the
+    // gate as a plan defect and the task proceeds to review. What comes back is
+    // the blocking findings an implementer can actually act on.
+    const absorbReferee = (result) => {
+      const actionable = []
+      for (const f of (Array.isArray(result.findings) ? result.findings : [])) {
+        if (f.severity !== 'blocking') continue
+        judgmentCalls.push('task ' + task.id + ': referee ' + f.check + ' — ' + f.detail)
+        if (f.actor === 'plan') {
+          const detail = String(f.detail || '')
+          if (!planDefects.some((p) => p.task === task.id && p.detail === detail)) {
+            planDefects.push({ task: task.id, detail })
+          }
+          continue
         }
-        preExam = await runExam(0)
-        const e = preExam
-        if (e && e.exit !== 0) reds.push({ line: EXAM_FAIL(e), stdout: e.stdout })
-        preChecks = await runChecks(0)
-        for (const c of preChecks) {
-          if (c.exit === 0) continue
-          if (c.minor) { noteMinorCheck(c); continue }
-          reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
-        }
-        return reds
+        actionable.push(f)
       }
-      let reds = await prePass()
+      return actionable
+    }
+    // The referee's `minor` findings, for the advisories block and the notes —
+    // read at the same point in a round as a reviewer's own minors are.
+    const refereeMinors = () => (refereeResult && Array.isArray(refereeResult.findings)
+      ? refereeResult.findings.filter((f) => f.severity === 'minor') : [])
+    const prePass = async (n) => {
+      const reds = []
+      preRuns = await runCommands(0)
+      for (const r of preRuns) {
+        if (r.exit !== 0) reds.push({ line: RUN_FAIL(r), stdout: r.stdout })
+      }
+      preExam = await runExam(0)
+      const e = preExam
+      if (e && e.exit !== 0) reds.push({ line: EXAM_FAIL(e), stdout: e.stdout })
+      preChecks = await runChecks(0)
+      for (const c of preChecks) {
+        if (c.exit === 0) continue
+        if (c.minor) { noteMinorCheck(c); continue }
+        reds.push({ line: CHECK_FAIL(c), stdout: c.stdout })
+      }
+      // Last, on the tree the legs above just measured, and handed the SAME
+      // exam evidence the pass minted its `EXAM_FAIL` from — that is what makes
+      // a red exam and an absent `Test:` path one finding rather than two. An
+      // actionable finding joins `reds` as a line with no output of its own, so
+      // the fix prompt carries the detail verbatim.
+      refereeResult = await runReferee(n, preExam)
+      for (const f of absorbReferee(refereeResult)) {
+        reds.push({ line: f.detail, stdout: '', referee: true })
+      }
+      return reds
+    }
+    let reds = await prePass(0)
+    if (reds.length) {
+      // ── the implementer's own plan-defect against a Proof leg (#722) ────
+      // The actor question the reviews already answer (`routeToPlan`) is
+      // asked one round earlier here, by the one agent that read the leg and
+      // the tree together. A leg no implementation can satisfy — one that
+      // reads state the patch creates, or asserts a shape a sibling's
+      // contract forbids — is not a red the implementer can clear: it may
+      // not edit the exam (#663), so a fix round buys a second agent that
+      // lands exactly where the first did. When the reply names the leg by
+      // its label in a `plan-defect:` concern AND the pass found that same
+      // exam red, the task is parked for the plan instead of billed for the
+      // round: `failed`, actor `plan`, and the concern travels to the gate
+      // as a `deferred:plan-defect` item. A red `Run:` or `Check:` beside
+      // the red exam does not change the answer — the exam's red plus the
+      // leg-naming concern is the whole condition.
+      const examRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
+      const examIsRed = Boolean(examRedLine) && reds.some((r) => r.line === examRedLine)
+      const legDefects = (examIsRed && impl.status === 'DONE_WITH_CONCERNS' &&
+        Array.isArray(impl.concerns))
+        ? impl.concerns.map(String).filter((c) => /^plan-defect:[\s\S]*\([a-z]\)/.test(c))
+        : []
+      if (legDefects.length) {
+        const notes = legDefects.join('; ')
+        parkedForPlan.push({ task: task.id, why: notes })
+        judgmentCalls.push('task ' + task.id + ': plan-defect against a Proof leg named by ' +
+          'the implementer — no fix round dispatched; failed with actor plan — ' + notes)
+        log('task ' + task.id + ' parked for the plan — ' + notes)
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                 reviewVerdict: 'plan-defect', notes, actor: 'plan',
+                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                 ...examEditedField() }
+      }
+      // A referee-only red still counts as one pre-review repair round: the
+      // meaning of `proofFixes` is "the pass was red once and bought a round".
+      proofFixes = 1
+      refereeRepairedPair = reds.some((r) => r.referee)
+      judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
+        reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
+      impl = await agent(
+        roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
+          filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
+          '\n\nBlocking issues to resolve:\n' +
+          reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
+        { label: 'fix:' + task.id + ':0', isolation: 'worktree',
+          model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
+      if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
+      stripUntrustedPatch(impl, patchPrefix)
+      noteConcerns(impl)
+      await noteDrift('the fix round')
+      if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
+        judgmentCalls.push('task ' + task.id + ': pre-review fix round lost driver-captured coordinates (' +
+          (impl.captureError || 'capture absent') + ') — failed before review')
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                 reviewVerdict: 'lost-coordinates',
+                 notes: 'pre-review fix round produced no driver-captured patch/headSha',
+                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                 ...examEditedField() }
+      }
+      if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                 reviewVerdict: 'blocked-after-fix', notes: impl.summary,
+                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                 ...examEditedField() }
+      }
+      reds = await prePass(1)
       if (reds.length) {
-        // ── the implementer's own plan-defect against a Proof leg (#722) ────
-        // The actor question the reviews already answer (`routeToPlan`) is
-        // asked one round earlier here, by the one agent that read the leg and
-        // the tree together. A leg no implementation can satisfy — one that
-        // reads state the patch creates, or asserts a shape a sibling's
-        // contract forbids — is not a red the implementer can clear: it may
-        // not edit the exam (#663), so a fix round buys a second agent that
-        // lands exactly where the first did. When the reply names the leg by
-        // its label in a `plan-defect:` concern AND the pass found that same
-        // exam red, the task is parked for the plan instead of billed for the
-        // round: `failed`, actor `plan`, and the concern travels to the gate
-        // as a `deferred:plan-defect` item. A red `Run:` or `Check:` beside
-        // the red exam does not change the answer — the exam's red plus the
-        // leg-naming concern is the whole condition.
-        const examRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
-        const examIsRed = Boolean(examRedLine) && reds.some((r) => r.line === examRedLine)
-        const legDefects = (examIsRed && impl.status === 'DONE_WITH_CONCERNS' &&
-          Array.isArray(impl.concerns))
-          ? impl.concerns.map(String).filter((c) => /^plan-defect:[\s\S]*\([a-z]\)/.test(c))
-          : []
-        if (legDefects.length) {
-          const notes = legDefects.join('; ')
-          parkedForPlan.push({ task: task.id, why: notes })
-          judgmentCalls.push('task ' + task.id + ': plan-defect against a Proof leg named by ' +
-            'the implementer — no fix round dispatched; failed with actor plan — ' + notes)
-          log('task ' + task.id + ' parked for the plan — ' + notes)
-          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                   reviewVerdict: 'plan-defect', notes, actor: 'plan',
-                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                   ...examEditedField() }
-        }
-        proofFixes = 1
-        judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
-          reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
-        impl = await agent(
-          roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
-            filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
-            '\n\nBlocking issues to resolve:\n' +
-            reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
-          { label: 'fix:' + task.id + ':0', isolation: 'worktree',
-            model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
-        if (impl === null) throw new Error('AGENT_NULL: pre-review fix agent returned null (terminal Overloaded or skipped)')
-        stripUntrustedPatch(impl, patchPrefix)
-        noteConcerns(impl)
-        await noteDrift('the fix round')
-        if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
-          judgmentCalls.push('task ' + task.id + ': pre-review fix round lost driver-captured coordinates (' +
-            (impl.captureError || 'capture absent') + ') — failed before review')
-          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                   reviewVerdict: 'lost-coordinates',
-                   notes: 'pre-review fix round produced no driver-captured patch/headSha',
-                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                   ...examEditedField() }
-        }
-        if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
-          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                   reviewVerdict: 'blocked-after-fix', notes: impl.summary,
-                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                   ...examEditedField() }
-        }
-        reds = await prePass()
-        if (reds.length) {
-          const notes = reds.map((r) => r.line).join('; ')
-          judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
-            notes + ') — no referee was dispatched')
-          log('task ' + task.id + ' proof-red after the pre-review repair round')
-          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                   reviewVerdict: 'proof-red', notes,
-                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                   ...examEditedField() }
-        }
+        const notes = reds.map((r) => r.line).join('; ')
+        // `proof-red` while a command, exam or check is still failing; when the
+        // only thing left is the driver's own arithmetic over the patch, the
+        // verdict says so rather than blaming a proof that passed.
+        const verdict = reds.some((r) => !r.referee) ? 'proof-red' : 'referee-red'
+        judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
+          notes + ') — no reviewer was dispatched')
+        log('task ' + task.id + ' ' + verdict + ' after the pre-review repair round')
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                 reviewVerdict: verdict, notes,
+                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                 ...examEditedField() }
       }
     }
 
@@ -1673,6 +1797,28 @@ export async function runEngine({
       // tree that predates it.
       const examEvidence = iter === 1 ? preExam : await runExam(iter)
       const checkEvidence = iter === 1 ? preChecks : await runChecks(iter)
+      // The referee, on the same terms as the evidence above (#729): round 1
+      // reads the pre-review pass's record, because nothing edited the tree
+      // between that pass and this dispatch; round 2 re-grades the patch
+      // `fix:<id>:1` produced, AFTER that round's re-executed evidence and
+      // BEFORE any reviewer is dispatched, and writes `-<proofFixes + 1>.json`.
+      // A blocking finding an implementer could act on ends the task here: the
+      // fix loop is spent, so a second reviewer would be reading a patch that
+      // is already going to fail.
+      if (iter === 2) {
+        refereeResult = await runReferee(proofFixes + 1, examEvidence)
+        const actionable = absorbReferee(refereeResult)
+        if (actionable.length) {
+          const notes = actionable.map((f) => f.detail).join('; ')
+          judgmentCalls.push('task ' + task.id + ': the referee is still blocking after the ' +
+            'fix round (' + notes + ') — no round-2 reviewer was dispatched')
+          log('task ' + task.id + ' referee-blocking after the fix round')
+          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                   reviewVerdict: 'fix-loop-exhausted', notes,
+                   tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
+                   ...examEditedField() }
+        }
+      }
       // Recomputed per round, because the round that edits the exam is usually
       // the fix round between them: round 2's blocks are the hunks of the tree
       // round 2 is reading, never round 1's.
@@ -1685,13 +1831,21 @@ export async function runEngine({
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
         examEditedDiffBlock(editedDiffs) +
         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
-        checkEvidenceBlock(checkEvidence)
+        checkEvidenceBlock(checkEvidence) + refereeBlock(refereeResult)
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
       })
+      // The second reviewer of a pair is bought back when the driver's own
+      // arithmetic already named a blocking defect in this task's patch and a
+      // repair round already answered it (M7): the pair exists to find what one
+      // read misses, and this patch has been read twice — once by the referee,
+      // once by the fix round — before any reviewer saw it. Round 2 is always a
+      // pair, because a round-2 blocking referee finding returned above.
+      const pairThisRound = isPairReview(taskReviewProfile(task)) &&
+        !(iter === 1 && refereeRepairedPair)
       let issues, verdicts
-      if (isPairReview(taskReviewProfile(task))) {
+      if (pairThisRound) {
         // Concurrent (2026-09-01): the pair reads the same patch with the same
         // prompt and neither depends on the other, so they run side by side —
         // run-47 spent 26 of 79 minutes in six serial reviewer calls. The
@@ -1713,6 +1867,7 @@ export async function runEngine({
           if (!firstKeys.has((i.severity || '') + '|' + (i.detail || ''))) r2MarginalBlocking += 1
         }
       } else {
+        if (isPairReview(taskReviewProfile(task))) refereeSkippedPairs += 1
         const review = await timedReview(reviewPrompt, reviewOpts())
         if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = review.issues || []
@@ -1809,7 +1964,11 @@ export async function runEngine({
       const minors = issues.filter((i) => i.severity === 'minor')
       const patchOf = (i) => (typeof i.proposedPatch === 'string' ? i.proposedPatch : '')
       if (blocking.length > 0) proposedPatches = blocking.filter((b) => patchOf(b) !== '').length
-      for (const m of minors) {
+      // A referee `minor` is an advisory like any other (#729): it never opens a
+      // fix round, it reaches round 2's reviewers through the same block, and it
+      // lands in the task's notes once — de-duped on detail against the
+      // reviewers' own, since a reviewer that re-reports it is saying nothing new.
+      for (const m of minors.concat(refereeMinors())) {
         if (!priorMinors.some((p) => p.detail === m.detail)) priorMinors.push(m)
       }
       if (blocking.length === 0) {
@@ -1869,9 +2028,9 @@ export async function runEngine({
     }
   }
 
-  async function runTask(task, baseShaForTask, siblingsStr) {
+  async function runTask(task, baseShaForTask, siblingsStr, siblingFiles) {
     try {
-      return await runTaskInner(task, baseShaForTask, siblingsStr)
+      return await runTaskInner(task, baseShaForTask, siblingsStr, siblingFiles)
     } catch (e) {
       const msg = String((e && e.message) || e)
       if (isInfraFault(msg)) {
@@ -1894,7 +2053,7 @@ export async function runEngine({
       log('task ' + task.id + ' agent error — retrying at ' + retryTier)
       try {
         await resetTaskClone(task.id, baseShaForTask)
-        const res = await runTaskInner(task, baseShaForTask, siblingsStr, retryTier)
+        const res = await runTaskInner(task, baseShaForTask, siblingsStr, siblingFiles, retryTier)
         judgmentCalls.push('task ' + task.id + ': recovered after ' +
           (capabilityFixable ? 'escalation to ' : 'same-tier retry at ') + retryTier)
         return res
@@ -2185,7 +2344,7 @@ export async function runEngine({
       })
       if (runnable.length === 0) continue
       const chunkResults = await parallel(runnable.map((task) => () =>
-        runTask(task, waveBaseSha, siblingLine(task, WAVES[w]))))
+        runTask(task, waveBaseSha, siblingLine(task, WAVES[w]), siblingFilesOf(task, WAVES[w]))))
       for (const r of chunkResults) { results.push(r); taskResults.push(r) }
       const chunkLost = chunkResults.filter((r) => r && r.status === 'done' && !isMergeable(r))
       for (const r of chunkLost) {
@@ -2207,7 +2366,8 @@ export async function runEngine({
         const task = WAVES[w].find((t) => t.id === p.task)
         try {
           await resetTaskClone(task.id, waveBaseSha)
-          const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]))
+          const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]),
+                                        siblingFilesOf(task, WAVES[w]))
           judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
           return res
         } catch (e2) {
@@ -2528,6 +2688,11 @@ export async function runEngine({
         ? reviewerBlockingKeys.size / (reviewerMs / 60000) : 0,
       pairRounds,
       r2MarginalBlocking,
+      // What the driver's own arithmetic found before a reviewer was billed
+      // (#729), and the pairs it bought back by finding it early.
+      refereeFindings,
+      refereeBlocking,
+      refereeSkippedPairs,
     },
     acceptance,
     baseline,

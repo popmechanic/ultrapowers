@@ -1,0 +1,15 @@
+{
+  "findings": [
+    {
+      "check": "dependencies",
+      "severity": "minor",
+      "actor": "implementer"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "contains": "every touched path is in FILES"
+    }
+  ]
+}

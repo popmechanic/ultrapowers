@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "symbol": "record_tags",
+      "status": "unlinked",
+      "contains": [
+        "no linkable file",
+        "fleet/sandbox-boot.sh"
+      ]
+    }
+  ]
+}

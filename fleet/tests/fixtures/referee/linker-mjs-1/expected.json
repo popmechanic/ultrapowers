@@ -1,0 +1,21 @@
+{
+  "results": [
+    {
+      "symbol": "foo",
+      "status": "resolved",
+      "contains": [
+        "src/foo.mjs",
+        "foo/2"
+      ]
+    },
+    {
+      "symbol": "foo",
+      "status": "declared",
+      "contains": [
+        "src/foo.mjs",
+        "arity",
+        "foo/2"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "task": {
+    "id": "deps-1",
+    "files": [
+      "package.json",
+      "src/a.ts"
+    ],
+    "proofTests": [],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** `a()` pads.\n"
+  },
+  "siblingFiles": [],
+  "exam": null,
+  "examEvidence": null
+}

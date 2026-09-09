@@ -1,0 +1,26 @@
+{
+  "task": {
+    "id": "exam-2",
+    "files": [
+      "src/x.ts"
+    ],
+    "proofTests": [
+      "tests/x.test.ts"
+    ],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** `x(n)` adds two.\n\n**Proof:**\n- Test: `tests/x.test.ts`\n"
+  },
+  "siblingFiles": [
+    [
+      "src/y.ts"
+    ]
+  ],
+  "exam": "red",
+  "examEvidence": {
+    "cmd": "bun test tests/x.test.ts",
+    "exit": 0
+  }
+}

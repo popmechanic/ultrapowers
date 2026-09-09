@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "symbol": "foo",
+      "status": "unlinked",
+      "contains": [
+        "src/boom.mjs",
+        "boom at import"
+      ]
+    }
+  ]
+}

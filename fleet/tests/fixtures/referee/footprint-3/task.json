@@ -1,0 +1,23 @@
+{
+  "task": {
+    "id": "footprint-3",
+    "files": [
+      "skills/ultrapowers/scripts/compile_plan.py",
+      "tests/test_compile_plan_engine_self_change.py"
+    ],
+    "proofTests": [
+      "tests/test_compile_plan_engine_self_change.py"
+    ],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** the compiler answers with the task ids.\n\n**Proof:**\n- Test: `tests/test_compile_plan_engine_self_change.py`\n"
+  },
+  "siblingFiles": [],
+  "exam": "red",
+  "examEvidence": {
+    "cmd": "python3 -m pytest tests/test_compile_plan_engine_self_change.py",
+    "exit": 0
+  }
+}

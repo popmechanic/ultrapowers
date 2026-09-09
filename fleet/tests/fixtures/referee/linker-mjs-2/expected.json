@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "symbol": "foo",
+      "status": "declared",
+      "contains": [
+        "src/foo.mjs",
+        "declared, not exported"
+      ]
+    }
+  ]
+}

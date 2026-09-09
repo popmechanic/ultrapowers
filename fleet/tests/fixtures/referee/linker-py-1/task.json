@@ -1,0 +1,20 @@
+{
+  "task": {
+    "id": "1",
+    "files": [
+      "pkg/mod.py"
+    ],
+    "proofTests": [
+      "tests/test_linked.py"
+    ],
+    "interfaces": {
+      "consumes": [
+        "none"
+      ],
+      "produces": [
+        "`foo(a, b)`"
+      ]
+    },
+    "body": "### Task 1: linker-py-1\n\n**Type:** implementation\n**Review:** peer\n\n**Files:**\n- Create: `pkg/mod.py`\n\n**Claim:** `foo(a, b)` is defined by `pkg/mod.py`.\n\n**Interfaces:**\n- Consumes: none\n- Produces: `foo(a, b)`\n\n**Proof:**\n- Test: `tests/test_linked.py`\n- Legs: (a) the produces bullet resolves in the task's own files [M1].\n"
+  }
+}

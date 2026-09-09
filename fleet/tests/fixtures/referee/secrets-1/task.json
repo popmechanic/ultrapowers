@@ -1,0 +1,17 @@
+{
+  "task": {
+    "id": "secrets-1",
+    "files": [
+      "src/config.ts"
+    ],
+    "proofTests": [],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** the config carries the endpoint.\n"
+  },
+  "siblingFiles": [],
+  "exam": null,
+  "examEvidence": null
+}

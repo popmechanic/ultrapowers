@@ -1,0 +1,20 @@
+{
+  "task": {
+    "id": "1",
+    "files": [
+      "fleet/run-engine.mjs"
+    ],
+    "proofTests": [
+      "tests/test_linked.py"
+    ],
+    "interfaces": {
+      "consumes": [
+        "none"
+      ],
+      "produces": [
+        "`report.reviewEconomy`"
+      ]
+    },
+    "body": "### Task 1: linker-unlinked-1\n\n**Type:** implementation\n**Review:** peer\n\n**Files:**\n- Create: `fleet/run-engine.mjs`\n\n**Claim:** the engine's report carries `report.reviewEconomy`.\n\n**Interfaces:**\n- Consumes: none\n- Produces: `report.reviewEconomy`\n\n**Proof:**\n- Test: `tests/test_linked.py`\n- Legs: (a) the produces bullet resolves in the task's own files [M1].\n"
+  }
+}

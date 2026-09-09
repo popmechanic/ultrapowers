@@ -1,0 +1,9 @@
+diff --git a/src/config.ts b/src/config.ts
+index 5b2ff3c79efa92a6b197cc81f4066406238d2aed..007ce5e1a8ac5b139d8ffa746eea38c82440d9b2 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -1,3 +1,4 @@
+ export const config = {
+   endpoint: 'https://example.invalid/api',
++  token: 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+ }

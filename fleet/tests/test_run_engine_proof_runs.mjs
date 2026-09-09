@@ -343,9 +343,17 @@ async function pinPrompt(engine, task) {
     assert.ok(!p.prompt.includes('RUN EVIDENCE:'), name + ': no RUN EVIDENCE: block')
   }
   if (basePin) {
-    assert.equal(liveEmpty.prompt, basePin.prompt,
+    // #729 appends one block to every reviewer prompt — the REFEREE: block, last
+    // and always present, since the referee runs on every task. Cut it and this
+    // pin still reads what it was written to read: that an empty `proofRuns`
+    // adds nothing of its own.
+    const cut = (p) => {
+      const at = p.indexOf('\n\nREFEREE:')
+      return at === -1 ? p : p.slice(0, at)
+    }
+    assert.equal(cut(liveEmpty.prompt), cut(basePin.prompt),
       'proofRuns: [] leaves the reviewer prompt byte-identical to BASE\'s')
-    assert.equal(liveAbsent.prompt, basePin.prompt,
+    assert.equal(cut(liveAbsent.prompt), cut(basePin.prompt),
       'an absent proofRuns leaves the reviewer prompt byte-identical to BASE\'s')
   }
   // [M5] and nothing is recorded for a task with no commands.

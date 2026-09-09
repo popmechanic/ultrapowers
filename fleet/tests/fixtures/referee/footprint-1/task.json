@@ -1,0 +1,24 @@
+{
+  "task": {
+    "id": "footprint-1",
+    "files": [
+      "README.md",
+      "src/snake.ts",
+      "tests/snake.test.ts"
+    ],
+    "proofTests": [
+      "tests/snake.test.ts"
+    ],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** `snake(s)` lowercases and joins.\n\n**Proof:**\n- Test: `tests/snake.test.ts`\n"
+  },
+  "siblingFiles": [],
+  "exam": "red",
+  "examEvidence": {
+    "cmd": "bun test tests/snake.test.ts",
+    "exit": 0
+  }
+}
