@@ -1,0 +1,15 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "2ad3815455289fbfb95f9d1c3a638a8ff61c7042c5e90e6deab7f48303dcd699",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg at the engine/boot layer: (a)+(g) pin M1's ordering, directory and bootstrap; (b)/(c) cover M3's two arms with M2's full assertion set and the branch-at-BASE check; (d) pins M4; (e) enumerates M5's three run shapes; (f) covers both arms of M6."
+    }
+  },
+  "tally": { "dispatched": 2, "rejected": 1, "rounds": { "1": { "fail": 1 }, "2": { "pass": 1 } } },
+  "history": [
+    { "round": 1, "task": "1", "hash": "4ec2df04a79a3dd127490da622fdea8b1b0e57f8d63f92217c822254687cb04a", "verdict": "fail", "reason": "The derived sentence's 'before any worker spends a token' is not entailed by M3's barrier arm, and M1's 'bootstrapped when bootstrapCmd is set' had no leg — fixed by narrowing the derived Claim and adding leg (g)." },
+    { "round": 2, "task": "1", "hash": "2ad3815455289fbfb95f9d1c3a638a8ff61c7042c5e90e6deab7f48303dcd699", "verdict": "pass" }
+  ],
+  "guideReview": "claude-code-guide, recorded not folded: the baseline suite subprocess runs under the engine's process.env, not makeAgent's workerEnv (run-main.mjs 688–699) — the same env every existing sh(testCmd) call (candidate suite, lazy baseline, proof runs) already runs under, so it is BASE's shape, not a new exposure; a suite that itself spawns claude -p is not a case any fleet target has."
+}
