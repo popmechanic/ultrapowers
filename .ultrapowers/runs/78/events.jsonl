@@ -97,3 +97,6 @@
 {"kind":"driver:fail","verdict":"critic-blocking","detail":"1 blocking completeness finding(s): integrated Run: test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2 (task 3) exited 1 on the adopted tree — critic-block.json is the terminal artifact","id":"01M23Q8VKJ0001V52VMBXRT5QS","ts":1788978949746}
 {"kind":"run:open","runId":"run-78","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","source":"fleet/publish-fold.mjs","id":"01M23Q8VSC0000QVZ9KBXDWHE8","ts":1788978949932}
 {"kind":"driver:publish-fold","run":"78","attempt":"1","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","tip":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","candidate":"01f2a357cdc01aafe3707d4a6918b4d3718720fd","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M23Q8X9Y0000D7DY965WMM1Q","ts":1788978951486}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/843","number":843,"draft":false,"id":"01M23Q92RC0000PQMP1WGBGTN8","ts":1788978957068}
+{"kind":"publish:followup","url":"https://github.com/popmechanic/ultrapowers/issues/844","items":18,"id":"01M23Q94N20000YEC22MCYQZFZ","ts":1788978959010}
+{"kind":"publish:merge","sha":"a7b0ccc7be67194181f8f36d0b42f5181bf1ad2f","id":"01M23QXD2D0000VHX55B9M7F8T","ts":1788979622989}
