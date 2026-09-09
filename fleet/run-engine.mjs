@@ -1844,7 +1844,7 @@ export async function runEngine({
       if (minorNoted.has(c.cmd)) return
       minorNoted.add(c.cmd)
       judgmentCalls.push('task ' + task.id + ': minor Check: `' + c.cmd + '` exited ' + c.exit +
-        ' — recorded for the referee, blocking nothing')
+        ' — recorded for the reviewer, blocking nothing')
     }
     const RUN_FAIL = (r) => 'the Proof\'s Run: command failed: ' + r.cmd + ' — exit ' + r.exit
     const CHECK_FAIL = (c) => 'the Global Constraints Check: command failed: ' + c.cmd +
@@ -1982,7 +1982,7 @@ export async function runEngine({
       proofFixes = 1
       refereeRepairedPair = reds.some((r) => r.referee)
       judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
-        reds.map((r) => r.line).join('; ') + ') — one repair round before any referee read the patch')
+        reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
       impl = await agent(
         roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
