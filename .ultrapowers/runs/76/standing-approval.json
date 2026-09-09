@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-76.md run-76 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — the production infra-death chain end to end: a real `claude -p` worker exiting on a 429/5xx envelope, `classify()` minting `outcome: 'null'`, the `worker:end` line reaching `<runDir>/events.jsonl`, and the engine's default 60 s `INFRA_BACKOFF_MS` elapsing before the live re-dispatch. — Every leg of fleet/tests/test_run_engine_infra_retry.mjs cans the judgment below the agent seam and writes the `worker:end` line itself, and the wall-clock minute is only ever asserted as the delay asked for (leg (a) stubs `globalThis.setTimeout`; leg (j) uses 300 ms). Exercising the real chain needs an API that actually returns 429/5xx, which this environment cannot produce. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

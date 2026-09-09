@@ -1,0 +1,144 @@
+{
+  "integrationBranch": "ultra/integration-run-76",
+  "baseSha": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "6403ed97f2e559ee4f25e2736e5e08ce08bfa911",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-76/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`waitInfraBackoff` (fleet/run-engine.mjs) keeps the event loop alive with `fs.watch(runDir)` because the global constraint forces the `setTimeout` to be unref'd \u2014 but when `fs.watch` throws (inotify watch/instance limit exhausted, EMFILE/ENOSPC, or a runDir removed underneath the engine) the `catch` sets `hold = null` and the unref'd timer becomes the only pending work. That is exactly the condition the block's own comment measured: node exits 13 with an unsettled top-level await, so instead of retrying the judgment the whole run dies silently mid-backoff, without even the fail-closed finding a second null would have produced. The fallback should be another ref'd non-timer handle rather than nothing; a `MessageChannel` port with a listener is a global in the supported node versions and closes the same way.; The driver's REFEREE line records `Produces: infraBackoffMs` as declared-but-not-exported. Nothing in the diff can settle that: the task's own Context defines it as a run argument (`args.infraBackoffMs`, \"the sims pass 0\"), not a module export, so no `export` in fleet/run-engine.mjs would be correct here. It is implemented as the `infraBackoffMs` binding in `runEngine` and exercised by legs (a) ('x' -> 60000) and (j) (300). The defect is the Interfaces slot naming an args key where the linker resolves symbols; no edit inside this tree answers it, and it blocks nothing.; Global constraint (prose, no `Check:` the driver ran) \u2014 \"no timer that holds the process open (`unref` every `setTimeout` the backoff creates)\". `waitInfraBackoff` (fleet/run-engine.mjs, the hunk at PATCH lines 78-86) does unref the `setTimeout`, then substitutes a **ref'd** `fs.watch(runDir)` handle to keep the loop alive for exactly the same interval. Read literally the constraint is met; read for what the parenthetical is aimed at \u2014 a backoff being the reason a finished process is still alive \u2014 a ref'd handle held for the full 60 s is the same effect under a different handle type. It is not blocking: the divergence is disclosed in the comment above it with the measured rationale (exit 13, unsettled top-level await), the handle is closed in the timer callback so nothing outlives the re-dispatch, and the sims run at 0/300 ms. Two things to consider anyway: (1) the failure branch is silent \u2014 if `fs.watch` throws (runDir gone, EMFILE, no inotify) `hold` stays `null` and the process can exit mid-backoff, after the attempt-1 `judgmentCalls` entry and `driver:infra-retry` event have already been written, so the record shows a re-dispatch that never happened; a `log()` on that branch would make it legible. (2) A ref'd `setTimeout` cleared in the resolve path expresses the same lifetime more directly, but is the thing the constraint's text forbids \u2014 if that is the shape the plan actually wanted, it is worth saying so in the plan rather than routing around the wording.; fleet/run-engine.mjs, the reviewer-pair hunk (PATCH lines 159-166): the two retries are sequential \u2014 `if (r1 === null) await retryInfraNull(...)` then `if (r2 === null) await retryInfraNull(...)`. An overload storm is correlated, so both halves of a pair dying together is the likely case, and that path now waits 2 x INFRA_BACKOFF_MS (120 s) serially before the second re-dispatch. M7 only pins the one-null shape, so this is not a criterion miss. Fix shape: compute the two retry thunks and `await Promise.all([...])` so the single backoff is shared, e.g. `const [n1, n2] = await Promise.all([r1 === null ? retryInfraNull(opts1.label, scope, () => timedReview(reviewPrompt, opts1)) : r1, r2 === null ? retryInfraNull(opts2.label, scope, () => timedReview(reviewPrompt, opts2)) : r2])`. Keeps the leg (i) assertions (each label dispatched exactly twice, the answering half exactly once) true.; fleet/run-engine.mjs: `const kept = (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && hasCoordinates(impl)` is now computed identically in two adjacent branches \u2014 the rejected-examiner lane (BASE line 1520) and the new fulfilled-null lane (PATCH line 126). It is the same subtle condition in both, and the two must stay in step. Hoisting one `const kept = ...` above the `if (examSettled.status === 'rejected')` / `else if (examReady && ex === null)` chain removes the duplicate without touching either branch's behavior.; REFEREE reports `Produces: infraBackoffMs \u2014 declared, not exported`. The diff is right and the plan's Interfaces slot is what is off: M1 defines the knob as `args.infraBackoffMs`, a `runEngine` options field read at PATCH line 42, so it is by construction not a module export and cannot resolve as one at HEAD. `INFRA_BACKOFF_MS`, the symbol that genuinely is an export, is exported at PATCH line 19 and pinned by leg (a)'s namespace import. No edit inside FILES answers the arithmetic line; the Interfaces slot would have to stop using the `Produces:` grammar for an options field.; Produces: `infraBackoffMs` \u2014 fleet/run-engine.mjs: declared, not exported; fleet/tests/test_run_engine_infra_retry.mjs: declared, not exported; concern: Disclosure (not a scope escape): the backoff creates its setTimeout and unrefs it as the Global Constraint requires, but an unref'd timer is also no reason for the loop to keep running \u2014 measured, node exits mid-run with code 13 (\"unsettled top-level await\") when the wait is the only pending work, which would kill any sim that exercises a non-zero backoff. So the wait also holds one ref'd NON-timer handle (fs.watch on runDir) that is closed the instant the timer fires: every setTimeout is still unref'd and nothing outlives the re-dispatch. If a reviewer reads the constraint as forbidding any keep-alive at all, the alternative is a backoff that cannot actually elapse.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-76/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1911 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 97%]\n.......................................                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1911 passed, 5 warnings in 922.30s (0:15:22) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "timeout 120 node fleet/tests/test_run_engine_infra_retry.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_critic_inputs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_examiner.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_review_pair.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_fixloop.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs skills/ultrapowers/scripts/gate_check.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 448658,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 2,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ec92828cdd3ef46497ea6745d65db93192921566",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-76/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-76/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.7710000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 \u2014 the production infra-death chain end to end: a real `claude -p` worker exiting on a 429/5xx envelope, `classify()` minting `outcome: 'null'`, the `worker:end` line reaching `<runDir>/events.jsonl`, and the engine's default 60 s `INFRA_BACKOFF_MS` elapsing before the live re-dispatch.",
+      "reason": "external",
+      "why": "Every leg of fleet/tests/test_run_engine_infra_retry.mjs cans the judgment below the agent seam and writes the `worker:end` line itself, and the wall-clock minute is only ever asserted as the delay asked for (leg (a) stubs `globalThis.setTimeout`; leg (j) uses 300 ms). Exercising the real chain needs an API that actually returns 429/5xx, which this environment cannot produce."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: Disclosure (not a scope escape): the backoff creates its setTimeout and unrefs it as the Global Constraint requires, but an unref'd timer is also no reason for the loop to keep running \u2014 measured, node exits mid-run with code 13 (\"unsettled top-level await\") when the wait is the only pending work, which would kill any sim that exercises a non-zero backoff. So the wait also holds one ref'd NON-timer handle (fs.watch on runDir) that is closed the instant the timer fires: every setTimeout is still unref'd and nothing outlives the re-dispatch. If a reviewer reads the constraint as forbidding any keep-alive at all, the alternative is a backoff that cannot actually elapse.",
+    "task 1: the driver's pre-review pass was red (the Proof's Run: command failed: timeout 120 node fleet/tests/test_run_engine_infra_retry.mjs | grep -q 'ALL TESTS PASSED' \u2014 exit 1; the Proof's exam failed: node fleet/tests/test_run_engine_infra_retry.mjs \u2014 exit 1) \u2014 one repair round before any referee read the patch"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1 / Claim, fleet/run-engine.mjs:1150-1158 (`waitInfraBackoff`): the ref'd handle that keeps the event loop alive for the backoff is `fs.watch(runDir, \u2026)`, and its failure is swallowed (`catch { hold = null }`), leaving only the unref'd `setTimeout`. On a host where `fs.watch` throws (inotify watch limit exhausted, an unsupported filesystem), the critic's backoff is the only pending work at that point in the run, so node exits out from under the wait \u2014 the exit-13 'unsettled top-level await' the block's own comment records as measured. The outcome is then worse than BASE for the very case the Claim addresses: instead of the fail-closed report with `gitVerified` withheld, the run ends mid-backoff with no report at all. The one-retry semantics are correct; only the liveness fallback is unguarded (e.g. no ref'd fallback and no judgment call noting the hold could not be taken)."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 1 / Claim, fleet/run-engine.mjs:2116-2123 (the pair lane): the two halves' re-dispatches are sequential \u2014 `if (r1 === null) await retryInfraNull(...)` then `if (r2 === null) await retryInfraNull(...)` \u2014 and each `retryInfraNull` waits the full `infraBackoffMs` before its own re-ask. When an infra storm kills both halves of a pair (the correlated case, and the one this feature exists for), the task serially waits two backoffs, 120 s at the default `INFRA_BACKOFF_MS`, where one concurrent wait would do; the second half's re-ask also starts a full backoff after the first half's has already elapsed. M7 specifies only the one-dead-half shape, so this is not a contract miss \u2014 behaviour stays correct (either half still null falls to the `AGENT_NULL` throw, the park and the barrier retry) \u2014 but the doubled wall clock on the both-dead path is worth an issue."
+    }
+  ],
+  "blockedWaves": []
+}
