@@ -88,10 +88,14 @@ the exam instead, and the task's `writes` in the receipt say which files the
 fix actually touched. No model call, no network, no git write.
 
 `python3 skills/ultralearn/scripts/catch_counter.py <run dir or tree>… --ledger <file>`
-counts a run — or every run under a tree — and appends one `catch-count` row
-per run to `docs/superpowers/observations/ledger.jsonl`, the same file the
-findings land in. `--ledger` overrides that path and is the counter's only
-flag; paths inside a row stay exactly as the record spells them.
+counts a run — or every run under a tree — and
+appends one `catch-count` row per run to the file named by `--ledger`, the counter's only flag.
+There is no default: without `--ledger` the counter counts the runs and appends
+nothing. The file an operator usually names is
+`docs/superpowers/observations/ledger.jsonl`, the same file the findings land
+in — untracked on the laptop, so a path baked into a script the sandbox also
+runs would be one nothing there can write. Paths inside a row stay exactly as
+the record spells them.
 
 `python3 skills/ultralearn/scripts/catch_report.py --ledger <file> [--tree <dir>] [--n N]`
 prints every test in the tree with its catch count, then the zero-catch
