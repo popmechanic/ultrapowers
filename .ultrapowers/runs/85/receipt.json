@@ -1,0 +1,229 @@
+{
+  "ok": true,
+  "stamp": "run-85",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-85"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The sandbox writes residuals.jsonl onto the record and files no issue",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "tests/test_docs_agree_with_code.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`residuals.jsonl`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The residual counter appends the rows to the ledger and the report names the repeats",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/SKILL.md",
+          "skills/ultralearn/scripts/residual_counter.py",
+          "skills/ultralearn/scripts/residual_report.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`residual_counter.py`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The sandbox writes residuals.jsonl onto the record and files no issue",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_residuals.mjs",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`residuals.jsonl`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_residuals.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_residuals.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_residuals.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot and not residuals' -q",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q",
+            "test \"$(grep -c 'file_followup\\|followup_labels\\|PROGRAM_LABELS\\|publish:followup\\|/issues' fleet/sandbox-boot.sh)\" = 0",
+            "test \"$(grep -c 'POST /repos/<owner>/<repo>/issues\\|publish:followup\\|watch-item\\|four event kinds' fleet/CONTRACT.md)\" = 0",
+            "grep -q 'residuals.jsonl' fleet/CONTRACT.md",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'residuals.jsonl.*three event kinds'",
+            "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '### Residuals.*deferred:external.*Closes #'",
+            "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'residuals.jsonl[^.]*present when'",
+            "test \"$(grep -c 'FOLLOWUP_POST\\|publish:followup\\|four event kinds' tests/test_docs_agree_with_code.py)\" = 0",
+            "grep -q 'residuals.jsonl' tests/test_docs_agree_with_code.py",
+            "grep -q 'three event kinds' tests/test_docs_agree_with_code.py"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_residuals.mjs"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The residual counter appends the rows to the ledger and the report names the repeats",
+          "files": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/residual_counter.py",
+            "skills/ultralearn/scripts/residual_report.py",
+            "tests/test_ultralearn_residuals.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`residual_counter.py`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/residual_counter.py",
+            "skills/ultralearn/scripts/residual_report.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_ultralearn_residuals.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_ultralearn_residuals.py",
+          "proofRuns": [
+            "python3 -m pytest tests/test_ultralearn_*.py -q",
+            "python3 skills/ultralearn/scripts/residual_report.py --ledger /nonexistent/residual-ledger.jsonl | sed -n 2p | grep -qx '(none)'",
+            "python3 skills/ultralearn/scripts/residual_counter.py --help | grep -q -- --ledger",
+            "sed -n '/^## The residual counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'residual_counter.py.*residual_report.py'",
+            "sed -n '/^## The residual counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'residuals.jsonl.*normalized text'",
+            "test \"$(sed -n '/^## The catch counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | grep -c '^## The residual counter')\" = 1",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn"
+          ],
+          "proofGuards": [
+            "tests/test_ultralearn_residuals.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The PR body is unchanged: the `### Residuals` checklist still sits after `### Plan` and before the\n  `Closes #<n>` lines, one `- [ ]` line per item, and no section at all when there is none.\n- The boot rig's `POST \u2026/issues` and `GET \u2026/issues/<n>` curl arms in\n  `fleet/tests/_sandbox_boot_helpers.mjs` stay as they are at BASE, so an absent `issues.log` is an\n  observed absence and not a vacuous one.\n- The ledger is append-only: no script rewrites an existing ledger line, and a second pass over the\n  same run appends nothing.\n- No document names the per-run follow-up issue as a thing the fleet does: `fleet/CONTRACT.md`\n  carries no `POST /repos/<owner>/<repo>/issues`, no `publish:followup`, and `watch-item` only where\n  ultralearn's distill procedure already names it.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/publish-fold.mjs skills/ultralearn/scripts/catch_counter.py skills/ultralearn/scripts/catch_report.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-85/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-85/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-85/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-85/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
