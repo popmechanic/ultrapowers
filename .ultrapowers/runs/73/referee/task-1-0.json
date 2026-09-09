@@ -1,0 +1,51 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_exam_together.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_examiner.mjs`"
+    },
+    {
+      "check": "interface",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "Produces: `infraBackoffMs` — fleet/run-engine.mjs: declared, not exported; fleet/tests/test_run_engine_infra_retry.mjs: declared, not exported"
+    }
+  ],
+  "settled": [
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_run_engine_infra_retry.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +0 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/run-engine.mjs": "mjs",
+    "fleet/tests/test_run_engine_infra_retry.mjs": "mjs"
+  },
+  "ms": 6906
+}

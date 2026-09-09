@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -117,7 +117,7 @@
       ]
     ],
     "waveLabels": [
-      "One bounded retry for the three single-dispatch judgmen\u2026"
+      "One bounded retry for the three single-dispatch judgmen…"
     ],
     "mode": "sequential",
     "degrade_reason": "Sequential mode: 1 implementation tasks",
@@ -126,7 +126,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The only infra signal the engine reads is a `null` reply from `agent()` (the `AGENT_NULL`\n  doctrine at the top of `fleet/run-engine.mjs`): no free-text matching of `Overloaded`, `429`\n  or `rate limit` against a thrown message, and no change to `isInfraFault`, `isSchemaTrip` or\n  `looksStructural`.\n- A thrown call (an `agent-error`, a schema trip, a structural error) is retried exactly as at\n  BASE: the retry lanes that exist today \u2014 the examiner-alone re-dispatch on a rejected examiner\n  (#762), the same-tier `runTask` retry, the barrier retry of a `parked-infra` task \u2014 are\n  neither removed nor widened.\n- No new npm dependency, no timer that holds the process open (`unref` every `setTimeout` the\n  backoff creates), and no sleep in the sims longer than a second.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The only infra signal the engine reads is a `null` reply from `agent()` (the `AGENT_NULL`\n  doctrine at the top of `fleet/run-engine.mjs`): no free-text matching of `Overloaded`, `429`\n  or `rate limit` against a thrown message, and no change to `isInfraFault`, `isSchemaTrip` or\n  `looksStructural`.\n- A thrown call (an `agent-error`, a schema trip, a structural error) is retried exactly as at\n  BASE: the retry lanes that exist today — the examiner-alone re-dispatch on a rejected examiner\n  (#762), the same-tier `runTask` retry, the barrier retry of a `parked-infra` task — are\n  neither removed nor widened.\n- No new npm dependency, no timer that holds the process open (`unref` every `setTimeout` the\n  backoff creates), and no sleep in the sims longer than a second.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs skills/ultrapowers/scripts/gate_check.py",
@@ -141,11 +141,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-73/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-73/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-73/acceptance.log"
 }
