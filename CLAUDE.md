@@ -113,7 +113,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
 - **Label ontology (audit of 2026-09-04, 68 issues):** exactly one KIND
   (`wayfinder:map|grilling|research|prototype|task`, `bug`, `enhancement`, `experiment`,
   `watch-item`) plus at most one PROGRAM (`merge-frontier`, `experience-compiler`,
-  `verification-frontier`, `peer-review`, `fleet`, `determinism`). `one-driver`, `authoring-frontier` and
+  `verification-frontier`, `peer-review`, `fleet`, `determinism`, `blackboard`). `one-driver`, `authoring-frontier` and
   `distill` are retired — off every open issue, kept on closed ones for history.
 - **Superpowers is HITL-only:** fleet sandboxes provision ultrapowers + engine only —
   superpowers never enters a sandbox. Revisit migrating off it only on a third
@@ -146,7 +146,11 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   as assignment, credentials at the edge, a systemd template unit, git as the record — and 0.3.6
   collapsed the grant into one integration per target attached at launch. The `fleet` program
   continues as tickets #597 #598 #387 #513 #384 #383 #548 #601, with no map.
-- **Open maps:** #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
+- **Open maps:** #810 *The Blackboard* (chartered 2026-09-09: where agents talk — a per-run TinyBase
+  tuple space of facts, never commands; row = evidence, cell = status, readiness = a fold at read
+  time; the record as the scheduler; tickets #811 grilling first, #812 interface-handshake
+  prototype, #813 readiness-fold research gated on an order-shuffled fold sim, #814 = #485's
+  live-record question); #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
   operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
   #553 examiner / #554 clause-to-leg / #555 BASE-facts Context / #556 collaborative review all
   shipped; live tickets #232 #526 #572 #582; #599 (should exams be sealed again?) closed
