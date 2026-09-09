@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -231,7 +231,7 @@
       ]
     ],
     "waveLabels": [
-      "fleet \u00b7 3 tasks"
+      "fleet · 3 tasks"
     ],
     "mode": "parallel",
     "degrade_reason": null,
@@ -240,7 +240,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- `fleet/sandbox-boot.sh` changes only in comment lines \u2014 no task here alters what the boot script does.\n- No sim under `fleet/tests/` starts another `fleet/tests/test_*.mjs` as a child process; a sibling sim is graded by its own `tests/test_fleet_suite.py` row.\n- The rig's `date` stub is transparent to every caller but the epoch read: any argv other than `+%s` is handed to the real `date`, so status pages, log stamps and the stubs' own `say` prelude are unchanged.\n- Every new exam leg sits in the existing behaviour-surface file `fleet/tests/test_sandbox_boot_merge.mjs`, beside the case it extends, under a comment naming its task.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- `fleet/sandbox-boot.sh` changes only in comment lines — no task here alters what the boot script does.\n- No sim under `fleet/tests/` starts another `fleet/tests/test_*.mjs` as a child process; a sibling sim is graded by its own `tests/test_fleet_suite.py` row.\n- The rig's `date` stub is transparent to every caller but the epoch read: any argv other than `+%s` is handed to the real `date`, so status pages, log stamps and the stubs' own `say` prelude are unchanged.\n- Every new exam leg sits in the existing behaviour-surface file `fleet/tests/test_sandbox_boot_merge.mjs`, beside the case it extends, under a comment naming its task.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "t=$(mktemp) && git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -v '^ *#' > \"$t\" && grep -v '^ *#' fleet/sandbox-boot.sh | diff \"$t\" -",
@@ -255,11 +255,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-78/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-78/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-78/acceptance.log"
 }

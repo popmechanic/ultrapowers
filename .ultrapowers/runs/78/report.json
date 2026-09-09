@@ -1,0 +1,289 @@
+{
+  "integrationBranch": "ultra/integration-run-78",
+  "baseSha": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "ebe4a0909c41c7267ffa06f610c7a4ddb450e5db",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-78/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim quantifies over \"every comment naming a count of two fold attempts in those three files\", but `fleet/publish-fold.mjs` still carries several such comments outside the plan Context's five-site list, and the Machine clauses (which grep only for `attempt 1|2` and `1 or 2`) cannot see them. At BASE numbering: line 27 (\"Re-entry (attempt 2, or a re-drive of attempt 1)\"), line 337 (\"attempt 2 reads the same file\"), lines 589-591 (\"the engine's head on attempt 1, the previous attempt's candidate on attempt 2\") and line 597 (the section banner `// \u2500\u2500 attempt 2 on an unmoved tip \u2500\u2500`). Lines 589-591 and 597 are the sharpest: they sit directly above the `priorKeys`/`floor` computation (`filter((n) => n < attemptNum)` \u2026 `prior.tip === tip`) that this diff's own new doc comment cites as \"written for any N\" \u2014 the code generalises to attempt N floors on the highest prior attempt, and the `tip unmoved` return fires for any attempt that has a prior, not only the second. The plan's Context narrowed the work to five sites and the exam follows the Context, so this is not blocking; what would settle it is the same rewording applied to those four lines (e.g. \"the engine's head on attempt 1, the highest prior attempt's candidate on every later one\" and `// \u2500\u2500 a later attempt on an unmoved tip \u2500\u2500`). All four are in `fleet/publish-fold.mjs`, which is in this task's FILES, so the diff can carry the fix; the byte pin on `sandbox-boot.sh` is unaffected and the merge sim does not pin any of these literals (`git grep` at BASE finds only the sites themselves).; Wrap: the rewritten `push_head` header adds a line that overruns the file's uniform ~80-column comment wrap \u2014 `  # the strip commit the remote actually holds. A strip that fails stops the run: the` is 84 columns, against 80 for every neighbouring line in the block (the other three rewritten lines stay inside it). In a prose-only task whose entire deliverable is comment quality this is worth a reflow: move `the` down to the following line, i.e. `\u2026actually holds. A strip that fails stops the run:` / `# the alternative is publishing the exams.` Comment-only, so the `sandbox-boot.sh` byte pin (Check evidence, exit 0) still holds after the reflow.; Produces: none \u2014 fleet/publish-fold.mjs: declared, not exported; fleet/tests/test_sandbox_boot_merge.mjs: declared, not exported",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "800376420ed1018ca472dfbf4599881a389dccb6",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-78/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Cross-task pin conflict with wave sibling task 3, in the shared file `fleet/tests/test_sandbox_boot_merge.mjs`. Leg (c) adds a third `spawnSync(` line \u2014 `const r = spawnSync(dateStub(ctx, leg), argv, {` in `dateUnder` \u2014 to a file whose sibling task 3 pins at exactly two (`M1`: \"`spawnSync(` occurs on exactly two lines\", graded by `Run: test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2`). On the folded tree that count is 3 and task 3's proof goes red, even though both submissions are green in their own clones. No edit inside this task's FILES can resolve it: this task's own leg (c) requires the date stub to be \"invoked directly under the rig's PATH with FLEET_HOME set\", and every other child-process form (`execFileSync`, `execSync`, `exec(`, `fork(`) is matched by task 3's `Run: test \"$(grep -cE 'execSync|execFile|exec\\(|fork\\(' \u2026)\" = 0`. The fix is in task 3's text: pin `spawnSync(` at 3, or drop the whole-file count and rely on task 3's existing two site-specific `grep -q` Runs (`spawnSync('bash', ['-n', SCRIPT]` and `spawnSync(path.join(ctx.bin, 'systemctl')`) plus its `grep -cw spawn` = 0, which already establish \"no child-process route to a sibling sim\" \u2014 `grep -w spawn` does not match `spawnSync`, and the new call is to the rig's own `date` stub, not to a sim, so global constraint 2 is not at issue. Blocks nothing here: this task's exam, both `Run:` commands and the boot-script check all exit 0, and the run's `suite` acceptance is graded by the driver's integrated suite.; Cross-task literal collision with wave sibling task 3, in the file both tasks own. This diff adds a THIRD `spawnSync(` line to `fleet/tests/test_sandbox_boot_merge.mjs` \u2014 `const r = spawnSync(dateStub(ctx, leg), argv, {\u2026})` inside the `dateUnder` helper of the #808 clock block. Sibling task 3's M1 pins that file to `test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2`, naming exactly the `bash -n SCRIPT` check (BASE line 255) and the direct `systemctl` stub call (BASE line 1480); its M1 also forbids `execSync|execFile|exec\\(|fork\\(` anywhere in the file, so there is no alternative child-process route inside the sim. Each task is graded in its own clone, so task 3's Run is green there and nothing in the committed suite (`tests/test_fleet_suite.py`) greps for the count \u2014 this is why it is minor, not blocking: no exam goes red on the folded tree. But the folded tree does contradict task 3's recorded machine clause, and an operator re-running task 3's Proof after the fold will see `3 != 2`. GLOBAL CONSTRAINT 2 is NOT violated \u2014 the spawn starts the rig's own `date` stub, not a sibling `fleet/tests/test_*.mjs`. Fix, wholly inside this task's own FILES: move the process launch out of the sim and into `fleet/tests/_sandbox_boot_helpers.mjs` (this task's other Modify file, which task 3 does not grep), exporting e.g. `runStub(ctx, name, argv)` that does the `spawnSync(path.join(ctx.bin, name), argv, {env: {PATH: `${ctx.bin}:${process.env.PATH}`, HOME: ctx.home, FLEET_HOME: ctx.home}, encoding: 'utf8'})`, and have `dateUnder` in the sim call it. The leg's assertions are unchanged; only the launch moves. What would settle it either way: `grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs` on the folded wave tree.; unverified: the rig change reaches seven sims this task's Proof never runs. `fleet/tests/_sandbox_boot_helpers.mjs` is imported by eleven sims \u2014 test_sandbox_boot.mjs, _approval_evidence, _approved, _edges, _effort, _exams, _merge, _record, _residuals, _selfmerge, _state_exams \u2014 and this diff changes it globally: a new `date` stub is written into every `makeHome()` bin dir (so every `date` call in EVERY sim now resolves to it, `now_iso`, `log` stamps and the prelude's own `say` included), and the `systemd-run` fold arm gains a clock write on every fold unit. The Proof's two `Run:` commands cover only merge, exams, selfmerge and edges; the other seven are unexercised by this task's evidence. The risk is low by construction \u2014 with no clock file the stub answers the real epoch and execs `/bin/date \"$@\"` by absolute path for every other argv, and `STUB_CLOCK_STEP` defaults to 0, which is exactly what leg (c) and the second half of leg (d) assert \u2014 and the run's Acceptance is `suite`, so the driver's integrated-suite pass on the adopted tree is what finally settles it. Recording it here because the gap is in the task's Proof list, not in the diff: the `Run:` line could have been `python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot -q`, which grades all eleven rig consumers, instead of naming three siblings. What would settle it: that command on this tree.; Produces: none \u2014 fleet/tests/_sandbox_boot_helpers.mjs: declared, not exported; fleet/tests/test_sandbox_boot_merge.mjs: declared, not exported",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "390b433a655f59d3b8b48093dbe870e1c04ef317",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-78/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Produces: none \u2014 fleet/tests/test_sandbox_boot_merge.mjs: declared, not exported; top-level tests +0 / \u22121 across the patch: net drop of 1, removing `${file} passes on the changed rig  [fold-again M6 / leg ${tag}]` with no removal declared in the task",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-78/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1910 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n......................................                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1910 passed, 5 warnings in 447.82s (0:07:27) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'attempt 1|2' fleet/publish-fold.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '1 or 2' fleet/publish-fold.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node -e \"import('./fleet/publish-fold.mjs').then(m => process.exit(m.usage().includes('--attempt <n>') && !m.usage().includes('1|2') ? 0 : 1))\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c \"attempt 2's fold floors\" fleet/sandbox-boot.sh)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c \"retry's own note\" fleet/sandbox-boot.sh)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'A second attempt lands' fleet/sandbox-boot.sh)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'the FIRST PUT' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'the second, default 200' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "t=$(mktemp) && git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -v '^ *#' > \"$t\" && grep -v '^ *#' fleet/sandbox-boot.sh | diff \"$t\" -",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed, 86 deselected in 22.66s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed, 86 deselected in 24.63s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot_exams or sandbox_boot_selfmerge or sandbox_boot_edges' -q",
+      "exit": 0,
+      "stdout": "...                                                                      [100%]\n3 passed, 84 deselected in 62.25s (0:01:02)\n"
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -cw spawn fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c 'test_sandbox_boot_exams.mjs' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c 'test_sandbox_boot_selfmerge.mjs' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c 'node:child_process' fleet/tests/test_sandbox_boot_merge.mjs)\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2",
+      "exit": 1,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "grep -q \"spawnSync('bash', \\['-n', SCRIPT\\]\" fleet/tests/test_sandbox_boot_merge.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "grep -q \"spawnSync(path.join(ctx.bin, 'systemctl')\" fleet/tests/test_sandbox_boot_merge.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -cE 'execSync|execFile|exec\\(|fork\\(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot_exams or sandbox_boot_selfmerge' -q",
+      "exit": 0,
+      "stdout": "..                                                                       [100%]\n2 passed, 85 deselected in 44.66s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed, 86 deselected in 24.87s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "bash -o pipefail -c 'time node fleet/tests/test_sandbox_boot_merge.mjs | grep -c \"ALL TESTS PASSED\"'",
+      "exit": 0,
+      "stdout": "1\n\nreal\t0m24.238s\nuser\t0m56.160s\nsys\t0m14.751s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "t=$(mktemp) && git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -v '^ *#' > \"$t\" && grep -v '^ *#' fleet/sandbox-boot.sh | diff \"$t\" -",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 722278,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 4,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "01f2a357cdc01aafe3707d4a6918b4d3718720fd",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-78/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-78/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.098,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: examiner: (g) the first `Run:` exits 0 \u2014 the merge sim passes under the bridge with the new legs [M1] \u2014 Self-referential: this leg IS this exam file's own green. It cannot be an assertion inside itself; the suite row `python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q` is what grades it, and the task's Acceptance is `suite`.",
+    "task 2: examiner: (h) the second `Run:` exits 0 \u2014 the three sibling sims that share the rig still pass with the `date` stub and the script seam in it [M3] \u2014 A GLOBAL CONSTRAINT of this wave forbids it: `No sim under fleet/tests/ starts another fleet/tests/test_*.mjs as a child process; a sibling sim is graded by its own tests/test_fleet_suite.py row.` (The existing (i)(j) block that does this is being deleted by a sibling task in the same wave.) Encoded instead as the Proof's own second `Run:` line, which the suite runs. I did verify it out of band under a prototype rig: test_sandbox_boot_exams.mjs, test_sandbox_boot_selfmerge.mjs and test_sandbox_boot_edges.mjs each printed ALL TESTS PASSED.",
+    "integrated Run: test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2 (task 3) exited 1 on the adopted tree \u2014 it passed in the task's own clone; the fold changed the answer, so the run is BLOCKED whatever the critic returns"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 3, Proof/Machine M1 \u2014 `fleet/tests/test_sandbox_boot_merge.mjs` now carries THREE `spawnSync(` lines, not the two M1 pins, and the driver's own INTEGRATED RUN EVIDENCE records `test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2` at exit 1. The lines are :255 (`spawnSync('bash', ['-n', SCRIPT]`), :1642 (`spawnSync(path.join(ctx.bin, 'systemctl')`) \u2014 M1's two \u2014 plus :2377, `dateUnder`'s `spawnSync(dateStub(ctx, leg), argv, \u2026)`, added by sibling Task 2 for its leg (c), which invokes the rig's own `date` stub under `ctx.bin`. Task 3's Claim itself is met: that third call runs a stub in the run's bin dir, not a sibling sim, and the file names neither `test_sandbox_boot_exams.mjs` nor `test_sandbox_boot_selfmerge.mjs` and carries no bare `spawn`, `execSync`, `execFile`, `exec(` or `fork(` \u2014 global constraint 2 holds. The defect is only that Task 3's fixed count of two was authored without knowing a same-wave sibling would add a legitimate third `spawnSync` to the same file, so the count pin is stale and its Run leg is red on the run's record. Worth an issue to restate the pin as a shape check (no `spawnSync` argument naming a `fleet/tests/test_*.mjs`) or to raise the count to three; not a shortfall against any Claim or global constraint."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 1, Claim quantifier \u2014 the Claim reads \"Every comment naming a count of two fold attempts in those three files describes the unbounded fold-again shape\", but `fleet/publish-fold.mjs` still enumerates the fold as an attempt-1/attempt-2 pair at three sites the plan's Context did not list among its five: line 27 (\"Re-entry (attempt 2, or a re-drive of attempt 1) reads the receipt BEFORE it fetches anything\"), lines 593-594 (\"the engine's head on attempt 1, the previous attempt's candidate on attempt 2\" \u2014 describing `priorKeys`/`floor`, which the same task's own reworded doc comment at :284 now correctly calls unbounded for any N), and the banner at line 600 (\"attempt 2 on an unmoved tip\" over the general `prior.tip === tip` branch). These read as illustrations rather than assertions that the fold stops at two \u2014 line 593's \"the previous attempt's candidate\" is already general phrasing \u2014 which is why I grade this minor and not a Claim unmet; the signed Context explicitly scoped the task to five enumerated sites and all five are correctly rewritten. But they are the same species of two-case enumeration as the `push_head` header this task did generalize to \"attempt N \u2026 attempt N-1\", so a follow-up sweep of `publish-fold.mjs` is warranted to finish the quantifier."
+    },
+    {
+      "severity": "blocking",
+      "detail": "integrated Run: test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2 (task 3) exited 1 on the adopted tree"
+    }
+  ],
+  "blockedWaves": []
+}
