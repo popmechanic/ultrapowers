@@ -1,0 +1,187 @@
+{
+  "integrationBranch": "ultra/integration-run-72",
+  "baseSha": "a526641762b11c20a04da0db0ada4f384cbde4cc",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9d946d93710feed2254616d08eb90099f9440e0f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-72/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Exam nests two sibling sims inside itself. Leg (g) of `fleet/tests/test_run_engine_candidate_bootstrap.mjs` (lines ~389-400 of the patch) shells out with `execFileSync('node', [sim])` to run `fleet/tests/test_run_engine_reconcile.mjs` and `fleet/tests/test_run_engine_exam_together.mjs` in full, charging their entire wall to this one sim's name. The committed suite already runs both as their own parametrized cases (`tests/test_fleet_suite.py::collect_sims` globs `fleet/tests/test_*.mjs`, so the new sim is collected automatically and so are both siblings), and the Proof already lists each as its own `Run:` line \u2014 both exited 0 in RUN EVIDENCE. The suite collector's own comment records this exact pattern being removed once before for cost: \"The merge sim ran it and six other boot siblings inside itself and no longer does, so the wall that used to be charged to the merge sim is this one's now\" (`tests/test_fleet_suite.py:12-14`), against a per-sim hang cap of `MJS_TIMEOUT = 300` s that is sized for a busy four-vCPU box under `-n auto`. Nothing about the candidate-bootstrap change can break the siblings in a way the siblings' own suite cases would miss, so the nesting buys no coverage the suite does not already have. The leg is required verbatim by the task's Proof `Legs:` clause (g), which is why this is the plan's text and not the implementer's choice; if the operator wants it dropped, the fix is to delete leg (g) from the sim and rely on the two existing `Run:` commands and the siblings' own suite cases. Advisory only \u2014 every Machine clause is otherwise established and the exam ran green.; unverified: the new candidate install mutates `integ`'s untracked install state before `runBaseline(candidate)` can run. On the path where the candidate bootstrap SUCCEEDS but the suite is then red (`bootstrapRed === null`, `suite.code !== 0`), `runBaseline` swaps BASE's tree into the same directory and runs `testCmd` there against the candidate's freshly-installed dependency set \u2014 so the 'is BASE itself red?' answer is computed with the candidate's `node_modules`, not BASE's. Almost always harmless (installs are additive), but a fold that removes or downgrades a dependency could make the baseline read red for a reason that is not BASE's. No fix belongs in this diff: the Context explicitly forbids a fourth bootstrap site, so re-installing around `runBaseline` would need the plan to authorize it. What would settle it: a sim leg with a manifest change that removes a dependency BASE's own suite imports, asserting the baseline verdict. Everything the task's own Machine clauses require (M1\u2013M5) is pinned in the diff \u2014 the predicate's ten true / five false rows at fleet/tests/test_run_engine_candidate_bootstrap.mjs:173-189, the site between `read-tree` and the suite at fleet/run-engine.mjs:2212-2242 with its three install-count scenarios, the boom scenario's judgment call / reconcile brief / TEST_FAILED detail / one-suite-run assertions, the adopted-tree module check, and reconcile.md's one added sentence at fleet/roles/reconcile.md:5-7.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b46092e6e16fb234f56862023e32ad64fd775263",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-72/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "`readPatch`'s rethrow at fleet/referee.mjs:115-116 discards the original error object (only `error?.message` survives), so the errno/`code`/stack of the underlying `readFileSync` failure is gone by the time the engine records the driver error in `notes`. Since this path terminates a task, keeping the original as `cause` costs nothing and preserves the distinction between ENOENT, EISDIR, EACCES and EIO for whoever reads the run report. The message text M1 pins is unchanged, so no test is affected. Separately (and even lower value): the `try` wraps `parsePatch` as well as the read, so a hypothetical `parsePatch` throw would be reported as \"cannot read\"; `parsePatch` is pure string manipulation over `str(text).split('\\n')` and has no throwing path today, so this is a labelling nit rather than a defect.; Produces: none \u2014 fleet/tests/test_referee_replay.mjs: declared, not exported",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "21902ab17313bd83c27d7c1629a2c6964e8e36c2",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-72/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "Dead branch in the new `whyQuiet` helper (fleet/referee-linker.mjs): the `out ? prog + ' exited ' + (res ? res.code : 'nothing') : \u2026` arm is only reached when `out` is truthy, and `out` is `jsonLine(res && res.stdout, \u2026)`, which can only be non-null when `res` is non-null. So the `: 'nothing'` fallback is unreachable \u2014 it is residue of the pre-patch expression, where the same ternary sat outside the `out` test and could see a null `res`. Harmless, but it makes the helper read as if a null `res` could still take the exit-code wording, which the comment above it explicitly says it cannot. Simplify to `prog + ' exited ' + res.code`.; fleet/tests/test_referee_linker.mjs: `escapeBeside` writes a FIXED name into the parent of the clone, which is `os.tmpdir()` (clones come from `fs.mkdtempSync(path.join(os.tmpdir(), 'referee-linker-'))`). The sim therefore unconditionally overwrites any pre-existing `/tmp/escape.mjs` and `removeStray` deletes it at exit, and two concurrent runs of this suite share that one path. No assertion can be made to fail by the collision \u2014 every escape leg is path-based and holds whether or not the file exists \u2014 so this is hygiene, not flakiness. Make the name unique, e.g. `path.join(cloneDir, '..', `escape-${process.pid}-${path.basename(cloneDir)}.mjs`)`, and have the leg use the returned relative/absolute name it already computes.; fleet/tests/test_referee_linker.mjs: leg (k) is a near-verbatim copy of the existing leg (b) timeout case \u2014 the same six-line `HANG` body, the same `checkoutOf({'src/hang.mjs': HANG})`, the same `timeoutMs: 500`, the same `unlinked` / `timeout` / `elapsed < 5000` assertions \u2014 and it is the only reason `defaultExec` is now imported (leg (b) gets `defaultExec` implicitly, by omitting `exec`). Proof leg (k) asks that \"the existing hang case ... still answers\", which the existing test already establishes, so the copy adds a second real ~500ms node subprocess and a duplicated fixture for no new coverage. Either drop the leg (k) block (leg (b) at ~line 284 is the evidence) or hoist `HANG`/the hung checkout into one shared const both legs use.; unverified: the clone boundary is textual only \u2014 `path.resolve` does not resolve symlinks, so a `files` entry naming a path that is inside the clone but is (or traverses) a symlink pointing outside it still becomes a candidate and still gets a `node`/`python3` subprocess. This is exactly what M1 specifies (`abs` equals `path.resolve(cloneDir)` or begins with it plus `path.sep`), so the diff is faithful; the gap is between M1's textual test and the global constraint \"A subprocess the linker spawns is `node` or `python3` on a file of the task's own clone ... an entry that resolves outside the clone is never that file\", which carries no `Check:` the driver ran and which I read as covering symlink escape too. What would settle it: a leg that symlinks `<clone>/src/link.mjs` -> a file beside the clone and asserts `unlinked` / `outside the clone` with a throwing `exec`, backed by an `fs.realpathSync` (or `fs.realpathSync.native` with a try/catch for the not-yet-existing case) on `abs` before the prefix comparison. Raising it against the plan, not the implementer, because tightening the rule beyond M1 would exceed this task's own text.; Produces: none \u2014 fleet/referee-linker.mjs: declared, not exported",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-72/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1905 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 34%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n.................................                                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1905 passed, 5 warnings in 412.01s (0:06:52) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_candidate_bootstrap.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/roles/reconcile.md | grep -qiE 'manifest[^.]*lockfile[^.]*install'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_referee_replay.mjs | tail -1 | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_run_engine_referee.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_referee_linker.mjs | tail -1 | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/examiner.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/implementer.md fleet/roles/resolver.md fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 741395,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 3,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 2,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5ca3196251608d21ebf4b63b97375ea651c0586f",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-72/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-72/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.412,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 \u2014 the candidate-site bootstrap in fleet/run-engine.mjs:2212-2242 against a real package manager (npm ci / bun install / uv sync), i.e. the field scenario #825 records (client/package.json adding @happy-dom/global-registrator).",
+      "reason": "external",
+      "why": "The committed suite has no network by design, so fleet/tests/test_run_engine_candidate_bootstrap.mjs simulates the install with a local install.sh that synthesizes node_modules/<name>. The engine site itself was executed by the driver (node fleet/tests/test_run_engine_candidate_bootstrap.mjs, exit 0); only the behaviour of a real derive_bootstrap_cmd rung fetching a real dependency is unexercised here."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

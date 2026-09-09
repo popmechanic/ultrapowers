@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-72.md run-72 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — the candidate-site bootstrap in fleet/run-engine.mjs:2212-2242 against a real package manager (npm ci / bun install / uv sync), i.e. the field scenario #825 records (client/package.json adding @happy-dom/global-registrator). — The committed suite has no network by design, so fleet/tests/test_run_engine_candidate_bootstrap.mjs simulates the install with a local install.sh that synthesizes node_modules/<name>. The engine site itself was executed by the driver (node fleet/tests/test_run_engine_candidate_bootstrap.mjs, exit 0); only the behaviour of a real derive_bootstrap_cmd rung fetching a real dependency is unexercised here. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

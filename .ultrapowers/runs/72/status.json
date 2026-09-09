@@ -1,1 +1,1 @@
-{"run":"72","state":"running","phase":"Integration Review","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-72","vm":"fleet-r72-2609090731-a4f0","startedAt":"2026-09-09T07:31:39Z","updatedAt":"2026-09-09T07:52:37Z","error":null}
+{"run":"72","state":"publishing","phase":"gate-green — pushing ultra/integration-run-72","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-72","vm":"fleet-r72-2609090731-a4f0","startedAt":"2026-09-09T07:31:39Z","updatedAt":"2026-09-09T08:01:22Z","error":null}
