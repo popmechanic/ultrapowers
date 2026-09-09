@@ -1,0 +1,153 @@
+{
+  "ok": true,
+  "stamp": "run-83",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-83"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The word \"referee\" means the driver's referee in the engine string and the report format",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "nothing"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The word \"referee\" means the driver's referee in the engine string and the report format",
+          "files": [
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "nothing"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c 'before any reviewer read the patch' fleet/run-engine.mjs)\" = 1 && test \"$(grep -c 'before any referee read' fleet/run-engine.mjs)\" = 0",
+            "test \"$(grep -c 'recorded for the reviewer, blocking nothing' fleet/run-engine.mjs)\" = 1 && test \"$(grep -c 'recorded for the referee' fleet/run-engine.mjs)\" = 0",
+            "grep -q 'a second red pass ends the task at .proof-red. (a red .Run:./.Check:.) or .referee-red. (a still-blocking referee)' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'or .referee-red.' skills/ultrapowers/references/report-format.md)\" = 1 && grep -q 'the reviewers then found nothing' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'rather than looping' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'the referees then found nothing' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'how many blocking issues the REVIEWERS returned' skills/ultrapowers/references/report-format.md && grep -q \"charging the driver's findings to the reviewers flatters the ratio\" skills/ultrapowers/references/report-format.md && test \"$(grep -c 'REFEREES returned' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'to the referee flatters' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'no reviewer was ever dispatched, because a patch whose own proof fails is not a patch a reviewer can grade' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'no referee was ever dispatched' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'a referee can grade' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'dispatched no reviewer (' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'dispatched no referee' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'names the paths to the reviewer as ' skills/ultrapowers/references/report-format.md && grep -q 'the reviewer decides whether the exam was wrong' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'to the referee as' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'the referee decides' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'each reviewer was right about the tree it read' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'each referee was right' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'no reviewer can wave it through' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'no referee can wave' skills/ultrapowers/references/report-format.md)\" = 0",
+            "grep -q 'because a blocking referee finding had just been repaired' skills/ultrapowers/references/report-format.md && test \"$(grep -c \"the referee's blocking finding\" skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(( $(grep -oE \"\\breferees?\\b\" skills/ultrapowers/references/report-format.md | wc -l) - $(grep -o \"referee-red\" skills/ultrapowers/references/report-format.md | wc -l) - $(grep -oE \"(driver's|mechanical|blocking|still-blocking) referees?\\b\" skills/ultrapowers/references/report-format.md | wc -l) ))\" = 0",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q"
+          ],
+          "proofGuards": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The word \"referee\" means the driver's referee in the en\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- No behaviour changes: the engine edits are two string literals in judgment calls, and every test that ran green\n  at BASE runs green after it.\n- The JSON keys of the report (`refereeFindings`, `refereeBlocking`, `refereeSkippedPairs`,\n  `referee-red`, `proof-red`) are unchanged in spelling \u2014 they are the mechanical referee's and\n  are correct.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/referee.mjs fleet/referee-linker.mjs fleet/roles/reviewer.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-83/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-83/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-83/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-83/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
