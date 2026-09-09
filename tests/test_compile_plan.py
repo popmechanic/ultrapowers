@@ -1612,7 +1612,7 @@ def test_all_three_tasks_share_wave_one():
 
 def test_placeholder_token_set():
     from compile_plan import _interface_token
-    for raw in ("nothing", "none", "N/A", "nothing (test-data-only change)",
+    for raw in ("nothing", "none", "N/A", "na", "nothing (test-data-only change)",
                 "`nothing`", "none — standalone"):
         assert _interface_token(raw) == "", raw
     assert _interface_token("`User` dataclass (id: int)") == "User"

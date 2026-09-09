@@ -34,6 +34,10 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { defaultExec, linkProduces } from '../referee-linker.mjs'
+// Task 1 (#842) reads `PLACEHOLDER_TOKENS` off the module namespace rather than
+// as a named import, so that a module which does not export it yet fails the
+// one leg that names it instead of failing to link at all.
+import * as refereeLinker from '../referee-linker.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES = path.join(HERE, 'fixtures', 'referee')
@@ -795,6 +799,216 @@ const TABLE = {
   }
 
   removeStray()
+}
+
+// ── Task 1: a placeholder Produces is unlinked before any file is read, and ──
+// ── the four spellings are the compiler's (#842) ──────────────────────────────
+// M1. A bullet is a placeholder when, after the optional bullet marker and one
+//     optional wrapping backtick, its text opens with `none`, `nothing`, `n/a`
+//     or `na` compared case-insensitively and that word is followed by
+//     end-of-text, whitespace, a closing backtick or any character other than a
+//     letter, digit or underscore. Each of the four bare bullets answers
+//     `unlinked` with `placeholder` in the detail, `exec` called 0 times.
+// M2. The same, for `None`, `NOTHING`, `N/A` — the comparison is
+//     case-insensitive.
+// M3. The same, for a placeholder carrying trailing prose.
+// M4. `nonesuch(a)`, `None_`, `nothingness()`, `name(x)` merely start with a
+//     token: they fall through to the existing path and answer `missing` after
+//     exactly one subprocess each.
+// M5. `PLACEHOLDER_TOKENS` is exported, is a `Set`, sorts to
+//     `['n/a', 'na', 'none', 'nothing']`, and equals the compiler's own line.
+// M7. `test_placeholder_token_set` in `tests/test_compile_plan.py` names all
+//     four words as quoted strings inside its own body, and passes.
+{
+  const ROOT = path.resolve(HERE, '..', '..')
+  const FOO = 'export function foo (a) { return a }\n'
+  const FILES = ['src/foo.mjs']
+
+  // "A counting stub" is an `exec` that increments a counter and throws, so a
+  // call is both counted and fatal — the same proof the sim's `boom` gives,
+  // with a count beside it. The M4 legs use a counting stub that delegates to
+  // `defaultExec` instead, since those legs need the real answer.
+  const counting = (delegate) => {
+    const state = { calls: 0 }
+    state.exec = (cmd, argv, opts) => {
+      state.calls += 1
+      if (!delegate) {
+        throw new Error('[M1, M2, M3] no subprocess may run for a placeholder bullet — ' +
+          'the placeholder answer is given before any file is read')
+      }
+      return defaultExec(cmd, argv, opts)
+    }
+    return state
+  }
+
+  const resolves = async (thunk, where) => {
+    try {
+      return await thunk()
+    } catch (e) {
+      assert.fail(`${where}: linkProduces resolves rather than throwing — it rejected with ` +
+        `${String((e && e.message) || e)} [M1, M2, M3]`)
+      return null
+    }
+  }
+
+  // One placeholder leg: the bullet answers `unlinked`, its detail says
+  // `placeholder`, and nothing was spawned.
+  const placeholderLeg = async (label, bullet, clause) => {
+    const clone = checkoutOf({ 'src/foo.mjs': FOO })
+    const stub = counting(false)
+    const r = await resolves(
+      () => link({ bullet, files: FILES, cloneDir: clone, exec: stub.exec }),
+      `task 1 ${label} ${JSON.stringify(bullet)}`)
+    shape(r, `task 1 ${label} ${JSON.stringify(bullet)}`)
+    assert.equal(r.status, 'unlinked',
+      `[${clause}] the bullet ${JSON.stringify(bullet)} is a placeholder, which is unlinked — ` +
+      `got ${r.status} (${detailOf(r)})`)
+    assert.ok(/placeholder/.test(detailOf(r)),
+      `[${clause}] … with "placeholder" in the detail, the sentence the referee block carries — ` +
+      `got ${JSON.stringify(detailOf(r))}`)
+    assert.equal(stub.calls, 0,
+      `[${clause}] … answered before any file is read: exec called ${stub.calls} time(s) for ` +
+      `${JSON.stringify(bullet)}`)
+    ok(`task 1 ${label} [${clause}] ${JSON.stringify(bullet)} is unlinked as a placeholder, no subprocess`)
+  }
+
+  // (a)–(d) M1: the four bare bullets.
+  await placeholderLeg('(a)', 'none', 'M1')
+  await placeholderLeg('(b)', 'nothing', 'M1')
+  await placeholderLeg('(c)', 'n/a', 'M1')
+  await placeholderLeg('(d)', 'na', 'M1')
+
+  // (e)–(g) M2: upper- and mixed-case, compared case-insensitively.
+  await placeholderLeg('(e)', 'None', 'M2')
+  await placeholderLeg('(f)', 'NOTHING', 'M2')
+  await placeholderLeg('(g)', 'N/A', 'M2')
+
+  // (h)–(k) M3: the placeholder word followed by prose — each the text after
+  // `- Produces:`, which is what `interfaces.produces` carries.
+  await placeholderLeg('(h)', 'none — standalone', 'M3')
+  await placeholderLeg('(i)', '`nothing` (test-data-only change)', 'M3')
+  await placeholderLeg('(j)', 'n/a — nothing exported', 'M3')
+  await placeholderLeg('(k)', 'na (prose only)', 'M3')
+
+  // (l)–(o) M4: a real identifier that merely starts with a token is not a
+  // placeholder — it falls through to the existing path and, over a
+  // `src/foo.mjs` exporting only `foo`, answers `missing` after exactly one
+  // `node` spawn.
+  const missingLeg = async (label, bullet) => {
+    const clone = checkoutOf({ 'src/foo.mjs': FOO })
+    const stub = counting(true)
+    const r = await resolves(
+      () => link({ bullet, files: FILES, cloneDir: clone, exec: stub.exec }),
+      `task 1 ${label} ${JSON.stringify(bullet)}`)
+    shape(r, `task 1 ${label} ${JSON.stringify(bullet)}`)
+    assert.equal(r.status, 'missing',
+      `[M4] ${JSON.stringify(bullet)} is a real identifier that merely starts with a token, ` +
+      `so it answers missing over a src/foo.mjs exporting only foo — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('no export named'),
+      `[M4] … with the miss wording — got ${JSON.stringify(detailOf(r))}`)
+    assert.equal(stub.calls, 1,
+      `[M4] … after exactly one subprocess — got ${stub.calls} call(s)`)
+    ok(`task 1 ${label} [M4] ${JSON.stringify(bullet)} is missing after exactly one spawn`)
+  }
+
+  await missingLeg('(l)', '`nonesuch(a)`')
+  await missingLeg('(m)', '`None_`')
+  await missingLeg('(n)', '`nothingness()`')
+  await missingLeg('(o)', '`name(x)`')
+
+  // (p) M5: the token set is the module's own export, and it is the compiler's
+  // set spelled in JavaScript — one place in each, pinned here by the four
+  // words.
+  {
+    const SORTED = ['n/a', 'na', 'none', 'nothing']
+    const tokens = refereeLinker.PLACEHOLDER_TOKENS
+    assert.ok(tokens instanceof Set,
+      '[M5] fleet/referee-linker.mjs exports PLACEHOLDER_TOKENS, a Set — got ' +
+      JSON.stringify(tokens === undefined ? 'undefined (no such export)' : String(tokens)))
+    assert.deepEqual([...tokens].sort(), SORTED,
+      `[M5] whose sorted members are exactly ${JSON.stringify(SORTED)} — got ${JSON.stringify([...tokens].sort())}`)
+
+    const COMPILER = path.resolve(HERE, '..', '..', 'skills', 'ultrapowers', 'scripts', 'compile_plan.py')
+    assert.ok(fs.existsSync(COMPILER), `[M5] the compiler source is at ${COMPILER}`)
+    const src = fs.readFileSync(COMPILER, 'utf8')
+    const matches = [...src.matchAll(/PLACEHOLDER_TOKENS = frozenset\(\{([^}]*)\}\)/g)]
+    assert.equal(matches.length, 1,
+      `[M5] the compiler spells its set in exactly one place — got ${matches.length} match(es)`)
+    const compilerTokens = matches[0][1]
+      .split(',')
+      .map((w) => w.trim().replace(/^['"]|['"]$/g, '').trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+    assert.deepEqual(compilerTokens, SORTED,
+      `[M5] the compiler's own words are the same four — got ${JSON.stringify(compilerTokens)}`)
+    assert.deepEqual([...tokens].sort(), compilerTokens,
+      `[M5] and the linker's set equals the compiler's, word for word — ` +
+      `${JSON.stringify([...tokens].sort())} vs ${JSON.stringify(compilerTokens)}`)
+    ok('task 1 (p) [M5] PLACEHOLDER_TOKENS is a Set of the compiler\'s own four words')
+  }
+
+  // (q) M5: the two one-line `Run:` probes of the Proof, run here as the Proof
+  //     runs them — each exits 0.
+  {
+    const probe = (cmd, argv) => {
+      try {
+        execFileSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+        return { code: 0, out: '' }
+      } catch (e) {
+        return { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stderr || e.stdout || e.message) }
+      }
+    }
+    const exported = probe('node', ['--input-type=module', '-e',
+      "import { PLACEHOLDER_TOKENS } from './fleet/referee-linker.mjs'; " +
+      "const a = [...PLACEHOLDER_TOKENS].sort().join(','); " +
+      "if (a !== 'n/a,na,none,nothing') { console.error(a); process.exit(1) }"])
+    assert.equal(exported.code, 0,
+      `[M5] the Run: probe importing PLACEHOLDER_TOKENS and joining its sorted members to ` +
+      `"n/a,na,none,nothing" exits 0 — got ${exported.code}: ${exported.out.slice(0, 400)}`)
+
+    const frozen = fs.readFileSync(
+      path.resolve(ROOT, 'skills', 'ultrapowers', 'scripts', 'compile_plan.py'), 'utf8')
+    const line = 'PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})'
+    const lines = frozen.split('\n').filter((l) => l.includes(line)).length
+    assert.equal(lines, 1,
+      `[M5] the compiler source carries the frozen ${JSON.stringify(line)} line exactly once — got ${lines}`)
+    ok('task 1 (q) [M5] both Run: probes of the token set are green')
+  }
+
+  // (t) M7: `test_placeholder_token_set` names all four words as quoted strings
+  //     inside its own body — at BASE `na` is the absent one — and it passes.
+  {
+    const PY = path.resolve(ROOT, 'tests', 'test_compile_plan.py')
+    assert.ok(fs.existsSync(PY), `[M7] the compiler suite is at ${PY}`)
+    const lines = fs.readFileSync(PY, 'utf8').split('\n')
+    const start = lines.findIndex((l) => /^def test_placeholder_token_set/.test(l))
+    assert.ok(start !== -1, '[M7] tests/test_compile_plan.py defines test_placeholder_token_set')
+    let end = start + 1
+    while (end < lines.length && !/^def /.test(lines[end])) end += 1
+    const body = lines.slice(start, end).join('\n')
+    assert.ok(body.includes('"na"'),
+      `[M7] its body names "na" as a quoted string — got ${JSON.stringify(body)}`)
+    const words = [...new Set((body.match(/"(?:nothing|none|N\/A|na)"/g) || []))].sort()
+    assert.deepEqual(words, ['"N/A"', '"na"', '"none"', '"nothing"'],
+      `[M7] the distinct quoted words among nothing, none, N/A, na inside that body are all four — ` +
+      `got ${JSON.stringify(words)}`)
+    assert.equal(words.length, 4,
+      `[M7] … which is a count of 4, where at BASE it is 3 — got ${words.length}`)
+
+    let pytest = { code: 0, out: '' }
+    try {
+      pytest.out = execFileSync('python3',
+        ['-m', 'pytest', 'tests/test_compile_plan.py', '-q', '-k', 'test_placeholder_token_set',
+          '-p', 'no:cacheprovider'],
+        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      pytest = { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || e.stderr || e.message) }
+    }
+    assert.equal(pytest.code, 0,
+      `[M7] and that test passes — python3 -m pytest -k test_placeholder_token_set exited ` +
+      `${pytest.code}: ${String(pytest.out).slice(-600)}`)
+    ok('task 1 (t) [M7] test_placeholder_token_set names all four words and passes')
+  }
 }
 
 cleanup()

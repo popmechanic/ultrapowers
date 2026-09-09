@@ -45,6 +45,33 @@ const IDENT_RE = /^[A-Za-z_]\w*$/
 // assignment or a dotted member rather than an exported symbol.
 const NOT_A_SYMBOL_RE = /^\s*([:/=.])/
 
+// The compiler's placeholder vocabulary (`PLACEHOLDER_TOKENS`,
+// skills/ultrapowers/scripts/compile_plan.py), spelled once here and once
+// there. A `Produces:` bullet whose lead word is one of these promises no
+// symbol at all — it is authoring prose for "no contract" — so the linker
+// answers `unlinked` on the raw bullet text, before any candidate file is
+// read (#842).
+export const PLACEHOLDER_TOKENS = new Set(['nothing', 'none', 'n/a', 'na'])
+
+// The placeholder boundary, built from the vocabulary above so the two never
+// drift: the bullet marker and one wrapping backtick are skipped, the whole
+// lead word is compared case-insensitively, and it must end there — at
+// end-of-text, whitespace, the closing backtick or any character outside
+// `[A-Za-z0-9_]` (`—`, `:`, `(`). Longest alternative first, so `nothing`
+// is never read as `n/a`'s neighbour; `nonesuch`, `None_`, `nothingness` and
+// `name` merely start with a token and fall through to the real linkers.
+const PLACEHOLDER_RE = new RegExp(
+  '^\\s*(?:[-*+]\\s*)?`?(' +
+  [...PLACEHOLDER_TOKENS].sort((a, b) => b.length - a.length)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|') +
+  ')(?![A-Za-z0-9_])', 'i')
+
+// The placeholder word as written, or `''` when the bullet promises a symbol.
+export const placeholderLead = (bullet) => {
+  const m = PLACEHOLDER_RE.exec(String(bullet == null ? '' : bullet))
+  return m ? m[1] : ''
+}
+
 const LINKABLE = new Set(['.mjs', '.js', '.py', '.ts', '.tsx'])
 
 // resolved > declared > unlinked > missing.
@@ -356,6 +383,16 @@ export const linkProduces = async ({ bullet, files, cloneDir, exec, timeoutMs } 
   const { symbol, arity, rest } = parseBullet(bullet)
   const ex = typeof exec === 'function' ? exec : defaultExec
   const ms = Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS
+
+  // A placeholder promises nothing, so there is nothing to look up. This test
+  // runs on the raw bullet text and before the three below, because `n/a` has
+  // lead token `n` and rest `/a`: reached later it would answer "followed by
+  // `/`" — the right status under the wrong sentence (#842).
+  const placeholder = placeholderLead(bullet)
+  if (placeholder) {
+    return answer('unlinked', placeholder,
+      '`' + placeholder + '` is a placeholder — no symbol promised; no file was read')
+  }
 
   // Not a symbol at all — no file is read, no subprocess runs.
   if (!symbol) {
