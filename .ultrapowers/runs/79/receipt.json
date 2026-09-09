@@ -1,0 +1,153 @@
+{
+  "ok": true,
+  "stamp": "run-79",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-79"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The rig owns the renderer path",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "fleet/tests/test_sandbox_boot.mjs",
+          "fleet/tests/test_sandbox_boot_state_exams.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`renderEnvPath(ctx: {home: string}) -> string`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The rig owns the renderer path",
+          "files": [
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot.mjs",
+            "fleet/tests/test_sandbox_boot_render_env.mjs",
+            "fleet/tests/test_sandbox_boot_state_exams.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`renderEnvPath(ctx: {home: string}) -> string`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot.mjs",
+            "fleet/tests/test_sandbox_boot_state_exams.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_render_env.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_render_env.mjs",
+          "proofRuns": [
+            "! grep -q '/etc/fleet/render.env' fleet/tests/_sandbox_boot_helpers.mjs fleet/tests/test_sandbox_boot*.mjs",
+            "python3 -m pytest tests/test_fleet_suite.py -k \"sandbox_boot\" -q",
+            "node fleet/tests/test_sandbox_boot_render_env.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_render_env.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The rig owns the renderer path"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The boot script `fleet/sandbox-boot.sh` is not edited: the fix is in the sims' rig, not the\n  production path (`FLEET_RENDER_ENV=\"${FLEET_RENDER_ENV:-/etc/fleet/render.env}\"` at BASE\n  stays as it is).\n- No boot sim, and no rig it imports, names the host's renderer path; a sim that wants a\n  renderer writes the file under its own temp `FLEET_HOME`.\n- Every `fleet/tests/test_*.mjs` sim keeps printing `ALL TESTS PASSED` within the bridge's\n  300 s cap (`MJS_TIMEOUT` in `tests/test_fleet_suite.py`), so a new exam adds at most a few\n  boots, started concurrently through `bootAsync`, never a serial chain of them.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/setup-script.mjs fleet/CONTRACT.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-79/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-79/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-79/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-79/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
