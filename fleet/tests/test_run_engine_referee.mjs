@@ -564,6 +564,39 @@ const examTask = (over = {}) =>
     '[M9] which is told the promised name and the one the file exports: ' + fix.slice(-800))
 }
 
+// ── Task 1 (#842): a placeholder Produces is unlinked, so it is a settled ────
+// ── line and never a repair round [M6] ───────────────────────────────────────
+// M6. A task whose files are `['lib.mjs']`, whose `interfaces.produces` is
+//     exactly `['none']` and whose implementer writes `lib.mjs` exporting
+//     `plus` reaches `done` with no `fix:` dispatch, and its `n=0` record has
+//     zero `interface` findings and exactly one settled `interface` line whose
+//     detail carries the bullet and the word `placeholder` — never the miss
+//     wording, which is what a placeholder read as a symbol would have bought.
+{
+  const r = await drive('r1', [mkTask('T1', ['lib.mjs'],
+    { interfaces: { consumes: [], produces: ['none'] } })],
+    { impl: (cwd) => write(cwd, 'lib.mjs', 'export function plus (a, b) { return a + b }\n') })
+
+  assert.equal(r.row('T1').status, 'done',
+    '[M6] a placeholder Produces: promises no symbol, so the task merges: ' + JSON.stringify(r.row('T1')))
+  assert.deepEqual(r.of('fix:'), [],
+    '[M6] and no repair round was ever bought for it: ' + r.labels.join(','))
+
+  const rec0 = readReferee(r.runDir, 'T1', 0)
+  assert.deepEqual(findingsOf(rec0, 'interface'), [],
+    '[M6] zero interface findings at n=0: ' + JSON.stringify(rec0.findings))
+  const settled = settledOf(rec0, 'interface')
+  assert.equal(settled.length, 1,
+    '[M6] exactly one settled interface line: ' + JSON.stringify(rec0.settled))
+  const detail = String(settled[0].detail)
+  assert.ok(detail.includes('none'),
+    '[M6] which names the bullet it answered: ' + JSON.stringify(settled[0]))
+  assert.ok(/placeholder/.test(detail),
+    '[M6] and says placeholder in one line: ' + JSON.stringify(settled[0]))
+  assert.ok(!detail.includes('no export named'),
+    '[M6] rather than listing the file\'s exports: ' + JSON.stringify(settled[0]))
+}
+
 // ── (h) the report counts what the referee found [M8] ───────────────────────
 {
   const cases = [
