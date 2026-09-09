@@ -115,6 +115,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   `watch-item`) plus at most one PROGRAM (`merge-frontier`, `experience-compiler`,
   `verification-frontier`, `peer-review`, `fleet`, `determinism`, `blackboard`). `one-driver`, `authoring-frontier` and
   `distill` are retired — off every open issue, kept on closed ones for history.
+  **Test doctrine (operator, 2026-09-09):** the implementer never does TDD (it iterates against the suite and writes no test of its own); the peer exam plus driver-run probes are the proof, and the whole suite as a gate is the assumption map #870 is retiring — measured, never on a narrative.
 - **Superpowers is HITL-only:** fleet sandboxes provision ultrapowers + engine only —
   superpowers never enters a sandbox. Revisit migrating off it only on a third
   version-skew incident, with a measured case.
@@ -146,7 +147,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   as assignment, credentials at the edge, a systemd template unit, git as the record — and 0.3.6
   collapsed the grant into one integration per target attached at launch. The `fleet` program
   continues as tickets #597 #598 #387 #513 #384 #383 #548 #601, with no map.
-- **Open maps:** #810 *The Blackboard* (chartered 2026-09-09: where agents talk — a per-run TinyBase
+- **Open maps:** #870 *The Suite as Sensor* (chartered 2026-09-09 after Böckeler's *TDD in the agent loop*: acceptance is exams + probes + state exams, the target's suite is a reported sensor with attribution, mutation is the meter, zero-catch tests are deleted behind the catch counter; tickets #871 grilling → #872 one-release experiment → #873 ratchet; its first form is #862's early off-path baseline); #810 *The Blackboard* (chartered 2026-09-09: where agents talk — a per-run TinyBase
   tuple space of facts, never commands; row = evidence, cell = status, readiness = a fold at read
   time; the record as the scheduler; tickets #811 grilling first, #812 interface-handshake
   prototype, #813 readiness-fold research gated on an order-shuffled fold sim, #814 = #485's
