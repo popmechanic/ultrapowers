@@ -1,8 +1,8 @@
-# Greenfield stack — Bun + TypeScript authoring defaults
+# Greenfield stack — Bun + TypeScript + TinyBase authoring defaults
 
 Load this when a plan **creates a new codebase** (#425). It fixes the two knobs
-a greenfield plan hands the engine, and the one tsconfig detail that costs an
-author an hour when it is guessed wrong.
+a greenfield plan hands the engine, the one tsconfig detail that costs an
+author an hour when it is guessed wrong, and the store the app keeps its state in.
 
 ## When it applies
 
@@ -41,6 +41,23 @@ tsconfig:
 
 The older `bun-types` package name fails with
 `TS2688: Cannot find type definition file for 'bun-types'`.
+
+## The store, and the TinyApp shape
+
+The app's state is **one TinyBase store** (operator, 2026-09-08). Every `do:` in a
+Claim is a store mutation through the app's own callbacks and every `see:` is a
+store read plus a render against it, so an exam can probe the store directly,
+in-process, in milliseconds — no network or DOM event loop in the loop. That
+holds exactly when the app reads from nowhere but the store; a plan that has
+the app fetch or read outside its persister has left the shape and says so.
+
+A **TinyApp** is the synced shape of that stack, and only that shape: a TinyBase
+`MergeableStore` in the client, a `WsSynchronizer` to a Durable Object with a
+SQLite persister, React from one `index.html` + `app.jsx`. An app whose store is
+local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
+word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
+is not this project's vocabulary. The runtime that hosts a TinyApp's Durable
+Object inside a sandbox is #764's question, not this page's.
 
 ## The engine boundary
 

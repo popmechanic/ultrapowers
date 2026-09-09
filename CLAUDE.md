@@ -296,6 +296,11 @@ structural dozen).
   handoff as *what was true when it was written*: verify before acting on it, and expect a stale
   one, since nothing prunes them. `.claude/` is in `.git/info/exclude`, so a fresh clone, a fleet
   sandbox and CI all correctly find nothing.
+- **TinyApp is the name (operator, 2026-09-08).** A greenfield target on the committed stack —
+  Bun + TypeScript + TinyBase — in its synced shape (a TinyBase MergeableStore in the client, a
+  WsSynchronizer to a Durable Object with a SQLite persister) is a *TinyApp*; an app whose store
+  is not synced to a Durable Object is not one. The borrowed term "vibes app" is banned in specs,
+  docs, issues and skills. The authoring rule is `skills/ultrawrite/references/greenfield-stack.md`.
 - **`superpowers` is an optional companion, not a dependency (#390).** Plan authoring is
   `ultrawrite`'s; brainstorming and the practice skills are still worth reaching for when the
   operator has them installed. There is no local checkout and nothing is vendored — read those
