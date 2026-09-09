@@ -23,6 +23,61 @@ index 39fbd167c11e56fb324385a4985b04b4bb01463a..fe1f35debcb5d3da889195b50dce3db0
  
  export function parseArgs (argv) {
    const KEYS = {
+diff --git a/fleet/referee-linker.mjs b/fleet/referee-linker.mjs
+index ae7451208f569f857808305bb373e9743738714f..f618e1a6c18ef81eef5c931cd5eb33bd5055bf28 100644
+--- a/fleet/referee-linker.mjs
++++ b/fleet/referee-linker.mjs
+@@ -45,6 +45,33 @@ const IDENT_RE = /^[A-Za-z_]\w*$/
+ // assignment or a dotted member rather than an exported symbol.
+ const NOT_A_SYMBOL_RE = /^\s*([:/=.])/
+ 
++// The compiler's placeholder vocabulary (`PLACEHOLDER_TOKENS`,
++// skills/ultrapowers/scripts/compile_plan.py), spelled once here and once
++// there. A `Produces:` bullet whose lead word is one of these promises no
++// symbol at all — it is authoring prose for "no contract" — so the linker
++// answers `unlinked` on the raw bullet text, before any candidate file is
++// read (#842).
++export const PLACEHOLDER_TOKENS = new Set(['nothing', 'none', 'n/a', 'na'])
++
++// The placeholder boundary, built from the vocabulary above so the two never
++// drift: the bullet marker and one wrapping backtick are skipped, the whole
++// lead word is compared case-insensitively, and it must end there — at
++// end-of-text, whitespace, the closing backtick or any character outside
++// `[A-Za-z0-9_]` (`—`, `:`, `(`). Longest alternative first, so `nothing`
++// is never read as `n/a`'s neighbour; `nonesuch`, `None_`, `nothingness` and
++// `name` merely start with a token and fall through to the real linkers.
++const PLACEHOLDER_RE = new RegExp(
++  '^\\s*(?:[-*+]\\s*)?`?(' +
++  [...PLACEHOLDER_TOKENS].sort((a, b) => b.length - a.length)
++    .map((t) => t.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|') +
++  ')(?![A-Za-z0-9_])', 'i')
++
++// The placeholder word as written, or `''` when the bullet promises a symbol.
++export const placeholderLead = (bullet) => {
++  const m = PLACEHOLDER_RE.exec(String(bullet == null ? '' : bullet))
++  return m ? m[1] : ''
++}
++
+ const LINKABLE = new Set(['.mjs', '.js', '.py', '.ts', '.tsx'])
+ 
+ // resolved > declared > unlinked > missing.
+@@ -357,6 +384,16 @@ export const linkProduces = async ({ bullet, files, cloneDir, exec, timeoutMs }
+   const ex = typeof exec === 'function' ? exec : defaultExec
+   const ms = Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT_MS
+ 
++  // A placeholder promises nothing, so there is nothing to look up. This test
++  // runs on the raw bullet text and before the three below, because `n/a` has
++  // lead token `n` and rest `/a`: reached later it would answer "followed by
++  // `/`" — the right status under the wrong sentence (#842).
++  const placeholder = placeholderLead(bullet)
++  if (placeholder) {
++    return answer('unlinked', placeholder,
++      '`' + placeholder + '` is a placeholder — no symbol promised; no file was read')
++  }
++
+   // Not a symbol at all — no file is read, no subprocess runs.
+   if (!symbol) {
+     return answer('unlinked', '', 'no lead symbol in the bullet — no file was read')
 diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
 index efaef212e29ebe91c7bc94ddeca3482b1dca1c5a..e1fbd09b19e3d7057e55af6d048e2ec0badc371b 100755
 --- a/fleet/sandbox-boot.sh
@@ -186,6 +241,281 @@ index eee4b3b2774f18017e4ff254501179d24bb8945a..bae4648348e5de8fef05d26defb2b93b
        env: bootEnv(ctx, env),
        stdio: ['ignore', 'pipe', 'pipe'],
      })
+diff --git a/fleet/tests/test_referee_linker.mjs b/fleet/tests/test_referee_linker.mjs
+index 89e25455c9f25b1adba2f0c972172d846dc7d916..0c298744fed2a27e9fd955885fc5034b9df895f9 100644
+--- a/fleet/tests/test_referee_linker.mjs
++++ b/fleet/tests/test_referee_linker.mjs
+@@ -34,6 +34,10 @@ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+ import { defaultExec, linkProduces } from '../referee-linker.mjs'
++// Task 1 (#842) reads `PLACEHOLDER_TOKENS` off the module namespace rather than
++// as a named import, so that a module which does not export it yet fails the
++// one leg that names it instead of failing to link at all.
++import * as refereeLinker from '../referee-linker.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const FIXTURES = path.join(HERE, 'fixtures', 'referee')
+@@ -797,5 +801,215 @@ const TABLE = {
+   removeStray()
+ }
+ 
++// ── Task 1: a placeholder Produces is unlinked before any file is read, and ──
++// ── the four spellings are the compiler's (#842) ──────────────────────────────
++// M1. A bullet is a placeholder when, after the optional bullet marker and one
++//     optional wrapping backtick, its text opens with `none`, `nothing`, `n/a`
++//     or `na` compared case-insensitively and that word is followed by
++//     end-of-text, whitespace, a closing backtick or any character other than a
++//     letter, digit or underscore. Each of the four bare bullets answers
++//     `unlinked` with `placeholder` in the detail, `exec` called 0 times.
++// M2. The same, for `None`, `NOTHING`, `N/A` — the comparison is
++//     case-insensitive.
++// M3. The same, for a placeholder carrying trailing prose.
++// M4. `nonesuch(a)`, `None_`, `nothingness()`, `name(x)` merely start with a
++//     token: they fall through to the existing path and answer `missing` after
++//     exactly one subprocess each.
++// M5. `PLACEHOLDER_TOKENS` is exported, is a `Set`, sorts to
++//     `['n/a', 'na', 'none', 'nothing']`, and equals the compiler's own line.
++// M7. `test_placeholder_token_set` in `tests/test_compile_plan.py` names all
++//     four words as quoted strings inside its own body, and passes.
++{
++  const ROOT = path.resolve(HERE, '..', '..')
++  const FOO = 'export function foo (a) { return a }\n'
++  const FILES = ['src/foo.mjs']
++
++  // "A counting stub" is an `exec` that increments a counter and throws, so a
++  // call is both counted and fatal — the same proof the sim's `boom` gives,
++  // with a count beside it. The M4 legs use a counting stub that delegates to
++  // `defaultExec` instead, since those legs need the real answer.
++  const counting = (delegate) => {
++    const state = { calls: 0 }
++    state.exec = (cmd, argv, opts) => {
++      state.calls += 1
++      if (!delegate) {
++        throw new Error('[M1, M2, M3] no subprocess may run for a placeholder bullet — ' +
++          'the placeholder answer is given before any file is read')
++      }
++      return defaultExec(cmd, argv, opts)
++    }
++    return state
++  }
++
++  const resolves = async (thunk, where) => {
++    try {
++      return await thunk()
++    } catch (e) {
++      assert.fail(`${where}: linkProduces resolves rather than throwing — it rejected with ` +
++        `${String((e && e.message) || e)} [M1, M2, M3]`)
++      return null
++    }
++  }
++
++  // One placeholder leg: the bullet answers `unlinked`, its detail says
++  // `placeholder`, and nothing was spawned.
++  const placeholderLeg = async (label, bullet, clause) => {
++    const clone = checkoutOf({ 'src/foo.mjs': FOO })
++    const stub = counting(false)
++    const r = await resolves(
++      () => link({ bullet, files: FILES, cloneDir: clone, exec: stub.exec }),
++      `task 1 ${label} ${JSON.stringify(bullet)}`)
++    shape(r, `task 1 ${label} ${JSON.stringify(bullet)}`)
++    assert.equal(r.status, 'unlinked',
++      `[${clause}] the bullet ${JSON.stringify(bullet)} is a placeholder, which is unlinked — ` +
++      `got ${r.status} (${detailOf(r)})`)
++    assert.ok(/placeholder/.test(detailOf(r)),
++      `[${clause}] … with "placeholder" in the detail, the sentence the referee block carries — ` +
++      `got ${JSON.stringify(detailOf(r))}`)
++    assert.equal(stub.calls, 0,
++      `[${clause}] … answered before any file is read: exec called ${stub.calls} time(s) for ` +
++      `${JSON.stringify(bullet)}`)
++    ok(`task 1 ${label} [${clause}] ${JSON.stringify(bullet)} is unlinked as a placeholder, no subprocess`)
++  }
++
++  // (a)–(d) M1: the four bare bullets.
++  await placeholderLeg('(a)', 'none', 'M1')
++  await placeholderLeg('(b)', 'nothing', 'M1')
++  await placeholderLeg('(c)', 'n/a', 'M1')
++  await placeholderLeg('(d)', 'na', 'M1')
++
++  // (e)–(g) M2: upper- and mixed-case, compared case-insensitively.
++  await placeholderLeg('(e)', 'None', 'M2')
++  await placeholderLeg('(f)', 'NOTHING', 'M2')
++  await placeholderLeg('(g)', 'N/A', 'M2')
++
++  // (h)–(k) M3: the placeholder word followed by prose — each the text after
++  // `- Produces:`, which is what `interfaces.produces` carries.
++  await placeholderLeg('(h)', 'none — standalone', 'M3')
++  await placeholderLeg('(i)', '`nothing` (test-data-only change)', 'M3')
++  await placeholderLeg('(j)', 'n/a — nothing exported', 'M3')
++  await placeholderLeg('(k)', 'na (prose only)', 'M3')
++
++  // (l)–(o) M4: a real identifier that merely starts with a token is not a
++  // placeholder — it falls through to the existing path and, over a
++  // `src/foo.mjs` exporting only `foo`, answers `missing` after exactly one
++  // `node` spawn.
++  const missingLeg = async (label, bullet) => {
++    const clone = checkoutOf({ 'src/foo.mjs': FOO })
++    const stub = counting(true)
++    const r = await resolves(
++      () => link({ bullet, files: FILES, cloneDir: clone, exec: stub.exec }),
++      `task 1 ${label} ${JSON.stringify(bullet)}`)
++    shape(r, `task 1 ${label} ${JSON.stringify(bullet)}`)
++    assert.equal(r.status, 'missing',
++      `[M4] ${JSON.stringify(bullet)} is a real identifier that merely starts with a token, ` +
++      `so it answers missing over a src/foo.mjs exporting only foo — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('no export named'),
++      `[M4] … with the miss wording — got ${JSON.stringify(detailOf(r))}`)
++    assert.equal(stub.calls, 1,
++      `[M4] … after exactly one subprocess — got ${stub.calls} call(s)`)
++    ok(`task 1 ${label} [M4] ${JSON.stringify(bullet)} is missing after exactly one spawn`)
++  }
++
++  await missingLeg('(l)', '`nonesuch(a)`')
++  await missingLeg('(m)', '`None_`')
++  await missingLeg('(n)', '`nothingness()`')
++  await missingLeg('(o)', '`name(x)`')
++
++  // (p) M5: the token set is the module's own export, and it is the compiler's
++  // set spelled in JavaScript — one place in each, pinned here by the four
++  // words.
++  {
++    const SORTED = ['n/a', 'na', 'none', 'nothing']
++    const tokens = refereeLinker.PLACEHOLDER_TOKENS
++    assert.ok(tokens instanceof Set,
++      '[M5] fleet/referee-linker.mjs exports PLACEHOLDER_TOKENS, a Set — got ' +
++      JSON.stringify(tokens === undefined ? 'undefined (no such export)' : String(tokens)))
++    assert.deepEqual([...tokens].sort(), SORTED,
++      `[M5] whose sorted members are exactly ${JSON.stringify(SORTED)} — got ${JSON.stringify([...tokens].sort())}`)
++
++    const COMPILER = path.resolve(HERE, '..', '..', 'skills', 'ultrapowers', 'scripts', 'compile_plan.py')
++    assert.ok(fs.existsSync(COMPILER), `[M5] the compiler source is at ${COMPILER}`)
++    const src = fs.readFileSync(COMPILER, 'utf8')
++    const matches = [...src.matchAll(/PLACEHOLDER_TOKENS = frozenset\(\{([^}]*)\}\)/g)]
++    assert.equal(matches.length, 1,
++      `[M5] the compiler spells its set in exactly one place — got ${matches.length} match(es)`)
++    const compilerTokens = matches[0][1]
++      .split(',')
++      .map((w) => w.trim().replace(/^['"]|['"]$/g, '').trim().toLowerCase())
++      .filter(Boolean)
++      .sort()
++    assert.deepEqual(compilerTokens, SORTED,
++      `[M5] the compiler's own words are the same four — got ${JSON.stringify(compilerTokens)}`)
++    assert.deepEqual([...tokens].sort(), compilerTokens,
++      `[M5] and the linker's set equals the compiler's, word for word — ` +
++      `${JSON.stringify([...tokens].sort())} vs ${JSON.stringify(compilerTokens)}`)
++    ok('task 1 (p) [M5] PLACEHOLDER_TOKENS is a Set of the compiler\'s own four words')
++  }
++
++  // (q) M5: the two one-line `Run:` probes of the Proof, run here as the Proof
++  //     runs them — each exits 0.
++  {
++    const probe = (cmd, argv) => {
++      try {
++        execFileSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++        return { code: 0, out: '' }
++      } catch (e) {
++        return { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stderr || e.stdout || e.message) }
++      }
++    }
++    const exported = probe('node', ['--input-type=module', '-e',
++      "import { PLACEHOLDER_TOKENS } from './fleet/referee-linker.mjs'; " +
++      "const a = [...PLACEHOLDER_TOKENS].sort().join(','); " +
++      "if (a !== 'n/a,na,none,nothing') { console.error(a); process.exit(1) }"])
++    assert.equal(exported.code, 0,
++      `[M5] the Run: probe importing PLACEHOLDER_TOKENS and joining its sorted members to ` +
++      `"n/a,na,none,nothing" exits 0 — got ${exported.code}: ${exported.out.slice(0, 400)}`)
++
++    const frozen = fs.readFileSync(
++      path.resolve(ROOT, 'skills', 'ultrapowers', 'scripts', 'compile_plan.py'), 'utf8')
++    const line = 'PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})'
++    const lines = frozen.split('\n').filter((l) => l.includes(line)).length
++    assert.equal(lines, 1,
++      `[M5] the compiler source carries the frozen ${JSON.stringify(line)} line exactly once — got ${lines}`)
++    ok('task 1 (q) [M5] both Run: probes of the token set are green')
++  }
++
++  // (t) M7: `test_placeholder_token_set` names all four words as quoted strings
++  //     inside its own body — at BASE `na` is the absent one — and it passes.
++  {
++    const PY = path.resolve(ROOT, 'tests', 'test_compile_plan.py')
++    assert.ok(fs.existsSync(PY), `[M7] the compiler suite is at ${PY}`)
++    const lines = fs.readFileSync(PY, 'utf8').split('\n')
++    const start = lines.findIndex((l) => /^def test_placeholder_token_set/.test(l))
++    assert.ok(start !== -1, '[M7] tests/test_compile_plan.py defines test_placeholder_token_set')
++    let end = start + 1
++    while (end < lines.length && !/^def /.test(lines[end])) end += 1
++    const body = lines.slice(start, end).join('\n')
++    assert.ok(body.includes('"na"'),
++      `[M7] its body names "na" as a quoted string — got ${JSON.stringify(body)}`)
++    const words = [...new Set((body.match(/"(?:nothing|none|N\/A|na)"/g) || []))].sort()
++    assert.deepEqual(words, ['"N/A"', '"na"', '"none"', '"nothing"'],
++      `[M7] the distinct quoted words among nothing, none, N/A, na inside that body are all four — ` +
++      `got ${JSON.stringify(words)}`)
++    assert.equal(words.length, 4,
++      `[M7] … which is a count of 4, where at BASE it is 3 — got ${words.length}`)
++
++    let pytest = { code: 0, out: '' }
++    try {
++      pytest.out = execFileSync('python3',
++        ['-m', 'pytest', 'tests/test_compile_plan.py', '-q', '-k', 'test_placeholder_token_set',
++          '-p', 'no:cacheprovider'],
++        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++    } catch (e) {
++      pytest = { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || e.stderr || e.message) }
++    }
++    assert.equal(pytest.code, 0,
++      `[M7] and that test passes — python3 -m pytest -k test_placeholder_token_set exited ` +
++      `${pytest.code}: ${String(pytest.out).slice(-600)}`)
++    ok('task 1 (t) [M7] test_placeholder_token_set names all four words and passes')
++  }
++}
++
+ cleanup()
+ console.log(`\nALL TESTS PASSED (${passed})`)
+diff --git a/fleet/tests/test_run_engine_referee.mjs b/fleet/tests/test_run_engine_referee.mjs
+index 822be7f767c112c83364e1309bdd523642e8cadb..24dd1afb345e9e33523164826476af7d938454f6 100644
+--- a/fleet/tests/test_run_engine_referee.mjs
++++ b/fleet/tests/test_run_engine_referee.mjs
+@@ -564,6 +564,39 @@ const examTask = (over = {}) =>
+     '[M9] which is told the promised name and the one the file exports: ' + fix.slice(-800))
+ }
+ 
++// ── Task 1 (#842): a placeholder Produces is unlinked, so it is a settled ────
++// ── line and never a repair round [M6] ───────────────────────────────────────
++// M6. A task whose files are `['lib.mjs']`, whose `interfaces.produces` is
++//     exactly `['none']` and whose implementer writes `lib.mjs` exporting
++//     `plus` reaches `done` with no `fix:` dispatch, and its `n=0` record has
++//     zero `interface` findings and exactly one settled `interface` line whose
++//     detail carries the bullet and the word `placeholder` — never the miss
++//     wording, which is what a placeholder read as a symbol would have bought.
++{
++  const r = await drive('r1', [mkTask('T1', ['lib.mjs'],
++    { interfaces: { consumes: [], produces: ['none'] } })],
++    { impl: (cwd) => write(cwd, 'lib.mjs', 'export function plus (a, b) { return a + b }\n') })
++
++  assert.equal(r.row('T1').status, 'done',
++    '[M6] a placeholder Produces: promises no symbol, so the task merges: ' + JSON.stringify(r.row('T1')))
++  assert.deepEqual(r.of('fix:'), [],
++    '[M6] and no repair round was ever bought for it: ' + r.labels.join(','))
++
++  const rec0 = readReferee(r.runDir, 'T1', 0)
++  assert.deepEqual(findingsOf(rec0, 'interface'), [],
++    '[M6] zero interface findings at n=0: ' + JSON.stringify(rec0.findings))
++  const settled = settledOf(rec0, 'interface')
++  assert.equal(settled.length, 1,
++    '[M6] exactly one settled interface line: ' + JSON.stringify(rec0.settled))
++  const detail = String(settled[0].detail)
++  assert.ok(detail.includes('none'),
++    '[M6] which names the bullet it answered: ' + JSON.stringify(settled[0]))
++  assert.ok(/placeholder/.test(detail),
++    '[M6] and says placeholder in one line: ' + JSON.stringify(settled[0]))
++  assert.ok(!detail.includes('no export named'),
++    '[M6] rather than listing the file\'s exports: ' + JSON.stringify(settled[0]))
++}
++
+ // ── (h) the report counts what the referee found [M8] ───────────────────────
+ {
+   const cases = [
 diff --git a/fleet/tests/test_sandbox_boot.mjs b/fleet/tests/test_sandbox_boot.mjs
 index 5ca288fd42f686d02b739c9e5c854d1d2820cd3f..16360735604e4c862880e83f22dbbeba96ec564e 100644
 --- a/fleet/tests/test_sandbox_boot.mjs
@@ -1107,3 +1437,572 @@ index 20ab429e78596b4a0d3ec4ade3626acff2227ed8..efb12a28567dce14b5e0b19cc4d145a5
    assert.equal(fs.readFileSync(planted, 'utf8'), RENDER_LINE + '\n',
      '(b) [M1] the rig planted the one line the setup script writes')
  
+diff --git a/skills/ultralearn/SKILL.md b/skills/ultralearn/SKILL.md
+index db7f38ebc5cf9d068287b89830a321119e744f4a..f07f72d0099b484db245abb2f93717a1e7edc3d7 100644
+--- a/skills/ultralearn/SKILL.md
++++ b/skills/ultralearn/SKILL.md
+@@ -88,10 +88,14 @@ the exam instead, and the task's `writes` in the receipt say which files the
+ fix actually touched. No model call, no network, no git write.
+ 
+ `python3 skills/ultralearn/scripts/catch_counter.py <run dir or tree>… --ledger <file>`
+-counts a run — or every run under a tree — and appends one `catch-count` row
+-per run to `docs/superpowers/observations/ledger.jsonl`, the same file the
+-findings land in. `--ledger` overrides that path and is the counter's only
+-flag; paths inside a row stay exactly as the record spells them.
++counts a run — or every run under a tree — and
++appends one `catch-count` row per run to the file named by `--ledger`, the counter's only flag.
++There is no default: without `--ledger` the counter counts the runs and
++appends nothing. The findings ledger an operator usually names is
++`docs/superpowers/observations/ledger.jsonl`, the same file the findings land
++in — untracked on the laptop, so the path belongs in the invocation and not
++baked into a script the sandbox also runs. Paths inside a row stay exactly as
++the record spells them.
+ 
+ `python3 skills/ultralearn/scripts/catch_report.py --ledger <file> [--tree <dir>] [--n N]`
+ prints every test in the tree with its catch count, then the zero-catch
+diff --git a/skills/ultralearn/scripts/catch_counter.py b/skills/ultralearn/scripts/catch_counter.py
+index 6d0eff18033465b5c255a68e0c92330d764bf46d..91e4ac6f1e0bda558b5df88015590d2bec4d93c7 100644
+--- a/skills/ultralearn/scripts/catch_counter.py
++++ b/skills/ultralearn/scripts/catch_counter.py
+@@ -64,6 +64,9 @@ TEST_PATH_RE = re.compile(
+ # The six ways a red ends, named once. `caught` is the only one that credits.
+ OUTCOMES = ("caught", "exam-edited", "task-writes", "rerun", "stayed-red",
+             "no-green")
++# ... and the tuple is where the six names come from, so no outcome can be
++# spelled here that the vocabulary does not carry.
++CAUGHT, EXAM_EDITED, TASK_WRITES, RERUN, STAYED_RED, NO_GREEN = OUTCOMES
+ 
+ # A directory holding this is a run directory; nothing else makes one.
+ RUN_FILE = "events.jsonl"
+@@ -133,8 +136,9 @@ def _is_driver_run(event):
+ 
+ 
+ def _is_red(event):
+-    """`exit` ≠ 0. An event with no `exit` at all reports no verdict, so it is
+-    neither red nor green."""
++    """`exit` ≠ 0, and present. An event with no `exit` at all reports no
++    verdict, so it is not a red — and it does not close a red's pair either,
++    since only a literal `exit == 0` does that."""
+     return event.get("exit") not in (0, None)
+ 
+ 
+@@ -172,24 +176,34 @@ def _fix_round_between(events, start, stop, task):
+     return label
+ 
+ 
+-def _outcome_of(events, pos, red, task, path, exam_edited, writes):
+-    """`(outcome, fix label)` for one red and one of the test paths it names.
++def _outcome_of(events, pos, red, task, path, exam_edited, writes,
++                have_record):
++    """One of `OUTCOMES` and a fix label, for one red and one of the test paths
++    it names.
++
++    Every red is judged, record or no record: the record is what a *credit*
++    needs, not what a verdict needs. With neither `report.json` nor
++    `receipt.json` readable (`have_record` false) there is no row to credit or
++    disqualify the path by, so a green that follows falls through to `rerun` —
++    never `exam-edited`, `task-writes` or `caught`.
+ 
+     The fix label is None unless the outcome is `caught`; it is the credit's
+     other half — one credit per path per fix round."""
+     green = _next_same_run(events, pos, red)
+     if green is None:
+-        return "no-green", None
+-    if _is_red(events[green]):
+-        return "stayed-red", None
++        return NO_GREEN, None
++    if events[green].get("exit") != 0:
++        return STAYED_RED, None         # only a literal 0 closes the pair
+     label = _fix_round_between(events, pos, green, task)
+     if label is None:
+-        return "rerun", None            # green again with nothing edited
++        return RERUN, None              # green again with nothing edited
++    if not have_record:
++        return RERUN, None              # no record to credit the claim by
+     if path in exam_edited.get(task, []):
+-        return "exam-edited", None      # the exam moved under the claim
++        return EXAM_EDITED, None        # the exam moved under the claim
+     if path in writes.get(task, []):
+-        return "task-writes", None      # the test was the task's own to write
+-    return "caught", label
++        return TASK_WRITES, None        # the test was the task's own to write
++    return CAUGHT, label
+ 
+ 
+ def derive_catches(run_dir):
+@@ -198,18 +212,22 @@ def derive_catches(run_dir):
+ 
+     `catches[T]` counts the distinct fix rounds that turned a red naming `T`
+     green without editing `T`; `reds` carries every judged red, credited or
+-    not, with the outcome that judged it.
+-
+-    A run with no record at all — neither `report.json` nor `receipt.json` —
+-    has nothing to judge its reds by: M1's credit names a report row and a
+-    receipt entry, and with neither file present there is no such row to read.
+-    Such a run counts its driver runs and reports no reds and no catches
+-    rather than crediting a claim the record never made."""
++    not, with the outcome that judged it — every red the log holds is judged,
++    whatever record the run kept.
++
++    `exercises` holds a key only where some task's writes stand behind it: the
++    empty union is dropped, so a path no receipt entry backs — and every path
++    of a run with no receipt at all — carries no entry here. This row is a
++    reading of the log, and never invents a row for a file the log is silent
++    about: the report's tree walk over the repository is the only source of
++    `unobserved` rows."""
+     run_dir = Path(run_dir)
+     events = read_events(run_dir)
+     report = _read_json(run_dir / "report.json")
+     receipt = _read_json(run_dir / "receipt.json")
+-    have_record = isinstance(report, dict) or isinstance(receipt, dict)
++    # "Neither readable" is the pair of Nones `_read_json` returns for a
++    # missing, unreadable or malformed file.
++    have_record = report is not None or receipt is not None
+     exam_edited = _exam_edited(report)
+     writes = _writes(receipt)
+ 
+@@ -228,15 +246,15 @@ def derive_catches(run_dir):
+         for path in dict.fromkeys(paths):
+             # M7: a task exercises every test path its runs name, red or green.
+             exercised.setdefault(path, set()).update(writes.get(task, []))
+-        if not _is_red(event) or not have_record:
++        if not _is_red(event):
+             continue
+         for path in dict.fromkeys(paths):
+             outcome, label = _outcome_of(events, pos, event, task, path,
+-                                         exam_edited, writes)
++                                         exam_edited, writes, have_record)
+             reds.append({"task": task, "kind": event.get("kind"),
+                          "path": path, "cmd": event.get("cmd"),
+                          "outcome": outcome})
+-            if outcome == "caught":
++            if outcome == CAUGHT:
+                 credits.setdefault(path, set()).add(label)
+ 
+     touched = sorted({path for paths in writes.values() for path in paths})
+diff --git a/skills/ultralearn/scripts/catch_report.py b/skills/ultralearn/scripts/catch_report.py
+index e696305cf8158c5cc03af678af6c654dec69ae78..9511632f99248e8ac2244014fe3eb7499d415dbc 100644
+--- a/skills/ultralearn/scripts/catch_report.py
++++ b/skills/ultralearn/scripts/catch_report.py
+@@ -40,6 +40,10 @@ CATCH_KIND = "catch-count"
+ TEST_GLOBS = ("tests/test_*.py", "fleet/tests/test_*.mjs")
+ 
+ HEADER = "| test | catches | touching runs | status |"
++# GFM renders a pipe table only when the header is followed by a delimiter row,
++# one cell per column — the same row `merge_ledger.py` writes under its own
++# header. Without it the whole report reads as one paragraph of pipes.
++DELIMITER = "| --- | --- | --- | --- |"
+ CURVE_HEADING = "## Zero-catch curve"
+ 
+ 
+@@ -174,7 +178,7 @@ def tree_test_files(tree):
+ # nothing elided — a real report is one line per test and that is the point.
+ 
+ def table_lines(table):
+-    lines = [HEADER]
++    lines = [HEADER, DELIMITER]
+     for path in sorted(table):
+         entry = table[path]
+         lines.append(f"| {path} | {entry.get('catches', 0)} "
+diff --git a/tests/test_compile_plan.py b/tests/test_compile_plan.py
+index 4bdbffb2dc7d345df4ef3d5b6e7671f4b28bfc85..24ed426671f069a8a42f47220f2b3ac854ca0c73 100644
+--- a/tests/test_compile_plan.py
++++ b/tests/test_compile_plan.py
+@@ -1612,7 +1612,7 @@ def test_all_three_tasks_share_wave_one():
+ 
+ def test_placeholder_token_set():
+     from compile_plan import _interface_token
+-    for raw in ("nothing", "none", "N/A", "nothing (test-data-only change)",
++    for raw in ("nothing", "none", "N/A", "na", "nothing (test-data-only change)",
+                 "`nothing`", "none — standalone"):
+         assert _interface_token(raw) == "", raw
+     assert _interface_token("`User` dataclass (id: int)") == "User"
+diff --git a/tests/test_ultralearn_catch_report.py b/tests/test_ultralearn_catch_report.py
+index d9fd668bdade72da1bdcd9ac6a6e289b67aaf17a..f0ce37a87d43adf4cd60510ce21bf4657f26f9ba 100644
+--- a/tests/test_ultralearn_catch_report.py
++++ b/tests/test_ultralearn_catch_report.py
+@@ -363,3 +363,116 @@ def test_leg_j_missing_ledger_reports_the_tree_as_unobserved(tmp_path, tree):
+     assert _section(lines, CURVE_HEADING) == ["max touching runs: 0"]
+     assert not [l for l in lines if l.strip().startswith("N=")], (
+         "a curve line was printed for an empty record:\n%s" % "\n".join(lines))
++
++
++# ===========================================================================
++# Task 2 — "The table renders and catches is a sum" (#823).
++#
++# Two clauses, three legs, appended beside the legs above rather than folded
++# into them, so the eleven tests this file collected at BASE stay exactly as
++# they were:
++#
++#   M1  `table_lines` emits `HEADER` first and the GFM delimiter row second,
++#       then one row per entry sorted by path — in the module and in the CLI's
++#       stdout, both over the leg-(a) ledger and over a `--ledger` path that
++#       does not exist.
++#   M2  an entry's `catches` is the *sum* over every `catch-count` row of that
++#       row's `catches[T]` — two rows each crediting the same test give 2.
++#
++# Task 2's legs are named (t2-a), (t2-b), (t2-c) so they do not read as the
++# (a)–(j) above.
++# ===========================================================================
++
++# M1: the delimiter row, verbatim — four cells, one per header column.
++DELIMITER = "| --- | --- | --- | --- |"
++
++
++def _rendered(cells):
++    """A `CLI_ROWS` entry as the `| a | b | c | d |` line M1 spells."""
++    return "| %s | %s | %s | %s |" % tuple(cells)
++
++
++# ------------------------------------------------------------ leg (t2-a) M1
++
++def test_t2_leg_a_table_lines_is_header_delimiter_then_the_sorted_rows(mod):
++    """(t2-a)/M1: `table_lines(catch_table(ROWS, TREE_FILES))` — line 0 is
++    `HEADER` verbatim, line 1 is `| --- | --- | --- | --- |` verbatim, and
++    everything after is exactly the four `CLI_ROWS` rendered as
++    `| a | b | c | d |` lines, in that path order and nothing else."""
++    lines = mod.table_lines(mod.catch_table([dict(r) for r in ROWS],
++                                            list(TREE_FILES)))
++    assert lines[0] == HEADER
++    assert lines[1] == DELIMITER, (
++        "line 1 is not the delimiter row:\n%s" % "\n".join(lines))
++    assert lines[2:] == [_rendered(cells) for cells in CLI_ROWS]
++    assert len(lines) == 2 + len(CLI_ROWS)
++
++
++def test_t2_leg_a_one_entry_table_is_exactly_three_lines(mod):
++    """(t2-a)/M1: a table of one entry yields exactly three lines — header,
++    delimiter, the single data row. No blank line, no trailing rule."""
++    table = {"tests/test_only.py": {"catches": 0, "exercised": [],
++                                    "touchingRuns": 0,
++                                    "status": "unobserved"}}
++    lines = mod.table_lines(table)
++    assert len(lines) == 3, (
++        "a one-entry table rendered %d line(s):\n%s"
++        % (len(lines), "\n".join(lines)))
++    assert lines[0] == HEADER
++    assert lines[1] == DELIMITER
++    assert lines[2] == "| tests/test_only.py | 0 | 0 | unobserved |"
++
++
++# ------------------------------------------------------------ leg (t2-b) M1
++
++def test_t2_leg_b_cli_second_line_is_the_delimiter(tmp_path, tree):
++    """(t2-b)/M1: the CLI over the leg-(a) ledger and the `tree` fixture —
++    stdout line 0 is `HEADER`, line 1 is `| --- | --- | --- | --- |`, and the
++    data rows under the header are still exactly `CLI_ROWS` (the delimiter is
++    an addition to the table, not a replacement for a row)."""
++    proc = _run("--ledger", _ledger(tmp_path, ROWS), "--tree", tree)
++    lines = _lines(proc)
++    assert lines[0] == HEADER
++    assert lines[1] == DELIMITER, (
++        "the CLI's second stdout line is not the delimiter:\n%s"
++        % "\n".join(lines))
++    assert _table_rows(lines) == CLI_ROWS
++
++
++def test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger(
++        tmp_path, tree):
++    """(t2-b)/M1: the CLI over a `--ledger` path under `tmp_path` that does not
++    exist — line 1 is that same delimiter, and the data rows that follow are
++    the tree's two files, both `unobserved`."""
++    missing = tmp_path / "absent-t2.jsonl"
++    assert not missing.exists()
++    proc = _run("--ledger", missing, "--tree", tree)
++    lines = _lines(proc)
++    assert lines[0] == HEADER
++    assert lines[1] == DELIMITER, (
++        "the CLI's second stdout line is not the delimiter for a missing "
++        "ledger:\n%s" % "\n".join(lines))
++    assert lines[2:4] == [
++        "| fleet/tests/test_y.mjs | 0 | 0 | unobserved |",
++        "| tests/test_x.py | 0 | 0 | unobserved |",
++    ]
++    assert _table_rows(lines) == [
++        ["fleet/tests/test_y.mjs", "0", "0", "unobserved"],
++        ["tests/test_x.py", "0", "0", "unobserved"],
++    ]
++
++
++# ------------------------------------------------------------ leg (t2-c) M2
++
++def test_t2_leg_c_catches_is_the_sum_over_every_row(mod):
++    """(t2-c)/M2: two `catch-count` rows that each credit `tests/test_a.py`
++    with one catch and each touch `lib/a.py` — `catches` is `2`, the sum, and
++    `touchingRuns` is `2`. A `max`, `any` or last-row-wins reading yields `1`
++    for both and fails here."""
++    rows = [dict(ROW_A), dict(ROW_A, id="d" * 16, runId="run-d")]
++    entry = mod.catch_table(rows, [])["tests/test_a.py"]
++    assert entry["catches"] == 2, (
++        "catches is %r, not the sum 2 over the two rows" % entry["catches"])
++    assert entry["touchingRuns"] == 2, (
++        "touchingRuns is %r, not 2 — both rows touched lib/a.py, which "
++        "tests/test_a.py exercises" % entry["touchingRuns"])
+diff --git a/tests/test_ultralearn_catches.py b/tests/test_ultralearn_catches.py
+index ce1974e5dd1cb6765894583573da9b4b477866f1..eed862a0dd0cd7bb54e640c6081fc23abd243c90 100644
+--- a/tests/test_ultralearn_catches.py
++++ b/tests/test_ultralearn_catches.py
+@@ -507,7 +507,11 @@ def test_n_run_directory_without_report_or_receipt_still_yields_a_row(tmp_path):
+ 
+ def test_every_reds_outcome_is_one_of_the_six(tmp_path):
+     """M1–M5: `outcome` is one of `caught`, `exam-edited`, `task-writes`,
+-    `rerun`, `stayed-red`, `no-green` — no seventh spelling."""
++    `rerun`, `stayed-red`, `no-green` — no seventh spelling.
++
++    Task 1 (#822)/M3: the vocabulary read here is the module's own
++    `counter.OUTCOMES`, over the six `base_fixture` shapes — credit, exam
++    edited, task writes, no fix round, next run red, no later run."""
+     counter = _load()
+     for i, kwargs in enumerate([{}, {"exam_edited": [THING]},
+                                 {"writes": ["fleet/thing.mjs", THING]},
+@@ -516,4 +520,165 @@ def test_every_reds_outcome_is_one_of_the_six(tmp_path):
+         row = counter.derive_catches(
+             base_fixture(tmp_path / ("run-%d" % i), **kwargs))
+         for entry in row["reds"]:
+-            assert entry.get("outcome") in OUTCOMES, entry
++            assert entry.get("outcome") in counter.OUTCOMES, entry
++
++
++# === task 1 (#822) — every red is judged, only a literal green closes the ====
++# === pair, and the outcome vocabulary is one tuple                        ====
++#
++# Legs (a)–(f) below are this task's own lettering, quoted from its Proof; they
++# sit beside the older legs (a)–(n) above, which stay as they are.
++
++
++def _recordless(run_dir, events):
++    """A run directory holding only `events.jsonl` — neither `report.json` nor
++    `receipt.json`, the shape legs (a)–(c) of task 1 judge reds in."""
++    return _write_run(run_dir, events)
++
++
++# --- task 1 leg (a) — M1: every red in a recordless run is judged -----------
++
++def test_task1_a_recordless_reds_are_judged_stayed_red_then_no_green(tmp_path):
++    """Task 1 leg (a)/M1: in a run directory holding only `events.jsonl` — no
++    `report.json`, no `receipt.json` — a red `driver:exam-run` for task `1`
++    naming `fleet/tests/test_thing.mjs` followed by the same-kind same-`cmd`
++    run at `exit` 1 yields exactly two `reds` entries, in event order: the
++    first `stayed-red` (its next same run is red), the second `no-green` (no
++    later same run at all), with `catches` exactly `{}`."""
++    counter = _load()
++    run_dir = _recordless(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1),
++         _driver_run(3, "driver:exam-run", "1", THING_CMD, 1)])
++    row = counter.derive_catches(run_dir)
++    assert len(row["reds"]) == 2, (
++        "M1: both recordless reds are judged, got %r" % (row["reds"],))
++    first, second = row["reds"]
++    assert _pins(first, task="1", kind="driver:exam-run", path=THING,
++                 cmd=THING_CMD, outcome="stayed-red"), first
++    assert _pins(second, task="1", kind="driver:exam-run", path=THING,
++                 cmd=THING_CMD, outcome="no-green"), second
++    assert row["catches"] == {}
++
++
++# --- task 1 leg (b) — M1: the recordless re-run ------------------------------
++
++def test_task1_b_recordless_green_without_a_fix_round_is_a_rerun(tmp_path):
++    """Task 1 leg (b)/M1: the same recordless directory with the second run at
++    `exit` 0 and no `worker:end` between — exactly one `reds` entry, outcome
++    `rerun`, and `catches` exactly `{}`."""
++    counter = _load()
++    run_dir = _recordless(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1),
++         _driver_run(3, "driver:exam-run", "1", THING_CMD, 0)])
++    row = counter.derive_catches(run_dir)
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
++                 cmd=THING_CMD, outcome="rerun"), entry
++    assert row["catches"] == {}
++
++
++# --- task 1 leg (c) — M1: the recordless fix round credits nothing ----------
++
++def test_task1_c_recordless_green_after_a_fix_round_is_still_a_rerun(tmp_path):
++    """Task 1 leg (c)/M1: the same recordless directory with a `fix:1:0`
++    `worker:end` between the red and the `exit` 0 run — exactly one `reds`
++    entry, outcome `rerun` (never `caught`, `exam-edited` or `task-writes`,
++    since neither record was readable), and `catches` exactly `{}`."""
++    counter = _load()
++    run_dir = _recordless(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1),
++         _fix_end(3, "fix:1:0"),
++         _driver_run(4, "driver:exam-run", "1", THING_CMD, 0)])
++    row = counter.derive_catches(run_dir)
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
++                 cmd=THING_CMD, outcome="rerun"), entry
++    assert row["catches"] == {}
++
++
++# --- task 1 leg (d) — M2: only a literal `exit == 0` closes the pair --------
++
++def test_task1_d_successor_without_an_exit_key_is_stayed_red(tmp_path):
++    """Task 1 leg (d)/M2: with both records present and a `fix:1:0` round, a
++    next same-kind same-`cmd` event carrying no `exit` key at all is not a
++    green — the red reads `stayed-red`, `catches` is exactly `{}`, and no
++    entry reads `caught`."""
++    counter = _load()
++    run_dir = _write_run(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1),
++         _fix_end(3, "fix:1:0"),
++         _ev(4, kind="driver:exam-run", task="1", cmd=THING_CMD, iter=0)],
++        report=_report([{"task": "1", "proofFixes": 1, "fixIterations": 1,
++                         "examEdited": []}]),
++        receipt=_receipt([{"id": "1", "writes": ["fleet/thing.mjs"]}]))
++    row = counter.derive_catches(run_dir)
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
++                 cmd=THING_CMD, outcome="stayed-red"), entry
++    assert row["catches"] == {}
++    assert not [e for e in row["reds"] if e.get("outcome") == "caught"]
++
++
++# --- task 1 leg (e) — M3: the outcome vocabulary is one tuple ---------------
++
++def test_task1_e_outcomes_is_the_six_member_tuple(tmp_path):
++    """Task 1 leg (e)/M3: `catch_counter.OUTCOMES` is exactly the tuple
++    `("caught", "exam-edited", "task-writes", "rerun", "stayed-red",
++    "no-green")`, and this exam's own vocabulary set equals
++    `set(counter.OUTCOMES)`."""
++    counter = _load()
++    assert counter.OUTCOMES == ("caught", "exam-edited", "task-writes",
++                                "rerun", "stayed-red", "no-green")
++    assert set(counter.OUTCOMES) == OUTCOMES
++
++
++def test_task1_e_outcomes_is_defined_and_used(tmp_path):
++    """Task 1 leg (e)/M3: the name `OUTCOMES` occurs at least twice in
++    `skills/ultralearn/scripts/catch_counter.py` — its definition and a use —
++    the exam's reading of the Proof's `grep -c OUTCOMES … -ge 2`."""
++    counter = _load()
++    lines = [line for line in SCRIPT.read_text(encoding="utf-8").splitlines()
++             if "OUTCOMES" in line]
++    assert len(lines) >= 2, (
++        "OUTCOMES is defined and used, so at least two lines name it; got %r"
++        % (lines,))
++
++
++# --- task 1 leg (f) — M4: no writes behind a path, and the docstring --------
++
++def test_task1_f_a_task_with_empty_writes_leaves_no_exercises_key(tmp_path):
++    """Task 1 leg (f)/M4: a run with both records whose receipt entry for task
++    `1` has `writes: []`, and whose one driver run for task `1` is a green
++    `driver:exam-run` naming `fleet/tests/test_thing.mjs`, leaves no
++    `exercises[T]` key — an empty union is nothing exercised — and `touched`
++    is `[]`."""
++    counter = _load()
++    run_dir = _write_run(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:exam-run", "1", THING_CMD, 0)],
++        report=_report([{"task": "1", "examEdited": []}]),
++        receipt=_receipt([{"id": "1", "writes": []}]))
++    row = counter.derive_catches(run_dir)
++    assert THING not in row["exercises"], row["exercises"]
++    assert row["touched"] == []
++
++
++def test_task1_f_docstring_names_the_tree_walk_as_the_unobserved_source(
++        tmp_path):
++    """Task 1 leg (f)/M4: `derive_catches.__doc__` names the report's tree walk
++    as the only source of `unobserved` rows, and no longer says a recordless
++    run reports no reds."""
++    counter = _load()
++    doc = counter.derive_catches.__doc__ or ""
++    assert "unobserved" in doc, doc
++    assert "tree walk" in doc, doc
++    assert "reports no reds" not in doc, doc
+diff --git a/tests/test_ultralearn_docs.py b/tests/test_ultralearn_docs.py
+index 435b6f345352d3667d9c7f3a733f11a36ad7da53..c4c4c00716493e700a253bbfcebd1fe29a23c674 100644
+--- a/tests/test_ultralearn_docs.py
++++ b/tests/test_ultralearn_docs.py
+@@ -105,10 +105,24 @@ def test_catch_section_states_the_rule_and_names_the_two_record_fields():
+     assert re.search(writes_field, section), (
+         "the section does not spell `writes` as a code token followed by ` in the receipt`")
+ 
+-    prose = "the counter writes the ledger"
+-    assert not re.search(exam_edited, prose)
++    # Task 3 (#824) leg (b) [M2]: the control is the space-delimited spelling of
++    # both fields. It must match neither pattern — and, with the `[^ \n]`
++    # classes stripped out, must match both — so the control demonstrates the
++    # classes and nothing else. The former control ("the counter writes the
++    # ledger") held no `examEdited` at all, so its first `assert not` could
++    # never fail; this one can.
++    prose = "the row says examEdited and writes in the receipt"
++    assert not re.search(exam_edited, prose), (
++        "the `examEdited` pin matches the space-delimited spelling, so it does "
++        "not pin the record field")
+     assert not re.search(writes_field, prose), (
+         "the `writes` pin matches a bare verb, so it does not pin the record field")
++    assert re.search(r"examEdited", prose), (
++        "the control does not spell `examEdited`, so it demonstrates nothing "
++        "about the `[^ \\n]` classes")
++    assert re.search(r"writes in the receipt", prose), (
++        "the control does not spell `writes in the receipt`, so it demonstrates "
++        "nothing about the `[^ \\n]` classes")
+ 
+ 
+ def test_catch_section_reads_n_off_the_curve():
+@@ -131,6 +145,52 @@ def test_every_flag_the_catch_section_advertises_exists():
+         "the union of the two help texts contains `--nope`, so this check pins nothing")
+ 
+ 
++# --- Task 3 (#824): the skill promises only the flag the counter has. The
++# sentence moves the ledger path out of the promise — `--ledger` is the file the
++# counter is *named*, not an override of a default — and the script keeps its
++# no-default behaviour. The section is joined on one line the way the task's
++# `Run:` joins it, `tr '\n' ' '`, and the pattern is the `Run:` line's own.
++
++CENSUS = "tests/fixtures/ultralearn/census"
++CENSUS_LINE = "2 run(s) counted, 0 row(s) appended, 0 already recorded"
++ONLY_FLAG = (r"appends one.*catch-count.*row per run to the file named by"
++             r".*--ledger.*the counter.s only flag")
++
++
++def test_catch_section_promises_ledger_as_the_counters_only_flag():
++    # Leg (a) [M1], the three SKILL.md facts: the section joined on one line
++    # says the counter appends one `catch-count` row per run to the file named
++    # by `--ledger`, the counter's only flag, in that order; `overrides that
++    # path` occurs zero times in the whole file; and the section still names the
++    # findings ledger (the existing section-names pin, restated here).
++    one_line = _catch_section().replace("\n", " ")
++    assert re.search(ONLY_FLAG, one_line), (
++        "the catch-counter section, joined on one line, does not match\n"
++        f"  {ONLY_FLAG}\nsection was:\n{one_line}")
++
++    text = SKILL.read_text()
++    assert "overrides that path" not in text, (
++        "SKILL.md still says `overrides that path`, so it still promises a "
++        "default path the counter has not got")
++
++    assert "docs/superpowers/observations/ledger.jsonl" in _catch_section(), (
++        "the catch-counter section no longer names the findings ledger")
++
++
++def test_counter_over_the_census_without_ledger_appends_nothing():
++    # Leg (a) [M1], the script fact: `catch_counter.py <census>` with no
++    # `--ledger` prints exactly the pinned line and exits 0. The whole stdout is
++    # compared as one string, as `test "$(…)" = '…'` does, so a second line or a
++    # default-path notice fails it.
++    done = subprocess.run([sys.executable, "skills/ultralearn/scripts/catch_counter.py",
++                           CENSUS],
++                          cwd=str(ROOT), capture_output=True, text=True)
++    assert done.returncode == 0, (
++        f"catch_counter.py exited {done.returncode}\n{done.stdout}{done.stderr}")
++    assert done.stdout.rstrip("\n") == CENSUS_LINE, (
++        f"expected exactly {CENSUS_LINE!r}, got {done.stdout!r}")
++
++
+ def test_validate_skill_accepts_the_ultralearn_skill():
+     # Leg (f) [M6]: the skill still validates.
+     done = subprocess.run([sys.executable, str(VALIDATE), str(ROOT / "skills/ultralearn")],
