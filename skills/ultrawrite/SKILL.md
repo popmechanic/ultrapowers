@@ -303,7 +303,10 @@ Every `implementation` task is a pure diff against the integration branch:
    bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
    app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
    Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
-   restriction stops: `references/greenfield-stack.md`.
+   restriction stops: `references/greenfield-stack.md`. In a TinyApp plan every `peer` task
+   names a state exam as its Proof `Test:` path, with seeds under `state-exams/seeds/` and
+   expected states under `state-exams/expected/` (`references/greenfield-stack.md`
+   §State exams).
 
 ## Decomposition judgment
 

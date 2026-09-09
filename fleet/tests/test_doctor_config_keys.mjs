@@ -2,10 +2,10 @@
  * Exam for `~/.ultrapowers/fleet.json` as the doctor reads it — the keys nothing
  * reads, and the account the launcher defaults to.
  *
- * The config file carries two keys the doctor reads, `cpu` and `memory`, and one
- * the launcher reads, `account`. A key beside those three is a key nothing reads
- * — usually one left by a fleet from before the lift — and the `capacity` row is
- * red until the file is rewritten.
+ * The config file carries two keys the doctor reads, `cpu` and `memory`, and two
+ * the launcher reads, `account` and `render`. A key beside those four is a key
+ * nothing reads — usually one left by a fleet from before the lift — and the
+ * `capacity` row is red until the file is rewritten.
  *
  * Every group below names the Machine clause and the Proof leg it encodes, so a
  * reader can map an assertion back to the contract it came from. Groups 1–3 are
@@ -14,7 +14,7 @@
  *
  *   1  `fleetConfigKeys({ path })` answers the file's top-level key names in
  *      file order, or null; `doctor`'s `configKeys` option turns the `capacity`
- *      row red when it names a key that is none of the three.
+ *      row red when it names a key that is none of the four.
  *   2  a `configKeys` list that lacks `cpu` or lacks `memory` keeps the row `ok`
  *      and names each lacking key as taking its default.
  *   3  the CLI reads the keys off the same file `--config` names: a stale file
@@ -169,7 +169,8 @@ const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB; a run asks 8 vCPU / 16GB'
 const rowById = (result, id) => result.rows.find((r) => r.id === id)
 const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
 
-/** The seven-row status map of a healthy fleet. */
+/** The eight-row status map of a healthy fleet. The runs below pass no `render`
+ *  option, which is the `render` row's "not configured" green. */
 const ALL_OK = Object.freeze({
   'exe-dev': 'ok',
   capacity: 'ok',
@@ -177,7 +178,8 @@ const ALL_OK = Object.freeze({
   accounts: 'ok',
   github: 'ok',
   integrations: 'ok',
-  'verb-drift': 'ok'
+  'verb-drift': 'ok',
+  render: 'ok'
 })
 
 /** Run the doctor over the green account with `opts` spread onto it, and answer
@@ -279,8 +281,8 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
     `1 [M3] the red detail keeps the phrase "keys nothing reads"; got ${capacity.detail}`
   )
   // M3: the `it reads` sentence is reworded to say the launcher reads `account`
-  // beside the two the doctor reads.
-  for (const key of ['cpu', 'memory', 'account']) {
+  // and `render` beside the two the doctor reads.
+  for (const key of ['cpu', 'memory', 'account', 'render']) {
     assert.ok(
       capacity.detail.includes(key),
       `1 [M3] the red detail names ${key} as a key something reads; got ${capacity.detail}`
@@ -543,16 +545,17 @@ for (const [label, p] of [
   )
 }
 
-{
-  // leg (c): a configKeys of ['cpu','memory','account'] leaves the capacity row
-  // `ok`, with no `keys nothing reads` in its detail — `account` is a key the
-  // launcher reads, not a key nothing reads.
-  const result = await run({ configKeys: ['cpu', 'memory', 'account'] })
+for (const keys of [['cpu', 'memory', 'account'], ['cpu', 'memory', 'account', 'render']]) {
+  // leg (c): a configKeys of the keys something reads leaves the capacity row
+  // `ok`, with no `keys nothing reads` in its detail — `account` and `render`
+  // are keys the launcher reads, not keys nothing reads.
+  const label = JSON.stringify(keys)
+  const result = await run({ configKeys: keys })
   const capacity = rowById(result, 'capacity')
   assert.equal(
     capacity.status,
     'ok',
-    `4 [M3 leg c] account beside cpu and memory leaves capacity ok; got ${capacity.status} — ${capacity.detail}`
+    `4 [M3 leg c] configKeys ${label} leaves capacity ok; got ${capacity.status} — ${capacity.detail}`
   )
   assert.equal(
     capacity.detail.includes('keys nothing reads'),
@@ -564,8 +567,8 @@ for (const [label, p] of [
     BASE_DETAIL,
     `4 [M3 leg c] the detail is the pool sentence alone; got ${capacity.detail}`
   )
-  assert.deepEqual(statusOf(result), ALL_OK, '4 [M3 leg c] the account key reddens no row')
-  assert.equal(result.verdict, 'ready', '4 [M3 leg c] a file naming an account the keychain holds is a ready fleet')
+  assert.deepEqual(statusOf(result), ALL_OK, `4 [M3 leg c] configKeys ${label} reddens no row`)
+  assert.equal(result.verdict, 'ready', `4 [M3 leg c] configKeys ${label} is a ready fleet`)
 }
 
 {

@@ -53,6 +53,9 @@ const expectedArgv = (home, tail = []) => [
   'ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz',
   'CLAUDE_CODE_OAUTH_TOKEN=placeholder',
   'ULTRAPOWERS_FLEET_RUN=run-7',
+  // Empty on a sim that plants no render.env: the entry rides every engine
+  // argv, its value is whatever the file set.
+  'TINYAPP_RENDER_URL=',
   'node', `${home}/engines/${ENGINE_SHA}/fleet/run-main.mjs`,
   `${home}/plans/run-7.md`, 'run-7', '--repo', `${home}/target`,
   '--tier', 'mostCapable', '--overlap', 'fold',

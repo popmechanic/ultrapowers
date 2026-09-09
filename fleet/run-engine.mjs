@@ -345,6 +345,90 @@ export const examEvidenceBlock = (exam) => {
     'stderr combined, last 4,000 characters.' +
     '\n\n$ ' + exam.cmd + '\nexit ' + exam.exit + '\n' + exam.stdout
 }
+// ── the state-exam record (spec 2026-09-09 §3.5, §3.6) ──────────────────────
+// A state exam is an exam that measures a running app's STATE — the store diff
+// it produced, whether the render happened, whether a mutant of the expected
+// state is actually killed — and it writes what it measured under the run
+// directory rather than printing it. The driver never runs that helper: it
+// hands the exam the four `ULTRA_*` variables that tell it which task it is,
+// which run directory to write under and which pass it is, and reads back what
+// landed. Everything below is a pure function of the directory tree, so the
+// report row and the reviewer's block are one read, spelled once.
+const readJsonOrNull = (p) => {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return null }
+}
+// One row per state-exam STEM under `<runDir>/state-exams/task-<id>/`, read at
+// the stem's highest numeric pass. The directory name is `<stem>-<pass>` split
+// at its LAST `-` (a stem may carry dashes of its own); `base` — the probe's
+// pass, taken on a tree that predates the patch — and any other non-numeric
+// suffix are excluded from the ranking, so a stem whose only directory is
+// `-base` yields no row at all. A directory whose JSON is missing or
+// unparsable yields `null` in the fields it could not supply rather than
+// taking the report down: this is evidence, not control flow.
+// `mutant_path` rides along for the reviewer's block; `stateExamsOf` drops it,
+// because the report row's shape is the spec's six keys exactly.
+const stateExamRowsOf = (runDir, taskId) => {
+  const dir = path.join(String(runDir || ''), 'state-exams', 'task-' + String(taskId))
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory())
+  } catch { return [] }
+  const best = new Map()
+  for (const e of entries) {
+    const cut = e.name.lastIndexOf('-')
+    if (cut <= 0) continue
+    const stem = e.name.slice(0, cut)
+    const pass = e.name.slice(cut + 1)
+    if (!/^[0-9]+$/.test(pass)) continue
+    const n = Number(pass)
+    const prev = best.get(stem)
+    if (!prev || n > prev.pass) best.set(stem, { pass: n, dir: path.join(dir, e.name) })
+  }
+  return [...best.keys()].sort().map((stem) => {
+    const d = best.get(stem).dir
+    const walls = readJsonOrNull(path.join(d, 'walls.json'))
+    const mutant = readJsonOrNull(path.join(d, 'mutant.json'))
+    const contract = readJsonOrNull(path.join(d, 'contract.json'))
+    const render = (walls && typeof walls.render === 'string') ? walls.render : null
+    return {
+      exam: stem,
+      store_ms: (walls && walls.store_ms !== undefined) ? walls.store_ms : null,
+      // The render wall is only a reading when the render actually ran; a
+      // skipped render has no duration to report, whatever the file carries.
+      render_ms: (render === 'ran' && walls && walls.render_ms !== undefined)
+        ? walls.render_ms : null,
+      render,
+      mutant_killed: (mutant && typeof mutant.killed === 'boolean') ? mutant.killed : null,
+      contract: contract && contract.breach !== undefined
+        ? (contract.breach === null ? 'ok' : String(contract.breach))
+        : null,
+      mutant_path: (mutant && typeof mutant.path === 'string') ? mutant.path : '',
+    }
+  })
+}
+// The `Produces:` contract: the report row, six keys, one element per stem.
+export function stateExamsOf(runDir, taskId) {
+  return stateExamRowsOf(runDir, taskId).map(
+    ({ exam, store_ms, render_ms, render, mutant_killed, contract }) =>
+      ({ exam, store_ms, render_ms, render, mutant_killed, contract }))
+}
+// The reviewer's own reading of that record — the `REFEREE:` pattern of #729:
+// a driver block appended to the reviewer prompt, per task, never a role-file
+// edit. A killed mutant is the driver's own proof that the exam would have
+// caught a wrong state, which is exactly what duty 5 asks a reviewer to
+// establish by hand — so the reviewer is told it is settled FOR THAT FILE and
+// for nothing else. Anything short of every mutant killed renders nothing at
+// all (the run-51 rule), so a task with no record carries the prompt it had
+// before this existed, byte for byte.
+export const stateExamBlock = (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) return ''
+  if (!rows.every((r) => r && r.mutant_killed === true)) return ''
+  return '\n\nSTATE EXAM: the driver read this task\'s state-exam record and every mutant was ' +
+    'killed, so duty 5 is settled for the exam file(s) named below and for nothing else — the ' +
+    'implementer\'s own tests stay under duty 5.' +
+    rows.map((r) => '\n- ' + r.exam + ': mutant ' +
+      String((r.mutant_path || r.path || '')) + ' killed: true').join('')
+}
 // #604 (b)+(c) — the INTEGRATED `Run:` proofs. The per-task execution above
 // answers "does this command pass on the patch its author wrote"; it cannot
 // answer "does it still pass on the tree the wave actually adopted", and the
@@ -588,7 +672,24 @@ const shOf = (exec) => (cmd, cwd, env) =>
 // omit the spread and the command loses PATH, HOME and the git config that
 // `git diff` needs. So the variable is added TO the inherited environment,
 // never handed over as the whole of it.
-const baseEnv = (sha) => ({ ...process.env, ULTRA_BASE: sha })
+// The four variables a state exam reads to know where it is (spec §3.5): the
+// task's base sha, the task id, the run directory to write its record under
+// and the pass it is running as. Every one of them is OPTIONAL here, and an
+// omitted one is DELETED from the inherited environment rather than left to
+// leak: the integrated `Run:` is defined by the absence of `ULTRA_RUN_DIR`
+// (that absence is what makes the helper write nothing on the fold), so a
+// value inherited from the driver's own environment would silently turn it
+// into a writing pass.
+const examEnv = ({ base, task, runDir: dir, pass } = {}) => {
+  const env = { ...process.env }
+  for (const [key, value] of [['ULTRA_BASE', base], ['ULTRA_TASK', task],
+                              ['ULTRA_RUN_DIR', dir], ['ULTRA_EXAM_PASS', pass]]) {
+    if (value === undefined || value === null || value === '') delete env[key]
+    else env[key] = String(value)
+  }
+  return env
+}
+const baseEnv = (sha) => examEnv({ base: sha })
 const gitOf = (exec) => async (argv, cwd) => {
   const r = await exec('git', argv, { cwd })
   if (r.code !== 0) {
@@ -808,6 +909,9 @@ export async function runEngine({
   const sh = shOf(exec)
   const git = gitOf(exec)
   const { runDir, clonesDir } = paths
+  // What a state exam is handed as `ULTRA_RUN_DIR` — absolute, because the
+  // exam runs with its cwd inside a clone and resolves the path itself.
+  const runDirAbs = path.resolve(runDir)
   // The engine is handed `log` and `phase` (both events of their own kind) but
   // no raw sink, and `driver:proof-run` is a RECORD, not narration: it has to
   // survive the run as data a sense pass can count. So it goes to the same
@@ -1486,7 +1590,12 @@ export async function runEngine({
           examinerBlobs.push([land, await blobShaIn(examDir, land)])
         }
         ensurePackageInits(examDir, examinerBlobs.map(([p]) => p))
-        const atBase = await sh(examRunCmd, examDir)
+        // The probe runs the exam on a tree at BASE, in the examiner's own
+        // clone, so its pass is named `base` rather than numbered: a state
+        // exam's record from here measures what the patch has not done yet,
+        // and the read-back ranks it out (never `base`) for that reason.
+        const atBase = await sh(examRunCmd, examDir,
+          examEnv({ base: baseShaForTask, task: task.id, runDir: runDirAbs, pass: 'base' }))
         if (atBase.code === 0) {
           exam = 'green-at-base'
           judgmentCalls.push('task ' + task.id + ': exam is green at BASE — it establishes nothing')
@@ -1577,7 +1686,8 @@ export async function runEngine({
     const runCommands = async (iter) => {
       const runs = []
       for (const cmd of proofRuns) {
-        const r = await sh(cmd, cloneDir, baseEnv(baseShaForTask))
+        const r = await sh(cmd, cloneDir, examEnv({ base: baseShaForTask, task: task.id,
+                                                    runDir: runDirAbs, pass: String(iter) }))
         runs.push({ cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
         appendEvent({ kind: 'driver:proof-run', task: task.id, cmd, exit: r.code, iter })
       }
@@ -1591,14 +1701,16 @@ export async function runEngine({
     const examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)
     const runExam = async (iter) => {
       if (!examRunnable) return null
-      const r = await sh(examRunCmd, cloneDir)
+      const r = await sh(examRunCmd, cloneDir, examEnv({ base: baseShaForTask, task: task.id,
+                                                        runDir: runDirAbs, pass: String(iter) }))
       appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examRunCmd, exit: r.code, iter })
       return { cmd: examRunCmd, exit: r.code, stdout: tail(r.stdout + r.stderr) }
     }
     const runChecks = async (iter) => {
       const checks = []
       for (const c of constraintChecks) {
-        const r = await sh(c.cmd, cloneDir, baseEnv(baseShaForTask))
+        const r = await sh(c.cmd, cloneDir, examEnv({ base: baseShaForTask, task: task.id,
+                                                      runDir: runDirAbs, pass: String(iter) }))
         checks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr), minor: c.minor })
         appendEvent({ kind: 'driver:check-run', task: task.id, cmd: c.cmd, exit: r.code,
                       minor: c.minor, iter })
@@ -1849,7 +1961,11 @@ export async function runEngine({
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
         examEditedDiffBlock(editedDiffs) +
         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
-        checkEvidenceBlock(checkEvidence) + refereeBlock(refereeResult)
+        checkEvidenceBlock(checkEvidence) + refereeBlock(refereeResult) +
+        // Read HERE, not at the pre-review pass: round 2 grades the tree the
+        // fix round left, so it must read the record that round's own exam
+        // pass wrote rather than pass 0's.
+        stateExamBlock(stateExamRowsOf(runDirAbs, task.id))
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -2496,7 +2612,12 @@ export async function runEngine({
           // already advanced to this wave's head. A diff against the adopted
           // head is a tautology; the question the integrated pass asks is what
           // the run as a whole changed.
-          const r = await sh(cmd, integ, baseEnv(baseSha))
+          // …and the pass is `integrated` with no `ULTRA_RUN_DIR` at all: a
+          // state exam re-executed on the fold is being asked whether it still
+          // passes there, not asked for a second record — the helper writes
+          // nothing without a run directory, so the absence IS the instruction.
+          const r = await sh(cmd, integ,
+            examEnv({ base: baseSha, task: t.id, pass: 'integrated' }))
           integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
           appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1 })
           if (r.code === 0) continue
@@ -2517,6 +2638,9 @@ export async function runEngine({
       // constraint that holds in every clone separately and fails on the fold
       // is invisible to every per-task referee by construction — each one was
       // right about the tree it read — so it can only be caught here.
+      // `baseEnv` and nothing else: a standing constraint is not a task's exam,
+      // so it is told the run base and none of the three variables that would
+      // name a task, a record directory or a pass.
       for (const c of constraintChecks) {
         const r = await sh(c.cmd, integ, baseEnv(baseSha))
         integratedChecks.push({ cmd: c.cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
@@ -2711,13 +2835,21 @@ export async function runEngine({
   const missingDeliverables = missingIds
     .map((id) => ({ task: id, files: ((WAVES.flat().find((t) => t.id === id) || {}).files) || [] }))
     .filter((m) => m.files.length)
+  // Every `tasks[]` row carries its state-exam record, `failed` rows included:
+  // what a state exam measured is worth reading precisely when the task did
+  // not finish. `[]` when the task's exam wrote nothing (which is every task
+  // whose exam is not a state exam), so the row a reader knew is unchanged
+  // apart from the new key.
+  const taskRows = taskResults.map((r) => ((r && typeof r === 'object')
+    ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task) }
+    : r))
 
   return {
     integrationBranch,
     baseSha,
     waves: WAVES.map((w) => w.map((t) => t.id)),
     dependencyEdges,
-    tasks: taskResults,
+    tasks: taskRows,
     tests,
     // #604: the driver's own re-execution of every merged task's `Run:` proofs
     // on the tree each wave adopted — [] when no merged task carried one.
