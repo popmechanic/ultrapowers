@@ -1,0 +1,40 @@
+{
+  "task": "3",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: `renderSetupScript({run, bootstrap, unit, render}) -> string` fleet/setup-script.mjs exports renderSetupScript/1"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_setup_script_render_env.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +17 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/setup-script.mjs": "mjs",
+    "fleet/tests/test_setup_script_render_env.mjs": "mjs"
+  },
+  "ms": 33
+}

@@ -1,0 +1,50 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_sandbox_boot.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_sandbox_boot_effort.mjs`"
+    },
+    {
+      "check": "interface",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "Produces: nothing — fleet/tests/test_sandbox_boot_state_exams.mjs: declared, not exported"
+    }
+  ],
+  "settled": [
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_sandbox_boot_state_exams.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +10 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/test_sandbox_boot_state_exams.mjs": "mjs"
+  },
+  "ms": 39592
+}
