@@ -1,0 +1,73 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "9413b294c6c9ea6b62cc827223303f2b86acfedf092464f3dfafbb104d14f935",
+      "verdict": "pass",
+      "reason": "leg (a) now asserts M1's two judged reds (stayed-red, then no-green); every other leg falsifies its clause (re-read 2026-09-09 after run-77 parked task 1 as plan-defect)"
+    },
+    "2": {
+      "hash": "d40f09c830e5e404599ba1b40b2cedda0cf78321a66dc52a2ad10b7b49f968ed",
+      "verdict": "pass",
+      "reason": "Leg (a) pins line 0 as HEADER and line 1 as the delimiter with the rows following, (b) plus the sed -n 2p Run pin the CLI's second line for both a ledger and a missing path [M1], and (c) builds two rows for one path and demands catches 2 / touchingRuns 2, which max, any or last-wins fails [M2]."
+    },
+    "3": {
+      "hash": "23f1a564ecc84f6dbf73c9bdaa433b77d060fd87de7c81838de17ca6505b7b65",
+      "verdict": "pass",
+      "reason": "Every M1 fact (ordered section regex, zero 'overrides that path', the ledger.jsonl name, the exact whole-stdout line without --ledger) and every M2 fact (classed patterns match the section and reject the space-delimited control, unclassed patterns accept it, computed) has a leg in (a)/(b) plus a driver Run that fails on the negation."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 1,
+        "failed_tasks": [
+          "3"
+        ]
+      },
+      "2": {
+        "dispatched": 1,
+        "rejected": 0
+      }
+    },
+    "base": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+    "re-gated-after-run-77": 1
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "1",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 1,
+      "task": "2",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": 1,
+      "task": "3",
+      "verdict": "fail",
+      "reason": "M1's 'prints exactly' literal was pinned only by grep -qx, which cannot falsify extra output; the Run now compares the whole stdout as one string."
+    },
+    {
+      "round": 2,
+      "task": "3",
+      "verdict": "pass",
+      "reason": "as recorded"
+    },
+    {
+      "round": "run-77 re-gate",
+      "task": "1",
+      "prior": {
+        "hash": "c1a510079ab96960e66ceded0c0149730e5bda1f2e27ec2fdac84e1bc1f6d5d1",
+        "verdict": "pass",
+        "reason": "Legs (a)-(c) pin M1's three recordless shapes, (d) pins M2's exit-less successor with both records and a fix round, (e) plus the grep -c Run pin M3's tuple, set equality, membership and definition-plus-use count, and (f) plus the docstring Run pin M4's absent exercises key and the docstring wording."
+      }
+    }
+  ]
+}
