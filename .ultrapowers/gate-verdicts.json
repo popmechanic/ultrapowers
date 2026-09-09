@@ -1,0 +1,24 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "62ac44fda36223b223627fcf32a905548d2a8371cdd9f4b409c6feee44308fda",
+      "verdict": "pass",
+      "reason": "Every one of the 15 bullets lands where its clause says under M1's rule; each enumerated row has its own falsifying leg (a-o); M6's negations are pinned by fix: [] / zero findings / one settled line lacking 'no export named'; the both-suites half is established by (p) in the fleet sim and (t)+pytest in tests/."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 2,
+    "rounds": {
+      "1": {"fail": 1, "reason": "leg (k) bullet carried a '- Produces:' prefix the rule never strips; (j) leaned on ':' punctuation"},
+      "2": {"fail": 1, "reason": "the 'pinned by a test in both suites' half had no Machine clause and no pytest leg"},
+      "3": {"pass": 1}
+    }
+  },
+  "history": [
+    {"round": 1, "task": "1", "hash": "7928481a38a20511ff0c036922e9e1856160de9c776f139cd4340127738ce15f", "verdict": "fail"},
+    {"round": 2, "task": "1", "hash": "13617707d468be7dbb5cf7b34243a33da26c52225eeb491ab051c1a7924963e8", "verdict": "fail"},
+    {"round": 3, "task": "1", "hash": "62ac44fda36223b223627fcf32a905548d2a8371cdd9f4b409c6feee44308fda", "verdict": "pass"}
+  ],
+  "guide_review": "claude-code-guide, 4 findings: (1) boundary rule implicit -> folded into M1 and Context; (2) regex pin on the compiler line is brittle by design -> recorded, the coupling is the cross-suite pin the issue asks for; (3) '- Produces:' prefix in an M3 bullet -> folded, bullets are now the interfaces.produces text; (4) exact detail wording unspecified -> recorded, the legs pin 'placeholder' and the absence of 'no export named' on purpose."
+}
