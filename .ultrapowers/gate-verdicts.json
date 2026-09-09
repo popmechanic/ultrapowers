@@ -1,0 +1,122 @@
+{
+  "plan": "docs/superpowers/plans/2026-09-09-tinyapp-state-exams-engine.md",
+  "base": "29eeda47",
+  "tasks": {
+    "1": {
+      "hash": "fca23842a28cdf7f6a1bdb8c316e245ed0ea1e99e0bd5ca57e31405454422b39",
+      "verdict": "pass",
+      "reason": "Every clause is falsified by the sim's recorded environments and report rows; the round-2 Run:/Check: value is inferred from the env-2.txt leg on the same dispatch path."
+    },
+    "2": {
+      "hash": "4919d03e8537ed91bd08c1f512efa1fc9a432dbf65f5fa51ce12d11b752b8541",
+      "verdict": "pass",
+      "reason": "Re-gated after the render URL literal moved to https (measured 301 on http): every literal computes, legs (a)/(b)/(d)/(e)/(f) falsify M1\u2013M3; soft spots noted (fold argv checked only in the planted boot; (d)'s file-count wording loose), neither lets a stub pass."
+    },
+    "3": {
+      "hash": "cca9917a40c8a6b7a50e302a29c2f3c03708e1f03049290f1a58c08aa108da78",
+      "verdict": "pass",
+      "reason": "Round 3 after the https edit exposed a gap (install source untied to the heredoc): leg (a) now names the redirect path as the install's source and leg (f) executes the fragment and reads the installed bytes back; a hollow renderer fails (f)."
+    },
+    "4": {
+      "hash": "d1bbcfca309495338f4d59b4867570993430cdd00302f47c42ce7333fc58c530",
+      "verdict": "pass",
+      "reason": "Every row state, the config reader, CONFIG_KEYS and the CLI path have legs; the detail pins fleet.json as a substring of the ~/ path."
+    },
+    "5": {
+      "hash": "0301837d8b851fb82bc46d2cd0f2d9a50d6980a5d1698e28610bb74c35b32bb8",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg at the code layer; the stdin check compares against renderSetupScript's own output plus the render.env substring."
+    },
+    "6": {
+      "hash": "cdedf2196c29030b6810351c5963ee8b96b668e5a4188cf2050e0dc68559cffa",
+      "verdict": "pass",
+      "reason": "Round 2: the five values, the two absences, the fold's omission (negative grep) and the two Integration-naming phrases are each grepped in their own scoped range."
+    },
+    "7": {
+      "hash": "50cfa84d9108d62e39a12885301e9b2c2623ce6b80e67000d2da60443239ea01",
+      "verdict": "pass",
+      "reason": "Scoped greps fail closed on the BASE documents, the Execution-handoff blob hash pins the shared section, and the validator and rubric test run."
+    }
+  },
+  "tally": {
+    "tasks": 7,
+    "dispatched": 13,
+    "rejected": 3,
+    "rounds": 2,
+    "round1": {
+      "dispatched": 7,
+      "rejected": 2
+    },
+    "round2": {
+      "dispatched": 3,
+      "rejected": 0
+    },
+    "rounds_after_https_edit": 1
+  },
+  "history": [
+    {
+      "round": 1,
+      "dispatched": 7,
+      "rejected": 2,
+      "verdicts": {
+        "1": {
+          "hash": "14088677270b6d67c9f39d5c1a047acbbb2b2f9e0f1df019d0a548bbebae9638",
+          "verdict": "pass",
+          "reason": "pass; weakest point: integrated Check: probed only ULTRA_TASK (tightened by the author, re-dispatched)"
+        },
+        "2": {
+          "hash": "3cf5ca66940c62bd759537c2d0f4c1ad2faf306c3d1d4553aa764577bf46c4d5",
+          "verdict": "pass",
+          "reason": "M1-M3 each have a falsifying leg; 'after every transition' rests on the three-commit count plus the end-state tree, which is what collect_evidence's copy pins."
+        },
+        "3": {
+          "hash": "818a9be286c40995244428ec1c9cc9d694c8158b39742d35c5137c114c786d6a",
+          "verdict": "fail",
+          "reason": "the Claim's antecedent (a laptop whose fleet.json names a renderer) is established by no clause: the task pins only renderSetupScript's output for an explicit render argument"
+        },
+        "4": {
+          "hash": "d1bbcfca309495338f4d59b4867570993430cdd00302f47c42ce7333fc58c530",
+          "verdict": "pass",
+          "reason": "Every row state, the config reader, CONFIG_KEYS and the CLI path have legs; the detail pins fleet.json as a substring of the ~/ path."
+        },
+        "5": {
+          "hash": "0301837d8b851fb82bc46d2cd0f2d9a50d6980a5d1698e28610bb74c35b32bb8",
+          "verdict": "pass",
+          "reason": "Every clause has a falsifying leg at the code layer; the stdin check compares against renderSetupScript's own output plus the render.env substring."
+        },
+        "6": {
+          "hash": "4bdee18394601c69e7a356573759b855b766e5d4092792d4c6ba23e90b407420",
+          "verdict": "fail",
+          "reason": "M1 leg (a) never grepped the pass values and proved the two absences with grep -q 'suite'; the fold sub-bullet and Integration-naming greps mentioned words without falsifying them"
+        },
+        "7": {
+          "hash": "50cfa84d9108d62e39a12885301e9b2c2623ce6b80e67000d2da60443239ea01",
+          "verdict": "pass",
+          "reason": "Scoped greps fail closed on the BASE documents, the Execution-handoff blob hash pins the shared section, and the validator and rubric test run."
+        }
+      }
+    },
+    {
+      "round": 2,
+      "dispatched": 3,
+      "rejected": 0,
+      "verdicts": {
+        "1": {
+          "hash": "fca23842a28cdf7f6a1bdb8c316e245ed0ea1e99e0bd5ca57e31405454422b39",
+          "verdict": "pass",
+          "reason": "Every clause is falsified by the sim's recorded environments and report rows; the round-2 Run:/Check: value is inferred from the env-2.txt leg on the same dispatch path."
+        },
+        "3": {
+          "hash": "0d227157067a2f8958623f140d24c08a13ecec4f7065fc2d917e1c9f7f6f4a82",
+          "verdict": "pass",
+          "reason": "Round 2: the Claim was narrowed to the renderer's own layer; the install line and heredoc are pinned in order, the size cap and bash -n hold, and the refusals return nothing."
+        },
+        "6": {
+          "hash": "cdedf2196c29030b6810351c5963ee8b96b668e5a4188cf2050e0dc68559cffa",
+          "verdict": "pass",
+          "reason": "Round 2: the five values, the two absences, the fold's omission (negative grep) and the two Integration-naming phrases are each grepped in their own scoped range."
+        }
+      }
+    }
+  ]
+}
