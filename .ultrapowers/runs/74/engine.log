@@ -3,3 +3,14 @@ run-main: preflight
 run-main: tiers — 3 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 3fb782b6de9a3cdbd17dbab957f718df15b8399d; 3 task clone(s) + integration
 run-main: engine — waves 3, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: acceptance-capture — gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-74/acceptance.log
+run-main: gate
+run-main: gate-blocked — ultra_gate exited 1 — gate receipt is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 1h 11min 1.201s
+CPU time consumed: 1h 40min 8.837s
+Memory peak: 3.9M
+Memory swap peak: 0B

@@ -95,3 +95,12 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/_outcome.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py","exit":0,"minor":false,"wave":1,"id":"01M23M7Q620000QF4X1GP19R8K","ts":1788975766722}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M23M7Q630000PYFCJKFFTD40","ts":1788975766723}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"bc13ee43-4510-4b47-9859-39649d032afd","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-74/clones/integration","model":"opus","id":"01M23M7Q640000NPCHNWN1GT52","ts":1788975766724}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"bc13ee43-4510-4b47-9859-39649d032afd","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":6076,"output":9404,"cacheRead":668208,"cacheCreation":45199,"costUsd":1.051574,"models":["claude-opus-5"]},"id":"01M23MBMG70000G9K4N91VXJD4","ts":1788975895047}
+{"kind":"transcript:slice","label":"integration","sessionId":"bc13ee43-4510-4b47-9859-39649d032afd","bytes":11476,"id":"01M23MBMGC000025ANJ619NSJX","ts":1788975895052}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M23MBMGS0000KCY8Y6B8V9VH","ts":1788975895065}
+{"kind":"driver:stage","stage":"finalize","id":"01M23MBMJA0000T00SDS6X92X7","ts":1788975895114}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-74/acceptance.log","id":"01M23MBMKS00009AP4MZF6F0AY","ts":1788975895161}
+{"kind":"driver:stage","stage":"gate","id":"01M23MBMKT0000SPXEPNRA6NEC","ts":1788975895162}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M23MVDWK00001T9QFGRWFR68","ts":1788976412563}
+{"kind":"run:open","runId":"run-74","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","source":"fleet/publish-fold.mjs","id":"01M23MVE3R0000K7WS9DHHCNEN","ts":1788976412792}
+{"kind":"driver:publish-fold","run":"74","attempt":"1","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","tip":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","candidate":"99e2875d337323563468c7d1a0400b40825b0a36","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M23MVF890000MWJD9SXDRNP0","ts":1788976413961}
