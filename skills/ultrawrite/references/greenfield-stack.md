@@ -53,8 +53,20 @@ the app fetch or read outside its persister has left the shape and says so.
 
 A **TinyApp** is the synced shape of that stack, and only that shape: a TinyBase
 `MergeableStore` in the client, a `WsSynchronizer` to a Durable Object with a
-SQLite persister, React from one `index.html` + `app.jsx`. An app whose store is
-local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
+SQLite persister, scaffolded by the official generator as a typed project —
+
+```sh
+npm create tinybase@latest -- --non-interactive --projectName <name> \
+  --language typescript --framework react --schemas true \
+  --syncType durable-objects --persistenceType sqlite --installAndRun false
+```
+
+— so the store's schema drives TypeScript inference and `bunx tsc --noEmit`
+checks every data access (operator, 2026-09-09, chosen over a single-file
+`index.html` + `app.jsx` that no compiler can see). Read
+https://tinybase.org/skills/build-with-tinybase/SKILL.md before scaffolding; the
+generator's `--list-options` is the authority for current values. An app whose
+store is local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
 word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
 is not this project's vocabulary. The runtime that hosts a TinyApp's Durable
 Object inside a sandbox is #764's question, not this page's.
