@@ -1,0 +1,42 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: `renderEnvPath(ctx: {home: string}) -> string` fleet/tests/_sandbox_boot_helpers.mjs exports renderEnvPath/1"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_sandbox_boot_render_env.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +5 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/_sandbox_boot_helpers.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_render_env.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_state_exams.mjs": "mjs"
+  },
+  "ms": 54
+}
