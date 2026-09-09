@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-73",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-73/report.json",
+  "branch": "ultra/integration-run-73",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 0/1 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 1,
+    "output": "c3c3c3c3c3/fleet/run-main.mjs',\\nE             '/tmp/sandbox-boot-HfA1wm/home-3/plans/run-7.md',\\nE             'run-7',\\nE             '--repo',\\nE         \\nE             at file:///tmp/tmp.B02xaXUKvy/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:75:12\\nE             at runTests (file:///tmp/tmp.B02xaXUKvy/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)\\nE             at file:///tmp/tmp.B02xaXUKvy/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1\\nE             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\\nE             at async node:internal/modules/esm/loader:647:26\\nE             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\\nE         FAIL \\u2014 the helper's assignment carries no effort= key, so the engine argv is BASE's  [M2 / leg (b)]\\nE         AssertionError [ERR_ASSERTION]: (b) [M2] without the key the argv is as at BASE \\u2014 the default is unchanged\\nE         + actual - expected\\nE         ... Skipped lines\\nE         \\nE           [\\nE             'systemd-run',\\nE             '--user',\\nE             '--unit=fleet-engine-7',\\nE             '--pipe',\\nE         ...\\nE             'ULTRAPOWERS_FLEET_RUN=run-7',\\nE         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',\\nE         -   'TINYAPP_RENDER_URL=',\\nE             'node',\\nE             '/tmp/sandbox-boot-HfA1wm/home-4/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',\\nE             '/tmp/sandbox-boot-HfA1wm/home-4/plans/run-7.md',\\nE             'run-7',\\nE             '--repo',\\nE         \\nE             at file:///tmp/tmp.B02xaXUKvy/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:96:10\\nE             at runTests (file:///tmp/tmp.B02xaXUKvy/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)\\nE             at file:///tmp/tmp.B02xaXUKvy/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1\\nE             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\\nE             at async node:internal/modules/esm/loader:647:26\\nE             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\\nE         ok (86 ms) \\u2014 effort=max fails the assignment: no clone, no engine, `assignment` in the failure line  [M2 / leg (b)]\\nE         4 FAILED\\nE         \\nE       assert 1 == 0\\nE        +  where 1 = CompletedProcess(args=['node', '/tmp/tmp.B02xaXUKvy/suite-gate/tests/../fleet/tests/test_sandbox_boot_effort.mjs'], re...ax fails the assignment: no clone, no engine, `assignment` in the failure line  [M2 / leg (b)]\\\\n4 FAILED\\\\n\\\", stderr='').returncode\\n\\ntests/test_fleet_suite.py:108: AssertionError\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n=========================== short test summary info ============================\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_state_exams.mjs]\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot.mjs] - Ass...\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_effort.mjs]\\n============ 3 failed, 1907 passed, 5 warnings in 504.73s (0:08:24) ============\", \"redKind\": \"assertion\"}\n"
+  },
+  "verdict": "BLOCKED"
+}
