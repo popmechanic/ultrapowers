@@ -1,0 +1,44 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [
+    {
+      "check": "interface",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "Produces: none — fleet/tests/test_referee_replay.mjs: declared, not exported"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_referee_replay.mjs, fleet/tests/test_run_engine_referee.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +0 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/referee.mjs": "mjs",
+    "fleet/tests/test_referee_replay.mjs": "mjs",
+    "fleet/tests/test_run_engine_referee.mjs": "mjs"
+  },
+  "ms": 11934
+}
