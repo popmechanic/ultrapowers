@@ -1,0 +1,88 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 9a58684face6d5d24b78dc4268daf134a3b91c99..4abfd1093cf7b97e3eb6cee7bebfa68e3a1395c5 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -296,6 +296,11 @@ structural dozen).
+   handoff as *what was true when it was written*: verify before acting on it, and expect a stale
+   one, since nothing prunes them. `.claude/` is in `.git/info/exclude`, so a fresh clone, a fleet
+   sandbox and CI all correctly find nothing.
++- **TinyApp is the name (operator, 2026-09-08).** A greenfield target on the committed stack —
++  Bun + TypeScript + TinyBase — in its synced shape (a TinyBase MergeableStore in the client, a
++  WsSynchronizer to a Durable Object with a SQLite persister) is a *TinyApp*; an app whose store
++  is not synced to a Durable Object is not one. The borrowed term "vibes app" is banned in specs,
++  docs, issues and skills. The authoring rule is `skills/ultrawrite/references/greenfield-stack.md`.
+ - **`superpowers` is an optional companion, not a dependency (#390).** Plan authoring is
+   `ultrawrite`'s; brainstorming and the practice skills are still worth reaching for when the
+   operator has them installed. There is no local checkout and nothing is vendored — read those
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 8ba4fbcb72559399ecbab449874153e0295e534e..0e06bbc04421de07760f21642360f8b4bd81f3c9 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -299,10 +299,11 @@ Every `implementation` task is a pure diff against the integration branch:
+    Context so review checks correspondence to a record, not truth it cannot reach.
+ 6. **Isolate `CLAUDE_CONFIG_DIR`** in any task that spawns the agent CLI, or it writes
+    false memories into the host project.
+-7. **Greenfield targets take the Bun + TypeScript defaults** — `bun install` to
+-   bootstrap, `bunx tsc --noEmit && bun test` as the suite. Both knobs verbatim,
+-   the `@types/bun` tsconfig gotcha, and where the restriction stops:
+-   `references/greenfield-stack.md`.
++7. **Greenfield targets take the Bun + TypeScript + TinyBase defaults** — `bun install` to
++   bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
++   app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
++   Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
++   restriction stops: `references/greenfield-stack.md`.
+ 
+ ## Decomposition judgment
+ 
+diff --git a/skills/ultrawrite/references/greenfield-stack.md b/skills/ultrawrite/references/greenfield-stack.md
+index 5d02ac94e4111ac6fe992b9726a8a1725bab9fc0..101d7641dcfdd9d4c270c84be49f063ed074594f 100644
+--- a/skills/ultrawrite/references/greenfield-stack.md
++++ b/skills/ultrawrite/references/greenfield-stack.md
+@@ -1,8 +1,8 @@
+-# Greenfield stack — Bun + TypeScript authoring defaults
++# Greenfield stack — Bun + TypeScript + TinyBase authoring defaults
+ 
+ Load this when a plan **creates a new codebase** (#425). It fixes the two knobs
+-a greenfield plan hands the engine, and the one tsconfig detail that costs an
+-author an hour when it is guessed wrong.
++a greenfield plan hands the engine, the one tsconfig detail that costs an
++author an hour when it is guessed wrong, and the store the app keeps its state in.
+ 
+ ## When it applies
+ 
+@@ -42,6 +42,35 @@ tsconfig:
+ The older `bun-types` package name fails with
+ `TS2688: Cannot find type definition file for 'bun-types'`.
+ 
++## The store, and the TinyApp shape
++
++The app's state is **one TinyBase store** (operator, 2026-09-08). Every `do:` in a
++Claim is a store mutation through the app's own callbacks and every `see:` is a
++store read plus a render against it, so an exam can probe the store directly,
++in-process, in milliseconds — no network or DOM event loop in the loop. That
++holds exactly when the app reads from nowhere but the store; a plan that has
++the app fetch or read outside its persister has left the shape and says so.
++
++A **TinyApp** is the synced shape of that stack, and only that shape: a TinyBase
++`MergeableStore` in the client, a `WsSynchronizer` to a Durable Object with a
++SQLite persister, scaffolded by the official generator as a typed project —
++
++```sh
++npm create tinybase@latest -- --non-interactive --projectName <name> \
++  --language typescript --framework react --schemas true \
++  --syncType durable-objects --persistenceType sqlite --installAndRun false
++```
++
++— so the store's schema drives TypeScript inference and `bunx tsc --noEmit`
++checks every data access (operator, 2026-09-09, chosen over a single-file
++`index.html` + `app.jsx` that no compiler can see). Read
++https://tinybase.org/skills/build-with-tinybase/SKILL.md before scaffolding; the
++generator's `--list-options` is the authority for current values. An app whose
++store is local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
++word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
++is not this project's vocabulary. The runtime that hosts a TinyApp's Durable
++Object inside a sandbox is #764's question, not this page's.
++
+ ## The engine boundary
+ 
+ The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing

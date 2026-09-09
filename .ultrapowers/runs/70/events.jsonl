@@ -98,3 +98,16 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/harvest_fleet_runs.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/fleet_slice.py skills/ultralearn/scripts/census_many.py skills/ultralearn/scripts/_readers.py skills/ultralearn/scripts/_outcome.py","exit":0,"minor":false,"wave":2,"id":"01M229J5ZR0000MQJT9FP92131","ts":1788931020792}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M229J5ZS00003XB9S0XNF93P","ts":1788931020793}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"11d029ad-eeff-49b8-9bdb-bd4541c15e50","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-70/clones/integration","model":"opus","id":"01M229J5ZT00001H4YEYWNTHQQ","ts":1788931020794}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"11d029ad-eeff-49b8-9bdb-bd4541c15e50","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5082,"output":8068,"cacheRead":422134,"cacheCreation":74402,"costUsd":1.1821970000000004,"models":["claude-opus-5"]},"id":"01M229NM8Y0000F4A2ZGBRDADB","ts":1788931133726}
+{"kind":"transcript:slice","label":"integration","sessionId":"11d029ad-eeff-49b8-9bdb-bd4541c15e50","bytes":11452,"id":"01M229NM940000TEQQJQXEVX6B","ts":1788931133732}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M229NM9E0000STAHETXNBT1C","ts":1788931133742}
+{"kind":"driver:stage","stage":"finalize","id":"01M229NMAN0000WF8SPAKN77G7","ts":1788931133781}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-70/acceptance.log","id":"01M229NMCR0000AKVJBMK2JHHG","ts":1788931133848}
+{"kind":"driver:stage","stage":"gate","id":"01M229NMCS0000KQNYNHNGZDSZ","ts":1788931133849}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M22A2F2R0000G64FTNA2TMNT","ts":1788931554392}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M22A2F2S000008PZ9V5HS98F","ts":1788931554393}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M22A2F2S00016GC8BEPVGJCB","ts":1788931554393}
+{"kind":"driver:stage","stage":"approve","id":"01M22A2F2S0002TJEHQG613B9A","ts":1788931554393}
+{"kind":"driver:approved","stamp":"run-70","integrationBranch":"ultra/integration-run-70","id":"01M22A2F420000DN95FJV8EVYC","ts":1788931554434}
+{"kind":"run:open","runId":"run-70","base":"fe0541e48a217a523ecec02832d77bd4f327c4bd","source":"fleet/publish-fold.mjs","id":"01M22A2FAS00006QWFM6CAZRGT","ts":1788931554649}
+{"kind":"driver:publish-fold","run":"70","attempt":"1","base":"fe0541e48a217a523ecec02832d77bd4f327c4bd","tip":"429fdf0f1b169518b356ee8ab38abac48763e3b1","candidate":"aa7b1bb282471c4e91477d29c5a75051dec82f63","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M22AF8Y4000057VTB3482E6C","ts":1788931974084}

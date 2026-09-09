@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-70.md run-70 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "skills/ultralearn/scripts/catch_counter.py and skills/ultralearn/scripts/catch_report.py over the real fleet evidence corpus — Both scripts are present and structurally complete, and every Machine leg is exercised by the driver-run suite over synthetic fixtures. The plan's measured BASE figures — 17 credits across 16 test files in 5 runs, 163 of 187 tree tests observed, largest touching-run count 65, curve starting N=1: 147 — were derived by hand over the 68 evidence tags, which are not in this tree (the only `events.jsonl` files here are tests/fixtures/ultralearn/census/run-101 and run-102). Reproducing those numbers needs the harvested evidence corpus, which this environment does not hold. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
