@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "1": {"hash": "3a978ebeb22a9965ac2ff16067779b9953ff7c2b168875c62b294c7d16bb9ddc", "verdict": "pass", "reason": "Round 2: the seven M1 items compute (2 external acks, 2 minor findings, E1/E2/G3 from the two done tasks), every clause M1-M6 has a leg or Run that fails on its negation, the absences are backed by live positives (issues arm kept, trees.log written by the rig), and the CONTRACT bullet orders and the docs exam's new literals are pinned by sed/tr/grep Runs."},
+    "2": {"hash": "59ca0ff845bfd6b01af93fb9f7e7c2d262b0596c3f008a09a093f4b960d01b51", "verdict": "pass", "reason": "Round 3: M1's runId-from-line is falsified by directories named seven/eight, M4's desc-run/asc-text ordering by the zeta/alpha and alpha/beta cases, M5's between-placement by the range-count Run; the keys, ids, stdout counts and candidate lines all compute under the clauses' own rules."}
+  },
+  "tally": {"dispatched": 5, "rejected": 3, "rounds": {"task 1": {"1": "fail (M6 order unpinned)", "2": "pass"}, "task 2": {"1": "fail (M4 ordering, M5 between)", "2": "fail (M1 runId vs directory name)", "3": "pass"}}, "guide_review": "claude-code-guide: no findings"}
+}
