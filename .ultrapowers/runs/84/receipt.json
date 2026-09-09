@@ -1,0 +1,184 @@
+{
+  "ok": true,
+  "stamp": "run-84",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-84"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The baseline runs first, on its own clone, and a red one parks the run",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/run-engine.mjs",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/test_run_engine.mjs",
+          "fleet/tests/test_run_engine_baseline.mjs",
+          "fleet/tests/test_run_engine_red_suite_record.mjs",
+          "fleet/tests/test_run_engine_suite_passes.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`cloneAtBase({ repo, dest, base })` from `fleet/run-waves.mjs`",
+            "`failingBlock(text)` from `fleet/failing-block.mjs`"
+          ],
+          "produces": [
+            "`report.baseline` as `{ passed: boolean, output: string }` on every run that completed Setup",
+            "`clones/baseline` \u2014 the run-tree directory the baseline suite runs in"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The baseline runs first, on its own clone, and a red one parks the run",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_run_engine.mjs",
+            "fleet/tests/test_run_engine_baseline.mjs",
+            "fleet/tests/test_run_engine_early_baseline.mjs",
+            "fleet/tests/test_run_engine_red_suite_record.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_sandbox_boot_parked_error.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`cloneAtBase({ repo, dest, base })` from `fleet/run-waves.mjs`",
+              "`failingBlock(text)` from `fleet/failing-block.mjs`"
+            ],
+            "produces": [
+              "`report.baseline` as `{ passed: boolean, output: string }` on every run that completed Setup",
+              "`clones/baseline` \u2014 the run-tree directory the baseline suite runs in"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/run-engine.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_run_engine.mjs",
+            "fleet/tests/test_run_engine_baseline.mjs",
+            "fleet/tests/test_run_engine_red_suite_record.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_early_baseline.mjs",
+            "fleet/tests/test_sandbox_boot_parked_error.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_early_baseline.mjs && node fleet/tests/test_sandbox_boot_parked_error.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_early_baseline.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_parked_error.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_baseline.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_red_suite_record.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_integrated_clean.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_candidate_bootstrap.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_suite_passes.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "grep -c 'runs the suite on BASE at all' skills/ultrapowers/references/report-format.md | grep -qx 0",
+            "python3 -m pytest tests/test_docs_agree_with_code.py -q"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_early_baseline.mjs",
+            "fleet/tests/test_sandbox_boot_parked_error.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The baseline runs first, on its own clone, and a red on\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- Models never run git (Amendment 10): every clone, checkout, read-tree and reset is the driver's `exec`, and the baseline clone is cut and bootstrapped by driver code with no prompt in it.\n- No new `waveMerges[].status` word and no new `engine:phase`: a red-baseline wave is `TEST_FAILED`, later waves `SKIPPED`, and the phases a one-wave green run announces stay exactly `Setup`, `Wave 1`, `Integration Review`.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-84/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-84/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-84/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-84/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
