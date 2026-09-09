@@ -684,6 +684,18 @@ argv() { name="$1"; shift; { for a in "$name" "$@"; do printf '%s\\t' "$a"; done
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-boot-'))
 let caseNo = 0
 
+/**
+ * The renderer address file a boot reads, INSIDE the case's own home.
+ *
+ * The boot script falls back to a path on the box when `FLEET_RENDER_ENV` names
+ * nothing, and on a sandbox whose setup installed one that file is readable —
+ * so a sim that planted nothing would still source the host's renderer and its
+ * engine argv would carry a live URL. The rig therefore always names a path of
+ * its own: `<home>/render.env`, which `makeHome` does NOT create, so the
+ * default is a path that does not exist until a sim writes it there.
+ */
+export const renderEnvPath = (ctx) => path.join(ctx.home, 'render.env')
+
 export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true } = {}) {
   caseNo += 1
   const home = path.join(tmpRoot, `home-${caseNo}`)
@@ -731,6 +743,11 @@ const bootEnv = (ctx, env) => ({
       FLEET_POLL_SECONDS: '0',
       FLEET_STATUS_INTERVAL: '30',
       FLEET_ASSIGNMENT: ASSIGNMENT,
+      // The renderer address the boot reads, pinned into the case's own home so
+      // no sim can reach the one the box's setup installed. A case that wants a
+      // renderer writes the file at `renderEnvPath(ctx)`; one that wants none
+      // writes nothing and the boot sources nothing.
+      FLEET_RENDER_ENV: renderEnvPath(ctx),
       // In the boot script's OWN environment, to prove the child's `env -u`
       // removes it and that the two Anthropic variables are never here.
       CLAUDE_CONFIG_DIR: '/should/be/unset/in/the/child',

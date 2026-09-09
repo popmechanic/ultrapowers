@@ -224,8 +224,9 @@ test('the engine is a transient service with the contract argv; only its child e
     'ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz',
     'CLAUDE_CODE_OAUTH_TOKEN=placeholder',
     'ULTRAPOWERS_FLEET_RUN=run-7',
-    // The renderer address, empty on a box whose setup wrote no
-    // `/etc/fleet/render.env` — the entry is always present, its value is not.
+    // The renderer address, empty because this case planted no `render.env`
+    // at the rig's own `renderEnvPath(ctx)` — the entry is always present in
+    // the engine's argv, its value is not.
     'TINYAPP_RENDER_URL=',
     'node', `${H}/engines/${ENGINE_SHA}/fleet/run-main.mjs`,
     // The plan path, and nothing else in this argv, is what M1 moved.
