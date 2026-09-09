@@ -1,0 +1,35 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "75971706b7941006382afc37af47a88c1577c1ff0255b3ccf0bdf9847adcb32e",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a falsifying leg: M1's rows and negatives one assertion per row; M2's placement forced by the two-line integration-clone log count on a MERGED run with the unset/false cases at zero extra lines; M3's exit-3 judgment line, bootstrap output in prompt and detail, absent module-not-found and a single check.sh marker; M4's installed module plus the two-line count; M5's one-sentence grep."
+    },
+    "2": {
+      "hash": "48f21edad2e536530ce3e7f225b8af4f7c6eb029afa9d449881a85f151b68114",
+      "verdict": "pass",
+      "reason": "M1/M3 by (a)(b) with the pinned prefix, path, ENOENT and the absent referee/ dir; M2/M3 by the three enumerated rows; M4 by (g)(h); M5 by (i), which checks status, verdict, notes, the absent review: dispatch, the absent referee file and the judgmentCalls entry."
+    },
+    "3": {
+      "hash": "1f349dad7e3f4e42b4964f4f16157db5fcc41597d1aeb48d484148745965d7ad",
+      "verdict": "pass",
+      "reason": "M1/M2 legs (a)(b)(c)(e) prove skipping without exec via the throwing stub, (e) rules out a filesystem-first path, (d) pins exactly one recorder call for the in-clone file; M3's rows each have a leg (f)(g)(h) empty-stderr on both languages, (i) killed and signal, (j) first stderr line, (k) the real hang."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 2,
+    "rounds": {
+      "1": { "dispatched": 3, "rejected": 2, "failed_tasks": ["1", "2"] },
+      "2": { "dispatched": 2, "rejected": 0 }
+    },
+    "base": "a526641762b11c20a04da0db0ada4f384cbde4cc"
+  },
+  "history": [
+    { "round": 1, "task": "1", "verdict": "fail", "reason": "M1 enumerated a nine-row trigger ladder but the only leg that fired the bootstrap changed package.json alone." },
+    { "round": 1, "task": "2", "verdict": "fail", "reason": "The Claim's final clause — the engine records the task as a driver error, not as reviewed — was restated by no Machine line and falsified by no leg." },
+    { "round": 1, "task": "3", "verdict": "pass", "reason": "as recorded above" },
+    { "round": 2, "task": "1", "verdict": "pass", "reason": "as recorded above (predicate exported and pinned per row; engine legs cite M2)" },
+    { "round": 2, "task": "2", "verdict": "pass", "reason": "as recorded above (M5 + engine-seam leg (i) added)" }
+  ]
+}
