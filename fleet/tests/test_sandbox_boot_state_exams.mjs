@@ -6,10 +6,10 @@
  *
  * The clauses this file pins, in the Proof's own words:
  *
- *   M1 / leg (a)  a boot with no `FLEET_RENDER_ENV` and no
- *                 `/etc/fleet/render.env` reachable exits 0, and the
- *                 `fleet-engine-7` argv carries exactly one entry equal to
- *                 `TINYAPP_RENDER_URL=`.
+ *   M1 / leg (a)  a boot whose case `env` names no `FLEET_RENDER_ENV` — so the
+ *                 rig's own `renderEnvPath(ctx)`, which nothing planted, is the
+ *                 file the script looks for — exits 0, and the `fleet-engine-7`
+ *                 argv carries exactly one entry equal to `TINYAPP_RENDER_URL=`.
  *   M1 / leg (b)  a boot with `FLEET_RENDER_ENV` naming a file whose one line is
  *                 `TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/abc123/browser-rendering`
  *                 carries exactly one such entry, equal to that line, among the
@@ -57,7 +57,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   SCRIPT, RUN_PATH,
-  STUBS, PRELUDE, makeHome, bootAsync,
+  STUBS, PRELUDE, makeHome, bootAsync, renderEnvPath,
   argvLines, foldArgv, unitsRun, commitStates, evidenceDir,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
@@ -70,10 +70,6 @@ const tests = []
 const test = (name, fn) => tests.push([name, fn])
 
 // ── the renderer address  [M1] ───────────────────────────────────────────────
-
-/** The production path the script falls back to when `FLEET_RENDER_ENV` names
- *  nothing — leg (a)'s "no `/etc/fleet/render.env` reachable". */
-const PROD_RENDER_ENV = '/etc/fleet/render.env'
 
 /** The one URL any fleet script writes: exe.dev's edge, never Cloudflare's own
  *  host. Leg (b) spells it verbatim. */
@@ -230,7 +226,7 @@ function examHome() {
  */
 const plantedBoot = (() => {
   const ctx = examHome()
-  const renderEnv = path.join(ctx.home, 'render.env')
+  const renderEnv = renderEnvPath(ctx)
   fs.writeFileSync(renderEnv, RENDER_LINE + '\n')
   const done = bootAsync(ctx, ['boot'], { FLEET_RENDER_ENV: renderEnv, ...STATE_EXAMS_ENV })
     .then((r) => {
@@ -281,14 +277,15 @@ const approvalSim = sim('test_sandbox_boot_approval_evidence.mjs')
 // ── (a) no render file: one empty entry, and the boot still exits 0  [M1] ────
 
 test('a boot with no render.env exits 0 and hands the engine an empty TINYAPP_RENDER_URL=  [M1 / leg (a)]', async () => {
-  // Leg (a)'s own condition: the production fallback is not reachable from
-  // here, so this boot really does source nothing.
-  assert.ok(!fs.existsSync(PROD_RENDER_ENV),
-    `(a) [M1] this leg needs ${PROD_RENDER_ENV} absent — it is the path the script falls ` +
-      'back to when FLEET_RENDER_ENV names nothing, and a readable one would make the ' +
-      'empty-value assertion below meaningless')
-
   const { ctx, result } = await bareBoot()
+  // Leg (a)'s own condition: the file the rig points every boot at was never
+  // planted, so this boot really does source nothing. The rig pins the path
+  // inside the case's home, which is why no file the box itself carries can
+  // make the empty-value assertion below meaningless.
+  assert.ok(!fs.existsSync(renderEnvPath(ctx)),
+    `(a) [M1] this leg needs ${renderEnvPath(ctx)} absent — it is the path the rig hands ` +
+      'the script when a case names no FLEET_RENDER_ENV of its own')
+
   // `set -euo pipefail`: a bare `$TINYAPP_RENDER_URL` under `set -u`, or an
   // unguarded source of a missing file, kills the boot here.
   assert.equal(result.status, 0,
@@ -315,7 +312,7 @@ test('a boot whose FLEET_RENDER_ENV names a render.env hands the engine that lin
   const ctx = await plantedBoot()
 
   // The rig planted the line it meant to, at the path FLEET_RENDER_ENV names.
-  const planted = path.join(ctx.home, 'render.env')
+  const planted = renderEnvPath(ctx)
   assert.equal(fs.readFileSync(planted, 'utf8'), RENDER_LINE + '\n',
     '(b) [M1] the rig planted the one line the setup script writes')
 
