@@ -1,0 +1,531 @@
+{
+  "ok": true,
+  "stamp": "run-71",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-71"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "7 task(s) in 2 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The exam learns where it is, and the record reaches the report and the referee",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`stateExamsOf(runDir, taskId) -> Array<{exam, store_ms, render_ms, render, mutant_killed, contract}>`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "Boot sources the renderer address, hands it to the engine, and copies the record",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The setup script writes the renderer address where boot will find it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/setup-script.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`renderSetupScript({run, bootstrap, unit, render}) -> string`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The doctor's eighth row, and the walk's section for it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/doctor.mjs",
+          "fleet/tests/test_doctor.mjs",
+          "fleet/tests/test_doctor_config_keys.mjs",
+          "skills/ultrapowers/references/first-run.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`fleetConfigRender({path}) -> Promise<{integration: string, account: string} | null>`"
+          ]
+        }
+      },
+      {
+        "id": "5",
+        "title": "The launcher attaches the renderer and refuses on the laptop what the VM could not attach",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "`fleetConfigRender({path}) -> Promise<{integration: string, account: string} | null>`",
+            "`renderSetupScript({run, bootstrap, unit, render}) -> string`"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "6",
+        "title": "The contract declares the exam environment, the render entry, the record tree, the eighth row and the third integration",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      },
+      {
+        "id": "7",
+        "title": "The authoring rule \u2014 a TinyApp plan's peer tasks name a state exam",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md",
+          "skills/ultrawrite/references/greenfield-stack.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "nothing"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [
+      {
+        "from": "3",
+        "to": "5",
+        "why": "interface"
+      },
+      {
+        "from": "4",
+        "to": "5",
+        "why": "interface"
+      }
+    ],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4",
+        "6",
+        "7"
+      ],
+      [
+        "5"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The exam learns where it is, and the record reaches the report and the referee",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_state_exams.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`stateExamsOf(runDir, taskId) -> Array<{exam, store_ms, render_ms, render, mutant_killed, contract}>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_state_exams.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_state_exams.mjs",
+          "proofRuns": [
+            "sed -n '/\"tasks\": {/,/\"tests\": {/p' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q 'stateExams.*exam.*store_ms.*render_ms.*render.*mutant_killed.*contract'",
+            "grep -E '^\\| .tasks\\[\\]\\.stateExams. \\|' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q 'highest.*never .base.'",
+            "node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_state_exams.mjs"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "Boot sources the renderer address, hands it to the engine, and copies the record",
+          "files": [
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_state_exams.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_state_exams.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_state_exams.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_state_exams.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+            "bash -n fleet/sandbox-boot.sh"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_state_exams.mjs"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The setup script writes the renderer address where boot will find it",
+          "files": [
+            "fleet/setup-script.mjs",
+            "fleet/tests/test_setup_script_render_env.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`renderSetupScript({run, bootstrap, unit, render}) -> string`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/setup-script.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_setup_script_render_env.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_setup_script_render_env.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_setup_script_render_env.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_setup_script.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_setup_script_render_env.mjs"
+          ]
+        },
+        {
+          "id": "4",
+          "title": "The doctor's eighth row, and the walk's section for it",
+          "files": [
+            "fleet/doctor.mjs",
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs",
+            "fleet/tests/test_doctor_render.mjs",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`fleetConfigRender({path}) -> Promise<{integration: string, account: string} | null>`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/doctor.mjs",
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs",
+            "skills/ultrapowers/references/first-run.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_doctor_render.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_doctor_render.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_doctor_render.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_doctor_config_keys.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+            "test \"$(grep -c '^## ' skills/ultrapowers/references/first-run.md)\" = 8",
+            "sed -n '/^## render/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'http-proxy.*--bearer -.*fleet.json.*browser-run.int.exe.xyz'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_doctor_render.mjs"
+          ]
+        },
+        {
+          "id": "6",
+          "title": "The contract declares the exam environment, the render entry, the record tree, the eighth row and the third integration",
+          "files": [
+            "fleet/CONTRACT.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ULTRA_BASE.*ULTRA_TASK.*ULTRA_RUN_DIR.*ULTRA_EXAM_PASS'",
+            "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '.base., .0., .1., .2..*.integrated.'",
+            "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'integrated.*no .ULTRA_RUN_DIR.'",
+            "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'the suite receives none of the four'",
+            "sed -n '/^  - engine:/,/^  - publish fold:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ULTRAPOWERS_FLEET_RUN=run-N.*TINYAPP_RENDER_URL=\\${TINYAPP_RENDER_URL:-}.*node'",
+            "sed -n '/^  - publish fold:/,/^  - after the engine:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'omits the .TINYAPP_RENDER_URL. entry'",
+            "! sed -n '/^  - publish fold:/,/^  - after the engine:/p' fleet/CONTRACT.md | grep -q 'TINYAPP_RENDER_URL='",
+            "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>. \u2014 the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'state-exams/.*task-<id>.*file by file'",
+            "sed -n '/^- \\*\\*Doctor/,/^- \\*\\*Janitor/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'eight rows'",
+            "! sed -n '/^- \\*\\*Doctor/,/^- \\*\\*Janitor/p' fleet/CONTRACT.md | grep -q 'five rows'",
+            "sed -n '/^- \\*\\*Doctor/,/^- \\*\\*Janitor/p' fleet/CONTRACT.md | grep '^  |' | tail -1 | grep -q '| .render. |.*not configured.*render.integration'",
+            "sed -n '/^- \\*\\*Laptop config/,/^- \\*\\*Logs without/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '\"render\".*\"integration\".*\"account\"'",
+            "! sed -n '/^- \\*\\*Laptop config/,/^- \\*\\*Logs without/p' fleet/CONTRACT.md | grep -q 'exactly two keys'",
+            "test \"$(grep -c -- '--integration claude-max,gh-<owner>-<repo>\\[,browser-run\\]' fleet/CONTRACT.md)\" = 2",
+            "! grep -q -- '--integration claude-max,gh-<owner>-<repo> ' fleet/CONTRACT.md",
+            "sed -n '/^- \\*\\*Integration naming/,/^- \\*\\*Doctor/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'present only when .fleet.json. carries .render.'",
+            "sed -n '/^- \\*\\*Integration naming/,/^- \\*\\*Doctor/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'nothing rides .tag:fleet.'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+            "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "7",
+          "title": "The authoring rule \u2014 a TinyApp plan's peer tasks name a state exam",
+          "files": [
+            "skills/ultrawrite/SKILL.md",
+            "skills/ultrawrite/references/greenfield-stack.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md",
+            "skills/ultrawrite/references/greenfield-stack.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'peer.*state exam.*Test:'",
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'stateExam.*tinyapp-exam.*clock.*seed.*action.*expected.*view.*mutant'",
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'state-exams/seeds/.*state-exams/expected/.*getContent'",
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q '__TINYAPP_SEED__.*neither.*WsSynchronizer.*persister'",
+            "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'TINYAPP_RENDER_URL.*skipped'",
+            "sed -n '/^7\\. \\*\\*Greenfield/,/^## Decomposition/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'state exam.*greenfield-stack.md'",
+            "test \"$(sed -n '/^## Execution handoff/,/^## Acceptance disposition/p' skills/ultrawrite/SKILL.md | git hash-object --stdin)\" = \"$(git show $ULTRA_BASE:skills/ultrawrite/SKILL.md | sed -n '/^## Execution handoff/,/^## Acceptance disposition/p' | git hash-object --stdin)\"",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+            "python3 -m pytest -q tests/test_recommendation_rubric.py"
+          ],
+          "proofGuards": []
+        }
+      ],
+      [
+        {
+          "id": "5",
+          "title": "The launcher attaches the renderer and refuses on the laptop what the VM could not attach",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_render.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "`fleetConfigRender({path}) -> Promise<{integration: string, account: string} | null>`",
+              "`renderSetupScript({run, bootstrap, unit, render}) -> string`"
+            ],
+            "produces": [
+              "nothing"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/launch.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_render.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_render.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_render.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_pins.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_render.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "6 parallel tasks",
+      "The launcher attaches the renderer and refuses on the l\u2026"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0): the first Check pins the three gate scripts and\n  the compiler, whose diagnostic vocabulary and task JSON are read here and never changed. The\n  second pins what this plan does not own: every role file (the `STATE EXAM:` block is a driver\n  block, never a role edit \u2014 spec \u00a73.8 item 6), the lobby (nothing new rides the comment), the\n  reserved exam directory and the publish fold.\n- The renderer is reached only through exe.dev's edge: the one URL any fleet script writes is\n  the proxy address `https://<integration>.int.exe.xyz/client/v4/accounts/<account>/browser-rendering`\n  \u2014 the third Check is that no fleet script names Cloudflare's own host. No token, no bearer and\n  no `ANTHROPIC_API_KEY` on any VM or in any argv; nothing is attached to `tag:fleet`.\n- Amendment 10 holds: models never run git; every git command in the sims is the sim's own.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles fleet/lobby.mjs fleet/exam-paths.mjs fleet/strip-exams.sh fleet/publish-fold.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -rn 'api.cloudflare.com' fleet/run-engine.mjs fleet/sandbox-boot.sh fleet/setup-script.mjs fleet/launch.mjs fleet/doctor.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-71/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-71/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-71/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-71/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
