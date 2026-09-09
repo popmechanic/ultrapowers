@@ -76,6 +76,33 @@ them, run 10 onward), beside that era’s per-run gate reads and control-plane
 payloads. The archive is untracked and absent from every sandbox — read it on
 the laptop, or not at all.
 
+## The catch counter
+
+A test earns a **catch** when a fix round turned one of its reds green by
+editing implementation — never the test and never by re-run alone. The
+counter does not judge that; it reads it off the record the engine already
+writes. The driver's `driver:exam-run` / `driver:proof-run` /
+`driver:check-run` events around a `fix:<task>:<n>` round say which reds went
+green in that round, the task row's `examEdited` says whether the fix edited
+the exam instead, and the task's `writes` in the receipt say which files the
+fix actually touched. No model call, no network, no git write.
+
+`python3 skills/ultralearn/scripts/catch_counter.py <run dir or tree>… --ledger <file>`
+counts a run — or every run under a tree — and appends one `catch-count` row
+per run to `docs/superpowers/observations/ledger.jsonl`, the same file the
+findings land in. `--ledger` overrides that path and is the counter's only
+flag; paths inside a row stay exactly as the record spells them.
+
+`python3 skills/ultralearn/scripts/catch_report.py --ledger <file> [--tree <dir>] [--n N]`
+prints every test in the tree with its catch count, then the zero-catch
+curve — for every N the accumulated record can support, how many tests sit at
+zero catches across N runs that touched what they exercise. The deletion
+window N is read off that curve, where it flattens: N is measured on the first
+pass, not fixed in doctrine. With `--n` the report also lists the tests at zero
+over N touching runs, and that list is the input to a deletion plan, which goes
+through the gate like any other work. `--ledger`, `--tree` and `--n` are the
+report's only flags.
+
 ## Verb 2 — `ultralearn distill` (propose)
 
 Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
