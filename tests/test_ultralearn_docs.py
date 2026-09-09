@@ -105,10 +105,24 @@ def test_catch_section_states_the_rule_and_names_the_two_record_fields():
     assert re.search(writes_field, section), (
         "the section does not spell `writes` as a code token followed by ` in the receipt`")
 
-    prose = "the counter writes the ledger"
-    assert not re.search(exam_edited, prose)
+    # Task 3 (#824) leg (b) [M2]: the control is the space-delimited spelling of
+    # both fields. It must match neither pattern — and, with the `[^ \n]`
+    # classes stripped out, must match both — so the control demonstrates the
+    # classes and nothing else. The former control ("the counter writes the
+    # ledger") held no `examEdited` at all, so its first `assert not` could
+    # never fail; this one can.
+    prose = "the row says examEdited and writes in the receipt"
+    assert not re.search(exam_edited, prose), (
+        "the `examEdited` pin matches the space-delimited spelling, so it does "
+        "not pin the record field")
     assert not re.search(writes_field, prose), (
         "the `writes` pin matches a bare verb, so it does not pin the record field")
+    assert re.search(r"examEdited", prose), (
+        "the control does not spell `examEdited`, so it demonstrates nothing "
+        "about the `[^ \\n]` classes")
+    assert re.search(r"writes in the receipt", prose), (
+        "the control does not spell `writes in the receipt`, so it demonstrates "
+        "nothing about the `[^ \\n]` classes")
 
 
 def test_catch_section_reads_n_off_the_curve():
@@ -129,6 +143,52 @@ def test_every_flag_the_catch_section_advertises_exists():
             f"the catch-counter section advertises {flag}, neither CLI has such a flag")
     assert "--nope" not in both, (
         "the union of the two help texts contains `--nope`, so this check pins nothing")
+
+
+# --- Task 3 (#824): the skill promises only the flag the counter has. The
+# sentence moves the ledger path out of the promise — `--ledger` is the file the
+# counter is *named*, not an override of a default — and the script keeps its
+# no-default behaviour. The section is joined on one line the way the task's
+# `Run:` joins it, `tr '\n' ' '`, and the pattern is the `Run:` line's own.
+
+CENSUS = "tests/fixtures/ultralearn/census"
+CENSUS_LINE = "2 run(s) counted, 0 row(s) appended, 0 already recorded"
+ONLY_FLAG = (r"appends one.*catch-count.*row per run to the file named by"
+             r".*--ledger.*the counter.s only flag")
+
+
+def test_catch_section_promises_ledger_as_the_counters_only_flag():
+    # Leg (a) [M1], the three SKILL.md facts: the section joined on one line
+    # says the counter appends one `catch-count` row per run to the file named
+    # by `--ledger`, the counter's only flag, in that order; `overrides that
+    # path` occurs zero times in the whole file; and the section still names the
+    # findings ledger (the existing section-names pin, restated here).
+    one_line = _catch_section().replace("\n", " ")
+    assert re.search(ONLY_FLAG, one_line), (
+        "the catch-counter section, joined on one line, does not match\n"
+        f"  {ONLY_FLAG}\nsection was:\n{one_line}")
+
+    text = SKILL.read_text()
+    assert "overrides that path" not in text, (
+        "SKILL.md still says `overrides that path`, so it still promises a "
+        "default path the counter has not got")
+
+    assert "docs/superpowers/observations/ledger.jsonl" in _catch_section(), (
+        "the catch-counter section no longer names the findings ledger")
+
+
+def test_counter_over_the_census_without_ledger_appends_nothing():
+    # Leg (a) [M1], the script fact: `catch_counter.py <census>` with no
+    # `--ledger` prints exactly the pinned line and exits 0. The whole stdout is
+    # compared as one string, as `test "$(…)" = '…'` does, so a second line or a
+    # default-path notice fails it.
+    done = subprocess.run([sys.executable, "skills/ultralearn/scripts/catch_counter.py",
+                           CENSUS],
+                          cwd=str(ROOT), capture_output=True, text=True)
+    assert done.returncode == 0, (
+        f"catch_counter.py exited {done.returncode}\n{done.stdout}{done.stderr}")
+    assert done.stdout.rstrip("\n") == CENSUS_LINE, (
+        f"expected exactly {CENSUS_LINE!r}, got {done.stdout!r}")
 
 
 def test_validate_skill_accepts_the_ultralearn_skill():
