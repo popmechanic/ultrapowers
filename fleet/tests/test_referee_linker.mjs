@@ -33,7 +33,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { linkProduces } from '../referee-linker.mjs'
+import { defaultExec, linkProduces } from '../referee-linker.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES = path.join(HERE, 'fixtures', 'referee')
@@ -469,6 +469,332 @@ const TABLE = {
     }
     ok(`leg (e) [M5] ${name} answers as its expected.json says`)
   }
+}
+
+// ── Task 3: a files entry cannot leave the clone, and the timeout detail ──
+// ── names its bound (#819) ────────────────────────────────────────────────
+// M1. In `linkProduces`, a `files` entry whose `abs = path.resolve(cloneDir,
+//     rel)` neither equals `path.resolve(cloneDir)` nor begins with
+//     `path.resolve(cloneDir) + path.sep` is pushed to `skipped` as
+//     `<rel>: outside the clone` before the filesystem is consulted for it and
+//     never becomes a candidate, so `exec` is not called for it — for a
+//     relative entry that climbs out and for an absolute entry alike, whether
+//     or not the file exists.
+// M2. When every entry is skipped the answer is `unlinked` with a detail
+//     carrying each skipped entry's `<rel>: outside the clone`; when an
+//     in-clone candidate remains beside an escaping entry, the answer is that
+//     candidate's own and `exec` is called exactly once, for the in-clone file.
+// M3. In `linkMjs` and `linkPy`, a subprocess result with no JSON line whose
+//     `stderr` is empty after trimming answers `unlinked` with the detail
+//     `<rel>: <node|python3> produced no JSON within <timeoutMs>ms`, whatever
+//     `code` is; `killed` or `signal` keeps `<rel>: timeout after <ms>ms`, and
+//     a non-empty `stderr` keeps its first line, as before.
+{
+  // A stub that throws is this group's proof that no subprocess ran for an
+  // entry that resolves outside the clone.
+  const boom = () => {
+    throw new Error('[M1] no subprocess may run for a files entry that resolves outside the clone')
+  }
+  const resolves = async (thunk, where) => {
+    try {
+      return await thunk()
+    } catch (e) {
+      assert.fail(`${where}: linkProduces resolves rather than throwing — it rejected with ${String((e && e.message) || e)} [M1]`)
+      return null
+    }
+  }
+
+  const ESCAPE_BODY = 'export function foo (a) { return a }\n'
+  const STRAY = []
+  const removeStray = () => {
+    for (const file of STRAY.splice(0)) {
+      try { fs.rmSync(file, { force: true }) } catch { /* already gone */ }
+    }
+  }
+  process.on('exit', removeStray)
+  // `escape.mjs` lives in the PARENT of the clone directory, so that at BASE
+  // the entry resolves to a file that exists, becomes a candidate and fires
+  // the throwing stub. The rule under test is the path, not the file.
+  const escapeBeside = (cloneDir) => {
+    const abs = path.resolve(path.join(cloneDir, '..', 'escape.mjs'))
+    fs.writeFileSync(abs, ESCAPE_BODY)
+    STRAY.push(abs)
+    return abs
+  }
+
+  // (a) a relative entry that climbs out of the clone.
+  {
+    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
+    escapeBeside(clone)
+    const r = await resolves(
+      () => link({ bullet: '`foo(a)`', files: ['../escape.mjs'], cloneDir: clone, exec: boom }),
+      'leg (a) ../escape.mjs')
+    shape(r, 'leg (a) ../escape.mjs')
+    assert.equal(r.status, 'unlinked',
+      `[M1, M2] an entry that climbs out of the clone leaves no candidate, which is unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('../escape.mjs: outside the clone'),
+      `[M1, M2] … with the detail carrying "../escape.mjs: outside the clone" — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (a) [M1, M2] ../escape.mjs is skipped as outside the clone, no subprocess')
+  }
+
+  // (b) the same file named by its absolute path.
+  {
+    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
+    const abs = escapeBeside(clone)
+    const r = await resolves(
+      () => link({ bullet: '`foo(a)`', files: [abs], cloneDir: clone, exec: boom }),
+      'leg (b) absolute escape.mjs')
+    shape(r, 'leg (b) absolute escape.mjs')
+    assert.equal(r.status, 'unlinked',
+      `[M1, M2] an absolute entry outside the clone is skipped alike — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('outside the clone'),
+      `[M1, M2] … with "outside the clone" in the detail — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(detailOf(r).includes(abs),
+      `[M1, M2] … and the absolute path it was given — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(detailOf(r).includes(`${abs}: outside the clone`),
+      `[M1] the skip is pushed as "<rel>: outside the clone" — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (b) [M1, M2] an absolute entry outside the clone is skipped by name')
+  }
+
+  // (c) two escaping entries: every one of them is named in the detail.
+  {
+    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
+    escapeBeside(clone)
+    const r = await resolves(
+      () => link({ bullet: '`foo(a)`', files: ['../escape.mjs', '/etc/passwd'], cloneDir: clone, exec: boom }),
+      'leg (c) ../escape.mjs + /etc/passwd')
+    shape(r, 'leg (c) ../escape.mjs + /etc/passwd')
+    assert.equal(r.status, 'unlinked',
+      `[M1, M2] when every entry is skipped the answer is unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('../escape.mjs: outside the clone'),
+      `[M2] … with each skipped entry's reason: "../escape.mjs: outside the clone" — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(detailOf(r).includes('/etc/passwd: '),
+      `[M2] … and "/etc/passwd: " with its own reason — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (c) [M1, M2] every skipped entry is named in the unlinked detail')
+  }
+
+  // (d) an in-clone candidate beside an escaping entry: one subprocess, for
+  //     the in-clone file.
+  {
+    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
+    escapeBeside(clone)
+    const calls = []
+    const recorder = (cmd, argv, opts) => {
+      calls.push({ cmd, argv: Array.isArray(argv) ? argv.slice() : argv, opts: opts || {} })
+      return Promise.resolve({
+        code: 0,
+        stdout: `${JSON.stringify({ has: true, length: 1, names: ['foo'] })}\n`,
+        stderr: '',
+      })
+    }
+    const r = await resolves(
+      () => link({ bullet: '`foo(a)`', files: ['../escape.mjs', 'src/foo.mjs'], cloneDir: clone, exec: recorder }),
+      'leg (d) escape beside src/foo.mjs')
+    shape(r, 'leg (d) escape beside src/foo.mjs')
+    assert.equal(r.status, 'resolved',
+      `[M2] the answer is the in-clone candidate's own — got ${r.status} (${detailOf(r)})`)
+    assert.equal(calls.length, 1,
+      `[M1, M2] exec is called exactly once, for the in-clone file — got ${calls.length} call(s): ${JSON.stringify(calls.map((c) => c.cmd))}`)
+    const argvText = [calls[0].cmd, ...(calls[0].argv || [])].map(String).join(' ')
+    assert.ok(argvText.includes('src/foo.mjs'),
+      `[M2] … and that call is for src/foo.mjs — got ${JSON.stringify(argvText.slice(0, 400))}`)
+    assert.ok(!argvText.includes('escape.mjs'),
+      `[M1] … never for the escaping entry — escape.mjs appears in ${JSON.stringify(argvText.slice(0, 400))}`)
+    ok('task 3 (d) [M1, M2] one subprocess, for the in-clone candidate only')
+  }
+
+  // (e) the rule is the path, not the filesystem: an escaping entry that does
+  //     not exist is still "outside the clone", never "not in the clone".
+  {
+    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
+    const r = await resolves(
+      () => link({ bullet: '`foo(a)`', files: ['../nope.mjs'], cloneDir: clone, exec: boom }),
+      'leg (e) ../nope.mjs')
+    shape(r, 'leg (e) ../nope.mjs')
+    assert.equal(r.status, 'unlinked',
+      `[M1] an escaping entry that does not exist is unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('../nope.mjs: outside the clone'),
+      `[M1] … skipped as "../nope.mjs: outside the clone", the escape test running before the filesystem is consulted — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(!detailOf(r).includes('not in the clone'),
+      `[M1] … and never "not in the clone", which would mean the filesystem was consulted first — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (e) [M1] the escape test runs before the filesystem is consulted')
+  }
+
+  // The Claim's boundary: `abs` must equal the root or begin with the root
+  // plus `path.sep`, so a sibling directory whose name merely starts with the
+  // clone's is outside it.
+  {
+    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
+    const sibling = `../${path.basename(clone)}-next/src/foo.mjs`
+    const r = await resolves(
+      () => link({ bullet: '`foo(a)`', files: [sibling], cloneDir: clone, exec: boom }),
+      'leg (e) sibling prefix')
+    shape(r, 'leg (e) sibling prefix')
+    assert.equal(r.status, 'unlinked',
+      `[M1] a sibling directory sharing the clone's name prefix is outside the clone — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes(`${sibling}: outside the clone`),
+      `[M1] … the root match is root or root + path.sep, not a bare string prefix — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 [M1] a sibling sharing the clone name prefix is outside the clone')
+  }
+
+  // ── M3: the empty-stderr fallback names the bound ───────────────────────
+  const seam = checkoutOf({
+    'src/foo.mjs': 'export function foo (a) { return a }\n',
+    'pkg/mod.py': 'def foo(a):\n    return a\n',
+  })
+  const seamExec = (res) => () => Promise.resolve(res)
+  const SEAM_MS = 500
+
+  // (f) `.mjs`, nothing on stdout and nothing on stderr.
+  {
+    const r = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['src/foo.mjs'],
+      cloneDir: seam,
+      exec: seamExec({ code: null, stdout: '', stderr: '' }),
+      timeoutMs: SEAM_MS,
+    })
+    shape(r, 'leg (f) mjs seam, no JSON, empty stderr')
+    assert.equal(r.status, 'unlinked',
+      `[M3] a subprocess that printed no JSON is unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes(`node produced no JSON within ${SEAM_MS}ms`),
+      `[M3] … with "node produced no JSON within ${SEAM_MS}ms" in the detail — got ${JSON.stringify(detailOf(r))}`)
+    assert.equal(detailOf(r), `src/foo.mjs: node produced no JSON within ${SEAM_MS}ms`,
+      `[M3] the detail is "<rel>: node produced no JSON within <timeoutMs>ms" — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (f) [M3] an .mjs seam that reports nothing names node and the bound')
+  }
+
+  // (g) the same, for `.py`.
+  {
+    const r = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['pkg/mod.py'],
+      cloneDir: seam,
+      exec: seamExec({ code: null, stdout: '', stderr: '' }),
+      timeoutMs: SEAM_MS,
+    })
+    shape(r, 'leg (g) py seam, no JSON, empty stderr')
+    assert.equal(r.status, 'unlinked',
+      `[M3] a python3 subprocess that printed no JSON is unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes(`python3 produced no JSON within ${SEAM_MS}ms`),
+      `[M3] … with "python3 produced no JSON within ${SEAM_MS}ms" in the detail — got ${JSON.stringify(detailOf(r))}`)
+    assert.equal(detailOf(r), `pkg/mod.py: python3 produced no JSON within ${SEAM_MS}ms`,
+      `[M3] the detail is "<rel>: python3 produced no JSON within <timeoutMs>ms" — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (g) [M3] a .py seam that reports nothing names python3 and the bound')
+  }
+
+  // (h) whitespace-only stderr is empty, and the code is irrelevant.
+  {
+    const r = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['src/foo.mjs'],
+      cloneDir: seam,
+      exec: seamExec({ code: 1, stdout: '', stderr: '  \n' }),
+      timeoutMs: SEAM_MS,
+    })
+    shape(r, 'leg (h) whitespace-only stderr')
+    assert.equal(r.status, 'unlinked',
+      `[M3] a whitespace-only stderr is still unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes(`within ${SEAM_MS}ms`),
+      `[M3] stderr that is empty after trimming takes the no-JSON detail, whatever code is — got ${JSON.stringify(detailOf(r))}`)
+    assert.equal(detailOf(r), `src/foo.mjs: node produced no JSON within ${SEAM_MS}ms`,
+      `[M3] … the whole detail, code 1 and all — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (h) [M3] whitespace-only stderr is empty, whatever the exit code')
+  }
+
+  // (i) a killed result, and a signalled one, keep the timeout wording.
+  {
+    const killed = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['src/foo.mjs'],
+      cloneDir: seam,
+      exec: seamExec({ code: 0, stdout: '', stderr: '', killed: true }),
+      timeoutMs: SEAM_MS,
+    })
+    shape(killed, 'leg (i) killed')
+    assert.equal(killed.status, 'unlinked',
+      `[M3] a killed subprocess is unlinked — got ${killed.status} (${detailOf(killed)})`)
+    assert.ok(detailOf(killed).includes(`timeout after ${SEAM_MS}ms`),
+      `[M3] … keeping "timeout after ${SEAM_MS}ms" — got ${JSON.stringify(detailOf(killed))}`)
+    assert.ok(!detailOf(killed).includes('within'),
+      `[M3] … and never the no-JSON wording — got ${JSON.stringify(detailOf(killed))}`)
+    assert.equal(detailOf(killed), `src/foo.mjs: timeout after ${SEAM_MS}ms`,
+      `[M3] the killed detail is "<rel>: timeout after <timeoutMs>ms" — got ${JSON.stringify(detailOf(killed))}`)
+
+    const signalled = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['src/foo.mjs'],
+      cloneDir: seam,
+      exec: seamExec({ code: null, stdout: '', stderr: '', signal: 'SIGKILL' }),
+      timeoutMs: SEAM_MS,
+    })
+    shape(signalled, 'leg (i) signalled')
+    assert.equal(signalled.status, 'unlinked',
+      `[M3] a signalled subprocess is unlinked — got ${signalled.status} (${detailOf(signalled)})`)
+    assert.ok(detailOf(signalled).includes(`timeout after ${SEAM_MS}ms`),
+      `[M3] … keeping "timeout after ${SEAM_MS}ms" — got ${JSON.stringify(detailOf(signalled))}`)
+    assert.ok(!detailOf(signalled).includes('within'),
+      `[M3] … and never the no-JSON wording — got ${JSON.stringify(detailOf(signalled))}`)
+    assert.equal(detailOf(signalled), `src/foo.mjs: timeout after ${SEAM_MS}ms`,
+      `[M3] the signalled detail is "<rel>: timeout after <timeoutMs>ms" — got ${JSON.stringify(detailOf(signalled))}`)
+    ok('task 3 (i) [M3] killed and signalled results keep the timeout wording')
+  }
+
+  // (j) a non-empty stderr still keeps its first line, as before.
+  {
+    const r = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['src/foo.mjs'],
+      cloneDir: seam,
+      exec: seamExec({ code: 1, stdout: '', stderr: 'boom line\nsecond' }),
+      timeoutMs: SEAM_MS,
+    })
+    shape(r, 'leg (j) non-empty stderr')
+    assert.equal(r.status, 'unlinked',
+      `[M3] a subprocess with stderr is unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('boom line'),
+      `[M3] … keeping the first line of its stderr — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(!detailOf(r).includes('within'),
+      `[M3] … not the no-JSON wording — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(!detailOf(r).includes('second'),
+      `[M3] … and only the first line — got ${JSON.stringify(detailOf(r))}`)
+    assert.equal(detailOf(r), 'src/foo.mjs: boom line',
+      `[M3] the detail is "<rel>: <first line of stderr>" — got ${JSON.stringify(detailOf(r))}`)
+    ok('task 3 (j) [M3] a non-empty stderr keeps its first line, as before')
+  }
+
+  // (k) the real thing: a module that neither exits nor prints still answers
+  //     at the timeout, under the module's own `defaultExec`.
+  {
+    const HANG = [
+      '// Neither exits nor prints: the interval keeps the loop alive and the',
+      '// awaited promise never settles.',
+      'setInterval(() => {}, 1000)',
+      'export function foo (a) { return a }',
+      'await new Promise(() => {})',
+      '',
+    ].join('\n')
+    const hung = checkoutOf({ 'src/hang.mjs': HANG })
+    const started = Date.now()
+    const r = await linkProduces({
+      bullet: '`foo(a)`',
+      files: ['src/hang.mjs'],
+      cloneDir: hung,
+      exec: defaultExec,
+      timeoutMs: SEAM_MS,
+    })
+    const elapsed = Date.now() - started
+    shape(r, 'leg (k) real hang')
+    assert.equal(r.status, 'unlinked',
+      `[M3] the real hang case still answers unlinked — got ${r.status} (${detailOf(r)})`)
+    assert.ok(detailOf(r).includes('timeout'),
+      `[M3] … with timeout in the detail — got ${JSON.stringify(detailOf(r))}`)
+    assert.ok(elapsed < 5000,
+      `[M3] … within five seconds — took ${elapsed}ms`)
+    ok('task 3 (k) [M3] the real hang case still answers unlinked at the timeout')
+  }
+
+  removeStray()
 }
 
 cleanup()

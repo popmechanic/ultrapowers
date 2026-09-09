@@ -84,6 +84,20 @@ export const defaultExec = (cmd, argv, opts = {}) =>
 
 const firstLine = (s) => String(s || '').split('\n').map((l) => l.trim()).find(Boolean) || ''
 
+// Why a spawning linker could not answer, when the kill tests have already
+// passed. The first line of stderr is the reason whenever there is one. When
+// there is none — a seam-shaped exec that reports a kill as nothing at all, the
+// way a stubbed or minimal `exec` can — a run that printed no JSON line is
+// named for what it looks like from here: the bound it did not print within.
+// `res.code` is not the story then; a quiet non-zero exit and a quiet `null`
+// are the same silence. Only a run that *did* print its JSON and still exited
+// non-zero keeps the exit-code wording.
+const whyQuiet = (res, out, prog, timeoutMs) =>
+  firstLine(res && res.stderr) ||
+  (out
+    ? prog + ' exited ' + (res ? res.code : 'nothing')
+    : prog + ' produced no JSON within ' + timeoutMs + 'ms')
+
 // The last line of stdout that parses as a JSON object carrying `key`. The
 // scripts print exactly one such line; anything the imported module logged
 // first is ignored.
@@ -195,8 +209,7 @@ const linkMjs = async ({ symbol, arity, rel, abs, cloneDir, exec, timeoutMs }) =
   }
   const out = jsonLine(res && res.stdout, 'has')
   if (!out || (res && res.code !== 0)) {
-    const why = firstLine(res && res.stderr) || 'node exited ' + (res ? res.code : 'nothing')
-    return answer('unlinked', symbol, rel + ': ' + why)
+    return answer('unlinked', symbol, rel + ': ' + whyQuiet(res, out, 'node', timeoutMs))
   }
   if (out.has) return withArity(symbol, rel, arity, out.length, 'exports')
   if (wordRe(symbol).test(readText(abs))) {
@@ -238,8 +251,7 @@ const linkPy = async ({ symbol, arity, rel, abs, cloneDir, exec, timeoutMs }) =>
   }
   const out = jsonLine(res && res.stdout, 'names')
   if (!out || (res && res.code !== 0)) {
-    const why = firstLine(res && res.stderr) || 'python3 exited ' + (res ? res.code : 'nothing')
-    return answer('unlinked', symbol, rel + ': ' + why)
+    return answer('unlinked', symbol, rel + ': ' + whyQuiet(res, out, 'python3', timeoutMs))
   }
   if (out.names.includes(symbol)) {
     const required = out.arity && Object.prototype.hasOwnProperty.call(out.arity, symbol)
@@ -361,6 +373,14 @@ export const linkProduces = async ({ bullet, files, cloneDir, exec, timeoutMs } 
   }
 
   // The candidates: a language this module links, present in the clone.
+  //
+  // The clone boundary is checked before the filesystem is: an entry that
+  // resolves outside `cloneDir` is not a file of the task's own clone, so it is
+  // never a candidate and no subprocess is ever spawned on it — whether or not
+  // something exists at that path. A relative entry that climbs out
+  // (`../escape.mjs`) and an absolute entry pointing elsewhere are the same
+  // case; an absolute entry inside the clone passes.
+  const root = path.resolve(cloneDir || '.')
   const list = Array.isArray(files) ? files : []
   const candidates = []
   const skipped = []
@@ -369,7 +389,11 @@ export const linkProduces = async ({ bullet, files, cloneDir, exec, timeoutMs } 
     if (!rel) continue
     const ext = path.extname(rel).toLowerCase()
     if (!LINKABLE.has(ext)) { skipped.push(rel + ': no linker for ' + (ext || 'that file')); continue }
-    const abs = path.resolve(cloneDir || '.', rel)
+    const abs = path.resolve(root, rel)
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+      skipped.push(rel + ': outside the clone')
+      continue
+    }
     if (!isFile(abs)) { skipped.push(rel + ': not in the clone'); continue }
     candidates.push({ rel, abs, ext })
   }

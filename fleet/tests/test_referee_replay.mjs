@@ -631,5 +631,143 @@ for (const name of fixtures) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Task 2 (#818) — "A patch the referee cannot read is a loud failure"
+//
+// A `patchPath` that is given and cannot be read is a loud failure, never a
+// clean record. These legs are #818's Proof (a)..(g) against its M1..M4:
+//
+//   M1  `readPatch(patchPath)`, given a non-empty string whose
+//       `fs.readFileSync` throws, throws an `Error` whose message is
+//       `referee: cannot read the captured patch <patchPath>: <err.message>`,
+//       and `referee({…, patchPath})` rejects with that error.
+//   M2  `referee()` called with `patchPath` `undefined`, `null` or `''`
+//       rejects with an `Error` whose message contains `no captured patch`
+//       and the task id.
+//   M3  When `referee()` rejects for either reason, nothing is written:
+//       `<runDir>/referee/` does not exist afterwards.
+//   M4  A readable `patchPath` behaves as before.
+//
+// The module guard above (leg (n)) still stands over the rethrow: it adds no
+// import, no subprocess and no socket.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The two shared literals the Claim spells out.
+const CANNOT_READ = 'referee: cannot read the captured patch '
+const NO_PATCH = 'no captured patch'
+
+// The opts `replay` builds for `clean-1`, reused verbatim by the rows that must
+// hand `patchPath` over as `undefined`, `null` or `''`: `replay`'s own
+// `over.patchPath ?? <fixture>` would substitute the fixture's patch for the
+// first two, so those rows call `referee()` directly. `head`, `task` and the
+// stub linker are the ones an earlier `replay` already built.
+const seed = await replay('clean-1')
+const cleanOpts = (patchPath, runDir) => {
+  const opts = {
+    task: seed.task,
+    baseSha: seed.head.base,
+    headSha: seed.head.head,
+    cloneDir: seed.head.dir,
+    siblingFiles: seed.spec.siblingFiles ?? [],
+    exam: seed.spec.exam,
+    examEvidence: seed.spec.examEvidence,
+    n: 0,
+    linker: stubLinker(),
+    runDir,
+  }
+  // Assigned last and unconditionally, so `undefined` is handed over as the
+  // value of a key that is present — the shape the engine's caller produces.
+  opts.patchPath = patchPath
+  return opts
+}
+
+// ═══ (a) [M1, M3] a patchPath that does not exist ═══════════════════════════
+{
+  const leg = '(a) [M1, M3] clean-1 with a patchPath that does not exist'
+  const runDir = scratch('run')
+  const patchPath = path.join(scratch('patch'), 'absent.diff')
+  assert.ok(!fs.existsSync(patchPath), `${leg}: the rig never wrote that path`)
+  await assert.rejects(
+    () => replay('clean-1', { patchPath, runDir }),
+    (err) => {
+      assert.ok(err instanceof Error,
+        `${leg}: the rejection is an Error, saw ${JSON.stringify(String(err))}`)
+      assert.ok(String(err.message).startsWith(CANNOT_READ),
+        `${leg}: the message starts \`${CANNOT_READ}\`; saw ${JSON.stringify(err.message)}`)
+      contains(err.message, patchPath, leg, 'the message names the unreadable path')
+      contains(err.message, 'ENOENT', leg, "the underlying error's message travels with it")
+      return true
+    },
+    `${leg}: an unreadable patch rejects rather than replaying an empty one`)
+  assert.ok(!fs.existsSync(path.join(runDir, 'referee')),
+    `${leg}: [M3] nothing is written — <runDir>/referee does not exist afterwards`)
+}
+
+// ═══ (b) [M1, M3] a patchPath that is a directory ═══════════════════════════
+{
+  const leg = '(b) [M1, M3] clean-1 with a patchPath that is a directory'
+  const runDir = scratch('run')
+  const dirPath = scratch('dir')
+  assert.ok(fs.statSync(dirPath).isDirectory(), `${leg}: the rig made a real directory`)
+  await assert.rejects(
+    () => replay('clean-1', { patchPath: dirPath, runDir }),
+    (err) => {
+      assert.ok(err instanceof Error,
+        `${leg}: the rejection is an Error, saw ${JSON.stringify(String(err))}`)
+      assert.ok(String(err.message).startsWith(CANNOT_READ),
+        `${leg}: the message starts \`${CANNOT_READ}\`; saw ${JSON.stringify(err.message)}`)
+      contains(err.message, dirPath, leg, "the message names the directory it could not read")
+      return true
+    },
+    `${leg}: a directory is a read that throws, so it rejects too`)
+  assert.ok(!fs.existsSync(path.join(runDir, 'referee')),
+    `${leg}: [M3] nothing is written — <runDir>/referee does not exist afterwards`)
+}
+
+// ═══ (c)(d)(e) [M2] and (f) [M3] the patchPath that was never given ═════════
+for (const [letter, label, value] of [
+  ['c', 'undefined', undefined],
+  ['d', 'null', null],
+  ['e', "''", ''],
+]) {
+  const leg = `(${letter}) [M2] clean-1 called directly with patchPath ${label}`
+  const runDir = scratch('run')
+  await assert.rejects(
+    () => referee(cleanOpts(value, runDir)),
+    (err) => {
+      assert.ok(err instanceof Error,
+        `${leg}: the rejection is an Error, saw ${JSON.stringify(String(err))}`)
+      contains(err.message, NO_PATCH, leg,
+        `the message says \`${NO_PATCH}\``)
+      contains(err.message, seed.task.id, leg,
+        'the message names the task the call was for')
+      return true
+    },
+    `${leg}: an absent patchPath is an error, never a clean record`)
+  assert.ok(!fs.existsSync(path.join(runDir, 'referee')),
+    `(f) [M3] clean-1 with patchPath ${label}: the scratch runDir holds no ` +
+    'referee directory afterwards')
+}
+
+// ═══ (g) [M4] a readable patch behaves as before ════════════════════════════
+{
+  const leg = '(g) [M4] clean-1 with the fixture patch'
+  const runDir = scratch('run')
+  const { result, task } = await replay('clean-1', { runDir })
+  assert.deepEqual(result.findings, [],
+    `${leg}: the clean-1 replay still yields no finding, saw ${JSON.stringify(result.findings)}`)
+  const record = path.join(runDir, 'referee', `task-${task.id}-0.json`)
+  assert.ok(fs.existsSync(record),
+    `${leg}: and still writes <runDir>/referee/task-<id>-0.json; missing ${record}`)
+
+  const zero = path.join(scratch('patch'), 'zero-byte.diff')
+  fs.writeFileSync(zero, '')
+  assert.equal(fs.statSync(zero).size, 0, `${leg}: the rig wrote a zero-byte file`)
+  const { result: onZero } = await replay('clean-1', { patchPath: zero })
+  assert.deepEqual(onZero.findings, [],
+    `${leg}: an existing zero-byte patch is readable, so it resolves with no finding, saw ` +
+    JSON.stringify(onZero.findings))
+}
+
 fs.rmSync(SCRATCH, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

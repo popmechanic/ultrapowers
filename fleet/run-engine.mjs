@@ -98,6 +98,24 @@ export const looksStructural = (msg) =>
   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
 export const isInfraFault = (msg) => String(msg).startsWith('AGENT_NULL')
 
+// #825 — does this set of changed paths change what the project installs? The
+// names are `derive_bootstrap_cmd`'s ladder (skills/ultrapowers/scripts/
+// ultra_run.py) plus `pytest.ini` and the `requirements*.txt` glob: if the
+// bootstrap would read a file, a fold that touched it invalidates the install
+// the setup loop made at BASE. BASENAME at any depth — the TinyApp case was
+// `client/package.json`, not a root manifest — and the whole basename, so
+// `package.json.bak` and `requirements.md` are not manifests.
+const BOOTSTRAP_MANIFESTS = new Set([
+  'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb',
+  'uv.lock', 'pyproject.toml', 'pytest.ini',
+])
+const REQUIREMENTS_TXT = /^requirements.*\.txt$/
+export const bootstrapManifestChanged = (paths) =>
+  (Array.isArray(paths) ? paths : []).some((p) => {
+    const base = String(p == null ? '' : p).split('/').pop()
+    return BOOTSTRAP_MANIFESTS.has(base) || REQUIREMENTS_TXT.test(base)
+  })
+
 // Same chunking constant as waves.js: intra-wave dependency re-checks and the
 // lost-coordinates sweep run at chunk boundaries, so the value is part of the
 // ported semantics (the actual process-level width bound is the caller's
@@ -2192,7 +2210,36 @@ export async function runEngine({
         ': emit-weave failed (exit ' + r.code + ') — weave persistence skipped, fold unaffected')
     }
     await git(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
-    let suite = await sh(testCmd, integ)
+    // #825 — the candidate's own install, before its suite. The setup loop
+    // bootstrapped this clone at BASE and knows nothing about a manifest the
+    // fold changed, so a suite run straight off the read-tree fails on a
+    // missing module and hands the reconcile agent a module-not-found line
+    // instead of the install's own error. This is the ONLY new site: the adopt
+    // below is `reset --hard` in this same directory and the install is
+    // untracked, so it survives adoption (and the TEST_FAILED path's
+    // `git clean -fd`, which has no `-x`) — nothing to re-run afterwards.
+    let bootstrapRed = null
+    if (bootstrapCmd) {
+      const changed = await git(['diff', '--name-only', prevHead, candidate], integ)
+      if (bootstrapManifestChanged(changed.split('\n').map((s) => s.trim()).filter(Boolean))) {
+        const b = await sh(bootstrapCmd, integ)
+        if (b.code !== 0) {
+          // Unlike the three older bootstrap sites, this one does not shrug and
+          // carry on: a candidate whose install broke is RED on the install's
+          // output, so the reconcile agent reads the real error.
+          judgmentCalls.push('wave ' + waveNumber + ': candidate bootstrap failed (exit ' +
+            b.code + ') — the candidate is red on the install, not on its suite: ' +
+            tail(b.stderr || b.stdout, 300))
+          log('wave ' + waveNumber + ' candidate bootstrap failed (exit ' + b.code + ')')
+          bootstrapRed = b
+        }
+      }
+    }
+    // A failed bootstrap stands IN PLACE of the suite run — `suite` carries the
+    // install's stdout/stderr, so every downstream reader (the reconcile
+    // prompt, the TEST_FAILED detail) quotes the install and none of them
+    // quotes a suite that never ran on this candidate.
+    let suite = bootstrapRed || await sh(testCmd, integ)
     if (suite.code === 0) {
       await git(['reset', '--hard', candidate], integ)
       await emitWeave(candidate)

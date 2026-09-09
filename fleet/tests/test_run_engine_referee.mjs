@@ -587,5 +587,52 @@ const examTask = (over = {}) =>
   }
 }
 
+// ── (i) task 2 (#818): an unreadable capture is a driver error [M5] ─────────
+// "A patch the referee cannot read is a loud failure": when the captured patch
+// is gone by the time the pre-review pass reaches the referee, `referee()`
+// rejects, the rejection propagates out of `runTaskInner` to `runTask`'s catch,
+// and the task ends as any driver error ends — retried once at the same tier
+// and, on the second throw, `failed`/`agent-error` with the message in `notes`.
+// The record of a driver error, never of a review.
+//
+// The way a sim makes a capture vanish: the pre-review pass runs the task's
+// `Run:` commands (`bash -lc`, cwd the task clone) BEFORE `runReferee`, the
+// clone is `<runDir>/clones/task-T1` and the capture is
+// `<runDir>/patches/task-T1.patch`, so this task deletes its own capture on
+// every pass. The retry re-captures and re-deletes, so the second throw lands
+// the row. No engine change belongs to task 2 — this is that existing route,
+// observed through the seam.
+{
+  const r = await drive('i1', [mkTask('T1', ['one.txt'], {
+    proofRuns: ['rm -f "$PWD/../../patches/task-T1.patch"'],
+    proofTests: [],
+  })], { impl: (cwd) => write(cwd, 'one.txt', 'one\n') })
+
+  const row = r.row('T1')
+  assert.equal(row.status, 'failed',
+    '[M5] a capture the referee cannot read fails the task: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'agent-error',
+    '[M5] as a driver error, not as a review verdict: ' + JSON.stringify(row))
+  assert.ok(String(row.notes).includes('cannot read the captured patch'),
+    '[M5] the rethrown message is the note: ' + row.notes)
+  assert.ok(String(row.notes).includes('task-T1.patch'),
+    '[M5] naming the capture it could not read: ' + row.notes)
+  assert.deepEqual(r.of('review:'), [],
+    '[M5] and no reviewer was ever dispatched for it: ' + r.labels.join(','))
+
+  const dir = path.join(r.runDir, 'referee')
+  const records = fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((f) => /^task-T1-.*\.json$/.test(f))
+    : []
+  assert.deepEqual(records, [],
+    '[M5] and nothing was written under <runDir>/referee for it — the read stays ' +
+    'ahead of the write: ' + JSON.stringify(records))
+
+  const calls = r.report.judgmentCalls.filter(
+    (l) => l.includes('agent error') && l.includes('cannot read the captured patch'))
+  assert.ok(calls.length >= 1,
+    '[M5] the report says which task erred and why: ' + JSON.stringify(r.report.judgmentCalls))
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

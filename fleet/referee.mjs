@@ -96,12 +96,24 @@ const parsePatch = (text) => {
   return files
 }
 
-const readPatch = (patchPath) => {
-  if (!patchPath) return []
+// The patch is the referee's sole input for the footprint and count checks
+// (#729 §3.1), so a patch it cannot read is a loud failure and never a clean
+// record: an empty `findings` here would be the referee lying by omission about
+// checks it never ran. A missing `patchPath` names the task, because the
+// engine's judgment call for the error has to say which task lost its capture;
+// a read that throws rethrows with the path and the underlying reason. Both
+// land before any check runs and before the `runDir` write, so a throw leaves
+// nothing on disk.
+const readPatch = (patchPath, taskId) => {
+  if (!patchPath) {
+    throw new Error('referee: no captured patch for task ' + str(taskId))
+  }
+  const p = String(patchPath)
   try {
-    return parsePatch(fs.readFileSync(String(patchPath), 'utf8'))
-  } catch {
-    return []
+    return parsePatch(fs.readFileSync(p, 'utf8'))
+  } catch (error) {
+    throw new Error(
+      'referee: cannot read the captured patch ' + p + ': ' + (error?.message ?? error))
   }
 }
 
@@ -455,6 +467,8 @@ const taskFiles = (task) => {
  *   nothing is written).
  * @returns {Promise<{task: string, n: number, findings: object[],
  *   settled: object[], linker: object, ms: number}>}
+ * @throws rejects, writing nothing, when `patchPath` is absent or unreadable —
+ *   the driver-error record the engine already keeps for a thrown referee.
  */
 export const referee = async (opts = {}) => {
   const started = Date.now()
@@ -462,7 +476,7 @@ export const referee = async (opts = {}) => {
   const task = (options.task && typeof options.task === 'object') ? options.task : {}
   const files = taskFiles(task)
 
-  const patch = readPatch(options.patchPath)
+  const patch = readPatch(options.patchPath, task.id)
   const own = new Set(files.concat(arr(task.proofTests).map(str)))
   const sibling = new Set()
   for (const group of arr(options.siblingFiles)) {
