@@ -1,0 +1,43 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "interface",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "Produces: none — fleet/publish-fold.mjs: declared, not exported; fleet/tests/test_sandbox_boot_merge.mjs: declared, not exported"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `fleet/tests/test_sandbox_boot_merge.mjs`"
+    },
+    {
+      "check": "exam-files",
+      "detail": "no exam ran (exam: null); the task proceeds unexamined by driver decision"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +0 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/publish-fold.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_merge.mjs": "mjs"
+  },
+  "ms": 47802
+}
