@@ -1,0 +1,132 @@
+{
+  "integrationBranch": "ultra/integration-run-82",
+  "baseSha": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "ca9c087e4ff41d8490ca0c89c8f878648e95ce6e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-82/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "`placeholderLead` is exported from fleet/referee-linker.mjs but nothing outside the module imports it \u2014 the declared interface for this task is `Produces: PLACEHOLDER_TOKENS` only, and no leg of either sim reads `placeholderLead`. It is the module's only internal-use-only helper carrying an `export`, so it widens the public surface past what the task declares without buying a test. Dropping the keyword (the function stays exactly where it is, still called from `linkProduces`) keeps the module's exported names equal to what the plan promised. Nothing in the Proof breaks: the M5 legs import `PLACEHOLDER_TOKENS`, not this.; Extra public surface beyond the declared interface: `fleet/referee-linker.mjs` exports `placeholderLead` as well as `PLACEHOLDER_TOKENS`, but the task's Produces slot names only `PLACEHOLDER_TOKENS`, and no test or caller in the diff (or elsewhere in the patch) reads `placeholderLead` \u2014 it is used once, inside `linkProduces` in the same module. The `export` keyword adds an unrequested API another module can start depending on; the helper itself is right where it belongs. Dropping the keyword changes no behavior and no leg (leg (p) reads only `refereeLinker.PLACEHOLDER_TOKENS`).; Cross-runtime coupling in the node linker sim: legs (p), (q) and (t) of `fleet/tests/test_referee_linker.mjs` now read `skills/ultrapowers/scripts/compile_plan.py` from disk and shell out to `python3 -m pytest tests/test_compile_plan.py -k test_placeholder_token_set`, so `node fleet/tests/test_referee_linker.mjs` fails on a tree where the Python toolchain or pytest is absent, or where the linker is exercised outside the repo root (leg (q) resolves ROOT as `HERE/../..`). This is plan-directed \u2014 the Proof's Legs list names exactly these as legs of the sim, and M5/M7 pin the compiler's spelling and `test_placeholder_token_set` \u2014 and the same facts are already covered independently by four `Run:` probes (grep, sed, and the pytest selection), all green in RUN EVIDENCE. Recorded for the operator: the JS suite is no longer self-contained. Nothing to change inside this task's FILES without dropping legs the plan requires.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-82/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1910 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n......................................                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1910 passed, 5 warnings in 468.81s (0:07:48) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_referee_linker.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_referee.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node --input-type=module -e \"import { PLACEHOLDER_TOKENS } from './fleet/referee-linker.mjs'; const a = [...PLACEHOLDER_TOKENS].sort().join(','); if (a !== 'n/a,na,none,nothing') { console.error(a); process.exit(1) }\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -c 'PLACEHOLDER_TOKENS = frozenset({\"nothing\", \"none\", \"n/a\", \"na\"})' skills/ultrapowers/scripts/compile_plan.py | grep -qx 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^def test_placeholder_token_set/,/^def /p' tests/test_compile_plan.py | grep -oE '\"(nothing|none|N/A|na)\"' | sort -u | wc -l | grep -qx 4",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_compile_plan.py -q -k test_placeholder_token_set -p no:cacheprovider",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed, 136 deselected in 0.02s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/referee.mjs fleet/run-engine.mjs skills/ultrapowers/scripts/compile_plan.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 222066,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "d85023648ac7abfaed5c5f74e052bc7b13cd6172",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-82/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-82/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.766,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

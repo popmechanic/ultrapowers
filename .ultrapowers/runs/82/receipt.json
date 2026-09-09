@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -122,7 +122,7 @@
       ]
     ],
     "waveLabels": [
-      "A placeholder Produces is unlinked before any file is r\u2026"
+      "A placeholder Produces is unlinked before any file is r…"
     ],
     "mode": "sequential",
     "degrade_reason": "Sequential mode: 1 implementation tasks",
@@ -131,7 +131,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The linker's four statuses stay `resolved`, `declared`, `missing`, `unlinked`, and their\n  grading order across candidates stays resolved > declared > unlinked > missing; a\n  placeholder answer is `unlinked`, never a fifth status.\n- Every existing leg of `fleet/tests/test_referee_linker.mjs` and\n  `fleet/tests/test_run_engine_referee.mjs` stays green; new legs are added beside them under a\n  comment naming the task, and the twelve `linker-*` fixture directories stay exactly twelve \u2014\n  no fixture is added for this task (the sim's inline `checkoutOf` is the shape).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The linker's four statuses stay `resolved`, `declared`, `missing`, `unlinked`, and their\n  grading order across candidates stays resolved > declared > unlinked > missing; a\n  placeholder answer is `unlinked`, never a fifth status.\n- Every existing leg of `fleet/tests/test_referee_linker.mjs` and\n  `fleet/tests/test_run_engine_referee.mjs` stays green; new legs are added beside them under a\n  comment naming the task, and the twelve `linker-*` fixture directories stay exactly twelve —\n  no fixture is added for this task (the sim's inline `checkoutOf` is the shape).\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- fleet/referee.mjs fleet/run-engine.mjs skills/ultrapowers/scripts/compile_plan.py",
@@ -146,11 +146,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-82/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-82/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-82/acceptance.log"
 }

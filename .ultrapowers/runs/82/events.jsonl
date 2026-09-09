@@ -38,3 +38,14 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/referee.mjs fleet/run-engine.mjs skills/ultrapowers/scripts/compile_plan.py","exit":0,"minor":false,"wave":1,"id":"01M23RFT7P0000XPJCYAG5D9NP","ts":1788980226294}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M23RFT7P00014ASCWPZ4XZYG","ts":1788980226294}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"caec7388-4414-4ff3-81da-f452024a11b4","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-82/clones/integration","model":"opus","id":"01M23RFT7Q0000574G51VKMA3X","ts":1788980226295}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"caec7388-4414-4ff3-81da-f452024a11b4","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3618,"output":5797,"cacheRead":353439,"cacheCreation":39005,"costUsd":0.5999107499999999,"models":["claude-opus-5"]},"id":"01M23RJ3PM000058CWTAZ18MFQ","ts":1788980301524}
+{"kind":"transcript:slice","label":"integration","sessionId":"caec7388-4414-4ff3-81da-f452024a11b4","bytes":11363,"id":"01M23RJ3PS0000YN51GZGR8TFR","ts":1788980301529}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M23RJ3Q20000RZZFYN4ZA80M","ts":1788980301538}
+{"kind":"driver:stage","stage":"finalize","id":"01M23RJ3RF00006N4N0TD2MJM2","ts":1788980301583}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-82/acceptance.log","id":"01M23RJ3T20000HJ5WHHKJVSJ8","ts":1788980301634}
+{"kind":"driver:stage","stage":"gate","id":"01M23RJ3T200019XKW0ETGXJXS","ts":1788980301634}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M23S0FVH00006ADBMB5F8797","ts":1788980772721}
+{"kind":"driver:stage","stage":"approve","id":"01M23S0FVH00019BT6VP1XNTCV","ts":1788980772721}
+{"kind":"driver:approved","stamp":"run-82","integrationBranch":"ultra/integration-run-82","id":"01M23S0FXV0000MX2THTDZY4RS","ts":1788980772795}
+{"kind":"run:open","runId":"run-82","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","source":"fleet/publish-fold.mjs","id":"01M23S0G3V0000FVJ4WH4XFRVV","ts":1788980772987}
+{"kind":"driver:publish-fold","run":"82","attempt":"1","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","tip":"a7b0ccc7be67194181f8f36d0b42f5181bf1ad2f","candidate":"c5bce8db563ea21e52700a14745c3faa652f652e","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M23SE7790000R107PFC5HG0T","ts":1788981222633}
