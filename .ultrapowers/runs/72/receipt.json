@@ -1,0 +1,263 @@
+{
+  "ok": true,
+  "stamp": "run-72",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-72"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The fold bootstraps a candidate whose manifest changed",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/reconcile.md",
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`bootstrapManifestChanged(paths: string[]) -> boolean`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A patch the referee cannot read is a loud failure",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/referee.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "A files entry cannot leave the clone, and the timeout detail names its bound",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/referee-linker.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The fold bootstraps a candidate whose manifest changed",
+          "files": [
+            "fleet/roles/reconcile.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_candidate_bootstrap.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`bootstrapManifestChanged(paths: string[]) -> boolean`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/reconcile.md",
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_candidate_bootstrap.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_candidate_bootstrap.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_candidate_bootstrap.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_together.mjs | grep -q 'ALL TESTS PASSED'",
+            "tr '\\n' ' ' < fleet/roles/reconcile.md | grep -qiE 'manifest[^.]*lockfile[^.]*install'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_candidate_bootstrap.mjs"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "A patch the referee cannot read is a loud failure",
+          "files": [
+            "fleet/referee.mjs",
+            "fleet/tests/test_referee_replay.mjs",
+            "fleet/tests/test_run_engine_referee.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/referee.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_referee_replay.mjs",
+            "fleet/tests/test_run_engine_referee.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_referee_replay.mjs && node fleet/tests/test_run_engine_referee.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_referee_replay.mjs | tail -1 | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_referee.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_referee_replay.mjs",
+            "fleet/tests/test_run_engine_referee.mjs"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "A files entry cannot leave the clone, and the timeout detail names its bound",
+          "files": [
+            "fleet/referee-linker.mjs",
+            "fleet/tests/test_referee_linker.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/referee-linker.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_referee_linker.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_referee_linker.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_referee_linker.mjs | tail -1 | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_referee_linker.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 3 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The verification periphery is frozen (0.1.0): the first Check pins the three gate scripts and the\n  compiler. The second pins the roles this plan does not own \u2014 only `reconcile.md` changes, by one\n  sentence.\n- The referee and the linker stay driver code: no model call, no network, no git write, no\n  `anthropic` SDK and no `ANTHROPIC_API_KEY` anywhere in `fleet/`. A subprocess the linker spawns\n  is `node` or `python3` on a file of the task's own clone, with a timeout, and nothing else \u2014 an\n  entry that resolves outside the clone is never that file.\n- Amendment 10 holds: models never run git; every git command in the sims is the sim's own.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/examiner.md fleet/roles/critic.md fleet/roles/fix.md fleet/roles/implementer.md fleet/roles/resolver.md fleet/roles/reviewer.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-72/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-72/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-72/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-72/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
