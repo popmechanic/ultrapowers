@@ -16,6 +16,14 @@
 
 ```
 
+## Publish fold
+
+- attempt 1: folded
+- attempt 2: folded
+- attempt 3: folded
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-76/.ultrapowers/runs/76/publish-fold/receipt.json
+
 ### Evidence
 
 https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-76/.ultrapowers/runs/76/
