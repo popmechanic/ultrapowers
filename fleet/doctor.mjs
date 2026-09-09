@@ -7,7 +7,7 @@
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * Seven rows, all reads, every one of them answered by exe.dev's own truth or
+ * Eight rows, all reads, every one of them answered by exe.dev's own truth or
  * by this laptop's own keychain:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
@@ -26,6 +26,10 @@
  *                 the diff against the flags recorded there. A flag that
  *                 appeared or vanished is a finding in a green row; only a
  *                 record the doctor cannot read turns it red.
+ *   render        when `~/.ultrapowers/fleet.json` carries a `render` object,
+ *                 the http-proxy integration it names exists at the edge. A
+ *                 fleet that names none is green and says so: the renderer is
+ *                 optional, and a run without it records the move as skipped.
  *
  * Running the doctor twice is the same as running it once: nothing here
  * creates, copies or removes a VM, and nothing writes a file. A red row names
@@ -61,10 +65,10 @@ const execFileAsync = promisify(execFile)
  *  would certify a fleet the launcher never looks at. */
 export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
 
-/** The seven rows, in the order the doctor reports them. Each id is also a
+/** The eight rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -212,6 +216,41 @@ export async function fleetConfigAccount ({ path: configPath } = {}) {
   return typeof account === 'string' && account !== '' ? account : null
 }
 
+/**
+ * The renderer the config file names: its top-level `render` object, as
+ * `{ integration, account }` — the exe.dev http-proxy integration that carries
+ * the Cloudflare bearer at the edge, and the Cloudflare account id the proxy
+ * address is built from. Null when the file is absent, is not JSON, is not a
+ * JSON object, carries no `render`, or carries one that lacks either string:
+ * half a renderer is no renderer, and a fleet that names none is green.
+ *
+ * It travels beside `loadFleetConfig` for the reason `fleetConfigAccount` does:
+ * `result.config` stays exactly the two keys the doctor itself reads, and the
+ * renderer reaches `doctor()` as its own option.
+ */
+export async function fleetConfigRender ({ path: configPath } = {}) {
+  const target = configPath ?? DEFAULT_CONFIG_PATH()
+  let text
+  try {
+    text = await fsp.readFile(target, 'utf8')
+  } catch {
+    return null
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const render = parsed.render
+  if (!render || typeof render !== 'object' || Array.isArray(render)) return null
+  const { integration, account } = render
+  if (typeof integration !== 'string' || integration === '') return null
+  if (typeof account !== 'string' || account === '') return null
+  return { integration, account }
+}
+
 /** The exec seam: resolve `{ code, stdout }`, never reject, so a test drives
  *  every row with a stub and the CLI drives them with a shell. stderr joins
  *  stdout because claude-token logs its status line there. */
@@ -282,10 +321,16 @@ function poolRow (res, config) {
 /** The two key names the doctor reads, as the row's detail spells them. */
 const READ_KEYS = Object.keys(DOCTOR_DEFAULTS)
 
-/** Every name the config file may carry: the two the doctor reads, and
- *  `account`, which the launcher reads to pick the keychain entry a run signs
- *  in with. A name outside this list is a key nothing reads. */
-const CONFIG_KEYS = Object.freeze([...READ_KEYS, 'account'])
+/** The names something outside the doctor reads, as the row's detail spells
+ *  them: `account` picks the keychain entry a run signs in with, and `render`
+ *  names the http-proxy integration a run's render move goes out through. Both
+ *  are the launcher's to read; the doctor only asks whether what they name is
+ *  there. */
+const LAUNCHER_KEYS = Object.freeze(['account', 'render'])
+
+/** Every name the config file may carry: the two the doctor reads, and the two
+ *  the launcher does. A name outside this list is a key nothing reads. */
+const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
 
 /**
  * The pool arithmetic, plus what the config file's own key names say about it.
@@ -295,11 +340,11 @@ const CONFIG_KEYS = Object.freeze([...READ_KEYS, 'account'])
  * outside `CONFIG_KEYS` is a key left by a fleet from before the lift — the
  * operator wrote a setting nothing consults, so the row is red until the file is
  * rewritten, and the detail names those keys by echoing the file rather than
- * spelling any of them here. `account` is not one of them: the doctor never
- * reads it, but the launcher does, and the `accounts` row says whether the
- * keychain holds the name it carries. A file that omits one of the two the
- * doctor does read is not wrong, only silent, so the green detail says which
- * default it fell back to.
+ * spelling any of them here. `account` and `render` are not among them: the
+ * doctor never reads either, but the launcher does, and the `accounts` and
+ * `render` rows say whether what they name is there. A file that omits one of
+ * the two the doctor does read is not wrong, only silent, so the green detail
+ * says which default it fell back to.
  */
 function capacityRow (res, config, configKeys = null) {
   const base = poolRow(res, config)
@@ -312,7 +357,8 @@ function capacityRow (res, config, configKeys = null) {
       'capacity',
       'missing',
       `~/.ultrapowers/fleet.json carries ${stale.join(', ')} — keys nothing reads; ` +
-        `it reads ${READ_KEYS.join(' and ')} only, and the launcher reads account. ${base.detail}`
+        `it reads ${READ_KEYS.join(' and ')} only, and the launcher reads ` +
+        `${LAUNCHER_KEYS.join(' and ')}. ${base.detail}`
     )
   }
   if (base.status !== 'ok') return base
@@ -695,6 +741,59 @@ function integrationsRow (found, target) {
   return row('integrations', 'ok', `no GitHub integration rides tag:${TAG}`)
 }
 
+// ── render ───────────────────────────────────────────────────────────────────
+
+/**
+ * The renderer is optional, so this row has a green "nothing to check" state:
+ * a fleet whose `~/.ultrapowers/fleet.json` carries no `render` object is `ok`
+ * and says `not configured`, and its runs record the render move as skipped.
+ * The doctor has two row states and `verdict = rows.every(ok)`, so a third
+ * state would have to be a colour, and this is the colour it would be.
+ *
+ * When the file does name one, presence by name in the listing is the whole
+ * check: the renderer reaches a sandbox through an http-proxy integration that
+ * injects the Cloudflare bearer at the edge, and `integrations test` answers
+ * nothing useful for an http-proxy (the header comment above says why), so the
+ * listing is the edge-side truth the doctor can read. A listing it could not
+ * read is red for the same reason the `claude` row is: the doctor cannot say
+ * the object is there.
+ */
+function rendererRow (found, render) {
+  if (render === null) {
+    return row(
+      'render',
+      'ok',
+      'not configured — ~/.ultrapowers/fleet.json names no render integration, and a run records the render move as skipped'
+    )
+  }
+  const name = render.integration
+  if (found === null) {
+    return row(
+      'render',
+      'missing',
+      `integrations list printed no readable JSON, so the ${name} integration ~/.ultrapowers/fleet.json names cannot be read off the edge`
+    )
+  }
+  if (!found.has(name)) {
+    return row(
+      'render',
+      'missing',
+      `no ${name} integration at the edge, which is the renderer ~/.ultrapowers/fleet.json names`
+    )
+  }
+  return row('render', 'ok', `${name} carries the renderer at the edge for account ${render.account}`)
+}
+
+/** The `render` option as a row can use it: the `{ integration, account }` pair
+ *  `fleetConfigRender` answers, or null for a fleet that names no renderer.
+ *  Anything else is a file that names half a renderer, which names none. */
+function wantRender (render) {
+  if (!render || typeof render !== 'object') return null
+  const { integration, account } = render
+  if (typeof integration !== 'string' || integration === '') return null
+  return { integration, account: typeof account === 'string' ? account : '' }
+}
+
 // ── the doctor ───────────────────────────────────────────────────────────────
 
 /**
@@ -709,11 +808,13 @@ function integrationsRow (found, target) {
  * the two keys the doctor reads.
  *
  * `account` is that file's own `account` — `fleetConfigAccount` for the same
- * path — and reaches the `accounts` row alone, for the same reason. `verbsPath`
- * overrides the verb record the `verb-drift` row reads.
+ * path — and reaches the `accounts` row alone, for the same reason. `render` is
+ * that file's own `render` — `fleetConfigRender` for the same path — and
+ * reaches the `render` row alone. `verbsPath` overrides the verb record the
+ * `verb-drift` row reads.
  */
 export async function doctor ({
-  config, exec, target = null, configKeys = null, account = null, verbsPath = null
+  config, exec, target = null, configKeys = null, account = null, render = null, verbsPath = null
 } = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
@@ -722,6 +823,7 @@ export async function doctor ({
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
   const wantAccount = account === null || account === undefined ? null : String(account)
+  const renderer = wantRender(render)
 
   const whoami = await run(READS.whoami)
   const billing = await run(READS.billing)
@@ -742,7 +844,8 @@ export async function doctor ({
     accountsRow(accounts, found, wantAccount),
     githubRow(github),
     integrationsRow(found, want),
-    verbDriftRow(drift)
+    verbDriftRow(drift),
+    rendererRow(found, renderer)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }
@@ -783,9 +886,10 @@ async function main (argv) {
   const config = await loadFleetConfig({ path: configPath })
   const configKeys = await fleetConfigKeys({ path: configPath })
   const account = await fleetConfigAccount({ path: configPath })
+  const render = await fleetConfigRender({ path: configPath })
   let result
   try {
-    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account })
+    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account, render })
   } catch (error) {
     process.stderr.write(`${error.message}\n`)
     process.exitCode = 2

@@ -64,6 +64,12 @@ if [ -n "${FLEET_BIN_DIR:-}" ]; then
   PATH="$FLEET_BIN_DIR:$PATH"
   export PATH
 fi
+# The one line the setup script writes for the renderer: `TINYAPP_RENDER_URL=…`,
+# exe.dev's edge address for browser rendering. `run_engine` sources it when it
+# is readable and hands the value to the engine unit in its own argv. The
+# production path is the literal; the variable exists so a sim can plant the
+# file, exactly like `FLEET_HOME` and `FLEET_BIN_DIR`.
+FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-/etc/fleet/render.env}"
 
 # systemd's user manager needs a bus address. The unit inherits one; a human
 # debugging over ssh does not, and `systemd-run --user` then dies with "Failed to
@@ -685,6 +691,16 @@ run_engine() {
   :
   log_auth_status
 
+  # The renderer address, when this box has one. An `if` and not a trailing
+  # `&& .`: a bare `&&` as a function's last command makes the function's exit
+  # status the test's, and a fleet with no such file would fail the boot under
+  # `set -e`. The argv entry below is spelled `${TINYAPP_RENDER_URL:-}` for the
+  # same reason — `set -u` kills a boot that reads an unset name.
+  if [ -r "$FLEET_RENDER_ENV" ]; then
+    . "$FLEET_RENDER_ENV"
+    log "render: sourced $FLEET_RENDER_ENV"
+  fi
+
   set +e
   # Its stdio redirected for the same reason: killing this loop leaves its
   # in-flight `sleep` behind for up to one interval, and a stray sleep holding
@@ -697,6 +713,7 @@ run_engine() {
       "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
       "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
       "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
+      "TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-}" \
       node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
       "$PLAN_FILE" "$RUN_ID" --repo "$TARGET_DIR" \
       ${knobs[@]+"${knobs[@]}"} \
@@ -767,7 +784,7 @@ evidence_lock() {
 evidence_unlock() { rmdir "$EVIDENCE_LOCK" 2>/dev/null || true; }
 
 collect_evidence() {
-  local dest receipt approve run_dir f
+  local dest receipt approve run_dir f rel
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   receipt="$(gate_receipt_path)"
@@ -806,6 +823,21 @@ collect_evidence() {
   if [ -d "$run_dir/referee" ]; then
     mkdir -p "$dest/referee"
     cp "$run_dir/referee/"*.json "$dest/referee/" 2>/dev/null || true
+  fi
+  # The state exams' own records — `task-<id>/<stem>-<pass>/<file>`, a tree of
+  # arbitrary depth rather than one flat directory, so the copy WALKS THE
+  # REGULAR FILES and rebuilds each one's relative path under the destination.
+  # Never `cp -R` of the directory, for the reason the transcripts give: this
+  # function runs again at every later transition, and a directory copy onto a
+  # destination that already holds `state-exams/` nests a second one inside the
+  # first. A run whose engine wrote none commits none — nothing here creates
+  # `$dest/state-exams` until there is a file to put in it.
+  if [ -d "$run_dir/state-exams" ]; then
+    find "$run_dir/state-exams" -type f -print | while IFS= read -r f; do
+      rel="${f#"$run_dir/state-exams/"}"
+      mkdir -p "$dest/state-exams/$(dirname "$rel")"
+      cp "$f" "$dest/state-exams/$rel"
+    done
   fi
   # The engine's combined output rides along: it is the only evidence a run that
   # died before writing a receipt produces at all.

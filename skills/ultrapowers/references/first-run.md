@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with seven rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with eight rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -64,8 +64,8 @@ until it is removed:
 }
 ```
 
-The one other name the file may carry is the account key of the `accounts` row
-below; anything else is stale.
+The only other names the file may carry are the account key of the `accounts`
+row below and the render key of the last row; anything else is stale.
 
 **In a browser:** nothing, unless the answer is a bigger plan.
 
@@ -300,3 +300,54 @@ Three things a newcomer would not know:
   exit 0, and a verb whose name is not plain lower-case words is never sent to
   the lobby at all; both are reported as `help unreadable` inside the same green
   row, with the exit code that came back.
+
+## render
+
+A run that has to look at a page renders it through Cloudflare Browser Run, and
+it reaches it the way every other credential reaches a sandbox: as an exe.dev
+`http-proxy` integration whose bearer is injected at the network edge. The VM
+never holds the Cloudflare token and cannot read it back. The renderer is
+optional — a fleet that names none is `ok` here, with a detail reading
+`not configured`, and each of its runs records the render move as `skipped`.
+The row is `missing` only when the config file names an integration the edge
+does not have.
+
+**In a browser:** Cloudflare's dashboard, once. Create an API token with the
+Browser Rendering permission, and copy the account id out of the dashboard URL.
+
+**The agent runs** this once per exe.dev account, with the token on stdin:
+
+```bash
+printf '%s' "$CF_API_TOKEN" | ssh exe.dev "integrations add http-proxy --name browser-run \
+  --target https://api.cloudflare.com --bearer -"
+```
+
+and then adds the `render` key to `~/.ultrapowers/fleet.json`:
+
+```json
+{
+  "cpu": "8",
+  "memory": "16GB",
+  "render": { "integration": "browser-run", "account": "<cloudflare account id>" }
+}
+```
+
+Three things a newcomer would not know:
+
+- **`--bearer -` reads the token from stdin.** That is why the token is piped
+  rather than typed: it never appears in an argv, in a shell history, or in
+  this conversation. Rotation is one `integrations edit browser-run --bearer=-`
+  with a fresh token on stdin.
+- **The object is created attached to nothing, once per account.** The launcher
+  binds it to the run's own VM at `new`, beside the other two —
+  `--integration claude-max,gh-<owner>-<repo>,browser-run` — for the run's
+  window only. Nothing rides `tag:fleet`, here or anywhere else: a tagged object
+  is a standing grant on every fleet VM for as long as it lives.
+- **The sandbox calls the proxy address, never Cloudflare's own host.** The one
+  URL a run uses is
+  `https://browser-run.int.exe.xyz/client/v4/accounts/<id>/browser-rendering`,
+  built from the integration name and the account id in the config file. The
+  request that leaves the VM carries no token; the edge attaches it. That is
+  also why the doctor checks this row by name alone — `integrations test`
+  answers nothing useful for an http-proxy, so the object's presence in
+  `integrations list --json` is the truth it can read.

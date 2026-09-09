@@ -71,6 +71,48 @@ word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
 is not this project's vocabulary. The runtime that hosts a TinyApp's Durable
 Object inside a sandbox is #764's question, not this page's.
 
+## State exams
+
+Every `**Review:** peer` task of a TinyApp plan names one `*.test.ts` state exam
+as a Proof `Test:` path — a `lean` task may carry one, and no other task type
+owes one. The exam is a single Bun test. Hand an examiner this shape, verbatim,
+in Context; the examiner receives no library docs and writes the file from the
+task text alone:
+
+```ts
+import { stateExam } from "tinyapp-exam";
+import { schema, addTodo } from "../../../src/store";   // relative to tests/exams/<slug>/, where the exam lands
+
+stateExam({
+  clock: "2026-01-01T00:00:00Z",
+  seed:     "state-exams/seeds/empty.json",
+  action:   (store) => addTodo(store, "buy milk"),
+  expected: "state-exams/expected/one-open-todo.json",
+  view:     { selector: "li", count: 1, text: "buy milk", unchecked: true },
+  mutant:   [{ table: "todos", row: "1", cell: "done", value: true }],
+});
+```
+
+The exam lands under `tests/exams/<slug>/`, so every import is written for that
+depth. Its snapshots live in the target: seeds under `state-exams/seeds/` and
+expected states under `state-exams/expected/`, each a JSON `[tables, values]`
+pair — TinyBase's `getContent()` shape — loaded with `setContent` against the
+app's schema. Snapshots fold as text, so two tasks editing one meet in the
+kernel line-wise and the schema-typed load catches a bad fold.
+
+`view` is a closed vocabulary —
+`{selector, count?, text?, attr?: {name, value}, checked?, unchecked?, absent?: true}`
+— and `mutant` is a list of `{table, row, cell, value}`, `{…, cell: absent}` or
+`{table, row: absent}` entries: each mutation must break the exam.
+
+Seeding is the plan's own work. The generated scaffold's store file is where the
+plan's Task writes the branch: the store module honours `window.__TINYAPP_SEED__`
+— when it is present the store loads that content and starts neither the
+`WsSynchronizer` nor the persister, so the exam owns the state it asserts.
+
+When `TINYAPP_RENDER_URL` is unset or empty the render move is `skipped` and
+recorded as skipped; the exam is still a store exam on a laptop or in CI.
+
 ## The engine boundary
 
 The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing

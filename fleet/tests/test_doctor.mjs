@@ -1,5 +1,5 @@
 /**
- * Exam for fleet/doctor.mjs — "do you have a fleet?", seven rows read off
+ * Exam for fleet/doctor.mjs — "do you have a fleet?", eight rows read off
  * exe.dev's own truth.
  *
  * Every group below names the Machine clause and the Proof leg it encodes, so a
@@ -55,8 +55,8 @@ const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-'))
 
 // ── Shared literals ──────────────────────────────────────────────────────────
 
-/** M1: the seven rows, in the order the doctor reports them. */
-const EXPECTED_IDS = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift']
+/** M1: the eight rows, in the order the doctor reports them. */
+const EXPECTED_IDS = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render']
 
 /** M1: the reads, in the order M1 lists them — the five BASE reads, then the
  *  accounts read, then one `help <verb>` per verb of the record in the record's
@@ -217,7 +217,8 @@ async function run (overrides = {}, opts = {}) {
 
 const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
 
-/** The seven-row status map of a healthy fleet. */
+/** The eight-row status map of a healthy fleet — the green fixture passes no
+ *  `render`, which is the "not configured" green. */
 const ALL_OK = Object.freeze({
   'exe-dev': 'ok',
   capacity: 'ok',
@@ -225,7 +226,8 @@ const ALL_OK = Object.freeze({
   accounts: 'ok',
   github: 'ok',
   integrations: 'ok',
-  'verb-drift': 'ok'
+  'verb-drift': 'ok',
+  render: 'ok'
 })
 
 /** ALL_OK with one row reddened. */
@@ -234,8 +236,8 @@ const allOkBut = (id) => ({ ...ALL_OK, [id]: 'missing' })
 // ── 1. M1 — the rows, the defaults, the reads, the exports ───────────────────
 
 {
-  // leg (a): ROW_IDS deep-equals the seven ids in order.
-  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the seven ids in order')
+  // leg (a): ROW_IDS deep-equals the eight ids in order.
+  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the eight ids in order')
 
   // leg (a): DOCTOR_DEFAULTS deep-equals the config literal. lobby.mjs's
   // FLEET_DEFAULTS is byte-identical to it; two readers of one config file that
@@ -613,11 +615,11 @@ for (const [label, extra, named] of [
 }
 
 {
-  // The verdict is `ready` exactly when all seven rows are ok. Each scenario
+  // The verdict is `ready` exactly when all eight rows are ok. Each scenario
   // below reddens exactly one row, and each is not-ready.
   const { result: green } = await run()
-  assert.deepEqual(statusOf(green), ALL_OK, '5 the green account is seven ok rows')
-  assert.equal(green.verdict, 'ready', '5 seven ok rows is a ready verdict')
+  assert.deepEqual(statusOf(green), ALL_OK, '5 the green account is eight ok rows')
+  assert.equal(green.verdict, 'ready', '5 eight ok rows is a ready verdict')
 
   const scenarios = {
     'exe-dev': { [CMD.whoami]: { code: 1, stdout: '' } },
@@ -780,13 +782,13 @@ const absentConfig = path.join(cliRoot, 'absent.json')
 assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config path starts absent')
 
 {
-  // leg (g): the green shim exits 0 with the seven rows in order, and the
+  // leg (g): the green shim exits 0 with the eight rows in order, and the
   // verb-drift detail is the real record's own match sentence.
   const res = runCli(['--json', '--config', absentConfig], { dir: GREEN_DIR })
   assert.equal(res.status, 0, `6b [leg g] a ready run exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
   const parsed = JSON.parse(res.stdout)
   assert.equal(parsed.verdict, 'ready', '6b [leg g] an all-green CLI run is ready')
-  assert.deepEqual(parsed.rows.map((r) => r.id), EXPECTED_IDS, '6b [leg g] the envelope carries the seven rows in order')
+  assert.deepEqual(parsed.rows.map((r) => r.id), EXPECTED_IDS, '6b [leg g] the envelope carries the eight rows in order')
   assert.deepEqual(parsed.config, { cpu: '8', memory: '16GB' }, '6b an absent config file means the defaults')
 
   const drift = parsed.rows.find((r) => r.id === 'verb-drift')
@@ -813,8 +815,10 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
 
 {
   // leg (g): the red shim exits 1 with `verb-drift` still `ok` — every `help`
-  // read fails, and an unreadable help is a finding, never a refusal. The human
-  // form is two lines for each red row and one for verb-drift.
+  // read fails, and an unreadable help is a finding, never a refusal. `render`
+  // is green too: the CLI config file names no renderer, so there is nothing to
+  // find at the edge. The human form is two lines for each red row, and one
+  // each for those two green ones.
   const res = runCli(['--json', '--config', absentConfig], { dir: RED_DIR })
   const parsed = JSON.parse(res.stdout)
   const drift = parsed.rows.find((r) => r.id === 'verb-drift')
@@ -828,19 +832,31 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
     `6b [M5 leg g] the red run's verb-drift detail reports the unreadable help; got ${drift.detail}`
   )
 
+  const render = parsed.rows.find((r) => r.id === 'render')
+  assert.equal(
+    render.status,
+    'ok',
+    `6b [M2] render is ok when the config file names no renderer; got ${render.status} — ${render.detail}`
+  )
+  assert.ok(
+    render.detail.startsWith('not configured'),
+    `6b [M2] the unconfigured render detail starts "not configured"; got ${render.detail}`
+  )
+
   const red = parsed.rows.filter((r) => r.status === 'missing').map((r) => r.id)
+  const GREEN_UNDER_RED = ['verb-drift', 'render']
   assert.deepEqual(
     red,
-    EXPECTED_IDS.filter((id) => id !== 'verb-drift'),
-    `6b [M5 leg g] every row but verb-drift is red under the red shim; got ${JSON.stringify(statusOf(parsed))}`
+    EXPECTED_IDS.filter((id) => !GREEN_UNDER_RED.includes(id)),
+    `6b [M5 leg g] every row but verb-drift and render is red under the red shim; got ${JSON.stringify(statusOf(parsed))}`
   )
 
   const human = runCli(['--config', absentConfig], { dir: RED_DIR })
   const lines = human.stdout.trimEnd().split('\n')
   assert.equal(
     lines.length,
-    red.length * 2 + 1,
-    `6b [leg g] the human form is two lines per red row and one for verb-drift; got:\n${human.stdout}`
+    red.length * 2 + GREEN_UNDER_RED.length,
+    `6b [leg g] the human form is two lines per red row and one per green row; got:\n${human.stdout}`
   )
   for (const [i, id] of red.entries()) {
     assert.ok(lines[i * 2].includes(id), `6b the human form names ${id}; got ${lines[i * 2]}`)
@@ -849,12 +865,14 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
       `6b a red ${id} points at its first-run.md heading; got ${lines[i * 2 + 1]}`
     )
   }
-  const last = lines[lines.length - 1]
-  assert.ok(last.includes('verb-drift'), `6b [leg g] the last human line is verb-drift's; got ${last}`)
-  assert.ok(
-    !last.includes('references/first-run.md'),
-    `6b [leg g] a green verb-drift row prints no fix line; got ${last}`
-  )
+  const tail = lines.slice(-GREEN_UNDER_RED.length)
+  for (const [i, id] of GREEN_UNDER_RED.entries()) {
+    assert.ok(tail[i].includes(id), `6b [leg g] the human form's tail line ${i} is ${id}'s; got ${tail[i]}`)
+    assert.ok(
+      !tail[i].includes('references/first-run.md'),
+      `6b [leg g] a green ${id} row prints no fix line; got ${tail[i]}`
+    )
+  }
 }
 
 {
@@ -1451,13 +1469,18 @@ const GREPS = [
   },
   {
     name: '## verb-drift',
-    cut: (lines) => span(lines, /^## verb-drift/, null),
+    cut: (lines) => span(lines, /^## verb-drift/, /^## render/),
     words: ['fleet/exe-verbs.json', 'help', 'finding']
+  },
+  {
+    name: '## render',
+    cut: (lines) => span(lines, /^## render/, null),
+    words: ['http-proxy', '--bearer -', 'fleet.json', 'browser-run.int.exe.xyz', 'skipped']
   },
   {
     name: 'the text before ## exe-dev',
     cut: (lines) => span(lines, null, /^## exe-dev/),
-    words: ['seven rows']
+    words: ['eight rows']
   }
 ]
 
@@ -1504,9 +1527,10 @@ for (const { name, cut, words } of GREPS) {
   // `## verb-drift` after `## integrations`.
   assert.equal(headings[headings.indexOf('accounts') - 1], 'claude', '11 [M7] ## accounts follows ## claude')
   assert.equal(headings[headings.indexOf('accounts') + 1], 'github', '11 [M7] ## accounts precedes ## github')
-  assert.equal(headings[headings.length - 1], 'verb-drift', '11 [M7] ## verb-drift is the last section')
+  assert.equal(headings[headings.indexOf('render') - 1], 'verb-drift', '11 ## render follows ## verb-drift')
+  assert.equal(headings[headings.length - 1], 'render', '11 ## render is the last section')
 
-  // M7: the opening paragraph says seven rows, and no longer five.
+  // M7: the opening paragraph says eight rows, and no longer five.
   const head = textOf(FIRST_RUN_LINES, span(FIRST_RUN_LINES, null, /^## exe-dev/))
   assert.equal(head.includes('five rows'), false, `11 [M7] the opening no longer says five rows; got:\n${head}`)
 }

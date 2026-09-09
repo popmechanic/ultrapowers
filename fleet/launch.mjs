@@ -54,6 +54,15 @@
  * push its branch or open its PR, and a run that cannot publish is a run nobody
  * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
  *
+ * The renderer, when the config file names one, rides the same `new` line: its
+ * integration is appended to `--integration` and the setup script drops the
+ * proxy address under /etc/fleet. It is read from `~/.ultrapowers/fleet.json`
+ * and never from a flag — an address the whole fleet shares is not a per-launch
+ * choice. A `render` the laptop can see is malformed is refused before anything
+ * is executed, and a `render.integration` the account has no object for is
+ * refused off the same `integrations list --json` the GitHub check reads: the
+ * laptop refuses what the sandbox would have refused an hour later.
+ *
  * A refusal (exit 2) happens before anything is created, so the account and the
  * target are exactly as they were. A failure after that (exit 1) prints the
  * lobby's own words: exe.dev documents no error envelope, so a refused name or
@@ -99,7 +108,7 @@ import {
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
-import { fleetConfigAccount, verbDrift } from './doctor.mjs'
+import { fleetConfigAccount, fleetConfigRender, verbDrift } from './doctor.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 
@@ -131,6 +140,17 @@ export const EFFORT_VALUES = Object.freeze(['low', 'medium', 'high'])
  */
 export const DEFAULT_ACCOUNT = 'ultrapowers'
 const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/**
+ * What the config file's `render` may be spelled with. These are
+ * `fleet/setup-script.mjs`'s own two rules, copied rather than imported for the
+ * reason `ACCOUNT_NAME` is: the laptop refuses on the laptop what the renderer
+ * would have thrown on, before a VM exists to throw it. The integration is an
+ * exe.dev object name and reaches an `--integration` value; the account is a
+ * Cloudflare account id and reaches a URL path segment.
+ */
+const RENDER_INTEGRATION_NAME = /^[a-z][a-z0-9-]*$/
+const RENDER_ACCOUNT_ID = /^[A-Za-z0-9_-]+$/
 
 /** The lobby-verb record the preflight compares the live lobby against. */
 const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
@@ -546,6 +566,28 @@ export async function launch ({
       : config.account
     account = typeof named === 'string' && named !== '' ? named : DEFAULT_ACCOUNT
   }
+  // The renderer this fleet reaches, on the same branch the account takes: the
+  // injected config's own `render`, else the file's — so an exam that hands
+  // `launch` a config never reads the laptop's own. There is no `--render`; an
+  // address the whole fleet shares is not a per-launch choice.
+  const render = config === undefined || config === null
+    ? await fleetConfigRender({ path: opts.config })
+    : (config.render ?? null)
+  // A malformed `render` is refused here, beside `--account`'s own shape check
+  // and before the checkout is read: nothing has been executed yet, so a laptop
+  // that cannot spell its renderer has touched neither exe.dev nor the target.
+  if (render !== null) {
+    if (!RENDER_INTEGRATION_NAME.test(String(render.integration))) {
+      throw new Refusal(
+        `launch: render.integration must match ${RENDER_INTEGRATION_NAME.source}, got ${JSON.stringify(render.integration ?? null)}`
+      )
+    }
+    if (!RENDER_ACCOUNT_ID.test(String(render.account))) {
+      throw new Refusal(
+        `launch: render.account must match ${RENDER_ACCOUNT_ID.source}, got ${JSON.stringify(render.account ?? null)}`
+      )
+    }
+  }
   const cpu = String(opts.cpu ?? settings.cpu ?? FLEET_DEFAULTS.cpu)
   const memory = String(opts.memory ?? settings.memory ?? FLEET_DEFAULTS.memory)
   if (!isPositiveInt(cpu)) {
@@ -674,10 +716,24 @@ export async function launch ({
     )
   }
 
+  // One `integrations list --json`, two questions asked of it: the target's
+  // GitHub object, and the renderer's — a second read would be a second line on
+  // a launch that already refuses on the first answer.
+  const integrations = await listIntegrations(exec)
   const githubName = githubIntegrationFor(target)
-  if (!(await listIntegrations(exec)).some((row) => row.name === githubName)) {
+  if (!integrations.some((row) => row.name === githubName)) {
     throw new Refusal(
       `launch: no ${githubName} integration — the sandbox could still clone a public ${target} from github.com, but could not push its branch or open its PR. Build it once: node fleet/target.mjs ${target}`
+    )
+  }
+  // A renderer the account has no object for is refused here, before the plan
+  // is pushed and before any VM exists: the `new` line would name an
+  // integration exe.dev cannot attach, and the run would come up with an
+  // address pointing at nothing. The fix is the first-run walk, which is where
+  // the proxy object is built once per account.
+  if (render !== null && !integrations.some((row) => row.name === render.integration)) {
+    throw new Refusal(
+      `launch: ~/.ultrapowers/fleet.json names render.integration ${render.integration} but integrations list --json has no ${render.integration} — build it once per account: references/first-run.md §render`
     )
   }
 
@@ -772,10 +828,15 @@ export async function launch ({
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
-  const script = renderSetupScript({ run: String(run), ...readFleetFiles() })
+  const script = renderSetupScript({ run: String(run), ...readFleetFiles(), render })
+  // The renderer rides the `new` line beside the other two: nothing is attached
+  // afterwards, so a box either comes up with its integrations or does not come
+  // up. A launch with no renderer names two, exactly as it always has.
+  const integrationValue = `${CLAUDE_INTEGRATION},${githubName}` +
+    (render === null ? '' : `,${render.integration}`)
   const remoteFor = (vm) =>
     `new --name ${vm} --tag ${FLEET_TAG} --comment '${comment}'` +
-    ` --integration ${CLAUDE_INTEGRATION},${githubName}` +
+    ` --integration ${integrationValue}` +
     ` --cpu ${cpu} --memory ${memory} --setup-script /dev/stdin --json`
 
   const minted = new Set()
@@ -826,6 +887,11 @@ export async function launch ({
     account,
     verbDrift: drift,
     github: githubName,
+    // The renderer this run was given, or null for a fleet that names none.
+    // Like `account`, it is a fact about the launch and never a comment key:
+    // `parse_assignment` on the VM refuses one it does not know, and the box
+    // reads its address off /etc/fleet, not off the assignment.
+    render,
     cpu,
     memory,
     launchedAt: now().toISOString(),
