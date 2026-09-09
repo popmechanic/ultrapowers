@@ -1,0 +1,40 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: `OUTCOMES` skills/ultralearn/scripts/catch_counter.py defines OUTCOMES"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_ultralearn_catches.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +8 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/catch_counter.py": "py",
+    "tests/test_ultralearn_catches.py": "py"
+  },
+  "ms": 51
+}
