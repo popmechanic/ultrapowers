@@ -1,0 +1,156 @@
+{
+  "ok": true,
+  "stamp": "run-82",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-82"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A placeholder Produces is unlinked before any file is read, and the four spellings are the compiler's",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/referee-linker.mjs",
+          "tests/test_compile_plan.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`PLACEHOLDER_TOKENS`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A placeholder Produces is unlinked before any file is read, and the four spellings are the compiler's",
+          "files": [
+            "fleet/referee-linker.mjs",
+            "fleet/tests/test_referee_linker.mjs",
+            "fleet/tests/test_run_engine_referee.mjs",
+            "tests/test_compile_plan.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`PLACEHOLDER_TOKENS`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/referee-linker.mjs",
+            "tests/test_compile_plan.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_referee_linker.mjs",
+            "fleet/tests/test_run_engine_referee.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_referee_linker.mjs && node fleet/tests/test_run_engine_referee.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_referee_linker.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_referee.mjs | grep -q 'ALL TESTS PASSED'",
+            "node --input-type=module -e \"import { PLACEHOLDER_TOKENS } from './fleet/referee-linker.mjs'; const a = [...PLACEHOLDER_TOKENS].sort().join(','); if (a !== 'n/a,na,none,nothing') { console.error(a); process.exit(1) }\"",
+            "grep -c 'PLACEHOLDER_TOKENS = frozenset({\"nothing\", \"none\", \"n/a\", \"na\"})' skills/ultrapowers/scripts/compile_plan.py | grep -qx 1",
+            "sed -n '/^def test_placeholder_token_set/,/^def /p' tests/test_compile_plan.py | grep -oE '\"(nothing|none|N/A|na)\"' | sort -u | wc -l | grep -qx 4",
+            "python3 -m pytest tests/test_compile_plan.py -q -k test_placeholder_token_set -p no:cacheprovider"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_referee_linker.mjs",
+            "fleet/tests/test_run_engine_referee.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "A placeholder Produces is unlinked before any file is r\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- The linker's four statuses stay `resolved`, `declared`, `missing`, `unlinked`, and their\n  grading order across candidates stays resolved > declared > unlinked > missing; a\n  placeholder answer is `unlinked`, never a fifth status.\n- Every existing leg of `fleet/tests/test_referee_linker.mjs` and\n  `fleet/tests/test_run_engine_referee.mjs` stays green; new legs are added beside them under a\n  comment naming the task, and the twelve `linker-*` fixture directories stay exactly twelve \u2014\n  no fixture is added for this task (the sim's inline `checkoutOf` is the shape).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/referee.mjs fleet/run-engine.mjs skills/ultrapowers/scripts/compile_plan.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-82/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-82/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-82/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-82/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
