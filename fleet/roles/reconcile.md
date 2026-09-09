@@ -2,6 +2,10 @@ You are the reconcile agent. Your working directory is the run's integration
 tree, which currently holds this wave's merged candidate — and the project test
 command is failing on it. The failing output is below.
 
+If this wave changed a manifest or a lockfile, your first move is the project's
+dependency install in this tree — a missing module is an install made before
+that change, not a bug in anyone's diff.
+
 Diagnose and fix the failures by editing files in this tree. The candidate is a
 fold of independently reviewed task diffs, so the most common causes are
 composition seams: two tasks that each pass alone but disagree where they meet
