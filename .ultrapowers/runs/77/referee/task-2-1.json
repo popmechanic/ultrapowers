@@ -1,0 +1,43 @@
+{
+  "task": "2",
+  "n": 1,
+  "findings": [
+    {
+      "check": "interface",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "Produces: none — no export named none in skills/ultralearn/scripts/catch_report.py (found: CATCH_KIND, TEST_GLOBS, HEADER, DELIMITER, CURVE_HEADING, _catch_rows, _mapping, _paths, _count, _status, catch_table, _touching, _is_zero, max_touching_runs, zero_curve, zero_over, tree_test_files, table_lines, curve_lines, zero_over_lines, report_lines, main); no export named none in tests/test_ultralearn_catch_report.py (found: REPO, SCRIPTS_DIR, SCRIPT, HEADER, CURVE_HEADING, _module, _row, ROW_A, ROW_B, ROW_C, ROWS, TREE_TESTS, FINDINGS_ROW, mod, table_a, test_leg_a_caught_test_counts_its_catch_and_its_touching_run, test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch, test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys, test_leg_d_a_findings_row_contributes_nothing, test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest, test_leg_f_curve_is_empty_when_no_run_touches, tree, TREE_FILES, test_leg_g_tree_test_files_matches_the_two_globs_only, _run, _lines, _cells, _is_separator, _table_rows, _section, _ledger, CLI_ROWS, test_leg_h_cli_prints_the_table_and_the_curve, test_leg_i_cli_with_n_1_lists_the_one_zero_test, test_leg_i_cli_with_n_2_lists_no_path, test_leg_j_missing_ledger_reports_the_tree_as_unobserved, DELIMITER, _rendered, test_t2_leg_a_table_lines_puts_the_delimiter_second_then_the_rows, test_t2_leg_a_table_of_one_entry_is_exactly_three_lines, test_t2_leg_b_cli_second_line_is_the_delimiter, test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger, test_t2_leg_c_catches_is_the_sum_over_every_row)"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_ultralearn_catch_report.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +5 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/catch_report.py": "py",
+    "tests/test_ultralearn_catch_report.py": "py"
+  },
+  "ms": 87
+}
