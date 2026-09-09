@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "52cdea26bf6f18194f43efc4fc23541432e2a8561ca19ce528cd7cf1d67e6630",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that would fail on the old wording or a stray unqualified referee; the M6 arithmetic computes (camel-case keys have no trailing boundary, referee-red subtracted, possessives counted) and the scope exclusions are written in the clauses themselves (round 2; round 1 rejected: the engine-wide 'every' was narrowed silently to one string and the M6 regex missed a referee after punctuation or a line start)."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "rounds": { "1": { "dispatched": 1, "rejected": 1 }, "2": { "dispatched": 1, "rejected": 0 } },
+    "readers": "general-purpose, foreground, extractor output only"
+  },
+  "history": [
+    { "round": 1, "task": "1", "verdict": "fail", "reason": "engine-wide 'every' narrowed to one phrase with no stated scope; M6 regex porous after punctuation/backtick/line start" }
+  ]
+}
