@@ -1,0 +1,1077 @@
+diff --git a/fleet/referee-linker.mjs b/fleet/referee-linker.mjs
+index f6374e781b5642552f0874780d70870f2fd9c6bf..ae7451208f569f857808305bb373e9743738714f 100644
+--- a/fleet/referee-linker.mjs
++++ b/fleet/referee-linker.mjs
+@@ -84,6 +84,20 @@ export const defaultExec = (cmd, argv, opts = {}) =>
+ 
+ const firstLine = (s) => String(s || '').split('\n').map((l) => l.trim()).find(Boolean) || ''
+ 
++// Why a spawning linker could not answer, when the kill tests have already
++// passed. The first line of stderr is the reason whenever there is one. When
++// there is none — a seam-shaped exec that reports a kill as nothing at all, the
++// way a stubbed or minimal `exec` can — a run that printed no JSON line is
++// named for what it looks like from here: the bound it did not print within.
++// `res.code` is not the story then; a quiet non-zero exit and a quiet `null`
++// are the same silence. Only a run that *did* print its JSON and still exited
++// non-zero keeps the exit-code wording.
++const whyQuiet = (res, out, prog, timeoutMs) =>
++  firstLine(res && res.stderr) ||
++  (out
++    ? prog + ' exited ' + (res ? res.code : 'nothing')
++    : prog + ' produced no JSON within ' + timeoutMs + 'ms')
++
+ // The last line of stdout that parses as a JSON object carrying `key`. The
+ // scripts print exactly one such line; anything the imported module logged
+ // first is ignored.
+@@ -195,8 +209,7 @@ const linkMjs = async ({ symbol, arity, rel, abs, cloneDir, exec, timeoutMs }) =
+   }
+   const out = jsonLine(res && res.stdout, 'has')
+   if (!out || (res && res.code !== 0)) {
+-    const why = firstLine(res && res.stderr) || 'node exited ' + (res ? res.code : 'nothing')
+-    return answer('unlinked', symbol, rel + ': ' + why)
++    return answer('unlinked', symbol, rel + ': ' + whyQuiet(res, out, 'node', timeoutMs))
+   }
+   if (out.has) return withArity(symbol, rel, arity, out.length, 'exports')
+   if (wordRe(symbol).test(readText(abs))) {
+@@ -238,8 +251,7 @@ const linkPy = async ({ symbol, arity, rel, abs, cloneDir, exec, timeoutMs }) =>
+   }
+   const out = jsonLine(res && res.stdout, 'names')
+   if (!out || (res && res.code !== 0)) {
+-    const why = firstLine(res && res.stderr) || 'python3 exited ' + (res ? res.code : 'nothing')
+-    return answer('unlinked', symbol, rel + ': ' + why)
++    return answer('unlinked', symbol, rel + ': ' + whyQuiet(res, out, 'python3', timeoutMs))
+   }
+   if (out.names.includes(symbol)) {
+     const required = out.arity && Object.prototype.hasOwnProperty.call(out.arity, symbol)
+@@ -361,6 +373,14 @@ export const linkProduces = async ({ bullet, files, cloneDir, exec, timeoutMs }
+   }
+ 
+   // The candidates: a language this module links, present in the clone.
++  //
++  // The clone boundary is checked before the filesystem is: an entry that
++  // resolves outside `cloneDir` is not a file of the task's own clone, so it is
++  // never a candidate and no subprocess is ever spawned on it — whether or not
++  // something exists at that path. A relative entry that climbs out
++  // (`../escape.mjs`) and an absolute entry pointing elsewhere are the same
++  // case; an absolute entry inside the clone passes.
++  const root = path.resolve(cloneDir || '.')
+   const list = Array.isArray(files) ? files : []
+   const candidates = []
+   const skipped = []
+@@ -369,7 +389,11 @@ export const linkProduces = async ({ bullet, files, cloneDir, exec, timeoutMs }
+     if (!rel) continue
+     const ext = path.extname(rel).toLowerCase()
+     if (!LINKABLE.has(ext)) { skipped.push(rel + ': no linker for ' + (ext || 'that file')); continue }
+-    const abs = path.resolve(cloneDir || '.', rel)
++    const abs = path.resolve(root, rel)
++    if (abs !== root && !abs.startsWith(root + path.sep)) {
++      skipped.push(rel + ': outside the clone')
++      continue
++    }
+     if (!isFile(abs)) { skipped.push(rel + ': not in the clone'); continue }
+     candidates.push({ rel, abs, ext })
+   }
+diff --git a/fleet/referee.mjs b/fleet/referee.mjs
+index b1da45ebbed68c55db261b5d4165494b5ff658b7..92511174906087efc2db07e7f67e03046b63be3c 100644
+--- a/fleet/referee.mjs
++++ b/fleet/referee.mjs
+@@ -96,12 +96,24 @@ const parsePatch = (text) => {
+   return files
+ }
+ 
+-const readPatch = (patchPath) => {
+-  if (!patchPath) return []
++// The patch is the referee's sole input for the footprint and count checks
++// (#729 §3.1), so a patch it cannot read is a loud failure and never a clean
++// record: an empty `findings` here would be the referee lying by omission about
++// checks it never ran. A missing `patchPath` names the task, because the
++// engine's judgment call for the error has to say which task lost its capture;
++// a read that throws rethrows with the path and the underlying reason. Both
++// land before any check runs and before the `runDir` write, so a throw leaves
++// nothing on disk.
++const readPatch = (patchPath, taskId) => {
++  if (!patchPath) {
++    throw new Error('referee: no captured patch for task ' + str(taskId))
++  }
++  const p = String(patchPath)
+   try {
+-    return parsePatch(fs.readFileSync(String(patchPath), 'utf8'))
+-  } catch {
+-    return []
++    return parsePatch(fs.readFileSync(p, 'utf8'))
++  } catch (error) {
++    throw new Error(
++      'referee: cannot read the captured patch ' + p + ': ' + (error?.message ?? error))
+   }
+ }
+ 
+@@ -455,6 +467,8 @@ const taskFiles = (task) => {
+  *   nothing is written).
+  * @returns {Promise<{task: string, n: number, findings: object[],
+  *   settled: object[], linker: object, ms: number}>}
++ * @throws rejects, writing nothing, when `patchPath` is absent or unreadable —
++ *   the driver-error record the engine already keeps for a thrown referee.
+  */
+ export const referee = async (opts = {}) => {
+   const started = Date.now()
+@@ -462,7 +476,7 @@ export const referee = async (opts = {}) => {
+   const task = (options.task && typeof options.task === 'object') ? options.task : {}
+   const files = taskFiles(task)
+ 
+-  const patch = readPatch(options.patchPath)
++  const patch = readPatch(options.patchPath, task.id)
+   const own = new Set(files.concat(arr(task.proofTests).map(str)))
+   const sibling = new Set()
+   for (const group of arr(options.siblingFiles)) {
+diff --git a/fleet/roles/reconcile.md b/fleet/roles/reconcile.md
+index 37ea357437d04f3e45443a5e97206f71c7fcea5a..3d8ab55556f09e1eda2b34285d0e31a13d4a632a 100644
+--- a/fleet/roles/reconcile.md
++++ b/fleet/roles/reconcile.md
+@@ -2,6 +2,10 @@ You are the reconcile agent. Your working directory is the run's integration
+ tree, which currently holds this wave's merged candidate — and the project test
+ command is failing on it. The failing output is below.
+ 
++If this wave changed a manifest or a lockfile, your first move is the project's
++dependency install in this tree — a missing module is an install made before
++that change, not a bug in anyone's diff.
++
+ Diagnose and fix the failures by editing files in this tree. The candidate is a
+ fold of independently reviewed task diffs, so the most common causes are
+ composition seams: two tasks that each pass alone but disagree where they meet
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 9b84b0774eca2d4aa2d50fb4e1591173d0ac69cc..ceeafca7540df6efa74333b7954d53d7e1cef0d9 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -98,6 +98,24 @@ export const looksStructural = (msg) =>
+   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
+ export const isInfraFault = (msg) => String(msg).startsWith('AGENT_NULL')
+ 
++// #825 — does this set of changed paths change what the project installs? The
++// names are `derive_bootstrap_cmd`'s ladder (skills/ultrapowers/scripts/
++// ultra_run.py) plus `pytest.ini` and the `requirements*.txt` glob: if the
++// bootstrap would read a file, a fold that touched it invalidates the install
++// the setup loop made at BASE. BASENAME at any depth — the TinyApp case was
++// `client/package.json`, not a root manifest — and the whole basename, so
++// `package.json.bak` and `requirements.md` are not manifests.
++const BOOTSTRAP_MANIFESTS = new Set([
++  'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb',
++  'uv.lock', 'pyproject.toml', 'pytest.ini',
++])
++const REQUIREMENTS_TXT = /^requirements.*\.txt$/
++export const bootstrapManifestChanged = (paths) =>
++  (Array.isArray(paths) ? paths : []).some((p) => {
++    const base = String(p == null ? '' : p).split('/').pop()
++    return BOOTSTRAP_MANIFESTS.has(base) || REQUIREMENTS_TXT.test(base)
++  })
++
+ // Same chunking constant as waves.js: intra-wave dependency re-checks and the
+ // lost-coordinates sweep run at chunk boundaries, so the value is part of the
+ // ported semantics (the actual process-level width bound is the caller's
+@@ -2192,7 +2210,36 @@ export async function runEngine({
+         ': emit-weave failed (exit ' + r.code + ') — weave persistence skipped, fold unaffected')
+     }
+     await git(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
+-    let suite = await sh(testCmd, integ)
++    // #825 — the candidate's own install, before its suite. The setup loop
++    // bootstrapped this clone at BASE and knows nothing about a manifest the
++    // fold changed, so a suite run straight off the read-tree fails on a
++    // missing module and hands the reconcile agent a module-not-found line
++    // instead of the install's own error. This is the ONLY new site: the adopt
++    // below is `reset --hard` in this same directory and the install is
++    // untracked, so it survives adoption (and the TEST_FAILED path's
++    // `git clean -fd`, which has no `-x`) — nothing to re-run afterwards.
++    let bootstrapRed = null
++    if (bootstrapCmd) {
++      const changed = await git(['diff', '--name-only', prevHead, candidate], integ)
++      if (bootstrapManifestChanged(changed.split('\n').map((s) => s.trim()).filter(Boolean))) {
++        const b = await sh(bootstrapCmd, integ)
++        if (b.code !== 0) {
++          // Unlike the three older bootstrap sites, this one does not shrug and
++          // carry on: a candidate whose install broke is RED on the install's
++          // output, so the reconcile agent reads the real error.
++          judgmentCalls.push('wave ' + waveNumber + ': candidate bootstrap failed (exit ' +
++            b.code + ') — the candidate is red on the install, not on its suite: ' +
++            tail(b.stderr || b.stdout, 300))
++          log('wave ' + waveNumber + ' candidate bootstrap failed (exit ' + b.code + ')')
++          bootstrapRed = b
++        }
++      }
++    }
++    // A failed bootstrap stands IN PLACE of the suite run — `suite` carries the
++    // install's stdout/stderr, so every downstream reader (the reconcile
++    // prompt, the TEST_FAILED detail) quotes the install and none of them
++    // quotes a suite that never ran on this candidate.
++    let suite = bootstrapRed || await sh(testCmd, integ)
+     if (suite.code === 0) {
+       await git(['reset', '--hard', candidate], integ)
+       await emitWeave(candidate)
+diff --git a/fleet/tests/test_referee_linker.mjs b/fleet/tests/test_referee_linker.mjs
+index 5eec5f2e4e735a1a1d01a99b37f2fe61a9f0d734..89e25455c9f25b1adba2f0c972172d846dc7d916 100644
+--- a/fleet/tests/test_referee_linker.mjs
++++ b/fleet/tests/test_referee_linker.mjs
+@@ -33,7 +33,7 @@ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+-import { linkProduces } from '../referee-linker.mjs'
++import { defaultExec, linkProduces } from '../referee-linker.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const FIXTURES = path.join(HERE, 'fixtures', 'referee')
+@@ -471,5 +471,331 @@ const TABLE = {
+   }
+ }
+ 
++// ── Task 3: a files entry cannot leave the clone, and the timeout detail ──
++// ── names its bound (#819) ────────────────────────────────────────────────
++// M1. In `linkProduces`, a `files` entry whose `abs = path.resolve(cloneDir,
++//     rel)` neither equals `path.resolve(cloneDir)` nor begins with
++//     `path.resolve(cloneDir) + path.sep` is pushed to `skipped` as
++//     `<rel>: outside the clone` before the filesystem is consulted for it and
++//     never becomes a candidate, so `exec` is not called for it — for a
++//     relative entry that climbs out and for an absolute entry alike, whether
++//     or not the file exists.
++// M2. When every entry is skipped the answer is `unlinked` with a detail
++//     carrying each skipped entry's `<rel>: outside the clone`; when an
++//     in-clone candidate remains beside an escaping entry, the answer is that
++//     candidate's own and `exec` is called exactly once, for the in-clone file.
++// M3. In `linkMjs` and `linkPy`, a subprocess result with no JSON line whose
++//     `stderr` is empty after trimming answers `unlinked` with the detail
++//     `<rel>: <node|python3> produced no JSON within <timeoutMs>ms`, whatever
++//     `code` is; `killed` or `signal` keeps `<rel>: timeout after <ms>ms`, and
++//     a non-empty `stderr` keeps its first line, as before.
++{
++  // A stub that throws is this group's proof that no subprocess ran for an
++  // entry that resolves outside the clone.
++  const boom = () => {
++    throw new Error('[M1] no subprocess may run for a files entry that resolves outside the clone')
++  }
++  const resolves = async (thunk, where) => {
++    try {
++      return await thunk()
++    } catch (e) {
++      assert.fail(`${where}: linkProduces resolves rather than throwing — it rejected with ${String((e && e.message) || e)} [M1]`)
++      return null
++    }
++  }
++
++  const ESCAPE_BODY = 'export function foo (a) { return a }\n'
++  const STRAY = []
++  const removeStray = () => {
++    for (const file of STRAY.splice(0)) {
++      try { fs.rmSync(file, { force: true }) } catch { /* already gone */ }
++    }
++  }
++  process.on('exit', removeStray)
++  // `escape.mjs` lives in the PARENT of the clone directory, so that at BASE
++  // the entry resolves to a file that exists, becomes a candidate and fires
++  // the throwing stub. The rule under test is the path, not the file.
++  const escapeBeside = (cloneDir) => {
++    const abs = path.resolve(path.join(cloneDir, '..', 'escape.mjs'))
++    fs.writeFileSync(abs, ESCAPE_BODY)
++    STRAY.push(abs)
++    return abs
++  }
++
++  // (a) a relative entry that climbs out of the clone.
++  {
++    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
++    escapeBeside(clone)
++    const r = await resolves(
++      () => link({ bullet: '`foo(a)`', files: ['../escape.mjs'], cloneDir: clone, exec: boom }),
++      'leg (a) ../escape.mjs')
++    shape(r, 'leg (a) ../escape.mjs')
++    assert.equal(r.status, 'unlinked',
++      `[M1, M2] an entry that climbs out of the clone leaves no candidate, which is unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('../escape.mjs: outside the clone'),
++      `[M1, M2] … with the detail carrying "../escape.mjs: outside the clone" — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (a) [M1, M2] ../escape.mjs is skipped as outside the clone, no subprocess')
++  }
++
++  // (b) the same file named by its absolute path.
++  {
++    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
++    const abs = escapeBeside(clone)
++    const r = await resolves(
++      () => link({ bullet: '`foo(a)`', files: [abs], cloneDir: clone, exec: boom }),
++      'leg (b) absolute escape.mjs')
++    shape(r, 'leg (b) absolute escape.mjs')
++    assert.equal(r.status, 'unlinked',
++      `[M1, M2] an absolute entry outside the clone is skipped alike — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('outside the clone'),
++      `[M1, M2] … with "outside the clone" in the detail — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(detailOf(r).includes(abs),
++      `[M1, M2] … and the absolute path it was given — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(detailOf(r).includes(`${abs}: outside the clone`),
++      `[M1] the skip is pushed as "<rel>: outside the clone" — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (b) [M1, M2] an absolute entry outside the clone is skipped by name')
++  }
++
++  // (c) two escaping entries: every one of them is named in the detail.
++  {
++    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
++    escapeBeside(clone)
++    const r = await resolves(
++      () => link({ bullet: '`foo(a)`', files: ['../escape.mjs', '/etc/passwd'], cloneDir: clone, exec: boom }),
++      'leg (c) ../escape.mjs + /etc/passwd')
++    shape(r, 'leg (c) ../escape.mjs + /etc/passwd')
++    assert.equal(r.status, 'unlinked',
++      `[M1, M2] when every entry is skipped the answer is unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('../escape.mjs: outside the clone'),
++      `[M2] … with each skipped entry's reason: "../escape.mjs: outside the clone" — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(detailOf(r).includes('/etc/passwd: '),
++      `[M2] … and "/etc/passwd: " with its own reason — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (c) [M1, M2] every skipped entry is named in the unlinked detail')
++  }
++
++  // (d) an in-clone candidate beside an escaping entry: one subprocess, for
++  //     the in-clone file.
++  {
++    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
++    escapeBeside(clone)
++    const calls = []
++    const recorder = (cmd, argv, opts) => {
++      calls.push({ cmd, argv: Array.isArray(argv) ? argv.slice() : argv, opts: opts || {} })
++      return Promise.resolve({
++        code: 0,
++        stdout: `${JSON.stringify({ has: true, length: 1, names: ['foo'] })}\n`,
++        stderr: '',
++      })
++    }
++    const r = await resolves(
++      () => link({ bullet: '`foo(a)`', files: ['../escape.mjs', 'src/foo.mjs'], cloneDir: clone, exec: recorder }),
++      'leg (d) escape beside src/foo.mjs')
++    shape(r, 'leg (d) escape beside src/foo.mjs')
++    assert.equal(r.status, 'resolved',
++      `[M2] the answer is the in-clone candidate's own — got ${r.status} (${detailOf(r)})`)
++    assert.equal(calls.length, 1,
++      `[M1, M2] exec is called exactly once, for the in-clone file — got ${calls.length} call(s): ${JSON.stringify(calls.map((c) => c.cmd))}`)
++    const argvText = [calls[0].cmd, ...(calls[0].argv || [])].map(String).join(' ')
++    assert.ok(argvText.includes('src/foo.mjs'),
++      `[M2] … and that call is for src/foo.mjs — got ${JSON.stringify(argvText.slice(0, 400))}`)
++    assert.ok(!argvText.includes('escape.mjs'),
++      `[M1] … never for the escaping entry — escape.mjs appears in ${JSON.stringify(argvText.slice(0, 400))}`)
++    ok('task 3 (d) [M1, M2] one subprocess, for the in-clone candidate only')
++  }
++
++  // (e) the rule is the path, not the filesystem: an escaping entry that does
++  //     not exist is still "outside the clone", never "not in the clone".
++  {
++    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
++    const r = await resolves(
++      () => link({ bullet: '`foo(a)`', files: ['../nope.mjs'], cloneDir: clone, exec: boom }),
++      'leg (e) ../nope.mjs')
++    shape(r, 'leg (e) ../nope.mjs')
++    assert.equal(r.status, 'unlinked',
++      `[M1] an escaping entry that does not exist is unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('../nope.mjs: outside the clone'),
++      `[M1] … skipped as "../nope.mjs: outside the clone", the escape test running before the filesystem is consulted — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(!detailOf(r).includes('not in the clone'),
++      `[M1] … and never "not in the clone", which would mean the filesystem was consulted first — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (e) [M1] the escape test runs before the filesystem is consulted')
++  }
++
++  // The Claim's boundary: `abs` must equal the root or begin with the root
++  // plus `path.sep`, so a sibling directory whose name merely starts with the
++  // clone's is outside it.
++  {
++    const clone = checkoutOf({ 'src/foo.mjs': ESCAPE_BODY })
++    const sibling = `../${path.basename(clone)}-next/src/foo.mjs`
++    const r = await resolves(
++      () => link({ bullet: '`foo(a)`', files: [sibling], cloneDir: clone, exec: boom }),
++      'leg (e) sibling prefix')
++    shape(r, 'leg (e) sibling prefix')
++    assert.equal(r.status, 'unlinked',
++      `[M1] a sibling directory sharing the clone's name prefix is outside the clone — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes(`${sibling}: outside the clone`),
++      `[M1] … the root match is root or root + path.sep, not a bare string prefix — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 [M1] a sibling sharing the clone name prefix is outside the clone')
++  }
++
++  // ── M3: the empty-stderr fallback names the bound ───────────────────────
++  const seam = checkoutOf({
++    'src/foo.mjs': 'export function foo (a) { return a }\n',
++    'pkg/mod.py': 'def foo(a):\n    return a\n',
++  })
++  const seamExec = (res) => () => Promise.resolve(res)
++  const SEAM_MS = 500
++
++  // (f) `.mjs`, nothing on stdout and nothing on stderr.
++  {
++    const r = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['src/foo.mjs'],
++      cloneDir: seam,
++      exec: seamExec({ code: null, stdout: '', stderr: '' }),
++      timeoutMs: SEAM_MS,
++    })
++    shape(r, 'leg (f) mjs seam, no JSON, empty stderr')
++    assert.equal(r.status, 'unlinked',
++      `[M3] a subprocess that printed no JSON is unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes(`node produced no JSON within ${SEAM_MS}ms`),
++      `[M3] … with "node produced no JSON within ${SEAM_MS}ms" in the detail — got ${JSON.stringify(detailOf(r))}`)
++    assert.equal(detailOf(r), `src/foo.mjs: node produced no JSON within ${SEAM_MS}ms`,
++      `[M3] the detail is "<rel>: node produced no JSON within <timeoutMs>ms" — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (f) [M3] an .mjs seam that reports nothing names node and the bound')
++  }
++
++  // (g) the same, for `.py`.
++  {
++    const r = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['pkg/mod.py'],
++      cloneDir: seam,
++      exec: seamExec({ code: null, stdout: '', stderr: '' }),
++      timeoutMs: SEAM_MS,
++    })
++    shape(r, 'leg (g) py seam, no JSON, empty stderr')
++    assert.equal(r.status, 'unlinked',
++      `[M3] a python3 subprocess that printed no JSON is unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes(`python3 produced no JSON within ${SEAM_MS}ms`),
++      `[M3] … with "python3 produced no JSON within ${SEAM_MS}ms" in the detail — got ${JSON.stringify(detailOf(r))}`)
++    assert.equal(detailOf(r), `pkg/mod.py: python3 produced no JSON within ${SEAM_MS}ms`,
++      `[M3] the detail is "<rel>: python3 produced no JSON within <timeoutMs>ms" — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (g) [M3] a .py seam that reports nothing names python3 and the bound')
++  }
++
++  // (h) whitespace-only stderr is empty, and the code is irrelevant.
++  {
++    const r = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['src/foo.mjs'],
++      cloneDir: seam,
++      exec: seamExec({ code: 1, stdout: '', stderr: '  \n' }),
++      timeoutMs: SEAM_MS,
++    })
++    shape(r, 'leg (h) whitespace-only stderr')
++    assert.equal(r.status, 'unlinked',
++      `[M3] a whitespace-only stderr is still unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes(`within ${SEAM_MS}ms`),
++      `[M3] stderr that is empty after trimming takes the no-JSON detail, whatever code is — got ${JSON.stringify(detailOf(r))}`)
++    assert.equal(detailOf(r), `src/foo.mjs: node produced no JSON within ${SEAM_MS}ms`,
++      `[M3] … the whole detail, code 1 and all — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (h) [M3] whitespace-only stderr is empty, whatever the exit code')
++  }
++
++  // (i) a killed result, and a signalled one, keep the timeout wording.
++  {
++    const killed = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['src/foo.mjs'],
++      cloneDir: seam,
++      exec: seamExec({ code: 0, stdout: '', stderr: '', killed: true }),
++      timeoutMs: SEAM_MS,
++    })
++    shape(killed, 'leg (i) killed')
++    assert.equal(killed.status, 'unlinked',
++      `[M3] a killed subprocess is unlinked — got ${killed.status} (${detailOf(killed)})`)
++    assert.ok(detailOf(killed).includes(`timeout after ${SEAM_MS}ms`),
++      `[M3] … keeping "timeout after ${SEAM_MS}ms" — got ${JSON.stringify(detailOf(killed))}`)
++    assert.ok(!detailOf(killed).includes('within'),
++      `[M3] … and never the no-JSON wording — got ${JSON.stringify(detailOf(killed))}`)
++    assert.equal(detailOf(killed), `src/foo.mjs: timeout after ${SEAM_MS}ms`,
++      `[M3] the killed detail is "<rel>: timeout after <timeoutMs>ms" — got ${JSON.stringify(detailOf(killed))}`)
++
++    const signalled = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['src/foo.mjs'],
++      cloneDir: seam,
++      exec: seamExec({ code: null, stdout: '', stderr: '', signal: 'SIGKILL' }),
++      timeoutMs: SEAM_MS,
++    })
++    shape(signalled, 'leg (i) signalled')
++    assert.equal(signalled.status, 'unlinked',
++      `[M3] a signalled subprocess is unlinked — got ${signalled.status} (${detailOf(signalled)})`)
++    assert.ok(detailOf(signalled).includes(`timeout after ${SEAM_MS}ms`),
++      `[M3] … keeping "timeout after ${SEAM_MS}ms" — got ${JSON.stringify(detailOf(signalled))}`)
++    assert.ok(!detailOf(signalled).includes('within'),
++      `[M3] … and never the no-JSON wording — got ${JSON.stringify(detailOf(signalled))}`)
++    assert.equal(detailOf(signalled), `src/foo.mjs: timeout after ${SEAM_MS}ms`,
++      `[M3] the signalled detail is "<rel>: timeout after <timeoutMs>ms" — got ${JSON.stringify(detailOf(signalled))}`)
++    ok('task 3 (i) [M3] killed and signalled results keep the timeout wording')
++  }
++
++  // (j) a non-empty stderr still keeps its first line, as before.
++  {
++    const r = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['src/foo.mjs'],
++      cloneDir: seam,
++      exec: seamExec({ code: 1, stdout: '', stderr: 'boom line\nsecond' }),
++      timeoutMs: SEAM_MS,
++    })
++    shape(r, 'leg (j) non-empty stderr')
++    assert.equal(r.status, 'unlinked',
++      `[M3] a subprocess with stderr is unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('boom line'),
++      `[M3] … keeping the first line of its stderr — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(!detailOf(r).includes('within'),
++      `[M3] … not the no-JSON wording — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(!detailOf(r).includes('second'),
++      `[M3] … and only the first line — got ${JSON.stringify(detailOf(r))}`)
++    assert.equal(detailOf(r), 'src/foo.mjs: boom line',
++      `[M3] the detail is "<rel>: <first line of stderr>" — got ${JSON.stringify(detailOf(r))}`)
++    ok('task 3 (j) [M3] a non-empty stderr keeps its first line, as before')
++  }
++
++  // (k) the real thing: a module that neither exits nor prints still answers
++  //     at the timeout, under the module's own `defaultExec`.
++  {
++    const HANG = [
++      '// Neither exits nor prints: the interval keeps the loop alive and the',
++      '// awaited promise never settles.',
++      'setInterval(() => {}, 1000)',
++      'export function foo (a) { return a }',
++      'await new Promise(() => {})',
++      '',
++    ].join('\n')
++    const hung = checkoutOf({ 'src/hang.mjs': HANG })
++    const started = Date.now()
++    const r = await linkProduces({
++      bullet: '`foo(a)`',
++      files: ['src/hang.mjs'],
++      cloneDir: hung,
++      exec: defaultExec,
++      timeoutMs: SEAM_MS,
++    })
++    const elapsed = Date.now() - started
++    shape(r, 'leg (k) real hang')
++    assert.equal(r.status, 'unlinked',
++      `[M3] the real hang case still answers unlinked — got ${r.status} (${detailOf(r)})`)
++    assert.ok(detailOf(r).includes('timeout'),
++      `[M3] … with timeout in the detail — got ${JSON.stringify(detailOf(r))}`)
++    assert.ok(elapsed < 5000,
++      `[M3] … within five seconds — took ${elapsed}ms`)
++    ok('task 3 (k) [M3] the real hang case still answers unlinked at the timeout')
++  }
++
++  removeStray()
++}
++
+ cleanup()
+ console.log(`\nALL TESTS PASSED (${passed})`)
+diff --git a/fleet/tests/test_referee_replay.mjs b/fleet/tests/test_referee_replay.mjs
+index 744db56a32976872208d4d58216bd1e8cdd7b8c5..7613f87c16d17823e58ff904e314c9485e3957a2 100644
+--- a/fleet/tests/test_referee_replay.mjs
++++ b/fleet/tests/test_referee_replay.mjs
+@@ -631,5 +631,143 @@ for (const name of fixtures) {
+   }
+ }
+ 
++// ═══════════════════════════════════════════════════════════════════════════
++// Task 2 (#818) — "A patch the referee cannot read is a loud failure"
++//
++// A `patchPath` that is given and cannot be read is a loud failure, never a
++// clean record. These legs are #818's Proof (a)..(g) against its M1..M4:
++//
++//   M1  `readPatch(patchPath)`, given a non-empty string whose
++//       `fs.readFileSync` throws, throws an `Error` whose message is
++//       `referee: cannot read the captured patch <patchPath>: <err.message>`,
++//       and `referee({…, patchPath})` rejects with that error.
++//   M2  `referee()` called with `patchPath` `undefined`, `null` or `''`
++//       rejects with an `Error` whose message contains `no captured patch`
++//       and the task id.
++//   M3  When `referee()` rejects for either reason, nothing is written:
++//       `<runDir>/referee/` does not exist afterwards.
++//   M4  A readable `patchPath` behaves as before.
++//
++// The module guard above (leg (n)) still stands over the rethrow: it adds no
++// import, no subprocess and no socket.
++// ═══════════════════════════════════════════════════════════════════════════
++
++// The two shared literals the Claim spells out.
++const CANNOT_READ = 'referee: cannot read the captured patch '
++const NO_PATCH = 'no captured patch'
++
++// The opts `replay` builds for `clean-1`, reused verbatim by the rows that must
++// hand `patchPath` over as `undefined`, `null` or `''`: `replay`'s own
++// `over.patchPath ?? <fixture>` would substitute the fixture's patch for the
++// first two, so those rows call `referee()` directly. `head`, `task` and the
++// stub linker are the ones an earlier `replay` already built.
++const seed = await replay('clean-1')
++const cleanOpts = (patchPath, runDir) => {
++  const opts = {
++    task: seed.task,
++    baseSha: seed.head.base,
++    headSha: seed.head.head,
++    cloneDir: seed.head.dir,
++    siblingFiles: seed.spec.siblingFiles ?? [],
++    exam: seed.spec.exam,
++    examEvidence: seed.spec.examEvidence,
++    n: 0,
++    linker: stubLinker(),
++    runDir,
++  }
++  // Assigned last and unconditionally, so `undefined` is handed over as the
++  // value of a key that is present — the shape the engine's caller produces.
++  opts.patchPath = patchPath
++  return opts
++}
++
++// ═══ (a) [M1, M3] a patchPath that does not exist ═══════════════════════════
++{
++  const leg = '(a) [M1, M3] clean-1 with a patchPath that does not exist'
++  const runDir = scratch('run')
++  const patchPath = path.join(scratch('patch'), 'absent.diff')
++  assert.ok(!fs.existsSync(patchPath), `${leg}: the rig never wrote that path`)
++  await assert.rejects(
++    () => replay('clean-1', { patchPath, runDir }),
++    (err) => {
++      assert.ok(err instanceof Error,
++        `${leg}: the rejection is an Error, saw ${JSON.stringify(String(err))}`)
++      assert.ok(String(err.message).startsWith(CANNOT_READ),
++        `${leg}: the message starts \`${CANNOT_READ}\`; saw ${JSON.stringify(err.message)}`)
++      contains(err.message, patchPath, leg, 'the message names the unreadable path')
++      contains(err.message, 'ENOENT', leg, "the underlying error's message travels with it")
++      return true
++    },
++    `${leg}: an unreadable patch rejects rather than replaying an empty one`)
++  assert.ok(!fs.existsSync(path.join(runDir, 'referee')),
++    `${leg}: [M3] nothing is written — <runDir>/referee does not exist afterwards`)
++}
++
++// ═══ (b) [M1, M3] a patchPath that is a directory ═══════════════════════════
++{
++  const leg = '(b) [M1, M3] clean-1 with a patchPath that is a directory'
++  const runDir = scratch('run')
++  const dirPath = scratch('dir')
++  assert.ok(fs.statSync(dirPath).isDirectory(), `${leg}: the rig made a real directory`)
++  await assert.rejects(
++    () => replay('clean-1', { patchPath: dirPath, runDir }),
++    (err) => {
++      assert.ok(err instanceof Error,
++        `${leg}: the rejection is an Error, saw ${JSON.stringify(String(err))}`)
++      assert.ok(String(err.message).startsWith(CANNOT_READ),
++        `${leg}: the message starts \`${CANNOT_READ}\`; saw ${JSON.stringify(err.message)}`)
++      contains(err.message, dirPath, leg, "the message names the directory it could not read")
++      return true
++    },
++    `${leg}: a directory is a read that throws, so it rejects too`)
++  assert.ok(!fs.existsSync(path.join(runDir, 'referee')),
++    `${leg}: [M3] nothing is written — <runDir>/referee does not exist afterwards`)
++}
++
++// ═══ (c)(d)(e) [M2] and (f) [M3] the patchPath that was never given ═════════
++for (const [letter, label, value] of [
++  ['c', 'undefined', undefined],
++  ['d', 'null', null],
++  ['e', "''", ''],
++]) {
++  const leg = `(${letter}) [M2] clean-1 called directly with patchPath ${label}`
++  const runDir = scratch('run')
++  await assert.rejects(
++    () => referee(cleanOpts(value, runDir)),
++    (err) => {
++      assert.ok(err instanceof Error,
++        `${leg}: the rejection is an Error, saw ${JSON.stringify(String(err))}`)
++      contains(err.message, NO_PATCH, leg,
++        `the message says \`${NO_PATCH}\``)
++      contains(err.message, seed.task.id, leg,
++        'the message names the task the call was for')
++      return true
++    },
++    `${leg}: an absent patchPath is an error, never a clean record`)
++  assert.ok(!fs.existsSync(path.join(runDir, 'referee')),
++    `(f) [M3] clean-1 with patchPath ${label}: the scratch runDir holds no ` +
++    'referee directory afterwards')
++}
++
++// ═══ (g) [M4] a readable patch behaves as before ════════════════════════════
++{
++  const leg = '(g) [M4] clean-1 with the fixture patch'
++  const runDir = scratch('run')
++  const { result, task } = await replay('clean-1', { runDir })
++  assert.deepEqual(result.findings, [],
++    `${leg}: the clean-1 replay still yields no finding, saw ${JSON.stringify(result.findings)}`)
++  const record = path.join(runDir, 'referee', `task-${task.id}-0.json`)
++  assert.ok(fs.existsSync(record),
++    `${leg}: and still writes <runDir>/referee/task-<id>-0.json; missing ${record}`)
++
++  const zero = path.join(scratch('patch'), 'zero-byte.diff')
++  fs.writeFileSync(zero, '')
++  assert.equal(fs.statSync(zero).size, 0, `${leg}: the rig wrote a zero-byte file`)
++  const { result: onZero } = await replay('clean-1', { patchPath: zero })
++  assert.deepEqual(onZero.findings, [],
++    `${leg}: an existing zero-byte patch is readable, so it resolves with no finding, saw ` +
++    JSON.stringify(onZero.findings))
++}
++
+ fs.rmSync(SCRATCH, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_candidate_bootstrap.mjs b/fleet/tests/test_run_engine_candidate_bootstrap.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d0178723525800ef0e27627003b752094f0ef47
+--- /dev/null
++++ b/fleet/tests/test_run_engine_candidate_bootstrap.mjs
+@@ -0,0 +1,314 @@
++// fleet/tests/test_run_engine_candidate_bootstrap.mjs — the fold bootstraps a
++// candidate whose manifest changed (#825).
++//
++// A wave whose fold changes `package.json` (or any manifest/lockfile the
++// bootstrap ladder reads) leaves the integration clone's `node_modules` one
++// install behind the tree the candidate suite is about to run on. The suite
++// then dies on `Cannot find module` and the reconcile agent is handed a module
++// error instead of the install's own. This sim pins the install that closes
++// that gap, and pins that it happens exactly once, in the adopted tree.
++//
++// Everything below the agent seam is real (real git repos, real clones, the
++// real capture, the real fold kernel, the real `sh`); only the judgments are
++// canned. No network: the "dependency" is simulated by `install.sh`, which
++// reads the `dependencies` keys of `package.json` and writes a module into
++// `node_modules/` for each — and exits 3 with `install broke: boom` on stderr
++// when one of them is named `boom`.
++//
++// Machine clauses under test:
++//   M1 — `fleet/run-engine.mjs` exports `bootstrapManifestChanged(paths)`, a
++//        pure function of an array of repository-relative paths: `true` when at
++//        least one path's BASENAME is `package.json`, `package-lock.json`,
++//        `bun.lock`, `bun.lockb`, `pnpm-lock.yaml`, `uv.lock`, `pyproject.toml`
++//        or `pytest.ini`, or matches `requirements*.txt` — at any directory
++//        depth — and `false` otherwise, including for an empty array and for
++//        names that merely CONTAIN one of those (`package.json.bak`,
++//        `requirements.md`).
++//   M2 — in `foldWave`'s adopt sequence, after `git read-tree -u --reset
++//        <candidate>^{tree}` into the integration clone and before `testCmd`
++//        runs there, when `bootstrapCmd` is set and `bootstrapManifestChanged`
++//        is true over the paths of `git diff --name-only <prevHead>
++//        <candidate>`, the engine runs `bootstrapCmd` exactly once in the
++//        integration clone through the same `sh` seam the suite runs through;
++//        with `bootstrapCmd` unset, or with the predicate false, none runs
++//        there between the `read-tree` and the suite.
++//   M3 — when that bootstrap exits non-zero, `report.judgmentCalls` gains a
++//        line containing `wave <N>: candidate bootstrap failed (exit <code>)`,
++//        `testCmd` is not run on that candidate, and the failing output handed
++//        to the reconcile agent and the wave's `TEST_FAILED` detail carry the
++//        bootstrap's stdout and stderr and none of the suite's output.
++//   M4 — the install made before the suite is the ADOPTED tree's install:
++//        after a wave whose candidate bootstrap ran returns `MERGED`, the
++//        module the bootstrap installed is present under the integration clone,
++//        and no second bootstrap ran there after the adopt.
++//   M5 — `fleet/roles/reconcile.md` carries one sentence naming the project's
++//        dependency install as the first move when a manifest or lockfile
++//        changed — the words `manifest`, `lockfile` and `install` appear in
++//        that order within one sentence.
++//
++// Proof legs, and where each is asserted below: (a) the predicate's ten true
++// rows, bare and one directory deep [M1]; (b) its five false rows [M1]; (c) the
++// manifest scenario (MERGED, green, no reconcile, two integration installs),
++// the no-manifest scenario (one), and the manifest scenario with no
++// `bootstrapCmd` at all (none, and no `candidate bootstrap` judgment call)
++// [M2]; (d) the failing scenario — the judgment call, the reconcile brief, the
++// `TEST_FAILED` detail, and the one-and-only suite run (the baseline's) [M3];
++// (e) the installed module under the integration clone, and no install after
++// the adopt [M4]; (f) `reconcile.md`'s sentence [M5]; (g) the two sibling sims
++// that pin the reconcile loop and the exam-clone bootstrap still print their
++// sentinel [M2, M3].
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { execFileSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++// Namespace import on purpose: a missing named export is a link-time
++// SyntaxError that reads like a bad import path. This way the absent
++// implementation reports itself as the assertion it is, on the line below.
++import * as engine from '../run-engine.mjs'
++
++const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
++// realpath so the `$PWD` the shell scripts log is byte-equal to the clone paths
++// the assertions compare it against.
++const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'engine-cand-bootstrap-')))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── (a) + (b) the predicate [M1] ─────────────────────────────────────────────
++const bootstrapManifestChanged = engine.bootstrapManifestChanged
++assert.equal(typeof bootstrapManifestChanged, 'function',
++  '[M1] fleet/run-engine.mjs does not export bootstrapManifestChanged(paths) yet')
++
++// (a) every name in the ladder, bare and one directory deep — the TinyApp case
++// was `client/package.json`, so depth is part of the clause, not a courtesy.
++for (const name of ['package.json', 'package-lock.json', 'bun.lock', 'bun.lockb',
++                    'pnpm-lock.yaml', 'uv.lock', 'pyproject.toml', 'pytest.ini',
++                    'requirements.txt', 'requirements-dev.txt']) {
++  assert.equal(bootstrapManifestChanged([name]), true,
++    '[M1] leg (a): bootstrapManifestChanged([' + JSON.stringify(name) + ']) is true')
++  assert.equal(bootstrapManifestChanged(['client/' + name]), true,
++    '[M1] leg (a): bootstrapManifestChanged(["client/' + name + '"]) is true — ' +
++    'the basename matches at any depth')
++}
++
++// (b) the false rows: nothing changed, nothing relevant changed, and three
++// names that merely CONTAIN a ladder name.
++for (const paths of [[], ['README.md', 'src/a.mjs'], ['package.json.bak'],
++                     ['requirements.md'], ['docs/pytest.ini.old']]) {
++  assert.equal(bootstrapManifestChanged(paths), false,
++    '[M1] leg (b): bootstrapManifestChanged(' + JSON.stringify(paths) + ') is false')
++}
++
++// ── the sim repo: a simulated dependency, and a log of where things ran ──────
++// `install.sh` and `check.sh` each append one marked line naming their own
++// `$PWD` to the SAME log file, whose absolute path the sim writes into both
++// scripts. `install <dir>` lines count where the bootstrap ran; `check <dir>`
++// lines count where the suite ran.
++const INSTALL_JS = [
++  'const fs = require("fs");',
++  'const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));',
++  'const deps = Object.keys(pkg.dependencies || {});',
++  'if (deps.indexOf("boom") !== -1) { console.error("install broke: boom"); process.exit(3); }',
++  'for (const d of deps) {',
++  '  fs.mkdirSync("node_modules/" + d, { recursive: true });',
++  '  fs.writeFileSync("node_modules/" + d + "/package.json", JSON.stringify({ main: "index.js" }));',
++  '  fs.writeFileSync("node_modules/" + d + "/index.js", "module.exports = 1");',
++  '}',
++].join('\n')
++
++const repoFiles = (log) => ({
++  // Replaces makeRepo's default check.sh: same `[ ! -f BROKEN ]` spine, plus
++  // the marker line and the module the manifest scenario makes it need.
++  'check.sh': '#!/bin/bash\necho "check $PWD" >> ' + log + '\n[ ! -f BROKEN ] && node test.mjs\n',
++  'install.sh': '#!/bin/bash\necho "install $PWD" >> ' + log + "\nnode -e '" + INSTALL_JS + "'\n",
++  'package.json': '{"dependencies":{}}\n',
++  'test.mjs': '// no imports at BASE\n',
++  // Without this the implementer's own install rides into the captured patch
++  // (`git add -A` then `git diff --cached`).
++  '.gitignore': 'node_modules/\n',
++})
++
++const logLines = (log) =>
++  (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : [])
++const marked = (log, marker, dir) => logLines(log).filter((l) => l === marker + ' ' + dir)
++
++// The three implementer behaviours. Each writes the tracked files and then runs
++// the bootstrap in its OWN clone, the way the live implementer did — so the
++// task clone is provisioned and only the two tracked files reach the patch.
++const runInstall = (cwd) => {
++  try {
++    execFileSync('bash', ['install.sh'], { cwd, stdio: 'ignore' })
++  } catch { /* the boom scenario's install fails here too; the clone is not the leg */ }
++}
++const addDependency = (name) => (cwd) => {
++  fs.writeFileSync(path.join(cwd, 'package.json'), '{"dependencies":{"' + name + '":"1"}}\n')
++  fs.writeFileSync(path.join(cwd, 'test.mjs'), "import '" + name + "'\n")
++  runInstall(cwd)
++}
++const touchOnlyText = (cwd) => {
++  fs.writeFileSync(path.join(cwd, 'a.txt'), 'line1\nline2\nline3\nline4\n')
++}
++
++const entry = (files) => ({
++  id: 'T1', title: 'the wave whose fold may change a manifest', files,
++  tier: 'standard', review: 'lean', writes: files, commutes: [], body: 'task T1',
++})
++
++let seq = 0
++async function scenario({ files, onImpl, extraArgs = { bootstrapCmd: 'bash install.sh' } }) {
++  seq += 1
++  const stamp = 'cb' + seq
++  const log = path.join(tmp, 'log-' + stamp + '.txt')
++  const repo = makeRepo(path.join(tmp, 'repo-' + stamp), repoFiles(log))
++  const runDir = path.join(tmp, 'run-' + stamp)
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') { onImpl(cwd); return doneImpl(cwd) }
++    if (kind === 'review') return passReview()
++    // A reconcile that gives up: the wave ends TEST_FAILED carrying whatever
++    // output the driver decided was the failure.
++    if (kind === 'reconcile') return { status: 'BLOCKED', summary: 'sim reconcile gives up' }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, integ } = rig({ repo, runDir, waves: [[entry(files)]], stub, stamp, extraArgs })
++  const report = await run()
++  return { report, labels, prompts, integ, log, runDir }
++}
++
++// ── (c) + (e) the manifest scenario: MERGED, bootstrapped once more [M2][M4] ─
++{
++  const { report, labels, integ, log } = await scenario({
++    files: ['package.json', 'test.mjs'],
++    onImpl: addDependency('leftpad'),
++  })
++  const calls = JSON.stringify(report.judgmentCalls)
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    '[M2] leg (c): the candidate whose manifest changed is bootstrapped before its suite, ' +
++    'so the suite is green and the wave merges — ' + calls +
++    ' detail: ' + report.waveMerges[0].detail)
++  assert.equal(report.tests.passed, true,
++    '[M2] leg (c): and the run\'s suite passed: ' + report.tests.output)
++  assert.deepEqual(labels.filter((l) => l.startsWith('reconcile:')), [],
++    '[M2] leg (c): no reconcile agent was dispatched — the install, not a repair, ' +
++    'is what made the candidate green: ' + labels.join(','))
++  assert.equal(marked(log, 'install', integ).length, 2,
++    '[M2] leg (c): the bootstrap ran in the integration clone exactly twice — once from ' +
++    'the setup loop, once at the candidate site: ' + JSON.stringify(logLines(log)))
++
++  // [M4] the install before the suite is the ADOPTED tree's install, and it
++  // survives the `reset --hard` the adopt does in that same directory.
++  assert.ok(fs.existsSync(path.join(integ, 'node_modules', 'leftpad', 'index.js')),
++    '[M4] leg (e): the module the candidate bootstrap installed is present under the ' +
++    'integration clone after the adopt')
++  assert.equal(marked(log, 'install', integ).length, 2,
++    '[M4] leg (e): and no third bootstrap ran there — none was added after the adopt: ' +
++    JSON.stringify(logLines(log)))
++}
++
++// ── (c) the no-manifest scenario: the predicate is false, nothing runs [M2] ──
++{
++  const { report, integ, log } = await scenario({
++    files: ['a.txt'],
++    onImpl: touchOnlyText,
++  })
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    '[M2] leg (c): a fold that touched only a.txt still merges — ' +
++    JSON.stringify(report.judgmentCalls) + ' detail: ' + report.waveMerges[0].detail)
++  assert.equal(marked(log, 'install', integ).length, 1,
++    '[M2] leg (c): with the predicate false the bootstrap ran in the integration clone ' +
++    'exactly once — the setup loop\'s, and none between the read-tree and the suite: ' +
++    JSON.stringify(logLines(log)))
++}
++
++// ── (c) the manifest scenario with no bootstrapCmd at all [M2] ───────────────
++// The engine has no install to run, so it runs none — and mints no judgment
++// call about one. (The candidate is red on the missing module here; that red is
++// the pre-#825 behaviour and is not what this leg reads.)
++{
++  const { report, integ, log } = await scenario({
++    files: ['package.json', 'test.mjs'],
++    onImpl: addDependency('leftpad'),
++    extraArgs: {},
++  })
++  assert.equal(marked(log, 'install', integ).length, 0,
++    '[M2] leg (c): with bootstrapCmd unset no bootstrap ran in the integration clone: ' +
++    JSON.stringify(logLines(log)))
++  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('candidate bootstrap')), [],
++    '[M2] leg (c): and no judgment call names a candidate bootstrap: ' +
++    report.judgmentCalls.join(' | '))
++}
++
++// ── (d) the failing scenario: red on the install's own error [M3] ────────────
++{
++  const { report, prompts, integ, log } = await scenario({
++    files: ['package.json', 'test.mjs'],
++    onImpl: addDependency('boom'),
++  })
++  const calls = report.judgmentCalls
++  assert.ok(calls.some((j) => j.includes('wave 1: candidate bootstrap failed (exit 3)')),
++    '[M3] leg (d): the failing candidate bootstrap is a judgmentCall naming the exit code: ' +
++    calls.join(' | '))
++
++  // The reconcile agent reads the install's own error, not a module error the
++  // suite would have minted — because the suite never ran on this candidate.
++  const brief = prompts['reconcile:wave1:1']
++  assert.equal(typeof brief, 'string',
++    '[M3] leg (d): the reconcile agent was dispatched for the failed bootstrap')
++  const cut = brief.indexOf('Failing output:')
++  assert.ok(cut !== -1, '[M3] leg (d): the reconcile brief carries a Failing output: block')
++  const failing = brief.slice(cut + 'Failing output:'.length)
++  assert.ok(failing.includes('install broke: boom'),
++    '[M3] leg (d): the failing output handed to the reconcile agent is the bootstrap\'s: ' +
++    JSON.stringify(failing.slice(0, 600)))
++  assert.ok(!failing.includes('Cannot find module'),
++    '[M3] leg (d): and none of the suite\'s output: ' + JSON.stringify(failing.slice(0, 600)))
++
++  // The wave's own detail says the same thing.
++  assert.equal(report.waveMerges[0].status, 'TEST_FAILED',
++    '[M3] leg (d): a reconcile that gives up leaves the wave TEST_FAILED')
++  const detail = String(report.waveMerges[0].detail || '')
++  assert.ok(detail.includes('install broke: boom'),
++    '[M3] leg (d): the TEST_FAILED detail carries the bootstrap\'s output: ' + detail)
++  assert.ok(!detail.includes('Cannot find module'),
++    '[M3] leg (d): and none of the suite\'s: ' + detail)
++
++  // The suite ran in the integration clone exactly once — the baseline pass on
++  // BASE's tree, which the red candidate pays for. The candidate itself was
++  // never tested: a bootstrap that failed is the answer already.
++  assert.equal(marked(log, 'check', integ).length, 1,
++    '[M3] leg (d): the suite ran in the integration clone exactly once — the baseline\'s — ' +
++    'so testCmd was never run on the candidate: ' + JSON.stringify(logLines(log)))
++}
++
++// ── (f) the reconcile role's sentence [M5] ───────────────────────────────────
++// The Proof's fourth `Run:` in JS: `manifest`, `lockfile` and `install` in that
++// order, within one sentence (no `.` between them), case-insensitively.
++{
++  const role = fs.readFileSync(path.join(REPO_ROOT, 'fleet/roles/reconcile.md'), 'utf8')
++  assert.ok(/manifest[^.]*lockfile[^.]*install/i.test(role.replace(/\n/g, ' ')),
++    '[M5] leg (f): fleet/roles/reconcile.md names the dependency install as the first move ' +
++    'when a manifest or lockfile changed — `manifest`, `lockfile`, `install` in that order ' +
++    'within one sentence')
++}
++
++// ── (g) the sibling sims still print their sentinel [M2][M3] ─────────────────
++for (const sim of ['fleet/tests/test_run_engine_reconcile.mjs',
++                   'fleet/tests/test_run_engine_exam_together.mjs']) {
++  let out
++  try {
++    out = execFileSync('node', [sim], { cwd: REPO_ROOT, encoding: 'utf8' })
++  } catch (e) {
++    out = String((e && (e.stdout || e.message)) || e)
++  }
++  assert.ok(out.includes('ALL TESTS PASSED'),
++    '[M2][M3] leg (g): ' + sim + ' still passes — the reconcile loop and the exam-clone ' +
++    'bootstrap are unchanged: ' + out.slice(-1200))
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_referee.mjs b/fleet/tests/test_run_engine_referee.mjs
+index ae675c892615174513c32267e11382d886c4a8b5..822be7f767c112c83364e1309bdd523642e8cadb 100644
+--- a/fleet/tests/test_run_engine_referee.mjs
++++ b/fleet/tests/test_run_engine_referee.mjs
+@@ -587,5 +587,52 @@ const examTask = (over = {}) =>
+   }
+ }
+ 
++// ── (i) task 2 (#818): an unreadable capture is a driver error [M5] ─────────
++// "A patch the referee cannot read is a loud failure": when the captured patch
++// is gone by the time the pre-review pass reaches the referee, `referee()`
++// rejects, the rejection propagates out of `runTaskInner` to `runTask`'s catch,
++// and the task ends as any driver error ends — retried once at the same tier
++// and, on the second throw, `failed`/`agent-error` with the message in `notes`.
++// The record of a driver error, never of a review.
++//
++// The way a sim makes a capture vanish: the pre-review pass runs the task's
++// `Run:` commands (`bash -lc`, cwd the task clone) BEFORE `runReferee`, the
++// clone is `<runDir>/clones/task-T1` and the capture is
++// `<runDir>/patches/task-T1.patch`, so this task deletes its own capture on
++// every pass. The retry re-captures and re-deletes, so the second throw lands
++// the row. No engine change belongs to task 2 — this is that existing route,
++// observed through the seam.
++{
++  const r = await drive('i1', [mkTask('T1', ['one.txt'], {
++    proofRuns: ['rm -f "$PWD/../../patches/task-T1.patch"'],
++    proofTests: [],
++  })], { impl: (cwd) => write(cwd, 'one.txt', 'one\n') })
++
++  const row = r.row('T1')
++  assert.equal(row.status, 'failed',
++    '[M5] a capture the referee cannot read fails the task: ' + JSON.stringify(row))
++  assert.equal(row.reviewVerdict, 'agent-error',
++    '[M5] as a driver error, not as a review verdict: ' + JSON.stringify(row))
++  assert.ok(String(row.notes).includes('cannot read the captured patch'),
++    '[M5] the rethrown message is the note: ' + row.notes)
++  assert.ok(String(row.notes).includes('task-T1.patch'),
++    '[M5] naming the capture it could not read: ' + row.notes)
++  assert.deepEqual(r.of('review:'), [],
++    '[M5] and no reviewer was ever dispatched for it: ' + r.labels.join(','))
++
++  const dir = path.join(r.runDir, 'referee')
++  const records = fs.existsSync(dir)
++    ? fs.readdirSync(dir).filter((f) => /^task-T1-.*\.json$/.test(f))
++    : []
++  assert.deepEqual(records, [],
++    '[M5] and nothing was written under <runDir>/referee for it — the read stays ' +
++    'ahead of the write: ' + JSON.stringify(records))
++
++  const calls = r.report.judgmentCalls.filter(
++    (l) => l.includes('agent error') && l.includes('cannot read the captured patch'))
++  assert.ok(calls.length >= 1,
++    '[M5] the report says which task erred and why: ' + JSON.stringify(r.report.judgmentCalls))
++}
++
+ fs.rmSync(tmp, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')

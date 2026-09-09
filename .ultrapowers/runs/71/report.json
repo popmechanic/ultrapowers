@@ -1,0 +1,569 @@
+{
+  "integrationBranch": "ultra/integration-run-71",
+  "baseSha": "a526641762b11c20a04da0db0ada4f384cbde4cc",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "6",
+      "7"
+    ],
+    [
+      "5"
+    ]
+  ],
+  "dependencyEdges": [
+    "3 -> 5 (interface)",
+    "4 -> 5 (interface)"
+  ],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b69657c399dd6d42d9dd400ecccc002d6fd182d7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale module header: `fleet/run-engine.mjs:26-34` still asserts that \"a Proof `Run:` and a Global Constraints `Check:` are the only shell commands here that get an extra environment variable\" and that \"The suite, the bootstrap and the exam runs keep the seam's default environment.\" Both sentences are now false in this same diff \u2014 the at-BASE probe (line 1580) and `runExam` (1686) are handed four `ULTRA_*` variables, and the per-task `Run:`/`Check:` sites carry three more beside `ULTRA_BASE`. The header is the file's contract for this exact seam, so a reader arriving at `examEnv` from the top is told the opposite of what the code does. No Machine clause or leg pins this text, hence minor rather than blocking.; test-coverage: the diff documents, in `skills/ultrapowers/references/report-format.md`, that \"Unreadable or missing JSON leaves `null` in the fields it could not supply rather than dropping the element \u2014 evidence, not control flow\", and `readJsonOrNull` (fleet/run-engine.mjs:348) implements it, but no assertion in `fleet/tests/test_run_engine_state_exams.mjs` exercises it: every record the exam stub writes carries all three well-formed JSON files, and leg (j) only covers an absent directory. Delete `readJsonOrNull`'s `catch` and the exam still passes. One direct call would close it, e.g. after leg (j): mkdir a `<runDir>/state-exams/task-T8/half-1/` holding only a truncated `walls.json`, then assert `stateExamsOf(runDir, 'T8')` deep-equals `[{exam:'half', store_ms:null, render_ms:null, render:null, mutant_killed:null, contract:null}]`. Minor because no Machine clause or Proof leg names the unreadable case \u2014 it lives in the task's Context and in the report-format prose this diff added.; Shape mismatch between the two exported symbols: `stateExamsOf` returns rows with exactly the six spec keys (it drops `mutant_path`), but `stateExamBlock` renders the mutant path from `r.mutant_path || r.path || ''`. Composing the two exports \u2014 `stateExamBlock(stateExamsOf(runDir, id))` \u2014 silently emits `- <exam>: mutant  killed: true` with an empty path, and the `r.path` arm is dead (no producer in this file ever sets `path`). The engine itself is correct because it feeds `stateExamBlock` from the private `stateExamRowsOf`, and the exam only exercises the block through rows that render `''`, so nothing observable is wrong today; it is a foot-gun for any later caller. Either document on the export that it takes `stateExamRowsOf` rows (not report rows), or drop the dead `r.path` arm and make the empty path visible as `(unrecorded)` rather than a blank.; concern: block-placement: the Context says the STATE EXAM block is joined 'after checkEvidenceBlock', while Proof leg (h) says the review prompt 'ends with' it \u2014 refereeBlock currently sits after checkEvidenceBlock and always renders, so the two readings conflict. I placed stateExamBlock LAST (after refereeBlock), which satisfies leg (h) and both readings of 'after the check block'; it breaks no sibling pin, because every existing sim has an empty record and so renders ''.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b9bc2be31c09180c2a7a1a154810e56f4dd5da3b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "Footprint outside FILES (already recorded by the driver): the patch edits `fleet/tests/test_sandbox_boot.mjs` and `fleet/tests/test_sandbox_boot_effort.mjs`, neither of which is in this task's declared `Files:` (`fleet/sandbox-boot.sh`, `fleet/tests/test_sandbox_boot_state_exams.mjs`). Both edits are necessary and minimal \u2014 those sims pin the engine unit's argv word-for-word, so M1's new `TINYAPP_RENDER_URL=` entry cannot land without adding one expected element to each expected-argv literal, and the Proof's own `Run:` list requires `test_sandbox_boot.mjs` to stay green. Neither path is claimed by a sibling task in SIBLING FILES, so there is no collision; recorded, not blocking.; unverified: the production leg of M1 \u2014 that the file at the literal fallback `/etc/fleet/render.env` actually exists and holds one line spelled `TINYAPP_RENDER_URL=https://<integration>.int.exe.xyz/client/v4/accounts/<account>/browser-rendering` \u2014 is a cross-task claim on Task 3's `fleet/setup-script.mjs`, which this patch does not touch. The exam correctly exercises only the relocatable `FLEET_RENDER_ENV` path (leg (b)) and asserts the literal is absent for leg (a), which is the most this diff can settle. Likewise, that the engine consumes the `TINYAPP_RENDER_URL` environment entry this argv now carries lives in Task 1's `fleet/run-engine.mjs`. What would settle both: the integrated suite on the adopted tree, which the driver runs as this run's `suite` Acceptance.; Robustness nit in the new `collect_evidence` block: `find \"$run_dir/state-exams\" -type f -print | while IFS= read -r f` splits on newlines, so a state-exam path containing a newline would be copied to a wrong destination or silently skipped. The task's Context prescribes exactly this shape (`e.g. find \"$run_dir/state-exams\" -type f`), and the recorded layout is `task-<id>/<stem>-<pass>/<file>`, so this is theoretical rather than reachable today; `-print0` with `read -r -d ''` would close it if the stem ever becomes free-form. Not blocking.; Error path: the new `state-exams/` copy in `collect_evidence` (fleet/sandbox-boot.sh) is the only one of the three tree-copy blocks with no failure tolerance. The transcripts block and the referee block immediately above it both end `2>/dev/null || true`, precisely because `collect_evidence` runs at every `write_status` transition and once more at `fail`, under the script-level `set -euo pipefail`. The new block's `find \u2026 | while \u2026 mkdir -p \u2026; cp \u2026; done` is an unguarded pipeline in statement position: one unreadable exam artifact, or a `mkdir` that loses a race with a concurrent transition, makes the pipeline non-zero and aborts `collect_evidence` before `engine.log`, `claude-version.txt` and `status.json` are copied \u2014 turning a lost screenshot into a dead boot, where the same failure in `transcripts/` is survivable. M3 does not require tolerance, so this is advisory, but it diverges from the convention the block was explicitly modeled on, and no leg covers it.; Footprint (as the driver's arithmetic already records): the patch edits `fleet/tests/test_sandbox_boot.mjs` and `fleet/tests/test_sandbox_boot_effort.mjs`, neither of which is in this task's FILES. Both edits are the necessary consequence of M1 \u2014 each file asserts the engine unit's argv by exact `deepEqual` against a literal list, so adding the `TINYAPP_RENDER_URL=` entry to the `env` prefix necessarily breaks them, and the Proof's own `Run:` line requires `test_sandbox_boot.mjs` to keep printing the sentinel. Both edits only ADD the one expected entry in its argv position (with a comment naming why it is empty); no assertion is dropped or loosened, so any tree passing the edited files passes the originals. Recorded and accepted, not a defect \u2014 noted only so the out-of-scope paths are on the record.; unverified: the production default path. M1 names the source target as `${FLEET_RENDER_ENV:-/etc/fleet/render.env}`, and the diff carries that literal at `fleet/sandbox-boot.sh` (the new `FLEET_RENDER_ENV=\"${FLEET_RENDER_ENV:-/etc/fleet/render.env}\"` relocatable-root line), so the requirement does map to a concrete line. But no leg pins the literal: leg (a) only asserts `/etc/fleet/render.env` is ABSENT from the test host and that the entry comes out empty, which stays green for any default path that does not exist. The literal is the sole point of contact with Task 3's setup script, which writes that file \u2014 a disagreement between the two would be invisible to both suites. What would settle it: a leg that plants a file at a `FLEET_HOME`-relative stand-in for the default and asserts the boot sources it with `FLEET_RENDER_ENV` unset, or (cheaper, and outside this task) a shared constant both Task 2 and Task 3 read. Graded minor and routed to `plan` because the exam legs are the plan's text and the cross-task agreement cannot be closed inside this task's FILES.; path outside FILES: `fleet/tests/test_sandbox_boot.mjs`; path outside FILES: `fleet/tests/test_sandbox_boot_effort.mjs`; Produces: nothing \u2014 fleet/tests/test_sandbox_boot_state_exams.mjs: declared, not exported; concern: out-of-FILES: fleet/tests/test_sandbox_boot.mjs and fleet/tests/test_sandbox_boot_effort.mjs each pin the engine unit's argv with a whole-argv deepEqual, so the new `TINYAPP_RENDER_URL=` entry had to be added to both expectations (one line each, plus a comment). Proof leg (g) requires `node fleet/tests/test_sandbox_boot.mjs` to print the sentinel, which is unreachable without that edit. No other assertion in either file was changed.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "4ca84556c43f6ed7931afad2d5a4ea9bc0c9b9c6",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "M3 hardening gap (advisory, not required by any Proof leg): `renderEnvStep` validates with `String(integration)` / `String(account)` rather than a type check, so a non-string value that stringifies into the allowed shape slips through. `renderSetupScript({run, bootstrap, unit, render: {integration: 'browser-run'}})` (account missing) coerces `undefined` to the literal `'undefined'`, which matches `^[A-Za-z0-9_-]+$`, and renders `TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/undefined/browser-rendering` instead of throwing; a non-object `render` (e.g. `render: 'browser-run'`) destructures to two `undefined`s and renders `https://undefined.int.exe.xyz/.../accounts/undefined/...`. Read strictly, M3 says a value not matching the pattern throws, and `undefined` matches neither pattern. No in-tree caller can produce this today \u2014 Task 4's `fleetConfigRender` answers either `null` or both strings, and Task 5 passes that through \u2014 which is why this is advisory rather than blocking. Everything the exam's leg (d) pins (bad strings, empty strings) is refused correctly, and the refusal does happen before any script text is built (fleet/setup-script.mjs:55, before the template literal).; `renderEnvStep` validates `String(integration)`/`String(account)` rather than the values themselves, so a non-string key that stringifies into the allowed alphabet passes: `render: {}`, `{integration: undefined, \u2026}`, `{integration: null, \u2026}` and `{integration: true, \u2026}` all satisfy `^[a-z][a-z0-9-]*$` via 'undefined'/'null'/'true' and render the address `https://undefined.int.exe.xyz/client/v4/accounts/undefined/browser-rendering` into a real setup script instead of throwing. `render: 'x'` destructures to two undefineds and does the same. M3 speaks of values not matching the two shapes, and a missing key is such a value; the exam's leg (d) only exercises malformed strings, so nothing catches it. Not blocking: no injection is possible (JS `$` without the `m` flag anchors at true end-of-string, so no newline can enter the heredoc body), and Task 4's `fleetConfigRender` returns null unless both keys are strings, so the wave-2 caller cannot reach it. A `typeof` guard is a two-line fix and would make the refusal match the clause.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "29e1b0da688d4bbe29726240eb4361087cbb2475",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "`wantRender`'s doc comment in fleet/doctor.mjs contradicts its code. The comment ends \"Anything else is a file that names half a renderer, which names none\", but the body returns `{ integration, account: typeof account === 'string' ? account : '' }` \u2014 a `render` carrying an integration and no account is kept, not treated as none. `fleetConfigRender` (the only production feeder, via `main`) does return null for that shape, so the divergence is unreachable from the CLI and no Machine clause is violated; but a direct `doctor({ render: { integration: 'browser-run' } })` caller gets a green row whose detail reads \"browser-run carries the renderer at the edge for account \" with a dangling trailing space, and no assertion in test_doctor_render.mjs covers that input. Either make `wantRender` require the account string too (matching `fleetConfigRender` and the comment), or reword the comment to say the account is normalized rather than rejected. The two validators also duplicate the same four type checks; folding `wantRender` onto `fleetConfigRender`'s predicate would remove the drift at its source.; fleet/doctor.mjs: `wantRender` and `fleetConfigRender` carry the same validation twice, and they disagree. `wantRender`'s comment says \"Anything else is a file that names half a renderer, which names none\", but the code only returns null when `integration` is not a non-empty string; a non-string `account` is coerced to `''` and the row is still built, so the green detail can read \"... at the edge for account \" with a trailing blank. `fleetConfigRender` returns null for that same input (pinned by the new exam group 3). Nothing reaches the divergence today \u2014 `main()` feeds `doctor()` the already-validated answer of `fleetConfigRender`, and every test passes a well-formed pair \u2014 so this is advisory rather than a defect in the shipped path. Making `wantRender` reject a non-string `account` the way it rejects a non-string `integration` would match its own comment and its sibling, and would let the two share one predicate instead of two copies of it.; unverified: the `## render` section of skills/ultrapowers/references/first-run.md tells the operator \"The launcher binds it to the run's own VM at `new`, beside the other two \u2014 `--integration claude-max,gh-<owner>-<repo>,browser-run`\". This patch touches neither the launcher nor any code that builds that flag, so nothing in this diff establishes the sentence; the task's own Context directs it to be written, and the behaviour it describes is Task 5's (wave 2). What would settle it: Task 5 landing the `browser-run` entry in the launcher's `--integration` list, and the integrated suite running over the adopted tree. Recorded so the operator can see the doc runs one wave ahead of the code it describes; no edit inside this task's FILES answers it.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d08ed6f86ce9820081c52d12a7107b0215e83a12",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the new `state-exams/` sentence on the `ultra/evidence-run-<N>` bullet (patch lines 9\u201311) declares a layout \u2014 `task-<id>/<stem>-<pass>/`, contents copied file by file, present when the exams wrote it \u2014 that only sibling task 1's `fleet/run-engine.mjs` can produce; this diff touches no code and the M3 grep only reads the contract back to itself. What would settle it: at integration, the engine's evidence-writing path (and `fleet/tests/test_run_engine_state_exams.mjs`) creating exactly `state-exams/task-<id>/<stem>-<pass>/` under the evidence branch. If the engine lands a different stem/pass spelling, the contract is the authority and this bullet is what has to move.; unverified: the doctor table now reads `eight rows` with `render` last, but on this clone's tree `fleet/doctor.mjs` still has seven (`ROW_IDS` = exe-dev, capacity, claude, accounts, github, integrations, verb-drift) and `CONFIG_KEYS` = READ_KEYS + `account` \u2014 no `render`. The added `accounts` and `verb-drift` rows faithfully match doctor.mjs's own header comment, so those are accurate; the eighth row and the documented `render` config key depend entirely on sibling task 4. Note that `tests/test_docs_agree_with_code.py` compares `ROW_IDS` against first-run.md headings only, never against this table, so a task-4 miss would leave the drift uncaught by the suite. What would settle it: task 4 appending `render` to `ROW_IDS` and to `CONFIG_KEYS` (otherwise a `fleet.json` carrying `render` reds the capacity row, contradicting this bullet's `render` key) plus a `## render` heading in `skills/ultrapowers/references/first-run.md`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "7",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "05501c7e942bd8734534712ba6f951fb9cbbf542",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-7.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the new `## State exams` section tells an author to hand an examiner the `import { stateExam } from \"tinyapp-exam\";` shape verbatim while noting the examiner \"receives no library docs\", but nothing on the page (or in this task's FILES) says where `tinyapp-exam` comes from in a generated TinyApp \u2014 whether the `create-tinybase` scaffold provides it or a plan task must add it as a dependency. Every Machine clause (M1's grep for `stateExam.*tinyapp-exam.*clock.*seed.*action.*expected.*view.*mutant`) is satisfied by the diff as written, and the driver's Run evidence for all nine Proof commands exits 0, so this blocks nothing. What would settle it: the spec section (`docs/superpowers/specs/2026-09-09-tinyapp-state-exams.md` \u00a73.1/\u00a73.2) or a sibling task naming the provenance of the `tinyapp-exam` module, after which one clause in `skills/ultrawrite/references/greenfield-stack.md` \u00a7State exams could say it. Actor is `plan` because the sentence to add is not authorized by this task's own text.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "8a937ba1fe46e46c112dde65216f6d39c062169b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-71/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "plan-defect: the M2 refusal text at fleet/launch.mjs:736 hardcodes `~/.ultrapowers/fleet.json` as the source of the name, but `render` may have come from a `--config <other path>` file (the branch at fleet/launch.mjs:573-575 passes `opts.config` straight through) or from an injected config object. An operator launching with `--config ./alt.json` is pointed at a file that does not carry the key. The literal is prescribed verbatim in the task's Context (\"Its text: `launch: ~/.ultrapowers/fleet.json names render.integration <name> ...`\"), so the transcription is faithful and lawful; the defect is in the plan's own wording, and the exam only pins the substrings `browser-run`, `render.integration` and `first-run.md \u00a7render`, so naming the actual path would not break it. Not blocking: production launches read the default path, and the operator guidance (`references/first-run.md \u00a7render`) is correct either way.; fleet/launch.mjs:579-590 \u2014 the shape check coerces with String() before testing, so a partial or non-object `render` slips through: `String(undefined)` is the literal \"undefined\", which matches both `^[a-z][a-z0-9-]*$` and `^[A-Za-z0-9_-]+$`. An injected `config.render` of `{integration: 'browser-run'}` (no account) or of a plain string therefore passes M3's gate and reaches `renderSetupScript`, where the address is built with the account segment `undefined`; a missing integration is caught only later by the M2 listing check, whose message then reads `names render.integration undefined`. The file path is safe because `fleetConfigRender` already refuses half a renderer, so this is only reachable through the injected-config seam \u2014 hence minor. `fleet/doctor.mjs` solves the same problem with `wantRender()`; the cheap fix here is to test the type first, e.g. `if (typeof render !== 'object' || Array.isArray(render) || typeof render.integration !== 'string' || !RENDER_INTEGRATION_NAME.test(render.integration)) throw \u2026` and the same for `render.account`, dropping both `String()` calls. No exam assertion changes.; fleet/launch.mjs:736 \u2014 the M2 refusal always names `~/.ultrapowers/fleet.json`, even on the path the exam itself exercises in leg (b3), where the renderer was read from a file named by `--config <path>`. An operator launching with `--config` is sent to edit a file they did not use. The wording is the plan's verbatim text and nothing pins the path (the exam only requires the integration name, `render.integration` and `first-run.md \u00a7render` in the message), so this is cosmetic rather than a defect: `${opts.config ?? '~/.ultrapowers/fleet.json'}` would keep every pinned substring while naming the file actually read.; Produces: nothing \u2014 fleet/launch.mjs: declared, not exported; fleet/tests/test_launch_render.mjs: declared, not exported",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-71/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1909 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 49%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n.....................................                                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1909 passed, 5 warnings in 515.39s (0:08:35) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/\"tasks\": {/,/\"tests\": {/p' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q 'stateExams.*exam.*store_ms.*render_ms.*render.*mutant_killed.*contract'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -E '^\\| .tasks\\[\\]\\.stateExams. \\|' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q 'highest.*never .base.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot_state_exams.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_setup_script_render_env.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "node fleet/tests/test_setup_script.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_doctor_render.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_doctor.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "node fleet/tests/test_doctor_config_keys.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": "...........................                                              [100%]\n27 passed in 0.09s\n"
+    },
+    {
+      "task": "4",
+      "cmd": "test \"$(grep -c '^## ' skills/ultrapowers/references/first-run.md)\" = 8",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "4",
+      "cmd": "sed -n '/^## render/,$p' skills/ultrapowers/references/first-run.md | tr '\\n' ' ' | grep -q 'http-proxy.*--bearer -.*fleet.json.*browser-run.int.exe.xyz'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ULTRA_BASE.*ULTRA_TASK.*ULTRA_RUN_DIR.*ULTRA_EXAM_PASS'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '.base., .0., .1., .2..*.integrated.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'integrated.*no .ULTRA_RUN_DIR.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Exam environment:\\*\\*/,/^- \\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'the suite receives none of the four'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^  - engine:/,/^  - publish fold:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'ULTRAPOWERS_FLEET_RUN=run-N.*TINYAPP_RENDER_URL=\\${TINYAPP_RENDER_URL:-}.*node'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^  - publish fold:/,/^  - after the engine:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'omits the .TINYAPP_RENDER_URL. entry'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! sed -n '/^  - publish fold:/,/^  - after the engine:/p' fleet/CONTRACT.md | grep -q 'TINYAPP_RENDER_URL='",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/ultra\\/integration-run-<N>. \u2014 the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'state-exams/.*task-<id>.*file by file'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Doctor/,/^- \\*\\*Janitor/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'eight rows'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! sed -n '/^- \\*\\*Doctor/,/^- \\*\\*Janitor/p' fleet/CONTRACT.md | grep -q 'five rows'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Doctor/,/^- \\*\\*Janitor/p' fleet/CONTRACT.md | grep '^  |' | tail -1 | grep -q '| .render. |.*not configured.*render.integration'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Laptop config/,/^- \\*\\*Logs without/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '\"render\".*\"integration\".*\"account\"'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! sed -n '/^- \\*\\*Laptop config/,/^- \\*\\*Logs without/p' fleet/CONTRACT.md | grep -q 'exactly two keys'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "test \"$(grep -c -- '--integration claude-max,gh-<owner>-<repo>\\[,browser-run\\]' fleet/CONTRACT.md)\" = 2",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "! grep -q -- '--integration claude-max,gh-<owner>-<repo> ' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Integration naming/,/^- \\*\\*Doctor/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'present only when .fleet.json. carries .render.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "sed -n '/^- \\*\\*Integration naming/,/^- \\*\\*Doctor/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'nothing rides .tag:fleet.'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "6",
+      "cmd": "python3 -m pytest -q tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": "...........................                                              [100%]\n27 passed in 0.08s\n"
+    },
+    {
+      "task": "6",
+      "cmd": "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'peer.*state exam.*Test:'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'stateExam.*tinyapp-exam.*clock.*seed.*action.*expected.*view.*mutant'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'state-exams/seeds/.*state-exams/expected/.*getContent'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q '__TINYAPP_SEED__.*neither.*WsSynchronizer.*persister'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "sed -n '/^## State exams/,/^## The engine boundary/p' skills/ultrawrite/references/greenfield-stack.md | tr '\\n' ' ' | grep -q 'TINYAPP_RENDER_URL.*skipped'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "sed -n '/^7\\. \\*\\*Greenfield/,/^## Decomposition/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q 'state exam.*greenfield-stack.md'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "test \"$(sed -n '/^## Execution handoff/,/^## Acceptance disposition/p' skills/ultrawrite/SKILL.md | git hash-object --stdin)\" = \"$(git show $ULTRA_BASE:skills/ultrawrite/SKILL.md | sed -n '/^## Execution handoff/,/^## Acceptance disposition/p' | git hash-object --stdin)\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "7",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    },
+    {
+      "task": "7",
+      "cmd": "python3 -m pytest -q tests/test_recommendation_rubric.py",
+      "exit": 0,
+      "stdout": "..............                                                           [100%]\n14 passed in 0.01s\n"
+    },
+    {
+      "task": "5",
+      "cmd": "node fleet/tests/test_launch_render.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "5",
+      "cmd": "node fleet/tests/test_launch_pins.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles fleet/lobby.mjs fleet/exam-paths.mjs fleet/strip-exams.sh fleet/publish-fold.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -rn 'api.cloudflare.com' fleet/run-engine.mjs fleet/sandbox-boot.sh fleet/setup-script.mjs fleet/launch.mjs fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles fleet/lobby.mjs fleet/exam-paths.mjs fleet/strip-exams.sh fleet/publish-fold.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -rn 'api.cloudflare.com' fleet/run-engine.mjs fleet/sandbox-boot.sh fleet/setup-script.mjs fleet/launch.mjs fleet/doctor.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1355959,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 5,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 4,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "1dc7e01b23d4b85e90e274cbaa38b34031dbf75b",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "wave": 2,
+      "status": "MERGED",
+      "headSha": "4968502b9791bea302d7c3fe4b2b9dab2eb35064",
+      "branches": [
+        "5"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-71/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-71/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.478,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    },
+    {
+      "wave": 2,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-71/frontier/wave-2/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-71/frontier/wave-2/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.616,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 7,
+    "tasks_planned": 7,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 4: examiner: (g), the sub-clause \"the two existing doctor sims print the sentinel with their pins extended \u2026 the docs test that reads ROW_IDS against the headings passes\" \u2014 Those are the Proof's own Run: lines (test_doctor.mjs, test_doctor_config_keys.mjs, pytest tests/test_docs_agree_with_code.py). Re-running them from inside this exam would double-run them and report their failures under this file's name; leg (g)'s file-readable half \u2014 eight headings equal to ROW_IDS in order and the ## render section's four ordered strings \u2014 is encoded in group 7.",
+    "task 1: block-placement: the Context says the STATE EXAM block is joined 'after checkEvidenceBlock', while Proof leg (h) says the review prompt 'ends with' it \u2014 refereeBlock currently sits after checkEvidenceBlock and always renders, so the two readings conflict. I placed stateExamBlock LAST (after refereeBlock), which satisfies leg (h) and both readings of 'after the check block'; it breaks no sibling pin, because every existing sim has an empty record and so renders ''.",
+    "task 2: out-of-FILES: fleet/tests/test_sandbox_boot.mjs and fleet/tests/test_sandbox_boot_effort.mjs each pin the engine unit's argv with a whole-argv deepEqual, so the new `TINYAPP_RENDER_URL=` entry had to be added to both expectations (one line each, plus a comment). Proof leg (g) requires `node fleet/tests/test_sandbox_boot.mjs` to print the sentinel, which is unreachable without that edit. No other assertion in either file was changed.",
+    "integration review returned no result \u2014 the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "integration review did not run \u2014 completeness unverified; check the tree before merging"
+    }
+  ],
+  "blockedWaves": []
+}

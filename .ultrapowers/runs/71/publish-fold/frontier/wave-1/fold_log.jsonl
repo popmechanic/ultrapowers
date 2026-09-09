@@ -1,0 +1,3 @@
+{"type": "base", "sha": "a526641762b11c20a04da0db0ada4f384cbde4cc"}
+{"type": "fold", "task": "main", "headSha": "4fa0132b8f370e76ce48147fc981bf7629b6f86f", "patch": "/home/exedev/evidence/.ultrapowers/runs/71/publish-fold/main.patch"}
+{"type": "fold", "task": "run-71", "headSha": "bccb4113053eb3e984c2eb113b116dbc7d072c92", "patch": "/home/exedev/evidence/.ultrapowers/runs/71/publish-fold/run.patch"}
