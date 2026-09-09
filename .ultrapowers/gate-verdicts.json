@@ -1,0 +1,56 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "144f7469177ab12eddf9a505476b61fed59c655ac58d0a0a034551a9d2bac0e5",
+   "verdict": "pass",
+   "reason": "Every clause M1-M10 has a leg that would fail if it were false; the regex, sort, driverRuns, CLI count and sha16 literals compute from their fixtures."
+  },
+  "2": {
+   "hash": "d0115fb730e4a6290960833a09f6f0bc10f68417b3d8e785247343a2a62d0221",
+   "verdict": "pass",
+   "reason": "Every pinned literal computes from its fixture (table statuses, findings-row exclusion, curve 2/1/1 over max 3, the two glob matches, the CLI sections with and without --n, the missing-ledger table) and each leg falsifies its clause."
+  },
+  "3": {
+   "hash": "a73932ed28d4afca0884cdb4da893076909b93e52a3e486f912519d7741f2fcb",
+   "verdict": "pass",
+   "reason": "Each clause has a leg that would fail if it were false; the sed range confines the greps to the section and the bracket-class regexes reject the bare-verb counterexample."
+  }
+ },
+ "tally": {
+  "dispatched": 4,
+  "rejected": 1,
+  "rounds": {
+   "1": {
+    "dispatched": 3,
+    "rejected": 1
+   },
+   "2": {
+    "dispatched": 1,
+    "rejected": 0
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "1",
+   "verdict": "pass"
+  },
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "pass"
+  },
+  {
+   "round": 1,
+   "task": "3",
+   "verdict": "fail"
+  },
+  {
+   "round": 2,
+   "task": "3",
+   "verdict": "pass",
+   "supersedes": "3660fbaca7ba175586a7c8a0e994c05c9b469375639c5515a6ffa220bbf83a88"
+  }
+ ]
+}
