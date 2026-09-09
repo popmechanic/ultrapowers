@@ -40,6 +40,10 @@ CATCH_KIND = "catch-count"
 TEST_GLOBS = ("tests/test_*.py", "fleet/tests/test_*.mjs")
 
 HEADER = "| test | catches | touching runs | status |"
+# GFM renders a pipe table only when the header is followed by a delimiter row,
+# one cell per column — the same row `merge_ledger.py` writes under its own
+# header. Without it the whole report reads as one paragraph of pipes.
+DELIMITER = "| --- | --- | --- | --- |"
 CURVE_HEADING = "## Zero-catch curve"
 
 
@@ -174,7 +178,7 @@ def tree_test_files(tree):
 # nothing elided — a real report is one line per test and that is the point.
 
 def table_lines(table):
-    lines = [HEADER]
+    lines = [HEADER, DELIMITER]
     for path in sorted(table):
         entry = table[path]
         lines.append(f"| {path} | {entry.get('catches', 0)} "

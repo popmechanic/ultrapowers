@@ -64,6 +64,9 @@ TEST_PATH_RE = re.compile(
 # The six ways a red ends, named once. `caught` is the only one that credits.
 OUTCOMES = ("caught", "exam-edited", "task-writes", "rerun", "stayed-red",
             "no-green")
+# ... and the tuple is where the six names come from, so no outcome can be
+# spelled here that the vocabulary does not carry.
+CAUGHT, EXAM_EDITED, TASK_WRITES, RERUN, STAYED_RED, NO_GREEN = OUTCOMES
 
 # A directory holding this is a run directory; nothing else makes one.
 RUN_FILE = "events.jsonl"
@@ -133,8 +136,9 @@ def _is_driver_run(event):
 
 
 def _is_red(event):
-    """`exit` ≠ 0. An event with no `exit` at all reports no verdict, so it is
-    neither red nor green."""
+    """`exit` ≠ 0, and present. An event with no `exit` at all reports no
+    verdict, so it is not a red — and it does not close a red's pair either,
+    since only a literal `exit == 0` does that."""
     return event.get("exit") not in (0, None)
 
 
@@ -172,24 +176,34 @@ def _fix_round_between(events, start, stop, task):
     return label
 
 
-def _outcome_of(events, pos, red, task, path, exam_edited, writes):
-    """`(outcome, fix label)` for one red and one of the test paths it names.
+def _outcome_of(events, pos, red, task, path, exam_edited, writes,
+                have_record):
+    """One of `OUTCOMES` and a fix label, for one red and one of the test paths
+    it names.
+
+    Every red is judged, record or no record: the record is what a *credit*
+    needs, not what a verdict needs. With neither `report.json` nor
+    `receipt.json` readable (`have_record` false) there is no row to credit or
+    disqualify the path by, so a green that follows falls through to `rerun` —
+    never `exam-edited`, `task-writes` or `caught`.
 
     The fix label is None unless the outcome is `caught`; it is the credit's
     other half — one credit per path per fix round."""
     green = _next_same_run(events, pos, red)
     if green is None:
-        return "no-green", None
-    if _is_red(events[green]):
-        return "stayed-red", None
+        return NO_GREEN, None
+    if events[green].get("exit") != 0:
+        return STAYED_RED, None         # only a literal 0 closes the pair
     label = _fix_round_between(events, pos, green, task)
     if label is None:
-        return "rerun", None            # green again with nothing edited
+        return RERUN, None              # green again with nothing edited
+    if not have_record:
+        return RERUN, None              # no record to credit the claim by
     if path in exam_edited.get(task, []):
-        return "exam-edited", None      # the exam moved under the claim
+        return EXAM_EDITED, None        # the exam moved under the claim
     if path in writes.get(task, []):
-        return "task-writes", None      # the test was the task's own to write
-    return "caught", label
+        return TASK_WRITES, None        # the test was the task's own to write
+    return CAUGHT, label
 
 
 def derive_catches(run_dir):
@@ -198,18 +212,22 @@ def derive_catches(run_dir):
 
     `catches[T]` counts the distinct fix rounds that turned a red naming `T`
     green without editing `T`; `reds` carries every judged red, credited or
-    not, with the outcome that judged it.
+    not, with the outcome that judged it — every red the log holds is judged,
+    whatever record the run kept.
 
-    A run with no record at all — neither `report.json` nor `receipt.json` —
-    has nothing to judge its reds by: M1's credit names a report row and a
-    receipt entry, and with neither file present there is no such row to read.
-    Such a run counts its driver runs and reports no reds and no catches
-    rather than crediting a claim the record never made."""
+    `exercises` holds a key only where some task's writes stand behind it: the
+    empty union is dropped, so a path no receipt entry backs — and every path
+    of a run with no receipt at all — carries no entry here. This row is a
+    reading of the log, and never invents a row for a file the log is silent
+    about: the report's tree walk over the repository is the only source of
+    `unobserved` rows."""
     run_dir = Path(run_dir)
     events = read_events(run_dir)
     report = _read_json(run_dir / "report.json")
     receipt = _read_json(run_dir / "receipt.json")
-    have_record = isinstance(report, dict) or isinstance(receipt, dict)
+    # "Neither readable" is the pair of Nones `_read_json` returns for a
+    # missing, unreadable or malformed file.
+    have_record = report is not None or receipt is not None
     exam_edited = _exam_edited(report)
     writes = _writes(receipt)
 
@@ -228,15 +246,15 @@ def derive_catches(run_dir):
         for path in dict.fromkeys(paths):
             # M7: a task exercises every test path its runs name, red or green.
             exercised.setdefault(path, set()).update(writes.get(task, []))
-        if not _is_red(event) or not have_record:
+        if not _is_red(event):
             continue
         for path in dict.fromkeys(paths):
             outcome, label = _outcome_of(events, pos, event, task, path,
-                                         exam_edited, writes)
+                                         exam_edited, writes, have_record)
             reds.append({"task": task, "kind": event.get("kind"),
                          "path": path, "cmd": event.get("cmd"),
                          "outcome": outcome})
-            if outcome == "caught":
+            if outcome == CAUGHT:
                 credits.setdefault(path, set()).add(label)
 
     touched = sorted({path for paths in writes.values() for path in paths})
