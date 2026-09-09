@@ -1,0 +1,44 @@
+{
+  "task": "3",
+  "n": 0,
+  "findings": [
+    {
+      "check": "interface",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "Produces: none — fleet/tests/test_sandbox_boot_merge.mjs: declared, not exported"
+    },
+    {
+      "check": "test-count",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "top-level tests +0 / −1 across the patch: net drop of 1, removing `${file} passes on the changed rig  [fold-again M6 / leg ${tag}]` with no removal declared in the task"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `fleet/tests/test_sandbox_boot_merge.mjs`"
+    },
+    {
+      "check": "exam-files",
+      "detail": "no exam ran (exam: null); the task proceeds unexamined by driver decision"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/test_sandbox_boot_merge.mjs": "mjs"
+  },
+  "ms": 19113
+}
