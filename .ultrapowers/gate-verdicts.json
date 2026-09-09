@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "4b42d324a19ea83846212df448705e9cd429b26a26bcd952dcbb6158da7c6ea9",
+      "verdict": "pass",
+      "reason": "Legs (a)/(a2) falsify M1 at both entry points with the hostile process-env and the empty-value argv pin, (b) falsifies M2 by position and uniqueness, (c)/(d) are executable sweeps of the whole test_sandbox_boot* glob plus the bridge sentinel, and every pinned literal is jointly satisfiable, so a green exam entails the sentence at the sim layer."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 2,
+    "rounds": [
+      {"round": 1, "hash": "38787193b2987f4ba5d62b3a1f851a418575272e104adc9fd284e0ba2019b282", "verdict": "fail", "reason": "M1 quantifies over boot and bootAsync but only bootAsync was exercised"},
+      {"round": 2, "hash": "b7a9a14c9aa84beefb692bbc192e389c5237e7f16b9aa6f392dcb3fca3a1b1a1", "verdict": "fail", "reason": "M3 swept only two files while the operator's never spans every boot sim"},
+      {"round": 3, "hash": "4b42d324a19ea83846212df448705e9cd429b26a26bcd952dcbb6158da7c6ea9", "verdict": "pass"}
+    ],
+    "guide_review": "claude-code-guide: mechanism is harness-native (bootEnv already pins FLEET_* and STUB_* the same way); all four env/stub assumptions hold, no contradictions."
+  }
+}
