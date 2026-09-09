@@ -1,0 +1,1749 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 9a58684face6d5d24b78dc4268daf134a3b91c99..4abfd1093cf7b97e3eb6cee7bebfa68e3a1395c5 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -296,6 +296,11 @@ structural dozen).
+   handoff as *what was true when it was written*: verify before acting on it, and expect a stale
+   one, since nothing prunes them. `.claude/` is in `.git/info/exclude`, so a fresh clone, a fleet
+   sandbox and CI all correctly find nothing.
++- **TinyApp is the name (operator, 2026-09-08).** A greenfield target on the committed stack —
++  Bun + TypeScript + TinyBase — in its synced shape (a TinyBase MergeableStore in the client, a
++  WsSynchronizer to a Durable Object with a SQLite persister) is a *TinyApp*; an app whose store
++  is not synced to a Durable Object is not one. The borrowed term "vibes app" is banned in specs,
++  docs, issues and skills. The authoring rule is `skills/ultrawrite/references/greenfield-stack.md`.
+ - **`superpowers` is an optional companion, not a dependency (#390).** Plan authoring is
+   `ultrawrite`'s; brainstorming and the practice skills are still worth reaching for when the
+   operator has them installed. There is no local checkout and nothing is vendored — read those
+diff --git a/skills/ultralearn/SKILL.md b/skills/ultralearn/SKILL.md
+index 9232914c8a96d902ed49fcf1124181aa7c27a563..db7f38ebc5cf9d068287b89830a321119e744f4a 100644
+--- a/skills/ultralearn/SKILL.md
++++ b/skills/ultralearn/SKILL.md
+@@ -76,6 +76,33 @@ them, run 10 onward), beside that era’s per-run gate reads and control-plane
+ payloads. The archive is untracked and absent from every sandbox — read it on
+ the laptop, or not at all.
+ 
++## The catch counter
++
++A test earns a **catch** when a fix round turned one of its reds green by
++editing implementation — never the test and never by re-run alone. The
++counter does not judge that; it reads it off the record the engine already
++writes. The driver's `driver:exam-run` / `driver:proof-run` /
++`driver:check-run` events around a `fix:<task>:<n>` round say which reds went
++green in that round, the task row's `examEdited` says whether the fix edited
++the exam instead, and the task's `writes` in the receipt say which files the
++fix actually touched. No model call, no network, no git write.
++
++`python3 skills/ultralearn/scripts/catch_counter.py <run dir or tree>… --ledger <file>`
++counts a run — or every run under a tree — and appends one `catch-count` row
++per run to `docs/superpowers/observations/ledger.jsonl`, the same file the
++findings land in. `--ledger` overrides that path and is the counter's only
++flag; paths inside a row stay exactly as the record spells them.
++
++`python3 skills/ultralearn/scripts/catch_report.py --ledger <file> [--tree <dir>] [--n N]`
++prints every test in the tree with its catch count, then the zero-catch
++curve — for every N the accumulated record can support, how many tests sit at
++zero catches across N runs that touched what they exercise. The deletion
++window N is read off that curve, where it flattens: N is measured on the first
++pass, not fixed in doctrine. With `--n` the report also lists the tests at zero
++over N touching runs, and that list is the input to a deletion plan, which goes
++through the gate like any other work. `--ledger`, `--tree` and `--n` are the
++report's only flags.
++
+ ## Verb 2 — `ultralearn distill` (propose)
+ 
+ Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
+diff --git a/skills/ultralearn/scripts/catch_counter.py b/skills/ultralearn/scripts/catch_counter.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6d0eff18033465b5c255a68e0c92330d764bf46d
+--- /dev/null
++++ b/skills/ultralearn/scripts/catch_counter.py
+@@ -0,0 +1,369 @@
++#!/usr/bin/env python3
++"""ultralearn catch counter — one `catch-count` row per fleet run, derived from
++the record the engine already wrote.
++
++A *catch* is the claim of #778: a red that the fix round then turned green by
++editing implementation files — never the test, and never by re-run alone. This
++script is the mechanical reading of that sentence over a run directory:
++
++    red driver run  →  a `fix:<task>:` worker ended  →  the same run, green
++
++with two disqualifications read off the run's own record — the exam was edited
++(`report.json`'s `examEdited`), or the test file was the task's own to write
++(`receipt.json`'s `compile.tasks[].writes`) — and two ways a red simply never
++became a catch (it stayed red, or nothing ran it again).
++
++Read-only and advisory: no model call, no network, no git write. The one file
++it writes is the ledger named by `--ledger`, and only by appending. A missing
++or unreadable record is an empty record, never a traceback; a path under which
++no run directory exists is reported as `LOOKED-EMPTY:` on stderr and is not an
++error.
++
++Ordering is the event log's `id` order and nothing else. `iter` does not
++distinguish the pass before a fix round from the pass after it (run-44 ran the
++exam red at `iter: 0`, fixed, and ran it green at `iter: 0` again), so the
++sequence in the log is the only sequence there is.
++
++Every path in a row is the string the record spelled: nothing here normalises,
++resolves or globs a path.
++"""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import os
++import re
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from _outcome import (FailedLookup, report_looked_empty,  # noqa: E402
++                      swallow)
++from fleet_events import read_events  # noqa: E402
++
++ROW_KIND = "catch-count"
++
++# The three kinds of driver run. A red and its green must be of the SAME kind
++# and carry the same `cmd`: an exam that went green says nothing about a proof
++# run that is still red.
++DRIVER_RUN_KINDS = ("driver:exam-run", "driver:proof-run", "driver:check-run")
++
++# A fix round for task K is the `worker:end` of a worker labelled `fix:K:<i>`
++# — `fix:2:0` is the proof-driven round, `fix:2:1` the review-driven one, so
++# the prefix is what identifies the task, not the whole label.
++FIX_LABEL = "fix:%s:"
++
++# M8: a test path is a token of the command matched by this expression, in
++# order of appearance. The lookarounds keep it from biting into a longer word
++# or a longer path, and `test[\w.-]*` is what makes `fleet/tests/test_x.mjs` a
++# test path while `fleet/x.mjs` in the same command is not.
++TEST_PATH_RE = re.compile(
++    r"(?<![\w./-])((?:[\w.-]+/)*test[\w.-]*\.(?:py|mjs|js|ts))(?![\w.-])")
++
++# The six ways a red ends, named once. `caught` is the only one that credits.
++OUTCOMES = ("caught", "exam-edited", "task-writes", "rerun", "stayed-red",
++            "no-green")
++
++# A directory holding this is a run directory; nothing else makes one.
++RUN_FILE = "events.jsonl"
++
++
++# --- the record ------------------------------------------------------------
++
++def _read_json(path):
++    """One JSON record from the run directory, or None.
++
++    Missing, unreadable and malformed are all the same advisory answer: an
++    empty record. The counter still emits its row."""
++    if not os.path.isfile(path):
++        return None                     # a normal absence, not a failure
++    try:
++        with open(path, encoding="utf-8") as handle:
++            return json.load(handle)
++    except (OSError, ValueError) as exc:
++        swallow("run record unreadable; the run counts as having no record",
++                exc)
++        return None
++
++
++def _str_list(value):
++    """A record's path list as strings, exactly as the record spelled them."""
++    return [str(item) for item in value] if isinstance(value, list) else []
++
++
++def _exam_edited(report):
++    """`task -> examEdited`, over `report.json`'s `tasks[]`.
++
++    An absent `examEdited` is `[]`: the field is present only when an exam was
++    recorded, and "no exam recorded" is not "the exam moved"."""
++    rows = report.get("tasks") if isinstance(report, dict) else None
++    out = {}
++    for row in rows if isinstance(rows, list) else []:
++        if isinstance(row, dict) and row.get("task") is not None:
++            out[str(row["task"])] = _str_list(row.get("examEdited"))
++    return out
++
++
++def _writes(receipt):
++    """`task id -> writes`, over `receipt.json`'s `compile.tasks[]` — the
++    task's Create + Modify paths, which may well include a test file."""
++    compiled = receipt.get("compile") if isinstance(receipt, dict) else None
++    entries = compiled.get("tasks") if isinstance(compiled, dict) else None
++    out = {}
++    for entry in entries if isinstance(entries, list) else []:
++        if isinstance(entry, dict) and entry.get("id") is not None:
++            out[str(entry["id"])] = _str_list(entry.get("writes"))
++    return out
++
++
++# --- the log ---------------------------------------------------------------
++
++def test_paths_of(cmd):
++    """Every test path the command names, in order of appearance (M8).
++
++    A command that names none — `git diff --quiet $ULTRA_BASE -- fleet/x.mjs`
++    — yields the empty list, and a red running such a command is not a red
++    about any test file."""
++    return [m.group(1) for m in TEST_PATH_RE.finditer(str(cmd or ""))]
++
++
++def _is_driver_run(event):
++    return event.get("kind") in DRIVER_RUN_KINDS
++
++
++def _is_red(event):
++    """`exit` ≠ 0. An event with no `exit` at all reports no verdict, so it is
++    neither red nor green."""
++    return event.get("exit") not in (0, None)
++
++
++def _same_run(a, b):
++    """Two driver-run events that are the same run of the same command for the
++    same task — the pair M1 reads a red and its green out of."""
++    return (a.get("kind") == b.get("kind")
++            and str(a.get("task")) == str(b.get("task"))
++            and a.get("cmd") == b.get("cmd"))
++
++
++def _next_same_run(events, start, red):
++    """The index of the next same-kind, same-`cmd` event for the red's task,
++    or None. Only the NEXT one decides the outcome (M5): a second green after
++    a still-red re-run does not retroactively make the red a catch."""
++    for pos in range(start + 1, len(events)):
++        if _is_driver_run(events[pos]) and _same_run(red, events[pos]):
++            return pos
++    return None
++
++
++def _fix_round_between(events, start, stop, task):
++    """The label of the LAST fix round for `task` that ended between the red
++    and the green, or None when no fix round lies between them.
++
++    The label is what identifies the round, so two reds turned green by one
++    `fix:1:0` credit their path once (M6)."""
++    label = None
++    for pos in range(start + 1, stop):
++        event = events[pos]
++        if event.get("kind") != "worker:end":
++            continue
++        if str(event.get("label") or "").startswith(FIX_LABEL % task):
++            label = str(event.get("label"))
++    return label
++
++
++def _outcome_of(events, pos, red, task, path, exam_edited, writes):
++    """`(outcome, fix label)` for one red and one of the test paths it names.
++
++    The fix label is None unless the outcome is `caught`; it is the credit's
++    other half — one credit per path per fix round."""
++    green = _next_same_run(events, pos, red)
++    if green is None:
++        return "no-green", None
++    if _is_red(events[green]):
++        return "stayed-red", None
++    label = _fix_round_between(events, pos, green, task)
++    if label is None:
++        return "rerun", None            # green again with nothing edited
++    if path in exam_edited.get(task, []):
++        return "exam-edited", None      # the exam moved under the claim
++    if path in writes.get(task, []):
++        return "task-writes", None      # the test was the task's own to write
++    return "caught", label
++
++
++def derive_catches(run_dir):
++    """The run's `catch-count` row: exactly `kind`, `runId`, `driverRuns`,
++    `catches`, `reds`, `touched`, `exercises` (M7).
++
++    `catches[T]` counts the distinct fix rounds that turned a red naming `T`
++    green without editing `T`; `reds` carries every judged red, credited or
++    not, with the outcome that judged it.
++
++    A run with no record at all — neither `report.json` nor `receipt.json` —
++    has nothing to judge its reds by: M1's credit names a report row and a
++    receipt entry, and with neither file present there is no such row to read.
++    Such a run counts its driver runs and reports no reds and no catches
++    rather than crediting a claim the record never made."""
++    run_dir = Path(run_dir)
++    events = read_events(run_dir)
++    report = _read_json(run_dir / "report.json")
++    receipt = _read_json(run_dir / "receipt.json")
++    have_record = isinstance(report, dict) or isinstance(receipt, dict)
++    exam_edited = _exam_edited(report)
++    writes = _writes(receipt)
++
++    opened = next((e for e in events if e.get("kind") == "run:open"), None)
++
++    driver_runs = 0
++    exercised = {}                      # test path -> set of writes paths
++    reds = []
++    credits = {}                        # test path -> set of crediting rounds
++    for pos, event in enumerate(events):
++        if not _is_driver_run(event):
++            continue
++        driver_runs += 1
++        task = str(event.get("task"))
++        paths = test_paths_of(event.get("cmd"))
++        for path in dict.fromkeys(paths):
++            # M7: a task exercises every test path its runs name, red or green.
++            exercised.setdefault(path, set()).update(writes.get(task, []))
++        if not _is_red(event) or not have_record:
++            continue
++        for path in dict.fromkeys(paths):
++            outcome, label = _outcome_of(events, pos, event, task, path,
++                                         exam_edited, writes)
++            reds.append({"task": task, "kind": event.get("kind"),
++                         "path": path, "cmd": event.get("cmd"),
++                         "outcome": outcome})
++            if outcome == "caught":
++                credits.setdefault(path, set()).add(label)
++
++    touched = sorted({path for paths in writes.values() for path in paths})
++    return {
++        "kind": ROW_KIND,
++        "runId": opened.get("runId") if isinstance(opened, dict) else None,
++        "driverRuns": driver_runs,
++        "catches": {path: len(rounds) for path, rounds in credits.items()},
++        "reds": reds,
++        "touched": touched,
++        # A path no task's writes stand behind carries no entry: an empty union
++        # is nothing exercised, and a run with no receipt exercises nothing.
++        "exercises": {path: sorted(paths)
++                      for path, paths in exercised.items() if paths},
++    }
++
++
++# --- the ledger ------------------------------------------------------------
++
++def row_id(row):
++    """The row's ledger identity (M9): the first 16 hex digits of the SHA-256
++    of `runId + "\\n" + "catch-count"`. One row per run, so re-counting a run
++    is a skip, not a second line."""
++    key = "%s\n%s" % (row.get("runId"), ROW_KIND)
++    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
++
++
++def _ledger_ids(ledger_path):
++    """Every `id` the ledger already carries — findings rows included, since
++    the counter appends beside them and must not collide with them.
++
++    A ledger that does not exist yet carries nothing; a ledger that exists and
++    cannot be read fails loud, because appending blind over it would duplicate
++    rows it may already hold."""
++    ledger_path = Path(ledger_path)
++    if not ledger_path.exists():
++        return set()
++    try:
++        text = ledger_path.read_text(encoding="utf-8")
++    except OSError as exc:
++        raise FailedLookup("ledger exists but cannot be read: %s" % exc) from exc
++    ids = set()
++    for line in text.splitlines():
++        if not line.strip():
++            continue
++        try:
++            record = json.loads(line)
++        except json.JSONDecodeError as exc:
++            swallow("malformed ledger line skipped; the rest of the ledger "
++                    "still reads", exc)
++            continue
++        if isinstance(record, dict) and record.get("id") is not None:
++            ids.add(record["id"])
++    return ids
++
++
++def append_rows(rows, ledger_path):
++    """Append every row the ledger does not already carry; return
++    `{"added": n, "skipped": m}`.
++
++    Append-only: an existing line is never rewritten, and a second call with
++    the same rows adds nothing and leaves the file's bytes unchanged. The
++    ledger's parent directories are created when absent."""
++    rows = list(rows or [])
++    ledger_path = Path(ledger_path)
++    seen = _ledger_ids(ledger_path)
++    added = []
++    for row in rows:
++        identity = row_id(row)
++        row["id"] = identity
++        if identity in seen:
++            continue
++        seen.add(identity)
++        added.append(row)
++    if added:
++        ledger_path.parent.mkdir(parents=True, exist_ok=True)
++        with ledger_path.open("a", encoding="utf-8") as handle:
++            for row in added:
++                handle.write(json.dumps(row, sort_keys=True) + "\n")
++    return {"added": len(added), "skipped": len(rows) - len(added)}
++
++
++# --- CLI -------------------------------------------------------------------
++
++def find_run_dirs(paths):
++    """Every directory holding an `events.jsonl` at or under `paths`, each
++    reported once, in a deterministic order.
++
++    A path is a run directory or a tree holding several. A path under which
++    none exists is a completed lookup that found nothing — said so on stderr,
++    not an error."""
++    found, seen = [], set()
++    for path in paths:
++        hits = 0
++        for dirpath, dirnames, filenames in os.walk(path):
++            dirnames.sort()
++            if RUN_FILE not in filenames:
++                continue
++            hits += 1
++            key = os.path.realpath(dirpath)
++            if key in seen:
++                continue
++            seen.add(key)
++            found.append(dirpath)
++        if not hits:
++            report_looked_empty("no run directory (%s) under %s"
++                                % (RUN_FILE, path))
++    return found
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(
++        prog="catch_counter.py",
++        description="Count each run's catches from its own record.")
++    parser.add_argument("paths", nargs="+", metavar="PATH",
++                        help="a run directory, or a tree containing them")
++    parser.add_argument("--ledger", dest="ledger", metavar="FILE",
++                        help="append the rows to this JSONL ledger")
++    args = parser.parse_args(argv)
++
++    rows = [derive_catches(run_dir) for run_dir in find_run_dirs(args.paths)]
++    counts = (append_rows(rows, args.ledger) if args.ledger
++              else {"added": 0, "skipped": 0})
++    print("%d run(s) counted, %d row(s) appended, %d already recorded"
++          % (len(rows), counts["added"], counts["skipped"]))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skills/ultralearn/scripts/catch_report.py b/skills/ultralearn/scripts/catch_report.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e696305cf8158c5cc03af678af6c654dec69ae78
+--- /dev/null
++++ b/skills/ultralearn/scripts/catch_report.py
+@@ -0,0 +1,230 @@
++#!/usr/bin/env python3
++"""ultralearn catch report — which tests have never caught anything, over how
++many runs that actually touched what they exercise.
++
++The ledger's `catch-count` rows are the record: one row per harvested run,
++naming the tests that went red (`catches`), the paths the run changed
++(`touched`) and, per test, the paths that test exercises (`exercises`). This
++reads them and answers three questions in one pass:
++
++    the table   one line per test — catches, touching runs, status
++    the curve   how many tests are still at zero catches over N touching runs
++    the input   at an operator-chosen N, the deletion candidates themselves
++
++A test's exercised set is the union across rows on purpose: what run A taught
++about test T decides whether run B counts as having touched T. A test the
++record has never named is `unobserved`, not `zero` — it is never a deletion
++candidate, because nothing was measured about it. `--n` is the operator's
++choice after reading the curve; this tool never picks it.
++
++Read-only: the ledger is read, nothing is written, nothing is resolved or
++globbed away. Paths are repository-relative exactly as the record spells them.
++"""
++from __future__ import annotations
++
++import argparse
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from merge_ledger import _read_jsonl  # noqa: E402  (one ledger reader, shared)
++
++# The ledger holds the findings rows `merge_ledger.py` writes (no `kind`) in
++# the same file. Only this kind is the catch record; everything else is another
++# reader's business and contributes nothing here.
++CATCH_KIND = "catch-count"
++
++# This repository's two suites: `pytest.ini` collects `tests/`, and
++# `tests/test_fleet_suite.py` bridges `fleet/tests/test_*.mjs`. A foreign tree
++# passed with `--tree` gets its own two globs, no more.
++TEST_GLOBS = ("tests/test_*.py", "fleet/tests/test_*.mjs")
++
++HEADER = "| test | catches | touching runs | status |"
++CURVE_HEADING = "## Zero-catch curve"
++
++
++# --- the record ------------------------------------------------------------
++#
++# A row is data, not a promise: every field is read through a guard that
++# answers the empty shape rather than raising, so one malformed row costs its
++# own contribution and not the report.
++
++def _catch_rows(rows):
++    """The `catch-count` rows, in order. [M2]"""
++    return [row for row in rows
++            if isinstance(row, dict) and row.get("kind") == CATCH_KIND]
++
++
++def _mapping(row, key):
++    value = row.get(key)
++    return value if isinstance(value, dict) else {}
++
++
++def _paths(value):
++    """A record field as a list of paths — never resolved, never normalised."""
++    if not isinstance(value, list):
++        return []
++    return [item for item in value if isinstance(item, str)]
++
++
++def _count(value):
++    """A catch count as an integer. `True` is an `int` in Python and would
++    otherwise sum as 1; anything that is not a plain integer counts nothing."""
++    if isinstance(value, bool) or not isinstance(value, int):
++        return 0
++    return value
++
++
++def _status(catches, exercised):
++    if catches > 0:
++        return "caught"
++    if not exercised:
++        return "unobserved"
++    return "zero"
++
++
++def catch_table(rows, tree_tests):
++    """`{test path: {catches, exercised, touchingRuns, status}}`. [M1]
++
++    Keyed over the union of `tree_tests` and every path the record names as a
++    test — a key of some row's `catches` or `exercises`. A path that appears
++    only as an *exercised* path (`lib/b.py`) is not a test and is not a key.
++
++    `touchingRuns` is counted against the whole union `exercised`, not against
++    the one row's own `exercises`: a run touches a test when it changed
++    anything any run has said that test exercises.
++    """
++    rows = _catch_rows(rows)
++    paths = set(tree_tests or [])
++    for row in rows:
++        paths.update(_mapping(row, "catches"))
++        paths.update(_mapping(row, "exercises"))
++
++    touched = [set(_paths(row.get("touched"))) for row in rows]
++    table = {}
++    for path in sorted(paths):
++        catches = sum(_count(_mapping(row, "catches").get(path))
++                      for row in rows)
++        exercised = set()
++        for row in rows:
++            exercised.update(_paths(_mapping(row, "exercises").get(path)))
++        touching = sum(1 for changed in touched
++                       if changed & exercised) if exercised else 0
++        table[path] = {"catches": catches,
++                       "exercised": sorted(exercised),
++                       "touchingRuns": touching,
++                       "status": _status(catches, exercised)}
++    return table
++
++
++def _touching(entry):
++    return entry.get("touchingRuns", 0)
++
++
++def _is_zero(entry):
++    return entry.get("catches", 0) == 0
++
++
++def max_touching_runs(table):
++    """The largest `touchingRuns` in the table — the curve's right edge."""
++    return max((_touching(entry) for entry in table.values()), default=0)
++
++
++def zero_curve(table):
++    """`[{"n": N, "files": c}, …]` for N from 1 to the largest `touchingRuns`,
++    `c` the entries at zero catches over at least N touching runs. [M3]
++
++    Empty when the largest is 0: a `zero` at N=0 is a real zero — the record
++    has simply never run against it — but it is in no N≥1 count.
++    """
++    curve = []
++    for n in range(1, max_touching_runs(table) + 1):
++        files = sum(1 for entry in table.values()
++                    if _is_zero(entry) and _touching(entry) >= n)
++        curve.append({"n": n, "files": files})
++    return curve
++
++
++def zero_over(table, n):
++    """The deletion candidates at N: zero catches over ≥ N touching runs."""
++    return sorted(path for path, entry in table.items()
++                  if _is_zero(entry) and _touching(entry) >= n)
++
++
++# --- the tree --------------------------------------------------------------
++
++def tree_test_files(tree):
++    """The tree's test files, relative to it, sorted. [M4]
++
++    Two anchored globs and nothing else: a helper beside a test, an underscore
++    file and a test outside the two suite directories are all absent.
++    """
++    tree = Path(tree)
++    found = set()
++    for pattern in TEST_GLOBS:
++        for path in tree.glob(pattern):
++            if path.is_file():
++                found.add(path.relative_to(tree).as_posix())
++    return sorted(found)
++
++
++# --- rendering -------------------------------------------------------------
++#
++# Plain `print`, one line per fact, nothing coloured, nothing paginated and
++# nothing elided — a real report is one line per test and that is the point.
++
++def table_lines(table):
++    lines = [HEADER]
++    for path in sorted(table):
++        entry = table[path]
++        lines.append(f"| {path} | {entry.get('catches', 0)} "
++                     f"| {_touching(entry)} | {entry.get('status', '')} |")
++    return lines
++
++
++def curve_lines(table):
++    lines = [CURVE_HEADING]
++    for point in zero_curve(table):
++        lines.append(f"N={point['n']}: {point['files']} file(s)")
++    lines.append(f"max touching runs: {max_touching_runs(table)}")
++    return lines
++
++
++def zero_over_lines(table, n):
++    return [f"## Zero catches over {n} runs"] + zero_over(table, n)
++
++
++def report_lines(table, n=None):
++    """The whole report, in order: table, curve, and — only when the operator
++    named an N — the deletion input. [M5]"""
++    lines = table_lines(table) + curve_lines(table)
++    if n is not None:
++        lines.extend(zero_over_lines(table, n))
++    return lines
++
++
++# --- CLI -------------------------------------------------------------------
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(
++        prog="catch_report.py",
++        description="Which tests have never caught anything, over how many "
++                    "runs that touched what they exercise.")
++    parser.add_argument("--ledger", required=True, metavar="PATH",
++                        help="the ultralearn ledger to read (a missing file "
++                             "reads as no rows)")
++    parser.add_argument("--tree", default=".", metavar="DIR",
++                        help="the tree whose tests to list (default: .)")
++    parser.add_argument("--n", type=int, metavar="N",
++                        help="also list the tests at zero catches over N "
++                             "touching runs")
++    args = parser.parse_args(argv)
++
++    table = catch_table(_read_jsonl(args.ledger), tree_test_files(args.tree))
++    for line in report_lines(table, args.n):
++        print(line)
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 8ba4fbcb72559399ecbab449874153e0295e534e..0e06bbc04421de07760f21642360f8b4bd81f3c9 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -299,10 +299,11 @@ Every `implementation` task is a pure diff against the integration branch:
+    Context so review checks correspondence to a record, not truth it cannot reach.
+ 6. **Isolate `CLAUDE_CONFIG_DIR`** in any task that spawns the agent CLI, or it writes
+    false memories into the host project.
+-7. **Greenfield targets take the Bun + TypeScript defaults** — `bun install` to
+-   bootstrap, `bunx tsc --noEmit && bun test` as the suite. Both knobs verbatim,
+-   the `@types/bun` tsconfig gotcha, and where the restriction stops:
+-   `references/greenfield-stack.md`.
++7. **Greenfield targets take the Bun + TypeScript + TinyBase defaults** — `bun install` to
++   bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
++   app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
++   Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
++   restriction stops: `references/greenfield-stack.md`.
+ 
+ ## Decomposition judgment
+ 
+diff --git a/skills/ultrawrite/references/greenfield-stack.md b/skills/ultrawrite/references/greenfield-stack.md
+index 5d02ac94e4111ac6fe992b9726a8a1725bab9fc0..101d7641dcfdd9d4c270c84be49f063ed074594f 100644
+--- a/skills/ultrawrite/references/greenfield-stack.md
++++ b/skills/ultrawrite/references/greenfield-stack.md
+@@ -1,8 +1,8 @@
+-# Greenfield stack — Bun + TypeScript authoring defaults
++# Greenfield stack — Bun + TypeScript + TinyBase authoring defaults
+ 
+ Load this when a plan **creates a new codebase** (#425). It fixes the two knobs
+-a greenfield plan hands the engine, and the one tsconfig detail that costs an
+-author an hour when it is guessed wrong.
++a greenfield plan hands the engine, the one tsconfig detail that costs an
++author an hour when it is guessed wrong, and the store the app keeps its state in.
+ 
+ ## When it applies
+ 
+@@ -42,6 +42,35 @@ tsconfig:
+ The older `bun-types` package name fails with
+ `TS2688: Cannot find type definition file for 'bun-types'`.
+ 
++## The store, and the TinyApp shape
++
++The app's state is **one TinyBase store** (operator, 2026-09-08). Every `do:` in a
++Claim is a store mutation through the app's own callbacks and every `see:` is a
++store read plus a render against it, so an exam can probe the store directly,
++in-process, in milliseconds — no network or DOM event loop in the loop. That
++holds exactly when the app reads from nowhere but the store; a plan that has
++the app fetch or read outside its persister has left the shape and says so.
++
++A **TinyApp** is the synced shape of that stack, and only that shape: a TinyBase
++`MergeableStore` in the client, a `WsSynchronizer` to a Durable Object with a
++SQLite persister, scaffolded by the official generator as a typed project —
++
++```sh
++npm create tinybase@latest -- --non-interactive --projectName <name> \
++  --language typescript --framework react --schemas true \
++  --syncType durable-objects --persistenceType sqlite --installAndRun false
++```
++
++— so the store's schema drives TypeScript inference and `bunx tsc --noEmit`
++checks every data access (operator, 2026-09-09, chosen over a single-file
++`index.html` + `app.jsx` that no compiler can see). Read
++https://tinybase.org/skills/build-with-tinybase/SKILL.md before scaffolding; the
++generator's `--list-options` is the authority for current values. An app whose
++store is local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
++word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
++is not this project's vocabulary. The runtime that hosts a TinyApp's Durable
++Object inside a sandbox is #764's question, not this page's.
++
+ ## The engine boundary
+ 
+ The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing
+diff --git a/tests/test_ultralearn_catch_report.py b/tests/test_ultralearn_catch_report.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9fd668bdade72da1bdcd9ac6a6e289b67aaf17a
+--- /dev/null
++++ b/tests/test_ultralearn_catch_report.py
+@@ -0,0 +1,365 @@
++"""Exam for task 2 — the report emits the table, the curve and the deletion input.
++
++Every assertion below names the Proof leg (a)–(j) and the Machine clause it
++comes from, so the file reads back against the contract rather than against any
++one implementation.
++
++The three `catch-count` rows are the ones the Proof pins verbatim in leg (a);
++the findings row of leg (d) is the shape `merge_ledger.py` writes (no `kind`).
++The pinned strings — the table header, `N=<n>: <c> file(s)`, `max touching
++runs: <max>`, `## Zero-catch curve`, `## Zero catches over <N> runs` — are
++compared verbatim, because M5 pins them verbatim.
++
++`skills/ultralearn/scripts/catch_report.py` is this task's deliverable, so at
++BASE every test here is red for that one reason: `_module()` says the script
++does not exist yet rather than letting the absence surface as a stray import
++error.
++"""
++import importlib.util
++import json
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++REPO = Path(__file__).resolve().parents[1]
++SCRIPTS_DIR = REPO / "skills/ultralearn/scripts"
++SCRIPT = SCRIPTS_DIR / "catch_report.py"
++
++# The scripts directory on the path, as the rest of the suite does it, so a
++# script that does `from _outcome import swallow` imports here as it runs.
++sys.path.insert(0, str(SCRIPTS_DIR))
++
++# M5: the header row, verbatim.
++HEADER = "| test | catches | touching runs | status |"
++CURVE_HEADING = "## Zero-catch curve"
++
++
++def _module():
++    """Import the deliverable; name it when it is not there yet."""
++    assert SCRIPT.is_file(), (
++        "%s is a deliverable of this task and does not exist"
++        % SCRIPT.relative_to(REPO))
++    spec = importlib.util.spec_from_file_location("catch_report", SCRIPT)
++    mod = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(mod)
++    return mod
++
++
++# --------------------------------------------------------------- the rows
++
++def _row(row_id, run_id, catches, touched, exercises):
++    """One `catch-count` row in the shape the record spells (task Context)."""
++    return {
++        "kind": "catch-count",
++        "id": row_id,
++        "runId": run_id,
++        "driverRuns": 3,
++        "catches": catches,
++        "reds": [],
++        "touched": touched,
++        "exercises": exercises,
++    }
++
++
++# leg (a): run A, run B, run C — verbatim from the Proof.
++ROW_A = _row("a" * 16, "run-a", {"tests/test_a.py": 1}, ["lib/a.py"],
++             {"tests/test_a.py": ["lib/a.py"],
++              "tests/test_b.py": ["lib/b.py"]})
++ROW_B = _row("b" * 16, "run-b", {}, ["lib/b.py"],
++             {"tests/test_b.py": ["lib/b.py"]})
++ROW_C = _row("c" * 16, "run-c", {}, ["lib/c.py"], {})
++
++ROWS = [ROW_A, ROW_B, ROW_C]
++
++TREE_TESTS = ["tests/test_a.py", "tests/test_b.py", "tests/test_d.py"]
++
++# leg (d): a findings row — `merge_ledger.py`'s shape, no `kind` key at all.
++FINDINGS_ROW = {"runId": "run-9", "lens": "friction", "title": "t",
++                "touched": ["lib/b.py"]}
++
++
++@pytest.fixture
++def mod():
++    return _module()
++
++
++@pytest.fixture
++def table_a(mod):
++    """The table of leg (a): the three rows against the three tree tests."""
++    return mod.catch_table([dict(r) for r in ROWS], list(TREE_TESTS))
++
++
++# --------------------------------------------------------------- leg (a) M1
++
++def test_leg_a_caught_test_counts_its_catch_and_its_touching_run(table_a):
++    """(a)/M1: `tests/test_a.py` — `catches` exactly 1 (run A's one catch),
++    `touchingRuns` exactly 1 (only run A touched `lib/a.py`), `status`
++    `caught`."""
++    assert "tests/test_a.py" in table_a, (
++        "the table has no entry for tests/test_a.py; keys: %r"
++        % sorted(table_a))
++    entry = table_a["tests/test_a.py"]
++    assert entry["catches"] == 1
++    assert entry["touchingRuns"] == 1
++    assert entry["status"] == "caught"
++
++
++# --------------------------------------------------------------- leg (b) M1
++
++def test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch(table_a):
++    """(b)/M1: `tests/test_b.py` — `catches` exactly 0, `exercised` exactly
++    `["lib/b.py"]` (the union across run A and run B), `touchingRuns` exactly
++    1 (run A's `touched` misses `lib/b.py`, run B's hits it, run C's misses
++    it), and `status` `zero`, not `caught`."""
++    assert "tests/test_b.py" in table_a, (
++        "the table has no entry for tests/test_b.py; keys: %r"
++        % sorted(table_a))
++    entry = table_a["tests/test_b.py"]
++    assert entry["catches"] == 0
++    assert entry["exercised"] == ["lib/b.py"]
++    assert entry["touchingRuns"] == 1
++    assert entry["status"] == "zero"
++    assert entry["status"] != "caught"
++
++
++# --------------------------------------------------------------- leg (c) M1
++
++def test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys(table_a):
++    """(c)/M1: `tests/test_d.py` — a path the tree holds that no row ever
++    named: `catches` 0, `exercised` exactly `[]`, `touchingRuns` 0, `status`
++    `unobserved`, not `zero`. And the table has exactly the three keys; the
++    exercised/touched path `lib/b.py` is not one of them."""
++    assert "tests/test_d.py" in table_a, (
++        "the table has no entry for the tree's tests/test_d.py; keys: %r"
++        % sorted(table_a))
++    entry = table_a["tests/test_d.py"]
++    assert entry["catches"] == 0
++    assert entry["exercised"] == []
++    assert entry["touchingRuns"] == 0
++    assert entry["status"] == "unobserved"
++    assert entry["status"] != "zero"
++    assert set(table_a) == {"tests/test_a.py", "tests/test_b.py",
++                            "tests/test_d.py"}
++    assert "lib/b.py" not in table_a
++
++
++# --------------------------------------------------------------- leg (d) M2
++
++def test_leg_d_a_findings_row_contributes_nothing(mod, table_a):
++    """(d)/M2: adding the findings row (no `kind`) to the rows of (a) changes
++    no entry — the table is equal to that of (a). Its `touched` names
++    `lib/b.py`, so a report that counted every row's `touched` would report
++    `tests/test_b.py` with two touching runs here."""
++    with_finding = mod.catch_table(
++        [dict(r) for r in ROWS] + [dict(FINDINGS_ROW)], list(TREE_TESTS))
++    assert with_finding == table_a
++
++
++# --------------------------------------------------------------- leg (e) M3
++
++def test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest(mod):
++    """(e)/M3: over entries `{catches 0, touchingRuns 3}`, `{catches 0,
++    touchingRuns 1}`, `{catches 2, touchingRuns 3}` and `{catches 0,
++    touchingRuns 0}`, the curve is exactly three entries — N=1 counts two,
++    N=2 and N=3 count one, and there is no `n` of 4."""
++    table = {
++        "tests/test_p.py": {"catches": 0, "exercised": ["lib/p.py"],
++                            "touchingRuns": 3, "status": "zero"},
++        "tests/test_q.py": {"catches": 0, "exercised": ["lib/q.py"],
++                            "touchingRuns": 1, "status": "zero"},
++        "tests/test_r.py": {"catches": 2, "exercised": ["lib/r.py"],
++                            "touchingRuns": 3, "status": "caught"},
++        "tests/test_s.py": {"catches": 0, "exercised": ["lib/s.py"],
++                            "touchingRuns": 0, "status": "zero"},
++    }
++    assert mod.zero_curve(table) == [{"n": 1, "files": 2},
++                                     {"n": 2, "files": 1},
++                                     {"n": 3, "files": 1}]
++
++
++# --------------------------------------------------------------- leg (f) M3
++
++def test_leg_f_curve_is_empty_when_no_run_touches(mod):
++    """(f)/M3: a table whose every `touchingRuns` is 0 — the largest is 0 —
++    gives exactly `[]`, even though one entry is a real `zero` at N=0."""
++    table = {
++        "tests/test_p.py": {"catches": 0, "exercised": ["lib/p.py"],
++                            "touchingRuns": 0, "status": "zero"},
++        "tests/test_q.py": {"catches": 1, "exercised": ["lib/q.py"],
++                            "touchingRuns": 0, "status": "caught"},
++    }
++    assert mod.zero_curve(table) == []
++
++
++# --------------------------------------------------------------- leg (g) M4
++
++@pytest.fixture
++def tree(tmp_path):
++    """The temporary tree of legs (g)–(j): two suite files and three files
++    that are not tests of either suite."""
++    root = tmp_path / "tree"
++    for rel, body in (("tests/test_x.py", "def test_x(): pass\n"),
++                      ("tests/helper.py", "X = 1\n"),
++                      ("fleet/tests/test_y.mjs", "// y\n"),
++                      ("fleet/tests/_helpers.mjs", "// helpers\n"),
++                      ("other/test_z.py", "def test_z(): pass\n")):
++        path = root / rel
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(body)
++    return root
++
++
++# The two suite files of that tree, sorted, relative to it (M4).
++TREE_FILES = ["fleet/tests/test_y.mjs", "tests/test_x.py"]
++
++
++def test_leg_g_tree_test_files_matches_the_two_globs_only(mod, tree):
++    """(g)/M4: exactly `["fleet/tests/test_y.mjs", "tests/test_x.py"]` —
++    repository-relative strings, sorted. `tests/helper.py` is not a
++    `test_*.py`, `fleet/tests/_helpers.mjs` is not a `test_*.mjs`, and
++    `other/test_z.py` is under neither glob's directory."""
++    assert mod.tree_test_files(tree) == TREE_FILES
++
++
++# ------------------------------------------------------------------- the CLI
++
++def _run(*args):
++    """Invoke the CLI as M5 spells it; return the completed process."""
++    assert SCRIPT.is_file(), (
++        "%s is a deliverable of this task and does not exist"
++        % SCRIPT.relative_to(REPO))
++    return subprocess.run([sys.executable, str(SCRIPT),
++                           *[str(a) for a in args]],
++                          capture_output=True, text=True)
++
++
++def _lines(proc):
++    """Exit 0 (M5/M6) and stdout as lines, trailing blank lines dropped."""
++    assert proc.returncode == 0, (
++        "catch_report exited %d\nstdout:\n%s\nstderr:\n%s"
++        % (proc.returncode, proc.stdout, proc.stderr))
++    return proc.stdout.rstrip("\n").split("\n")
++
++
++def _cells(line):
++    parts = line.strip().split("|")
++    assert parts[0].strip() == "" and parts[-1].strip() == "", (
++        "not a pipe-delimited row: %r" % line)
++    return [p.strip() for p in parts[1:-1]]
++
++
++def _is_separator(cells):
++    return bool(cells) and all(re.fullmatch(r":?-{2,}:?", c) for c in cells)
++
++
++def _table_rows(lines):
++    """The data rows under the pinned header — the header line must be there
++    verbatim, and the rows are the pipe lines that follow it."""
++    assert HEADER in lines, (
++        "no header line %r in output:\n%s" % (HEADER, "\n".join(lines)))
++    rows = []
++    for line in lines[lines.index(HEADER) + 1:]:
++        if not line.strip().startswith("|"):
++            break
++        cells = _cells(line)
++        if not _is_separator(cells):
++            rows.append(cells)
++    return rows
++
++
++def _section(lines, heading):
++    """The non-blank body lines under `heading`, up to the next `## `."""
++    assert heading in lines, (
++        "no %r line in output:\n%s" % (heading, "\n".join(lines)))
++    body = []
++    for line in lines[lines.index(heading) + 1:]:
++        if not line.strip():
++            continue
++        if line.startswith("## "):
++            break
++        body.append(line.strip())
++    return body
++
++
++def _ledger(tmp_path, rows):
++    path = tmp_path / "ledger.jsonl"
++    path.write_text("".join(json.dumps(r, sort_keys=True) + "\n"
++                            for r in rows))
++    return path
++
++
++# The four entries of the CLI's table: the tree's two files plus the two the
++# record names, sorted by path (M1 over ROWS and TREE_FILES, M5's order).
++CLI_ROWS = [
++    ["fleet/tests/test_y.mjs", "0", "0", "unobserved"],
++    ["tests/test_a.py", "1", "1", "caught"],
++    ["tests/test_b.py", "0", "1", "zero"],
++    ["tests/test_x.py", "0", "0", "unobserved"],
++]
++
++
++# --------------------------------------------------------------- leg (h) M5
++
++def test_leg_h_cli_prints_the_table_and_the_curve(tmp_path, tree):
++    """(h)/M5: the ledger of (a) against that tree, without `--n` — the header
++    line verbatim, one row per table entry sorted by path, a `## Zero-catch
++    curve` section holding exactly `N=1: 1 file(s)` and `max touching runs:
++    1`, no `## Zero catches over` line, exit 0."""
++    proc = _run("--ledger", _ledger(tmp_path, ROWS), "--tree", tree)
++    lines = _lines(proc)
++    assert _table_rows(lines) == CLI_ROWS
++    assert _section(lines, CURVE_HEADING) == ["N=1: 1 file(s)",
++                                              "max touching runs: 1"]
++    assert not [l for l in lines if l.startswith("## Zero catches over")], (
++        "a deletion section was printed without --n:\n%s" % "\n".join(lines))
++    assert lines.index(HEADER) < lines.index(CURVE_HEADING), (
++        "the curve section precedes the table")
++
++
++# --------------------------------------------------------------- leg (i) M5
++
++def test_leg_i_cli_with_n_1_lists_the_one_zero_test(tmp_path, tree):
++    """(i)/M5: `--n 1` additionally prints `## Zero catches over 1 runs`,
++    after the curve, followed by exactly the line `tests/test_b.py` and
++    nothing else before end of output."""
++    proc = _run("--ledger", _ledger(tmp_path, ROWS), "--tree", tree,
++                "--n", "1")
++    lines = _lines(proc)
++    heading = "## Zero catches over 1 runs"
++    assert _table_rows(lines) == CLI_ROWS
++    assert _section(lines, heading) == ["tests/test_b.py"]
++    assert lines.index(CURVE_HEADING) < lines.index(heading), (
++        "the deletion section precedes the curve")
++    assert lines[-1].strip() == "tests/test_b.py", (
++        "the deletion section is not last:\n%s" % "\n".join(lines))
++
++
++def test_leg_i_cli_with_n_2_lists_no_path(tmp_path, tree):
++    """(i)/M5: `--n 2` prints the heading `## Zero catches over 2 runs`
++    followed by no path — `tests/test_b.py` has one touching run, not two."""
++    proc = _run("--ledger", _ledger(tmp_path, ROWS), "--tree", tree,
++                "--n", "2")
++    lines = _lines(proc)
++    assert _section(lines, "## Zero catches over 2 runs") == []
++
++
++# --------------------------------------------------------------- leg (j) M6
++
++def test_leg_j_missing_ledger_reports_the_tree_as_unobserved(tmp_path, tree):
++    """(j)/M6: a `--ledger` path that does not exist — a table row for each of
++    the two tree tests with `0` catches and `unobserved`, no `N=` line, `max
++    touching runs: 0`, exit 0."""
++    missing = tmp_path / "absent.jsonl"
++    assert not missing.exists()
++    proc = _run("--ledger", missing, "--tree", tree)
++    lines = _lines(proc)
++    assert _table_rows(lines) == [
++        ["fleet/tests/test_y.mjs", "0", "0", "unobserved"],
++        ["tests/test_x.py", "0", "0", "unobserved"],
++    ]
++    assert _section(lines, CURVE_HEADING) == ["max touching runs: 0"]
++    assert not [l for l in lines if l.strip().startswith("N=")], (
++        "a curve line was printed for an empty record:\n%s" % "\n".join(lines))
+diff --git a/tests/test_ultralearn_catches.py b/tests/test_ultralearn_catches.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce1974e5dd1cb6765894583573da9b4b477866f1
+--- /dev/null
++++ b/tests/test_ultralearn_catches.py
+@@ -0,0 +1,519 @@
++"""Exam for task 1 — the counter derives a run's catches from its record.
++
++Every assertion names the Proof leg (a)–(n) and the Machine clause (M1–M10) it
++comes from, so the file reads back against the contract.
++
++The claim under test: "A catch is a red the fix round then turned green by
++editing implementation files, never the test and never by re-run alone."
++
++`skills/ultralearn/scripts/catch_counter.py` is this task's deliverable, so at
++BASE every test here is red for one reason — `_load()` says the script does not
++exist yet, in as many words, rather than letting the absence surface as a
++collection error.
++
++Every fixture run directory is built under pytest's `tmp_path`: the record this
++counter reads is the engine's, and the exam writes no bytes into the tree.
++"""
++import hashlib
++import importlib.util
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++REPO = Path(__file__).resolve().parents[1]
++SCRIPT = REPO / "skills/ultralearn/scripts/catch_counter.py"
++SCRIPTS_DIR = REPO / "skills/ultralearn/scripts"
++
++# M7: the row is exactly these keys — no more, no fewer.
++ROW_KEYS = {"kind", "runId", "driverRuns", "catches", "reds", "touched",
++            "exercises"}
++
++# The Context's outcome vocabulary, one of which every `reds` entry carries.
++OUTCOMES = {"caught", "exam-edited", "task-writes", "rerun", "stayed-red",
++            "no-green"}
++
++THING = "fleet/tests/test_thing.mjs"
++THING_CMD = "node fleet/tests/test_thing.mjs"
++OTHER = "tests/test_other.py"
++OTHER_CMD = "python3 -m pytest -q tests/test_other.py"
++
++T0 = 1788130000000
++
++
++def _load():
++    """Import the counter, naming it as this task's deliverable when absent."""
++    assert SCRIPT.is_file(), (
++        "%s is a deliverable of this task and does not exist"
++        % SCRIPT.relative_to(REPO))
++    if str(SCRIPTS_DIR) not in sys.path:
++        sys.path.insert(0, str(SCRIPTS_DIR))
++    spec = importlib.util.spec_from_file_location("catch_counter", SCRIPT)
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++# --- fixtures --------------------------------------------------------------
++#
++# The engine's shapes, as the task's Context spells them: `events.jsonl` is one
++# JSON object per line and sorts by `id` (never by `ts`); `report.json` carries
++# `tasks[]` rows keyed by a string `task`; `receipt.json` carries
++# `compile.tasks[]` entries keyed by a string `id`.
++
++def _ev(seq, **fields):
++    """One event record. `id` is the order; `ts` is only the wall clock."""
++    return dict(fields, id="01AAA%03d" % seq, ts=T0 + seq * 1000)
++
++
++def _run_open(seq, run_id):
++    return _ev(seq, kind="run:open", runId=run_id, base="",
++               source="fleet/run-main.mjs")
++
++
++def _driver_run(seq, kind, task, cmd, exit_code, **extra):
++    return _ev(seq, kind=kind, task=task, cmd=cmd, exit=exit_code, iter=0,
++               **extra)
++
++
++def _fix_end(seq, label):
++    return _ev(seq, kind="worker:end", label=label, role="implementer",
++               exitCode=0, outcome="ok")
++
++
++def _write_run(run_dir, events, report=None, receipt=None):
++    """One run directory. `report.json`/`receipt.json` are written only when
++    given — a run directory may lack either file (M10)."""
++    run_dir.mkdir(parents=True, exist_ok=True)
++    (run_dir / "events.jsonl").write_text(
++        "".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
++    if report is not None:
++        (run_dir / "report.json").write_text(json.dumps(report),
++                                             encoding="utf-8")
++    if receipt is not None:
++        (run_dir / "receipt.json").write_text(json.dumps(receipt),
++                                              encoding="utf-8")
++    return run_dir
++
++
++def _report(rows):
++    return {"tasks": rows}
++
++def _receipt(entries):
++    return {"compile": {"tasks": entries}}
++
++
++def base_fixture(run_dir, kind="driver:exam-run", run_id="run-77",
++                 exam_edited=(), writes=("fleet/thing.mjs",), with_fix=True,
++                 green_exit=0, with_green=True, extra=None):
++    """Leg (a)'s fixture, and every variation the other legs ask for.
++
++    `run:open`, a red driver run of `kind` for task `1` naming
++    `fleet/tests/test_thing.mjs`, a `fix:1:0` `worker:end`, then the same
++    driver run green.
++    """
++    extra = extra or {}
++    events = [_run_open(1, run_id),
++              _driver_run(2, kind, "1", THING_CMD, 1, **extra)]
++    if with_fix:
++        events.append(_fix_end(3, "fix:1:0"))
++    if with_green:
++        events.append(_driver_run(4, kind, "1", THING_CMD, green_exit,
++                                  **extra))
++    return _write_run(
++        run_dir, events,
++        report=_report([{"task": "1", "proofFixes": 1, "fixIterations": 1,
++                         "examEdited": list(exam_edited)}]),
++        receipt=_receipt([{"id": "1", "writes": list(writes)}]))
++
++
++def _only(reds):
++    """The one `reds` entry, or a failure naming what was there instead."""
++    assert len(reds) == 1, "expected exactly one reds entry, got %r" % (reds,)
++    return reds[0]
++
++
++def _pins(entry, **expected):
++    """The pinned fields of a `reds` entry, compared as a whole."""
++    return {k: entry.get(k) for k in expected} == expected
++
++
++# --- leg (a) — M1: the credit ---------------------------------------------
++
++def test_a_exam_run_red_then_fix_then_green_is_one_catch(tmp_path):
++    """(a)/M1: a `driver:exam-run` red naming `fleet/tests/test_thing.mjs`, a
++    `fix:1:0` `worker:end`, then the same run green, with an `examEdited` that
++    does not name the path and a `writes` that does not name it either, is one
++    catch: `catches` is exactly that one key at 1, and `reds` is exactly one
++    entry, task `"1"`, that path, outcome `caught`."""
++    counter = _load()
++    row = counter.derive_catches(base_fixture(tmp_path / "run-77"))
++    assert row["catches"] == {THING: 1}
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
++                 cmd=THING_CMD, outcome="caught"), entry
++
++
++# --- leg (b) — M1: the same credit under `driver:proof-run` -----------------
++
++def test_b_proof_run_red_then_fix_then_green_is_one_catch(tmp_path):
++    """(b)/M1: the same fixture with both events as `driver:proof-run` credits
++    identically — the rule is over all three driver-run kinds."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77", kind="driver:proof-run"))
++    assert row["catches"] == {THING: 1}
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", kind="driver:proof-run", path=THING,
++                 cmd=THING_CMD, outcome="caught"), entry
++
++
++# --- leg (c) — M1: the same credit under `driver:check-run` -----------------
++
++def test_c_check_run_red_then_fix_then_green_is_one_catch(tmp_path):
++    """(c)/M1: the same fixture as `driver:check-run` (which carries the extra
++    `minor` field) credits identically."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77", kind="driver:check-run",
++                     extra={"minor": False}))
++    assert row["catches"] == {THING: 1}
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", kind="driver:check-run", path=THING,
++                 cmd=THING_CMD, outcome="caught"), entry
++
++
++# --- leg (d) — M2: never the test, when the exam moved ----------------------
++
++def test_d_exam_edited_path_is_not_a_catch(tmp_path):
++    """(d)/M2: when the report row's `examEdited` names the path, the green is
++    not a catch — `catches` is exactly `{}` (the key absent) and the one `reds`
++    entry reads `exam-edited`, not `caught`."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77", exam_edited=[THING]))
++    assert row["catches"] == {}
++    assert THING not in row["catches"]
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", path=THING, outcome="exam-edited"), entry
++
++
++# --- leg (e) — M3: never the test, when the task owns it --------------------
++
++def test_e_path_in_task_writes_is_not_a_catch(tmp_path):
++    """(e)/M3: when the test path is one of the task's own `writes`, the green
++    is not a catch — `catches` is exactly `{}` and the outcome is
++    `task-writes`, not `caught`."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77",
++                     writes=["fleet/thing.mjs", THING]))
++    assert row["catches"] == {}
++    assert THING not in row["catches"]
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", path=THING, outcome="task-writes"), entry
++
++
++# --- leg (f) — M4: never by re-run alone ------------------------------------
++
++def test_f_green_without_an_intervening_fix_round_is_a_rerun(tmp_path):
++    """(f)/M4: with no `fix:1:` `worker:end` between the red and the green,
++    nothing was fixed — `catches` is exactly `{}` and the outcome is `rerun`,
++    not `caught`."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77", with_fix=False))
++    assert row["catches"] == {}
++    assert THING not in row["catches"]
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", path=THING, outcome="rerun"), entry
++
++
++# --- leg (g) — M5: the red that never went green ----------------------------
++
++def test_g_next_same_run_still_red_is_stayed_red(tmp_path):
++    """(g)/M5: when the next same-kind same-`cmd` run for the task is itself
++    non-zero, the first red reads `stayed-red` and nothing is credited."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77", green_exit=1))
++    assert row["catches"] == {}
++    assert THING not in row["catches"]
++    assert row["reds"][0].get("outcome") == "stayed-red", row["reds"]
++    assert row["reds"][0].get("path") == THING
++    assert not [e for e in row["reds"] if e.get("outcome") == "caught"]
++
++
++def test_g_no_later_same_run_is_no_green(tmp_path):
++    """(g)/M5: when no later same-kind same-`cmd` run for the task exists at
++    all, the red reads `no-green` and nothing is credited."""
++    counter = _load()
++    row = counter.derive_catches(
++        base_fixture(tmp_path / "run-77", with_green=False))
++    assert row["catches"] == {}
++    assert THING not in row["catches"]
++    entry = _only(row["reds"])
++    assert _pins(entry, task="1", path=THING, outcome="no-green"), entry
++
++
++# --- leg (h) — M6: one credit per path per fix round ------------------------
++
++def test_h_two_kinds_of_red_before_one_fix_round_credit_once(tmp_path):
++    """(h)/M6: a red `driver:proof-run` and a red `driver:check-run` for the
++    same task naming the same path, one `fix:1:0` `worker:end`, then both
++    green — the path is credited 1, not 2, and both reds are recorded."""
++    counter = _load()
++    run_dir = _write_run(
++        tmp_path / "run-8",
++        [_run_open(1, "run-8"),
++         _driver_run(2, "driver:proof-run", "1", THING_CMD, 1),
++         _driver_run(3, "driver:check-run", "1", THING_CMD, 1, minor=False),
++         _fix_end(4, "fix:1:0"),
++         _driver_run(5, "driver:proof-run", "1", THING_CMD, 0),
++         _driver_run(6, "driver:check-run", "1", THING_CMD, 0, minor=False)],
++        report=_report([{"task": "1", "examEdited": []}]),
++        receipt=_receipt([{"id": "1", "writes": ["fleet/thing.mjs"]}]))
++    row = counter.derive_catches(run_dir)
++    assert row["catches"] == {THING: 1}
++    assert len(row["reds"]) == 2, row["reds"]
++    assert {e.get("kind") for e in row["reds"]} == {"driver:proof-run",
++                                                   "driver:check-run"}
++
++
++# --- leg (i) — M7: the row's shape ------------------------------------------
++
++def test_i_row_has_exactly_the_seven_keys(tmp_path):
++    """(i)/M7: the row of (a) carries exactly `kind`, `runId`, `driverRuns`,
++    `catches`, `reds`, `touched`, `exercises`; `kind` is `catch-count`,
++    `runId` is the `run:open` event's, and `driverRuns` counts the two
++    driver-run events."""
++    counter = _load()
++    row = counter.derive_catches(base_fixture(tmp_path / "run-77"))
++    assert set(row) == ROW_KEYS
++    assert row["kind"] == "catch-count"
++    assert row["runId"] == "run-77"
++    assert row["driverRuns"] == 2
++
++
++def test_i_touched_and_exercises_are_sorted_unions(tmp_path):
++    """(i)/M7: with a second task `2` whose only event is a green
++    `driver:proof-run` naming `tests/test_other.py` and whose `writes` are
++    `["lib/other.py"]`, `touched` is the sorted union of every receipt
++    `writes` and `exercises[T]` is the sorted union of the `writes` of every
++    task whose driver runs named `T` — the green run counts too."""
++    counter = _load()
++    run_dir = _write_run(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1),
++         _fix_end(3, "fix:1:0"),
++         _driver_run(4, "driver:exam-run", "1", THING_CMD, 0),
++         _driver_run(5, "driver:proof-run", "2", OTHER_CMD, 0)],
++        report=_report([{"task": "1", "examEdited": []},
++                        {"task": "2", "examEdited": []}]),
++        receipt=_receipt([{"id": "1", "writes": ["fleet/thing.mjs"]},
++                          {"id": "2", "writes": ["lib/other.py"]}]))
++    row = counter.derive_catches(run_dir)
++    assert row["driverRuns"] == 3
++    assert row["touched"] == ["fleet/thing.mjs", "lib/other.py"]
++    assert row["exercises"] == {THING: ["fleet/thing.mjs"],
++                                OTHER: ["lib/other.py"]}
++    assert row["catches"] == {THING: 1}
++
++
++# --- leg (j) — M8: what counts as a test path -------------------------------
++
++def test_j_test_paths_of_reads_the_tokens_in_order(tmp_path):
++    """(j)/M8: a piped node command yields its one `.mjs` path; a pytest
++    command yields both paths in order of appearance; a `git diff` naming an
++    implementation file yields none."""
++    counter = _load()
++    assert counter.test_paths_of(
++        "node fleet/tests/test_x.mjs | grep -q 'ALL TESTS PASSED'") == [
++            "fleet/tests/test_x.mjs"]
++    assert counter.test_paths_of(
++        "python3 -m pytest -q tests/test_a.py tests/test_b.py") == [
++            "tests/test_a.py", "tests/test_b.py"]
++    assert counter.test_paths_of(
++        "git diff --quiet $ULTRA_BASE -- fleet/x.mjs") == []
++
++
++def test_j_a_red_naming_no_test_path_adds_nothing(tmp_path):
++    """(j)/M8: a red whose `cmd` matches no test path adds nothing to `reds`
++    and nothing to `catches`."""
++    counter = _load()
++    cmd = "git diff --quiet $ULTRA_BASE -- fleet/x.mjs"
++    run_dir = _write_run(
++        tmp_path / "run-77",
++        [_run_open(1, "run-77"),
++         _driver_run(2, "driver:check-run", "1", cmd, 1, minor=False),
++         _fix_end(3, "fix:1:0"),
++         _driver_run(4, "driver:check-run", "1", cmd, 0, minor=False)],
++        report=_report([{"task": "1", "examEdited": []}]),
++        receipt=_receipt([{"id": "1", "writes": ["fleet/x.mjs"]}]))
++    row = counter.derive_catches(run_dir)
++    assert row["reds"] == []
++    assert row["catches"] == {}
++
++
++# --- leg (k) — M9: the append is idempotent ---------------------------------
++
++def _row(run_id, **over):
++    """A catch-count row of the shape `derive_catches` returns."""
++    return dict({"kind": "catch-count", "runId": run_id, "driverRuns": 2,
++                 "catches": {THING: 1},
++                 "reds": [{"task": "1", "kind": "driver:exam-run",
++                           "path": THING, "cmd": THING_CMD,
++                           "outcome": "caught"}],
++                 "touched": ["fleet/thing.mjs"],
++                 "exercises": {THING: ["fleet/thing.mjs"]}}, **over)
++
++
++def _expected_id(run_id):
++    """M9's id: the first 16 hex digits of the SHA-256 of the UTF-8 bytes of
++    `runId + "\\n" + "catch-count"`."""
++    return hashlib.sha256(
++        (run_id + "\n" + "catch-count").encode("utf-8")).hexdigest()[:16]
++
++
++def _lines(path):
++    return [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
++
++
++def test_k_append_rows_creates_parents_stamps_ids_and_is_idempotent(tmp_path):
++    """(k)/M9: appending two rows to a ledger whose parent directory does not
++    exist writes two lines, each carrying the pinned `id`, and returns
++    `{"added": 2, "skipped": 0}`; a second call with the same rows returns
++    `{"added": 0, "skipped": 2}` and leaves the file's bytes unchanged."""
++    counter = _load()
++    ledger = tmp_path / "not" / "yet" / "ledger.jsonl"
++    rows = [_row("run-77"), _row("run-78")]
++
++    assert counter.append_rows(rows, ledger) == {"added": 2, "skipped": 0}
++    assert ledger.is_file()
++    written = [json.loads(l) for l in _lines(ledger)]
++    assert len(written) == 2
++    assert [w["runId"] for w in written] == ["run-77", "run-78"]
++    assert [w["id"] for w in written] == [_expected_id("run-77"),
++                                          _expected_id("run-78")]
++    assert [w["kind"] for w in written] == ["catch-count", "catch-count"]
++    assert written[0]["catches"] == {THING: 1}
++
++    before = ledger.read_bytes()
++    assert counter.append_rows(rows, ledger) == {"added": 0, "skipped": 2}
++    assert ledger.read_bytes() == before
++
++
++def test_k_append_rows_never_rewrites_an_existing_findings_line(tmp_path):
++    """(k)/M9: the ledger's other lines are findings rows; the counter appends
++    beside them — the pre-seeded line stays byte-for-byte the first line."""
++    counter = _load()
++    ledger = tmp_path / "ledger.jsonl"
++    finding = json.dumps({"runId": "run-44", "lens": "friction",
++                          "title": "a finding", "id": "0123456789abcdef"},
++                         sort_keys=True)
++    ledger.write_text(finding + "\n", encoding="utf-8")
++
++    assert counter.append_rows([_row("run-77")], ledger) == {"added": 1,
++                                                             "skipped": 0}
++    lines = _lines(ledger)
++    assert lines[0] == finding
++    assert len(lines) == 2
++    assert json.loads(lines[1])["id"] == _expected_id("run-77")
++
++
++# --- legs (l), (m), (n) — M10: the CLI --------------------------------------
++
++def _cli(tmp_path, *args):
++    """Invoke the CLI with `sys.executable`, cwd = tmp_path."""
++    assert SCRIPT.is_file(), (
++        "%s is a deliverable of this task and does not exist"
++        % SCRIPT.relative_to(REPO))
++    return subprocess.run(
++        [sys.executable, str(SCRIPT), *[str(a) for a in args]],
++        cwd=str(tmp_path), capture_output=True, text=True)
++
++
++def _stdout_line(proc):
++    lines = [l for l in proc.stdout.splitlines() if l.strip()]
++    assert len(lines) == 1, (
++        "expected one stdout line, got %r (stderr: %r)"
++        % (proc.stdout, proc.stderr))
++    return lines[0]
++
++
++def test_l_cli_over_a_tree_counts_appends_and_then_skips(tmp_path):
++    """(l)/M10: a tree holding two run directories yields one row each — the
++    CLI prints `2 run(s) counted, 2 row(s) appended, 0 already recorded` and
++    exits 0; run again over the same tree and ledger, the same two rows are
++    already recorded and nothing is appended."""
++    counter = _load()
++    tree = tmp_path / "tree"
++    base_fixture(tree / "run-201", run_id="run-201")
++    base_fixture(tree / "run-202", run_id="run-202")
++    ledger = tmp_path / "led" / "ledger.jsonl"
++
++    first = _cli(tmp_path, tree, "--ledger", ledger)
++    assert first.returncode == 0, first.stderr
++    assert _stdout_line(first) == "2 run(s) counted, 2 row(s) appended, 0 already recorded"
++    assert len(_lines(ledger)) == 2
++    assert {json.loads(l)["runId"] for l in _lines(ledger)} == {"run-201",
++                                                               "run-202"}
++
++    before = ledger.read_bytes()
++    second = _cli(tmp_path, tree, "--ledger", ledger)
++    assert second.returncode == 0, second.stderr
++    assert _stdout_line(second) == "2 run(s) counted, 0 row(s) appended, 2 already recorded"
++    assert ledger.read_bytes() == before
++
++
++def test_m_cli_on_a_path_with_no_run_directory_looks_empty(tmp_path):
++    """(m)/M10: a path under which no directory holds an `events.jsonl` prints
++    one line beginning `LOOKED-EMPTY:` on stderr — "I looked and there was
++    nothing" — and the process still exits 0."""
++    empty = tmp_path / "empty"
++    empty.mkdir()
++    proc = _cli(tmp_path, empty, "--ledger", tmp_path / "ledger.jsonl")
++    assert proc.returncode == 0, proc.stderr
++    assert [l for l in proc.stderr.splitlines()
++            if l.startswith("LOOKED-EMPTY:")], proc.stderr
++
++
++def test_n_run_directory_without_report_or_receipt_still_yields_a_row(tmp_path):
++    """(n)/M10: a bare run directory holding only an `events.jsonl` — no
++    `report.json`, no `receipt.json` — exits 0 with no traceback, and its
++    appended row has empty `catches`, `touched` and `exercises`."""
++    run_dir = _write_run(
++        tmp_path / "run-99",
++        [_run_open(1, "run-99"),
++         _driver_run(2, "driver:exam-run", "1",
++                     "python3 -m pytest -q tests/test_lonely.py", 0)])
++    ledger = tmp_path / "ledger.jsonl"
++
++    proc = _cli(tmp_path, run_dir, "--ledger", ledger)
++    assert proc.returncode == 0, proc.stderr
++    assert "Traceback" not in proc.stderr
++    assert _stdout_line(proc) == "1 run(s) counted, 1 row(s) appended, 0 already recorded"
++    written = [json.loads(l) for l in _lines(ledger)]
++    assert len(written) == 1
++    row = written[0]
++    assert row["runId"] == "run-99"
++    assert row["catches"] == {}
++    assert row["touched"] == []
++    assert row["exercises"] == {}
++
++
++# --- the vocabulary, across every leg ---------------------------------------
++
++def test_every_reds_outcome_is_one_of_the_six(tmp_path):
++    """M1–M5: `outcome` is one of `caught`, `exam-edited`, `task-writes`,
++    `rerun`, `stayed-red`, `no-green` — no seventh spelling."""
++    counter = _load()
++    for i, kwargs in enumerate([{}, {"exam_edited": [THING]},
++                                {"writes": ["fleet/thing.mjs", THING]},
++                                {"with_fix": False}, {"green_exit": 1},
++                                {"with_green": False}]):
++        row = counter.derive_catches(
++            base_fixture(tmp_path / ("run-%d" % i), **kwargs))
++        for entry in row["reds"]:
++            assert entry.get("outcome") in OUTCOMES, entry
+diff --git a/tests/test_ultralearn_docs.py b/tests/test_ultralearn_docs.py
+index 204c1db956d4e234434ad02594e8ef9bc532359c..435b6f345352d3667d9c7f3a733f11a36ad7da53 100644
+--- a/tests/test_ultralearn_docs.py
++++ b/tests/test_ultralearn_docs.py
+@@ -29,3 +29,111 @@ def test_every_flag_the_skill_advertises_exists():
+     for flag in advertised & {"--evidence", "--run", "--cache", "--force",
+                               "--origin", "--engine-version", "--slice-budget"}:
+         assert flag in help_text, f"SKILL.md advertises {flag}, the CLI has no such flag"
++
++
++# --- Task 3: the skill says how a catch is counted and that N is read off the
++# curve. The section is addressed the way the task's `Run:` lines address it,
++# `sed -n '/^## The catch counter/,/^## Verb 2/p'` — from the heading through
++# the `## Verb 2` line, both boundaries included.
++
++COUNTER = ROOT / "skills/ultralearn/scripts/catch_counter.py"
++REPORT = ROOT / "skills/ultralearn/scripts/catch_report.py"
++VALIDATE = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
++
++CATCH_HEADING = "## The catch counter"
++VERB1_HEADING = "## Verb 1"
++VERB2_HEADING = "## Verb 2"
++
++
++def _heading_line(prefix):
++    """1-based line number of the one line starting with `prefix`, as grep -n."""
++    hits = [n for n, line in enumerate(SKILL.read_text().splitlines(), 1)
++            if line.startswith(prefix)]
++    assert len(hits) == 1, (
++        f"SKILL.md has {len(hits)} lines starting with {prefix!r}, expected exactly one")
++    return hits[0]
++
++
++def _catch_section():
++    """The catch-counter section's text, as the task's `sed -n` range prints it."""
++    lines = SKILL.read_text().splitlines()
++    start = _heading_line(CATCH_HEADING) - 1
++    end = len(lines)
++    for n in range(start + 1, len(lines)):
++        if lines[n].startswith(VERB2_HEADING):
++            end = n + 1
++            break
++    return "\n".join(lines[start:end]) + "\n"
++
++
++def _help(script):
++    return subprocess.run([sys.executable, str(script), "--help"],
++                          capture_output=True, text=True, check=True).stdout
++
++
++def test_catch_counter_heading_sits_between_the_two_verbs():
++    # Leg (a) [M1]: `## The catch counter` exists once, after `## Verb 1` and
++    # before `## Verb 2` — the three line numbers strictly increasing.
++    verb1 = _heading_line(VERB1_HEADING)
++    catch = _heading_line(CATCH_HEADING)
++    verb2 = _heading_line(VERB2_HEADING)
++    assert verb1 < catch < verb2, (
++        f"expected `{VERB1_HEADING}` ({verb1}) < `{CATCH_HEADING}` ({catch}) "
++        f"< `{VERB2_HEADING}` ({verb2})")
++
++
++def test_catch_section_names_the_scripts_the_row_and_the_ledger():
++    # Leg (b) [M2]: the section names both scripts, the row kind, and the file
++    # the counter appends to.
++    section = _catch_section()
++    for name in ("catch_counter.py", "catch_report.py", "catch-count",
++                 "docs/superpowers/observations/ledger.jsonl"):
++        assert name in section, f"the catch-counter section does not name {name!r}"
++
++
++def test_catch_section_states_the_rule_and_names_the_two_record_fields():
++    # Leg (c) [M3]: `never the test` before `re-run alone`; `examEdited` and
++    # `writes` spelled as code tokens — the record fields, not the bare verb.
++    section = _catch_section()
++    assert re.search(r"never the test.*re-run alone", section, re.S), (
++        "the section does not say `never the test` before `re-run alone`")
++
++    exam_edited = r"[^ \n]examEdited[^ \n]"
++    writes_field = r"[^ \n]writes[^ \n] in the receipt"
++    assert re.search(exam_edited, section), (
++        "the section does not spell `examEdited` as a code token")
++    assert re.search(writes_field, section), (
++        "the section does not spell `writes` as a code token followed by ` in the receipt`")
++
++    prose = "the counter writes the ledger"
++    assert not re.search(exam_edited, prose)
++    assert not re.search(writes_field, prose), (
++        "the `writes` pin matches a bare verb, so it does not pin the record field")
++
++
++def test_catch_section_reads_n_off_the_curve():
++    # Leg (d) [M4]: `--n`, `curve`, `not fixed`.
++    section = _catch_section()
++    for token in ("--n", "curve", "not fixed"):
++        assert token in section, f"the catch-counter section does not contain {token!r}"
++
++
++def test_every_flag_the_catch_section_advertises_exists():
++    # Leg (e) [M5]: every `--[a-z][a-z-]*` token in the section is a flag one of
++    # the two CLIs prints under `--help`.
++    section = _catch_section()
++    advertised = set(re.findall(r"--[a-z][a-z-]*", section))
++    both = _help(COUNTER) + "\n" + _help(REPORT)
++    for flag in sorted(advertised):
++        assert flag in both, (
++            f"the catch-counter section advertises {flag}, neither CLI has such a flag")
++    assert "--nope" not in both, (
++        "the union of the two help texts contains `--nope`, so this check pins nothing")
++
++
++def test_validate_skill_accepts_the_ultralearn_skill():
++    # Leg (f) [M6]: the skill still validates.
++    done = subprocess.run([sys.executable, str(VALIDATE), str(ROOT / "skills/ultralearn")],
++                          capture_output=True, text=True)
++    assert done.returncode == 0, (
++        f"validate_skill.py exited {done.returncode}\n{done.stdout}{done.stderr}")

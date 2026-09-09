@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -247,7 +247,7 @@
             "none"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the role file is read by the engine at dispatch"
+            "nothing a sibling consumes — the role file is read by the engine at dispatch"
           ]
         }
       },
@@ -267,7 +267,7 @@
             "none"
           ],
           "produces": [
-            "nothing a sibling consumes \u2014 the boot script, the contract and the report format are read by operators and by their own sims"
+            "nothing a sibling consumes — the boot script, the contract and the report format are read by operators and by their own sims"
           ]
         }
       }
@@ -642,7 +642,7 @@
               "none"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the role file is read by the engine at dispatch"
+              "nothing a sibling consumes — the role file is read by the engine at dispatch"
             ]
           },
           "tier": null,
@@ -694,7 +694,7 @@
               "none"
             ],
             "produces": [
-              "nothing a sibling consumes \u2014 the boot script, the contract and the report format are read by operators and by their own sims"
+              "nothing a sibling consumes — the boot script, the contract and the report format are read by operators and by their own sims"
             ]
           },
           "tier": null,
@@ -712,7 +712,7 @@
           "proofRuns": [
             "bash -n fleet/sandbox-boot.sh",
             "node fleet/tests/test_sandbox_boot_approval_evidence.mjs | grep -q 'ALL TESTS PASSED'",
-            "sed -n '/ultra\\/evidence-run-<N>. \u2014 the run/,/publish-fold/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'referee/task-<id>-<n>\\.json.*present when the engine wrote them'",
+            "sed -n '/ultra\\/evidence-run-<N>. — the run/,/publish-fold/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'referee/task-<id>-<n>\\.json.*present when the engine wrote them'",
             "python3 -m pytest -q tests/test_docs_agree_with_code.py",
             "sed -n '/^| .tasks\\[\\]\\.reviewVerdict./p' skills/ultrapowers/references/report-format.md | grep -q 'proof-red.*referee-red'",
             "sed -n '/\"reviewEconomy\": { \"type\": \"object\"/,/\"acceptance\":/p' skills/ultrapowers/references/report-format.md | tr '\\n' ' ' | grep -q '\"refereeFindings\": {\"type\":\"integer\"}.*\"refereeBlocking\": {\"type\":\"integer\"}.*\"refereeSkippedPairs\": {\"type\":\"integer\"}'",
@@ -782,7 +782,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- The verification periphery is frozen (0.1.0): the first Check pins the three gate scripts and the\n  compiler, whose diagnostic vocabulary and task JSON are read here and never changed. The second\n  pins the roles this plan does not own \u2014 only `reviewer.md` changes.\n- The referee and the linker are driver code: no model call, no network, no git write, no\n  `anthropic` SDK and no `ANTHROPIC_API_KEY` anywhere in `fleet/`. A subprocess they spawn is\n  `node` or `python3` on a file of the task's own clone, with a timeout, and nothing else.\n- Amendment 10 holds: models never run git; every git command in the sims is the sim's own.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- The verification periphery is frozen (0.1.0): the first Check pins the three gate scripts and the\n  compiler, whose diagnostic vocabulary and task JSON are read here and never changed. The second\n  pins the roles this plan does not own — only `reviewer.md` changes.\n- The referee and the linker are driver code: no model call, no network, no git write, no\n  `anthropic` SDK and no `ANTHROPIC_API_KEY` anywhere in `fleet/`. A subprocess they spawn is\n  `node` or `python3` on a file of the task's own clone, with a timeout, and nothing else.\n- Amendment 10 holds: models never run git; every git command in the sims is the sim's own.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/scripts/gate_check.py skills/ultrapowers/scripts/ultra_gate.py skills/ultrapowers/scripts/run_acceptance.sh skills/ultrapowers/scripts/compile_plan.py",
@@ -801,11 +801,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-69/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-69/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-69/acceptance.log"
 }
