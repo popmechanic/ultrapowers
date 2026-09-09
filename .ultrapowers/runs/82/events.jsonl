@@ -52,3 +52,5 @@
 {"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/849","number":849,"draft":false,"id":"01M23SEESJ00002YYRRFXDQWVM","ts":1788981230386}
 {"kind":"publish:followup","url":"https://github.com/popmechanic/ultrapowers/issues/850","items":4,"id":"01M23SEFYY000067ZPP7BE78W1","ts":1788981231582}
 {"kind":"publish:merge","sha":null,"left":"refused","detail":"merge PUT answered 405","id":"01M23T2KPR00002KPHFWHB3ZWZ","ts":1788981890776}
+{"kind":"run:open","runId":"run-82","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","source":"fleet/publish-fold.mjs","id":"01M23T2NVC0000NP8T3D8MDKC4","ts":1788981892972}
+{"kind":"driver:publish-fold","run":"82","attempt":"2","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","tip":"5f4caf8b29bc583bdda87cca9f3ff4ee16b0d38c","candidate":"528a8ce733647d494335b54fde239abb1065b1a8","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M23THG440000HCXM560298D3","ts":1788982378628}
