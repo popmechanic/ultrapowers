@@ -1,0 +1,125 @@
+{
+  "integrationBranch": "ultra/integration-run-79",
+  "baseSha": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "aa48696e4951f8ac91ba1fe488d93c8401059328",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-79/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Scope/cost of leg (d) inside the exam. The Proof assigns leg (d) to the second `Run:` (\"the bridge case passes \u2014 the second `Run:` is red if any one of them lacks the sentinel\"), and the pytest bridge (tests/test_fleet_suite.py:62) already auto-discovers each of `test_sandbox_boot.mjs`, `test_sandbox_boot_effort.mjs` and `test_sandbox_boot_state_exams.mjs` as its own case. `fleet/tests/test_sandbox_boot_render_env.mjs` nonetheless re-runs all three as subprocesses (SIBLING_SIMS / `sim()`), and one of them \u2014 `test_sandbox_boot_state_exams.mjs` \u2014 itself spawns `test_sandbox_boot.mjs` and `test_sandbox_boot_approval_evidence.mjs` (test_sandbox_boot_state_exams.mjs:278-279), so the new exam nests two levels deep and roughly duplicates the boot-sim work of the family on every suite run \u2014 far more than the \"few boots, started concurrently through bootAsync\" the third GLOBAL CONSTRAINT describes. That constraint carries no `Check:` the driver ran, and the evidence that bears on it is green (the exam is 35 s wall, `pytest -k sandbox_boot` exit 0 in 257 s, all well under MJS_TIMEOUT=300), so this is advisory only: the legs (a)/(a2)/(b)/(c) that the exam alone can establish are intact. If the duplication is not wanted, dropping the SIBLING_SIMS spawns and the leg (d) loop (lines with `sim()`, `siblings`, and the `for (const file of SIBLING_SIMS)` test block) leaves M3's sentinel clause resting on the pytest `Run:`, exactly where the Proof puts it; `SIBLING_SIMS` would then need to stay only as the leg (c) sweep's coverage list.; Comment overstates what leg (a2) waits for. `test_sandbox_boot_render_env.mjs` leg (a2) awaits `bareBoot()` and `plantedBoot()` before calling the blocking `boot()`, with the comment \"rather than holding the event loop while its siblings are still draining their pipes\" \u2014 but the three sibling sims spawned at module load are still live at that point, and `spawnSync` blocks the event loop, so their stdout/stderr pipes really do go undrained for the duration of that boot. It is harmless in practice (each sim prints a few KB, far under the 64 KB pipe buffer, and the blocking boot returns in ~0.7 s per the exam evidence), so nothing fails; the comment just claims a property the code does not have. Either reword it to say only the two promised boots are awaited, or await the `siblings` promises too before the synchronous boot.; Cost of leg (d): `fleet/tests/test_sandbox_boot_render_env.mjs` spawns three complete boot sims in-process (`test_sandbox_boot.mjs`, `test_sandbox_boot_effort.mjs`, `test_sandbox_boot_state_exams.mjs`, lines 255-286 of the new file). Each is already its own pytest bridge case, and `test_sandbox_boot.mjs` is listed in `SLOW_FIRST` in `tests/test_fleet_suite.py` as one of the longest poles; nesting them makes the new exam's wall equal to the slowest of them plus its own three boots (the EXAM EVIDENCE shows the leg alone at 34,070 ms of a 35 s run) and runs that pole twice per suite. Global constraint 3 asks that \"a new exam adds at most a few boots, started concurrently through `bootAsync`, never a serial chain of them\" \u2014 this exam adds three of its own boots (compliant: two through `bootAsync`, the blocking one after they land) plus roughly a whole boot suite's worth through the spawns. The constraint carries no `Check:` command, so this is my reading of prose and blocks nothing, and the driver's `python3 -m pytest tests/test_fleet_suite.py -k \"sandbox_boot\" -q` came back exit 0 (257 s, 12 passed), so it is not failing today; the exposure is the `MJS_TIMEOUT = 300` cap under a full `-n auto` run, where the nested pole competes with its own bridge case. The Proof already assigns leg (d) to a `Run:` rather than to the exam \u2014 \"the second `Run:` is red if any one of them lacks the sentinel [M3]\" \u2014 so dropping the three `spawn`s and the `SIBLING_SIMS` loop (keeping `SIBLING_SIMS` only as leg (c)'s sweep-coverage list, which it already serves at line 409) would leave M3 established by the same evidence at a fraction of the wall. If the nested runs are kept deliberately, that is defensible \u2014 the redundancy is what makes the exam self-contained \u2014 but it should be a conscious choice, not an accident.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-79/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1911 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 97%]\n.......................................                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1911 passed, 5 warnings in 469.86s (0:07:49) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "! grep -q '/etc/fleet/render.env' fleet/tests/_sandbox_boot_helpers.mjs fleet/tests/test_sandbox_boot*.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k \"sandbox_boot\" -q",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed, 76 deselected in 250.40s (0:04:10)\n"
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_render_env.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/setup-script.mjs fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 314612,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "ceff104a2f466d68453c1c9cbf420384366c2933",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-79/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-79/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.7510000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 Claim \u2014 \"A boot sim never reads a renderer file the host installed\" \u2014 on the sandbox class that produced the red baseline (a plugin-target box where `fleet/setup-script.mjs` really installed the host renderer file)",
+      "reason": "runtime",
+      "why": "This box carries no host renderer file (reading `/etc/fleet/render.env` here returns \"File does not exist\"), so the driver's green runs exercise the fix only against the exam's synthetic stand-in: `fleet/tests/test_sandbox_boot_render_env.mjs:152-161` writes its own file in a temp root and names it through `process.env.FLEET_RENDER_ENV`. The mechanism is fully pinned here \u2014 `<ctx.home>/systemd-run.env` shows one `FLEET_RENDER_ENV=` line and it is `renderEnvPath(ctx)`, so the script's `${FLEET_RENDER_ENV:-\u2026}` fallback at `fleet/sandbox-boot.sh:72` is never reached \u2014 but the plan's own live reading (Context: \"the baseline is green again on a plugin-target run with `render` set is a live fact for the PR body, not a `Run:` here\") is the part this environment cannot present."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, Proof leg (d) / global constraint 3 (\"a new exam adds at most a few boots\"): `fleet/tests/test_sandbox_boot_render_env.mjs:198-229,367-376` implements leg (d) by spawning three whole sibling sims as child processes (`test_sandbox_boot.mjs`, `test_sandbox_boot_effort.mjs`, `test_sandbox_boot_state_exams.mjs`), rather than leaning on the second `Run:` (`pytest -k sandbox_boot`) that the Proof names as leg (d)'s check. Beyond its own three boots this charges dozens of nested boots to a single bridge case, and `tests/test_fleet_suite.py:5-22` records that exact shape as a scheduling defect already removed once: \"test_sandbox_boot_selfmerge.mjs leads it as the longest sim that boots fleet/sandbox-boot.sh \u2014 the pole test_sandbox_boot_merge.mjs used to hide. The merge sim ran it and six other boot siblings inside itself and no longer does.\" The new exam re-creates that hiding \u2014 it nests `test_sandbox_boot.mjs`, itself a `SLOW_FIRST` pole, while not being in `SLOW_FIRST`, so under `--dist load` it is dispatched in relative-path order carrying a wall at least as long as the pole it contains. Not blocking: the driver's own runs are green and inside the 300 s `MJS_TIMEOUT` (`pytest tests/test_fleet_suite.py -k sandbox_boot -q` exit 0, 12 passed in 250.40 s; `node fleet/tests/test_sandbox_boot_render_env.mjs | grep -q 'ALL TESTS PASSED'` exit 0), and the sims are spawned concurrently, not as a serial chain. The Claim itself (M1/M2) is proven by legs (a)/(a2)/(b), which need none of this nesting."
+    }
+  ],
+  "blockedWaves": []
+}

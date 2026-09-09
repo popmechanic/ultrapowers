@@ -1,0 +1,8 @@
+ok (958 ms) — a promised boot pins FLEET_RENDER_ENV at renderEnvPath(ctx) and hands the engine an empty TINYAPP_RENDER_URL=  [M1 / leg (a)]
+ok (826 ms) — the blocking boot pins the same path, on a home of its own  [M1 / leg (a2)]
+ok (0 ms) — a sim that writes the address at renderEnvPath(ctx) and boots with {} gets that line in the engine argv  [M2 / leg (b)]
+ok (3 ms) — neither the rig nor any test_sandbox_boot*.mjs names the host renderer path  [M3 / leg (c)]
+ok (38140 ms) — test_sandbox_boot.mjs still prints ALL TESTS PASSED  [M3 / leg (d)]
+ok (0 ms) — test_sandbox_boot_effort.mjs still prints ALL TESTS PASSED  [M3 / leg (d)]
+ok (154 ms) — test_sandbox_boot_state_exams.mjs still prints ALL TESTS PASSED  [M3 / leg (d)]
+ALL TESTS PASSED

@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-79.md run-79 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "Task 1 Claim — \"A boot sim never reads a renderer file the host installed\" — on the sandbox class that produced the red baseline (a plugin-target box where `fleet/setup-script.mjs` really installed the host renderer file) — This box carries no host renderer file (reading `/etc/fleet/render.env` here returns \"File does not exist\"), so the driver's green runs exercise the fix only against the exam's synthetic stand-in: `fleet/tests/test_sandbox_boot_render_env.mjs:152-161` writes its own file in a temp root and names it through `process.env.FLEET_RENDER_ENV`. The mechanism is fully pinned here — `<ctx.home>/systemd-run.env` shows one `FLEET_RENDER_ENV=` line and it is `renderEnvPath(ctx)`, so the script's `${FLEET_RENDER_ENV:-…}` fallback at `fleet/sandbox-boot.sh:72` is never reached — but the plan's own live reading (Context: \"the baseline is green again on a plugin-target run with `render` set is a live fact for the PR body, not a `Run:` here\") is the part this environment cannot present. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
