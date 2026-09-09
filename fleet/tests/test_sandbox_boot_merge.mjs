@@ -58,7 +58,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -721,8 +721,10 @@ test("SKILL.md's step 4 says a ready PR merges itself and --hold keeps it open  
 //                  `STUB_FOLD_REASON`, `STUB_FOLD_RESOLVERS`, `STUB_FOLD_CODE`,
 //                  `STUB_FOLD_CODE_2`, `STUB_FOLD_PARK`, `STUB_FOLD_NO_HEAD`,
 //                  `STUB_FOLD_BAD_RECEIPT`, `STUB_FOLD_ACTIVE`,
-//                  `STUB_MERGE_MESSAGE`, `STUB_MERGE_CODE` (the FIRST PUT) and
-//                  `STUB_MERGE_CODE_2` (the second, default 200),
+//                  `STUB_MERGE_MESSAGE`, `STUB_MERGE_CODE` (a list: PUT n gets
+//                  its n-th entry whenever the list has one) and
+//                  `STUB_MERGE_CODE_2` (PUT n ≥ 2 once the list runs short,
+//                  default 200),
 //                  `STUB_MERGEABLE_NULL`, `STUB_INTEGRATION_PUSH_FAIL`.
 //   `git`          records `update-ref` and `--force-with-lease` argv the way it
 //                  records every other call, and refuses the integration push
@@ -1140,6 +1142,166 @@ test('the deadman stops the fold units beside the engine and carries the PR cell
   assert.equal(status.pr, PR_URL, '(i) [M2] carrying the pr cell the page it overwrote held')
   assert.equal(status.prAuthor, PR_AUTHOR, '(i) [M2] its prAuthor')
   assert.equal(status.merged, mergeSha(), '(i) [M2] and its merged')
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// THE DEADMAN'S WIDENING — task #808, "The deadman widening and the fold-again
+// window are pinned under an injectable clock" (residual of #801, PR #800).
+//
+// The pair above lands on the `folds=2` FLOOR: its page says `publish fold`,
+// which matches no `publish fold (attempt <n>)`, so it cannot see that
+// `do_deadman` reads `phase` off the page BEFORE it overwrites it and makes
+// that `<n>` the highest fold unit it stops. These two legs are that widening
+// and its negative. The clauses they encode, in the task's own numbering:
+//
+//   M1  a `deadman` over a seeded `{run: '7', state: 'running', phase:
+//       'publish fold (attempt 4)'}` page with `STUB_ENGINE_ACTIVE=active` and
+//       `STUB_FOLD_ACTIVE=active` exits 0 and records in `argvLines(ctx,
+//       'systemctl')` one `stop fleet-fold-7-<n>.service` for each n of 1, 2, 3
+//       and 4, and no stop for any other `fleet-fold-7-` unit.        leg (a)
+//   M2  the same invocation against a copy of `fleet/sandbox-boot.sh` from
+//       which the `case "$phase_now" in … esac` block of `do_deadman` has been
+//       removed exits 0, records the stops for `-1` and `-2`, and records no
+//       stop for `-3` and none for `-4` — the floor line
+//       `[ "$folds" -ge 2 ]` stays, which is why two survive.         leg (b)
+//
+// WHAT THESE ASK OF THE RIG (`_sandbox_boot_helpers.mjs`, this task's own
+// file): ONE seam, for M2 — a way to run a script other than `SCRIPT`. An
+// optional trailing `script` argument on `boot` and `bootAsync`, defaulting to
+// `SCRIPT`, is what leg (b) calls; the boot script has no `$0`/`BASH_SOURCE`
+// self-reference, so a copy written under `ctx.home` runs identically.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** The phase the fold's fourth attempt leaves on the page — what M1 seeds. */
+const DEADMAN_PHASE = 'publish fold (attempt 4)'
+/** Both `is-active` knobs answering `active`, so every unit named is stopped. */
+const DEADMAN_ACTIVE = { STUB_ENGINE_ACTIVE: 'active', STUB_FOLD_ACTIVE: 'active' }
+const FOLD_UNIT_5 = 'fleet-fold-7-5'
+
+/** The page a deadman reads, written by hand — no boot: `do_deadman` reads
+ *  `run`, `state`, `phase`, `pr`, `prAuthor`, `merged`, `startedAt` and `vm`
+ *  straight off it. */
+const seedDeadmanPage = (ctx, phase) => {
+  const page = {
+    run: '7', state: 'running', phase, pr: PR_URL, prAuthor: PR_AUTHOR,
+    merged: mergeSha(), branch: INTEGRATION_BRANCH, vm: VM_NAME,
+    startedAt: '2026-09-06T00:00:00Z', updatedAt: '2026-09-06T00:00:01Z', error: null,
+  }
+  fs.mkdirSync(path.join(ctx.home, 'www'), { recursive: true })
+  fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'), JSON.stringify(page))
+  return ctx
+}
+
+/** Every unit a `systemctl … stop` named, in the order the stops were made. */
+const stopsOf = (ctx) => argvLines(ctx, 'systemctl')
+  .filter((a) => a.includes('stop'))
+  .map((a) => a[a.length - 1])
+/** Only the fold units among them, sorted, so the leg reads a SET. */
+const foldStopsOf = (ctx) =>
+  stopsOf(ctx).filter((u) => u.startsWith('fleet-fold-7-')).slice().sort()
+const stopped = (n) => `fleet-fold-7-${n}.service`
+
+/**
+ * M2's mutant, cut out of the real script's text: the lines from
+ * `phase_now="$(read_status_field phase)"` through the `esac` that closes the
+ * `case` over it. Everything else — the floor line included — stays.
+ */
+const cutPhaseNowBlock = (ls) => {
+  const from = ls.findIndex((l) => l.includes('phase_now="$(read_status_field phase)"'))
+  assert.ok(from >= 0,
+    '(b) [#808 M2] fleet/sandbox-boot.sh must carry the line `phase_now="$(read_status_field ' +
+      'phase)"` in do_deadman — it is the read this mutant cuts out')
+  let to = -1
+  for (let i = from + 1; i < ls.length; i += 1) {
+    if (ls[i].trim() === 'esac') { to = i; break }
+  }
+  assert.ok(to > from,
+    '(b) [#808 M2] and an `esac` after it, closing the `case "$phase_now" in` block')
+  const cut = ls.slice(from, to + 1)
+  assert.ok(cut.some((l) => l.includes('case "$phase_now" in')),
+    `(b) [#808 M2] the cut block is the case over the phase; it was:\n${cut.join('\n')}`)
+  const kept = [...ls.slice(0, from), ...ls.slice(to + 1)].join('\n')
+  // The `local state phase_now folds=2` declaration stays where it is: what the
+  // cut removes is the READ of the phase and the `case` that widens `folds`.
+  assert.ok(!kept.includes('phase_now="$(read_status_field phase)"') &&
+    !kept.includes('case "$phase_now" in'),
+    '(b) [#808 M2] the mutant reads the page\'s phase nowhere and widens folds nowhere — that ' +
+      'is the whole cut')
+  assert.ok(kept.includes('[ "$folds" -ge 2 ]'),
+    '(b) [#808 M2] but keeps the floor line `[ "$folds" -ge 2 ]`, which is why the mutant still ' +
+      'stops units 1 and 2')
+  return kept
+}
+
+/** `gatedBoot`, for a script other than `SCRIPT`: the rig's seam, behind the
+ *  same width gate every other boot of this file runs behind. */
+const gatedScript = (ctx, args, env, script) =>
+  acquire().then(() => bootAsync(ctx, args, env, script).finally(release))
+
+/** Leg (a)'s run: the real script over the widened page. */
+const deadmanWide = started(() => {
+  const ctx = seedDeadmanPage(makeHome(), DEADMAN_PHASE)
+  return gatedBoot(ctx, ['deadman'], { ...DEADMAN_ACTIVE })
+    .then((dead) => { ctx.dead = dead; return ctx })
+})
+
+/** Leg (b)'s: the same page, the same knobs, the mutant script. `async` so that
+ *  a failure while CUTTING the script is this leg's rejection to report, not a
+ *  throw at module load that would take the whole file down with it. */
+const deadmanMutant = started(async () => {
+  const ctx = seedDeadmanPage(makeHome(), DEADMAN_PHASE)
+  const script = path.join(ctx.home, 'sandbox-boot-no-phase-now.sh')
+  fs.writeFileSync(script, cutPhaseNowBlock(linesOf(SCRIPT)))
+  ctx.script = script
+  ctx.dead = await gatedScript(ctx, ['deadman'], { ...DEADMAN_ACTIVE }, script)
+  return ctx
+})
+
+test(`a deadman over a '${DEADMAN_PHASE}' page stops all four fold units  [#808 M1 / leg (a)]`, async () => {
+  const ctx = await deadmanWide()
+  const leg = '(a) [#808 M1]'
+  assert.equal(ctx.dead.status, 0,
+    `${leg} the deadman exits 0: ${ctx.dead.stdout}${ctx.dead.stderr}`)
+
+  const stops = stopsOf(ctx)
+  assert.ok(stops.includes('fleet-engine-7.service'),
+    `${leg} the engine's unit is stopped beside the folds. The stops were ` +
+      `${JSON.stringify(stops)}`)
+  for (const n of [1, 2, 3, 4]) {
+    assert.ok(stops.includes(stopped(n)),
+      `${leg} do_deadman reads '${DEADMAN_PHASE}' off the page before it overwrites it and ` +
+        `stops fleet-fold-7-1 … -${4} — one \`systemctl --user stop ${stopped(n)}\` is owed ` +
+        `and none was made. The stops were ${JSON.stringify(stops)}`)
+  }
+  assert.deepEqual(foldStopsOf(ctx), [stopped(1), stopped(2), stopped(3), stopped(4)],
+    `${leg} and EXACTLY those four: the phase's <n> is the highest unit this run can have ` +
+      `started, so a fifth such as ${FOLD_UNIT_5} is absent. The fold stops were ` +
+      `${JSON.stringify(foldStopsOf(ctx))}`)
+})
+
+test('the same page against a script with the phase_now block cut stops only the floor pair  [#808 M2 / leg (b)]', async () => {
+  const ctx = await deadmanMutant()
+  const leg = '(b) [#808 M2]'
+  assert.equal(ctx.dead.status, 0,
+    `${leg} the mutant deadman exits 0 too: ${ctx.dead.stdout}${ctx.dead.stderr}`)
+
+  const stops = stopsOf(ctx)
+  const seam =
+    `\nThe run was \`bootAsync(ctx, ['deadman'], env, '${ctx.script}')\` — the rig's script ` +
+    `seam, an optional trailing \`script\` argument on \`boot\` and \`bootAsync\` defaulting to ` +
+    `SCRIPT. A rig that ignores it runs fleet/sandbox-boot.sh itself, which stops all four, ` +
+    `and this leg proves nothing about the widening. The stops were ${JSON.stringify(stops)}`
+  for (const n of [1, 2]) {
+    assert.ok(stops.includes(stopped(n)),
+      `${leg} the floor line survives the cut, so the mutant still stops ${stopped(n)}.${seam}`)
+  }
+  for (const n of [3, 4]) {
+    assert.ok(!stops.includes(stopped(n)),
+      `${leg} and WITHOUT the phase read there is no widening: no stop names ${stopped(n)}. ` +
+        `That is leg (a)'s negative — the two legs differ only in this block.${seam}`)
+  }
+  assert.deepEqual(foldStopsOf(ctx), [stopped(1), stopped(2)],
+    `${leg} the mutant's fold stops are exactly the floor pair.${seam}`)
 })
 
 // ── (c) push_head  [M3] ──────────────────────────────────────────────────────
@@ -1866,7 +2028,8 @@ test("CONTRACT.md's merge bullet names all three bodies that earn the second fol
 // A FIFTH numbering, belonging to a fifth task (#798, on top of #715's one
 // retry and #784's three bodies). Its clauses are M1–M6 and its legs (a)–(j) of
 // their own, and every assertion below names them with a `fold-again` prefix so
-// none of the five numberings in this file reads as another.
+// none of the five numberings in this file reads as another. Legs (i)(j) of that
+// numbering are the suite's own rows, not tests here. [#809, task 3]
 //
 // What the claim is, in the task's own words: a merge refused with the
 // base-moved 405 folds again for as long as each fold is clean and the suite is
@@ -1911,10 +2074,12 @@ test("CONTRACT.md's merge bullet names all three bodies that earn the second fol
 //       describes one `running → publishing` pair per fold and names
 //       `FOLD_AGAIN_WAIT`; and `retried exactly once` is nowhere in the
 //       contract.                                                  leg  (h)
-//   M6  `fleet/tests/test_sandbox_boot_exams.mjs` and
-//       `fleet/tests/test_sandbox_boot_selfmerge.mjs` — the two other boot sims
-//       that drive the merge retry — each print the line `ALL TESTS PASSED` on
-//       the changed rig.                                       legs (i)(j)
+//   M6  the two other boot sims that drive the merge retry still pass on the
+//       changed rig. [#809, task 3] That is the SUITE's sentence, not a leg of
+//       this file: each of them is already its own row of
+//       `tests/test_fleet_suite.py`, so re-running them from inside here proved
+//       nothing the suite does not and cost more wall than every other leg put
+//       together. Their rows are the ninth `Run:` of the Proof.
 //
 // WHAT THIS BANNER ASKS OF THE RIG (`_sandbox_boot_helpers.mjs`, the
 // implementer's file), driven by environment knobs only so nothing here links
@@ -2148,6 +2313,172 @@ test('with the window at 0 a refusing stub folds again once and stops  [fold-aga
       `${JSON.stringify(merges)}${whyFold(ctx)}`)
 })
 
+// ═════════════════════════════════════════════════════════════════════════════
+// THE FOLD-AGAIN WINDOW, MEASURED — task #808, "The deadman widening and the
+// fold-again window are pinned under an injectable clock".
+//
+// The two cases above are the window's two ENDS: `foldAgainWindowClosed` shuts
+// it at `0`, `foldAgainFour` leaves it at the default 3600 and never reaches
+// it. Neither measures the boundary, because neither can move the clock. This
+// block adds the clock and one case that crosses it.
+//
+//   M3  the rig's `date` stub answers argv `+%s` with the real epoch plus the
+//       integer in `$FLEET_HOME/stub/clock` (0 when absent) and hands any other
+//       argv to the real `date` unchanged; the `systemd-run` stub's
+//       `fleet-fold-*` arm adds `STUB_CLOCK_STEP` seconds (default 0) to that
+//       file once per fold unit.                                  legs (c)(d)
+//   M4  a boot with `STUB_MERGE_CODE='405 405 405 405 200'`,
+//       `STUB_MERGE_MESSAGE='Base branch was modified'`,
+//       `FLEET_FOLD_AGAIN_WAIT=1000` and `STUB_CLOCK_STEP=600` runs exactly the
+//       three fold units `fleet-fold-7-1`, `-2`, `-3`, issues exactly three
+//       merge PUTs, and its `done` page's phase carries `left open: merge PUT
+//       answered 405 after 1000s of folding again`.                legs (e)(f)
+//
+// THE ARITHMETIC, and why it is a BOUNDARY and not an end. Fold unit 1 ticks
+// the clock to 600 before the first PUT, so `FOLD_AGAIN_SINCE = r0 + 600`;
+// fold 2 ticks it to 1200 and PUT 2 measures `600 + Δ` seconds (Δ the real
+// seconds between the PUTs) — under 1000, so the run folds again; fold 3 ticks
+// it to 1800 and PUT 3 measures `1200 + Δ` ≥ 1000, so `merge_pr` writes the
+// note and returns without raising `FOLD_AGAIN`. Three units, three PUTs. The
+// leg therefore establishes the window lies in `(600 + Δ, 1200 + Δ]`: a defect
+// that mis-measures elapsed seconds either trips at PUT 2 (two units) or never
+// trips (the stub's fifth code, 200, merges after five units), and both are red
+// against "exactly three".
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** What one fold unit adds to the clock, and the window it has to cross. */
+const CLOCK_STEP = 600
+const CLOCK_WAIT = 1000
+/** M4's note, spelled from those two so the exam cannot drift from its own case. */
+const WINDOW_CROSSED = `merge PUT answered 405 after ${CLOCK_WAIT}s of folding again`
+/** M4's stub: four base-moved 405s and a 200 that no run here should reach. */
+const FIVE_PUTS = { STUB_MERGE_CODE: '405 405 405 405 200', STUB_MERGE_MESSAGE: BASE_MODIFIED }
+/** M4's boot. */
+const foldAgainClocked = bootWith({
+  ...FIVE_PUTS,
+  FLEET_FOLD_AGAIN_WAIT: String(CLOCK_WAIT),
+  STUB_CLOCK_STEP: String(CLOCK_STEP),
+})
+
+/** Where the rig keeps the offset every `date +%s` under a home is shifted by. */
+const clockFile = (ctx) => path.join(ctx.home, 'stub', 'clock')
+/** The `date` stub itself, or a failure that says the rig has none. */
+const dateStub = (ctx, leg) => {
+  const f = path.join(ctx.bin, 'date')
+  assert.ok(fs.existsSync(f),
+    `${leg} fleet/tests/_sandbox_boot_helpers.mjs must write a 'date' stub into the stub bin ` +
+      `dir alongside every other stub: FLEET_BIN_DIR is prefixed to PATH by the boot script, so ` +
+      `a file named 'date' there is what every date call in the run resolves to, and it is the ` +
+      `only way this exam can move the clock the boot measures its window with. Expected ${f}`)
+  return f
+}
+/** `date <argv>` as the run's own calls resolve it, under that home. */
+const dateUnder = (ctx, argv, leg) => {
+  const r = spawnSync(dateStub(ctx, leg), argv, {
+    encoding: 'utf8',
+    env: { PATH: `${ctx.bin}:${process.env.PATH}`, HOME: ctx.home, FLEET_HOME: ctx.home },
+  })
+  assert.equal(r.status, 0,
+    `${leg} \`date ${argv.join(' ')}\` exits 0; it exited ${r.status} and printed: ` +
+      `${r.stdout}${r.stderr}`)
+  return r.stdout.trim()
+}
+/** The seconds since the epoch, now. */
+const nowSeconds = () => Date.now() / 1000
+const near = (got, want) => Math.abs(got - want) <= 5
+
+// ── (c) the date stub  [#808 M3] ────────────────────────────────────────────
+
+test('the rig\'s date stub shifts +%s by the clock file and hands every other argv to the real date  [#808 M3 / leg (c)]', () => {
+  const ctx = makeHome()
+  const leg = '(c) [#808 M3]'
+
+  assert.ok(!fs.existsSync(clockFile(ctx)),
+    `${leg} a fresh home carries no clock file, so the stub's offset there is 0`)
+  const plain = Number(dateUnder(ctx, ['+%s'], leg))
+  assert.ok(Number.isFinite(plain),
+    `${leg} \`date +%s\` prints an integer; it printed '${plain}'`)
+  assert.ok(near(plain, nowSeconds()),
+    `${leg} and with no clock file it is the REAL epoch, within 5 s of Date.now()/1000 — the ` +
+      `stub is transparent until a case moves it. It answered ${plain}, and now is ` +
+      `${Math.round(nowSeconds())}`)
+
+  fs.writeFileSync(clockFile(ctx), `${CLOCK_STEP}\n`)
+  const shifted = Number(dateUnder(ctx, ['+%s'], leg))
+  assert.ok(near(shifted, nowSeconds() + CLOCK_STEP),
+    `${leg} with $FLEET_HOME/stub/clock written as ${CLOCK_STEP} it is the real epoch PLUS that ` +
+      `integer, within 5 s — that sum is the whole injectable clock. It answered ${shifted}, ` +
+      `and now + ${CLOCK_STEP} is ${Math.round(nowSeconds() + CLOCK_STEP)}`)
+
+  const iso = dateUnder(ctx, ['-u', '+%Y-%m-%dT%H:%M:%SZ'], leg)
+  assert.match(iso, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+    `${leg} and EVERY other argv is handed to the real date unchanged, clock file or no — the ` +
+      `boot's now_iso, its log stamps and the stubs' own \`say\` prelude all go through this ` +
+      `file, and a stub that answered them itself would rewrite every timestamp in the run. ` +
+      `\`date -u +%Y-%m-%dT%H:%M:%SZ\` answered '${iso}'`)
+})
+
+// ── (d) the tick, once per fold unit  [#808 M3] ─────────────────────────────
+
+test('the fold unit ticks the clock by STUB_CLOCK_STEP, and an unset step never moves it  [#808 M3 / leg (d)]', async () => {
+  const ctx = await foldAgainClocked()
+  const leg = '(d) [#808 M3]'
+  const f = clockFile(ctx)
+  assert.ok(fs.existsSync(f),
+    `${leg} the systemd-run stub's fleet-fold-* arm adds STUB_CLOCK_STEP seconds to ` +
+      `$FLEET_HOME/stub/clock once per fold unit, so a run of three fold units under a step of ` +
+      `${CLOCK_STEP} leaves that file behind. Expected ${f}${whyFold(ctx)}`)
+  assert.equal(fs.readFileSync(f, 'utf8').trim(), String(3 * CLOCK_STEP),
+    `${leg} and leaves it reading ${3 * CLOCK_STEP} — three fold units at ${CLOCK_STEP} each, ` +
+      `ONCE per unit. The fold units run were ${JSON.stringify(foldUnits(ctx))}${whyFold(ctx)}`)
+
+  const unclocked = await foldAgainFour()
+  const answered = Number(dateUnder(unclocked, ['+%s'], leg))
+  assert.ok(near(answered, nowSeconds()),
+    `${leg} with STUB_CLOCK_STEP unset the default step is 0, so four fold units move the clock ` +
+      `nowhere and \`date +%s\` under that home is the real epoch, within 5 s of ` +
+      `Date.now()/1000 — every case above this banner runs on a clock it never asked to move. ` +
+      `It answered ${answered}, and now is ${Math.round(nowSeconds())}`)
+})
+
+// ── (e) three folds, three PUTs — the boundary crossed  [#808 M4] ───────────
+
+test(`a window of ${CLOCK_WAIT}s outlasted across two folds runs exactly three folds  [#808 M4 / leg (e)]`, async () => {
+  const ctx = await foldAgainClocked()
+  const leg = '(e) [#808 M4]'
+  assert.deepEqual(foldUnits(ctx), [FOLD_UNIT_1, FOLD_UNIT_2, FOLD_UNIT_3],
+    `${leg} fold 1 ticks the clock to ${CLOCK_STEP} and PUT 1 opens the window there; PUT 2 ` +
+      `measures ${CLOCK_STEP} + Δ, under ${CLOCK_WAIT}, so the run folds again; PUT 3 measures ` +
+      `${2 * CLOCK_STEP} + Δ, at or past ${CLOCK_WAIT}, so it stops. EXACTLY three fold units — ` +
+      `${FOLD_UNIT_1}, ${FOLD_UNIT_2}, ${FOLD_UNIT_3} — and no ${FOLD_UNIT_4}. A run that trips ` +
+      `at PUT 2 makes two and one that never trips makes five (the stub's fifth code merges). ` +
+      `The units run were ${JSON.stringify(unitsRun(ctx))}${whyFold(ctx)}`)
+  assert.equal(mergePuts(ctx).length, 3,
+    `${leg} and exactly three merge PUT payloads${whyFold(ctx)}`)
+  assert.equal(indicesOf(ctx, isMergePut).length, 3,
+    `${leg} three PUT calls in curl's own record${whyFold(ctx)}`)
+})
+
+// ── (f) the note the crossing writes  [#808 M4] ─────────────────────────────
+
+test(`the crossed window leaves '${WINDOW_CROSSED}' on the page and in the record  [#808 M4 / leg (f)]`, async () => {
+  const ctx = await foldAgainClocked()
+  const leg = '(f) [#808 M4]'
+  assert.equal(statusOf(ctx).state, 'done', `${leg} the run ends done${whyFold(ctx)}`)
+  assert.ok(phaseOf(ctx).includes(`left open: ${WINDOW_CROSSED}`),
+    `${leg} the done page's phase carries 'left open: ${WINDOW_CROSSED}' — the note names the ` +
+      `WINDOW, ${CLOCK_WAIT}s, not the seconds any one PUT measured. The done phase was: ` +
+      `${phaseOf(ctx)}`)
+  const merges = ofKind(ctx, 'publish:merge').map(unstamped)
+  assert.ok(merges.length >= 1, `${leg} the run recorded its merge decisions${whyFold(ctx)}`)
+  assert.equal(merges[merges.length - 1].detail, WINDOW_CROSSED,
+    `${leg} and the LAST publish:merge line — what became of the PR — carries exactly that ` +
+      `account as its detail. The lines were ${JSON.stringify(merges)}${whyFold(ctx)}`)
+  assert.deepEqual(merges[merges.length - 1], refusal(WINDOW_CROSSED),
+    `${leg} as a refusal, sha null and left 'refused'. The lines were ` +
+      `${JSON.stringify(merges)}${whyFold(ctx)}`)
+})
+
 // ── (g) a fold-again that moved nothing  [M4] ───────────────────────────────
 
 test('a fold-again that records tip unmoved skips the push and the PUT  [fold-again M4 / leg (g)]', async () => {
@@ -2241,48 +2572,5 @@ test("'retried exactly once' is nowhere in CONTRACT.md  [fold-again M5 / leg (h)
       `retried for as long as each fold is clean and the window is open. The lines saying it ` +
       `are:\n${hits.map(([n, l]) => `${n}: ${l}`).join('\n')}`)
 })
-
-// ── (i)(j) the two other boot sims still pass on the changed rig  [M6] ──────
-//
-// These are the ninth and tenth `Run:` lines of the Proof, run here too because
-// the rig they share is this task's to change: a `STUB_MERGE_CODE` list that
-// answered PUT 2 differently would break both of them and neither would be read
-// from inside this file otherwise. They are the LAST two cases in registration
-// order, so every boot above has been awaited before either sim starts and the
-// three of them never contend for the same cores.
-
-const PASSED = 'ALL TESTS PASSED'
-
-/** One sim of the rig, run to completion; `{ status, out }`. */
-const runSim = (file) => new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, [path.join(HERE, file)], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  let out = ''
-  child.stdout.setEncoding('utf8')
-  child.stderr.setEncoding('utf8')
-  child.stdout.on('data', (chunk) => { out += chunk })
-  child.stderr.on('data', (chunk) => { out += chunk })
-  child.on('error', reject)
-  child.on('close', (status) => resolve({ status, out }))
-})
-
-const assertSimPassed = (file, result, leg) => {
-  const printed = result.out.split('\n')
-  assert.ok(printed.includes(PASSED),
-    `${leg} [fold-again M6] \`node ${file}\` must print the line '${PASSED}', exactly so — it ` +
-      `is one of the two other boot sims that drive the merge retry, and the rig they share ` +
-      `with this file is this task's to change. It exited ${result.status} and printed:\n` +
-      `${printed.slice(-40).join('\n')}`)
-}
-
-for (const [tag, file] of [
-  ['(i)', 'test_sandbox_boot_exams.mjs'],
-  ['(j)', 'test_sandbox_boot_selfmerge.mjs'],
-]) {
-  test(`${file} passes on the changed rig  [fold-again M6 / leg ${tag}]`, async () => {
-    assertSimPassed(file, await runSim(file), tag)
-  })
-}
 
 runTests(tests)

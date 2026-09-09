@@ -212,7 +212,8 @@ FOLD_AGAIN=""
 # `merge_pr` knows, on entry, that it is not the first PUT — the call that
 # follows a fold-again waits for GitHub's mergeability before it asks again.
 FOLD_AGAIN_SINCE=""
-# How many fold attempts this run has started. A second attempt lands its
+# How many fold attempts this run has started — the loop is unbounded, so this
+# counts as high as the folds go. Every attempt after the first lands its
 # disposition AFTER the PR was opened, which is what makes the body PATCH
 # necessary.
 FOLD_ATTEMPTS=0
@@ -1059,7 +1060,8 @@ fold_phrase() { # $1 = attempt
 
 # What the fold leaves the merge — the hold, or nothing. `folded`, `nothing to
 # join` and `tip unmoved` are not holds: the first two are a fold that ended
-# clean, and the third is answered by the retry's own note.
+# clean, and the third is answered by `the fold moved nothing`, which `do_boot`'s
+# loop writes itself on a `tip unmoved` disposition.
 fold_hold_note() {
   local a
   a="$(fold_receipt top)"
@@ -1154,12 +1156,13 @@ push_head() {
   # suite runs them, and the operator who opens the pull request must not be
   # shown them: they are this run's measurement of its own work, not a change to
   # the target. So the strip sits HERE and not beside the fold — every push of
-  # `$BRANCH` goes through this function, and attempt 2's fold floors on attempt
-  # 1's candidate, which is the head BEFORE attempt 1's strip, so the exams come
-  # back with every re-fold and are taken off again here. It runs before
+  # `$BRANCH` goes through this function, and attempt N's fold floors on attempt
+  # N-1's candidate, which is the head BEFORE that attempt's strip, so the exams
+  # come back with every re-fold and are taken off again here. It runs before
   # `await_branch_visible` reads `BRANCH_HEAD`, so the head recorded as
-  # `pushedHead` — and therefore the lease attempt 2 pushes under — is the strip
-  # commit the remote actually holds. A strip that fails stops the run: the
+  # `pushedHead` — and therefore the lease every later attempt pushes under, read
+  # for any N from `fold_receipt pushed` / `fold_field <attempt> pushedHead` — is
+  # the strip commit the remote actually holds. A strip that fails stops the run: the
   # alternative is publishing the exams.
   bash "$ENGINE_REPO_DIR/fleet/strip-exams.sh" \
     "$TARGET_DIR" "$BRANCH" "$RUN_ID" "$EVIDENCE_DIR/$EVIDENCE_PATH" \

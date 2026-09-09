@@ -442,6 +442,17 @@ case "$unit" in
     # case reads it to prove the engine ran under an envelope with no token.
     env >"$FLEET_HOME/fold.env"
     mkdir -p "$fold" "$FLEET_HOME/stub"
+    # THE CLOCK ADVANCES HERE (#808), once per fold unit and nowhere else: a
+    # fold is the only thing this rig runs that takes real time on the box, so
+    # it is the only place a case may charge time for. The \`date\` stub reads
+    # this file, and STUB_CLOCK_STEP defaults to 0 — every case that does not
+    # ask for a clock keeps the real one.
+    clock=0
+    [ -f "$FLEET_HOME/stub/clock" ] && clock="$(cat "$FLEET_HOME/stub/clock")"
+    case "$clock" in ''|*[!0-9]*) clock=0 ;; esac
+    step="\${STUB_CLOCK_STEP:-0}"
+    case "$step" in ''|*[!0-9]*) step=0 ;; esac
+    printf '%s\\n' "$(( clock + step ))" >"$FLEET_HOME/stub/clock"
     [ "$attempt" = 2 ] && : >"$FLEET_HOME/stub/fold-2"
     if [ -z "\${STUB_FOLD_NO_HEAD:-}\${STUB_FOLD_NO_ENGINE_HEAD:-}" ]; then
       printf '%s\\n' "\${STUB_FOLD_ENGINE_HEAD:-$STUB_HEAD_SHA}" >"$fold/engine-head"
@@ -593,6 +604,32 @@ fi
 rm -f "$FLEET_HOME/stub/engine-alive"
 exit \${STUB_ENGINE_CODE:-0}
 `,
+  // THE CLOCK (#808), and the only stub that lies — about exactly one reading.
+  // `FLEET_BIN_DIR` is prefixed to PATH by the boot script, so this file is what
+  // every `date` call resolves to: the boot's `now_iso` and `log` stamps, the
+  // elapsed-seconds arithmetic of its poll loops, and the prelude's own `say`.
+  //
+  // `+%s` — the argv `merge_pr` measures the fold-again window with — answers
+  // the REAL epoch plus the integer in `$FLEET_HOME/stub/clock`, which is 0
+  // when the file is absent and which the `systemd-run` stub advances by
+  // `STUB_CLOCK_STEP` once per fold unit. So a case sets a window of an hour
+  // and outlasts it in three forks, and the seconds the boot reports are the
+  // seconds it measured — never a number this rig wrote.
+  //
+  // Every OTHER argv goes to `/bin/date` unchanged, by ABSOLUTE PATH: both
+  // `date` and `command -v date` find THIS file, so anything else is the stub
+  // calling itself. And it says nothing — no `say`, no `argv` — because `say`
+  // stamps its line with a `date` call, which would recurse through the one log
+  // the ordering assertions read.
+  date: `
+off=0
+if [ -f "\${FLEET_HOME:-}/stub/clock" ]; then off="$(cat "$FLEET_HOME/stub/clock")"; fi
+case "$off" in ''|*[!0-9]*) off=0 ;; esac
+case "$*" in
+  "+%s") printf '%s\\n' "$(( $(/bin/date +%s) + off ))"; exit 0 ;;
+esac
+exec /bin/date "$@"
+`,
   systemctl: `
 argv "systemctl" "$@"
 say "systemctl $2 $3"
@@ -715,8 +752,16 @@ const bootEnv = (ctx, env) => ({
       ...env,
 })
 
-export function boot(ctx, args = ['boot'], env = {}) {
-  return spawnSync('bash', [SCRIPT, ...args], {
+/**
+ * The trailing `script` argument of both runners (#808): which file `bash` is
+ * handed, defaulting to the script under test. The boot script has no `$0` or
+ * `BASH_SOURCE` self-reference, so a COPY of it — under `ctx.home`, with a line
+ * cut out — runs identically, which is how a sim shows a leg going red against
+ * the mutant that lost the behaviour it asserts. Nothing else about the run
+ * changes: same argv after the script, same environment, same stubs.
+ */
+export function boot(ctx, args = ['boot'], env = {}, script = SCRIPT) {
+  return spawnSync('bash', [script, ...args], {
     encoding: 'utf8',
     env: bootEnv(ctx, env),
     timeout: 60000,
@@ -738,10 +783,12 @@ export function boot(ctx, args = ['boot'], env = {}) {
  * The promise resolves on ANY exit — a non-zero status is the leg's to assert
  * on, exactly as `boot`'s is — and rejects only when the child could not be
  * started at all.
+ *
+ * `script` is `boot`'s, and means the same thing here.
  */
-export function bootAsync(ctx, args = ['boot'], env = {}) {
+export function bootAsync(ctx, args = ['boot'], env = {}, script = SCRIPT) {
   return new Promise((resolve, reject) => {
-    const child = spawn('bash', [SCRIPT, ...args], {
+    const child = spawn('bash', [script, ...args], {
       env: bootEnv(ctx, env),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
