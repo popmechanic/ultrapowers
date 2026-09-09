@@ -16,4 +16,314 @@ created: 6/6 workers
 ........................................................................ [ 26%]
 ........................................................................ [ 30%]
 ........................................................................ [ 33%]
-..........................................
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 79%]
+...................................................F.................... [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+.................................F...................................... [ 98%]
+...................................F..                                   [100%]
+=================================== FAILURES ===================================
+______________ test_fleet_mjs[test_sandbox_boot_state_exams.mjs] _______________
+[gw1] linux -- Python 3.12.3 /usr/bin/python3
+
+path = '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot_state_exams.mjs'
+
+    @pytest.mark.parametrize("path", TESTS, ids=IDS)
+    def test_fleet_mjs(path):
+        _ensure_node_modules()
+        # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+        # contention on the slowest box the suite runs on, not on the box that
+        # measured the numbers above. A wall only a little over an honest runtime
+        # reports a slow box as a broken suite; this one is a deadlock catcher,
+        # not a budget.
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+>       assert r.returncode == 0, r.stdout + r.stderr
+E       AssertionError: FAIL — a boot with no render.env exits 0 and hands the engine an empty TINYAPP_RENDER_URL=  [M1 / leg (a)]
+E         AssertionError [ERR_ASSERTION]: (a) [M1] this leg needs /etc/fleet/render.env absent — it is the path the script falls back to when FLEET_RENDER_ENV names nothing, and a readable one would make the empty-value assertion below meaningless
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_state_exams.mjs:286:10
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_state_exams.mjs:498:1
+E             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+E             at async node:internal/modules/esm/loader:647:26
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         ok (1199 ms) — a boot whose FLEET_RENDER_ENV names a render.env hands the engine that line  [M1 / leg (b)]
+E         ok (0 ms) — the fold unit of the same planted boot carries no TINYAPP_RENDER_URL= entry  [M2 / leg (c)]
+E         ok (1 ms) — every state-exam file reaches the evidence worktree byte for byte  [M3 / leg (d)]
+E         ok (0 ms) — the copied state-exams tree is nested exactly once  [M3 / leg (d)]
+E         ok (1 ms) — a boot whose engine recorded no state exams commits none  [M3 / leg (e)]
+E         ok (0 ms) — the planted boot committed the record at least three times  [M3 / leg (f)]
+E         ok (11 ms) — the boot script parses  [M1, M3 / leg (g)]
+E         FAIL — the green-path boot sim still prints the sentinel  [M1, M3 / leg (g)]
+E         AssertionError [ERR_ASSERTION]: (g) [M1, M3] `node fleet/tests/test_sandbox_boot.mjs` must still print ALL TESTS PASSED:
+E         FAIL — the engine is a transient service with the contract argv; only its child env carries the Anthropic pair  [M1, M5/(g)]
+E         AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+E         + actual - expected
+E         ... Skipped lines
+E         
+E           [
+E             'systemd-run',
+E             '--user',
+E             '--unit=fleet-engine-7',
+E             '--pipe',
+E         ...
+E             'ULTRAPOWERS_FLEET_RUN=run-7',
+E         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',
+E         -   'TINYAPP_RENDER_URL=',
+E             'node',
+E             '/tmp/sandbox-boot-QLX3Eo/home-3/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',
+E             '/tmp/sandbox-boot-QLX3Eo/home-3/plans/run-7.md',
+E             'run-7',
+E             '--repo',
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot.mjs:220:10
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E         1 FAILED
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_state_exams.mjs:481:10
+E             at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+E             at async runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:7)
+E         ok (0 ms) — the approval-evidence sim still prints the sentinel  [M1, M3 / leg (g)]
+E         2 FAILED
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['node', '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot_state_exams.mjs'...s:1003:7)\nok (0 ms) — the approval-evidence sim still prints the sentinel  [M1, M3 / leg (g)]\n2 FAILED\n", stderr='').returncode
+
+tests/test_fleet_suite.py:108: AssertionError
+____________________ test_fleet_mjs[test_sandbox_boot.mjs] _____________________
+[gw0] linux -- Python 3.12.3 /usr/bin/python3
+
+path = '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot.mjs'
+
+    @pytest.mark.parametrize("path", TESTS, ids=IDS)
+    def test_fleet_mjs(path):
+        _ensure_node_modules()
+        # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+        # contention on the slowest box the suite runs on, not on the box that
+        # measured the numbers above. A wall only a little over an honest runtime
+        # reports a slow box as a broken suite; this one is a deadlock catcher,
+        # not a budget.
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+>       assert r.returncode == 0, r.stdout + r.stderr
+E       AssertionError: ok (9 ms) — the boot script parses
+E         ok (3085 ms) — a gate-green run walks booting → running → publishing → done
+E         ok (132 ms) — two github integrations naming one repository fail the run before any clone
+E         ok (1185 ms) — the status page is its own transient service, started once, before anything else
+E         ok (1188 ms) — a status server that is already active is not started again
+E         ok (1 ms) — the assignment comes from FLEET_ASSIGNMENT; Reflection is asked only for the name
+E         ok (1 ms) — the target is the only clone, and it is left at base — the engine is never cloned  [M4]
+E         ok (1 ms) — the plan comes off the target's plan branch, before the engine  [M1 / leg (a)]
+E         ok (1 ms) — the gate verdict record lands beside the plan under the compiler's name  [M1]
+E         ok (1264 ms) — a plan branch without a verdict record is a legacy-grammar plan, not a failure  [M1]
+E         FAIL — the engine is a transient service with the contract argv; only its child env carries the Anthropic pair  [M1, M5/(g)]
+E         AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+E         + actual - expected
+E         ... Skipped lines
+E         
+E           [
+E             'systemd-run',
+E             '--user',
+E             '--unit=fleet-engine-7',
+E             '--pipe',
+E         ...
+E             'ULTRAPOWERS_FLEET_RUN=run-7',
+E         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',
+E         -   'TINYAPP_RENDER_URL=',
+E             'node',
+E             '/tmp/sandbox-boot-q14WOr/home-3/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',
+E             '/tmp/sandbox-boot-q14WOr/home-3/plans/run-7.md',
+E             'run-7',
+E             '--repo',
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot.mjs:220:10
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E         ok (149 ms) — a plan branch whose head is not the assignment's plan= fails the run  [M1 / leg (b)]
+E         ok (1223 ms) — missing deps are installed in the engine checkout when its package.json declares any
+E         ok (214 ms) — an engine checkout the bootstrap did not leave fails the run, on the evidence branch  [M2]
+E         ok (0 ms) — publishing is claimed only after systemd reports the engine service inactive  [M5/(g)]
+E         ok (2 ms) — the branch is pushed after the engine is inactive, and the PR is one REST POST through the edge  [M5/(g)]
+E         ok (0 ms) — the PR body links the evidence branch and the plan branch, and names the plan blob  [M3 / leg (e)]
+E         ok (1280 ms) — the plan's `**Closes:**` line becomes the body's last lines, one per issue  [M1 / leg (a)]
+E         ok (1 ms) — a plan with no `**Closes:**` line closes nothing  [M2 / leg (b)]
+E         ok (3737 ms) — a `#<digits>` anywhere but that one line closes nothing  [M1, M3 / leg (c)]
+E         ok (1 ms) — the card links the two tags, each under its own heading  [M4 / leg (d)]
+E         ok (1280 ms) — the PR is opened only after the edge reports the pushed head on the branch  [M5/(g)]
+E         ok (1309 ms) — a branch the edge never shows within the wait still gets its PR, and the timeout is logged  [M5/(g)]
+E         ok (2141 ms) — the base is the default branch the clone advertised, whatever it is called
+E         ok (1 ms) — the notification names the run, the outcome, the target and the PR
+E         ok (0 ms) — the evidence worktree is added at the plan commit and carries every artifact  [M2 / leg (c)]
+E         ok (1 ms) — every evidence push runs in the worktree, after its own add and commit, before the integration push  [M2 / leg (c)]
+E         ok (1 ms) — one evidence commit per transition: running, publishing, done  [M2 / leg (c)]
+E         ok (1 ms) — nothing outside .ultrapowers/runs/7 is ever staged  [M4 / legs (c),(f)]
+E         ok (1257 ms) — an evidence branch that already exists is re-entered at FETCH_HEAD  [M2 / leg (d)]
+E         ok (316 ms) — a failing engine writes failed into the worktree and pushes it  [M2 / leg (d)]
+E         ok (349 ms) — a run with nothing ahead of base parks on the evidence branch — no push, no PR  [M2/M5, legs (d),(g)]
+E         ok (974 ms) — a non-2xx answer from the PR endpoint fails the run on the evidence branch  [M2 / leg (d)]
+E         ok (280 ms) — an evidence push the remote keeps rejecting fails the run after exactly five attempts  [M2 / leg (d)]
+E         ok (1 ms) — leg (c) rejects a log whose integration push precedes any evidence push  [leg (d)]
+E         ok (5563 ms) — #723 (a) one evidence commit per relayed phase, between engine starting and publishing  [M1]
+E         ok (2 ms) — #723 (b) every phase relayed while the unit is alive is committed exactly once, in that window  [M1]
+E         ok (3152 ms) — #723 (c) a phase the page already carries produces no further commit  [M2]
+E         ok (3247 ms) — #723 (d) no phase, no commit  [M3]
+E         ok (2 ms) — #723 (e) the transitions keep their place after the last phase commit  [M3]
+E         ok (5637 ms) — #723 (f) a refused phase push does not end the run  [M4]
+E         ok (0 ms) — #723 (g) the transition-only control: a run that relays nothing still commits three times  [M3]
+E         ok (11 ms) — #723 (h) the contract declares the phase commits in both bullets  [M5]
+E         1 FAILED
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['node', '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot.mjs'], returncod...mes  [M3]\nok (11 ms) — #723 (h) the contract declares the phase commits in both bullets  [M5]\n1 FAILED\n", stderr='').returncode
+
+tests/test_fleet_suite.py:108: AssertionError
+_________________ test_fleet_mjs[test_sandbox_boot_effort.mjs] _________________
+[gw0] linux -- Python 3.12.3 /usr/bin/python3
+
+path = '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot_effort.mjs'
+
+    @pytest.mark.parametrize("path", TESTS, ids=IDS)
+    def test_fleet_mjs(path):
+        _ensure_node_modules()
+        # 300 s and not 120: the wall has to clear the LONGEST sim under `-n auto`
+        # contention on the slowest box the suite runs on, not on the box that
+        # measured the numbers above. A wall only a little over an honest runtime
+        # reports a slow box as a broken suite; this one is a deadlock catcher,
+        # not a budget.
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+>       assert r.returncode == 0, r.stdout + r.stderr
+E       AssertionError: FAIL — effort=low in the assignment appends --implementer-effort low after the tier and overlap knobs  [M2 / leg (b)]
+E         AssertionError [ERR_ASSERTION]: (b) [M2] effort=low rides the engine argv as --implementer-effort low, and nothing else moves
+E         + actual - expected
+E         ... Skipped lines
+E         
+E           [
+E             'systemd-run',
+E             '--user',
+E             '--unit=fleet-engine-7',
+E             '--pipe',
+E         ...
+E             'ULTRAPOWERS_FLEET_RUN=run-7',
+E         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',
+E         -   'TINYAPP_RENDER_URL=',
+E             'node',
+E             '/tmp/sandbox-boot-bNCiWV/home-1/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',
+E             '/tmp/sandbox-boot-bNCiWV/home-1/plans/run-7.md',
+E             'run-7',
+E             '--repo',
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:75:12
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1
+E             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+E             at async node:internal/modules/esm/loader:647:26
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         FAIL — effort=medium in the assignment appends --implementer-effort medium after the tier and overlap knobs  [M2 / leg (b)]
+E         AssertionError [ERR_ASSERTION]: (b) [M2] effort=medium rides the engine argv as --implementer-effort medium, and nothing else moves
+E         + actual - expected
+E         ... Skipped lines
+E         
+E           [
+E             'systemd-run',
+E             '--user',
+E             '--unit=fleet-engine-7',
+E             '--pipe',
+E         ...
+E             'ULTRAPOWERS_FLEET_RUN=run-7',
+E         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',
+E         -   'TINYAPP_RENDER_URL=',
+E             'node',
+E             '/tmp/sandbox-boot-bNCiWV/home-2/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',
+E             '/tmp/sandbox-boot-bNCiWV/home-2/plans/run-7.md',
+E             'run-7',
+E             '--repo',
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:75:12
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1
+E             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+E             at async node:internal/modules/esm/loader:647:26
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         FAIL — effort=high in the assignment appends --implementer-effort high after the tier and overlap knobs  [M2 / leg (b)]
+E         AssertionError [ERR_ASSERTION]: (b) [M2] effort=high rides the engine argv as --implementer-effort high, and nothing else moves
+E         + actual - expected
+E         ... Skipped lines
+E         
+E           [
+E             'systemd-run',
+E             '--user',
+E             '--unit=fleet-engine-7',
+E             '--pipe',
+E         ...
+E             'ULTRAPOWERS_FLEET_RUN=run-7',
+E         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',
+E         -   'TINYAPP_RENDER_URL=',
+E             'node',
+E             '/tmp/sandbox-boot-bNCiWV/home-3/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',
+E             '/tmp/sandbox-boot-bNCiWV/home-3/plans/run-7.md',
+E             'run-7',
+E             '--repo',
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:75:12
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1
+E             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+E             at async node:internal/modules/esm/loader:647:26
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         FAIL — the helper's assignment carries no effort= key, so the engine argv is BASE's  [M2 / leg (b)]
+E         AssertionError [ERR_ASSERTION]: (b) [M2] without the key the argv is as at BASE — the default is unchanged
+E         + actual - expected
+E         ... Skipped lines
+E         
+E           [
+E             'systemd-run',
+E             '--user',
+E             '--unit=fleet-engine-7',
+E             '--pipe',
+E         ...
+E             'ULTRAPOWERS_FLEET_RUN=run-7',
+E         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',
+E         -   'TINYAPP_RENDER_URL=',
+E             'node',
+E             '/tmp/sandbox-boot-bNCiWV/home-4/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',
+E             '/tmp/sandbox-boot-bNCiWV/home-4/plans/run-7.md',
+E             'run-7',
+E             '--repo',
+E         
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:96:10
+E             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)
+E             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1
+E             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+E             at async node:internal/modules/esm/loader:647:26
+E             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+E         ok (110 ms) — effort=max fails the assignment: no clone, no engine, `assignment` in the failure line  [M2 / leg (b)]
+E         4 FAILED
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['node', '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot_effort.mjs'], re...ax fails the assignment: no clone, no engine, `assignment` in the failure line  [M2 / leg (b)]\n4 FAILED\n", stderr='').returncode
+
+tests/test_fleet_suite.py:108: AssertionError
+=============================== warnings summary ===============================
+tests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball
+tests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories
+tests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories
+tests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land
+tests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line
+  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_state_exams.mjs]
+FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot.mjs] - Ass...
+FAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_effort.mjs]
+============ 3 failed, 1907 passed, 5 warnings in 503.11s (0:08:23) ============

@@ -1,0 +1,64 @@
+{
+  "mode": "gate",
+  "stamp": "run-75",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-75/report.json",
+  "branch": "ultra/integration-run-75",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 0/3 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "1 \u2014 plan-defect: the replacement rig-banner text in `fleet/tests/test_sandbox_boot_merge.mjs` (lines 724-727 post-patch) misstates what the rig actually does, and the misstatement is transcribed verbatim from the task's Context (\"the last code repeating\" / \"`STUB_MERGE_CODE_2` overrides the second only\"). The stub in `fleet/tests/_sandbox_boot_helpers.mjs:233-243` computes `code` as the min(n, len)-th entry, then unconditionally overrides it with `${STUB_MERGE_CODE_2:-200}` whenever `n >= 2 && i < n` \u2014 i.e. the last code does NOT repeat past the list; once the list runs out, `STUB_MERGE_CODE_2` (default 200) answers every later PUT. Concretely: `STUB_MERGE_CODE: '405'` with no `_2` answers PUT 2 with 200, not 405 \u2014 which is the single most-used shape in this very file (`put405` line 445, `NOT_MERGEABLE` line 841, `merge409`/`merge422`/`merge500` lines 879-881) and is what the file's own comment at line 1744 (\"the second PUT defaults to 200\") and its correct banner at lines 1921-1925 (\"`STUB_MERGE_CODE_2` / `STUB_MERGE_MESSAGE_2` apply to PUT n \u2265 2 only when the list has fewer than n entries\") both state. The second clause is wrong the same way: `STUB_MERGE_CODE_2` is not \"PUT 2 only\" \u2014 it answers any PUT n \u2265 2 the list does not cover. The task's own Context calls these comments \"the specification of record\", and the Claim is that the reworded comments describe the real shape, so a replacement that contradicts the rig and the same file's correct banner does not establish it. Every Proof `Run:` still exits 0 with the corrected wording, since M3 only pins the absence of `the FIRST PUT` and `the second, default 200`, neither of which the fix reintroduces. Path that has to change: `fleet/tests/test_sandbox_boot_merge.mjs`."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 1,
+    "output": "3c3c3c3c3/fleet/run-main.mjs',\\nE             '/tmp/sandbox-boot-bNCiWV/home-3/plans/run-7.md',\\nE             'run-7',\\nE             '--repo',\\nE         \\nE             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:75:12\\nE             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)\\nE             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1\\nE             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\\nE             at async node:internal/modules/esm/loader:647:26\\nE             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\\nE         FAIL \\u2014 the helper's assignment carries no effort= key, so the engine argv is BASE's  [M2 / leg (b)]\\nE         AssertionError [ERR_ASSERTION]: (b) [M2] without the key the argv is as at BASE \\u2014 the default is unchanged\\nE         + actual - expected\\nE         ... Skipped lines\\nE         \\nE           [\\nE             'systemd-run',\\nE             '--user',\\nE             '--unit=fleet-engine-7',\\nE             '--pipe',\\nE         ...\\nE             'ULTRAPOWERS_FLEET_RUN=run-7',\\nE         +   'TINYAPP_RENDER_URL=https://browser-run.int.exe.xyz/client/v4/accounts/e33948793047032de7f5e18ec342a7d1/browser-rendering',\\nE         -   'TINYAPP_RENDER_URL=',\\nE             'node',\\nE             '/tmp/sandbox-boot-bNCiWV/home-4/engines/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3/fleet/run-main.mjs',\\nE             '/tmp/sandbox-boot-bNCiWV/home-4/plans/run-7.md',\\nE             'run-7',\\nE             '--repo',\\nE         \\nE             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:96:10\\nE             at runTests (file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/_sandbox_boot_helpers.mjs:1003:13)\\nE             at file:///tmp/tmp.2reSG0fokn/suite-gate/fleet/tests/test_sandbox_boot_effort.mjs:121:1\\nE             at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\\nE             at async node:internal/modules/esm/loader:647:26\\nE             at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\\nE         ok (110 ms) \\u2014 effort=max fails the assignment: no clone, no engine, `assignment` in the failure line  [M2 / leg (b)]\\nE         4 FAILED\\nE         \\nE       assert 1 == 0\\nE        +  where 1 = CompletedProcess(args=['node', '/tmp/tmp.2reSG0fokn/suite-gate/tests/../fleet/tests/test_sandbox_boot_effort.mjs'], re...ax fails the assignment: no clone, no engine, `assignment` in the failure line  [M2 / leg (b)]\\\\n4 FAILED\\\\n\\\", stderr='').returncode\\n\\ntests/test_fleet_suite.py:108: AssertionError\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n=========================== short test summary info ============================\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_state_exams.mjs]\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot.mjs] - Ass...\\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_effort.mjs]\\n============ 3 failed, 1907 passed, 5 warnings in 503.11s (0:08:23) ============\", \"redKind\": \"assertion\"}\n"
+  },
+  "verdict": "BLOCKED"
+}
