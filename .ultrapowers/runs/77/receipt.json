@@ -30,7 +30,7 @@
     {
       "stage": "bootstrap-command",
       "ok": true,
-      "detail": "none \u2014 no lockfile or manifest derives one"
+      "detail": "none — no lockfile or manifest derives one"
     },
     {
       "stage": "dirty-baseline",
@@ -40,7 +40,7 @@
     {
       "stage": "base-branch",
       "ok": true,
-      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+      "detail": "detached HEAD → fell back to repo default 'main'"
     }
   ],
   "compile": {
@@ -231,7 +231,7 @@
       "mode": "suite",
       "reason": "the committed suite is the verification."
     },
-    "globalConstraints": "- A `catch-count` row still carries exactly the seven keys `kind`, `runId`, `driverRuns`,\n  `catches`, `reds`, `touched`, `exercises`, and every path in it is the string the record\n  spelled \u2014 nothing normalised, resolved or globbed.\n- `--ledger` stays the counter's only flag and has no default: without it the counter appends\n  nothing and prints `<n> run(s) counted, 0 row(s) appended, 0 already recorded` at exit 0, as\n  at BASE.\n- The report's pinned strings are unchanged: the header `| test | catches | touching runs | status |`,\n  `## Zero-catch curve`, `N=<n>: <c> file(s)`, `max touching runs: <max>`,\n  `## Zero catches over <N> runs`; the delimiter row is the one addition to the table.\n- The 38 tests the three exam files collect at BASE stay green; new legs are added beside them\n  under a comment naming the task.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "globalConstraints": "- A `catch-count` row still carries exactly the seven keys `kind`, `runId`, `driverRuns`,\n  `catches`, `reds`, `touched`, `exercises`, and every path in it is the string the record\n  spelled — nothing normalised, resolved or globbed.\n- `--ledger` stays the counter's only flag and has no default: without it the counter appends\n  nothing and prints `<n> run(s) counted, 0 row(s) appended, 0 already recorded` at exit 0, as\n  at BASE.\n- The report's pinned strings are unchanged: the header `| test | catches | touching runs | status |`,\n  `## Zero-catch curve`, `N=<n>: <c> file(s)`, `max touching runs: <max>`,\n  `## Zero catches over <N> runs`; the delimiter row is the one addition to the table.\n- The 38 tests the three exam files collect at BASE stay green; new legs are added beside them\n  under a comment naming the task.\n\n**Acceptance:** suite — the committed suite is the verification.",
     "constraintChecks": [
       {
         "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/_outcome.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py",
@@ -246,11 +246,12 @@
   "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-77/args.json",
   "workflowName": "ultrapowers-run",
   "llmDerives": [
-    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
-    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
-    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
-    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries — never a top-level launch key)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived — knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth — it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
   ],
-  "testCmd": "python3 -m pytest -n auto",
-  "testCmdSource": "detected:pytest-ini"
+  "testCmd": "set -o pipefail; { python3 -m pytest -n auto; } 2>&1 | tee '/home/exedev/target/.claude/ultrapowers/run-run-77/acceptance.log'",
+  "testCmdSource": "detected:pytest-ini",
+  "acceptanceLog": "/home/exedev/target/.claude/ultrapowers/run-run-77/acceptance.log"
 }

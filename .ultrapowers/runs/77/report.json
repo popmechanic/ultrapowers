@@ -1,0 +1,190 @@
+{
+  "integrationBranch": "ultra/integration-run-77",
+  "baseSha": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "plan-defect",
+      "notes": "plan-defect: leg (a) contradicts its own Machine clause on the entry count. The leg's fixture is run:open, a red driver:exam-run for task 1 naming THING, then a same-kind same-cmd event with exit 1 \u2014 that is TWO reds, and M1 says derive_catches 'judges every red driver run that names a test path'. So the row carries two entries: ['stayed-red', 'no-green'] (the trailing red has no later same-run event). The leg's 'yields exactly one reds entry ... outcome stayed-red' can only hold if a trailing red is left unjudged, which would contradict M1 and the Claim's headline ('every red is judged') and would also silently change record-ful runs \u2014 the identical BASE shape in the existing test_g_next_same_run_still_red_is_stayed_red yields two entries at BASE and still does. I implemented M1/the Claim as written: reds[0] is task 1 / path THING / outcome stayed-red with catches == {}, and reds[1] is the trailing red's no-green. If the peer's exam asserts the count with _only(row['reds']) for leg (a) it will fail on the second entry; the fix is in the leg text, not in the implementation.",
+      "actor": "plan",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "referee-red",
+      "notes": "Produces: none \u2014 no export named none in skills/ultralearn/scripts/catch_report.py (found: CATCH_KIND, TEST_GLOBS, HEADER, DELIMITER, CURVE_HEADING, _catch_rows, _mapping, _paths, _count, _status, catch_table, _touching, _is_zero, max_touching_runs, zero_curve, zero_over, tree_test_files, table_lines, curve_lines, zero_over_lines, report_lines, main); no export named none in tests/test_ultralearn_catch_report.py (found: REPO, SCRIPTS_DIR, SCRIPT, HEADER, CURVE_HEADING, _module, _row, ROW_A, ROW_B, ROW_C, ROWS, TREE_TESTS, FINDINGS_ROW, mod, table_a, test_leg_a_caught_test_counts_its_catch_and_its_touching_run, test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch, test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys, test_leg_d_a_findings_row_contributes_nothing, test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest, test_leg_f_curve_is_empty_when_no_run_touches, tree, TREE_FILES, test_leg_g_tree_test_files_matches_the_two_globs_only, _run, _lines, _cells, _is_separator, _table_rows, _section, _ledger, CLI_ROWS, test_leg_h_cli_prints_the_table_and_the_curve, test_leg_i_cli_with_n_1_lists_the_one_zero_test, test_leg_i_cli_with_n_2_lists_no_path, test_leg_j_missing_ledger_reports_the_tree_as_unobserved, DELIMITER, _rendered, test_t2_leg_a_table_lines_puts_the_delimiter_second_then_the_rows, test_t2_leg_a_table_of_one_entry_is_exactly_three_lines, test_t2_leg_b_cli_second_line_is_the_delimiter, test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger, test_t2_leg_c_catches_is_the_sum_over_every_row)",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "103ecdca8c0a6eba5469da6444019df5ae20392d",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-77/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "tests/test_ultralearn_docs.py now carries two comment blocks headed `# --- Task 3` (the pre-existing one at :34 from an earlier plan, and the new one added by this diff), and the leg labels collide: the new tests are commented `Leg (a) [M1]` while `test_catch_counter_heading_sits_between_the_two_verbs:75` already carries `Leg (a) [M1]` for a different clause, and the control edit inside `test_catch_section_states_the_rule_and_names_the_two_record_fields` is commented `Task 3 (#824) leg (b) [M2]` inside a test whose own header says `Leg (c) [M3]`. Nothing is wrong with the assertions \u2014 this is only that a later reader cannot tell which plan's lettering a `[M1]` refers to. Naming the issue in every new label (e.g. `Leg (a) [M1] of #824`) or heading the new block `# --- #824:` would remove the ambiguity.; `test_catch_section_still_names_the_findings_ledger` re-asserts exactly what `test_catch_section_names_the_scripts_the_row_and_the_ledger:89-91` already asserts (`docs/superpowers/observations/ledger.jsonl` is in `_catch_section()`). The duplication is disclosed in the new test's docstring comment and is explicitly what the task's leg (a) asks for, so it is lawful; noted only because the two pins can now drift and a future deletion of one will read as covered by the other.; Produces: none \u2014 tests/test_ultralearn_docs.py: declared, not at top level",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-77/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1914 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 15%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 86%]\n........................................................................ [ 90%]\n........................................................................ [ 94%]\n........................................................................ [ 97%]\n..........................................                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1914 passed, 5 warnings in 473.58s (0:07:53) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest tests/test_ultralearn_docs.py -q",
+      "exit": 0,
+      "stdout": "............                                                             [100%]\n12 passed in 0.23s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c 'overrides that path' skills/ultralearn/SKILL.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## The catch counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'appends one.*catch-count.*row per run to the file named by.*--ledger.*the counter.s only flag'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(python3 skills/ultralearn/scripts/catch_counter.py tests/fixtures/ultralearn/census)\" = '2 run(s) counted, 0 row(s) appended, 0 already recorded'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/_outcome.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 97119,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 3,
+    "refereeBlocking": 2,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "61fab53bd475c06c962e7cffbe31775b91b26416",
+      "branches": [
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-77/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-77/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.473,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 3,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "skills/ultralearn/scripts/catch_counter.py",
+        "tests/test_ultralearn_catches.py"
+      ]
+    },
+    {
+      "task": "2",
+      "files": [
+        "skills/ultralearn/scripts/catch_report.py",
+        "tests/test_ultralearn_catch_report.py"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "1",
+      "reason": "plan-defect",
+      "why": "plan-defect: leg (a) contradicts its own Machine clause on the entry count. The leg's fixture is run:open, a red driver:exam-run for task 1 naming THING, then a same-kind same-cmd event with exit 1 \u2014 that is TWO reds, and M1 says derive_catches 'judges every red driver run that names a test path'. So the row carries two entries: ['stayed-red', 'no-green'] (the trailing red has no later same-run event). The leg's 'yields exactly one reds entry ... outcome stayed-red' can only hold if a trailing red is left unjudged, which would contradict M1 and the Claim's headline ('every red is judged') and would also silently change record-ful runs \u2014 the identical BASE shape in the existing test_g_next_same_run_still_red_is_stayed_red yields two entries at BASE and still does. I implemented M1/the Claim as written: reds[0] is task 1 / path THING / outcome stayed-red with catches == {}, and reds[1] is the trailing red's no-green. If the peer's exam asserts the count with _only(row['reds']) for leg (a) it will fail on the second entry; the fix is in the leg text, not in the implementation."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: referee interface \u2014 Produces: none \u2014 no export named none in skills/ultralearn/scripts/catch_report.py (found: CATCH_KIND, TEST_GLOBS, HEADER, DELIMITER, CURVE_HEADING, _catch_rows, _mapping, _paths, _count, _status, catch_table, _touching, _is_zero, max_touching_runs, zero_curve, zero_over, tree_test_files, table_lines, curve_lines, zero_over_lines, report_lines, main); no export named none in tests/test_ultralearn_catch_report.py (found: REPO, SCRIPTS_DIR, SCRIPT, HEADER, CURVE_HEADING, _module, _row, ROW_A, ROW_B, ROW_C, ROWS, TREE_TESTS, FINDINGS_ROW, mod, table_a, test_leg_a_caught_test_counts_its_catch_and_its_touching_run, test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch, test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys, test_leg_d_a_findings_row_contributes_nothing, test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest, test_leg_f_curve_is_empty_when_no_run_touches, tree, TREE_FILES, test_leg_g_tree_test_files_matches_the_two_globs_only, _run, _lines, _cells, _is_separator, _table_rows, _section, _ledger, CLI_ROWS, test_leg_h_cli_prints_the_table_and_the_curve, test_leg_i_cli_with_n_1_lists_the_one_zero_test, test_leg_i_cli_with_n_2_lists_no_path, test_leg_j_missing_ledger_reports_the_tree_as_unobserved, DELIMITER, _rendered, test_t2_leg_a_table_lines_puts_the_delimiter_second_then_the_rows, test_t2_leg_a_table_of_one_entry_is_exactly_three_lines, test_t2_leg_b_cli_second_line_is_the_delimiter, test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger, test_t2_leg_c_catches_is_the_sum_over_every_row)",
+    "task 2: the driver's pre-review pass was red (Produces: none \u2014 no export named none in skills/ultralearn/scripts/catch_report.py (found: CATCH_KIND, TEST_GLOBS, HEADER, DELIMITER, CURVE_HEADING, _catch_rows, _mapping, _paths, _count, _status, catch_table, _touching, _is_zero, max_touching_runs, zero_curve, zero_over, tree_test_files, table_lines, curve_lines, zero_over_lines, report_lines, main); no export named none in tests/test_ultralearn_catch_report.py (found: REPO, SCRIPTS_DIR, SCRIPT, HEADER, CURVE_HEADING, _module, _row, ROW_A, ROW_B, ROW_C, ROWS, TREE_TESTS, FINDINGS_ROW, mod, table_a, test_leg_a_caught_test_counts_its_catch_and_its_touching_run, test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch, test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys, test_leg_d_a_findings_row_contributes_nothing, test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest, test_leg_f_curve_is_empty_when_no_run_touches, tree, TREE_FILES, test_leg_g_tree_test_files_matches_the_two_globs_only, _run, _lines, _cells, _is_separator, _table_rows, _section, _ledger, CLI_ROWS, test_leg_h_cli_prints_the_table_and_the_curve, test_leg_i_cli_with_n_1_lists_the_one_zero_test, test_leg_i_cli_with_n_2_lists_no_path, test_leg_j_missing_ledger_reports_the_tree_as_unobserved, DELIMITER, _rendered, test_t2_leg_a_table_lines_puts_the_delimiter_second_then_the_rows, test_t2_leg_a_table_of_one_entry_is_exactly_three_lines, test_t2_leg_b_cli_second_line_is_the_delimiter, test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger, test_t2_leg_c_catches_is_the_sum_over_every_row)) \u2014 one repair round before any referee read the patch",
+    "task 2: referee-finding-wrong: The only blocking issue, \"Produces: none \u2014 no export named none in skills/ultralearn/scripts/catch_report.py ... no export named none in tests/test_ultralearn_catch_report.py\", is a harness artifact rather than a defect. The task body's Interfaces section is verbatim \"- Consumes: none\\n- Produces: none\", and launch.json stores it as produces: [\"none\"]; the interface check treated that sentinel as an identifier to locate. Task 1 in the same file declares Produces: `OUTCOMES` \u2014 an actual symbol \u2014 confirming \"none\" is the empty marker. No code change was made for this finding, and no export named `none` was added.",
+    "task 2: referee interface \u2014 Produces: none \u2014 no export named none in skills/ultralearn/scripts/catch_report.py (found: CATCH_KIND, TEST_GLOBS, HEADER, DELIMITER, CURVE_HEADING, _catch_rows, _mapping, _paths, _count, _status, catch_table, _touching, _is_zero, max_touching_runs, zero_curve, zero_over, tree_test_files, table_lines, curve_lines, zero_over_lines, report_lines, main); no export named none in tests/test_ultralearn_catch_report.py (found: REPO, SCRIPTS_DIR, SCRIPT, HEADER, CURVE_HEADING, _module, _row, ROW_A, ROW_B, ROW_C, ROWS, TREE_TESTS, FINDINGS_ROW, mod, table_a, test_leg_a_caught_test_counts_its_catch_and_its_touching_run, test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch, test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys, test_leg_d_a_findings_row_contributes_nothing, test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest, test_leg_f_curve_is_empty_when_no_run_touches, tree, TREE_FILES, test_leg_g_tree_test_files_matches_the_two_globs_only, _run, _lines, _cells, _is_separator, _table_rows, _section, _ledger, CLI_ROWS, test_leg_h_cli_prints_the_table_and_the_curve, test_leg_i_cli_with_n_1_lists_the_one_zero_test, test_leg_i_cli_with_n_2_lists_no_path, test_leg_j_missing_ledger_reports_the_tree_as_unobserved, DELIMITER, _rendered, test_t2_leg_a_table_lines_puts_the_delimiter_second_then_the_rows, test_t2_leg_a_table_of_one_entry_is_exactly_three_lines, test_t2_leg_b_cli_second_line_is_the_delimiter, test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger, test_t2_leg_c_catches_is_the_sum_over_every_row)",
+    "task 2: still red after the pre-review repair round (Produces: none \u2014 no export named none in skills/ultralearn/scripts/catch_report.py (found: CATCH_KIND, TEST_GLOBS, HEADER, DELIMITER, CURVE_HEADING, _catch_rows, _mapping, _paths, _count, _status, catch_table, _touching, _is_zero, max_touching_runs, zero_curve, zero_over, tree_test_files, table_lines, curve_lines, zero_over_lines, report_lines, main); no export named none in tests/test_ultralearn_catch_report.py (found: REPO, SCRIPTS_DIR, SCRIPT, HEADER, CURVE_HEADING, _module, _row, ROW_A, ROW_B, ROW_C, ROWS, TREE_TESTS, FINDINGS_ROW, mod, table_a, test_leg_a_caught_test_counts_its_catch_and_its_touching_run, test_leg_b_zero_test_unions_its_exercises_and_counts_one_touch, test_leg_c_tree_only_test_is_unobserved_and_only_tests_are_keys, test_leg_d_a_findings_row_contributes_nothing, test_leg_e_curve_counts_zeroes_at_each_n_up_to_the_largest, test_leg_f_curve_is_empty_when_no_run_touches, tree, TREE_FILES, test_leg_g_tree_test_files_matches_the_two_globs_only, _run, _lines, _cells, _is_separator, _table_rows, _section, _ledger, CLI_ROWS, test_leg_h_cli_prints_the_table_and_the_curve, test_leg_i_cli_with_n_1_lists_the_one_zero_test, test_leg_i_cli_with_n_2_lists_no_path, test_leg_j_missing_ledger_reports_the_tree_as_unobserved, DELIMITER, _rendered, test_t2_leg_a_table_lines_puts_the_delimiter_second_then_the_rows, test_t2_leg_a_table_of_one_entry_is_exactly_three_lines, test_t2_leg_b_cli_second_line_is_the_delimiter, test_t2_leg_b_cli_second_line_is_the_delimiter_for_a_missing_ledger, test_t2_leg_c_catches_is_the_sum_over_every_row)) \u2014 no reviewer was dispatched",
+    "task 1: plan-defect: leg (a) contradicts its own Machine clause on the entry count. The leg's fixture is run:open, a red driver:exam-run for task 1 naming THING, then a same-kind same-cmd event with exit 1 \u2014 that is TWO reds, and M1 says derive_catches 'judges every red driver run that names a test path'. So the row carries two entries: ['stayed-red', 'no-green'] (the trailing red has no later same-run event). The leg's 'yields exactly one reds entry ... outcome stayed-red' can only hold if a trailing red is left unjudged, which would contradict M1 and the Claim's headline ('every red is judged') and would also silently change record-ful runs \u2014 the identical BASE shape in the existing test_g_next_same_run_still_red_is_stayed_red yields two entries at BASE and still does. I implemented M1/the Claim as written: reds[0] is task 1 / path THING / outcome stayed-red with catches == {}, and reds[1] is the trailing red's no-green. If the peer's exam asserts the count with _only(row['reds']) for leg (a) it will fail on the second entry; the fix is in the leg text, not in the implementation.",
+    "task 1: plan-defect against a Proof leg named by the implementer \u2014 no fix round dispatched; failed with actor plan \u2014 plan-defect: leg (a) contradicts its own Machine clause on the entry count. The leg's fixture is run:open, a red driver:exam-run for task 1 naming THING, then a same-kind same-cmd event with exit 1 \u2014 that is TWO reds, and M1 says derive_catches 'judges every red driver run that names a test path'. So the row carries two entries: ['stayed-red', 'no-green'] (the trailing red has no later same-run event). The leg's 'yields exactly one reds entry ... outcome stayed-red' can only hold if a trailing red is left unjudged, which would contradict M1 and the Claim's headline ('every red is judged') and would also silently change record-ful runs \u2014 the identical BASE shape in the existing test_g_next_same_run_still_red_is_stayed_red yields two entries at BASE and still does. I implemented M1/the Claim as written: reds[0] is task 1 / path THING / outcome stayed-red with catches == {}, and reds[1] is the trailing red's no-green. If the peer's exam asserts the count with _only(row['reds']) for leg (a) it will fail on the second entry; the fix is in the leg text, not in the implementation."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
