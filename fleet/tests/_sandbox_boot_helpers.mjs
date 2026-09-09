@@ -682,6 +682,20 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true 
 }
 
 /**
+ * The renderer-address file a boot reads when a case plants none: a name under
+ * the throwaway home that the rig never creates.
+ *
+ * Pinned rather than left unset because the script's own fallback is the
+ * production `/etc/fleet/render.env`, and a real fleet box HAS one — the setup
+ * script installs it. Left unset, that box's renderer address would be sourced
+ * into every sim's engine argv, and every "the entry is exactly
+ * `TINYAPP_RENDER_URL=`" assertion would be a fact about the box the exam ran
+ * on rather than about the script. A case that wants a file plants one and
+ * overrides this, the way the state-exams exam's planted boot does.
+ */
+export const noRenderEnv = (ctx) => path.join(ctx.home, 'absent-render.env')
+
+/**
  * The environment a boot runs under, `env` last so a case can override any of
  * it. One object, read by both the blocking `boot` and the promised
  * `bootAsync`, so the two start the script exactly alike.
@@ -690,6 +704,7 @@ const bootEnv = (ctx, env) => ({
       PATH: process.env.PATH,
       HOME: ctx.home,
       FLEET_HOME: ctx.home,
+      FLEET_RENDER_ENV: noRenderEnv(ctx),
       FLEET_BIN_DIR: ctx.bin,
       FLEET_POLL_SECONDS: '0',
       FLEET_STATUS_INTERVAL: '30',

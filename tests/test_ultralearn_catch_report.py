@@ -363,3 +363,110 @@ def test_leg_j_missing_ledger_reports_the_tree_as_unobserved(tmp_path, tree):
     assert _section(lines, CURVE_HEADING) == ["max touching runs: 0"]
     assert not [l for l in lines if l.strip().startswith("N=")], (
         "a curve line was printed for an empty record:\n%s" % "\n".join(lines))
+
+
+# ===========================================================================
+# Task 2 — "The table renders and catches is a sum" (#823).
+#
+# The legs below are task 2's (a)–(c); the eleven above are task 2's
+# inheritance and stay exactly as they were. M1 is the delimiter row — the
+# second line of `table_lines` and of the CLI's stdout, both over the leg-(a)
+# ledger and over a `--ledger` path that does not exist. M2 is the sum: a
+# test credited by two rows carries the total, which is what separates a sum
+# from `max`, `any` or last-row-wins.
+
+# M1: the GFM delimiter row under the four-column header, verbatim.
+DELIMITER = "| --- | --- | --- | --- |"
+
+
+def _rendered(cells):
+    """`CLI_ROWS`-shaped cells as the table's `| a | b | c | d |` line."""
+    return "| %s |" % " | ".join(cells)
+
+
+# The tree's two files as the table renders them when no row names them (M1,
+# used by leg (b)'s missing-ledger half).
+UNOBSERVED_TREE_ROWS = [
+    ["fleet/tests/test_y.mjs", "0", "0", "unobserved"],
+    ["tests/test_x.py", "0", "0", "unobserved"],
+]
+
+
+# ----------------------------------------------------------- task 2 (a) M1
+
+def test_task2_leg_a_table_lines_emits_the_delimiter_then_the_rows(mod):
+    """(a)/M1: `table_lines(catch_table(ROWS, TREE_FILES))` — `[0]` is
+    `HEADER`, `[1]` is `| --- | --- | --- | --- |`, and `[2:]` is exactly the
+    four `CLI_ROWS` rendered as `| a | b | c | d |` lines, in that order
+    (sorted by path). Nothing is dropped and nothing is inserted between the
+    delimiter and the first data row."""
+    lines = mod.table_lines(
+        mod.catch_table([dict(r) for r in ROWS], list(TREE_FILES)))
+    assert lines[0] == HEADER, (
+        "first line is not the pinned header: %r" % (lines[:1],))
+    assert lines[1] == DELIMITER, (
+        "second line is not the delimiter row: %r" % (lines[:2],))
+    assert lines[2:] == [_rendered(cells) for cells in CLI_ROWS]
+
+
+def test_task2_leg_a_one_entry_table_is_exactly_three_lines(mod):
+    """(a)/M1: a table of one entry yields exactly three lines — the header,
+    the delimiter once, and that entry's row. A delimiter emitted per row, or
+    none at all, is not three lines in this order."""
+    entry_row = ["tests/test_a.py", "1", "1", "caught"]
+    lines = mod.table_lines({
+        "tests/test_a.py": {"catches": 1, "exercised": ["lib/a.py"],
+                            "touchingRuns": 1, "status": "caught"}})
+    assert len(lines) == 3, (
+        "a one-entry table rendered %d line(s):\n%s"
+        % (len(lines), "\n".join(lines)))
+    assert lines == [HEADER, DELIMITER, _rendered(entry_row)]
+
+
+# ----------------------------------------------------------- task 2 (b) M1
+
+def test_task2_leg_b_cli_second_stdout_line_is_the_delimiter(tmp_path, tree):
+    """(b)/M1: the CLI over the leg-(a) ledger and the `tree` fixture — stdout
+    line index 0 is `HEADER`, index 1 is `| --- | --- | --- | --- |`, and the
+    data rows are still exactly `CLI_ROWS`: the delimiter is an addition to
+    the table, not a replacement of a row."""
+    proc = _run("--ledger", _ledger(tmp_path, ROWS), "--tree", tree)
+    lines = _lines(proc)
+    assert lines[0] == HEADER, (
+        "first stdout line is not the pinned header:\n%s" % "\n".join(lines))
+    assert lines[1] == DELIMITER, (
+        "second stdout line is not the delimiter row:\n%s" % "\n".join(lines))
+    assert _table_rows(lines) == CLI_ROWS
+
+
+def test_task2_leg_b_cli_missing_ledger_prints_the_delimiter(tmp_path, tree):
+    """(b)/M1: the CLI over a `--ledger` path under `tmp_path` that does not
+    exist — line index 1 is that same delimiter, and the data rows following
+    it are the tree's two files, each `unobserved`."""
+    missing = tmp_path / "absent-ledger.jsonl"
+    assert not missing.exists()
+    proc = _run("--ledger", missing, "--tree", tree)
+    lines = _lines(proc)
+    assert lines[0] == HEADER, (
+        "first stdout line is not the pinned header:\n%s" % "\n".join(lines))
+    assert lines[1] == DELIMITER, (
+        "second stdout line is not the delimiter row:\n%s" % "\n".join(lines))
+    assert lines[2:4] == [_rendered(cells) for cells in UNOBSERVED_TREE_ROWS]
+    assert _table_rows(lines) == UNOBSERVED_TREE_ROWS
+
+
+# ----------------------------------------------------------- task 2 (c) M2
+
+def test_task2_leg_c_catches_sums_over_every_catch_count_row(mod):
+    """(c)/M2: `catch_table([ROW_A, dict(ROW_A, id="d"*16, runId="run-d")],
+    [])["tests/test_a.py"]` — `catches` is `2`, the sum of that row's
+    `catches["tests/test_a.py"]` over both rows, and `touchingRuns` is `2`,
+    both rows' `touched` being `["lib/a.py"]`. A `max`, `any` or
+    last-row-wins reading yields `1` here."""
+    rows = [dict(ROW_A), dict(ROW_A, id="d" * 16, runId="run-d")]
+    table = mod.catch_table(rows, [])
+    assert "tests/test_a.py" in table, (
+        "the table has no entry for tests/test_a.py; keys: %r" % sorted(table))
+    entry = table["tests/test_a.py"]
+    assert entry["catches"] == 2
+    assert entry["touchingRuns"] == 2

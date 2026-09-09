@@ -506,8 +506,13 @@ def test_n_run_directory_without_report_or_receipt_still_yields_a_row(tmp_path):
 # --- the vocabulary, across every leg ---------------------------------------
 
 def test_every_reds_outcome_is_one_of_the_six(tmp_path):
-    """M1–M5: `outcome` is one of `caught`, `exam-edited`, `task-writes`,
-    `rerun`, `stayed-red`, `no-green` — no seventh spelling."""
+    """M1–M5, and task 1's M3: `outcome` is one of `caught`, `exam-edited`,
+    `task-writes`, `rerun`, `stayed-red`, `no-green` — no seventh spelling.
+
+    Task 1's M3 makes the module's own tuple the authority: every
+    `reds[].outcome` over the six `base_fixture` shapes (credit, exam edited,
+    task writes, no fix round, next run red, no later run) is a member of
+    `catch_counter.OUTCOMES`, not merely of a set this file spells out."""
     counter = _load()
     for i, kwargs in enumerate([{}, {"exam_edited": [THING]},
                                 {"writes": ["fleet/thing.mjs", THING]},
@@ -516,4 +521,198 @@ def test_every_reds_outcome_is_one_of_the_six(tmp_path):
         row = counter.derive_catches(
             base_fixture(tmp_path / ("run-%d" % i), **kwargs))
         for entry in row["reds"]:
-            assert entry.get("outcome") in OUTCOMES, entry
+            assert entry.get("outcome") in counter.OUTCOMES, entry
+
+
+# ===========================================================================
+# Task 1 (#822) — "Every red is judged, only a literal green closes the pair,
+# and the outcome vocabulary is one tuple".
+#
+# Legs (a)–(f) and clauses M1–M4 below are TASK 1's own, numbered afresh; the
+# legs (a)–(n) and clauses M1–M10 above belong to the earlier task and are
+# untouched. Each test names its own leg and clause as `t1 (x)/Mn`.
+# ===========================================================================
+
+
+def _recordless(run_dir, tail):
+    """A run directory holding only `events.jsonl` — neither `report.json` nor
+    `receipt.json` (`_write_run` with both omitted): `run:open`, a red
+    `driver:exam-run` for task `1` naming `THING`, then `tail`."""
+    return _write_run(
+        run_dir,
+        [_run_open(1, "run-77"),
+         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1)] + list(tail))
+
+
+# --- t1 leg (a) — M1: the recordless red that stayed red ---------------------
+
+def test_t1_a_recordless_red_then_red_is_stayed_red(tmp_path):
+    """t1 (a)/M1: in a run directory with no `report.json` and no
+    `receipt.json`, a red `driver:exam-run` for task `1` naming `THING`
+    followed by a same-kind same-`cmd` red for the same task is judged, not
+    skipped: a `reds` entry with `task` `1`, `path` `THING`, `outcome`
+    `stayed-red`, and `catches` exactly `{}`.
+
+    The leg's count is EXACTLY one, and `_only` below is what pins it. The
+    trailing red is not a second entry: it is the tail of a chain the first
+    red's `stayed-red` already speaks for, so `_after_a_red` drops the
+    `no-green` it would otherwise carry rather than recording the same
+    never-green run twice. Delete `_after_a_red` (or make it return False) and
+    this test goes red with two entries — seq-2 `stayed-red`, seq-3
+    `no-green`. The other direction is guarded above: a red whose previous
+    same run is not red is judged on its own, which is what
+    `test_g_no_later_same_run_is_no_green` pins as `no-green`."""
+    counter = _load()
+    row = counter.derive_catches(_recordless(
+        tmp_path / "run-77",
+        [_driver_run(3, "driver:exam-run", "1", THING_CMD, 1)]))
+    assert row["catches"] == {}
+    reds = row["reds"]
+    assert reds, "a recordless run's reds are judged, not dropped: %r" % (row,)
+    entry = _only(reds)                 # t1 (a): exactly one `reds` entry
+    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
+                 cmd=THING_CMD, outcome="stayed-red"), entry
+    # M1: never `caught`, `exam-edited` or `task-writes` without a record.
+    assert [e for e in reds
+            if e.get("outcome") in ("caught", "exam-edited",
+                                    "task-writes")] == [], reds
+    assert {e.get("path") for e in reds} == {THING}, reds
+    assert {e.get("task") for e in reds} == {"1"}, reds
+
+
+# --- t1 leg (b) — M1: the recordless re-run ---------------------------------
+
+def test_t1_b_recordless_red_then_green_with_no_fix_round_is_a_rerun(tmp_path):
+    """t1 (b)/M1: the same recordless directory with the second same-kind
+    same-`cmd` run at `exit` 0 and no `worker:end` between the two — exactly
+    one `reds` entry, `outcome` `rerun`, and `catches` exactly `{}`."""
+    counter = _load()
+    row = counter.derive_catches(_recordless(
+        tmp_path / "run-77",
+        [_driver_run(3, "driver:exam-run", "1", THING_CMD, 0)]))
+    assert row["catches"] == {}
+    assert THING not in row["catches"]
+    entry = _only(row["reds"])
+    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
+                 cmd=THING_CMD, outcome="rerun"), entry
+
+
+# --- t1 leg (c) — M1: the recordless fix round credits nothing --------------
+
+def test_t1_c_recordless_red_fix_then_green_is_a_rerun_not_a_catch(tmp_path):
+    """t1 (c)/M1: the same recordless directory with a `fix:1:0` `worker:end`
+    between the red and the `exit` 0 run — exactly one `reds` entry, `outcome`
+    `rerun`, and `catches` exactly `{}`.
+
+    With neither `report.json` nor `receipt.json` readable there is no
+    `examEdited` and no `writes` to disqualify against, so `_outcome_of` falls
+    through to `rerun`: the recordless credit of BASE is gone, and the outcome
+    is never `caught`, `exam-edited` or `task-writes`."""
+    counter = _load()
+    row = counter.derive_catches(_recordless(
+        tmp_path / "run-77",
+        [_fix_end(3, "fix:1:0"),
+         _driver_run(4, "driver:exam-run", "1", THING_CMD, 0)]))
+    assert row["catches"] == {}
+    assert THING not in row["catches"]
+    entry = _only(row["reds"])
+    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
+                 cmd=THING_CMD, outcome="rerun"), entry
+    assert [e for e in row["reds"]
+            if e.get("outcome") in ("caught", "exam-edited",
+                                    "task-writes")] == [], row["reds"]
+
+
+# --- t1 leg (d) — M2: only a literal `exit == 0` closes the pair ------------
+
+def test_t1_d_successor_without_an_exit_key_is_stayed_red(tmp_path):
+    """t1 (d)/M2: `base_fixture`'s shape — both records present and a `fix:1:0`
+    `worker:end` between — but with the fourth event built without an `exit`
+    key at all (`_ev(4, kind="driver:exam-run", task="1", cmd=THING_CMD,
+    iter=0)`): the red's `outcome` is `stayed-red`, `catches` is exactly `{}`,
+    and no entry reads `caught`. An event that reports no verdict does not
+    close the pair — only a literal `exit == 0` does."""
+    counter = _load()
+    successor = _ev(4, kind="driver:exam-run", task="1", cmd=THING_CMD, iter=0)
+    assert "exit" not in successor, successor
+    run_dir = _write_run(
+        tmp_path / "run-77",
+        [_run_open(1, "run-77"),
+         _driver_run(2, "driver:exam-run", "1", THING_CMD, 1),
+         _fix_end(3, "fix:1:0"),
+         successor],
+        report=_report([{"task": "1", "proofFixes": 1, "fixIterations": 1,
+                         "examEdited": []}]),
+        receipt=_receipt([{"id": "1", "writes": ["fleet/thing.mjs"]}]))
+    row = counter.derive_catches(run_dir)
+    assert row["catches"] == {}
+    assert THING not in row["catches"]
+    entry = _only(row["reds"])
+    assert _pins(entry, task="1", kind="driver:exam-run", path=THING,
+                 cmd=THING_CMD, outcome="stayed-red"), entry
+    assert not [e for e in row["reds"]
+                if e.get("outcome") == "caught"], row["reds"]
+
+
+# --- t1 leg (e) — M3: the vocabulary is one tuple ---------------------------
+
+def test_t1_e_outcomes_is_exactly_the_six_member_tuple():
+    """t1 (e)/M3: `catch_counter.OUTCOMES` is exactly the tuple `("caught",
+    "exam-edited", "task-writes", "rerun", "stayed-red", "no-green")`, and this
+    exam's own vocabulary set equals `set(catch_counter.OUTCOMES)` — one
+    vocabulary, spelled in one place."""
+    counter = _load()
+    assert counter.OUTCOMES == ("caught", "exam-edited", "task-writes",
+                                "rerun", "stayed-red", "no-green")
+    assert set(counter.OUTCOMES) == OUTCOMES
+
+
+def test_t1_e_outcomes_is_defined_and_used():
+    """t1 (e)/M3, and the Proof's second `Run:` (`test "$(grep -c OUTCOMES
+    skills/ultralearn/scripts/catch_counter.py)" -ge 2`): the name `OUTCOMES`
+    occurs on at least two lines of the counter — its definition and a use —
+    where at BASE it is defined once and referenced nowhere else."""
+    _load()
+    lines = SCRIPT.read_text(encoding="utf-8").splitlines()
+    hits = [line for line in lines if "OUTCOMES" in line]
+    assert len(hits) >= 2, (
+        "OUTCOMES is defined once and used nowhere; grep -c would print %d: %r"
+        % (len(hits), hits))
+    uses = [line for line in hits
+            if not line.lstrip().startswith(("#", "OUTCOMES"))]
+    assert uses, "the second occurrence is the use, not a comment: %r" % (hits,)
+
+
+# --- t1 leg (f) — M4: the empty union, and the docstring's choice -----------
+
+def test_t1_f_a_task_with_empty_writes_leaves_no_exercises_key(tmp_path):
+    """t1 (f)/M4: a run with both records whose receipt entry for task `1` has
+    `writes: []`, and whose one driver run for task `1` is a green
+    `driver:exam-run` naming `THING`, leaves no `exercises[THING]` key and no
+    `touched` — the empty union is dropped, so `catch_report.py`'s tree walk is
+    the only source of `unobserved` rows."""
+    counter = _load()
+    run_dir = _write_run(
+        tmp_path / "run-77",
+        [_run_open(1, "run-77"),
+         _driver_run(2, "driver:exam-run", "1", THING_CMD, 0)],
+        report=_report([{"task": "1", "examEdited": []}]),
+        receipt=_receipt([{"id": "1", "writes": []}]))
+    row = counter.derive_catches(run_dir)
+    assert THING not in row["exercises"]
+    assert row["exercises"] == {}
+    assert row["touched"] == []
+    assert row["catches"] == {}
+    assert row["reds"] == []
+
+
+def test_t1_f_docstring_names_the_tree_walk_and_drops_the_recordless_para():
+    """t1 (f)/M4, and the Proof's third `Run:`: `derive_catches.__doc__` names
+    the report's tree walk as the only source of `unobserved` rows, and no
+    longer says a recordless run reports no reds — its third paragraph, which
+    at BASE begins "A run with no record at all", goes."""
+    counter = _load()
+    doc = counter.derive_catches.__doc__ or ""
+    assert "unobserved" in doc, doc
+    assert "tree walk" in doc, doc
+    assert "reports no reds" not in doc, doc

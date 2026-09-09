@@ -40,6 +40,10 @@ CATCH_KIND = "catch-count"
 TEST_GLOBS = ("tests/test_*.py", "fleet/tests/test_*.mjs")
 
 HEADER = "| test | catches | touching runs | status |"
+# GFM renders a pipe table only when the header is followed by a delimiter row,
+# one cell per column — the same row `merge_ledger.py` writes under its own
+# header. Without it the whole table reads as one paragraph of pipes.
+DELIMITER = "| --- | --- | --- | --- |"
 CURVE_HEADING = "## Zero-catch curve"
 
 
@@ -89,6 +93,10 @@ def catch_table(rows, tree_tests):
     Keyed over the union of `tree_tests` and every path the record names as a
     test — a key of some row's `catches` or `exercises`. A path that appears
     only as an *exercised* path (`lib/b.py`) is not a test and is not a key.
+
+    `catches` is the sum over every row of that row's count for the path, not
+    the largest and not the last row's: two rows that each caught a test once
+    are two catches.
 
     `touchingRuns` is counted against the whole union `exercised`, not against
     the one row's own `exercises`: a run touches a test when it changed
@@ -174,7 +182,9 @@ def tree_test_files(tree):
 # nothing elided — a real report is one line per test and that is the point.
 
 def table_lines(table):
-    lines = [HEADER]
+    """The table: `HEADER`, the delimiter row, then one row per entry sorted
+    by path — so an empty table is two lines and never a header alone."""
+    lines = [HEADER, DELIMITER]
     for path in sorted(table):
         entry = table[path]
         lines.append(f"| {path} | {entry.get('catches', 0)} "

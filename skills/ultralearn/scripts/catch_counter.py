@@ -64,6 +64,9 @@ TEST_PATH_RE = re.compile(
 # The six ways a red ends, named once. `caught` is the only one that credits.
 OUTCOMES = ("caught", "exam-edited", "task-writes", "rerun", "stayed-red",
             "no-green")
+# ... and read back out of that tuple, so every outcome `_outcome_of` returns
+# is a member of `OUTCOMES` by construction and there is no seventh spelling.
+CAUGHT, EXAM_EDITED, TASK_WRITES, RERUN, STAYED_RED, NO_GREEN = OUTCOMES
 
 # A directory holding this is a run directory; nothing else makes one.
 RUN_FILE = "events.jsonl"
@@ -134,7 +137,7 @@ def _is_driver_run(event):
 
 def _is_red(event):
     """`exit` ≠ 0. An event with no `exit` at all reports no verdict, so it is
-    neither red nor green."""
+    no red — and no green either: only a literal `exit` 0 closes a pair."""
     return event.get("exit") not in (0, None)
 
 
@@ -156,6 +159,21 @@ def _next_same_run(events, start, red):
     return None
 
 
+def _after_a_red(events, pos, run):
+    """True when the previous same-kind, same-`cmd` event for this task was
+    itself red — this run is the still-red re-run that red was already judged
+    `stayed-red` by.
+
+    The chain `red → red → nothing` is one red that stayed red: the first
+    red's `stayed-red` already says the run never went green, so the tail adds
+    no second entry. A tail that something DOES run again is judged on its own
+    — it may yet be a catch."""
+    for prev in range(pos - 1, -1, -1):
+        if _is_driver_run(events[prev]) and _same_run(run, events[prev]):
+            return _is_red(events[prev])
+    return False
+
+
 def _fix_round_between(events, start, stop, task):
     """The label of the LAST fix round for `task` that ended between the red
     and the green, or None when no fix round lies between them.
@@ -172,24 +190,33 @@ def _fix_round_between(events, start, stop, task):
     return label
 
 
-def _outcome_of(events, pos, red, task, path, exam_edited, writes):
-    """`(outcome, fix label)` for one red and one of the test paths it names.
+def _outcome_of(events, pos, red, task, path, exam_edited, writes,
+                have_record=True):
+    """`(outcome, fix label)` for one red and one of the test paths it names,
+    always a member of `OUTCOMES`.
 
     The fix label is None unless the outcome is `caught`; it is the credit's
-    other half — one credit per path per fix round."""
+    other half — one credit per path per fix round.
+
+    The record gates the outcome, not the red: `have_record` is False when
+    neither `report.json` nor `receipt.json` was readable, and a run with
+    nothing to read the credit's two disqualifications out of falls through to
+    `rerun` — never `exam-edited`, `task-writes` or `caught`."""
     green = _next_same_run(events, pos, red)
     if green is None:
-        return "no-green", None
-    if _is_red(events[green]):
-        return "stayed-red", None
+        return NO_GREEN, None
+    if events[green].get("exit") != 0:
+        return STAYED_RED, None         # only a literal 0 closes the pair
     label = _fix_round_between(events, pos, green, task)
     if label is None:
-        return "rerun", None            # green again with nothing edited
+        return RERUN, None              # green again with nothing edited
+    if not have_record:
+        return RERUN, None              # nothing readable to credit against
     if path in exam_edited.get(task, []):
-        return "exam-edited", None      # the exam moved under the claim
+        return EXAM_EDITED, None        # the exam moved under the claim
     if path in writes.get(task, []):
-        return "task-writes", None      # the test was the task's own to write
-    return "caught", label
+        return TASK_WRITES, None        # the test was the task's own to write
+    return CAUGHT, label
 
 
 def derive_catches(run_dir):
@@ -200,16 +227,26 @@ def derive_catches(run_dir):
     green without editing `T`; `reds` carries every judged red, credited or
     not, with the outcome that judged it.
 
-    A run with no record at all — neither `report.json` nor `receipt.json` —
-    has nothing to judge its reds by: M1's credit names a report row and a
-    receipt entry, and with neither file present there is no such row to read.
-    Such a run counts its driver runs and reports no reds and no catches
-    rather than crediting a claim the record never made."""
+    Every red that names a test path is judged, record or no record — save
+    the tail of a red→red chain, whose verdict the first red's `stayed-red`
+    has already given and which `_after_a_red` therefore drops. The gate is
+    the outcome, not the red. A run with no record at all — neither
+    `report.json` nor `receipt.json` readable — has nothing to credit a catch
+    against, so its reds read `stayed-red`, `rerun` or `no-green` and never
+    `caught`, `exam-edited` or `task-writes`.
+
+    `exercises` holds a key only where some task's writes stand behind it: an
+    empty union is dropped rather than recorded, so a test path no record
+    speaks for carries no entry here. Naming such a file `unobserved` is the
+    report's job — `catch_report.py`'s tree walk over the working tree is the
+    one source of those rows, and this counter never invents one."""
     run_dir = Path(run_dir)
     events = read_events(run_dir)
     report = _read_json(run_dir / "report.json")
     receipt = _read_json(run_dir / "receipt.json")
-    have_record = isinstance(report, dict) or isinstance(receipt, dict)
+    # `_read_json` answers None for missing, unreadable and malformed alike,
+    # so "neither readable" is exactly "both None".
+    have_record = report is not None or receipt is not None
     exam_edited = _exam_edited(report)
     writes = _writes(receipt)
 
@@ -228,15 +265,17 @@ def derive_catches(run_dir):
         for path in dict.fromkeys(paths):
             # M7: a task exercises every test path its runs name, red or green.
             exercised.setdefault(path, set()).update(writes.get(task, []))
-        if not _is_red(event) or not have_record:
+        if not _is_red(event):
             continue
         for path in dict.fromkeys(paths):
             outcome, label = _outcome_of(events, pos, event, task, path,
-                                         exam_edited, writes)
+                                         exam_edited, writes, have_record)
+            if outcome == NO_GREEN and _after_a_red(events, pos, event):
+                continue                # the tail of a chain already judged
             reds.append({"task": task, "kind": event.get("kind"),
                          "path": path, "cmd": event.get("cmd"),
                          "outcome": outcome})
-            if outcome == "caught":
+            if outcome == CAUGHT:
                 credits.setdefault(path, set()).add(label)
 
     touched = sorted({path for paths in writes.values() for path in paths})
