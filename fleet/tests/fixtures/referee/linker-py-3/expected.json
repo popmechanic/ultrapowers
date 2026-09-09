@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "symbol": "foo",
+      "status": "missing",
+      "contains": [
+        "foo",
+        "pkg/mod.py",
+        "(found: bar)"
+      ]
+    }
+  ]
+}

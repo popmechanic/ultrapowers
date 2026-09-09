@@ -384,13 +384,19 @@ async function pinRun(engine, tasks) {
   assert.deepEqual(liveAbsent.events, [], 'and records no driver:integrated-run event')
 
   if (basePin) {
-    // [M4] every captured prompt of every role, byte for byte.
+    // [M4] every captured prompt of every role, byte for byte — less the one
+    // block #729 appends to a reviewer's, which is last and which every task
+    // now carries because the referee runs on every task, `Run:` or none.
+    const cut = (p) => {
+      const at = String(p).indexOf('\n\nREFEREE:')
+      return at === -1 ? String(p) : String(p).slice(0, at)
+    }
     assert.deepEqual(Object.keys(liveEmpty.prompts).sort(), Object.keys(basePin.prompts).sort(),
       'the same roles are dispatched as on BASE\'s engine')
     for (const label of Object.keys(basePin.prompts).sort()) {
-      assert.equal(liveEmpty.prompts[label], basePin.prompts[label],
+      assert.equal(cut(liveEmpty.prompts[label]), cut(basePin.prompts[label]),
         'proofRuns: [] must leave the ' + label + ' prompt byte-identical to BASE\'s')
-      assert.equal(liveAbsent.prompts[label], basePin.prompts[label],
+      assert.equal(cut(liveAbsent.prompts[label]), cut(basePin.prompts[label]),
         'an absent proofRuns must leave the ' + label + ' prompt byte-identical to BASE\'s')
     }
   }

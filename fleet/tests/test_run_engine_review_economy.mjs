@@ -46,8 +46,10 @@ const ROLES_DIR = fileURLToPath(new URL('../roles/', import.meta.url))
 const ENGINE_SRC = fileURLToPath(new URL('../run-engine.mjs', import.meta.url))
 const BASE_SHA = '2cc873fb2d040fbe081f35ff0ababc408eaa6500'
 
+// Sorted, and eight since #729: the referee's own tallies ride the same object.
 const ECONOMY_KEYS = ['blockingFindings', 'blockingPerReviewerMinute', 'pairRounds',
-                      'r2MarginalBlocking', 'reviewerMs']
+                      'r2MarginalBlocking', 'refereeBlocking', 'refereeFindings',
+                      'refereeSkippedPairs', 'reviewerMs']
 const mkTask = (id, files, over = {}) => ({
   id, title: id.toLowerCase(), files, tier: 'standard', review: 'lean',
   writes: files, commutes: [], proofTests: [], proofRuns: [],
@@ -113,7 +115,7 @@ const eventsOf = (runDir) => {
   const eco = report.reviewEconomy
   assert.equal(typeof eco, 'object', 'the report carries no `reviewEconomy` object')
   assert.deepEqual(Object.keys(eco).sort(), ECONOMY_KEYS,
-    'reviewEconomy carries exactly the five fields: ' + JSON.stringify(Object.keys(eco)))
+    'reviewEconomy carries exactly those eight fields: ' + JSON.stringify(Object.keys(eco)))
   assert.equal(Number.isFinite(eco.reviewerMs), true,
     'reviewerMs is a finite number: ' + JSON.stringify(eco.reviewerMs))
   assert.ok(eco.reviewerMs >= 0, 'and never negative: ' + eco.reviewerMs)
@@ -345,15 +347,32 @@ async function pinRun(engine, tasks) {
       'every task row carries proofFixes 0 when nothing was repaired: ' + JSON.stringify(row))
   }
   assert.deepEqual(Object.keys(live.report.reviewEconomy || {}).sort(), ECONOMY_KEYS,
-    'and reviewEconomy is present with exactly its five fields: ' +
+    'and reviewEconomy is present with exactly its eight fields: ' +
     JSON.stringify(live.report.reviewEconomy))
+
+  // #729 adds exactly one thing to a prompt: the REFEREE: block, which is last
+  // and which every reviewer round now carries (the referee runs on every task,
+  // unlike a `Run:` or `Check:`). Cut it and the run-51 rule stands unchanged —
+  // a run with no proofRuns and no constraintChecks renders nothing else new.
+  const REFEREE_MARK = '\n\nREFEREE:'
+  const withoutReferee = (p) => {
+    const at = p.indexOf(REFEREE_MARK)
+    return at === -1 ? p : p.slice(0, at)
+  }
+  for (const [label, p] of Object.entries(live.prompts)) {
+    if (!label.startsWith('review:')) continue
+    assert.equal(p.split(REFEREE_MARK).length, 2,
+      label + ' must carry exactly one REFEREE: block, and it must be last')
+    assert.ok(!/EXAM EVIDENCE:|RUN EVIDENCE:|CHECK EVIDENCE:/.test(p.slice(p.indexOf(REFEREE_MARK))),
+      label + '\'s REFEREE: block must not swallow an evidence block')
+  }
 
   if (basePin) {
     assert.deepEqual(Object.keys(live.prompts).sort(), Object.keys(basePin.prompts).sort(),
       'the same roles are dispatched as on BASE\'s engine')
     for (const label of Object.keys(basePin.prompts).sort()) {
-      assert.equal(live.prompts[label], basePin.prompts[label],
-        'an empty-evidence run must leave the ' + label +
+      assert.equal(withoutReferee(live.prompts[label]), withoutReferee(basePin.prompts[label]),
+        'with the REFEREE: block cut, an empty-evidence run must leave the ' + label +
         ' prompt byte-identical to BASE\'s (the run-51 rule)')
     }
   }

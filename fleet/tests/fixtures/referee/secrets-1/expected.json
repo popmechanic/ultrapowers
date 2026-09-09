@@ -1,0 +1,15 @@
+{
+  "findings": [
+    {
+      "check": "secrets",
+      "severity": "blocking",
+      "actor": "implementer"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "contains": "every touched path is in FILES"
+    }
+  ]
+}

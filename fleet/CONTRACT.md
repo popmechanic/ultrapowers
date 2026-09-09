@@ -50,6 +50,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     wrote it, beside the receipt that quotes only its 4000-char tail.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
+    `referee/task-<id>-<n>.json` — one per patch the driver's referee graded, `n` the number of fix
+    rounds that preceded that patch (`-0` the pre-pass tree, `-1` after the first fix round) — is
+    there on the same terms, present when the engine wrote them.
     `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
     and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
     `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the

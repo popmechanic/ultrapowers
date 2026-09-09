@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "symbol": "countVowels",
+      "status": "missing",
+      "contains": [
+        "countVowels",
+        "src/foo.mjs",
+        "(found: countVowel)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+diff --git a/src/snake.ts b/src/snake.ts
+index 1d69be271b523643a1b04106b556ad438bffdc35..14703afeb4df7ce6fc6100dd599684b32da3b266 100644
+--- a/src/snake.ts
++++ b/src/snake.ts
+@@ -1,2 +1,2 @@
+ export const snake = (s: string): string =>
+-  s.trim().replace(/\s+/g, '_').toLowerCase()
++  s.trim().replace(/[\s-]+/g, '_').toLowerCase()
+diff --git a/tests/snake.impl.test.ts b/tests/snake.impl.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..45b427d6250c29843ffffb6f7f85a60e8552eb44
+--- /dev/null
++++ b/tests/snake.impl.test.ts
+@@ -0,0 +1,10 @@
++import { expect, test } from 'bun:test'
++import { snake } from '../src/snake'
++
++test('a hyphen is a separator too', () => {
++  expect(snake('hello-world')).toBe('hello_world')
++})
++
++test('the ends are trimmed', () => {
++  expect(snake('  a b  ')).toBe('a_b')
++})

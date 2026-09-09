@@ -1,0 +1,15 @@
+{
+  "findings": [
+    {
+      "check": "exam-files",
+      "severity": "blocking",
+      "actor": "plan"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "contains": "every touched path is in FILES"
+    }
+  ]
+}

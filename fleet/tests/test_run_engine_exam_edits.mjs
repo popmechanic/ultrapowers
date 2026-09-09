@@ -212,6 +212,11 @@ const editExam = (cwd) =>
   assert.deepEqual(report.tasks[0].examEdited, [])
 }
 
+// An exam-EDIT judgment call, and only that: since #729 the referee names a
+// Proof `Test:` path of its own when the path is absent at HEAD, and that call
+// is the plan's business (it defers to the gate), not this sim's.
+const isExamEdit = (j) => j.includes('edited the exam')
+
 // ── (f) one blob per proofTests path, absent recorded as null [M2, M4] ─────
 // The mutations belong to the fix round: it is the round that works in a tree
 // the exam has been handed into, so it is the only one whose writes at a Proof
@@ -241,13 +246,13 @@ const twoPathScenario = async (fixFn, paths = ['t1_test.sh', 't1_extra.sh'],
   assert.equal(report.tasks[0].status, 'done', 'an untouched exam merges: ' + report.tasks[0].notes)
   assert.equal(report.tasks[0].exam, 'red')
   assert.equal(report.coverage.tasks_merged, 1)
-  assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_extra.sh')), [])
+  assert.deepEqual(report.judgmentCalls.filter(isExamEdit).filter((j) => j.includes('t1_extra.sh')), [])
 }
 {
   // Creates the path the examiner left absent: the recorded null moved.
   const { report } = await twoPathScenario((cwd) => fs.writeFileSync(path.join(cwd, 't1_extra.sh'), 'x\n'))
   assert.deepEqual(report.tasks[0].examEdited, ['t1_extra.sh'])
-  const calls = report.judgmentCalls.filter((j) => j.includes('exam'))
+  const calls = report.judgmentCalls.filter(isExamEdit)
   const named = calls.filter((j) => j.includes('t1_extra.sh'))
   assert.equal(named.length, 1, 'the call names the created path: ' + calls.join(' | '))
   assert.ok(!named[0].includes('t1_test.sh'), 'and not the untouched one: ' + named[0])

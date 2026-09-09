@@ -1,0 +1,23 @@
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index aacc4a1a59bcbd86c17db43b11971c3f4146655b..b03df9a633bfa65ebda6747cbb701e6e09e85fc0 100644
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -4,6 +4,7 @@ set -euo pipefail
+ 
+ main() {
+   echo "boot: ${1:-none}"
++  echo "merge: ${2:-none}"
+ }
+ 
+ main "$@"
+diff --git a/fleet/tests/test_sandbox_boot_selfmerge.mjs b/fleet/tests/test_sandbox_boot_selfmerge.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f0966a290c018851ed625247301836c1f3ac074a
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_selfmerge.mjs
+@@ -0,0 +1,5 @@
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++
++const src = fs.readFileSync(new URL('../sandbox-boot.sh', import.meta.url), 'utf8')
++assert.ok(src.includes('merge:'), 'the script echoes the merge argument')

@@ -1,0 +1,22 @@
+{
+  "task": {
+    "id": "footprint-6",
+    "files": [
+      "skills/ultrapowers/SKILL.md"
+    ],
+    "proofTests": [],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** the skill documents the report section.\n"
+  },
+  "siblingFiles": [
+    [
+      "skills/ultrapowers/SKILL.md",
+      "skills/ultrapowers/references/first-run.md"
+    ]
+  ],
+  "exam": null,
+  "examEvidence": null
+}

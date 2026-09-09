@@ -1,0 +1,21 @@
+{
+  "task": {
+    "id": "clean-2",
+    "files": [
+      "docs/a.md"
+    ],
+    "proofTests": [],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** the page carries a second paragraph.\n"
+  },
+  "siblingFiles": [
+    [
+      "docs/a.md"
+    ]
+  ],
+  "exam": null,
+  "examEvidence": null
+}

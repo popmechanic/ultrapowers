@@ -499,11 +499,14 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
     'the minor check renders `exit 1 (minor)`: ' + seg.slice(iM))
   // Exact: the prompt's tail IS the exported renderer's output for this run's
   // own evidence — "directly after the RUN EVIDENCE block", to the byte.
-  assert.ok(rp.endsWith(checkEvidenceBlock([
+  // #729 appends the REFEREE: block after this one — the last block, and the
+  // only thing between `checkEvidenceBlock` and the end of the prompt.
+  const beforeReferee = rp.slice(0, rp.indexOf('\n\nREFEREE:'))
+  assert.ok(beforeReferee.endsWith(checkEvidenceBlock([
     { cmd: 'test -e c.txt', exit: 0, stdout: '', minor: false },
     { cmd: 'test -e m.txt', exit: 1, stdout: '', minor: true },
-  ])), 'the reviewer prompt must END with `checkEvidenceBlock` of the round\'s own evidence: ' +
-       JSON.stringify(rp.slice(-300)))
+  ])), 'the reviewer prompt must END with `checkEvidenceBlock` of the round\'s own evidence, ' +
+       'the REFEREE: block aside: ' + JSON.stringify(beforeReferee.slice(-300)))
 }
 
 // ── leg (c): a check that goes red inside a review round is a blocking issue ──

@@ -1,0 +1,15 @@
+{
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "contains": "skills/ultrapowers/SKILL.md"
+    }
+  ]
+}

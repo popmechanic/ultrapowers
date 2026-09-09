@@ -1,0 +1,30 @@
+{
+  "task": {
+    "id": "footprint-5",
+    "files": [
+      "README.md",
+      "src/kebab.ts",
+      "tests/kebab.test.ts"
+    ],
+    "proofTests": [
+      "tests/kebab.test.ts"
+    ],
+    "interfaces": {
+      "consumes": [],
+      "produces": []
+    },
+    "body": "**Claim:** `kebab(s)` joins words with a hyphen.\n\n**Proof:**\n- Test: `tests/kebab.test.ts`\n"
+  },
+  "siblingFiles": [
+    [
+      "README.md",
+      "src/capitalize.ts",
+      "tests/capitalize.test.ts"
+    ]
+  ],
+  "exam": "red",
+  "examEvidence": {
+    "cmd": "bun test tests/kebab.test.ts",
+    "exit": 0
+  }
+}

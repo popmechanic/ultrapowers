@@ -1,0 +1,9 @@
+{
+  "findings": [],
+  "settled": [
+    {
+      "check": "exam-files",
+      "contains": "already red as the exam"
+    }
+  ]
+}

@@ -1,0 +1,475 @@
+// fleet/tests/test_referee_linker.mjs — the sim for the interface linker
+// (#729, spec §3.3): `linkProduces({bullet, files, cloneDir, exec, timeoutMs})
+// -> Promise<{status, symbol, detail}>` from `fleet/referee-linker.mjs`.
+//
+// Every case runs against a real checkout the sim builds itself: a temporary
+// directory holding a fixture's `base/` tree (or a tree the sim writes
+// inline), `git init -q -b main` and one commit — and, when a fixture's
+// `patch.diff` is non-empty, `git apply` after that commit. `patch.diff` is
+// empty for every linker fixture: HEAD is `base/`. Every git command here is
+// the sim's own (Amendment 10), and the temporary directories are removed on
+// exit.
+//
+// The `node` and `python3` subprocesses of M2 and M3 are the real ones,
+// because what is graded is the answer the linker gives. A stub `exec` appears
+// only where a leg is about the subprocess itself: the argv it issues, or the
+// claim that no subprocess ran at all.
+//
+// Legs, from the task's Proof:
+//   (a) M1 — the lead token, the four statuses, the unlinked-without-reading
+//       rule, the no-candidate case and the cross-candidate order.
+//   (b) M2 — `.mjs`/`.js` by `import()`: `<symbol>/<length>`, the arity floor,
+//       `declared, not exported`, the miss detail, a throwing import, the
+//       argv, the timeout, and `unlinked` over `missing`.
+//   (c) M3 — `.py` by `ast.parse`, never an import.
+//   (d) M4 — `.ts`/`.tsx` by export-declaration scan, with no subprocess.
+//   (e) M5 — every `fleet/tests/fixtures/referee/linker-*` fixture answers as
+//       its `expected.json` says, and the twelve directories are exactly the
+//       twelve the task names.
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
+import { linkProduces } from '../referee-linker.mjs'
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const FIXTURES = path.join(HERE, 'fixtures', 'referee')
+
+let passed = 0
+const ok = (label) => {
+  passed += 1
+  console.log(`ok - ${label}`)
+}
+
+// A fixture never needs the timeout to fire; every call but the timeout leg
+// passes a bound far above what a fixture needs, so a linker that hangs fails
+// this sim in seconds rather than sitting for thirty minutes.
+const CALL_TIMEOUT_MS = 20000
+const link = (args) => linkProduces({ timeoutMs: CALL_TIMEOUT_MS, ...args })
+const detailOf = (r) => String((r && r.detail) || '')
+const STATUSES = ['resolved', 'declared', 'missing', 'unlinked']
+
+const shape = (r, where) => {
+  assert.ok(r && typeof r === 'object', `${where}: linkProduces resolves to an object`)
+  assert.ok(STATUSES.includes(r.status), `${where}: status is one of ${STATUSES.join(', ')} — got ${JSON.stringify(r.status)}`)
+  assert.equal(typeof r.symbol, 'string', `${where}: symbol is a string`)
+  assert.equal(typeof r.detail, 'string', `${where}: detail is a string`)
+  return r
+}
+
+// `node` and `python3` may be issued as the bare word or as an absolute path;
+// what M2 and M3 pin is which program runs, not how it is spelled.
+const isProgram = (spelled, program) =>
+  spelled === program || path.basename(String(spelled)) === program
+
+// ── the sim's own git ─────────────────────────────────────────────────────
+const ENV = {
+  ...process.env,
+  GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+  GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+  GIT_CONFIG_NOSYSTEM: '1',
+}
+const git = (argv, cwd) => {
+  try {
+    return execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    throw new Error(`git ${argv.join(' ')} in ${cwd} failed: ${String(e.stderr || e.message)}`)
+  }
+}
+
+const TMP = []
+const mkTmp = () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'referee-linker-'))
+  TMP.push(dir)
+  return dir
+}
+const cleanup = () => {
+  for (const dir of TMP.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
+}
+process.on('exit', cleanup)
+
+const commitCheckout = (dir) => {
+  git(['init', '-q', '-b', 'main'], dir)
+  git(['add', '-A'], dir)
+  git(['-c', 'user.email=fleet@example.invalid', '-c', 'user.name=fleet', 'commit', '-q', '-m', 'base'], dir)
+  return dir
+}
+
+// A checkout the sim writes inline: `{clone-relative path: contents}`.
+const checkoutOf = (files) => {
+  const dir = mkTmp()
+  for (const [rel, body] of Object.entries(files)) {
+    const abs = path.join(dir, rel)
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    fs.writeFileSync(abs, body)
+  }
+  return commitCheckout(dir)
+}
+
+// A checkout built from a fixture's `base/`, plus its task and expectation.
+const fixture = (name) => {
+  const home = path.join(FIXTURES, name)
+  for (const entry of ['task.json', 'base', 'patch.diff', 'expected.json']) {
+    assert.ok(fs.existsSync(path.join(home, entry)),
+      `fixture ${name} is missing ${entry} — the layout is task.json, base/, patch.diff, expected.json [M5]`)
+  }
+  const raw = JSON.parse(fs.readFileSync(path.join(home, 'task.json'), 'utf8'))
+  const task = raw.task || raw
+  const expected = JSON.parse(fs.readFileSync(path.join(home, 'expected.json'), 'utf8'))
+
+  const dir = mkTmp()
+  fs.cpSync(path.join(home, 'base'), dir, { recursive: true })
+  commitCheckout(dir)
+  const patch = fs.readFileSync(path.join(home, 'patch.diff'), 'utf8')
+  if (patch.trim()) git(['apply', path.join(home, 'patch.diff')], dir)
+
+  const produces = (task.interfaces && task.interfaces.produces) || []
+  assert.ok(Array.isArray(task.files) && task.files.length > 0,
+    `fixture ${name}: task.files is the candidate list the linker is called with [M5]`)
+  assert.ok(Array.isArray(produces) && produces.length > 0,
+    `fixture ${name}: task.interfaces.produces holds the bullets this fixture answers [M5]`)
+  return { name, dir, task, produces, expected }
+}
+
+// ── leg (a): M1, the lead token and the four statuses ─────────────────────
+{
+  const mjs1 = fixture('linker-mjs-1')
+  const first = await link({ bullet: mjs1.produces[0], files: mjs1.task.files, cloneDir: mjs1.dir })
+  shape(first, 'leg (a) linker-mjs-1[0]')
+  assert.equal(first.symbol, 'foo',
+    `[M1] the lead token of linker-mjs-1's first bullet is foo, the wrapping backtick removed — got ${JSON.stringify(first.symbol)}`)
+  assert.equal(first.status, 'resolved',
+    `[M1] … and it answers resolved — got ${first.status} (${detailOf(first)})`)
+  ok('leg (a) [M1] the first bullet of linker-mjs-1 is foo, resolved')
+
+  // A stub that throws is the proof that no subprocess ran.
+  const boom = () => { throw new Error('[M1] no subprocess may run for an unlinkable symbol') }
+
+  const unlinked1 = fixture('linker-unlinked-1')
+  const dotted = await link({ bullet: unlinked1.produces[0], files: unlinked1.task.files, cloneDir: unlinked1.dir, exec: boom })
+  shape(dotted, 'leg (a) report.reviewEconomy')
+  assert.equal(dotted.symbol, 'report.reviewEconomy',
+    `[M1] the lead token carries its dots — got ${JSON.stringify(dotted.symbol)}`)
+  assert.equal(dotted.status, 'unlinked',
+    `[M1] a symbol that does not match ^[A-Za-z_]\\w*$ is unlinked without any file being read — got ${dotted.status} (${detailOf(dotted)})`)
+  ok('leg (a) [M1] the dotted bullet report.reviewEconomy is unlinked, no subprocess')
+
+  const unlinked2 = fixture('linker-unlinked-2')
+  const shell = await link({ bullet: unlinked2.produces[0], files: unlinked2.task.files, cloneDir: unlinked2.dir })
+  shape(shell, 'leg (a) record_tags()')
+  assert.equal(shell.symbol, 'record_tags',
+    `[M1] the lead token of record_tags() is record_tags — got ${JSON.stringify(shell.symbol)}`)
+  assert.equal(shell.status, 'unlinked',
+    `[M1] a shell-function symbol whose only candidate file is .sh is unlinked — got ${shell.status} (${detailOf(shell)})`)
+  assert.ok(detailOf(shell).includes('fleet/sandbox-boot.sh'),
+    `[M1] … with a detail naming the reason, the file among them — got ${JSON.stringify(detailOf(shell))}`)
+  ok('leg (a) [M1] record_tags() over a .sh is unlinked with the reason')
+
+  const assigned = await link({ bullet: '`X = 1`', files: mjs1.task.files, cloneDir: mjs1.dir, exec: boom })
+  shape(assigned, 'leg (a) X = 1')
+  assert.equal(assigned.symbol, 'X', '[M1] the lead token of `X = 1` is X')
+  assert.equal(assigned.status, 'unlinked',
+    `[M1] a symbol followed, after optional spaces, by = is unlinked without any file being read — got ${assigned.status} (${detailOf(assigned)})`)
+
+  const slashed = await link({ bullet: '`path/to/thing`', files: mjs1.task.files, cloneDir: mjs1.dir, exec: boom })
+  shape(slashed, 'leg (a) path/to/thing')
+  assert.equal(slashed.symbol, 'path', '[M1] the lead token of `path/to/thing` is path')
+  assert.equal(slashed.status, 'unlinked',
+    `[M1] a symbol followed by / is unlinked without any file being read — got ${slashed.status} (${detailOf(slashed)})`)
+
+  const colon = await link({ bullet: '`kind: run.started`', files: mjs1.task.files, cloneDir: mjs1.dir, exec: boom })
+  shape(colon, 'leg (a) kind: run.started')
+  assert.equal(colon.status, 'unlinked',
+    `[M1] a symbol followed by : is unlinked without any file being read — got ${colon.status} (${detailOf(colon)})`)
+  ok('leg (a) [M1] a bullet whose symbol is followed by =, / or : is unlinked, no subprocess')
+
+  const noExt = await link({ bullet: '`foo(a)`', files: ['README.md', 'fleet/sandbox-boot.sh'], cloneDir: mjs1.dir })
+  shape(noExt, 'leg (a) no linkable extension')
+  assert.equal(noExt.status, 'unlinked',
+    `[M1] a files list with no linkable extension leaves no candidate, which is unlinked — got ${noExt.status} (${detailOf(noExt)})`)
+  assert.ok(detailOf(noExt).length > 0, '[M1] … with a detail naming the reason')
+  ok('leg (a) [M1] a files list with no linkable extension is unlinked with the reason')
+
+  const mixed = checkoutOf({
+    'src/foo.mjs': 'export function foo (a, b) { return a + b }\n',
+    'pkg/mod.py': 'def bar():\n    return 1\n',
+  })
+  const best = await link({ bullet: '`foo(a, b) -> Widget`', files: ['pkg/mod.py', 'src/foo.mjs'], cloneDir: mixed })
+  shape(best, 'leg (a) resolved beside missing')
+  assert.equal(best.status, 'resolved',
+    `[M1] across candidates resolved wins: a .mjs that resolves beside a .py where the name is missing answers resolved — got ${best.status} (${detailOf(best)})`)
+  ok('leg (a) [M1] resolved wins over missing across candidates')
+}
+
+// ── leg (b): M2, the `.mjs`/`.js` linker ──────────────────────────────────
+{
+  const mjs1 = fixture('linker-mjs-1')
+
+  const exact = await link({ bullet: '`foo(a, b)`', files: mjs1.task.files, cloneDir: mjs1.dir })
+  shape(exact, 'leg (b) foo(a, b)')
+  assert.equal(exact.status, 'resolved',
+    `[M2] has true is resolved — got ${exact.status} (${detailOf(exact)})`)
+  assert.ok(detailOf(exact).includes('src/foo.mjs') && detailOf(exact).includes('foo/2'),
+    `[M2] … with a detail naming the file and <symbol>/<length> — got ${JSON.stringify(detailOf(exact))}`)
+  ok('leg (b) [M2] linker-mjs-1 resolves foo(a, b) with foo/2 in the detail')
+
+  const low = await link({ bullet: '`foo(a)`', files: mjs1.task.files, cloneDir: mjs1.dir })
+  shape(low, 'leg (b) foo(a)')
+  assert.equal(low.status, 'declared',
+    `[M2] a bullet arity below length is declared — got ${low.status} (${detailOf(low)})`)
+  assert.ok(detailOf(low).includes('arity'),
+    `[M2] … with a detail naming both counts — got ${JSON.stringify(detailOf(low))}`)
+  assert.ok(detailOf(low).includes('foo/2') && /\b1\b/.test(detailOf(low)),
+    `[M2] … the export's 2 and the bullet's 1 — got ${JSON.stringify(detailOf(low))}`)
+  ok('leg (b) [M2] a bullet arity below length is declared with both counts')
+
+  const high = await link({ bullet: '`foo(a, b, c)`', files: mjs1.task.files, cloneDir: mjs1.dir })
+  shape(high, 'leg (b) foo(a, b, c)')
+  assert.equal(high.status, 'resolved',
+    `[M2] a bullet arity above length is still resolved — rest and default parameters make length a floor — got ${high.status} (${detailOf(high)})`)
+  ok('leg (b) [M2] a bullet arity above length is still resolved')
+
+  const mjs2 = fixture('linker-mjs-2')
+  const declared = await link({ bullet: mjs2.produces[0], files: mjs2.task.files, cloneDir: mjs2.dir })
+  shape(declared, 'leg (b) linker-mjs-2')
+  assert.equal(declared.status, 'declared',
+    `[M2] has false with the name in the candidate's text is declared — got ${declared.status} (${detailOf(declared)})`)
+  assert.ok(detailOf(declared).includes('declared, not exported'),
+    `[M2] … with the detail "declared, not exported" — got ${JSON.stringify(detailOf(declared))}`)
+  ok('leg (b) [M2] linker-mjs-2 is declared, not exported')
+
+  const mjs3 = fixture('linker-mjs-3')
+  const miss = await link({ bullet: mjs3.produces[0], files: mjs3.task.files, cloneDir: mjs3.dir })
+  shape(miss, 'leg (b) linker-mjs-3')
+  assert.equal(miss.status, 'missing',
+    `[M2] a renamed export is missing — got ${miss.status} (${detailOf(miss)})`)
+  assert.equal(detailOf(miss), 'no export named countVowels in src/foo.mjs (found: countVowel)',
+    `[M2] … with the miss wording the referee's blocking finding carries verbatim — got ${JSON.stringify(detailOf(miss))}`)
+  ok('leg (b) [M2] a renamed export is missing with both names in the detail')
+
+  const mjs4 = fixture('linker-mjs-4')
+  const threw = await link({ bullet: mjs4.produces[0], files: mjs4.task.files, cloneDir: mjs4.dir })
+  shape(threw, 'leg (b) linker-mjs-4')
+  assert.equal(threw.status, 'unlinked',
+    `[M2] a subprocess that exits non-zero is unlinked, never a finding status — got ${threw.status} (${detailOf(threw)})`)
+  assert.ok(detailOf(threw).includes('boom'),
+    `[M2] … with the detail carrying the first line of its stderr — got ${JSON.stringify(detailOf(threw))}`)
+  ok('leg (b) [M2] an import that throws is unlinked with the throw in the detail')
+
+  // The argv the linker issues for a `.mjs` candidate.
+  const calls = []
+  const recorder = (cmd, argv, opts) => {
+    calls.push({ cmd, argv: Array.isArray(argv) ? argv.slice() : argv, opts: opts || {} })
+    return Promise.resolve({ code: 0, stdout: `${JSON.stringify({ has: true, length: 2, names: ['foo'] })}\n`, stderr: '' })
+  }
+  await link({ bullet: '`foo(a, b)`', files: mjs1.task.files, cloneDir: mjs1.dir, exec: recorder })
+  assert.equal(calls.length, 1, `[M2] one subprocess per candidate — got ${calls.length}`)
+  const argv = [calls[0].cmd, ...(calls[0].argv || [])].map(String)
+  assert.ok(isProgram(argv[0], 'node'), `[M2] the argv begins node — got ${JSON.stringify(argv[0])}`)
+  assert.equal(argv[1], '--input-type=module', `[M2] … then --input-type=module — got ${JSON.stringify(argv[1])}`)
+  assert.equal(argv[2], '-e', `[M2] … then -e — got ${JSON.stringify(argv[2])}`)
+  assert.ok(argv.join(' ').includes('file://') && argv.join(' ').includes('foo.mjs'),
+    "[M2] the script dynamically imports the candidate's file URL")
+  for (const forbidden of ['bash', 'sh', '-lc', 'git']) {
+    assert.ok(!argv.includes(forbidden),
+      `[M2] the module runs only that script — never bash -lc, never git — found ${JSON.stringify(forbidden)}`)
+  }
+  assert.equal(calls[0].opts.cwd, mjs1.dir,
+    `[M2] the subprocess cwd is cloneDir — got ${JSON.stringify(calls[0].opts.cwd)}`)
+  ok('leg (b) [M2] the argv is node --input-type=module -e <script>, cwd cloneDir')
+
+  // The timeout: a module scope that neither exits nor prints.
+  const HANG = [
+    '// Neither exits nor prints: the interval keeps the loop alive and the',
+    '// awaited promise never settles.',
+    'setInterval(() => {}, 1000)',
+    'export function foo (a) { return a }',
+    'await new Promise(() => {})',
+    '',
+  ].join('\n')
+  const hung = checkoutOf({ 'src/hang.mjs': HANG, 'src/quiet.mjs': 'export const other = 1\n' })
+
+  const started = Date.now()
+  const timedOut = await linkProduces({ bullet: '`foo(a)`', files: ['src/hang.mjs'], cloneDir: hung, timeoutMs: 500 })
+  const elapsed = Date.now() - started
+  shape(timedOut, 'leg (b) timeout')
+  assert.equal(timedOut.status, 'unlinked',
+    `[M2] a subprocess killed at the timeout is unlinked — got ${timedOut.status} (${detailOf(timedOut)})`)
+  assert.ok(/timeout/i.test(detailOf(timedOut)),
+    `[M2] … with timeout in the detail — got ${JSON.stringify(detailOf(timedOut))}`)
+  assert.ok(elapsed < 5000, `[M2] … and the answer comes back within five seconds — took ${elapsed}ms`)
+  ok('leg (b) [M2] a module that neither exits nor prints is unlinked at the timeout')
+
+  const beside = await linkProduces({ bullet: '`foo(a)`', files: ['src/quiet.mjs', 'src/hang.mjs'], cloneDir: hung, timeoutMs: 500 })
+  shape(beside, 'leg (b) unlinked over missing')
+  assert.equal(beside.status, 'unlinked',
+    `[M2] unlinked wins over missing: a candidate that hung beside one where the name is absent answers unlinked — got ${beside.status} (${detailOf(beside)})`)
+  ok('leg (b) [M2] a hung candidate beside a clean miss answers unlinked, not missing')
+}
+
+// ── leg (c): M3, the `.py` linker ─────────────────────────────────────────
+{
+  const py1 = fixture('linker-py-1')
+  const resolved = await link({ bullet: py1.produces[0], files: py1.task.files, cloneDir: py1.dir })
+  shape(resolved, 'leg (c) linker-py-1')
+  assert.equal(resolved.status, 'resolved',
+    `[M3] a top-level def equal to the symbol is resolved — got ${resolved.status} (${detailOf(resolved)})`)
+  assert.ok(detailOf(resolved).includes('foo/2'),
+    `[M3] … with the count of positional parameters without defaults — got ${JSON.stringify(detailOf(resolved))}`)
+  ok('leg (c) [M3] linker-py-1 resolves a top-level def')
+
+  const shallow = await link({ bullet: '`foo(a)`', files: py1.task.files, cloneDir: py1.dir })
+  assert.equal(shallow.status, 'declared',
+    `[M3] the arity floor rule of M2 applies to that count — got ${shallow.status} (${detailOf(shallow)})`)
+  ok('leg (c) [M3] the arity floor rule applies to a Python def')
+
+  const py2 = fixture('linker-py-2')
+  const declared = await link({ bullet: py2.produces[0], files: py2.task.files, cloneDir: py2.dir })
+  shape(declared, 'leg (c) linker-py-2')
+  assert.equal(declared.status, 'declared',
+    `[M3] the name in the text without a top-level definition is declared — got ${declared.status} (${detailOf(declared)})`)
+  ok('leg (c) [M3] a nested def is declared, not resolved')
+
+  const py3 = fixture('linker-py-3')
+  const miss = await link({ bullet: py3.produces[0], files: py3.task.files, cloneDir: py3.dir })
+  shape(miss, 'leg (c) linker-py-3')
+  assert.equal(miss.status, 'missing', `[M3] otherwise missing — got ${miss.status} (${detailOf(miss)})`)
+  for (const needle of ['foo', 'pkg/mod.py', '(found: bar)']) {
+    assert.ok(detailOf(miss).includes(needle),
+      `[M3] the miss detail names the symbol, the file and what that file does define — ${JSON.stringify(needle)} is not in ${JSON.stringify(detailOf(miss))}`)
+  }
+  ok('leg (c) [M3] linker-py-3 is missing, naming foo and pkg/mod.py')
+
+  const calls = []
+  const recorder = (cmd, argv, opts) => {
+    calls.push({ cmd, argv: Array.isArray(argv) ? argv.slice() : argv, opts: opts || {} })
+    return Promise.resolve({ code: 0, stdout: `${JSON.stringify({ names: ['foo'], arity: { foo: 2 } })}\n`, stderr: '' })
+  }
+  await link({ bullet: py1.produces[0], files: py1.task.files, cloneDir: py1.dir, exec: recorder })
+  assert.equal(calls.length, 1, `[M3] one subprocess per candidate — got ${calls.length}`)
+  const argv = [calls[0].cmd, ...(calls[0].argv || [])].map(String)
+  assert.ok(isProgram(argv[0], 'python3'), `[M3] the argv begins python3 — got ${JSON.stringify(argv[0])}`)
+  assert.equal(argv[1], '-c', `[M3] … then -c — got ${JSON.stringify(argv[1])}`)
+  assert.ok(!argv.includes('-m'), '[M3] no argv element is -m — the file is never imported')
+  for (const element of argv) {
+    assert.ok(!element.includes('import pkg'),
+      `[M3] no argv element names "import pkg" — the file is ast.parsed, never imported — found ${JSON.stringify(element)}`)
+  }
+  assert.ok(argv.join(' ').includes('ast'), '[M3] the script ast.parses the file')
+  assert.equal(calls[0].opts.cwd, py1.dir,
+    `[M3] the subprocess cwd is cloneDir — got ${JSON.stringify(calls[0].opts.cwd)}`)
+  ok('leg (c) [M3] the argv is python3 -c <ast script>, never -m and never an import')
+}
+
+// ── leg (d): M4, the `.ts`/`.tsx` scan ────────────────────────────────────
+{
+  // The fixtures never create `node_modules/typescript`, so `tsc` never runs:
+  // a throwing `exec` is the proof that no subprocess was spawned at all.
+  const boom = () => { throw new Error('[M4] no subprocess may run for a .ts candidate without node_modules/typescript') }
+
+  const ts1 = fixture('linker-ts-1')
+  const resolved = await link({ bullet: ts1.produces[0], files: ts1.task.files, cloneDir: ts1.dir, exec: boom })
+  shape(resolved, 'leg (d) linker-ts-1')
+  assert.equal(resolved.status, 'resolved',
+    `[M4] export function foo(…) is resolved — got ${resolved.status} (${detailOf(resolved)})`)
+  ok('leg (d) [M4] linker-ts-1 resolves an exported function, no subprocess')
+
+  const low = await link({ bullet: '`foo(a)`', files: ts1.task.files, cloneDir: ts1.dir, exec: boom })
+  shape(low, 'leg (d) linker-ts-1 foo(a)')
+  assert.equal(low.status, 'declared',
+    `[M4] arity counts the entries without ? or =, floor rule — a bullet arity of 1 below 2 is declared — got ${low.status} (${detailOf(low)})`)
+  assert.ok(detailOf(low).includes('arity'), `[M4] … with arity in the detail — got ${JSON.stringify(detailOf(low))}`)
+  ok('leg (d) [M4] the arity floor rule applies to a .ts parameter list')
+
+  const ts2 = fixture('linker-ts-2')
+  const declared = await link({ bullet: ts2.produces[0], files: ts2.task.files, cloneDir: ts2.dir, exec: boom })
+  shape(declared, 'leg (d) linker-ts-2')
+  assert.equal(declared.status, 'declared',
+    `[M4] the name present without an export declaration is declared — got ${declared.status} (${detailOf(declared)})`)
+  ok('leg (d) [M4] linker-ts-2 is declared, not exported')
+
+  const ts3 = fixture('linker-ts-3')
+  const miss = await link({ bullet: ts3.produces[0], files: ts3.task.files, cloneDir: ts3.dir, exec: boom })
+  shape(miss, 'leg (d) linker-ts-3')
+  assert.equal(miss.status, 'missing', `[M4] otherwise missing — got ${miss.status} (${detailOf(miss)})`)
+  for (const needle of ['foo', 'src/foo.ts', '(found: bar)']) {
+    assert.ok(detailOf(miss).includes(needle),
+      `[M4] the miss detail names the symbol, the file and what it does export — ${JSON.stringify(needle)} is not in ${JSON.stringify(detailOf(miss))}`)
+  }
+  ok('leg (d) [M4] linker-ts-3 is missing, naming foo and src/foo.ts')
+
+  const listed = checkoutOf({ 'src/named.ts': 'function foo() {}\nexport { foo }\n' })
+  const viaList = await link({ bullet: '`foo()`', files: ['src/named.ts'], cloneDir: listed, exec: boom })
+  shape(viaList, 'leg (d) export { foo }')
+  assert.equal(viaList.status, 'resolved',
+    `[M4] a name inside an export { … } list is resolved — got ${viaList.status} (${detailOf(viaList)})`)
+
+  const dflt = checkoutOf({ 'src/dflt.ts': 'export default function foo() {}\n' })
+  const viaDefault = await link({ bullet: '`foo()`', files: ['src/dflt.ts'], cloneDir: dflt, exec: boom })
+  shape(viaDefault, 'leg (d) export default function foo')
+  assert.equal(viaDefault.status, 'resolved',
+    `[M4] export default function <symbol>( is resolved — got ${viaDefault.status} (${detailOf(viaDefault)})`)
+  ok('leg (d) [M4] export { foo } and export default function foo both resolve')
+}
+
+// ── leg (e): M5, every fixture answers as its expected.json says ──────────
+// The status column of the task's own fixture table, one entry per produces
+// bullet in order.
+const TABLE = {
+  'linker-mjs-1': ['resolved', 'declared'],
+  'linker-mjs-2': ['declared'],
+  'linker-mjs-3': ['missing'],
+  'linker-mjs-4': ['unlinked'],
+  'linker-py-1': ['resolved'],
+  'linker-py-2': ['declared'],
+  'linker-py-3': ['missing'],
+  'linker-ts-1': ['resolved'],
+  'linker-ts-2': ['declared'],
+  'linker-ts-3': ['missing'],
+  'linker-unlinked-1': ['unlinked'],
+  'linker-unlinked-2': ['unlinked'],
+}
+
+{
+  assert.ok(fs.existsSync(FIXTURES), '[M5] the fixture root fleet/tests/fixtures/referee exists')
+  const dirs = fs.readdirSync(FIXTURES, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name.startsWith('linker-'))
+    .map((d) => d.name)
+    .sort()
+  assert.deepEqual(dirs, Object.keys(TABLE).slice().sort(),
+    `[M5] the twelve linker-* directories are exactly the twelve the task names — got ${JSON.stringify(dirs)}`)
+  ok(`leg (e) [M5] the fixture directories are exactly the twelve the task names (${dirs.length})`)
+
+  for (const name of dirs) {
+    const fx = fixture(name)
+    const results = (fx.expected && fx.expected.results) || []
+    assert.ok(Array.isArray(results), `[M5] ${name}/expected.json is {"results": [...]}`)
+    assert.equal(results.length, fx.produces.length,
+      `[M5] ${name} has one expected result per produces bullet, in order — ${results.length} results for ${fx.produces.length} bullets`)
+    assert.deepEqual(results.map((r) => r.status), TABLE[name],
+      `[M5] ${name} expects the statuses the task's fixture table gives it — got ${JSON.stringify(results.map((r) => r.status))}`)
+
+    for (let i = 0; i < fx.produces.length; i++) {
+      const want = results[i]
+      const got = await link({ bullet: fx.produces[i], files: fx.task.files, cloneDir: fx.dir })
+      const where = `[M5] ${name} bullet ${JSON.stringify(fx.produces[i])}`
+      shape(got, where)
+      assert.equal(got.symbol, want.symbol,
+        `${where} answers symbol ${JSON.stringify(want.symbol)} — got ${JSON.stringify(got.symbol)}`)
+      assert.equal(got.status, want.status,
+        `${where} answers status ${JSON.stringify(want.status)} — got ${got.status} (${detailOf(got)})`)
+      const needles = want.contains == null ? [] : (Array.isArray(want.contains) ? want.contains : [want.contains])
+      for (const needle of needles) {
+        assert.ok(detailOf(got).includes(needle),
+          `${where} answers a detail containing ${JSON.stringify(needle)} — got ${JSON.stringify(detailOf(got))}`)
+      }
+    }
+    ok(`leg (e) [M5] ${name} answers as its expected.json says`)
+  }
+}
+
+cleanup()
+console.log(`\nALL TESTS PASSED (${passed})`)

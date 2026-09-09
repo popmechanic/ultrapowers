@@ -1,0 +1,23 @@
+{
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer"
+    }
+  ],
+  "settled": [
+    {
+      "check": "exam-files",
+      "contains": "unexamined"
+    },
+    {
+      "check": "test-count",
+      "contains": "+0 / −0"
+    },
+    {
+      "check": "interface",
+      "contains": "no Produces: to link"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "contains": "docs/a.md"
+    }
+  ]
+}
