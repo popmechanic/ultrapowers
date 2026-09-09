@@ -1,0 +1,166 @@
+{
+  "integrationBranch": "ultra/integration-run-83",
+  "baseSha": "1130fcb85add4b22a55b63989efa6324ae40e65d",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "ca72997bc95b3137ddc9dd1c214ea40a32a0ab20",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-83/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-83/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1927 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 29%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.......................................................                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1927 passed, 5 warnings in 898.26s (0:14:58) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'before any reviewer read the patch' fleet/run-engine.mjs)\" = 1 && test \"$(grep -c 'before any referee read' fleet/run-engine.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'recorded for the reviewer, blocking nothing' fleet/run-engine.mjs)\" = 1 && test \"$(grep -c 'recorded for the referee' fleet/run-engine.mjs)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'a second red pass ends the task at .proof-red. (a red .Run:./.Check:.) or .referee-red. (a still-blocking referee)' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'or .referee-red.' skills/ultrapowers/references/report-format.md)\" = 1 && grep -q 'the reviewers then found nothing' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'rather than looping' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'the referees then found nothing' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'how many blocking issues the REVIEWERS returned' skills/ultrapowers/references/report-format.md && grep -q \"charging the driver's findings to the reviewers flatters the ratio\" skills/ultrapowers/references/report-format.md && test \"$(grep -c 'REFEREES returned' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'to the referee flatters' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'no reviewer was ever dispatched, because a patch whose own proof fails is not a patch a reviewer can grade' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'no referee was ever dispatched' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'a referee can grade' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'dispatched no reviewer (' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'dispatched no referee' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'names the paths to the reviewer as ' skills/ultrapowers/references/report-format.md && grep -q 'the reviewer decides whether the exam was wrong' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'to the referee as' skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(grep -c 'the referee decides' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'each reviewer was right about the tree it read' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'each referee was right' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'no reviewer can wave it through' skills/ultrapowers/references/report-format.md && test \"$(grep -c 'no referee can wave' skills/ultrapowers/references/report-format.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'because a blocking referee finding had just been repaired' skills/ultrapowers/references/report-format.md && test \"$(grep -c \"the referee's blocking finding\" skills/ultrapowers/references/report-format.md)\" = 0 && test \"$(( $(grep -oE \"\\breferees?\\b\" skills/ultrapowers/references/report-format.md | wc -l) - $(grep -o \"referee-red\" skills/ultrapowers/references/report-format.md | wc -l) - $(grep -oE \"(driver's|mechanical|blocking|still-blocking) referees?\\b\" skills/ultrapowers/references/report-format.md | wc -l) ))\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q",
+      "exit": 0,
+      "stdout": "...........................                                              [100%]\n27 passed in 0.09s\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/referee.mjs fleet/referee-linker.mjs fleet/roles/reviewer.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 119073,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "333942e2e0248d60ac0a800994a17400b2899ceb",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-83/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-83/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.78,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, Claim slot: the operator's top-level plan Claim (/home/exedev/plans/run-83.md:5) quantifies over the whole engine \u2014 \"Every 'referee' in the engine and the report format is the driver's arithmetic, and every model review agent is a 'reviewer'\" \u2014 but the integrated tree still names the model review agent \"referee\" in ~25 comments of fleet/run-engine.mjs (169, 194, 462, 465, 468, 516, 522, 532, 1529, 1534, 1550, 1797, 1800, 1802, 2095, 2151, 2172, 2194, 2284, 2779, 2932, 3011) and in two prompt literals it renders to workers (PROPOSED_PATCH_HEADER at fleet/run-engine.mjs:172, the minor-Check gloss at :476). This is not a shortfall against the task as scoped: the plan's choice (2) at /home/exedev/plans/run-83.md:21-26 deliberately carves comments and those two literals out, the derived task Claim narrows to record-carrying judgment calls, and every Machine clause M1-M7 is met. It is minor rather than blocking for that reason. Worth an issue only because the deferral names no follow-up ticket while the plan carries **Closes:** #821 (line 31), so the residual has no recorded home. The sharpest instances are the pairs that now disagree across files: fleet/run-engine.mjs:2932 still reads \"no referee can wave it through\" while the sentence it mirrors at skills/ultrapowers/references/report-format.md:116 now reads \"no reviewer can wave it through\"; likewise fleet/run-engine.mjs:1076 (\"charging them to the referee flatters the ratio\") against report-format.md:107 (\"charging the driver's findings to the reviewers flatters the ratio\"), fleet/run-engine.mjs:1529 (\"named to the referee as EXAM EDITED\") against report-format.md:102 (\"names the paths to the reviewer as EXAM EDITED\"), and the minor-Check gloss at fleet/run-engine.mjs:476 (\"recorded here for the referee's attention\") against the judgment call this task changed at fleet/run-engine.mjs:1847 (\"recorded for the reviewer, blocking nothing\"), which are now the same fact worded two ways one file apart."
+    }
+  ],
+  "blockedWaves": []
+}
