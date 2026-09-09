@@ -73,3 +73,14 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/_outcome.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py","exit":0,"minor":false,"wave":1,"id":"01M23R61110000VHG9S8K8RVPJ","ts":1788979905569}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M23R61120000Q6ZH28Z2651Y","ts":1788979905570}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"32f38b28-7c29-4d07-b97a-79edc714e0ad","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-80/clones/integration","model":"opus","id":"01M23R61130000XZF5J17REE36","ts":1788979905571}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"32f38b28-7c29-4d07-b97a-79edc714e0ad","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4164,"output":7493,"cacheRead":328461,"cacheCreation":63519,"costUsd":0.7879055,"models":["claude-opus-5"]},"id":"01M23R95290000W3DYVRVT24AB","ts":1788980008009}
+{"kind":"transcript:slice","label":"integration","sessionId":"32f38b28-7c29-4d07-b97a-79edc714e0ad","bytes":11401,"id":"01M23R952E0000ZDG0GH57T132","ts":1788980008014}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M23R952R000055H71S7NYYGN","ts":1788980008024}
+{"kind":"driver:stage","stage":"finalize","id":"01M23R953T0000DB8JA96Y8K5G","ts":1788980008058}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-80/acceptance.log","id":"01M23R955B0000YY9A0F0QZS2V","ts":1788980008107}
+{"kind":"driver:stage","stage":"gate","id":"01M23R955B0001669QYQ0F5237","ts":1788980008107}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M23RQY2Q0000VBE7Z1HKJFXW","ts":1788980492375}
+{"kind":"driver:stage","stage":"approve","id":"01M23RQY2Q0001NVGPHY4VJM8Z","ts":1788980492375}
+{"kind":"driver:approved","stamp":"run-80","integrationBranch":"ultra/integration-run-80","id":"01M23RQY4N0000YQ68GK0MCCTP","ts":1788980492437}
+{"kind":"run:open","runId":"run-80","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","source":"fleet/publish-fold.mjs","id":"01M23RQYB30000JDSN06RKZE5K","ts":1788980492643}
+{"kind":"driver:publish-fold","run":"80","attempt":"1","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","tip":"a7b0ccc7be67194181f8f36d0b42f5181bf1ad2f","candidate":"d453428d8c2743861bc79148c811c6deb340b871","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M23S5ZNH0000QRYGVNAD5Z2Z","ts":1788980952753}

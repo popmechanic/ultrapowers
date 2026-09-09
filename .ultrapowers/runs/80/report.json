@@ -1,0 +1,196 @@
+{
+  "integrationBranch": "ultra/integration-run-80",
+  "baseSha": "3fb782b6de9a3cdbd17dbab957f718df15b8399d",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "930f8f4be8547ba9a03af8652adfc08140cfb92d",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-80/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Weak exam leg: `tests/test_ultralearn_catches.py::test_task1_e_outcomes_is_defined_and_used` (patch lines 263-272) asserts only that at least two *lines* of `catch_counter.py` contain the substring `OUTCOMES`. It mirrors the Proof's `grep -c OUTCOMES \u2026 -ge 2` faithfully, but it passes with the behaviour its name claims (\"defined and *used*\") deleted \u2014 replacing `CAUGHT, EXAM_EDITED, TASK_WRITES, RERUN, STAYED_RED, NO_GREEN = OUTCOMES` with a bare comment mentioning `OUTCOMES` keeps it green. This leaves no M3 criterion unverified \u2014 `test_task1_e_outcomes_is_the_six_member_tuple` pins the tuple exactly and `test_every_reds_outcome_is_one_of_the_six` now reads `counter.OUTCOMES` over the six `base_fixture` shapes \u2014 so it is advisory only. A cheap strengthening is to assert the module actually derives its outcome names from the tuple, e.g. `assert counter.CAUGHT == counter.OUTCOMES[0]` and that no line of `_outcome_of` returns a bare outcome string literal, rather than counting substring hits in the source text.; `derive_catches`'s new docstring says \"the report's tree walk over the repository is the only source of `unobserved` rows\". The claim is correct (it is `catch_report.py`'s `tree_test_files` walk), but inside a function whose very next lines bind a local `report = _read_json(run_dir / \"report.json\")`, \"the report's tree walk\" reads as a walk by `report.json`. Naming the script disambiguates it, and the Proof's third `Run:` only greps for the substring `tree walk`, so the wording is free to move: `.. the report's tree walk ..` -> `.. `catch_report.py`'s tree walk ..`.; Recorded, no action needed: the pre-existing `test_every_reds_outcome_is_one_of_the_six` had its assertion redirected from the exam-local `OUTCOMES` set to `counter.OUTCOMES`. This is required by the Claim's item (3) and M3, and it is a net strengthening rather than a loosening, because the new leg (e) (`test_task1_e_outcomes_is_the_six_member_tuple`) separately pins `set(counter.OUTCOMES) == OUTCOMES` \u2014 so the pair together admits no tree the original assertion would have rejected. Flagging it only so the operator sees that an existing assertion in the exam changed shape.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "40ee5148914994263faf90e18cc36d41b9bd32e7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-80/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a39085222b1b44627f4c4cda6d0b77c8ff5d0cb5",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-80/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-80/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1925 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 29%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.....................................................                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1925 passed, 5 warnings in 481.87s (0:08:01) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_ultralearn_catches.py -q",
+      "exit": 0,
+      "stdout": "...........................                                              [100%]\n27 passed in 0.27s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c OUTCOMES skills/ultralearn/scripts/catch_counter.py)\" -ge 2",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -c 'import sys; sys.path.insert(0, \"skills/ultralearn/scripts\"); import catch_counter as c; d = c.derive_catches.__doc__; assert \"unobserved\" in d and \"tree walk\" in d and \"reports no reds\" not in d'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest tests/test_ultralearn_catch_report.py -q",
+      "exit": 0,
+      "stdout": "................                                                         [100%]\n16 passed in 0.35s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultralearn/scripts/catch_report.py --ledger /nonexistent/catch-ledger.jsonl | sed -n 2p | grep -qx '| --- | --- | --- | --- |'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 -m pytest tests/test_ultralearn_docs.py -q",
+      "exit": 0,
+      "stdout": "..........                                                               [100%]\n10 passed in 0.26s\n"
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(grep -c 'overrides that path' skills/ultralearn/SKILL.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "sed -n '/^## The catch counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'appends one.*catch-count.*row per run to the file named by.*--ledger.*the counter.s only flag'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "test \"$(python3 skills/ultralearn/scripts/catch_counter.py tests/fixtures/ultralearn/census)\" = '2 run(s) counted, 0 row(s) appended, 0 already recorded'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "3",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/_outcome.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 520595,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "9dbffe482109ca85e254a16fcd4c5ab13a076a65",
+      "branches": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-80/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-80/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.96,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 3,
+    "tasks_planned": 3,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
