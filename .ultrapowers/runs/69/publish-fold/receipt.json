@@ -11,6 +11,17 @@
       "checks": [],
       "checkRetries": 0,
       "pushedHead": "b721b33417582d9167f9eb4d027cdf5b21f8f820"
+    },
+    "2": {
+      "tip": "f0f5686f166ba66a8d45fe1ce188618dac54e72f",
+      "candidate": "e50b2172693bf5efc0e14ff04446307540d2fd13",
+      "disposition": "folded",
+      "pathsJoined": 0,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [],
+      "checkRetries": 0,
+      "pushedHead": "2510b21df8284599de4ae69baec77e538d99c875"
     }
   }
 }
