@@ -1,0 +1,248 @@
+{
+  "ok": true,
+  "stamp": "run-80",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-80"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Every red is judged, only a literal green closes the pair, and the outcome vocabulary is one tuple",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/scripts/catch_counter.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`OUTCOMES`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The table renders and catches is a sum",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/scripts/catch_report.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": []
+        }
+      },
+      {
+        "id": "3",
+        "title": "The skill promises only the flag the counter has, and the docs control is real",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": []
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "Every red is judged, only a literal green closes the pair, and the outcome vocabulary is one tuple",
+          "files": [
+            "skills/ultralearn/scripts/catch_counter.py",
+            "tests/test_ultralearn_catches.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`OUTCOMES`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/scripts/catch_counter.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_ultralearn_catches.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_ultralearn_catches.py",
+          "proofRuns": [
+            "python3 -m pytest tests/test_ultralearn_catches.py -q",
+            "test \"$(grep -c OUTCOMES skills/ultralearn/scripts/catch_counter.py)\" -ge 2",
+            "python3 -c 'import sys; sys.path.insert(0, \"skills/ultralearn/scripts\"); import catch_counter as c; d = c.derive_catches.__doc__; assert \"unobserved\" in d and \"tree walk\" in d and \"reports no reds\" not in d'"
+          ],
+          "proofGuards": [
+            "tests/test_ultralearn_catches.py"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The table renders and catches is a sum",
+          "files": [
+            "skills/ultralearn/scripts/catch_report.py",
+            "tests/test_ultralearn_catch_report.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": []
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/scripts/catch_report.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_ultralearn_catch_report.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_ultralearn_catch_report.py",
+          "proofRuns": [
+            "python3 -m pytest tests/test_ultralearn_catch_report.py -q",
+            "python3 skills/ultralearn/scripts/catch_report.py --ledger /nonexistent/catch-ledger.jsonl | sed -n 2p | grep -qx '| --- | --- | --- | --- |'"
+          ],
+          "proofGuards": [
+            "tests/test_ultralearn_catch_report.py"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The skill promises only the flag the counter has, and the docs control is real",
+          "files": [
+            "skills/ultralearn/SKILL.md",
+            "tests/test_ultralearn_docs.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": []
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultralearn/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_ultralearn_docs.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_ultralearn_docs.py",
+          "proofRuns": [
+            "python3 -m pytest tests/test_ultralearn_docs.py -q",
+            "test \"$(grep -c 'overrides that path' skills/ultralearn/SKILL.md)\" = 0",
+            "sed -n '/^## The catch counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'appends one.*catch-count.*row per run to the file named by.*--ledger.*the counter.s only flag'",
+            "test \"$(python3 skills/ultralearn/scripts/catch_counter.py tests/fixtures/ultralearn/census)\" = '2 run(s) counted, 0 row(s) appended, 0 already recorded'",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn"
+          ],
+          "proofGuards": [
+            "tests/test_ultralearn_docs.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "3 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- A `catch-count` row still carries exactly the seven keys `kind`, `runId`, `driverRuns`,\n  `catches`, `reds`, `touched`, `exercises`, and every path in it is the string the record\n  spelled \u2014 nothing normalised, resolved or globbed.\n- `--ledger` stays the counter's only flag and has no default: without it the counter appends\n  nothing and prints `<n> run(s) counted, 0 row(s) appended, 0 already recorded` at exit 0, as\n  at BASE.\n- The report's pinned strings are unchanged: the header `| test | catches | touching runs | status |`,\n  `## Zero-catch curve`, `N=<n>: <c> file(s)`, `max touching runs: <max>`,\n  `## Zero catches over <N> runs`; the delimiter row is the one addition to the table.\n- The 38 tests the three exam files collect at BASE stay green; new legs are added beside them\n  under a comment naming the task.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultralearn/scripts/_outcome.py skills/ultralearn/scripts/fleet_events.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-80/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-80/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-80/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-80/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
