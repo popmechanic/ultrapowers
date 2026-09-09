@@ -1,0 +1,265 @@
+{
+  "ok": true,
+  "stamp": "run-75",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-75"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "3 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The fold-again comments describe the unbounded shape",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/publish-fold.mjs",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/test_sandbox_boot_merge.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The deadman widening and the fold-again window are pinned under an injectable clock",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The merge sim spawns no sibling sim",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/test_sandbox_boot_merge.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The fold-again comments describe the unbounded shape",
+          "files": [
+            "fleet/publish-fold.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/publish-fold.mjs",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c 'attempt 1|2' fleet/publish-fold.mjs)\" = 0",
+            "test \"$(grep -c '1 or 2' fleet/publish-fold.mjs)\" = 0",
+            "node -e \"import('./fleet/publish-fold.mjs').then(m => process.exit(m.usage().includes('--attempt <n>') && !m.usage().includes('1|2') ? 0 : 1))\"",
+            "test \"$(grep -c \"attempt 2's fold floors\" fleet/sandbox-boot.sh)\" = 0",
+            "test \"$(grep -c \"retry's own note\" fleet/sandbox-boot.sh)\" = 0",
+            "test \"$(grep -c 'A second attempt lands' fleet/sandbox-boot.sh)\" = 0",
+            "test \"$(grep -c 'the FIRST PUT' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+            "test \"$(grep -c 'the second, default 200' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+            "t=$(mktemp) && git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -v '^ *#' > \"$t\" && grep -v '^ *#' fleet/sandbox-boot.sh | diff \"$t\" -",
+            "python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "2",
+          "title": "The deadman widening and the fold-again window are pinned under an injectable clock",
+          "files": [
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_merge.mjs",
+          "proofRuns": [
+            "python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q",
+            "python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot_exams or sandbox_boot_selfmerge or sandbox_boot_edges' -q"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "The merge sim spawns no sibling sim",
+          "files": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/tests/test_sandbox_boot_merge.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -cw spawn fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+            "test \"$(grep -c 'test_sandbox_boot_exams.mjs' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+            "test \"$(grep -c 'test_sandbox_boot_selfmerge.mjs' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+            "test \"$(grep -c 'node:child_process' fleet/tests/test_sandbox_boot_merge.mjs)\" = 1",
+            "test \"$(grep -c 'spawnSync(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 2",
+            "grep -q \"spawnSync('bash', \\['-n', SCRIPT\\]\" fleet/tests/test_sandbox_boot_merge.mjs",
+            "grep -q \"spawnSync(path.join(ctx.bin, 'systemctl')\" fleet/tests/test_sandbox_boot_merge.mjs",
+            "test \"$(grep -cE 'execSync|execFile|exec\\(|fork\\(' fleet/tests/test_sandbox_boot_merge.mjs)\" = 0",
+            "python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot_exams or sandbox_boot_selfmerge' -q",
+            "python3 -m pytest tests/test_fleet_suite.py -k sandbox_boot_merge -q",
+            "bash -o pipefail -c 'time node fleet/tests/test_sandbox_boot_merge.mjs | grep -c \"ALL TESTS PASSED\"'"
+          ],
+          "proofGuards": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 3 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- `fleet/sandbox-boot.sh` changes only in comment lines \u2014 no task here alters what the boot script does.\n- No sim under `fleet/tests/` starts another `fleet/tests/test_*.mjs` as a child process; a sibling sim is graded by its own `tests/test_fleet_suite.py` row.\n- The rig's `date` stub is transparent to every caller but the epoch read: any argv other than `+%s` is handed to the real `date`, so status pages, log stamps and the stubs' own `say` prelude are unchanged.\n- Every new exam leg sits in the existing behaviour-surface file `fleet/tests/test_sandbox_boot_merge.mjs`, beside the case it extends, under a comment naming its task.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "t=$(mktemp) && git show $ULTRA_BASE:fleet/sandbox-boot.sh | grep -v '^ *#' > \"$t\" && grep -v '^ *#' fleet/sandbox-boot.sh | diff \"$t\" -",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-75/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-75/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-75/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-75/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
