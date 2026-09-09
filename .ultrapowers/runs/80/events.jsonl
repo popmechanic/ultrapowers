@@ -89,3 +89,4 @@
 {"kind":"publish:merge","sha":null,"left":"refused","detail":"merge PUT answered 405","id":"01M23SW4ZX0000JH9FX2TK7GWT","ts":1788981679101}
 {"kind":"run:open","runId":"run-80","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","source":"fleet/publish-fold.mjs","id":"01M23SW7B700007C6Y7A29EH46","ts":1788981681511}
 {"kind":"driver:publish-fold","run":"80","attempt":"2","base":"3fb782b6de9a3cdbd17dbab957f718df15b8399d","tip":"5f4caf8b29bc583bdda87cca9f3ff4ee16b0d38c","candidate":"0f2663405125d0a6b1d1bcf95df2b75a2254bbcd","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M23TC4760000E4FN407YNKV2","ts":1788982202598}
+{"kind":"publish:merge","sha":"cf86704ac9e8db191aa1486d0403e3c555251941","id":"01M23V476500009QNNY7VG3Y3S","ts":1788982992069}
