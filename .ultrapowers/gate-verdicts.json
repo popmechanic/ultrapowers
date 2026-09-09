@@ -1,0 +1,35 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "aaa388332d7a8d723bd7608f1b134130848b2c8a9d39473317c2a9d9bb59038a",
+      "verdict": "pass",
+      "reason": "Every leg falsifies the clause it cites: fixed-string greps wrapped so a zero count is the only exit-0 path, the usage() leg calls the export itself, the M4 diff strips ^ *# symmetrically on both sides, and the pytest leg runs the named sim."
+    },
+    "2": {
+      "hash": "9ec8ee7321d7ce446a3a08cb8baef1bbbdd7337ccccdc801836f2a61c425b1fa",
+      "verdict": "pass",
+      "reason": "Under M3/M4 the clock runs fold1 to 600, PUT1 405 sets SINCE, fold2 to 1200, PUT2 measures 600 < 1000, fold3 to 1800, PUT3 measures 1200 >= 1000 and trips: exactly three units, three PUTs, clock 1800 and the 'after 1000s' note, matching legs (d)-(f); the mutant leg (b) falsifies the phase_now block rather than naming it."
+    },
+    "3": {
+      "hash": "b678c2929ccff43f4cfe150bf3e2428421b3e00a8da8525b4ee0da1fb0556a23",
+      "verdict": "pass",
+      "reason": "grep -cw spawn does not match spawnSync, the two spawnSync( lines are the pinned calls, -k sandbox_boot_merge selects only the merge row, and under pipefail the timed run exits 0 only if node exited 0 and grep found the sentinel; legs (a)-(c) close every node:child_process route."
+    }
+  },
+  "tally": {
+    "dispatched": 5,
+    "rejected": 2,
+    "rounds": {
+      "1": {
+        "dispatched": 3,
+        "rejected": 2,
+        "notes": "task 1: process substitution and a whole-file grep for the usage string; task 3: pipeline exit status without pipefail and an unclosed spawnSync route"
+      },
+      "2": {
+        "dispatched": 2,
+        "rejected": 0
+      }
+    },
+    "guide_review": "claude-code-guide: assumptions 1, 2, 4 hold (FLEET_BIN_DIR prefixes PATH; /bin/date on both darwin and Ubuntu; one fold arm per unit, --wait'ed; systemctl stub globs fleet-fold-*); assumption 3 holds only once the optional script argument is added to boot/bootAsync, which Task 2's Context names; no simpler mechanism found."
+  }
+}
