@@ -281,7 +281,10 @@ export const CANDIDATE_CHECKS = [PARSE_CHECK, EXAM_CHECK]
  *   run          this run's number
  *   runDir       `<repo>/.claude/ultrapowers/run-run-<N>`
  *   evidenceDir  the evidence worktree directory this run's receipts ride
- *   attempt      1 or 2
+ *   attempt      which fold attempt this is: 1-based and unbounded. Nothing
+ *                here range-checks it — `parseArgs` takes any N, `priorKeys`
+ *                and `floor` are written for any N, and the boot script's
+ *                fold-again loop dispatches `--attempt 3`, `4`, …
  *
  * `deps` are the three seams: `makeAgent` (the exam injects a stub resolver
  * exactly as runMain's seam is used), `exec` (every subprocess) and `rename`
@@ -962,7 +965,7 @@ export async function publishFold (opts, deps = {}) {
 
 export const usage = () =>
   'usage: node fleet/publish-fold.mjs --repo DIR --base SHA --branch NAME --run N ' +
-  '--run-dir DIR --evidence-dir DIR --attempt 1|2'
+  '--run-dir DIR --evidence-dir DIR --attempt <n>'
 
 export function parseArgs (argv) {
   const KEYS = {
