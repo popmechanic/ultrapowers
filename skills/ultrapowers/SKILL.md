@@ -206,4 +206,4 @@ approved plan, **is** the authorization to execute — no further approval pause
 - `references/report-format.md`, `references/finishing-notes.md` — report schema; finishing checks.
 - `kernel/FOLD_LOG.md` — the fold-log schema (contended-wave state a parked run's evidence carries).
 - `scripts/ultra_run.py`, `scripts/ultra_gate.py`, `scripts/finalize_report.py`,
-  `scripts/gate_check.py`, `scripts/run_acceptance.sh`, `scripts/compile_plan.py`.
+  `scripts/gate_check.py`, `scripts/compile_plan.py`.

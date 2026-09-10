@@ -147,8 +147,7 @@ test('a one-task engine run\'s report has no acceptance key, and keeps tests  [M
 // ── (b) the driver tees nothing and rewrites no receipt  [M2] ────────────────
 //
 // One `runMain` drive over a stubbed `exec`. The receipt is read at the moment
-// `ultra_gate.py` is invoked — that is the reader M2 is about, and the gate
-// hands `receipt.json`'s `testCmd` to the frozen `run_acceptance.sh` — and once
+// `ultra_gate.py` is invoked — that is the reader M2 is about — and once
 // more from disk at the end of the run.
 
 /** The value `ultra_run.py` stamps in this drive. Carries `&&` on purpose: the

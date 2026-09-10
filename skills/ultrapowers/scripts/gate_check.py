@@ -8,8 +8,8 @@ before Approve), 1 = BLOCKED (do not Approve).
 
 Fail-closed by construction: git is the ground truth the report is checked
 AGAINST, so a corrupted or hand-edited report can only produce BLOCKED,
-never a false PASS. This script does not administer acceptance (that is
-run_acceptance.sh, per disposition).
+never a false PASS. This script does not judge the suite: ultra_gate.py reads
+the suite result from the report's `tests` block.
 
 The clean-tree check compares against the dirty set recorded at snapshot
 time (`DIRTY_SNAPSHOT`); with no snapshot it treats all dirt as new.

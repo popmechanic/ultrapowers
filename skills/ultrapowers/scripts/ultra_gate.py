@@ -3,12 +3,12 @@
 
 Gate mode (--result): read the engine's report (bare since 0.3.0; the
 pre-0.3.0 Workflow-tool envelope with the report under result.* is still
-accepted — report-format.md), save the report verbatim, run
-gate_check.py, then administer acceptance per the disposition recorded in the
-ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a failed acceptance
-always forces 1. The driver never decides — the orchestrator renders the
-receipt and applies the two-move rule. Gate mode moves no checkout: the
-verdict is checkout-position-independent (#104).
+accepted — report-format.md), save the report verbatim, run gate_check.py,
+then read the suite result the run already recorded in the report's `tests`
+block. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a red suite always forces 1.
+The gate runs no suite of its own. The driver never decides — the
+orchestrator renders the receipt and applies the two-move rule. Gate mode
+moves no checkout: the verdict is checkout-position-independent (#104).
 
 --approve: checkout the integration branch and print the approve receipt
 ({mode, stamp, branch}); the orchestrator saves that JSON verbatim to
@@ -108,41 +108,15 @@ def main(argv=None):
                 "detail": "gate_check emitted no JSON: " + r.stderr}
     receipt.update({"gateCheck": gate, "gateCheckExit": r.returncode})
 
-    # Acceptance, per the disposition ultra_run recorded at compile time.
-    run_receipt = {}
-    receipt_file = run_dir / "receipt.json"
-    if receipt_file.is_file():
-        run_receipt = json.loads(receipt_file.read_text())
-    acc = (run_receipt.get("compile") or {}).get("acceptance") or {}
-    mode = acc.get("mode")
-    if mode == "sealed":
-        # One Driver Phase 0, row 7: sealed acceptance is not administered.
-        # run_acceptance.sh's sealed mode is gone, so nothing is dispatched;
-        # the gate receipt below is the terminal artifact (BLOCKED).
-        acceptance = {"disposition": "sealed", "exit": None,
-                      "reason": "sealed acceptance is not administered — "
-                                "Phase 0 row 7"}
-        acc_pass = False
-    elif mode == "waived":
-        acceptance = {"disposition": "waived", "exit": None,
-                      "reason": acc.get("reason", "")}
-        acc_pass = True
-    else:  # 'suite' and unmarked both bind acceptance to the committed suite
-        test_cmd = run_receipt.get("testCmd") or ""
-        if not test_cmd:
-            return blocked(receipt, "receipt lacks testCmd — the gate derives its "
-                           "inputs from the receipt (#96); re-run the ultra_run.py "
-                           "preflight so testCmd is stamped before gating")
-        cmd = ["bash", str(HERE / "run_acceptance.sh"), "--suite-gate",
-               "--branch", str(branch), "--run", test_cmd,
-               "--base", run_receipt.get("baseBranch", "main")]
-        if run_receipt.get("bootstrapCmd"):
-            cmd += ["--bootstrap", run_receipt["bootstrapCmd"]]
-        r = sh(cmd, cwd=root)
-        acceptance = {"disposition": "suite", "exit": r.returncode,
-                      "output": (r.stdout + r.stderr)[-4000:]}
-        acc_pass = r.returncode == 0
-    receipt["acceptance"] = acceptance
+    # The suite result the run already recorded — the gate reads it, it does
+    # not run a suite of its own.
+    tests = report.get("tests")
+    if not isinstance(tests, dict):
+        return blocked(receipt, "report carries no tests block — the engine "
+                                "records the integrated suite there")
+    receipt["suite"] = {"passed": bool(tests.get("passed")),
+                        "output": str(tests.get("output", ""))[-4000:]}
+    acc_pass = receipt["suite"]["passed"]
 
     gate_exit = receipt["gateCheckExit"]
     if gate_exit == 1 or gate.get("verdict") == "BLOCKED" or not acc_pass:

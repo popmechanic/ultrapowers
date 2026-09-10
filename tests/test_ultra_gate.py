@@ -1,12 +1,10 @@
 """ultra_gate.py: the deterministic gate driver (SKILL.md Step 5 mechanics).
-Runs against a throwaway git repo with a stubbed run_acceptance.sh so
-acceptance DISPATCH is tested without a real vault. gate_check.py and the
-envelope unwrap are exercised for real.
+Runs against a throwaway git repo; gate_check.py and the envelope unwrap are
+exercised for real.
 
-The second half of the file (#96) pins the suite-disposition contract: the
-acceptance command and bootstrap come exclusively from `receipt.json`, never
-from `report.tests.command`, and a receipt predating the driver change BLOCKS
-loudly instead of running anything.
+The gate administers no suite of its own: it reads the result the run already
+recorded in the report's `tests` block, so the fixtures here are reports, not
+receipts.
 """
 import json
 import pathlib
@@ -25,10 +23,9 @@ def sh(cmd, cwd=None, check=True):
     return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
 
 
-def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None,
-              seed_dirty_baseline=True):
-    """Throwaway repo + a scripts dir where run_acceptance.sh is a stub that
-    records its argv and exits 0. Returns (repo, scripts_dir, head).
+def make_repo(tmp_path, seed_dirty_baseline=True):
+    """Throwaway repo + a scripts dir holding the real driver and gate_check.
+    Returns (repo, scripts_dir, head).
 
     `seed_dirty_baseline=False` reproduces a launch whose DIRTY_SNAPSHOT was
     never written — post-#104 that is an ordinary state the gate must survive,
@@ -53,29 +50,16 @@ def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None,
     scripts.mkdir()
     for f in ("ultra_gate.py", "gate_check.py"):
         shutil.copy2(SCRIPTS / f, scripts / f)
-    (scripts / "run_acceptance.sh").write_text(
-        "#!/usr/bin/env bash\necho \"STUB $@\"\nexit 0\n")
-    (scripts / "run_acceptance.sh").chmod(0o755)
 
     if seed_dirty_baseline:
         write_dirty_baseline(repo)
-    run_dir = repo / ".claude/ultrapowers/run-t1"
-    run_dir.mkdir(parents=True)
-    acceptance = {"waived": {"mode": "waived", "reason": "test"},
-                  "sealed": {"mode": "sealed", "sealId": "abc123",
-                             "sha256": "d" * 64},
-                  "suite": {"mode": "suite", "reason": "test"}}[acceptance_mode]
-    run_receipt = {"ok": True, "stamp": "t1", "baseBranch": "main",
-                   "compile": {"acceptance": acceptance}}
-    run_receipt.update(receipt_extra or {})
-    (run_dir / "receipt.json").write_text(json.dumps(run_receipt))
     return repo, scripts, head
 
 
-def good_report(head):
+def good_report(head, tests_passed=True):
     return {"integrationBranch": "ultra/int", "waves": [["1"]],
             "tasks": [{"task": "1", "status": "done"}],
-            "tests": {"command": "IGNORED PROSE (553 passed)", "passed": True},
+            "tests": {"command": "x", "passed": tests_passed, "output": "ok"},
             "unfinished": [], "gitVerified": True,
             "waveMerges": [{"wave": 1, "status": "MERGED", "headSha": head}],
             "coverage": {"tasks_merged": 1, "tasks_planned": 1, "complete": True}}
@@ -102,7 +86,7 @@ def test_envelope_unwrap_and_pass(tmp_path):
     assert out["branch"] == "ultra/int"
     saved = repo / ".claude/ultrapowers/run-t1/report.json"
     assert json.loads(saved.read_text())["integrationBranch"] == "ultra/int"
-    assert out["acceptance"]["disposition"] == "waived"
+    assert out["suite"] == {"passed": True, "output": "ok"}
     assert "wfRuns" not in out
 
 
@@ -147,53 +131,35 @@ def test_gate_leaves_the_session_checkout_where_it_found_it(tmp_path):
     assert sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip() == before
 
 
-def test_sealed_disposition_is_blocked_without_administering(tmp_path):
-    """Phase 0 row 7: sealed acceptance is no longer administered. The gate
-    BLOCKS with the gate receipt as the terminal artifact and never invokes
-    run_acceptance.sh (the stub would have echoed STUB into the output)."""
-    repo, scripts, head = make_repo(tmp_path, acceptance_mode="sealed")
+def test_recorded_red_suite_forces_blocked(tmp_path):
+    """The recorded suite is the gate's suite: `tests.passed` false BLOCKS
+    even with every gate_check green, and the receipt carries the result."""
+    repo, scripts, head = make_repo(tmp_path)
     result = tmp_path / "result.json"
-    result.write_text(json.dumps(good_report(head)))
+    result.write_text(json.dumps(good_report(head, tests_passed=False)))
     r = run_gate(repo, scripts, result)
     out = json.loads(r.stdout)
     assert r.returncode == 1
     assert out["verdict"] == "BLOCKED"
-    assert out["acceptance"] == {
-        "disposition": "sealed", "exit": None,
-        "reason": "sealed acceptance is not administered — Phase 0 row 7"}
-    assert "STUB" not in r.stdout
+    assert out["suite"] == {"passed": False, "output": "ok"}
     saved = json.loads((repo / ".claude/ultrapowers/run-t1/gate-receipt.json")
                        .read_text())
     assert saved["verdict"] == "BLOCKED"
 
 
-def test_suite_acceptance_dispatch(tmp_path):
-    """Suite disposition invokes the suite-gate with the RECEIPT's test command
-    (#96 — never the report's prose) and the receipt's baseBranch."""
-    repo, scripts, head = make_repo(tmp_path, acceptance_mode="suite",
-                                    receipt_extra={"testCmd": "make check"})
+def test_report_without_a_tests_block_is_blocked(tmp_path):
+    """No recorded suite, no verdict to read — the gate refuses rather than
+    treating a missing block as a green."""
+    repo, scripts, head = make_repo(tmp_path)
+    report = good_report(head)
+    del report["tests"]
     result = tmp_path / "result.json"
-    result.write_text(json.dumps(good_report(head)))
+    result.write_text(json.dumps(report))
     r = run_gate(repo, scripts, result)
     out = json.loads(r.stdout)
-    assert out["acceptance"]["disposition"] == "suite"
-    assert "--suite-gate" in out["acceptance"]["output"]
-    assert "--run make check" in out["acceptance"]["output"]
-    assert "IGNORED PROSE" not in out["acceptance"]["output"]
-    assert "--base main" in out["acceptance"]["output"]
-
-
-def test_failed_acceptance_forces_blocked(tmp_path):
-    repo, scripts, head = make_repo(tmp_path, acceptance_mode="suite",
-                                    receipt_extra={"testCmd": "make check"})
-    (scripts / "run_acceptance.sh").write_text(
-        "#!/usr/bin/env bash\necho RED\nexit 1\n")
-    (scripts / "run_acceptance.sh").chmod(0o755)
-    result = tmp_path / "result.json"
-    result.write_text(json.dumps(good_report(head)))
-    r = run_gate(repo, scripts, result)
     assert r.returncode == 1
-    assert json.loads(r.stdout)["verdict"] == "BLOCKED"
+    assert out["verdict"] == "BLOCKED"
+    assert "tests" in out["detail"]
 
 
 def test_gate_check_blocked_propagates(tmp_path):
@@ -244,11 +210,9 @@ def test_teardown_and_wf_run_flags_are_gone(tmp_path):
         assert "unrecognized arguments" in r.stderr
 
 
-# ── #96: suite acceptance derives its inputs from the receipt ────────────
-# These stub at the ultra_gate.sh boundary ONLY (git rev-parse, gate_check
-# and run_acceptance are all subprocesses through sh()), so the exact argv
-# handed to run_acceptance.sh is observable — and so is the full call list,
-# which #104 uses to pin that no run_lock.sh restore is issued at all.
+# ── #104: the restore call is deleted, not made conditional ──────────────
+# Stubbing at ultra_gate's own `sh` boundary (git rev-parse and gate_check are
+# both subprocesses through it) makes the full call list observable.
 
 
 class FakeProc:
@@ -256,90 +220,32 @@ class FakeProc:
         self.returncode, self.stdout, self.stderr = code, out, err
 
 
-def _run_gate(root, monkeypatch, receipt_extra, calls=None):
-    """Drive ultra_gate.main in gate mode against a synthesized run_dir whose
-    receipt carries acceptance.mode 'suite' plus receipt_extra. Returns
-    (exit_code, gate_receipt_dict_or_None, run_acceptance_argv_or_None); pass
-    `calls` to also collect every subprocess argv the driver issued."""
-    root.mkdir(parents=True, exist_ok=True)
-    run_dir = root / ".claude/ultrapowers/run-t1"
-    run_dir.mkdir(parents=True)
-    rcpt = {"compile": {"acceptance": {"mode": "suite"}}, "baseBranch": "main"}
-    rcpt.update(receipt_extra)
-    (run_dir / "receipt.json").write_text(json.dumps(rcpt))
+def test_gate_issues_no_run_lock_restore(tmp_path, monkeypatch):
+    """No subprocess the gate issues may name `restore` — the family is gone
+    from this path."""
+    root = tmp_path / "a"
+    root.mkdir(parents=True)
     result = root / "result.json"
     result.write_text(json.dumps({"result": {
         "integrationBranch": "ultra/x",
-        "tests": {"command": "IGNORED PROSE (553 passed)", "passed": True,
-                  "output": "ok"}}}))
-    calls = [] if calls is None else calls
+        "tests": {"command": "x", "passed": True, "output": "ok"}}}))
+    calls = []
 
     def fake_sh(cmd, cwd=None):
         calls.append([str(c) for c in cmd])
         joined = " ".join(str(c) for c in cmd)
         if "rev-parse" in joined:
             return FakeProc(0, str(root) + "\n")
-        if "run_lock.sh" in joined:
-            return FakeProc(0, "")
         if "gate_check.py" in joined:
             return FakeProc(0, json.dumps({"verdict": "PASS", "checks": [],
                                            "acks": []}))
-        if "run_acceptance.sh" in joined:
-            return FakeProc(0, json.dumps({"sealId": "(suite)", "status": "OK",
-                                           "passed": True, "exitCode": 0,
-                                           "output": "ok"}))
         return FakeProc(0, "")
 
     monkeypatch.setattr(ultra_gate, "sh", fake_sh)
     code = ultra_gate.main(["--stamp", "t1", "--result", str(result),
                             "--repo", str(root)])
-    gate_receipt_path = run_dir / "gate-receipt.json"
-    gate_receipt = (json.loads(gate_receipt_path.read_text())
-                    if gate_receipt_path.is_file() else None)
-    ra = [c for c in calls if any("run_acceptance.sh" in x for x in c)]
-    return code, gate_receipt, (ra[0] if ra else None)
-
-
-def test_gate_issues_no_run_lock_restore(tmp_path, monkeypatch):
-    """#104: the restore call is deleted, not made conditional. No subprocess
-    the gate issues may name `restore` — the family is gone from this path."""
-    calls = []
-    code, receipt, _ = _run_gate(tmp_path / "a", monkeypatch,
-                                 {"testCmd": "make check"}, calls=calls)
+    receipt = json.loads((root / ".claude/ultrapowers/run-t1/gate-receipt.json")
+                         .read_text())
     assert code == 0 and receipt["verdict"] == "PASS"
     assert calls, "sanity: the driver issued subprocesses"
     assert not [c for c in calls if "restore" in " ".join(c)]
-
-
-def test_suite_acceptance_command_comes_from_receipt(tmp_path, monkeypatch):
-    code, receipt, ra = _run_gate(tmp_path / "a", monkeypatch,
-                                  {"testCmd": "make check"})
-    assert ra is not None
-    assert ra[ra.index("--run") + 1] == "make check"
-    assert all("IGNORED PROSE" not in x for x in ra)
-    assert code == 0 and receipt["verdict"] == "PASS"
-
-
-def test_bootstrap_passed_through_when_receipt_has_it(tmp_path, monkeypatch):
-    _, _, ra = _run_gate(tmp_path / "a", monkeypatch,
-                         {"testCmd": "npm test", "bootstrapCmd": "npm install"})
-    assert ra[ra.index("--bootstrap") + 1] == "npm install"
-    _, _, ra2 = _run_gate(tmp_path / "b", monkeypatch, {"testCmd": "npm test"})
-    assert "--bootstrap" not in ra2
-
-
-def test_missing_receipt_testcmd_blocks_loudly(tmp_path, monkeypatch, capsys):
-    code, _, ra = _run_gate(tmp_path / "a", monkeypatch, {})
-    assert code == 1
-    assert ra is None, "run_acceptance must never run without a receipt testCmd"
-    printed = json.loads(capsys.readouterr().out)
-    assert printed["verdict"] == "BLOCKED"
-    assert "receipt lacks testCmd" in printed["detail"]
-
-
-def test_empty_receipt_testcmd_blocks_loudly(tmp_path, monkeypatch, capsys):
-    """An empty command evals to exit 0 — the driver refuses it as a false
-    green rather than handing it to the suite-gate."""
-    code, _, ra = _run_gate(tmp_path / "a", monkeypatch, {"testCmd": ""})
-    assert code == 1 and ra is None
-    assert "receipt lacks testCmd" in json.loads(capsys.readouterr().out)["detail"]
