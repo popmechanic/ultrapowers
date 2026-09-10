@@ -1,0 +1,163 @@
+{
+  "integrationBranch": "ultra/integration-run-91",
+  "baseSha": "a0867d1780af1e9542d0c1d84af062ad192f675a",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "8145f5bcf2d92c589aecd079e0d37760df38ee82",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-91/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Dead code carried across from the retired half. In `fleet/tests/test_sandbox_boot_publish_fold.mjs`, seven declarations are defined and never referenced anywhere in the file: `RUNBOOK` (line 138), `SKILL` (line 139), `callsTo` (166), `mergeCalls` (168), `payloadOf` (170), `calls` (177) and `isMergeCall` (178). `callsTo`/`mergeCalls`/`payloadOf`/`calls`/`isMergeCall` existed to serve the check-runs poll exam that run-90 retired (this file reads merge calls through `curlCalls`/`isMergePut`/`mergePuts` and order through `stream(ctx)` instead), and `RUNBOOK`/`SKILL` have no reader now that only `CONTRACT` is sliced. This is faithful transcription \u2014 the task's Context explicitly lists `callsTo`, `mergeCalls`, `payloadOf`, `calls`, `isMergeCall` and the `CONTRACT`/`RUNBOOK`/`SKILL` paths among the harness members to re-home \u2014 so it is advisory, not a defect: node does not error on unused consts and no leg is affected. Deleting the seven lines would leave the exam's meaning unchanged.; unverified: fidelity of the carried cases' ASSERTIONS (as opposed to their tag counts) to the source bytes cannot be settled from this diff. The source, lines 663-2576 of `fleet/tests/test_sandbox_boot_merge.mjs` at e7a9eada, is deleted at BASE and reachable only through git history, which a referee does not run; PATCH shows the new file only as a whole-file add. What IS settled: M2's own stated measurement is the five `grep -c '^\\s*test(.*\\[<tag>'` counts (41/6/6/4/11), and RUN EVIDENCE shows each exiting 0, so no case was dropped or untagged. What would settle the stronger reading: `git show e7a9eada:fleet/tests/test_sandbox_boot_merge.mjs | sed -n '663,2576p'` diffed against the new file body from its first banner, expecting hunks only at the three disclosed run-90 rewrites (publish-fold M7 leg (g), strict-405 M2, fold-again M1) and the harness re-home.; The fleet-wide guard `no done phase of any boot in this file says '405 twice'  [fold-again M4 / leg (g)]` (fleet/tests/test_sandbox_boot_publish_fold.mjs:2087) swallows every failure with a bare `catch { continue }` on both the boot read and `statusOf`, so a run in which most scenarios errored still passes this leg on whatever subset survived. The floor is only `phases.length > 0`. This is a deliberate, commented choice (a boot's own leg owns its failure) and it does not leave a criterion unverified \u2014 M4's substantive rows are the `foldAgainWindowClosed`, `foldAgainTipUnmoved` and `foldAgainClocked` legs, which assert the notes positively. Tightening the floor to the number of done-ending scenarios the file declares would make the guard's coverage explicit rather than best-effort.; unverified: fidelity of the restored case bodies to their source. M2 pins only the COUNT of `test(` lines carrying each section tag (41/6/6/4/11, all settled by RUN EVIDENCE), and M3/M4 pin string presence \u2014 nothing in the Proof compares the restored assertions against lines 663\u20132576 of `fleet/tests/test_sandbox_boot_merge.mjs` at e7a9eada. A case could keep its tag and its name while having lost an assertion the original carried, and every Run: would still exit 0. The three rewrites the task authorises (publish-fold M7 leg (g), strict-405 M2, fold-again M1) are each disclosed in place with a comment naming run-90, and each replaces the retired check-runs re-entry with the substantive `at least one 'curl pr read' between attempt n's leased push and PUT n' plus `checkRunRequests(ctx) === 0` \u2014 lawful and correct. What would settle the rest: a Run: diffing the restored sections against `git show e7a9eada810d5852f324714cead513a944d096c9:fleet/tests/test_sandbox_boot_merge.mjs | sed -n '663,2576p'` modulo the three named hunks. Grading this minor because the deliverable is the sim itself and the sim runs green under the bridge.; fleet/tests/test_sandbox_boot_publish_fold.mjs:18 \u2014 the file header says \"What IS here are the four numberings the second half carried:\" and then lists five (`publish-fold`, `#808`, `failing-block`, `strict-405`, `fold-again`). The banners further down are self-consistent (`A FOURTH numbering` for strict-405, `A FIFTH numbering` for fold-again), so the header is the one line that miscounts. Fix: s/four numberings/five numberings/.; fleet/tests/test_sandbox_boot_publish_fold.mjs:172\u2013184 \u2014 four re-homed helpers are dead in this file: `mergeCalls` (line 174), `payloadOf` (176), `calls` (183) and `isMergeCall` (184); `callsTo` (172) survives only as `mergeCalls`' body. Nothing in the 69 cases calls any of them (`why`, `curlCalls`, `mergePuts` and `indicesOf` are what the legs actually read). Lawful, since the task's Context names exactly these members as the harness to re-home, so this is advisory only \u2014 but if a later reader is meant to trust that the harness slice is live, dropping the four unused ones (and `callsTo` with them) is the cheaper truth.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-91/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1609 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n.........................                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1609 passed, 5 warnings in 396.11s (0:06:36) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "timeout 300 node fleet/tests/test_sandbox_boot_publish_fold.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest -q 'tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_publish_fold.mjs]'",
+      "exit": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 21.67s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^\\s*test(.*\\[publish-fold' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 41",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^\\s*test(.*\\[#808' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 6",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^\\s*test(.*\\[failing-block' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 6",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^\\s*test(.*\\[strict-405' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 4",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^\\s*test(.*\\[fold-again' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 11",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "for s in STUB_CHECKS checkUrlFor isCheckRead CHECK_URL check_runs /check-runs; do if grep -n -F \"$s\" fleet/tests/test_sandbox_boot_publish_fold.mjs; then echo \"survivor: $s\"; exit 1; fi; done",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'mergeableReads' fleet/tests/test_sandbox_boot_publish_fold.mjs && grep -q 'checkRunRequests' fleet/tests/test_sandbox_boot_publish_fold.mjs",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c '^\\s*test(.*\\[held-patch' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 1",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/CONTRACT.md fleet/RUNBOOK.md skills/ultrapowers/SKILL.md",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 300943,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n........................                                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1608 passed, 5 warnings in 404.49s (0:06:44) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "d2214c119c5b0dc384e5cae553c8a8873ad49210",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-91/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-91/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.46499999999999997,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Suite dispatch hygiene, outside task 1's Files: tests/test_fleet_suite.py:70-73 SLOW_FIRST still names 'test_sandbox_boot_merge.mjs', which run-90 deleted and which no longer exists in fleet/tests/, and it does not name the newly restored fleet/tests/test_sandbox_boot_publish_fold.mjs even though the driver measured that sim at 21.67 s \u2014 comparable to the members the list exists to dispatch first so a --dist load worker does not strand on it. The file's own comment (lines 58-69) states that membership, not order, is what prevents stranding, and that 'a name that leaves fleet/tests/ simply drops out of the list', so the effective head is now six entries and the restored sim dispatches in relative-path order. Not a shortfall of task 1 (tests/test_fleet_suite.py is neither a Create nor a Modify in its Files, and the stale entry predates this run), and the driver's suite passed; worth an issue against the bridge list."
+    },
+    {
+      "severity": "minor",
+      "detail": "Newly authored header prose in fleet/tests/test_sandbox_boot_publish_fold.mjs:12 says 'the four numberings the second half carried' and then lists five (publish-fold, #808, failing-block, strict-405, fold-again at lines 14-21), which are the five sections M2 counts and the five banners the file actually carries. A reader counting sections from the header is off by one. Comment text only \u2014 no Claim, Interface or Context slot is affected, and M3's forbidden-string rule is unaffected."
+    }
+  ],
+  "blockedWaves": []
+}

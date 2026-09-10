@@ -42,3 +42,13 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/CONTRACT.md fleet/RUNBOOK.md skills/ultrapowers/SKILL.md","exit":0,"minor":false,"wave":1,"id":"01M26QQ96X0000NC4E5P388T50","ts":1789080085725}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M26QQ96Y0000XF9FSZM4719V","ts":1789080085726}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"c65ed892-1708-4c29-9cd7-064bd7d76189","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-91/clones/integration","model":"opus","id":"01M26QQ96Z0000Y83X2NE1B25T","ts":1789080085727}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"c65ed892-1708-4c29-9cd7-064bd7d76189","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3817,"output":11041,"cacheRead":907079,"cacheCreation":118815,"costUsd":1.9367995000000002,"models":["claude-opus-5"]},"id":"01M26QW77J0000WK6T3PP7H6JB","ts":1789080247538}
+{"kind":"transcript:slice","label":"integration","sessionId":"c65ed892-1708-4c29-9cd7-064bd7d76189","bytes":11280,"id":"01M26QW77N0000K1A1WJ5VBYQ5","ts":1789080247541}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M26QW77S0000P6RP1NNPVRNP","ts":1789080247545}
+{"kind":"driver:stage","stage":"finalize","id":"01M26QW78P0000M0DD68NS2PRF","ts":1789080247574}
+{"kind":"driver:stage","stage":"gate","id":"01M26QW79V0000TGTGBC632FES","ts":1789080247611}
+{"kind":"driver:critic-decision","approve":true,"reason":"2 completeness finding(s), none blocking","id":"01M26QW7D90000AAQGT0KAZP8W","ts":1789080247721}
+{"kind":"driver:stage","stage":"approve","id":"01M26QW7DA0000FNV2FGGVSHRA","ts":1789080247722}
+{"kind":"driver:approved","stamp":"run-91","integrationBranch":"ultra/integration-run-91","id":"01M26QW7FJ0000B54RZM4QNNCE","ts":1789080247794}
+{"kind":"run:open","runId":"run-91","base":"a0867d1780af1e9542d0c1d84af062ad192f675a","source":"fleet/publish-fold.mjs","id":"01M26QW7P700006BMX35S2509J","ts":1789080248007}
+{"kind":"driver:publish-fold","run":"91","attempt":"1","base":"a0867d1780af1e9542d0c1d84af062ad192f675a","tip":"a0867d1780af1e9542d0c1d84af062ad192f675a","candidate":"d2214c119c5b0dc384e5cae553c8a8873ad49210","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M26QW8VZ0000BY546XNVHMCT","ts":1789080249215}
