@@ -200,6 +200,15 @@ test('(f) [M1] running the heredoc and its install leaves the address in the ins
     '      *) argv+=("$a") ;;',
     '    esac',
     '  done',
+    // GNU `install -D` makes the leading directories; BSD install (macOS) has
+    // no such flag (its -D takes an argument), so emulate it here: drop the flag
+    // and mkdir -p the target's parent. The fragment itself is unchanged.
+    '  if [ "${argv[0]}" = install ]; then',
+    '    inst=()',
+    '    for a in "${argv[@]}"; do [ "$a" = -D ] || inst+=("$a"); done',
+    '    mkdir -p "$(dirname "${inst[${#inst[@]}-1]}")"',
+    '    argv=("${inst[@]}")',
+    '  fi',
     '  "${argv[@]}"',
     '}',
     'status() { :; }',

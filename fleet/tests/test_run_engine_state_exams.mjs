@@ -68,7 +68,10 @@ const { stateExamsOf, stateExamBlock } = engineMod
 // show up in the readings below as a fifth line. Nothing here wants them.
 for (const k of Object.keys(process.env)) if (k.startsWith('ULTRA_')) delete process.env[k]
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-state-exams-'))
+// realpath: the probe reads its cwd from the shell's $PWD, which the OS resolves
+// (macOS's os.tmpdir() is /var/..., a symlink to /private/var/...), so the
+// expected paths below are built from the resolved root or they never match.
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'engine-state-exams-')))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const REPORT_FORMAT_MD = fileURLToPath(
