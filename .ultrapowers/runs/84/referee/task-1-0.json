@@ -1,0 +1,48 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_candidate_bootstrap.mjs`"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: `report.baseline` as `{ passed: boolean, output: string }` on every run that completed Setup `report.baseline` is not an identifier — no file was read; Produces: `clones/baseline` — the run-tree directory the baseline suite runs in `clones` is followed by `/` in the bullet — a field, path or assignment, not an exported symbol; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_run_engine_early_baseline.mjs, fleet/tests/test_sandbox_boot_parked_error.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +2 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/run-engine.mjs": "mjs",
+    "fleet/tests/test_run_engine.mjs": "mjs",
+    "fleet/tests/test_run_engine_baseline.mjs": "mjs",
+    "fleet/tests/test_run_engine_early_baseline.mjs": "mjs",
+    "fleet/tests/test_run_engine_red_suite_record.mjs": "mjs",
+    "fleet/tests/test_run_engine_suite_passes.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_parked_error.mjs": "mjs"
+  },
+  "ms": 9
+}
