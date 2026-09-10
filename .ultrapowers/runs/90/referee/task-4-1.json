@@ -1,0 +1,39 @@
+{
+  "task": "4",
+  "n": 1,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `fleet/run-engine.mjs`"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_run_engine_blind_sensor.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +0 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/run-engine.mjs": "mjs"
+  },
+  "ms": 1
+}

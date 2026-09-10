@@ -1,0 +1,57 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_record_keys.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `tests/test_ultra_gate.py`"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `fleet/run-engine.mjs`"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: `failingTestPaths(output: string): string[]` fleet/run-engine.mjs exports failingTestPaths/1"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_run_engine_suite_attribution.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +2 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/run-engine.mjs": "mjs",
+    "fleet/tests/test_run_engine_reconcile.mjs": "mjs",
+    "fleet/tests/test_run_engine_red_suite_record.mjs": "mjs",
+    "fleet/tests/test_run_engine_suite_attribution.mjs": "mjs",
+    "skills/ultrapowers/scripts/ultra_gate.py": "py",
+    "tests/test_ultra_gate_record.py": "py"
+  },
+  "ms": 39
+}
