@@ -42,7 +42,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execSeam } from '../run-main.mjs'
 import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 import { runEngine } from '../run-engine.mjs'
-import { rig, makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, rig, makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-proof-runs-'))
 // Removed on exit, red or green (rmSync unlinks the fleet-copy's `skills`
@@ -273,7 +273,7 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
 const haveBase = (() => {
   try {
     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
-      { cwd: REPO_ROOT, stdio: 'ignore' })
+      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
     return true
   } catch { return false }
 })()
@@ -285,7 +285,7 @@ if (haveBase) {
   })
   fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
+      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
   ;({ runEngine: baseRunEngine } =
     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
@@ -977,7 +977,7 @@ for (const [leg, simName, probe, pinName] of [
     'four `driver:proof-run` events with two at `iter` 1'],
 ]) {
   const copy = copyWithProbe(simName, probe)
-  const r = spawnSync(process.execPath, [copy], { encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [copy], { encoding: 'utf8', env: ENV })
   const out = String(r.stdout || '')
   assert.ok(out.includes(BODY_GREEN),
     'leg (' + leg + '): every leg of ' + simName + ' holds — the sim prints its sentinel: ' +

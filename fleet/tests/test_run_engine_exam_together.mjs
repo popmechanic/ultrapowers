@@ -60,7 +60,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { makeCwdFor } from '../run-waves.mjs'
-import { rig, makeRepo, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, rig, makeRepo, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-together-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
@@ -128,7 +128,7 @@ const readEvents = (runDir) => {
 const showBytes = (cwd, ref, file) => {
   try {
     return execFileSync('git', ['show', ref + ':' + file],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   } catch (e) {
     return 'ABSENT: ' + String((e && e.message) || e)
   }

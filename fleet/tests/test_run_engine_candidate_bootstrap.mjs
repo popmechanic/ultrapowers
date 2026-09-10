@@ -63,7 +63,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 // Namespace import on purpose: a missing named export is a link-time
 // SyntaxError that reads like a bad import path. This way the absent
 // implementation reports itself as the assertion it is, on the line below.
@@ -138,7 +138,7 @@ const marked = (log, marker, dir) => logLines(log).filter((l) => l === marker + 
 // task clone is provisioned and only the two tracked files reach the patch.
 const runInstall = (cwd) => {
   try {
-    execFileSync('bash', ['install.sh'], { cwd, stdio: 'ignore' })
+    execFileSync('bash', ['install.sh'], { cwd, env: ENV, stdio: 'ignore' })
   } catch { /* the boom scenario's install fails here too; the clone is not the leg */ }
 }
 const addDependency = (name) => (cwd) => {
@@ -297,18 +297,18 @@ async function scenario({ files, onImpl, extraArgs = { bootstrapCmd: 'bash insta
     'within one sentence')
 }
 
-// ── (g) the sibling sims still print their sentinel [M2][M3] ─────────────────
+// ── (g) the sibling sims this task must not disturb [M2][M3] ─────────────────
+// Named, not run: the bridge in tests/test_fleet_suite.py collects every
+// fleet/tests/test_*.mjs and dispatches each on a worker of its own, so a sim
+// that spawned these two ran them twice and charged their wall to this name.
+// The coverage the leg keeps is the names — each is still a sim on the tree,
+// and the reconcile loop and the exam-clone bootstrap are graded where they
+// live.
 for (const sim of ['fleet/tests/test_run_engine_reconcile.mjs',
                    'fleet/tests/test_run_engine_exam_together.mjs']) {
-  let out
-  try {
-    out = execFileSync('node', [sim], { cwd: REPO_ROOT, encoding: 'utf8' })
-  } catch (e) {
-    out = String((e && (e.stdout || e.message)) || e)
-  }
-  assert.ok(out.includes('ALL TESTS PASSED'),
-    '[M2][M3] leg (g): ' + sim + ' still passes — the reconcile loop and the exam-clone ' +
-    'bootstrap are unchanged: ' + out.slice(-1200))
+  assert.ok(fs.existsSync(path.join(REPO_ROOT, sim)),
+    '[M2][M3] leg (g): ' + sim + ' is still a sim under fleet/tests/, collected and run by ' +
+    'the bridge — the reconcile loop and the exam-clone bootstrap are graded there')
 }
 
 console.log('ALL TESTS PASSED')

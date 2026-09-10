@@ -24,9 +24,13 @@ import {
 } from '../run-main.mjs'
 import { makeEventLog } from '../run-waves.mjs'
 import { ROLES } from '../run-worker.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-'))
-const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+// One environment for every child below: a HOME of the sim's own and a PATH of
+// the interpreters, so nothing of the box reaches a git, a bash or a node here.
+const ENV = simEnv()
+const git = (argv, cwd) => execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 
 // ── parseArgs ────────────────────────────────────────────────────────────────
 {
@@ -307,7 +311,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
     calls.push([cmd, ...argv])
     if (cmd === 'git') {
       try {
-        return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, encoding: 'utf8' }), stderr: '' }
+        return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, env: ENV, encoding: 'utf8' }), stderr: '' }
       } catch (e) {
         return { code: 1, stdout: '', stderr: String(e.stderr || e.message) }
       }
@@ -694,7 +698,7 @@ function freshRepo(name) {
     const cmd = "printf '" + first + "\\n'; cat '" + outPayload + "'; cat '" + errPayload +
       "' >&2; printf '" + last + "\\n'; exit " + exitCode
     const r = spawnSync('bash', [acceptanceSh, '--suite-gate', '--branch', 'fleet-base',
-      '--repo', wrapRepo, '--run', acceptanceWrap(cmd, runDir)], { encoding: 'utf8' })
+      '--repo', wrapRepo, '--run', acceptanceWrap(cmd, runDir)], { encoding: 'utf8', env: ENV })
     let json
     try {
       json = JSON.parse(r.stdout)
@@ -899,18 +903,20 @@ const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
 // `Run:` commands, executed here from the repo root.
 {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: repoRoot, encoding: 'utf8' })
+  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: repoRoot, encoding: 'utf8', env: ENV })
 
-  const peer = sh("node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'")
-  assert.equal(peer.status, 0,
-    'leg (f) [M4]: the first Run: — test_roles_peer.mjs still passes, so critic.md kept the shape ' +
-    'it pins (no `3. ` duty, no `checklist`): ' + String(peer.stdout + peer.stderr).slice(-500))
-
-  const patches = sh("node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'")
-  assert.equal(patches.status, 0,
-    'leg (f) [M4]: the second Run: — test_exam_edited_patches.mjs still passes, so the ' +
-    'report-format.md edit did not break the proposedPatches row: ' +
-    String(patches.stdout + patches.stderr).slice(-500))
+  // The first two `Run:`s named two sibling sims. Named here, not run: the
+  // bridge in tests/test_fleet_suite.py collects every fleet/tests/test_*.mjs
+  // and dispatches each on a worker of its own, so a sim that spawned these two
+  // ran them twice — and handed them whatever environment this process carries.
+  // The coverage the leg keeps is the names: critic.md's shape is graded where
+  // test_roles_peer.mjs lives, and the proposedPatches row where
+  // test_exam_edited_patches.mjs does.
+  for (const sim of ['test_roles_peer.mjs', 'test_exam_edited_patches.mjs']) {
+    assert.ok(fs.existsSync(path.join(repoRoot, 'fleet/tests', sim)),
+      `leg (f) [M4]: fleet/tests/${sim} is still a sim under fleet/tests/, collected and run by ` +
+      'the bridge, which asserts ALL TESTS PASSED there')
+  }
 
   const criticGrep = sh("grep -n 'verbatim' fleet/roles/critic.md")
   const criticLines = criticGrep.stdout.split('\n').filter((l) => l.trim() !== '')

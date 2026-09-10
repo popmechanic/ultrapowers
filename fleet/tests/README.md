@@ -15,3 +15,7 @@ Main areas under test:
   calls a task's clone is allowed to make.
 - `test_run_engine*.mjs` — the engine kernel: wave scheduling, review pairing,
   the fix loop, the examiner, and the gate.
+- `_helpers.mjs` — the rig's environment: `simEnv()` builds the environment
+  every process a sim starts runs under, so a sim sees what it was handed and
+  never the box it runs on. `test_sims_are_hermetic.mjs` is the probe that
+  keeps it true.

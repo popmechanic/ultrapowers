@@ -33,6 +33,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ackDecision } from '../run-main.mjs'
 import { REVIEWER_SCHEMA } from '../run-engine.mjs'
+import { simEnv } from './_helpers.mjs'
 import { rig, makeRepo, passReview, cleanCritic, doneImpl, gitSync } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-actor-routing-'))
@@ -128,7 +129,7 @@ const oneTaskRun = ({ name, files = ['a.txt'], reviews, fixWrites = false }) => 
   // there: clean tree, the recorded merge head, the branch it merged onto.
   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
     '--run-id', 'sim', '--branch', branch, '--report', reportPath, '--repo', integ],
-    { encoding: 'utf8' })
+    { encoding: 'utf8', env: simEnv() })
   assert.equal(gate.status, 2,
     'gate_check.py must exit 2 (NEEDS_ACK) on a plan-defect deferral: ' +
     gate.stdout + gate.stderr)
@@ -376,7 +377,7 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
     '--run-id', 'sim', '--branch', r.branch, '--report', reportPath, '--repo', r.integ],
-    { encoding: 'utf8' })
+    { encoding: 'utf8', env: simEnv() })
   assert.equal(gate.status, 1,
     '(d)/M4: the frozen gate exits 1 on the parked task: ' + gate.stdout + gate.stderr)
   const verdict = JSON.parse(gate.stdout)
@@ -503,7 +504,7 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
     'grep \'tasks\\[\\]\\.actor\' ' + q(p) + ' | grep -q \'plan\'',
     'grep \'deferredVerification. | no |\' ' + q(p) + ' | grep -q \'actor\'',
   ].join(' && ')
-  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8' }).status
+  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8', env: simEnv() }).status
   assert.equal(sh(IMPL_GREP(IMPL_MD)), 0,
     '(h)/M8: the implementer.md grep exits 0 on the document as written')
   assert.equal(sh(RF_GREP(RF_MD)), 0,

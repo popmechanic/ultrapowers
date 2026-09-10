@@ -12,9 +12,13 @@ import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase, withPatchCapture, makeEventLog, ulid } from '../run-waves.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runwaves-'))
-const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+// One environment for every child below: a HOME of the sim's own and a PATH of
+// the interpreters, so nothing of the box reaches a git or the fold kernel here.
+const ENV = simEnv()
+const git = (argv, cwd) => execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 
 // ── 2. clones at BASE — the #314 cure ────────────────────────────────────────
 // The fixture IS the #314 condition: a repository whose checkout has moved PAST
@@ -116,7 +120,7 @@ assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isol
   const runDir = path.join(tmp, 'run')
   const fold = spawnSync('python3', [kernel, 'fold', '--repo', repo, '--run-dir', runDir,
     '--wave', '1', '--base', BASE, '--patch', 'T1=' + p1, '--patch', 'T2=' + p2],
-    { encoding: 'utf8' })
+    { encoding: 'utf8', env: ENV })
   assert.equal(fold.status, 0, 'the kernel accepts driver-captured patches: ' + fold.stdout + fold.stderr)
   const reply = JSON.parse(fold.stdout.trim().split('\n').pop())
   // T1 rewrote a.txt's only line; T2 appended to it — a same-file conflict the

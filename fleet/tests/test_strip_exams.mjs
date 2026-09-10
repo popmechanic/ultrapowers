@@ -49,6 +49,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** The deliverable, at the path the Proof's Produces line names. */
 export const SCRIPT = path.join(HERE, '..', 'strip-exams.sh')
@@ -93,8 +95,13 @@ const KEPT_FILES = {
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'strip-exams-'))
 let caseNo = 0
 
+// One environment for every child below: git and the script see a HOME of this
+// exam's own, so no ~/.gitconfig of the box reaches a repository it builds —
+// each one sets its identity itself.
+const ENV = simEnv()
+
 const git = (cwd, args, opts = {}) =>
-  spawnSync('git', args, { cwd, encoding: 'utf8', ...opts })
+  spawnSync('git', args, { cwd, encoding: 'utf8', env: ENV, ...opts })
 
 const gitOk = (cwd, args) => {
   const r = git(cwd, args)
@@ -189,6 +196,7 @@ const runStrip = (clone, branch, runId, dest) =>
     cwd: tmpRoot,
     encoding: 'utf8',
     timeout: 60000,
+    env: ENV,
   })
 
 /** Everything a leg compares across the run. */

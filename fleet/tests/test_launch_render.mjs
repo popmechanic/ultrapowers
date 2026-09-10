@@ -36,7 +36,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { USAGE, launch } from '../launch.mjs'
@@ -66,6 +65,7 @@ const CONFIG = Object.freeze({ cpu: '8', memory: '16GB' })
 const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
 
 const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const REPO_ROOT = path.resolve(FLEET_DIR, '..')
 const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
 
 // ── The seam's rules ────────────────────────────────────────────────────────
@@ -449,18 +449,16 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
 }
 
 // ── f. [M1, M4] the sims this task must not disturb ─────────────────────────
+// Named, not run: the bridge in tests/test_fleet_suite.py collects every
+// fleet/tests/test_*.mjs and runs each one itself, so a sim that spawned these
+// two would run them twice and charge their wall to this name. What this leg
+// keeps is the coverage — the names stay written down here, and the sweep
+// asserts each is still a sim on the tree.
 {
   for (const sim of ['test_launch.mjs', 'test_launch_pins.mjs']) {
-    const res = spawnSync(process.execPath, [path.join(FLEET_DIR, 'tests', sim)], {
-      encoding: 'utf8'
-    })
-    assert.equal(
-      res.status, 0,
-      `(f) [M1, M4] ${sim} still passes; it exited ${res.status}:\n${res.stdout}${res.stderr}`
-    )
     assert.ok(
-      String(res.stdout).includes('ALL TESTS PASSED'),
-      `(f) [M1, M4] ${sim} prints the sentinel:\n${res.stdout}${res.stderr}`
+      fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', sim)),
+      `(f) [M1, M4] ${sim} is still a sim under fleet/tests/, collected and run by the bridge`
     )
   }
 }

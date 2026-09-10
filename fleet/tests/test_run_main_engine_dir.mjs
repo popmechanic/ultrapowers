@@ -23,6 +23,8 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
+
 const MODULE_URL = new URL('../run-main.mjs', import.meta.url)
 const MODULE_PATH = fileURLToPath(MODULE_URL)
 // M1's own formula, computed here from this test's location rather than read
@@ -41,7 +43,10 @@ const mod = await import(MODULE_URL.href)
 const { parseArgs, DEFAULTS, runMain } = mod
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-enginedir-')))
-const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+// One environment for every child below: a HOME of the sim's own and a PATH of
+// the interpreters, so nothing of the box reaches a git or a node here.
+const ENV = simEnv()
+const git = (argv, cwd) => execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 const mkdir = (p) => { fs.mkdirSync(p, { recursive: true }); return p }
 
 // ── leg (a) / M1 — ENGINE_DIR, and the end of REPO_DIR ───────────────────────
@@ -63,7 +68,7 @@ const mkdir = (p) => { fs.mkdirSync(p, { recursive: true }); return p }
     '(e) => { process.stderr.write(String((e && e.stack) || e)); process.exit(7) })'
   let printed
   try {
-    printed = execFileSync(process.execPath, ['-e', childCode], { cwd: childCwd, encoding: 'utf8' })
+    printed = execFileSync(process.execPath, ['-e', childCode], { cwd: childCwd, env: ENV, encoding: 'utf8' })
   } catch (e) {
     assert.fail('[leg a / M1] the child process could not import fleet/run-main.mjs from an ' +
       'unrelated cwd: ' + String((e && (e.stderr || e.message)) || e))
@@ -143,7 +148,7 @@ const exec = async (cmd, argv, opts = {}) => {
   calls.push({ cmd, argv: [...argv], cwd: opts.cwd })
   if (cmd === 'git') {
     try {
-      return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, encoding: 'utf8' }), stderr: '' }
+      return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, env: ENV, encoding: 'utf8' }), stderr: '' }
     } catch (e) {
       return { code: 1, stdout: '', stderr: String((e && (e.stderr || e.message)) || e) }
     }

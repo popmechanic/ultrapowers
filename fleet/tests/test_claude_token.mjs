@@ -7,6 +7,7 @@
 // OAuth token URL (as at BASE) and the usage URL.
 import assert from 'node:assert/strict'
 import * as CT from '../claude-token.mjs'
+import { simEnv } from './_helpers.mjs'
 import {
   OAUTH, INTEGRATION, KEYCHAIN, REFRESH_AHEAD_MS, pkce, authorizeUrlFor, cleanCode, codeForState,
   login, refresh, status, installBearer, main
@@ -314,7 +315,7 @@ await leg('the real lock: two processes, one refresh grant', async () => {
     const r = await refresh(deps); process.stdout.write(JSON.stringify(r))
   `
   const run = () => new Promise((resolve) => {
-    const p = spawn(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] })
+    const p = spawn(process.execPath, ['--input-type=module', '-e', script], { env: simEnv({ home }), stdio: ['ignore', 'pipe', 'pipe'] })
     let out = '', err = ''; p.stdout.on('data', (d) => { out += d }); p.stderr.on('data', (d) => { err += d })
     p.on('close', (code) => resolve({ code, out, err }))
   })

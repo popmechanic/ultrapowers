@@ -12,6 +12,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { decide, bashWriteTargets, within } from '../confine-hook.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const HOOK = fileURLToPath(new URL('../confine-hook.mjs', import.meta.url))
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'confine-'))
@@ -141,16 +142,17 @@ assert.ok(D('Bash', { command: 'echo pwned > `echo /etc`/x' }).deny, 'backtick t
 }
 
 // ── the CLI: stdin → exit code ───────────────────────────────────────────────
-// The base env STRIPS FLEET_RUN_DIR: when this suite runs INSIDE a fleet run
-// (the sandbox baseline, a worker's testCmd), the worker env carries the live
-// run's FLEET_RUN_DIR, and every deliberate test denial below would then be
+// The base env carries no FLEET_RUN_DIR: `simEnv` drops every `FLEET_` key of
+// this process, and when this suite runs INSIDE a fleet run (the sandbox
+// baseline, a worker's testCmd) that process carries the live run's
+// FLEET_RUN_DIR. Inherited, every deliberate test denial below would be
 // appended to that run's confine-denials.jsonl — 4 of run-25's 6 logged
 // denials were this suite, not real escapes, corrupting the confinement
 // evidence. A test that needs the log passes FLEET_RUN_DIR explicitly.
-const baseEnv = { ...process.env }
-delete baseEnv.FLEET_RUN_DIR
+const HOOK_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-confine-home-'))
+const hookEnv = (env) => ({ ...simEnv({ home: HOOK_HOME }), ...env })
 const run = (input, env = {}) => spawnSync('node', [HOOK], {
-  input, encoding: 'utf8', cwd: clone, env: { ...baseEnv, ...env },
+  input, encoding: 'utf8', cwd: clone, env: hookEnv(env),
 })
 {
   // The CLI must AUTHORITATIVELY allow/deny via the PreToolUse decision JSON —

@@ -29,6 +29,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
 import {
   renderSetupScript,
   readFleetFiles,
@@ -297,29 +298,36 @@ function makeCase() {
 function plant(ctx, text) {
   fs.writeFileSync(ctx.script, text)
   fs.chmodSync(ctx.script, 0o755)
-  const syntax = spawnSync('bash', ['-n', ctx.script], { encoding: 'utf8' })
+  const syntax = spawnSync('bash', ['-n', ctx.script], { encoding: 'utf8', env: simEnv() })
   assert.equal(syntax.status, 0, `the render must parse before it is run:\n${syntax.stderr}`)
 }
+
+/**
+ * The environment one render runs under: the case's stub shims first on `PATH`,
+ * a `HOME` of the case's own, and `STUB_REAL_PATH` — the same PATH WITHOUT the
+ * shims, which `real()` restores when a stub wants the actual tool. `env` last,
+ * so a case can override any of it.
+ */
+const scriptEnv = (ctx, env) => ({
+  ...simEnv({ bin: ctx.bin, home: ctx.home }),
+  USER: 'exedev',
+  FLEET_LIB_DIR: ctx.lib,
+  FLEET_USER_BUS: ctx.bus,
+  STUB_LOG: ctx.log,
+  STUB_TMPROOT: ctx.root,
+  STUB_REAL_PATH: simEnv({ home: ctx.home }).PATH,
+  STUB_SHASUMS: SHASUMS_FIXTURE,
+  STUB_STATUS_SNAPSHOT: ctx.snapshot,
+  STUB_SNAPSHOT_MARK: ctx.mark,
+  ...env,
+})
 
 function runScript(ctx, env = {}) {
   const startedAt = Date.now()
   return new Promise((resolve) => {
     const child = spawn('bash', [ctx.script], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        PATH: `${ctx.bin}:${process.env.PATH}`,
-        HOME: ctx.home,
-        USER: 'exedev',
-        FLEET_LIB_DIR: ctx.lib,
-        FLEET_USER_BUS: ctx.bus,
-        STUB_LOG: ctx.log,
-        STUB_TMPROOT: ctx.root,
-        STUB_REAL_PATH: process.env.PATH,
-        STUB_SHASUMS: SHASUMS_FIXTURE,
-        STUB_STATUS_SNAPSHOT: ctx.snapshot,
-        STUB_SNAPSHOT_MARK: ctx.mark,
-        ...env,
-      },
+      env: scriptEnv(ctx, env),
     })
     let stdout = ''
     let stderr = ''
@@ -408,7 +416,7 @@ test('(a) [M1] the render for run 70 fits 10240 bytes and passes bash -n', () =>
   for (const run of ['1', RUN, OTHER_RUN, '999999']) {
     const f = path.join(tmpRoot, `syntax-${run}.sh`)
     fs.writeFileSync(f, renderSetupScript({ run, bootstrap: files.bootstrap, unit: files.unit }))
-    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8' })
+    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8', env: simEnv() })
     assert.equal(r.status, 0, `bash -n failed for run=${run}:\n${r.stderr}`)
   }
 })

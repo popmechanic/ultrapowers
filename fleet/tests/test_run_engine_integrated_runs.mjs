@@ -42,7 +42,7 @@ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 // whole file would die with a SyntaxError that reads like a typo instead of
 // like the absent implementation. The first assertion below names it instead.
 import * as engineMod from '../run-engine.mjs'
-import { rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const { runEngine, integratedRunEvidenceBlock } = engineMod
 
@@ -295,7 +295,7 @@ const blockOf = (prompt) => {
 const haveBase = (() => {
   try {
     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
-      { cwd: REPO_ROOT, stdio: 'ignore' })
+      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
     return true
   } catch { return false }
 })()
@@ -307,7 +307,7 @@ if (haveBase) {
   })
   fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
+      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
   ;({ runEngine: baseRunEngine } =
     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))

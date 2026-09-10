@@ -41,6 +41,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
+import { simEnv } from './_helpers.mjs'
+
 import { provisionRunTree, execSeam } from '../run-main.mjs'
 // #751 Task 1 — the parse check: `CANDIDATE_CHECKS` and `parseArgvFor` are the
 // two names the folder produces for this seam.
@@ -112,7 +114,7 @@ const HEADING = '\nCONTENDING TASKS:'
 
 // ── git, deterministic ───────────────────────────────────────────────────────
 const ENV = {
-  ...process.env,
+  ...simEnv(),
   GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
   GIT_CONFIG_NOSYSTEM: '1',
@@ -227,7 +229,7 @@ function compiledTask(planText, id) {
   const out = path.join(dir, 'launch.json')
   fs.writeFileSync(planFile, planText)
   execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
-    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    { cwd: dir, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
   const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
   fs.rmSync(dir, { recursive: true, force: true })
   const t = (payload.tasks || []).find((x) => x.id === id)

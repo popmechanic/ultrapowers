@@ -33,6 +33,8 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
+
 import { defaultExec, linkProduces } from '../referee-linker.mjs'
 // Task 1 (#842) reads `PLACEHOLDER_TOKENS` off the module namespace rather than
 // as a named import, so that a module which does not export it yet fails the
@@ -71,7 +73,7 @@ const isProgram = (spelled, program) =>
 
 // ── the sim's own git ─────────────────────────────────────────────────────
 const ENV = {
-  ...process.env,
+  ...simEnv(),
   GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
   GIT_CONFIG_NOSYSTEM: '1',
@@ -952,7 +954,7 @@ const TABLE = {
   {
     const probe = (cmd, argv) => {
       try {
-        execFileSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+        execFileSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
         return { code: 0, out: '' }
       } catch (e) {
         return { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stderr || e.stdout || e.message) }
@@ -976,7 +978,9 @@ const TABLE = {
   }
 
   // (t) M7: `test_placeholder_token_set` names all four words as quoted strings
-  //     inside its own body — at BASE `na` is the absent one — and it passes.
+  //     inside its own body — at BASE `na` is the absent one. Whether it passes
+  //     is read from the suite that collects it, not from a pytest this sim
+  //     starts.
   {
     const PY = path.resolve(ROOT, 'tests', 'test_compile_plan.py')
     assert.ok(fs.existsSync(PY), `[M7] the compiler suite is at ${PY}`)
@@ -995,19 +999,12 @@ const TABLE = {
     assert.equal(words.length, 4,
       `[M7] … which is a count of 4, where at BASE it is 3 — got ${words.length}`)
 
-    let pytest = { code: 0, out: '' }
-    try {
-      pytest.out = execFileSync('python3',
-        ['-m', 'pytest', 'tests/test_compile_plan.py', '-q', '-k', 'test_placeholder_token_set',
-          '-p', 'no:cacheprovider'],
-        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-    } catch (e) {
-      pytest = { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || e.stderr || e.message) }
-    }
-    assert.equal(pytest.code, 0,
-      `[M7] and that test passes — python3 -m pytest -k test_placeholder_token_set exited ` +
-      `${pytest.code}: ${String(pytest.out).slice(-600)}`)
-    ok('task 1 (t) [M7] test_placeholder_token_set names all four words and passes')
+    // That the test PASSES is pytest's own reading: `tests/test_compile_plan.py`
+    // is collected by the same suite this sim is joined into, so a sim that
+    // shelled out to `python3 -m pytest` here ran it a second time inside a
+    // worker already running it. What this leg reads is the source — the four
+    // words inside that test's own body — and the run above is the suite's.
+    ok('task 1 (t) [M7] test_placeholder_token_set names all four words, and the suite runs it')
   }
 }
 

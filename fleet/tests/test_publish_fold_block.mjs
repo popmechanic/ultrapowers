@@ -29,6 +29,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
+import { simEnv } from './_helpers.mjs'
+
 import { contendingBlock } from '../publish-fold-block.mjs'
 // #754 Task 2 — exams first: the ordered task list the block renders from, and
 // the list the fold's exam check reads its `- Test:` bullets out of.
@@ -40,7 +42,7 @@ const COMPILER = path.resolve(HERE, '../../skills/ultrapowers/scripts/compile_pl
 // Deterministic commit metadata: identical dates keep the first-parent order
 // the only thing that orders the frontier.
 const ENV = {
-  ...process.env,
+  ...simEnv(),
   GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
   GIT_CONFIG_NOSYSTEM: '1',
@@ -99,7 +101,7 @@ function compiledTask(planText, id) {
   const out = path.join(dir, 'launch.json')
   fs.writeFileSync(planFile, planText)
   execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
-    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    { cwd: dir, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
   const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
   fs.rmSync(dir, { recursive: true, force: true })
   const t = (payload.tasks || []).find((x) => x.id === id)
@@ -409,7 +411,7 @@ function compiledTaskWithRecord (planText, recordText, id) {
   fs.writeFileSync(planFile, planText)
   fs.writeFileSync(path.join(dir, 'plan.gate-verdicts.json'), recordText)
   execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
-    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    { cwd: dir, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
   const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
   fs.rmSync(dir, { recursive: true, force: true })
   const t = (payload.tasks || []).find((x) => x.id === id)

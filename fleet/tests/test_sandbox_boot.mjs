@@ -30,7 +30,7 @@ import {
   integrationsReads,
   verbOf, dirOf, gitLog, evidenceDir, isEvidencePush, isIntegrationPush, addArguments,
   evidenceDisciplineProblem,
-  runTests,
+  runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
 // Section 3's two readers are what task 1 of run-34 (#723) PRODUCES in the rig.
 // Read off the namespace rather than named-imported, so that a helpers module
@@ -42,7 +42,7 @@ const tests = []
 const test = (name, fn) => tests.push([name, fn])
 
 test('the boot script parses', () => {
-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
+  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0)
 })
 
 // ── 1. the whole green path ──────────────────────────────────────────────────
@@ -1058,7 +1058,7 @@ test('#723 (h) the contract declares the phase commits in both bullets  [M5]', (
     "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
   ]
   for (const cmd of runs) {
-    const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000 })
+    const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000, env: ENV })
     assert.equal(r.status, 0,
       `must exit 0: ${cmd}\n---\n${r.stdout || ''}${r.stderr || ''}`)
   }

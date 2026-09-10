@@ -25,6 +25,7 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { referee } from '../referee.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES = path.join(HERE, 'fixtures', 'referee')
@@ -62,8 +63,11 @@ const scratch = (tag) => {
 }
 
 // ─── the rig ────────────────────────────────────────────────────────────────
+// One environment for every git below: a HOME of the sim's own, so no
+// ~/.gitconfig of the box reaches a repository the fixtures build.
+const ENV = simEnv()
 const git = (argv, cwd) =>
-  execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
 // `git apply --check` first, so a fixture whose patch has drifted from its
 // `base/` fails as a refusal here rather than as a puzzling assertion later.

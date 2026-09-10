@@ -57,6 +57,7 @@ import { fileURLToPath } from 'node:url'
 // A namespace import, so a BASE that exports no `INFRA_BACKOFF_MS` fails leg
 // (a)'s assertion — the absent implementation — rather than failing to link.
 import * as engine from '../run-engine.mjs'
+import { simEnv } from './_helpers.mjs'
 import {
   makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl,
 } from './_engine_helpers.mjs'
@@ -266,7 +267,7 @@ assert.equal(engine.INFRA_BACKOFF_MS, 60000,
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
     '--run-id', 'sim', '--branch', branch, '--report', reportPath, '--repo', integ],
-    { encoding: 'utf8' })
+    { encoding: 'utf8', env: simEnv() })
   assert.equal(gate.status, 1,
     '(d)/M3: gate_check.py must exit 1 on the twice-dead critic: ' + gate.stdout + gate.stderr)
   const verdict = JSON.parse(gate.stdout)
