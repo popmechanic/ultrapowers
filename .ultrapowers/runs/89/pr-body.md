@@ -1,0 +1,51 @@
+## fleet run-89 — gate-green
+
+| | |
+|---|---|
+| verdict | `PASS` |
+| target | `popmechanic/ultrapowers` at `22518b81dc4d132e552d6ec3a586d789de7306ae` |
+| engine | `22518b81dc4d132e552d6ec3a586d789de7306ae` |
+| plan | `.ultrapowers/plan.md` at `719102daeb23ae74d1a09d31c35916c5e3c45929` |
+| branch | `ultra/integration-run-89` |
+| vm | `fleet-r89-2609101804-53b5` |
+
+### Checks
+
+```json
+{"mode": "gate", "stamp": "run-89", "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-89/report.json", "branch": "ultra/integration-run-89", "gateCheck": {"verdict": "PASS", "checks": [{"name": "report-parse", "ok": true, "detail": ""}, {"name": "clean-tree", "ok": true, "detail": ""}, {"name": "wave-merges", "ok": true, "detail": ""}, {"name": "head-match", "ok": true, "detail": ""}, {"name": "git-verified", "ok": true, "detail": ""}, {"name": "ancestry", "ok": true, "detail": ""}, {"name": "deliverables", "ok": true, "detail": ""}], "repo": "/home/exedev/target"}, "gateCheckExit": 0, "acceptance": {"disposition": "suite", "exit": 0, "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.CaIVkAKrCi/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 6/6 workers\\n6 workers [1604 items]\\n\\n........................................................................ [  4%]\\n........................................................................ [  8%]\\n........................................................................ [ 13%]\\n........................................................................ [ 17%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 31%]\\n........................................................................ [ 35%]\\n........................................................................ [ 40%]\\n........................................................................ [ 44%]\\n........................................................................ [ 49%]\\n........................................................................ [ 53%]\\n........................................................................ [ 58%]\\n........................................................................ [ 62%]\\n........................................................................ [ 67%]\\n........................................................................ [ 71%]\\n........................................................................ [ 76%]\\n........................................................................ [ 80%]\\n........................................................................ [ 85%]\\n........................................................................ [ 89%]\\n........................................................................ [ 94%]\\n........................................................................ [ 98%]\\n....................                                                     [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1604 passed, 5 warnings in 429.50s (0:07:09) =================\"}\n"}, "verdict": "PASS"}
+
+```
+
+### Evidence
+
+https://github.com/popmechanic/ultrapowers/tree/ultra/evidence/run-89/.ultrapowers/runs/89/
+
+- approve-receipt.json
+- claude-version.txt
+- engine.log
+- events.jsonl
+- gate-receipt.json
+- pr-body.md
+- publish-fold
+- receipt.json
+- referee
+- report.json
+- residuals.jsonl
+- status.json
+- transcripts
+
+### Plan
+
+https://github.com/popmechanic/ultrapowers/blob/ultra/plan/run-89/.ultrapowers/plan.md
+
+### Residuals
+
+- [ ] task 1 reviewer — Readability leftover in `skills/ultrapowers/scripts/ultra_gate.py`: the local that carries the suite verdict into the verdict ladder is still named `acc_pass`, a name from the deleted acceptance block. The new block sets `acc_pass = receipt["suite"]["passed"]` and line ~148 reads `or not acc_pass`. Renaming it to `suite_pass` would leave no trace of the retired concept in the file (M3 only forbids the four literal tokens, so this is advisory, not a criterion). Nothing else in the block is dead: `HERE` still resolves `gate_check.py`, and the `run_receipt`/`receipt_file` reads went with the block.
+- [ ] task 1 reviewer — Answering the REFEREE's `minor` on the net −15 top-level test cases: the removals ARE declared by this task's own text, so no action is required. The task's Context orders "Delete `run_acceptance.sh` … and `tests/test_run_acceptance.py` (17 cases, all end-to-end against the script)" and names the `tests/test_ultra_gate.py` cases to delete (`test_sealed_disposition_is_blocked_without_administering`, `test_suite_acceptance_dispatch`, `test_failed_acceptance_forces_blocked`, the #96 argv cases and the two `testCmd`-missing cases)
+- [ ] task 1 reviewer — every name the REFEREE lists falls in one of those two sets, and all eight cases the task says to keep survive (envelope-unwrap, bare-report, no-snapshot, checkout-position, gate_check-propagation, unrecognizable-result, approve-mode, retired-flags), plus `test_gate_issues_no_run_lock_restore`. Two guards worth naming as genuinely subject-dead rather than merely dropped: `test_suite_gate_no_tests_never_false_greens` pinned pytest's exit 5 — the engine's fold treats only `suite.code === 0` as a pass (`fleet/run-engine.mjs:2510`), so exit 5 still reds
+- [ ] task 1 reviewer — and `run_js_sims` (#79) was unreachable at BASE — its detection greps `^skills/ultrapowers/harnesses/.*\.js$` and that directory does not exist in the tree, confirming the task's "dead since 0.3.0". The task's own exam `tests/test_ultra_gate_record.py` (7 cases, exam evidence exit 0) replaces the deleted coverage for every Machine clause.
+- [ ] task 1 reviewer — unverified: `run_acceptance.sh` survives by name in three files outside this task's FILES, so this diff cannot scrub them and the global "a deletion is whole" constraint is only settled for readers. None is a caller — `evals/2026-08-09-snapshot-retirement-ab.md:106` is a historical eval record, and `tests/fixtures/plans/docket.md` (lines 6, 198, 206, 330) and `tests/fixtures/plans/2026-09-02-papercut-drain-2.md:25` are plan fixtures, i.e. compiler input data. The one worth an operator's eye is `tests/fixtures/plans/2026-09-07/2026-09-07-acceptance-log-on-the-record.md`, which carries `- Check: git diff --quiet $ULTRA_BASE -- … skills/ultrapowers/scripts/run_acceptance.sh` (line 39) and `- path-absent: skills/ultrapowers/scripts/run_acceptance.sh` (line 197): as of this patch that stale-if is permanently tripped and that Check names a path that no longer exists, so any future run that compiles this fixture as a real plan parks on it. What would settle it: a later task that retires or re-points that fixture. I verified there is no executable reader — grep found no fleet or Python code invoking `run_acceptance.sh`, `fleet/run-main.mjs` reads only `gate-receipt.json`'s `verdict`/acks and never `acceptance`, and the `bootstrapCmd`/`testCmd` stamps `ultra_run.py`'s reworded help now attributes to the engine really are read by `fleet/run-engine.mjs` and `fleet/run-worker.mjs`.
+- [ ] task 1 reviewer — `skills/ultrapowers/scripts/ultra_gate.py`: the survivor variable is still named `acc_pass` — the last trace of the retired acceptance concept, now holding a recorded-suite verdict. M3 pins zero occurrences of `run_acceptance`/`--suite-gate`/`sealed`/`waived`, so `acc_pass` slips through, but the name misdescribes what it carries (`receipt["suite"]["passed"]`) and reads as if an acceptance dispatch still exists. Rename to `suite_pass` at its assignment and at the verdict fold
+- [ ] task 1 reviewer — nothing else reads it, and the exam and `tests/test_ultra_gate.py` assert only observable receipt shape, so no test changes.
+- [ ] task 1 reviewer — top-level tests +10 / −25 across the patch: net drop of 15, removing `test_suite_gate_green_passes`, `test_suite_gate_red_parks`, `test_suite_gate_red_carries_assertion_redkind`, `test_suite_gate_no_tests_never_false_greens`, `test_suite_gate_worktree_cleaned_up`, `test_deleted_modes_are_refused_with_usage`, `test_suite_gate_without_base_warns_disarmed`, `test_suite_gate_with_base_does_not_warn`, `test_exam_worktree_temp_parent_is_cleaned`, `test_huge_exam_output_still_emits_json_receipt`, `test_suite_gate_bootstrap_provisions_worktree`, `test_suite_gate_without_bootstrap_still_reds_honestly`, `test_suite_gate_failed_bootstrap_is_env_not_assertion`, `test_suite_gate_rejects_empty_run`, `test_suite_gate_survives_symlinked_tmpdir`, `test_uncreatable_temp_parent_errors_instead_of_using_cwd`, `test_suite_gate_refuses_whitespace_only_run`, `test_sealed_disposition_is_blocked_without_administering`, `test_suite_acceptance_dispatch`, `test_failed_acceptance_forces_blocked`, `test_gate_issues_no_run_lock_restore`, `test_suite_acceptance_command_comes_from_receipt`, `test_bootstrap_passed_through_when_receipt_has_it`, `test_missing_receipt_testcmd_blocks_loudly`, `test_empty_receipt_testcmd_blocks_loudly` with no removal declared in the task
+
