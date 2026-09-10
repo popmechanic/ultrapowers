@@ -1,0 +1,233 @@
+{
+  "integrationBranch": "ultra/integration-run-85",
+  "baseSha": "5e0447c6582dd725b2dbf8f690269550c77c09a5",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "4c1fd39732ed94bf5147172e60ac1e129523fa0f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-85/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Global constraint (no `Check:` command behind it) \u2014 \"The ledger is append-only: no script rewrites an existing ledger line\". As I read that clause, it also covers the per-run row file this task introduces. `collect_evidence` writes it with a truncating redirect (`fleet/sandbox-boot.sh`: `rows=\"$(residual_rows || true)\"; if [ -n \"$rows\" ]; then printf '%s\\n' \"$rows\" >\"$dest/$RESIDUALS_FILE\"; fi`), so every transition rewrites the whole file from the two copies just made. It is lawful under the task's own Context, which authorizes exactly this and supplies the premise that makes it safe (\"the items only grow\", so the rewritten bytes are the same bytes plus new ones), and Machine M3's two cases \u2014 no item, no file; the parked run's two rows \u2014 are both pinned by leg (c), so nothing the exam names is at risk. The residual case the premise does not cover: a `report.json` that shrinks between transitions (a `tasks[]` row that was `done` at one transition and is not at the next, e.g. after one of the bounded retries) silently drops a row that had already reached the record, which is the one thing \"on the record, where nothing closes them\" promises against. If you want the promise to hold without the premise, read `$dest/$RESIDUALS_FILE` when it exists and append only the lines it does not already carry (an exact-line set union, order preserved) instead of `>`; no exam leg changes, since the union is identical to the rewrite whenever the items do only grow.; `fleet/sandbox-boot.sh` (collect_evidence, the new `rows=\"$(residual_rows || true)\"` block) writes the row file with `>` \u2014 a truncate-and-rewrite of the whole file at EVERY transition, not an append. The global constraint reads \"The ledger is append-only: no script rewrites an existing ledger line, and a second pass over the same run appends nothing.\" I take that to mean an existing line's bytes are never re-authored. The diff satisfies the second half (a second pass over an unchanged record reproduces byte-identical content, so nothing grows), and the plan's own Context prescribes exactly this shape and justifies it with \"the items only grow\" \u2014 so the transcription is faithful and the normal case is safe. But the code does not enforce the premise it relies on: if a later transition's `report.json` demotes a `done` task to `failed`, or drops a `completenessFindings` entry, the rewrite silently REMOVES rows an earlier transition already committed, which is the one thing the constraint forbids. There is no `Check:` behind this constraint, so this is advisory. If you want the guarantee in the code rather than in the premise, gate the write on growth: read the existing file's line count first and only overwrite when the new rendering has at least as many lines (`old=0; [ -f \"$dest/$RESIDUALS_FILE\" ] && old=$(wc -l <\"$dest/$RESIDUALS_FILE\")`, then write only when the new count is >= `$old`). Nothing in the exam distinguishes the two, so this costs no leg either way.; `fleet/sandbox-boot.sh`, in the rows branch of `residual_read`: `task = str(row.get(\"task\"))` turns a `tasks[]` row that carries no `task` key into the STRING `\"None\"`, not `null`. At BASE this expression only fed the checklist's display name (`task None reviewer`), where a nonsense word is cosmetic; it now lands in a machine-readable ledger cell that a downstream counter groups and keys on, where `\"None\"` is indistinguishable from a task genuinely named `None`. M1 and the exam only exercise rows whose `task` is present, so no leg catches it. The narrow fix, inside this task's own FILES: compute `raw = row.get(\"task\")` and use `str(raw) if raw is not None else None`, leaving the checklist name to fall back to the literal it already prints. Advisory \u2014 a report with a `task`-less `done` row is not a shape this tree is known to produce.; unverified: nothing in this patch pins that the row shape written here is the shape the residual counter reads. This task Produces `residuals.jsonl` and the sibling task's counter consumes exactly `{file, kind, line, run, sha, task, text}` \u2014 the two literals agree by inspection (both task bodies spell the same seven keys, and this diff's `json.dumps(..., sort_keys=True)` emits them sorted) \u2014 but the sibling's exam hand-writes its `residuals.jsonl` fixtures under `tmp_path` rather than reading one a boot actually produced, and this exam never runs the counter. So a future drift in either half (a renamed key, an int `line` becoming a string) would leave both exams green and the join broken. What would settle it: one leg in either exam that feeds a real boot's `<evidence worktree>/.ultrapowers/runs/7/residuals.jsonl` to `residual_counter.py` and asserts the ten-key ledger row comes back. That belongs to whichever task owns the seam, not to this diff, and the run's `suite` acceptance does not currently exercise it.; concern: `python3 -m pytest -n 3` ends 1925 passed / 1 failed, and the one failure is `tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_residuals.mjs]` \u2014 the Proof's reserved `Test:` path. At BASE that file is #711's two-task exam, and its task-2 half (8 legs) pins the `POST /issues` this task is required to delete. I left the file untouched, as the brief directs, so the peer's exam lands over it; its task-1 half (all 10 checklist legs plus the `gh` global-constraint leg) is green against my tree, and the 8 red legs are exactly the follow-up ones this task removes. Every other Proof `Run:` is green.; concern: In `tests/test_docs_agree_with_code.py` two of the four retired strings are spelled as concatenations (`\"publish:\" + \"followup\"`, `\"four\" + \" event kinds\"`). M6 requires the exam to assert those strings are absent from the contract while the Proof greps the same file for them and requires zero \u2014 a contiguous literal cannot satisfy both. A comment above `RETIRED_SINK` says why, so a later reader does not join them back up.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "998896d237478ab0a42f25279467e0a1fa06ec5c",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-85/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim's second half \u2014 that the rows are merged into `docs/superpowers/observations/ledger.jsonl` \"on the next `ultralearn` pass\" \u2014 is not established by anything in this diff. `residual_counter.py` has no default ledger (correctly, per M3) and nothing invokes it: Verb 1's numbered Harvest/Read/Merge steps in `skills/ultralearn/SKILL.md:12-69` do not name it, and `harvest_fleet_runs.py` is frozen by this run's constraint check (`git diff --quiet $ULTRA_BASE -- \u2026 harvest_fleet_runs.py`), so the wiring cannot be added inside this task's FILES. The new section mirrors the existing `## The catch counter` section exactly \u2014 operator-invoked, documented but unwired \u2014 so this is the established pattern rather than a divergence, and every Machine clause M1\u2013M5 is met. What would settle it: a leg (or a later task) showing an `ultralearn` sense pass that runs the counter over the harvested runs. Recorded for the operator, not a blocker.; M4 pins the report's order as \"distinct-run count descending then text ascending\", but `residual_report.py:397` breaks ties on the *normalized* group key (`pair[0]`), not the text as first seen. The two readings diverge on mixed case: rows texted `Zeta` and `alpha`, tied at two runs each, sort `alpha` first under the normalized key and `Zeta` first under the raw text. No exam leg discriminates \u2014 `test_e_ties_are_broken_by_text_ascending` (tests/test_ultralearn_residuals.py:969) uses all-lowercase `alpha`/`beta`, which sort identically either way. Sorting by the key the grouping is done on is a defensible reading of the clause, so this is advisory: either pin it with a mixed-case tie leg, or note in the docstring that \"text\" there means the normalized text.; The Context requires that \"a malformed line of `residuals.jsonl` is one `swallow` and the rest of the file still reads\". The behavior is implemented (`skills/ultralearn/scripts/residual_counter.py:142-166`: a `json.JSONDecodeError` swallows and continues, a non-dict line swallows, an unreadable file swallows and contributes no rows) but no leg of `tests/test_ultralearn_residuals.py` exercises it \u2014 every fixture writes well-formed JSON. Deleting the `try/except` around `json.loads` leaves the exam green. A cheap leg \u2014 a `residuals.jsonl` whose second of three lines is `{not json`, asserting two rows appended, exit 0, and `SWALLOW:` on stderr \u2014 would close it. No Machine clause names this, so it does not leave a criterion unverified.; Two identical residual lines within one run collapse to a single ledger row, which sits in tension with M1's \"one ledger row per line of that file\". `row_id` (skills/ultralearn/scripts/residual_counter.py) hashes `runId + \"\\n\" + \"residual\" + \"\\n\" + key`, and `key` is `(file, normalized text)` only \u2014 neither `task` nor `line` is in the material. So a `residuals.jsonl` holding two reviewer pieces with the same text and the same `file` (e.g. `file` null, `task` \"1\" and `task` \"2\" \u2014 a shape task 1's writer can produce, since it emits one line per `; `-separated notes piece across all done rows) yields one appended row and one counted as `already recorded`; the second piece's `task` attribution is lost. This is not the implementer's to fix: the id material is pinned by M2 and by the exam's own `_id()` helper (tests/test_ultralearn_residuals.py), so adding `task`/`line` to the id would break a clause and an assertion the exam asserts. Consequence for the report is nil (grouping is by text, and distinct-run/distinct-file counts are unaffected), which is why this is advisory. If it is ever worth closing, the change is to M2's id material plus `_id()` in the exam.; unverified: the Claim's \"merges those rows into `docs/superpowers/observations/ledger.jsonl` on the next `ultralearn` pass\" is not established by anything in this diff. M5 requires only that `skills/ultralearn/SKILL.md` carry a `## The residual counter` section, and the section delivered documents the counter as an operator-typed command; Verb 1's numbered procedure (Harvest / Read / Merge, SKILL.md:14-69) still names only `harvest_fleet_runs.py` and `merge_ledger.py`, so no pass invokes `residual_counter.py`. This is faithful to the pattern it was told to mirror \u2014 the catch counter sits outside that numbered procedure at BASE in exactly the same way (SKILL.md:79-108) \u2014 so it is not a divergence, and no exam leg is left unverified by it. What would settle the claim: a step in Verb 1 naming the counter (one sentence in SKILL.md, which is inside this task's FILES), or a call from `harvest_fleet_runs.py`, which is outside FILES and frozen by the run's `Check:` command.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-85/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1953 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 25%]\n........................................................................ [ 29%]\n........................................................................ [ 33%]\n........................................................................ [ 36%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 47%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 73%]\n........................................................................ [ 77%]\n........................................................................ [ 81%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.........                                                                [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1953 passed, 5 warnings in 944.97s (0:15:44) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_residuals.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot and not residuals' -q",
+      "exit": 0,
+      "stdout": "...........                                                              [100%]\n11 passed, 78 deselected in 247.95s (0:04:07)\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_docs_agree_with_code.py -q",
+      "exit": 0,
+      "stdout": "..........................                                               [100%]\n26 passed in 0.09s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'file_followup\\|followup_labels\\|PROGRAM_LABELS\\|publish:followup\\|/issues' fleet/sandbox-boot.sh)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'POST /repos/<owner>/<repo>/issues\\|publish:followup\\|watch-item\\|four event kinds' fleet/CONTRACT.md)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'residuals.jsonl' fleet/CONTRACT.md",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'residuals.jsonl.*three event kinds'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^- \\*\\*Publish:\\*\\*/,/^- \\*\\*Integration naming/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q '### Residuals.*deferred:external.*Closes #'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "tr '\\n' ' ' < fleet/CONTRACT.md | grep -q 'residuals.jsonl[^.]*present when'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "test \"$(grep -c 'FOLLOWUP_POST\\|publish:followup\\|four event kinds' tests/test_docs_agree_with_code.py)\" = 0",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'residuals.jsonl' tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "grep -q 'three event kinds' tests/test_docs_agree_with_code.py",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 -m pytest tests/test_ultralearn_*.py -q",
+      "exit": 0,
+      "stdout": "........................................................................ [ 76%]\n......................                                                   [100%]\n94 passed in 1.82s\n"
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultralearn/scripts/residual_report.py --ledger /nonexistent/residual-ledger.jsonl | sed -n 2p | grep -qx '(none)'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultralearn/scripts/residual_counter.py --help | grep -q -- --ledger",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The residual counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'residual_counter.py.*residual_report.py'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "sed -n '/^## The residual counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | tr '\\n' ' ' | grep -q 'residuals.jsonl.*normalized text'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "test \"$(sed -n '/^## The catch counter/,/^## Verb 2/p' skills/ultralearn/SKILL.md | grep -c '^## The residual counter')\" = 1",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "2",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultralearn",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/publish-fold.mjs skills/ultralearn/scripts/catch_counter.py skills/ultralearn/scripts/catch_report.py skills/ultralearn/scripts/merge_ledger.py skills/ultralearn/scripts/harvest_fleet_runs.py",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 677803,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "21d6539698b3bb4ee2c2322197efdd6e076e70fc",
+      "branches": [
+        "1",
+        "2"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-85/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-85/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.264,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: `python3 -m pytest -n 3` ends 1925 passed / 1 failed, and the one failure is `tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_residuals.mjs]` \u2014 the Proof's reserved `Test:` path. At BASE that file is #711's two-task exam, and its task-2 half (8 legs) pins the `POST /issues` this task is required to delete. I left the file untouched, as the brief directs, so the peer's exam lands over it; its task-1 half (all 10 checklist legs plus the `gh` global-constraint leg) is green against my tree, and the 8 red legs are exactly the follow-up ones this task removes. Every other Proof `Run:` is green.",
+    "task 1: In `tests/test_docs_agree_with_code.py` two of the four retired strings are spelled as concatenations (`\"publish:\" + \"followup\"`, `\"four\" + \" event kinds\"`). M6 requires the exam to assert those strings are absent from the contract while the Proof greps the same file for them and requires zero \u2014 a contiguous literal cannot satisfy both. A comment above `RETIRED_SINK` says why, so a later reader does not join them back up."
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
