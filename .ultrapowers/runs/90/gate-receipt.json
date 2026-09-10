@@ -1,0 +1,79 @@
+{
+  "mode": "gate",
+  "stamp": "run-90",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-90/report.json",
+  "branch": "ultra/integration-run-90",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "Plan-level Claim (run-90): \"launch two runs that touch the same file \u2026 each run's PR merges itself once its own gate is green and main has not moved under it\" \u2014 The end-to-end sentence is about two live sandbox runs against a real GitHub target: the merge PUT, the ready-vs-draft POST and the base-moved re-fold all cross the GitHub API. This tree can only be read statically here; the behaviour is covered in stub form by `fleet/tests/test_sandbox_boot_join.mjs` and `fleet/tests/test_sandbox_boot_selfmerge.mjs` (the latter's `Run:` leg exited 0 on the adopted tree), but no live two-run launch was or could be performed in this environment. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 2 \u2014 `fleet/sandbox-boot.sh` `merge_pr()` join and hold (`live_tip`/`folded_tip` comparison, the held `publish:merge left=held`, the ready-PR POST) \u2014 M1\u2013M4 describe requests to the GitHub API (the merge PUT, `GET /pulls/<n>`, the 405 arms) and a `refs/remotes/origin/<default>` fetch against a real target. Verified here only as source and through the sims' stubbed curl/git seams; the real edge was not exercised. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 3 \u2014 the CI removal's effect on merging (`.github/workflows/` is empty; no run reports the `test` context) \u2014 The tree-side facts are settled by the driver's own `Run:` evidence, but whether a PR is actually mergeable now depends on the operator's pre-launch removal of the `test` context from main's required status checks (plan preamble, \"Before launch (operator, not a task)\"). That is a GitHub branch-protection setting outside this tree and unreadable from here. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "4 \u2014 plan-defect: the task's Context asserts \"none pins the tail, so no sim edit is needed\", naming only test_run_engine_early_baseline.mjs and test_run_engine_baseline.mjs. It missed a third pin: fleet/tests/test_run_engine_red_suite_record.mjs:156-160 filters the judgment calls with `String(j).startsWith('baseline: the suite is RED on BASE (')` \u2014 the open paren is INSIDE the pinned prefix \u2014 and then asserts `redCalls.length === 1`. M1's rewording makes the judgment call read `baseline: the suite is RED on BASE \u2014 the sensor is blind for this run; failing: \u2026 (<block>)`, so that filter matches nothing and the sim fails `assert.equal(0, 1)` on the folded tree. The task's exam and its two `Run:` siblings all pass (they use the bare prefix), so nothing in this task's own evidence catches it; the committed suite \u2014 this run's stated Acceptance \u2014 goes red. The fix is one loosened literal in fleet/tests/test_run_engine_red_suite_record.mjs, which is outside task 4's FILES (`fleet/run-engine.mjs` only) and inside task 1's, so no edit this diff can carry answers it; task 1's stated scope for that file (`proofTests` on the fixture tasks at :57/:105) does not touch line 157, so the pin survives the fold unless a sibling independently repairs it. Operator call: apply the patch below to the sibling sim, or re-scope it into a task that owns that path."
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "2 \u2014 plan-defect: `fleet/tests/test_sandbox_boot_merge.mjs` is deleted whole (2,576 lines, ~93 cases), but the plan's premise for that deletion \u2014 \"(93 cases) is entirely the check-runs poll\" \u2014 is false. Only the first ~35 cases are the poll. The rest pin behaviour this task keeps in `fleet/sandbox-boot.sh`, and nothing else in the tree pins it: the fold unit's dispatch, argv, tee log and ordering, `no phase_refresher beside the fold unit`, the crash/ref-restore and receipt-replacement arms, the deadman stopping the fold units, the plain push and its read-back, the refused-push failure, `fold_section` rendering (suite red / conflict parked / cannot fold / nothing to join), the whole `failing-block M1\u2013M5` group, the `strict-405 M1\u2013M6` case-insensitive body matching, the `fold-again M1\u2013M5` accounting and the `#808 M2\u2013M4` clock legs, and the body-PATCH group (`exactly one PATCH`, `after the last PUT`, `a one-attempt run sends no PATCH at all`). Measured on the tree: `systemd-run fold|foldUnits|deadman` occurs 50\u00d7 in this file vs 8\u00d7 in `test_sandbox_boot_edges.mjs`; `patch.log`/`-X PATCH` pins occur in this file only. That last group matters most here, because this patch itself changes the PATCH trigger (`do_boot` now calls `patch_pr_body` on a one-attempt held run) and deletes the only test that constrained it \u2014 a change to live behaviour whose pin is removed in the same diff. With `Acceptance: suite \u2014 the committed suite is the verification`, a net \u221284 top-level cases against +28 is a real loss of the verifying artifact. Fix inside this task's own FILES: keep `fleet/tests/test_sandbox_boot_merge.mjs`, delete or rewrite only the check-runs-dependent cases (the `M1`/`M2` poll legs at :269\u2013:495, the CONTRACT/RUNBOOK/SKILL doc legs at :612\u2013:660 that duplicate the new join exam, and the four assertions naming `STUB_CHECKS*`/`checkReads` inside otherwise-surviving cases), and keep the ~55 publish-fold / failing-block / strict-405 / fold-again / #808 cases \u2014 most pass unchanged, since with the poll gone the green boot merges on the stubbed tip and makes no check-runs request. Add back a PATCH-count leg for the new held path (`exactly one PATCH, sent after the merge decision`)."
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "2 \u2014 plan-defect: `fleet/tests/test_sandbox_boot_merge.mjs` is deleted whole (2,576 lines, ~93 cases), but only its first half is the check-runs poll. The task's Context asserts the file \"is entirely the check-runs poll\"; that premise is wrong. Lines 1\u2013662 are the check-runs exam and its doc pins (rightly retired, and their surviving legs are re-homed in `test_sandbox_boot_selfmerge.mjs` / the new `test_sandbox_boot_join.mjs`). Everything from line 663 down is five OTHER exams of boot-script behaviour this patch does not remove and partly modifies:\n\n- publish-fold M1\u2013M8: `the green boot runs the engine, then one fold unit`, `the fold unit's argv is the engine's bracket`, `the fold's output is teed into publish-fold/publish-fold-1.log`, `running/publish fold, the unit, its await and publishing are in that order`, `no phase_refresher runs beside the fold unit`, `a branch with nothing ahead of BASE starts no fold unit`, `a fold that exits non-zero with no disposition restores the ref and writes a crash row`, `attempt 2's crash restores attempt 1's candidate`, `an unparsable receipt at crash time is replaced, not read`, `the deadman's parked page ends the run at 0 with no push and no PR`, `the deadman stops the fold units beside the engine`.\n- #808 M1\u2013M4: the deadman over a fold page, the date-stub clock, `a window of <N>s outlasted across two folds runs exactly three folds`.\n- failing-block M1\u2013M5: `the fenced block of a suite-red body carries the not-ok line`, `the fenced block is suite-1.txt's lines from not-ok through its last`, `a suite with no marker line is quoted whole`, `the suite-red boot calls node directly not once` \u2014 i.e. the only exam of `failing_block`/`fold_section` as the CARD renders them, which is exactly the machinery this task's new `held_section` reuses.\n- strict-405 M1\u2013M6: the three 405 bodies that earn a second fold, matched case-insensitively \u2014 the backstop M4 says must survive. The new join exam pins one body in one case; the matrix is gone.\n- fold-again M1\u2013M5: `three base-moved 405s and then a 200 run four folds and four PUTs`, `the four-fold run records four attempts, one PATCH and four merge lines`, `sandbox-boot.sh defines the fold-again window as one line`, `with the window at 0 a refusing stub folds again once and stops`, `a fold-again that records tip unmoved skips the push and the PUT`, plus the CONTRACT.md pins for `FOLD_AGAIN_WAIT`, its default, both notes, and `'retried exactly once' is nowhere in CONTRACT.md`.\n\nNone of this is covered elsewhere: `fleet/tests/test_publish_fold.mjs` and `test_publish_fold_block.mjs` examine `fleet/publish-fold.mjs` (the node folder), not the boot script's orchestration of it; grepping the surviving fleet sims for `publish fold (attempt`, `FOLD_AGAIN_WAIT`, `fleet-fold-7-` and `STUB_FOLD_DISPOSITION` finds 1\u20133 incidental hits per file against this file's 61.\n\nThis matters concretely for THIS diff, which changes the fold-again loop and the body patch: `patch_pr_body` is moved out of the `attempt > 1` block and given a second trigger (`case \"$MERGE_NOTE\" in \"left open: suite red\"*`), and the two cases that pinned it \u2014 `a disposition that lands after the POST is PATCHed onto the body` and `a one-attempt run sends no PATCH at all` \u2014 go out with the file. After this patch nothing in the committed suite asserts how many PATCHes a green run, a fold-again run, or a held run sends; the held legs read `pr-body.md` off the evidence worktree, not the PATCH payload. With Acceptance being \"the committed suite is the verification\", that is a real hole.\n\nFix inside this task's FILES: keep the file (or re-home its second half). Delete only lines 1\u2013662 (the check-runs exam and the three doc pins M5\u2013M7, already superseded), retitle the file to the publish-fold/fold-again/failing-block/strict-405/#808 exams it actually is, drop the now-dead `STUB_CHECKS`/`checksBody` helpers from its prelude, and adjust the handful of cases that asserted a check read (`a red suite holds the PR: no check read\u2026` still works \u2014 `checkReads` survives in the rig as an alias for `checkRunRequests`). Restore in particular `a one-attempt run sends no PATCH at all` and `a disposition that lands after the POST is PATCHed onto the body`, and add the held case to them, so the new `repatch` branch is pinned."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-90/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1608 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 58%]\n........................................................................ [ 62%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 94%]\n........................................................................ [ 98%]\n........................                                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1608 passed, 5 warnings in 422.17s (0:07:02) =================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}

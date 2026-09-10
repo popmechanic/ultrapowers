@@ -100,3 +100,13 @@
 {"kind":"driver:integrated-check","cmd":"node --check fleet/run-engine.mjs","exit":0,"minor":false,"wave":1,"id":"01M26EG9Q30000WS293V19AJ5X","ts":1789070419683}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M26EG9Q400003KYRP549NX69","ts":1789070419684}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"9e543fa7-450e-41c7-b34e-cc55effa1e4b","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/integration","model":"opus","id":"01M26EG9Q50000992WRNAC1BF1","ts":1789070419685}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"9e543fa7-450e-41c7-b34e-cc55effa1e4b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4272,"output":13891,"cacheRead":1710599,"cacheCreation":114825,"costUsd":2.3721845000000013,"models":["claude-opus-5"]},"id":"01M26EP2RW00006K775M207SA3","ts":1789070609180}
+{"kind":"transcript:slice","label":"integration","sessionId":"9e543fa7-450e-41c7-b34e-cc55effa1e4b","bytes":11266,"id":"01M26EP2S50000W1CCB1BA4MQ3","ts":1789070609189}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M26EP2SJ0000DRFVD0JQ09D2","ts":1789070609202}
+{"kind":"driver:stage","stage":"finalize","id":"01M26EP2WS00008SZ9BHBZCFXJ","ts":1789070609305}
+{"kind":"driver:stage","stage":"gate","id":"01M26EP2Z10000SFF94RKTAMXA","ts":1789070609377}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M26EP3310000297KPYJQXYVD","ts":1789070609505}
+{"kind":"driver:ack-decision","approve":false,"reason":"non-pre-authorized ack(s): deferred:plan-defect, deferred:plan-defect, deferred:plan-defect","id":"01M26EP3320000V7XW21J4W3Q1","ts":1789070609506}
+{"kind":"driver:fail","verdict":"needs-ack","detail":"non-pre-authorized ack(s): deferred:plan-defect, deferred:plan-defect, deferred:plan-defect — gate receipt is the terminal artifact","id":"01M26EP33200015C6AR3E84PR0","ts":1789070609506}
+{"kind":"run:open","runId":"run-90","base":"e7a9eada810d5852f324714cead513a944d096c9","source":"fleet/publish-fold.mjs","id":"01M26EP3BC0000S8WTXK8S5A68","ts":1789070609772}
+{"kind":"driver:publish-fold","run":"90","attempt":"1","base":"e7a9eada810d5852f324714cead513a944d096c9","tip":"e7a9eada810d5852f324714cead513a944d096c9","candidate":"c8b3e9b3cb84a0c66b049b324b0fbd78ae99f4af","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M26EP4EJ0000EFWS9MZPVW1J","ts":1789070610898}

@@ -3,3 +3,13 @@ run-main: preflight
 run-main: tiers — 4 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE e7a9eada810d5852f324714cead513a944d096c9; 4 task clone(s) + integration
 run-main: engine — waves 4, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: needs-ack — non-pre-authorized ack(s): deferred:plan-defect, deferred:plan-defect, deferred:plan-defect — gate receipt is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 1h 14min 36.136s
+CPU time consumed: 1h 49min 43.928s
+Memory peak: 2.2G
+Memory swap peak: 0B
