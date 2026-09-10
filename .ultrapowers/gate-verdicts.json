@@ -1,0 +1,42 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f13527acf0a0b705cbc6ea79fdf379ca74942adc37654ef0c78ea924449dd2e1",
+      "verdict": "pass",
+      "reason": "round 2: five parser cases incl. order/dedup/bridge/empty; exact suite deep-equal and judgment literal; three attributed counter-shapes to TEST_FAILED; two-wave union; gate PASS/BLOCKED pair"
+    },
+    "2": {
+      "hash": "6d4726129073c502a604e1a9904a7d664336f6ed72ab23e52e6b944d3f0c98b0",
+      "verdict": "pass",
+      "reason": "round 2: one PUT vs zero on equal vs moved tip with the re-fold shown; five retired literals grepped to zero; held path field by field incl. the MERGE_NOTE line and the three ordered Held lines; hold and 405 exercised; doc literals pinned"
+    },
+    "3": {
+      "hash": "88658d8dc81ae8f6a127fea3754f20901febc8e0cdd001e5c085747b8a9b5b37",
+      "verdict": "pass",
+      "reason": "round 3: workflows dir empty; equality literal exactly once + cases run; section-then-bullet scoping with three ordered phrases; RUNBOOK phrases absent"
+    },
+    "4": {
+      "hash": "6f8baa6035fc14a261b5a7fdd688c4c9754b82638e15b7dba78d98a4dfb84bb9",
+      "verdict": "pass",
+      "reason": "round 2: two-path comma list computed from the clause's own rule, the unparsed branch, no impl: label and never dispatched"
+    }
+  },
+  "tally": {
+    "dispatched": 9,
+    "rejected": 5,
+    "rounds": {
+      "1": {
+        "pass": 0,
+        "fail": 4
+      },
+      "2": {
+        "pass": 3,
+        "fail": 1
+      },
+      "3": {
+        "pass": 1,
+        "fail": 0
+      }
+    }
+  }
+}
