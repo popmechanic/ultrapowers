@@ -488,8 +488,8 @@ PUBLISH_RECORD_LITERALS = (
     "why",
     "left",
     "detail",
-    "checks red",
-    "checks pending",
+    "held",
+    "base moved",
     "refused",
 )
 

@@ -209,19 +209,6 @@ case "$url" in
   *github.int.exe.xyz/api/v3/repos/*/pulls)
     say "curl pr create"; printf '%s\\n' "$payload" >>"$FLEET_HOME/pr.log"
     printf '%s\\n%s\\n' "$STUB_PR_BODY" "\${STUB_PR_CODE:-201}" ;;
-  *github.int.exe.xyz/api/v3/repos/*/commits/*/check-runs)
-    # The PR head's check runs. The default is one completed, successful run —
-    # so the green path merges. STUB_CHECKS_PENDING answers that many reads with
-    # a run still going first (\`"conclusion": null\`, unquoted, the way GitHub
-    # writes it); STUB_CHECKS replaces the body wholesale, which is how a case
-    # answers a failure, several runs at once, or no run at all.
-    n=$(bump checks); say "curl check-runs $n"
-    body='{"total_count":1,"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}'
-    if [ "$n" -le "\${STUB_CHECKS_PENDING:-0}" ]; then
-      body='{"total_count":1,"check_runs":[{"name":"test","status":"in_progress","conclusion":null}]}'
-    fi
-    [ -n "\${STUB_CHECKS:-}" ] && body="$STUB_CHECKS"
-    printf '%s\\n%s\\n' "$body" "\${STUB_CHECKS_CODE:-200}" ;;
   *github.int.exe.xyz/api/v3/repos/*/pulls/*/merge)
     # The say line is EXACTLY \`curl pr merge\`, with the count kept in the
     # counter file: a sim reads this line by equality to find the PUT in the
@@ -313,6 +300,12 @@ case "$verb" in
     # plan sha — i.e. the launcher and the VM agree.
     case "$a1" in
       FETCH_HEAD) printf '%s\\n' "\${STUB_FETCH_HEAD:-$STUB_PLAN_SHA}" ;;
+      refs/remotes/origin/*)
+        # THE DEFAULT BRANCH'S TIP, as the merge reads it before its PUT. The
+        # default is the tip the fold stub records on every attempt
+        # (\`attempts.<n>.tip\`), so a run that folded onto this base finds it
+        # still there and merges. STUB_TIP is a base that moved under the run.
+        printf '%s\\n' "\${STUB_TIP:-\${STUB_FOLD_ENGINE_HEAD:-$STUB_HEAD_SHA}}" ;;
       *)
         # The fold moves the branch, so a case that wants the second attempt's
         # head to differ sets STUB_HEAD_SHA_2; by default nothing moves and
@@ -904,8 +897,18 @@ export const prArgv = (ctx) => argvLines(ctx, 'curl').find((a) => a.some((s) => 
 export const mergePuts = (ctx) => lines(readLog(ctx, 'merge.log')).map((l) => JSON.parse(l))
 /** The curl argv of the merge PUT, or undefined. */
 export const mergeArgv = (ctx) => argvLines(ctx, 'curl').find((a) => a.some((s) => s.endsWith('/merge')))
-/** How many times the PR head's check runs were read. */
-export const checkReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl check-runs')).length
+/** How many requests this run made whose URL names a head's check runs.
+ *
+ *  Counted over the RECORDED CURL ARGV rather than over a stub arm, because
+ *  there is no longer an arm to count: the merge does not ask GitHub what it
+ *  thinks of the head, so a request like this would fall through to the curl
+ *  stub's `UNKNOWN` and exit 22. This says zero on the merge path, and it is a
+ *  real reading of what went out rather than a stub that was never wired.
+ *  `checkReads` is the older name, kept so a sim written against it still
+ *  counts the same thing. */
+export const checkRunRequests = (ctx) =>
+  argvLines(ctx, 'curl').filter((a) => a.some((s) => s.includes('check-runs'))).length
+export const checkReads = checkRunRequests
 /** How many times Reflection's /integrations was read. */
 export const integrationsReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length
 

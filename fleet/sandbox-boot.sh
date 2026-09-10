@@ -142,8 +142,7 @@ POLL_SECONDS="${FLEET_POLL_SECONDS:-2}"
 STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
 ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
 PUBLISH_BRANCH_WAIT="${PUBLISH_BRANCH_WAIT:-60}"             # for the pushed branch to show at the edge
-MERGE_CHECK_WAIT="${FLEET_MERGE_CHECK_WAIT:-1800}"           # 30 min for the PR head's checks to conclude
-MERGE_CHECKS_GRACE="${FLEET_MERGE_CHECKS_GRACE:-120}"        # before "no check runs" means "none are coming"
+MERGE_CHECK_WAIT="${FLEET_MERGE_CHECK_WAIT:-1800}"           # 30 min for GitHub to recompute mergeability
 # How long a base-moved 405 keeps buying another fold. The bound is a WALL
 # CLOCK and not a count: the base moves as often as the target's own traffic
 # says it does, and a run that can still fold cleanly onto it and still green
@@ -197,15 +196,21 @@ MERGE_NOTE=""
 # What the publish fold left behind, as a merge note: empty when the fold
 # folded (or had nothing to join), and `left open: publish fold — …` otherwise.
 # Set by `publish_fold`, read by `merge_pr`, which treats a non-empty value
-# exactly as `hold=1` — no check runs read, no PUT issued.
+# exactly as `hold=1` — no tip read, no PUT issued.
 FOLD_HOLD=""
 # The merge's fold-again signal. Every path of `merge_pr` returns 0 under
-# `set -e`, so the one outcome that earns another fold (a 405 whose body says
-# the PR is not mergeable, that the base branch was modified, or that a
-# required status check is expected) is carried in a variable. `merge_pr`
-# clears it on entry and raises it on that refusal; `do_boot` loops on it.
+# `set -e`, so the two outcomes that earn another fold — a default branch whose
+# tip is no longer the one the fold joined onto, and a 405 whose body says the
+# PR is not mergeable, that the base branch was modified, or that a required
+# status check is expected — are carried in a variable. `merge_pr` clears it on
+# entry and raises it on either; `do_boot` loops on it.
 FOLD_AGAIN=""
-# When the FIRST base-moved 405 of this run landed, as `date +%s`. Empty until
+# The fold tip this run has already folded again for. A re-fold that comes back
+# on the tip it already offered has nothing new to offer, so it buys no further
+# fold: the loop stops on the first repetition rather than chasing a base the
+# folder cannot reach. Empty until a base-moved refusal has been recorded.
+TIP_FOLDED=""
+# When the FIRST base-moved refusal of this run landed, as `date +%s`. Empty until
 # one has: it is both the clock `FOLD_AGAIN_WAIT` is measured against and how
 # `merge_pr` knows, on entry, that it is not the first PUT — the call that
 # follows a fold-again waits for GitHub's mergeability before it asks again.
@@ -920,6 +925,49 @@ gate_verdict() {
   json_field verdict <"$receipt"
 }
 
+# The paths of the gate receipt's `suite.unattributed` — the tests that went red
+# on the integrated tree with no task to charge the failure to. The gate records
+# them beside its verdict, and a run can be PASS and carry them: the verdict is
+# about the work the plan named, and an unattributed red is a failure nobody's
+# patch explains. Such a run publishes a READY PR and does not merge it.
+#
+# ONE READER, in a JSON parser and not a line matcher, for `fold_receipt`'s
+# reasons: an absent, unparsable or oddly-shaped receipt answers empty rather
+# than failing a `set -e` script, and a receipt from before this key existed —
+# no `suite`, or a `suite` without `unattributed` — answers empty too, so a run
+# whose gate wrote the older shape merges exactly as it always did.
+#
+#   `list`   (default) one path per line
+#   `joined` the same paths on one line, `, `-separated — the event's `detail`
+#   `first`  the first path alone — the note's and the card's
+gate_unattributed() { # $1 = list | joined | first
+  local receipt
+  receipt="$(gate_receipt_path)"
+  [ -n "$receipt" ] || return 0
+  python3 -c '
+import json, sys
+path, query = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "list")
+try:
+    doc = json.load(open(path))
+except Exception:
+    sys.exit(0)
+suite = doc.get("suite") if isinstance(doc, dict) else None
+paths = suite.get("unattributed") if isinstance(suite, dict) else None
+if not isinstance(paths, list):
+    sys.exit(0)
+paths = [p for p in paths if isinstance(p, str) and p]
+if not paths:
+    sys.exit(0)
+if query == "joined":
+    print(", ".join(paths))
+elif query == "first":
+    print(paths[0])
+else:
+    for p in paths:
+        print(p)
+' "$receipt" "${1:-list}"
+}
+
 # --- the publish fold --------------------------------------------------------
 #
 # run-32 task 4 (#715). Between the engine and the push sits one more model:
@@ -939,9 +987,8 @@ gate_verdict() {
 fold_dir() { printf '%s/%s/publish-fold\n' "$EVIDENCE_DIR" "$EVIDENCE_PATH"; }
 
 # ONE READER for the receipt, so every question about it is asked of a JSON
-# parser (as `check_runs_verdict` reads check runs) and an absent, unparsable or
-# oddly-shaped file answers empty rather than failing a `set -e` script. `$1` is
-# the query:
+# parser and an absent, unparsable or oddly-shaped file answers empty rather
+# than failing a `set -e` script. `$1` is the query:
 #   `field <attempt|''> <name>` — one value; the top-level document when the
 #                                 attempt is empty, '' when there is no such key
 #   `top`     — the highest attempt carrying a `disposition`
@@ -1502,6 +1549,59 @@ fold_section() {
   return 0
 }
 
+# The section a run held on an unattributed red carries, and nothing else does.
+#
+# The gate greened the work the plan named and the suite still went red on a
+# path no task owns, so the PR is READY and unmerged, and the person who reads
+# it is being asked for exactly one judgment: is that red this run's doing? The
+# section carries the three things that judgment needs and no fourth —
+#
+#   the failing test's own block, cut from the report's `tests.output`, so the
+#   reader is told BY WHAT the run is held and not merely that it is;
+#   the merge command, pinned to this head, for the reader who decides it is
+#   not; and the one line naming the path to fix for the reader who decides it
+#   is.
+#
+# `failing_block` takes a PATH and the output is a JSON string, so it goes to a
+# temp file first. A report that is absent, unparsable or carries no output
+# leaves the fence out and the other two lines in: the merge command and the
+# path are what the reader acts on, and neither needs the excerpt to be legible.
+held_section() {
+  local first out tmp head number
+  case "$MERGE_NOTE" in "left open: suite red"*) : ;; *) return 0 ;; esac
+  first="$(gate_unattributed first)"
+  printf '## Held\n\n'
+  # Beside the boot's own log, never inside the evidence worktree: `### Evidence`
+  # lists that directory, and a scratch file there would be a name in the card.
+  tmp="$FLEET_HOME/.fleet-held-block.txt"
+  out="$EVIDENCE_DIR/$EVIDENCE_PATH/report.json"
+  if [ -f "$out" ] && python3 -c '
+import json, sys
+try:
+    doc = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+tests = doc.get("tests") if isinstance(doc, dict) else None
+text = tests.get("output") if isinstance(tests, dict) else None
+if not isinstance(text, str) or not text.strip():
+    sys.exit(1)
+open(sys.argv[2], "w").write(text if text.endswith("\n") else text + "\n")
+' "$out" "$tmp" 2>/dev/null; then
+    printf '```\n'
+    failing_block "$tmp"
+    printf '```\n\n'
+  fi
+  rm -f "$tmp"
+  number="$(pr_number)"
+  head="$BRANCH_HEAD"
+  [ -n "$head" ] || head="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
+  printf '```\n'
+  printf 'gh pr merge %s --squash --match-head-commit %s\n' "$number" "$head"
+  printf '```\n\n'
+  printf 'Fix: %s went red on the fold of %s\n\n' "$first" "$RUN_ID"
+  return 0
+}
+
 render_card() { # $1 = outcome; prints the body file's path
   local body dest verdict receipt residuals
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
@@ -1534,6 +1634,9 @@ render_card() { # $1 = outcome; prints the body file's path
     # when anything did — above the evidence listing, because a reader who is
     # about to be told the merge is held wants the reason first.
     fold_section
+    # And, when the gate's own suite went red on a path no task owns, what the
+    # reader is being asked to decide about it.
+    held_section
     # Both records, on the target, spelled as a browser can follow them: the
     # receipts this run wrote, and the plan it was given. The tags, not the
     # branches — a branch moves on, a tag is where this run's reader lands.
@@ -1744,52 +1847,43 @@ patch_pr_body() { # $1 = outcome
 
 # --- merge -------------------------------------------------------------------
 #
-# A ready PR is the sandbox's own to finish. The operator's act is the launch;
-# what stands between the branch and the base after that is the TARGET's own
-# CI, which no human adds anything to by watching. So the script polls the PR
-# head's check runs and squash-merges the PR once every one of them is green.
-# `hold=1` in the assignment is how a launch keeps the merge button for a human.
+# A ready PR is the sandbox's own to finish, and the run's OWN GATE is what
+# finishes it. The gate ran the target's suite on the tree the fold produced,
+# and that is the same suite the target's CI would run on the same tree — so
+# asking GitHub to run it again and waiting half an hour for the answer bought
+# a second opinion of a measurement this run already holds. The sandbox asks
+# for none: it merges once its own gate is green and the default branch's tip
+# is still the one it folded onto.
 #
-# Same edge, same `fleet_curl`, no `gh` — for the reasons `publish` gives. Only
-# the three green conclusions merge: `success`, `neutral` and `skipped` are an
-# ALLOWLIST, so a conclusion GitHub adds tomorrow leaves the PR open for a
-# reader instead of being merged as "not failure".
+# TWO CONDITIONS, and both are read on this box. The gate's verdict is
+# `do_boot`'s `gate-green`, which is what calls this function at all. The join
+# is the tip: the fold recorded the tip it rebased onto, and a merge is only
+# ever the claim that THAT tip is still the base's. When it is not, nothing is
+# PUT — the answer to a base that moved is another fold, not another ask.
 #
-# The document is read by a JSON parser (python3 is on every sandbox). A run
-# still going carries `"conclusion": null`, and so does a run the index has
-# marked `completed` a beat before its conclusion lands — both are waited on.
+# `hold=1` in the assignment is how a launch keeps the merge button for a
+# human, and a gate receipt carrying an unattributed red is how the run itself
+# does: the PR is ready, the card says what went red, and the merge waits.
+#
+# Same edge, same `fleet_curl`, no `gh` — for the reasons `publish` gives.
 
 # The PR number is the tail of the URL GitHub answered the POST with (`…/pull/<n>`).
 pr_number() { printf '%s' "${PR_URL##*/}"; }
 
-check_runs_verdict() { # the check-runs document on stdin
-  # -> `green` | `pending` | `none` | `red <name> <conclusion>`
-  # A JSON parser, not a line reader: the integration answers the document
-  # pretty-printed where api.github.com answers it compact (measured
-  # 2026-09-05, runs 19 and 22 — a `{`-split reader saw `status` and
-  # `conclusion` on different lines and called a green run red), and Shelley's
-  # counsel the same night was that no byte-level property of an integration's
-  # answer is specified. A run `completed` with no conclusion is "unknown", so
-  # it is waited on, never merged and never called red.
-  python3 -c '
-import json, sys
-try:
-    doc = json.load(sys.stdin)
-except Exception:
-    print("pending"); sys.exit(0)
-runs = doc.get("check_runs") or []
-if not runs:
-    print("none"); sys.exit(0)
-for run in runs:
-    status = run.get("status")
-    conclusion = run.get("conclusion")
-    if status != "completed" or conclusion is None:
-        print("pending"); sys.exit(0)
-    if conclusion not in ("success", "neutral", "skipped"):
-        print("red %s %s" % (run.get("name") or "<unnamed>", conclusion)); sys.exit(0)
-print("green")
-'
+# The live tip of the target's default branch, fetched before it is read: the
+# clone's `refs/remotes/origin/<default>` is as old as the last fetch, and the
+# last fetch was the fold's. Empty when the default branch cannot be read or
+# the fetch and the rev-parse leave nothing — a comparison that cannot be made
+# is not a refusal, and the PUT goes out as it always did.
+live_tip() {
+  local base
+  base="$(default_branch)" || return 0
+  fleet_git -C "$TARGET_DIR" fetch origin "$base" >/dev/null 2>&1 || true
+  fleet_git -C "$TARGET_DIR" rev-parse "refs/remotes/origin/$base" 2>/dev/null || true
 }
+
+# The tip the last fold rebased onto, as the folder recorded it per attempt.
+folded_tip() { fold_field "$(fold_receipt top)" tip; }
 
 # Whether GitHub has an opinion about this PR's mergeability yet. `mergeable`
 # is null while the index recomputes it after a push, and a merge PUT made in
@@ -1830,7 +1924,8 @@ print("null" if value is None else "answered")
 }
 
 merge_pr() {
-  local head number attempts grace n=1 t0 answer code body lower verdict payload heading message
+  local head number answer code body lower payload heading message
+  local unattributed tip folded
   MERGE_NOTE=""
   # Raised again only by this call's own refusal: `do_boot` loops while it is
   # set, so a stale 1 would fold the run forever.
@@ -1851,70 +1946,88 @@ merge_pr() {
     append_event publish:hold "why=s:hold=1"
     return 0
   fi
+  # THE RUN'S OWN HOLD. The gate greened the work the plan named and the suite
+  # still went red on a path no task owns: the verdict is PASS, so the PR is
+  # READY — what is withheld is not the claim that the work is done but the
+  # claim that this box may finish it. A person decides whether that red is
+  # this run's doing, and `render_card`'s `## Held` section is what they decide
+  # from. No tip is read and no PUT is issued.
+  #
+  # `hold=1` is tested first, so an operator's hold keeps its own note whatever
+  # the gate left; this one is tested before the fold's, because a red the gate
+  # could charge to nobody is the older fact and the one with a path to name.
+  unattributed="$(gate_unattributed first)"
+  if [ -n "$unattributed" ]; then
+    log "merge: the gate's suite went red on $unattributed with no task to charge it to — leaving $PR_URL open"
+    MERGE_NOTE="left open: suite red, unattributed: $unattributed"
+    # A merge that did not happen is a `publish:merge` with a null `sha`:
+    # `left` names the class of the refusal and `detail` the account of it, so
+    # a reader counts the classes without parsing the account. Here the account
+    # is every unattributed path, not only the one the note carries.
+    append_event publish:merge sha=n: "left=s:held" \
+      "detail=s:$(gate_unattributed joined)"
+    return 0
+  fi
   # A fold that did not end clean is a hold, and exactly the same hold as
-  # `hold=1`: no check runs are read (they are the checks of a head this run
-  # will not merge) and no PUT is issued. `hold=1` is tested first, so an
-  # operator's hold keeps its own note whatever the fold left.
+  # `hold=1`: no tip is read (it is the base of a head this run will not merge)
+  # and no PUT is issued.
   if [ -n "$FOLD_HOLD" ]; then
     log "merge: $FOLD_HOLD"
     MERGE_NOTE="$FOLD_HOLD"
     append_event publish:hold "why=s:${FOLD_HOLD#left open: }"
     return 0
   fi
-  # The head `await_branch_visible` already read, so the checks asked about are
-  # the checks of the sha the PR was opened on. A re-entry that published
-  # earlier has no such read behind it and makes its own.
+  # The head `await_branch_visible` already read — the sha the PR was opened on,
+  # and the sha the PUT is pinned to. A re-entry that published earlier has no
+  # such read behind it and makes its own.
   head="$BRANCH_HEAD"
   [ -n "$head" ] || head="$(fleet_git -C "$TARGET_DIR" rev-parse "$BRANCH" 2>/dev/null || true)"
   number="$(pr_number)"
-  attempts="$(poll_attempts "$MERGE_CHECK_WAIT")"
-  grace="$(poll_attempts "$MERGE_CHECKS_GRACE")"
-  t0="$(date +%s)"
-  # The served page while the poll runs. No evidence commit goes with it: the
+  # The served page while the merge runs. No evidence commit goes with it: the
   # transitions this run publishes are still `running`, `publishing`, `done`.
-  write_status publishing "$PR_URL — awaiting checks"
-  verdict=pending
-  while [ "$n" -le "$attempts" ]; do
-    # No `-f` and no `-X`: this is a GET, and an answer the edge refuses is
-    # "not yet", not a failure of the run.
-    answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/commits/$head/check-runs" \
-      -w '\n%{http_code}' 2>/dev/null || true)"
-    code="$(printf '%s' "$answer" | tail -n 1)"
-    body="$(printf '%s' "$answer" | sed '$d')"
-    case "$code" in
-      2[0-9][0-9]) verdict="$(printf '%s' "$body" | check_runs_verdict)" ;;
-      *) verdict=pending ;;
-    esac
-    # An answer listing no run at all is GitHub's index catching up for as long
-    # as the grace lasts, and "this repository runs no checks on this PR" after
-    # it — a target without CI is not a target whose PRs never merge.
-    if [ "$verdict" = none ] && [ "$n" -le "$grace" ]; then verdict=pending; fi
-    case "$verdict" in pending) : ;; *) break ;; esac
-    n=$(( n + 1 ))
-    sleep "$POLL_SECONDS"
-  done
+  write_status publishing "$PR_URL — merging"
 
-  case "$verdict" in
-    green)
-      log "merge: checks green after $(( $(date +%s) - t0 ))s — merging $PR_URL" ;;
-    none)
-      log "merge: no check runs after ${MERGE_CHECKS_GRACE}s — nothing to wait for" ;;
-    red*)
-      set -- $verdict
-      log "merge: check $2 concluded $3 — leaving $PR_URL open"
-      MERGE_NOTE="left open: check $2 concluded $3"
-      # A merge that did not happen is a `publish:merge` with a null `sha`:
-      # `left` names the class of the refusal and `detail` the account of it,
-      # so a reader counts the classes without parsing the account.
-      append_event publish:merge sha=n: "left=s:checks red" "detail=s:check $2 concluded $3"
-      return 0 ;;
-    *)
-      log "merge: checks still pending after ${MERGE_CHECK_WAIT}s — leaving $PR_URL open"
-      MERGE_NOTE="left open: checks still pending after ${MERGE_CHECK_WAIT}s"
-      append_event publish:merge sha=n: "left=s:checks pending" \
-        "detail=s:still pending after ${MERGE_CHECK_WAIT}s"
-      return 0 ;;
-  esac
+  # THE JOIN IS THE WHOLE CHECK. The fold rebased this head onto a tip and
+  # recorded which one; the gate then greened the suite on the result. That
+  # measurement is worth exactly as much as the tip it was made on is still the
+  # base's, so the tip is read again here, live, and compared. Equal: the run
+  # merges on its own evidence. Different: the base moved between the fold and
+  # now, this run has measured nothing about the tree the merge would make, and
+  # the answer is another fold rather than another ask — no PUT is issued.
+  #
+  # A comparison that cannot be made is not a refusal: a receipt with no `tip`
+  # (a folder that died before it recorded one, an unparsable receipt) or a
+  # default branch this box cannot read leaves both sides empty and the PUT
+  # goes out as it always did.
+  tip="$(live_tip)"
+  folded="$(folded_tip)"
+  if [ -n "$tip" ] && [ -n "$folded" ] && [ "$tip" != "$folded" ]; then
+    log "merge: the base moved under $PR_URL — tip $folded → $tip"
+    MERGE_NOTE="left open: base moved"
+    # One `publish:merge` per decision, `sha` null because no PUT was made:
+    # `left` names the class of the refusal and `detail` the account of it, so
+    # a reader counts the classes without parsing the account.
+    append_event publish:merge sha=n: "left=s:base moved" "detail=s:tip $folded → $tip"
+    # HOW MANY TIMES IS A CLOCK, NOT A COUNT — the rule the 405 arm below
+    # states, and the same clock, because this is the same refusal reached one
+    # request earlier. Two things end the folding: `FOLD_AGAIN_WAIT` seconds
+    # since the first base-moved refusal of the run, and a re-fold that came
+    # back on the tip it already offered, which is a folder that cannot reach
+    # the base and will not reach it on a third try either.
+    if [ "$folded" = "$TIP_FOLDED" ]; then
+      log "merge: the fold came back on $folded again — leaving $PR_URL open"
+    elif [ -n "$FOLD_AGAIN_SINCE" ] &&
+         [ "$(( $(date +%s) - FOLD_AGAIN_SINCE ))" -ge "$FOLD_AGAIN_WAIT" ]; then
+      log "merge: the base kept moving for ${FOLD_AGAIN_WAIT}s — leaving $PR_URL open"
+    else
+      [ -n "$FOLD_AGAIN_SINCE" ] || FOLD_AGAIN_SINCE="$(date +%s)"
+      TIP_FOLDED="$folded"
+      FOLD_AGAIN=1
+      log "merge: folding again onto $tip"
+    fi
+    return 0
+  fi
+  log "merge: the gate is green and $folded is still the base's tip — merging $PR_URL"
 
   # EVERY CALL AFTER A FOLD-AGAIN waits for GitHub before it asks again. A 405
   # whose body says the PR is not mergeable — or that the base branch was
@@ -1926,9 +2039,9 @@ merge_pr() {
   if [ -n "$FOLD_AGAIN_SINCE" ]; then await_mergeable "$number"; fi
 
   # The plan's H1 as the commit title, because the fold commits under it are
-  # titled from the same line; `sha` pins the merge to the head whose checks
-  # were read, so a push that landed during the poll is refused rather than
-  # merged unchecked. The BODY carries the two coordinates that make a squashed
+  # titled from the same line; `sha` pins the merge to the head the gate greened,
+  # so a push that landed since is refused rather than merged unmeasured. The
+  # BODY carries the two coordinates that make a squashed
   # commit on the base traceable back to the run and the plan that produced it —
   # the branches are transient, the tags outlive them, and `git log` on the base
   # is where a reader starts.
@@ -2225,22 +2338,24 @@ $(engine_tail)"
     publish "$outcome"
   fi
 
-  # A ready PR is finished here: the checks the target runs on its head decide,
-  # and a parked run's draft is left for the operator either way.
+  # A ready PR is finished here: the run's own gate decided it, and a parked
+  # run's draft is left for the operator either way.
   MERGE_NOTE=""
   if [ "$outcome" = "gate-green" ]; then
     merge_pr
   fi
 
-  # FOLDING AGAIN, for as long as the clock and the folds allow. GitHub refused
-  # the merge because the base moved under the head this run pushed, so the
-  # answer is another fold onto the base as it is now, a leased push of what it
-  # produces and one more PUT. The base can move again while that runs, and the
-  # answer to that is the same answer — so this is a loop, and the only thing in
-  # this script that is one. `merge_pr` bounds it: it raises `FOLD_AGAIN` only
-  # for a base-moved 405 inside `FOLD_AGAIN_WAIT` of the first one, and an
-  # unclean fold takes the loop out through `FOLD_HOLD` without a PUT at all.
-  # An attempt that moved nothing has no new head to offer and no PUT to make.
+  # FOLDING AGAIN, for as long as the clock and the folds allow. The base moved
+  # under the head this run pushed — read off the tip before the PUT, or told by
+  # a 405 after it — so the answer is another fold onto the base as it is now, a
+  # leased push of what it produces and one more PUT. The base can move again
+  # while that runs, and the answer to that is the same answer — so this is a
+  # loop, and the only thing in this script that is one. `merge_pr` bounds it:
+  # it raises `FOLD_AGAIN` only inside `FOLD_AGAIN_WAIT` of the run's first
+  # base-moved refusal and only while the folder is still reaching a new tip,
+  # and an unclean fold takes the loop out through `FOLD_HOLD` without a PUT at
+  # all. An attempt that moved nothing has no new head to offer and no PUT to
+  # make.
   local fold_tail="" attempt=1
   while [ "$FOLD_AGAIN" = "1" ]; do
     attempt=$(( attempt + 1 ))
@@ -2262,16 +2377,21 @@ $(engine_tail)"
       break
     fi
     push_head
-    write_status publishing "$PR_URL — awaiting checks on the folded head"
+    write_status publishing "$PR_URL — merging the folded head"
     collect_evidence
     push_evidence "$RUN_ID: publish fold (attempt $attempt) receipts"
     merge_pr
   done
+  # A DISPOSITION THE FIRST CARD COULD NOT CARRY is rewritten into the body —
+  # ONE PATCH, after the last merge of the run and never before. Two of them
+  # land after the POST: what the folds after the first decided, and the `##
+  # Held` section of a run held on an unattributed red, which quotes the PR's
+  # own number and head and so cannot exist until the PR does.
+  local repatch=""
+  [ "$attempt" -gt 1 ] && repatch=1
+  case "$MERGE_NOTE" in "left open: suite red"*) repatch=1 ;; esac
+  [ -n "$repatch" ] && patch_pr_body "$outcome"
   if [ "$attempt" -gt 1 ]; then
-    # What the folds after the first decided landed after the POST, so the body
-    # a reader opens is rewritten with all of them — once — before the run is
-    # called done.
-    patch_pr_body "$outcome"
     if [ -n "$(fold_receipt top)" ]; then
       fold_tail=" — publish fold: $(fold_phrase "$(fold_receipt top)")"
     fi

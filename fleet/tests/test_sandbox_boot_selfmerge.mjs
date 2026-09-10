@@ -1,33 +1,29 @@
 /**
  * Exam for the sandbox finishing its own pull request.
  *
- * At BASE the run stopped at the PR and waited for a human to press merge —
- * on a target whose CI is the only thing left to satisfy, that human added
- * nothing but latency. So after a gate-green publish the boot script polls the
- * PR head's check runs through the target's integration and squash-merges the
- * PR itself once every listed run is green, recording the squash commit as
- * `merged` on the status page. A failed check, half an hour of pending, a
- * merge GitHub refuses, or `hold=1` in the assignment leaves the PR open and
- * the run `done` exactly as before.
+ * At BASE the run asked GitHub to run the target's suite again and waited half
+ * an hour for the answer. It already held that answer: the publish fold rebased
+ * the head onto the base's tip and the run's own gate greened the target's
+ * suite on the tree that produced. So the merge is decided here, on this box,
+ * from two facts the run itself measured — its gate is green, and the default
+ * branch's tip is still the one the fold joined onto. It asks for no check run
+ * at all.
  *
  * The clauses this file pins:
  *
- *   M1  the check-runs GET, the merge PUT and its payload, and `merged` on the
- *       `done` page; the three green conclusions as an ALLOWLIST.
- *   M2  the four ways the merge does not happen — a red run, no run at all
- *       inside the grace, checks still pending at the wait, a refused PUT —
- *       and what the poll counts in each.
- *   M3  parked runs and `hold=`: no read and no PUT, and a bad `hold=` value
- *       fails the assignment before any clone.
- *   M4  `merged` is a cell on every page, and the green path's evidence
- *       commits and its one notification are unchanged.
- *   M5–M7  the three operator documents say so.
+ *   M1  the tip read before the PUT: equal merges once, moved PUTs nothing,
+ *       records `base moved` and folds again.
+ *   M2  the retired names are gone from the script, and a green merge makes
+ *       zero requests naming a head's check runs.
+ *   M3  a gate receipt carrying an unattributed red publishes a READY PR, holds
+ *       the merge, and says on the card what went red and how to finish it.
+ *   M4  `hold=1`, a parked run, and a 405 whose body names a moved base.
+ *   M5–M7  the operator documents say so.
  *
  * The rig is `_sandbox_boot_helpers.mjs`, shared with the other sandbox-boot
- * sims: `makeHome`, `boot`, the log readers, and the check-runs and merge
- * stubs that answer this script's two new calls. A boot is ~40 forks of stub
- * shell, so the green run is the rig's memoized one and every other case boots
- * once.
+ * sims: `makeHome`, `boot`, the log readers, and the `STUB_TIP` knob that moves
+ * the base under a run. A boot is ~40 forks of stub shell, so the green run is
+ * the rig's memoized one and every other case boots once.
  */
 
 import assert from 'node:assert/strict'
@@ -37,10 +33,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  SCRIPT, TARGET, HEAD_SHA, PR_URL, PLAN_H1, MERGE_SHA, ASSIGNMENT, RUN_PATH,
+  SCRIPT, TARGET, HEAD_SHA, OTHER_SHA, PR_URL, PLAN_H1, MERGE_SHA, ASSIGNMENT,
+  RUN_PATH,
   makeHome, boot, green,
   stream, statusOf, states, committed, commitStates, notifies, engineRuns,
-  readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads, directCalls,
+  readLog, argvLines, prPosts, mergePuts, mergeArgv, checkRunRequests, directCalls,
   targetDir, evidenceDir,
   runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
@@ -59,17 +56,7 @@ const tests = []
 const test = (name, fn) => tests.push([name, fn])
 
 const EDGE = 'https://github.int.exe.xyz/api/v3'
-const CHECKS_URL = `${EDGE}/repos/${TARGET}/commits/${HEAD_SHA}/check-runs`
 const MERGE_URL = `${EDGE}/repos/${TARGET}/pulls/1/merge`
-
-/** A check-runs document of `[name, status, conclusion]` triples. */
-const checksBody = (runs) =>
-  JSON.stringify({
-    total_count: runs.length,
-    check_runs: runs.map(([name, status, conclusion]) => ({ name, status, conclusion })),
-  })
-
-const completed = (name, conclusion) => [name, 'completed', conclusion]
 
 /** One boot per case, run and asserted to have exited 0. */
 function ran(env) {
@@ -79,15 +66,14 @@ function ran(env) {
   return ctx
 }
 
-// ── 1. the green path merges  [M1 / leg (a)] ─────────────────────────────────
+/** The `merge:` lines of a run's log, for an assertion's failure message. */
+const merges = (ctx) => stream(ctx).filter((l) => l.startsWith('merge:')).join(' | ')
 
-test('the green path reads the head\'s check runs and squash-merges the PR  [M1 / leg (a)]', () => {
+// ── 1. the green path merges, and asks nobody  [M1] [M2 / leg (a)] ───────────
+
+test('a gate-green run whose tip did not move squash-merges the PR  [M1 / leg (a)]', () => {
   const ctx = green()
   const curls = argvLines(ctx, 'curl')
-
-  const gets = curls.filter((a) => a.includes(CHECKS_URL))
-  assert.ok(gets.length >= 1, `no GET of ${CHECKS_URL}; curls:\n${curls.map((a) => a.join(' ')).join('\n')}`)
-  for (const a of gets) assert.ok(!a.includes('-X'), `the check-runs read is a GET: ${a.join(' ')}`)
 
   const puts = curls.filter((a) => a.includes(MERGE_URL))
   assert.equal(puts.length, 1, 'exactly one merge call')
@@ -105,179 +91,197 @@ test('the green path reads the head\'s check runs and squash-merges the PR  [M1 
       commit_message: 'Fleet-Run: 7\nPlan-Tag: ultra/plan/run-7',
       sha: HEAD_SHA,
     },
-  ], 'a squash, titled from the plan\'s H1, pinned to the head whose checks were read')
+  ], 'a squash, titled from the plan\'s H1, pinned to the head the gate greened')
 
   const status = statusOf(ctx)
   assert.equal(status.state, 'done')
   assert.equal(status.pr, PR_URL)
   assert.equal(status.merged, MERGE_SHA)
   assert.ok(stream(ctx).some((l) => l.startsWith('merge: merged')),
-    'one log line says the merge happened: ' + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+    'one log line says the merge happened: ' + merges(ctx))
 })
 
-// ── 2. the three green conclusions  [M1 / leg (b)] ───────────────────────────
-
-const GREEN_CONCLUSIONS = ['success', 'neutral', 'skipped']
-
-test('three completed runs concluding success, neutral and skipped merge  [M1 / leg (b)]', () => {
-  const ctx = ran({
-    STUB_CHECKS: checksBody(GREEN_CONCLUSIONS.map((c, i) => completed(`check-${i}`, c))),
-  })
-  assert.equal(mergePuts(ctx).length, 1)
-  assert.equal(statusOf(ctx).merged, MERGE_SHA)
+test('the merge asks GitHub for no check run at all  [M2 / leg (a)]', () => {
+  const ctx = green()
+  assert.equal(checkRunRequests(ctx), 0,
+    'a request naming a head\'s check runs went out: '
+      + argvLines(ctx, 'curl').map((a) => a.join(' ')).join('\n'))
+  assert.ok(stream(ctx).some((l) => l.includes('still the base\'s tip')),
+    'and the log says what it merged on instead: ' + merges(ctx))
 })
 
-for (const conclusion of GREEN_CONCLUSIONS) {
-  test(`a single run concluding ${conclusion} merges  [M1 / leg (b)]`, () => {
-    const ctx = ran({ STUB_CHECKS: checksBody([completed('test', conclusion)]) })
-    assert.equal(mergePuts(ctx).length, 1, `a ${conclusion} run is green`)
-    assert.equal(statusOf(ctx).merged, MERGE_SHA)
-  })
-}
+// ── 2. the join is the whole check  [M1 / leg (b)] ───────────────────────────
 
-// ── 2b. the integration's pretty-printed answer  [M1 / leg (b)] ───────────────
-// github.int.exe.xyz answers the check-runs document pretty-printed (one field
-// per line, measured 2026-09-05 on runs 19 and 22); api.github.com answers it
-// compact. The reader has to see the same run in both spellings — the
-// pretty-printed one left every wave-1 PR of 2026-09-05 open as
-// "check <unnamed> concluded <none>".
+test('a base that moved under the run PUTs nothing and folds again  [M1 / leg (b)]', () => {
+  const ctx = ran({ STUB_TIP: OTHER_SHA })
+  assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
+  assert.equal(checkRunRequests(ctx), 0)
 
-const prettyChecksBody = (runs) =>
-  JSON.stringify({
-    total_count: runs.length,
-    check_runs: runs.map(([name, status, conclusion]) => ({
-      name, status, conclusion, output: { title: null, summary: null }, check_suite: { id: 1 },
-    })),
-  }, null, 2)
-
-test('a pretty-printed check-runs answer with one successful run merges  [M1 / leg (b)]', () => {
-  const ctx = ran({ STUB_CHECKS: prettyChecksBody([completed('test', 'success')]) })
-  assert.equal(mergePuts(ctx).length, 1, 'the pretty-printed run is read as green: '
-    + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
-  assert.equal(statusOf(ctx).merged, MERGE_SHA)
-})
-
-test('a pretty-printed answer with one failed run leaves the PR open, naming the run  [M1 / leg (b)]', () => {
-  const ctx = ran({ STUB_CHECKS: prettyChecksBody([completed('test', 'failure')]) })
-  assert.equal(mergePuts(ctx).length, 0)
-  assert.ok(stream(ctx).some((l) => l.includes('check test concluded failure')),
-    stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
-})
-
-// ── 3. what the poll waits for  [M2] ─────────────────────────────────────────
-
-test('a run still going keeps the poll going, and the PUT follows the green read  [M2 / leg (c)]', () => {
-  const ctx = ran({ STUB_CHECKS_PENDING: '2' })
-  assert.equal(checkReads(ctx), 3, 'two pending answers, then the completed one')
   const s = stream(ctx)
-  const third = s.findIndex((l) => l === 'CALL curl check-runs 3')
-  const put = s.findIndex((l) => l === 'CALL curl pr merge')
-  assert.ok(third >= 0 && put > third, `the PUT follows the third read:\n${s.join('\n')}`)
-  assert.equal(mergePuts(ctx).length, 1)
-  assert.equal(statusOf(ctx).merged, MERGE_SHA)
+  assert.ok(s.some((l) => l.includes(`the base moved under ${PR_URL} — tip ${HEAD_SHA} → ${OTHER_SHA}`)),
+    'the log names both tips: ' + merges(ctx))
+  assert.ok(s.some((l) => l.includes(`merge: folding again onto ${OTHER_SHA}`)),
+    'and says what it does about it: ' + merges(ctx))
+  assert.ok(s.some((l) => l.includes('systemd-run fold fleet-fold-7-2')),
+    `a second fold unit ran:\n${s.join('\n')}`)
+
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'done')
+  assert.equal(status.merged, null)
+  assert.equal(status.pr, PR_URL)
+  assert.match(String(status.phase), /left open: base moved$/)
 })
 
-test('an answer with no check run at all is waited out, then merged  [M2 / leg (d)]', () => {
-  const ctx = ran({
-    STUB_CHECKS: checksBody([]),
-    FLEET_MERGE_CHECKS_GRACE: '1',
-    FLEET_MERGE_CHECK_WAIT: '5',
-  })
-  assert.equal(checkReads(ctx), 3, 'the grace is two attempts; the third is past it')
-  assert.equal(mergePuts(ctx).length, 1)
-  assert.equal(statusOf(ctx).merged, MERGE_SHA)
-  assert.ok(stream(ctx).some((l) => l.includes('nothing to wait for')),
-    'the log says why it stopped waiting: ' + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+test('a base that keeps moving stops on the fold that came back the same  [M1 / leg (b)]', () => {
+  // STUB_TIP never changes, so the second fold rebases onto the same tip it
+  // already offered — a folder that cannot reach the base. One more fold, not
+  // an unbounded chase.
+  const ctx = ran({ STUB_TIP: OTHER_SHA })
+  const s = stream(ctx)
+  assert.equal(s.filter((l) => l.startsWith('CALL systemd-run fold fleet-fold-7-')).length, 2,
+    `two fold units, no third:\n${s.filter((l) => l.includes('fleet-fold')).join('\n')}`)
+  assert.ok(s.some((l) => l.includes(`the fold came back on ${HEAD_SHA} again`)),
+    'and it says why it stopped: ' + merges(ctx))
 })
 
-// A conclusion outside the three green names stops the poll — including the two
-// GitHub spells that are neither `failure` nor green, which a denylist of
-// `failure` would merge.
-for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
-  test(`a run concluding ${conclusion} leaves the PR open  [M1] [M2 / leg (e)]`, () => {
-    const ctx = ran({ STUB_CHECKS: checksBody([completed('test', conclusion)]) })
-    assert.equal(mergePuts(ctx).length, 0, 'no PUT')
-    assert.equal(checkReads(ctx), 1, 'the poll stops at the first red answer')
-    const status = statusOf(ctx)
-    assert.equal(status.state, 'done')
-    assert.equal(status.merged, null)
-    assert.equal(status.pr, PR_URL)
-    assert.ok(stream(ctx).some((l) => l.includes(`concluded ${conclusion} — leaving`)),
-      'the log names the check and its conclusion: ' +
-        stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
-  })
+// ── 3. the retired names  [M2 / leg (c)] ─────────────────────────────────────
+//
+// Assembled rather than written, so this file's own assertion is not the hit
+// its `grep` finds — the same trick `RETIRED_NAMES` plays in the rig.
+
+const RETIRED_MERGE_NAMES = [
+  'check' + '-runs',
+  'check' + '_runs_verdict',
+  'MERGE' + '_CHECKS_GRACE',
+  'checks' + ' red',
+  'checks' + ' pending',
+]
+
+test('the boot script carries none of the check-run names  [M2 / leg (c)]', () => {
+  const source = fs.readFileSync(SCRIPT, 'utf8')
+  for (const name of RETIRED_MERGE_NAMES) {
+    const hits = source.split('\n').filter((l) => l.includes(name))
+    assert.equal(hits.length, 0,
+      `sandbox-boot.sh still names \`${name}\`:\n${hits.join('\n')}`)
+  }
+  assert.ok(source.includes('MERGE' + '_CHECK_WAIT'),
+    'the survivor is the mergeability wait, which is not a check run')
+})
+
+// ── 4. the run's own hold  [M3 / leg (d)] ────────────────────────────────────
+//
+// The gate greened the work the plan named and the target's suite still went
+// red on a path no task owns. The verdict is PASS, so the PR is READY; what is
+// withheld is the claim that this box may finish it.
+
+const HELD_PATH = 'tests/other.py'
+const HELD_HEADER = '________________________ test_other_thing ________________________'
+const HELD_OUTPUT = [
+  '============================= test session starts ==============================',
+  'collected 3 items',
+  '',
+  `${HELD_PATH} ..F                                                        [100%]`,
+  '',
+  '=================================== FAILURES ===================================',
+  HELD_HEADER,
+  '    def test_other_thing():',
+  '>       assert 1 == 2',
+  'E       assert 1 == 2',
+  '',
+  `${HELD_PATH}:4: AssertionError`,
+  '=========================== short test summary info ============================',
+  `FAILED ${HELD_PATH}::test_other_thing - assert 1 == 2`,
+].join('\n')
+
+const HELD_ENV = {
+  STUB_GATE_RECEIPT: JSON.stringify({
+    verdict: 'PASS', suite: { unattributed: [HELD_PATH] },
+  }),
+  STUB_REPORT: JSON.stringify({
+    stamp: 'run-7',
+    tests: { command: 'python3 -m pytest', passed: false, output: HELD_OUTPUT },
+  }),
 }
 
-test('checks still pending at the wait leave the PR open  [M2 / leg (f)]', () => {
-  const ctx = ran({ STUB_CHECKS_PENDING: '50', FLEET_MERGE_CHECK_WAIT: '3' })
-  assert.equal(checkReads(ctx), 4, 'three seconds at a zero step is four attempts')
-  assert.equal(mergePuts(ctx).length, 0)
+/** The PR body as it stands after the run's last patch. */
+const prBody = (ctx) =>
+  fs.readFileSync(path.join(evidenceDir(ctx), RUN_PATH, 'pr-body.md'), 'utf8')
+
+test('an unattributed red publishes a ready PR, holds the merge and says why  [M3 / leg (d)]', () => {
+  const ctx = ran(HELD_ENV)
+
+  assert.deepEqual(prPosts(ctx).map((p) => p.draft), [false], 'the PR is READY, not a draft')
+  assert.deepEqual(mergePuts(ctx), [], 'and no PUT was made')
+  assert.equal(checkRunRequests(ctx), 0)
+
   const status = statusOf(ctx)
   assert.equal(status.state, 'done')
-  assert.equal(status.merged, null)
+  assert.equal(status.merged, null, 'no squash commit on the page')
   assert.equal(status.pr, PR_URL)
-  assert.ok(stream(ctx).some((l) => l.includes('still pending after 3s')),
-    'the log says how long it waited: ' + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+  assert.match(String(status.phase),
+    new RegExp(`left open: suite red, unattributed: ${HELD_PATH}$`))
+  assert.ok(stream(ctx).some((l) => l.includes(`went red on ${HELD_PATH} with no task to charge it to`)),
+    'the log names the path: ' + merges(ctx))
 })
 
-test('a merge GitHub refuses is not retried  [M2 / leg (g)]', () => {
-  const ctx = ran({ STUB_MERGE_CODE: '405' })
-  assert.equal(mergePuts(ctx).length, 1, 'one PUT, and no second one')
-  const status = statusOf(ctx)
-  assert.equal(status.state, 'done')
-  assert.equal(status.merged, null)
-  assert.equal(status.pr, PR_URL)
-  assert.ok(stream(ctx).some((l) => l.includes('PUT answered 405')),
-    'the log quotes the code: ' + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+test('the held PR\'s card carries the block, the command and the fix  [M3 / leg (d)]', () => {
+  const body = prBody(heldRun())
+  assert.ok(body.includes(`- merge: left open: suite red, unattributed: ${HELD_PATH}`),
+    `the fold section records the hold:\n${body}`)
+
+  const lines = body.split('\n')
+  const held = lines.findIndex((l) => l === '## Held')
+  assert.ok(held >= 0, `the card has no \`## Held\` section:\n${body}`)
+  const after = lines.slice(held + 1)
+
+  const block = after.findIndex((l) => l === HELD_HEADER)
+  assert.ok(block >= 0, `the failing block's header is not quoted:\n${after.join('\n')}`)
+  assert.ok(!after.slice(0, block).some((l) => l.startsWith('===')),
+    'and the section quotes the failing block, not the whole log')
+
+  const command = after.findIndex((l) => l.startsWith('gh pr merge '))
+  assert.ok(command > block, `the merge command follows the block:\n${after.join('\n')}`)
+  assert.ok(after[command].includes('--squash --match-head-commit'),
+    `pinned to the head the gate greened: ${after[command]}`)
+  assert.ok(after[command].includes(HEAD_SHA) && after[command].includes(' 1 '),
+    `and it names this PR's number and head: ${after[command]}`)
+
+  const fix = after.findIndex((l) => l.startsWith('Fix: '))
+  assert.ok(fix > command, `the fix line comes last:\n${after.join('\n')}`)
+  assert.equal(after[fix], `Fix: ${HELD_PATH} went red on the fold of run-7`)
 })
 
-test('a green run beside a red or a pending one merges nothing  [M1] [M2 / leg (m)]', () => {
-  const red = ran({
-    STUB_CHECKS: checksBody([completed('unit', 'success'), completed('lint', 'failure')]),
-  })
-  assert.equal(mergePuts(red).length, 0)
-  assert.equal(checkReads(red), 1)
-  assert.equal(statusOf(red).state, 'done')
-  assert.equal(statusOf(red).merged, null)
-  assert.equal(statusOf(red).pr, PR_URL)
-
-  const pending = ran({
-    STUB_CHECKS: checksBody([completed('unit', 'success'), ['lint', 'in_progress', null]]),
-    FLEET_MERGE_CHECK_WAIT: '3',
-  })
-  assert.equal(checkReads(pending), 4, 'polled for the whole wait')
-  assert.equal(mergePuts(pending).length, 0)
-  assert.equal(statusOf(pending).state, 'done')
-  assert.equal(statusOf(pending).merged, null)
-  assert.equal(statusOf(pending).pr, PR_URL)
+test('a green run\'s card carries no Held section  [M3 / leg (d)]', () => {
+  assert.ok(!prBody(green()).includes('## Held'),
+    'nothing was held, so the section is not there')
 })
 
-// ── 4. parked runs and hold=  [M3] ───────────────────────────────────────────
+// ── 5. hold=, parked runs, and a 405  [M4 / leg (e)] ─────────────────────────
 
-test('a parked run reads no check and merges nothing  [M3 / leg (h)]', () => {
+test('a parked run reads no tip and merges nothing  [M4 / leg (e)]', () => {
   const ctx = ran({ STUB_VERDICT: 'NEEDS_ACK' })
   const status = statusOf(ctx)
   assert.equal(status.state, 'parked')
   assert.equal(status.merged, null)
-  assert.equal(checkReads(ctx), 0, 'a draft PR is the operator\'s')
+  assert.equal(checkRunRequests(ctx), 0, 'a draft PR is the operator\'s')
   assert.equal(mergePuts(ctx).length, 0)
 })
 
-test('hold=1 publishes and stops there  [M3 / leg (i)]', () => {
+test('hold=1 publishes and stops there  [M4 / leg (e)]', () => {
   const ctx = ran({ FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=1` })
   const status = statusOf(ctx)
   assert.equal(status.state, 'done')
   assert.equal(status.pr, PR_URL)
   assert.equal(status.merged, null)
   assert.equal(prPosts(ctx).length, 1, 'the PR is still opened')
-  assert.equal(checkReads(ctx), 0)
+  assert.equal(checkRunRequests(ctx), 0)
   assert.equal(mergePuts(ctx).length, 0)
   assert.ok(stream(ctx).some((l) => l.includes('merge: hold=1 — leaving')),
-    'the log says the hold is why: ' + stream(ctx).filter((l) => l.startsWith('merge:')).join(' | '))
+    'the log says the hold is why: ' + merges(ctx))
 })
 
 for (const value of ['yes', '0']) {
-  test(`hold=${value} fails the assignment before any clone  [M3] [M4 / leg (j)]`, () => {
+  test(`hold=${value} fails the assignment before any clone  [M4 / leg (e)]`, () => {
     const ctx = makeHome()
     const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: `${ASSIGNMENT} hold=${value}` })
     assert.notEqual(r.status, 0)
@@ -291,9 +295,31 @@ for (const value of ['yes', '0']) {
   })
 }
 
-// ── 5. the cell on every page  [M4 / leg (k)] ────────────────────────────────
+test('a merge GitHub refuses out of hand is not retried  [M4 / leg (e)]', () => {
+  const ctx = ran({ STUB_MERGE_CODE: '405' })
+  assert.equal(mergePuts(ctx).length, 1, 'one PUT, and no second one')
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'done')
+  assert.equal(status.merged, null)
+  assert.equal(status.pr, PR_URL)
+  assert.ok(stream(ctx).some((l) => l.includes('PUT answered 405')),
+    'the log quotes the code: ' + merges(ctx))
+})
 
-test('every page carries merged, null until the merge  [M4 / leg (k)]', () => {
+test('a 405 whose body names a moved base folds again and merges  [M4 / leg (e)]', () => {
+  const ctx = ran({
+    STUB_MERGE_CODE: '405',
+    STUB_MERGE_MESSAGE: 'Base branch was modified. Review and try the merge again.',
+  })
+  assert.equal(mergePuts(ctx).length, 2, 'the refused PUT, then the one after the fold')
+  assert.ok(stream(ctx).some((l) => l.includes('systemd-run fold fleet-fold-7-2')),
+    'a second fold unit ran')
+  assert.equal(statusOf(ctx).merged, MERGE_SHA)
+})
+
+// ── 6. the cell on every page  [M4 / leg (e)] ────────────────────────────────
+
+test('every page carries merged, null until the merge  [M4 / leg (e)]', () => {
   const ctx = green()
   const snapshots = committed(ctx)
   assert.deepEqual(commitStates(ctx), ['running', 'publishing', 'done'],
@@ -318,56 +344,64 @@ test('every page carries merged, null until the merge  [M4 / leg (k)]', () => {
   assert.equal(statusOf(held).merged, null)
 })
 
-// ── 6. the script parses  [leg (l)] ──────────────────────────────────────────
+// ── 7. the script parses  [leg (l)] ──────────────────────────────────────────
 
 test('bash -n accepts the script  [leg (l)]', () => {
   const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
   assert.equal(r.status, 0, r.stderr)
 })
 
-// ── 7. the operator documents  [M5] [M6] [M7] ────────────────────────────────
+// ── 8. the operator documents  [M5] [M6] [M7] ────────────────────────────────
 
 const read = (file) => fs.readFileSync(file, 'utf8')
-/** A document's lines from the first matching one up to the next stop, joined. */
+/** A document's lines from the first matching one up to the next stop, joined.
+ *
+ *  One space between them and one space wherever the source wrapped: a prose
+ *  assertion here is about the sentence, and a sentence that reads the same is
+ *  the same however its author broke the line under it. */
 const section = (file, from, to) => {
   const all = read(file).split('\n')
   const start = all.findIndex((l) => from.test(l))
   assert.ok(start >= 0, `${file} has no line matching ${from}`)
   const rest = all.slice(start + 1)
   const end = rest.findIndex((l) => to.test(l))
-  return [all[start], ...(end < 0 ? rest : rest.slice(0, end))].join(' ')
+  return [all[start], ...(end < 0 ? rest : rest.slice(0, end))].join(' ').replace(/\s+/g, ' ')
 }
 
-test('CONTRACT.md carries the cell, the two calls and the hold key  [M5]', () => {
+test('CONTRACT.md carries the cell, the merge call and the hold key  [M5]', () => {
   const contract = read(CONTRACT)
   assert.ok(contract.includes('"prAuthor":"<GitHub login or null>","merged":"<40-hex or null>"'),
     'the status.json literal gains merged right after prAuthor')
 
   const bootScript = section(CONTRACT, /^- \*\*Boot script/, /^- \*\*status\.json/)
-  assert.match(bootScript, /commits\/<head>\/check-runs[\s\S]*pulls\/<n>\/merge[\s\S]*hold=1/,
-    'the Boot-script bullet names the read, the PUT and the hold key, in order')
+  assert.match(bootScript, /pulls\/<n>\/merge[\s\S]*hold=1/,
+    'the Boot-script bullet names the PUT and the hold key, in order')
+  assert.ok(!bootScript.includes('check' + '-runs'),
+    `and no check-runs endpoint: ${bootScript}`)
 
   const publish = section(CONTRACT, /^- \*\*Publish:\*\*/, /^- \*\*Integration naming/)
-  assert.match(publish, /sandbox merges itself once its checks are green, unless the assignment carries[\s\S]*hold=1/,
-    'and the Publish bullet says the sandbox merges its own ready PR')
+  assert.match(publish, /sandbox merges its own ready PR once its gate is green and the default branch.s tip is the one it folded onto[\s\S]*hold=1/,
+    'and the Publish bullet says what the merge is decided on')
+  assert.ok(!publish.includes('check run'), `and names no check run: ${publish}`)
 })
 
-test('RUNBOOK.md says the PR merges itself, and puts no human at the button  [M6]', () => {
+test('RUNBOOK.md says the PR merges itself on its own gate  [M6]', () => {
   const pr = section(RUNBOOK, /^\*\*The PR\.\*\*/, /^\*\*Reap\.\*\*/)
-  assert.match(pr, /A ready PR merges itself[\s\S]*once every check is green, unless the launch said[\s\S]*--hold/)
+  assert.match(pr, /A ready PR merges itself[\s\S]*gate is green[\s\S]*tip[\s\S]*--hold/)
+  assert.ok(!pr.includes('check run'), `and names no check run: ${pr}`)
 
   const done = read(RUNBOOK).split('\n').filter((l) => /^\| `done` \|/.test(l))
   assert.equal(done.length, 1, 'one done row in the States table')
   assert.match(done[0], /merged is the squash commit/)
 
   const trust = section(RUNBOOK, /^## Trust/, /^## Rollback/)
-  assert.match(trust, /merge waits on the target.s own checks, and[\s\S]*--hold[\s\S]*to keep a human at the merge button/)
+  assert.match(trust, /--hold[\s\S]*to keep a human at the merge button/)
   assert.ok(!trust.includes('a pull request rather than a merge'), 'the old sentence is gone')
 })
 
 test('SKILL.md step 4 says a ready PR merges itself  [M7]', () => {
   const step = section(SKILL, /^4\. \*\*The PR is the gate/, /^5\. \*\*Reap/)
-  assert.match(step, /A ready PR merges itself once its checks are green[\s\S]*--hold[\s\S]*on the launch line keeps it open/)
+  assert.match(step, /A ready PR merges itself[\s\S]*--hold[\s\S]*on the launch line keeps it open/)
 })
 
 // ═══ #703 Task 1 — the boot writes its publish decisions as events ═══════════
@@ -384,8 +418,8 @@ test('SKILL.md step 4 says a ready PR merges itself  [M7]', () => {
 //   M2  `hold=1` and each of the three fold holds append exactly one
 //       `publish:hold`, whose `why` is the phase's text after `left open: `,
 //       and no `publish:merge`; a green run holds none.            leg  (b)
-//   M3  one `publish:merge` per merge decision — the squash sha, `checks red`,
-//       `checks pending`, `refused` — and the retry's two, in order, the last
+//   M3  one `publish:merge` per merge decision — the squash sha, `held`,
+//       `base moved`, `refused` — and the retry's two, in order, the last
 //       being what became of the PR.                              legs (c)–(g)
 //   M4  the stamp: a ULID-shaped `id` whose first ten characters are `ts`,
 //       ascending in file order, sorting after every engine line, the engine's
@@ -463,8 +497,8 @@ const CASE_ENV = {
   suiteRed: { STUB_FOLD_DISPOSITION: 'suite red' },
   conflict: { STUB_FOLD_DISPOSITION: 'conflict parked', STUB_FOLD_PATH: 'a.txt' },
   cannotFold: { STUB_FOLD_DISPOSITION: 'cannot fold', STUB_FOLD_REASON: 'base not an ancestor' },
-  checksRed: { STUB_CHECKS: checksBody([completed('test', 'failure')]) },
-  pending: { STUB_CHECKS_PENDING: '50', FLEET_MERGE_CHECK_WAIT: '3' },
+  held: HELD_ENV,
+  baseMoved: { STUB_TIP: OTHER_SHA },
   refused: { STUB_MERGE_CODE: '405' },
   retry: { STUB_MERGE_CODE: '405', STUB_MERGE_MESSAGE: 'Pull Request is not mergeable' },
 }
@@ -480,6 +514,8 @@ function box(key) {
   return BOXES.get(key)
 }
 const ctxOf = (key) => box(key).ctx
+/** The held run, booted once and shared with the card leg above. */
+function heldRun() { return ctxOf('held') }
 
 /** The one `publish:pr` a run that opened a PR appends. */
 const PR_EVENT = { kind: 'publish:pr', url: PR_URL, number: 1, draft: false }
@@ -492,13 +528,12 @@ const OUTCOME = {
   suiteRed: { kind: 'publish:hold', why: 'publish fold — suite red' },
   conflict: { kind: 'publish:hold', why: 'publish fold — conflict parked on a.txt' },
   cannotFold: { kind: 'publish:hold', why: 'publish fold — cannot fold: base not an ancestor' },
-  checksRed: {
-    kind: 'publish:merge', sha: null, left: 'checks red',
-    detail: 'check test concluded failure',
+  held: {
+    kind: 'publish:merge', sha: null, left: 'held', detail: HELD_PATH,
   },
-  pending: {
-    kind: 'publish:merge', sha: null, left: 'checks pending',
-    detail: 'still pending after 3s',
+  baseMoved: {
+    kind: 'publish:merge', sha: null, left: 'base moved',
+    detail: `tip ${HEAD_SHA} → ${OTHER_SHA}`,
   },
   refused: {
     kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
@@ -583,29 +618,32 @@ test('a green run appends no publish:hold at all  [#703 M2 / leg (b)]', () => {
 
 test('a merged PR appends one publish:merge carrying the squash sha  [#703 M3 / leg (c)]', () => {
   const ctx = ctxOf('green')
-  const merges = ofKind(ctx, 'publish:merge')
-  assert.equal(merges.length, 1)
-  assert.deepEqual(unstamped(merges[0]), { kind: 'publish:merge', sha: MERGE_SHA },
+  const list = ofKind(ctx, 'publish:merge')
+  assert.equal(list.length, 1)
+  assert.deepEqual(unstamped(list[0]), { kind: 'publish:merge', sha: MERGE_SHA },
     'the answer\'s sha, and no `left` and no `detail`')
-  assert.ok(!('left' in merges[0]) && !('detail' in merges[0]), 'a merge that happened leaves neither')
+  assert.ok(!('left' in list[0]) && !('detail' in list[0]), 'a merge that happened leaves neither')
   assert.equal(statusOf(ctx).merged, MERGE_SHA, 'the page says the same')
 })
 
-test('a red check run appends publish:merge left=checks red, and no PUT  [#703 M3 / leg (d)]', () => {
-  const ctx = ctxOf('checksRed')
+test('an unattributed red appends publish:merge left=held, and no PUT  [#703 M3 / leg (d)]', () => {
+  const ctx = ctxOf('held')
   assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
-    kind: 'publish:merge', sha: null, left: 'checks red',
-    detail: 'check test concluded failure',
+    kind: 'publish:merge', sha: null, left: 'held', detail: HELD_PATH,
   }])
   assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
 })
 
-test('checks pending at the wait append publish:merge left=checks pending  [#703 M3 / leg (e)]', () => {
-  const ctx = ctxOf('pending')
-  assert.deepEqual(ofKind(ctx, 'publish:merge').map(unstamped), [{
-    kind: 'publish:merge', sha: null, left: 'checks pending',
-    detail: 'still pending after 3s',
-  }])
+test('a base that moved appends publish:merge left=base moved  [#703 M3 / leg (e)]', () => {
+  const ctx = ctxOf('baseMoved')
+  const list = ofKind(ctx, 'publish:merge').map(unstamped)
+  assert.ok(list.length >= 1, 'the refusal is recorded')
+  for (const record of list) {
+    assert.equal(record.left, 'base moved')
+    assert.equal(record.sha, null)
+    assert.ok(String(record.detail).startsWith('tip '),
+      `the detail is the two tips: ${record.detail}`)
+  }
   assert.deepEqual(mergePuts(ctx), [], 'no PUT was made')
 })
 
@@ -619,13 +657,13 @@ test('a refused PUT appends publish:merge left=refused with the code  [#703 M3 /
 
 test('the one retry leaves two publish:merge lines, refusal then outcome  [#703 M3 / leg (g)]', () => {
   const ctx = ctxOf('retry')
-  const merges = ofKind(ctx, 'publish:merge')
-  assert.equal(merges.length, 2, 'one per merge decision, in order: '
-    + JSON.stringify(merges.map(unstamped)))
-  assert.deepEqual(unstamped(merges[0]), {
+  const list = ofKind(ctx, 'publish:merge')
+  assert.equal(list.length, 2, 'one per merge decision, in order: '
+    + JSON.stringify(list.map(unstamped)))
+  assert.deepEqual(unstamped(list[0]), {
     kind: 'publish:merge', sha: null, left: 'refused', detail: 'merge PUT answered 405',
   }, 'the 405 the second fold answered')
-  assert.deepEqual(unstamped(merges[1]), { kind: 'publish:merge', sha: MERGE_SHA },
+  assert.deepEqual(unstamped(list[1]), { kind: 'publish:merge', sha: MERGE_SHA },
     'and the second PUT\'s outcome, with no `left`')
   assert.equal(mergePuts(ctx).length, 2)
   assert.equal(statusOf(ctx).merged, MERGE_SHA)
@@ -738,10 +776,14 @@ test('the Publish bullet names the three kinds and their fields  [#703 M7 / leg 
   for (const word of [
     'publish:pr', 'publish:hold', 'publish:merge',
     'url', 'number', 'draft', 'why', 'left', 'detail',
-    'checks red', 'checks pending', 'refused',
+    'held', 'base moved', 'refused',
   ]) {
     assert.ok(publish.includes(word),
       `the Publish bullet does not name \`${word}\`: ${publish}`)
+  }
+  for (const retired of ['checks' + ' red', 'checks' + ' pending']) {
+    assert.ok(!publish.includes(retired),
+      `the Publish bullet still names \`${retired}\`: ${publish}`)
   }
 })
 

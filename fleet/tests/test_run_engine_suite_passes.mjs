@@ -1,10 +1,10 @@
 // fleet/tests/test_run_engine_suite_passes.mjs — #712 Task 1: the depth-1 leg
-// is gone; CI's depth-1 checkout keeps the guard.
+// is gone. (#871 decision 13 retired the workflow that stood in for it; leg (f)
+// now reads that the workflows directory is empty.)
 //
 // The claim: after a run whose adopted tree is green, no depth-1 clone was made
 // and no ack was manufactured for one — the leg is gone from the engine, its
-// record, its documents and its sims, and `.github/workflows/ci.yml`'s
-// default-depth checkout is what now predicts the history-coupled failure.
+// record, its documents and its sims, and no workflow survives to rehearse it.
 //
 // How the legs count suite executions: the engine emits no event for a suite
 // run, so an event count cannot answer M1. The count comes from the SUITE
@@ -264,33 +264,16 @@ const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passe
     'table row go, and the record must not name a field the engine no longer returns')
 }
 
-// ── (f) [M6] CI keeps the guard: the checkout comment names #712, the file has
-// dropped the old reading, and no line sets a fetch-depth key ───────────────
+// ── (f) [M6] Nothing keeps the guard, because there is nothing left to guard:
+// #871 decision 13 (2026-09-10) retired the workflow that used to stand in for
+// the deleted depth-1 leg — since 0.3.5 every fleet clone is the sandbox's own
+// full clone at BASE, so no live path meets a shallow boundary ─────────────
 {
-  const ciPath = path.join(REPO_ROOT, '.github/workflows/ci.yml')
-  const ciLines = fs.readFileSync(ciPath, 'utf8').split('\n')
-  const idx = ciLines.findIndex((l) => l.includes('uses: actions/checkout'))
-  assert.ok(idx >= 0, '(f)/M6: ci.yml has no `uses: actions/checkout` line at all')
-
-  const above = ciLines.slice(Math.max(0, idx - 8), idx)
-  assert.ok(above.some((l) => l.includes('#712')),
-    '(f)/M6: none of the eight lines directly above the `uses: actions/checkout` line names ' +
-    '#712 — the comment has to say the depth-1 checkout IS the guard now that #712 deleted ' +
-    'the engine\'s leg (a #712 written elsewhere in the file does not satisfy this):\n' +
-    above.join('\n'))
-
-  const gateLeg = ciLines.filter((l) => l.includes('gate leg'))
-  assert.deepEqual(gateLeg, [],
-    '(f)/M6: ci.yml still describes the checkout as predicting a gate leg that no longer ' +
-    'exists: ' + JSON.stringify(gateLeg))
-
-  const depthKeys = ciLines.filter((l) => /^[ \t]+fetch-depth:/.test(l))
-  assert.deepEqual(depthKeys, [],
-    '(f)/M6: a line of ci.yml sets a fetch-depth key — the default depth is the guard, so ' +
-    'the key stays unset (a comment naming it is not a key): ' + JSON.stringify(depthKeys))
-  assert.ok(ciLines[idx].includes('actions/checkout@v7'),
-    '(f)/M6: the checkout step is no longer actions/checkout@v7 — only the comment changes: ' +
-    ciLines[idx])
+  const workflows = path.join(REPO_ROOT, '.github/workflows')
+  const survivors = fs.existsSync(workflows) ? fs.readdirSync(workflows) : []
+  assert.deepEqual(survivors, [],
+    '(f)/M6: a workflow file survives under .github/workflows — the repository runs no CI, ' +
+    'and the fleet run\'s gate is the check: ' + JSON.stringify(survivors))
 }
 
 console.log('ALL TESTS PASSED')

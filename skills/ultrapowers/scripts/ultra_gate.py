@@ -5,7 +5,9 @@ Gate mode (--result): read the engine's report (bare since 0.3.0; the
 pre-0.3.0 Workflow-tool envelope with the report under result.* is still
 accepted — report-format.md), save the report verbatim, run gate_check.py,
 then read the suite result the run already recorded in the report's `tests`
-block. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a red suite always forces 1.
+block. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a red suite forces 1 unless the
+report names the failing paths as unattributed — red on a fold no task of the
+wave names — in which case the receipt carries them and the gate passes.
 The gate runs no suite of its own. The driver never decides — the
 orchestrator renders the receipt and applies the two-move rule. Gate mode
 moves no checkout: the verdict is checkout-position-independent (#104).
@@ -114,9 +116,18 @@ def main(argv=None):
     if not isinstance(tests, dict):
         return blocked(receipt, "report carries no tests block — the engine "
                                 "records the integrated suite there")
+    # `unattributed` (#871): the paths a wave adopted red because no task of
+    # that wave named them. A red suite still blocks — unless every red on it
+    # is one of those, which is a fact about the repository the run inherited
+    # rather than about the work it did, so the gate passes and the receipt
+    # carries the list for the reader. Always present, `[]` when there is none.
+    unattributed = tests.get("unattributed")
+    unattributed = ([str(p) for p in unattributed]
+                    if isinstance(unattributed, list) else [])
     receipt["suite"] = {"passed": bool(tests.get("passed")),
+                        "unattributed": unattributed,
                         "output": str(tests.get("output", ""))[-4000:]}
-    acc_pass = receipt["suite"]["passed"]
+    acc_pass = receipt["suite"]["passed"] or bool(unattributed)
 
     gate_exit = receipt["gateCheckExit"]
     if gate_exit == 1 or gate.get("verdict") == "BLOCKED" or not acc_pass:
