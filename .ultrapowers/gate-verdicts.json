@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "b8b434be66f606cb7fcee38c6c77397239a755b0ff0625e2bbafb8cda58d261e",
+      "verdict": "pass",
+      "reason": "round 1: every clause has a falsifying leg at the suite layer — M1 by the sim run and its bridge item, M2 by one count-pin per tag row (41+6+6+4+11 = 68, disjoint from M5's one [held-patch row), M3 by a survivor-printing grep per string (none a substring of M4's helper names), M4/M5 behavioural halves run inside leg (a)"
+    }
+  },
+  "tally": { "dispatched": 1, "rejected": 0, "rounds": { "1": { "pass": 1, "fail": 0 } } }
+}
