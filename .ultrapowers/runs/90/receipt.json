@@ -1,0 +1,341 @@
+{
+  "ok": true,
+  "stamp": "run-90",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-90"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "An unattributed red is reported, an attributed one is repaired",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs",
+          "fleet/tests/test_run_engine_reconcile.mjs",
+          "fleet/tests/test_run_engine_red_suite_record.mjs",
+          "skills/ultrapowers/references/report-format.md",
+          "skills/ultrapowers/scripts/ultra_gate.py",
+          "tests/test_ultra_gate_record.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`failingTestPaths(output: string): string[]`"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The sandbox owns the join and the hold",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "fleet/tests/test_sandbox_boot_merge.mjs",
+          "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+          "tests/test_docs_agree_with_code.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "CI leaves the repository",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          ".github/workflows/ci.yml",
+          "CLAUDE.md",
+          "fleet/RUNBOOK.md",
+          "tests/test_validate_skill.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "A red base names its failing test and says the sensor is blind",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/run-engine.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "An unattributed red is reported, an attributed one is repaired",
+          "files": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reconcile.mjs",
+            "fleet/tests/test_run_engine_red_suite_record.mjs",
+            "fleet/tests/test_run_engine_suite_attribution.mjs",
+            "skills/ultrapowers/references/report-format.md",
+            "skills/ultrapowers/scripts/ultra_gate.py",
+            "tests/test_ultra_gate_record.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`failingTestPaths(output: string): string[]`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_reconcile.mjs",
+            "fleet/tests/test_run_engine_red_suite_record.mjs",
+            "skills/ultrapowers/references/report-format.md",
+            "skills/ultrapowers/scripts/ultra_gate.py",
+            "tests/test_ultra_gate_record.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_suite_attribution.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_suite_attribution.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_red_suite_record.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q tests/test_ultra_gate_record.py"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_suite_attribution.mjs"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The sandbox owns the join and the hold",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_join.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_join.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_join.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_selfmerge.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_join.mjs"
+          ]
+        },
+        {
+          "id": "3",
+          "title": "CI leaves the repository",
+          "files": [
+            ".github/workflows/ci.yml",
+            "CLAUDE.md",
+            "fleet/RUNBOOK.md",
+            "tests/test_validate_skill.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            ".github/workflows/ci.yml",
+            "CLAUDE.md",
+            "fleet/RUNBOOK.md",
+            "tests/test_validate_skill.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(ls -A .github/workflows 2>/dev/null | wc -l)\" -eq 0",
+            "test \"$(grep -c 'ci.yml' tests/test_validate_skill.py)\" = 0 && test \"$(grep -c 'assert shipped == \\[\"ultradocket\", \"ultralearn\", \"ultrapowers\", \"ultrawrite\"\\]' tests/test_validate_skill.py)\" = 1 && python3 -m pytest -q tests/test_validate_skill.py",
+            "test \"$(grep -c 'ci.yml' CLAUDE.md)\" = 0 && test \"$(grep -c -- '--auto --squash' CLAUDE.md)\" = 0 && test \"$(grep -c 'gh run list' CLAUDE.md)\" = 0 && test \"$(grep -c '^- \\*\\*There is no CI' CLAUDE.md)\" = 1 && sed -n '/^## Commands/,/^## /p' CLAUDE.md | sed -n '/^- \\*\\*There is no CI/,/^- /p' | tr '\\n' ' ' | grep -q \"#871.*the fleet run's gate is the check.*the confidence run\" && test \"$(grep -c '^- \\*\\*The depth-1 guard retired with CI' CLAUDE.md)\" = 1 && sed -n '/^## Conventions/,/^## /p' CLAUDE.md | sed -n '/^- \\*\\*The depth-1 guard retired with CI/,/^- /p' | tr '\\n' ' ' | grep -q '#712.*2026-09-10'",
+            "test \"$(grep -c -- '--auto' fleet/RUNBOOK.md)\" = 0 && test \"$(grep -c 'waits on the target' fleet/RUNBOOK.md)\" = 0"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "4",
+          "title": "A red base names its failing test and says the sensor is blind",
+          "files": [
+            "fleet/run-engine.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/run-engine.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_blind_sensor.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_blind_sensor.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_run_engine_early_baseline.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_baseline.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_blind_sensor.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The sandbox never asks GitHub for check runs, and no document says it does.\n- Every recorded refusal or hold is one `publish:merge` or `publish:hold` line with a `left`/`why` a reader can count without parsing prose.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      },
+      {
+        "cmd": "node --check fleet/run-engine.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-90/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-90/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-90/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-90/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}

@@ -1,0 +1,16 @@
+{"kind":"run:open","runId":"run-90","base":"","source":"fleet/run-main.mjs","id":"01M26ADGBB0000Y3MCSGCR39QE","ts":1789066133867}
+{"kind":"driver:stage","stage":"tiers","detail":"4 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M26ADGBC0000ZX96GKEJZ2DN","ts":1789066133868}
+{"kind":"driver:stage","stage":"provision","detail":"BASE e7a9eada810d5852f324714cead513a944d096c9; 4 task clone(s) + integration","id":"01M26ADGN800008R76NPPNRPXK","ts":1789066134184}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M26ADH900000JEY5KRSYKR4H","ts":1789066134816}
+{"kind":"driver:stage","stage":"engine","detail":"waves 4, width bound 12, patch input armed","id":"01M26ADH90000131T5RVR0AAYW","ts":1789066134816}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -p no:xdist","id":"01M26ADH920000D1QQ9T8T2TZ1","ts":1789066134818}
+{"kind":"engine:phase","phase":"Setup","id":"01M26ADH930000GG2ZMHST64M6","ts":1789066134819}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-90 at e7a9eada810d5852f324714cead513a944d096c9","id":"01M26ADHCG0000PX90CPTSTEKD","ts":1789066134928}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M26ADHCH00000BQ6XJFTMVXD","ts":1789066134929}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"490bab98-3347-41ca-ace2-554dedc53a54","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/task-3","model":"opus","id":"01M26ADHWJ0000Y1KAFQKHTG0N","ts":1789066135442}
+{"kind":"worker:start","label":"exam:4","role":"examiner","sessionId":"0b063a1d-9332-4e99-b25c-2a711df6ee8d","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/exam-4","model":"opus","id":"01M26ADJ1500006190ECZHTRHP","ts":1789066135589}
+{"kind":"worker:start","label":"impl:4","role":"implementer","sessionId":"7fb36b1f-8f68-4649-a593-a7edf83a1473","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/task-4","model":"opus","id":"01M26ADJ190000B6FGF024Q3KY","ts":1789066135593}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"c417580c-ac74-478e-b6f1-70f35ba595be","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/exam-2","model":"opus","id":"01M26ADJ5X0000CVT44HNSMZYW","ts":1789066135741}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"d925b167-5478-4ec6-98b4-1c1156895cd6","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/task-2","model":"opus","id":"01M26ADJ610000E757VR3TQH1G","ts":1789066135745}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"72cd77c1-22e1-4bf8-bf00-4ca1fa69c925","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/exam-1","model":"opus","id":"01M26ADJAH0000E8PGRCT8HW3F","ts":1789066135889}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"2baa3067-9e52-4474-85d0-8df7d01cc304","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-90/clones/task-1","model":"opus","id":"01M26ADJAH0001ZBCNNGQP1B92","ts":1789066135889}
