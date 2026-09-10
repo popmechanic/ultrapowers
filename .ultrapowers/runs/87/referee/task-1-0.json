@@ -1,0 +1,91 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_janitor_reap_only.mjs`"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: `simEnv({ bin, home, env } = {}) -> Record<string, string>` in `fleet/tests/_helpers.mjs` fleet/tests/_helpers.mjs exports simEnv/0; Produces: `sim_env() -> dict[str, str]` in `tests/test_fleet_suite.py` tests/test_fleet_suite.py defines sim_env/0; Produces: `fleet/tests/test_sims_are_hermetic.mjs` `fleet` is followed by `/` in the bullet — a field, path or assignment, not an exported symbol; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "the exam exited 1 — already red as the exam, so an absent Test: path is not a second finding"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +25 / −4 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/_engine_helpers.mjs": "mjs",
+    "fleet/tests/_helpers.mjs": "mjs",
+    "fleet/tests/_lobby_helpers.mjs": "mjs",
+    "fleet/tests/_sandbox_boot_helpers.mjs": "mjs",
+    "fleet/tests/fixtures/hermetic/leaky_sim.mjs": "mjs",
+    "fleet/tests/test_claude_token.mjs": "mjs",
+    "fleet/tests/test_confine_hook.mjs": "mjs",
+    "fleet/tests/test_doctor.mjs": "mjs",
+    "fleet/tests/test_doctor_config_keys.mjs": "mjs",
+    "fleet/tests/test_doctor_render.mjs": "mjs",
+    "fleet/tests/test_fleet_bootstrap.mjs": "mjs",
+    "fleet/tests/test_launch_pins.mjs": "mjs",
+    "fleet/tests/test_launch_render.mjs": "mjs",
+    "fleet/tests/test_launch_run_number.mjs": "mjs",
+    "fleet/tests/test_launch_test_command.mjs": "mjs",
+    "fleet/tests/test_publish_fold.mjs": "mjs",
+    "fleet/tests/test_publish_fold_block.mjs": "mjs",
+    "fleet/tests/test_referee_linker.mjs": "mjs",
+    "fleet/tests/test_referee_replay.mjs": "mjs",
+    "fleet/tests/test_retire.mjs": "mjs",
+    "fleet/tests/test_run_engine_actor_routing.mjs": "mjs",
+    "fleet/tests/test_run_engine_candidate_bootstrap.mjs": "mjs",
+    "fleet/tests/test_run_engine_exam_evidence.mjs": "mjs",
+    "fleet/tests/test_run_engine_exam_fix_edit.mjs": "mjs",
+    "fleet/tests/test_run_engine_exam_together.mjs": "mjs",
+    "fleet/tests/test_run_engine_gate.mjs": "mjs",
+    "fleet/tests/test_run_engine_infra_retry.mjs": "mjs",
+    "fleet/tests/test_run_engine_integrated_runs.mjs": "mjs",
+    "fleet/tests/test_run_engine_proof_runs.mjs": "mjs",
+    "fleet/tests/test_run_engine_reserved_exams.mjs": "mjs",
+    "fleet/tests/test_run_engine_review_economy.mjs": "mjs",
+    "fleet/tests/test_run_engine_state_exams.mjs": "mjs",
+    "fleet/tests/test_run_engine_suite_passes.mjs": "mjs",
+    "fleet/tests/test_run_main.mjs": "mjs",
+    "fleet/tests/test_run_main_effort.mjs": "mjs",
+    "fleet/tests/test_run_main_engine_dir.mjs": "mjs",
+    "fleet/tests/test_run_waves.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_approval_evidence.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_approved.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_edges.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_merge.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_render_env.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_selfmerge.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_state_exams.mjs": "mjs",
+    "fleet/tests/test_setup_script.mjs": "mjs",
+    "fleet/tests/test_setup_script_render_env.mjs": "mjs",
+    "fleet/tests/test_sims_are_hermetic.mjs": "mjs",
+    "fleet/tests/test_strip_exams.mjs": "mjs",
+    "tests/test_fleet_suite.py": "py"
+  },
+  "ms": 338587
+}
