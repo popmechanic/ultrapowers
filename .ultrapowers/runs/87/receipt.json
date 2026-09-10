@@ -1,0 +1,314 @@
+{
+  "ok": true,
+  "stamp": "run-87",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-87"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s); acceptance: suite"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The hermetic rig \u2014 one `simEnv()`, one probe, no sim runs another",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/README.md",
+          "fleet/tests/_engine_helpers.mjs",
+          "fleet/tests/_helpers.mjs",
+          "fleet/tests/_lobby_helpers.mjs",
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "fleet/tests/fixtures/hermetic/leaky_sim.mjs",
+          "fleet/tests/test_claude_token.mjs",
+          "fleet/tests/test_confine_hook.mjs",
+          "fleet/tests/test_doctor.mjs",
+          "fleet/tests/test_doctor_config_keys.mjs",
+          "fleet/tests/test_doctor_render.mjs",
+          "fleet/tests/test_fleet_bootstrap.mjs",
+          "fleet/tests/test_launch_pins.mjs",
+          "fleet/tests/test_launch_render.mjs",
+          "fleet/tests/test_launch_run_number.mjs",
+          "fleet/tests/test_launch_test_command.mjs",
+          "fleet/tests/test_publish_fold.mjs",
+          "fleet/tests/test_publish_fold_block.mjs",
+          "fleet/tests/test_referee_linker.mjs",
+          "fleet/tests/test_referee_replay.mjs",
+          "fleet/tests/test_retire.mjs",
+          "fleet/tests/test_run_engine_actor_routing.mjs",
+          "fleet/tests/test_run_engine_candidate_bootstrap.mjs",
+          "fleet/tests/test_run_engine_exam_evidence.mjs",
+          "fleet/tests/test_run_engine_exam_fix_edit.mjs",
+          "fleet/tests/test_run_engine_exam_together.mjs",
+          "fleet/tests/test_run_engine_gate.mjs",
+          "fleet/tests/test_run_engine_infra_retry.mjs",
+          "fleet/tests/test_run_engine_integrated_runs.mjs",
+          "fleet/tests/test_run_engine_proof_runs.mjs",
+          "fleet/tests/test_run_engine_reserved_exams.mjs",
+          "fleet/tests/test_run_engine_review_economy.mjs",
+          "fleet/tests/test_run_engine_state_exams.mjs",
+          "fleet/tests/test_run_engine_suite_passes.mjs",
+          "fleet/tests/test_run_main.mjs",
+          "fleet/tests/test_run_main_effort.mjs",
+          "fleet/tests/test_run_main_engine_dir.mjs",
+          "fleet/tests/test_run_waves.mjs",
+          "fleet/tests/test_sandbox_boot.mjs",
+          "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+          "fleet/tests/test_sandbox_boot_approved.mjs",
+          "fleet/tests/test_sandbox_boot_edges.mjs",
+          "fleet/tests/test_sandbox_boot_merge.mjs",
+          "fleet/tests/test_sandbox_boot_render_env.mjs",
+          "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+          "fleet/tests/test_sandbox_boot_state_exams.mjs",
+          "fleet/tests/test_setup_script.mjs",
+          "fleet/tests/test_setup_script_render_env.mjs",
+          "fleet/tests/test_strip_exams.mjs",
+          "tests/test_fleet_suite.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`simEnv({ bin, home, env } = {}) -> Record<string, string>` in `fleet/tests/_helpers.mjs`",
+            "`sim_env() -> dict[str, str]` in `tests/test_fleet_suite.py`",
+            "`fleet/tests/test_sims_are_hermetic.mjs`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "gates": [],
+    "post_merge_runbook": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The hermetic rig \u2014 one `simEnv()`, one probe, no sim runs another",
+          "files": [
+            "fleet/tests/README.md",
+            "fleet/tests/_engine_helpers.mjs",
+            "fleet/tests/_helpers.mjs",
+            "fleet/tests/_lobby_helpers.mjs",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/fixtures/hermetic/leaky_sim.mjs",
+            "fleet/tests/test_claude_token.mjs",
+            "fleet/tests/test_confine_hook.mjs",
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs",
+            "fleet/tests/test_doctor_render.mjs",
+            "fleet/tests/test_fleet_bootstrap.mjs",
+            "fleet/tests/test_launch_pins.mjs",
+            "fleet/tests/test_launch_render.mjs",
+            "fleet/tests/test_launch_run_number.mjs",
+            "fleet/tests/test_launch_test_command.mjs",
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_publish_fold_block.mjs",
+            "fleet/tests/test_referee_linker.mjs",
+            "fleet/tests/test_referee_replay.mjs",
+            "fleet/tests/test_retire.mjs",
+            "fleet/tests/test_run_engine_actor_routing.mjs",
+            "fleet/tests/test_run_engine_candidate_bootstrap.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_exam_fix_edit.mjs",
+            "fleet/tests/test_run_engine_exam_together.mjs",
+            "fleet/tests/test_run_engine_gate.mjs",
+            "fleet/tests/test_run_engine_infra_retry.mjs",
+            "fleet/tests/test_run_engine_integrated_runs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_reserved_exams.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "fleet/tests/test_run_engine_state_exams.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "fleet/tests/test_run_main_effort.mjs",
+            "fleet/tests/test_run_main_engine_dir.mjs",
+            "fleet/tests/test_run_waves.mjs",
+            "fleet/tests/test_sandbox_boot.mjs",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "fleet/tests/test_sandbox_boot_approved.mjs",
+            "fleet/tests/test_sandbox_boot_edges.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs",
+            "fleet/tests/test_sandbox_boot_render_env.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+            "fleet/tests/test_sandbox_boot_state_exams.mjs",
+            "fleet/tests/test_setup_script.mjs",
+            "fleet/tests/test_setup_script_render_env.mjs",
+            "fleet/tests/test_sims_are_hermetic.mjs",
+            "fleet/tests/test_strip_exams.mjs",
+            "tests/test_fleet_suite.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`simEnv({ bin, home, env } = {}) -> Record<string, string>` in `fleet/tests/_helpers.mjs`",
+              "`sim_env() -> dict[str, str]` in `tests/test_fleet_suite.py`",
+              "`fleet/tests/test_sims_are_hermetic.mjs`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/README.md",
+            "fleet/tests/_engine_helpers.mjs",
+            "fleet/tests/_helpers.mjs",
+            "fleet/tests/_lobby_helpers.mjs",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/fixtures/hermetic/leaky_sim.mjs",
+            "fleet/tests/test_claude_token.mjs",
+            "fleet/tests/test_confine_hook.mjs",
+            "fleet/tests/test_doctor.mjs",
+            "fleet/tests/test_doctor_config_keys.mjs",
+            "fleet/tests/test_doctor_render.mjs",
+            "fleet/tests/test_fleet_bootstrap.mjs",
+            "fleet/tests/test_launch_pins.mjs",
+            "fleet/tests/test_launch_render.mjs",
+            "fleet/tests/test_launch_run_number.mjs",
+            "fleet/tests/test_launch_test_command.mjs",
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_publish_fold_block.mjs",
+            "fleet/tests/test_referee_linker.mjs",
+            "fleet/tests/test_referee_replay.mjs",
+            "fleet/tests/test_retire.mjs",
+            "fleet/tests/test_run_engine_actor_routing.mjs",
+            "fleet/tests/test_run_engine_candidate_bootstrap.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_exam_fix_edit.mjs",
+            "fleet/tests/test_run_engine_exam_together.mjs",
+            "fleet/tests/test_run_engine_gate.mjs",
+            "fleet/tests/test_run_engine_infra_retry.mjs",
+            "fleet/tests/test_run_engine_integrated_runs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_reserved_exams.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "fleet/tests/test_run_engine_state_exams.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "fleet/tests/test_run_main_effort.mjs",
+            "fleet/tests/test_run_main_engine_dir.mjs",
+            "fleet/tests/test_run_waves.mjs",
+            "fleet/tests/test_sandbox_boot.mjs",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "fleet/tests/test_sandbox_boot_approved.mjs",
+            "fleet/tests/test_sandbox_boot_edges.mjs",
+            "fleet/tests/test_sandbox_boot_merge.mjs",
+            "fleet/tests/test_sandbox_boot_render_env.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+            "fleet/tests/test_sandbox_boot_state_exams.mjs",
+            "fleet/tests/test_setup_script.mjs",
+            "fleet/tests/test_setup_script_render_env.mjs",
+            "fleet/tests/test_strip_exams.mjs",
+            "tests/test_fleet_suite.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sims_are_hermetic.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sims_are_hermetic.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+            "TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=/planted/render.env ULTRA_PLANTED=1 GH_TOKEN=planted ANTHROPIC_API_KEY=planted CLAUDE_CONFIG_DIR=planted-config FLEET_TEST_SLACK=7 python3 -c \"import sys, os; sys.path.insert(0, 'tests'); from test_fleet_suite import sim_env; e = sim_env(); bad = [k for k in e if k.startswith(('ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_')) and k != 'FLEET_TEST_SLACK']; assert not bad, bad; assert e.get('FLEET_TEST_SLACK') == '7', e.get('FLEET_TEST_SLACK'); assert 'HOME' in e and 'PATH' in e, e; tools = ('node', 'python3', 'git', 'bash', 'sh'); loose = [d for d in e['PATH'].split(':') if not any(os.path.exists(os.path.join(d, t)) for t in tools)]; assert not loose, loose; print(sorted(e))\"",
+            "f=$(mktemp) && echo 'TINYAPP_RENDER_URL=http://planted.invalid' > $f && export TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=$f && ls fleet/tests/test_sandbox_boot*.mjs | xargs -n1 -I{} sh -c 'node {} | grep -q \"ALL TESTS PASSED\"'",
+            "f=$(mktemp) && echo 'TINYAPP_RENDER_URL=http://planted.invalid' > $f && TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=$f ULTRA_PLANTED=1 CLAUDE_CONFIG_DIR=planted-config python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot or hermetic or render' -q -p no:cacheprovider",
+            "test -z \"$(grep -lE '(spawn|spawnSync|execFile|execFileSync|exec|execSync)\\([^;]*(test_[a-z_]*\\.mjs|pytest)' fleet/tests/test_*.mjs | grep -v test_sims_are_hermetic)\"",
+            "s=$(date +%s) && node fleet/tests/test_referee_linker.mjs | grep -q 'ALL TESTS PASSED' && echo test_referee_linker.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_run_engine_candidate_bootstrap.mjs | grep -q 'ALL TESTS PASSED' && echo test_run_engine_candidate_bootstrap.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_sandbox_boot_render_env.mjs | grep -q 'ALL TESTS PASSED' && echo test_sandbox_boot_render_env.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_sandbox_boot_state_exams.mjs | grep -q 'ALL TESTS PASSED' && echo test_sandbox_boot_state_exams.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_launch_render.mjs | grep -q 'ALL TESTS PASSED' && echo test_launch_render.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_launch_test_command.mjs | grep -q 'ALL TESTS PASSED' && echo test_launch_test_command.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_setup_script_render_env.mjs | grep -q 'ALL TESTS PASSED' && echo test_setup_script_render_env.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED' && echo test_run_engine_exam_evidence.mjs wall=$(( $(date +%s) - s ))s",
+            "s=$(date +%s) && node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED' && echo test_run_engine_state_exams.mjs wall=$(( $(date +%s) - s ))s",
+            "python3 -m pytest tests/test_fleet_suite.py -q -p no:cacheprovider -n auto"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sims_are_hermetic.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The hermetic rig \u2014 one `simEnv()`, one probe, no sim ru\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "allHeuristic": false,
+    "acceptance": {
+      "mode": "suite",
+      "reason": "the committed suite is the verification."
+    },
+    "globalConstraints": "- `fleet/tests/probe_*.mjs` are live probes (`fleet/tests/PROBES.md`), never collected by the bridge; they keep `process.env` and are outside every sweep here.\n- No sim reads `FLEET_RENDER_ENV`, `TINYAPP_RENDER_URL`, `/etc/fleet/render.env`, `~/.ultrapowers/fleet.json` or any other fact of the box it runs on; a sim that wants a renderer, a config file or a home writes one under its own temp root and points the process under test at it.\n- `fleet/tests/test_deadline_slack.mjs` and `fleet/tests/test_confine_hook.mjs` set and read `process.env` keys of their own process in-process (`FLEET_TEST_SLACK`, `FLEET_RUN_DIR`, `FLEET_TEST_CMD`) and restore them; that is a sim's own process, not a spawn, and is not what the sweep reads.\n- The role files under `fleet/roles/` keep their register: no all-caps MUST / NEVER / ALWAYS is added anywhere.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/publish-fold.mjs fleet/launch.mjs fleet/doctor.mjs fleet/janitor.mjs fleet/referee-linker.mjs skills/",
+        "minor": false
+      },
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-87/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-87/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-87/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-87/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
