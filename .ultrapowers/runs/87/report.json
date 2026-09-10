@@ -1,0 +1,206 @@
+{
+  "integrationBranch": "ultra/integration-run-87",
+  "baseSha": "5e0447c6582dd725b2dbf8f690269550c77c09a5",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a1b043d34abba00e6b80c09f95b2823f57c14bba",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-87/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Scope creep \u2014 two comment-only rewordings that no rule in this task requires. `fleet/tests/test_janitor_reap_only.mjs` (outside FILES; the driver's footprint line already records it) and the header of `fleet/tests/_lobby_helpers.mjs` both had the prose `exec(cmd, argv, options)` rewritten to avoid the literal `exec(`. Neither the probe nor the Proof's grep needs that: `scan()` in test_sims_are_hermetic.mjs blanks block comments in both the `code` and `skeleton` views before `callSitesOf` reads them (the file's own doc says so: \"Comments are blanked before any rule reads a file, so a spawn quoted in prose is prose\"), and the `Run:` grep is line-anchored with no `test_*.mjs`/`pytest` on those lines. These look like leftovers from a scanner draft that did not yet blank comments; the `_lobby_helpers.mjs` edit also costs the `makeExec` doc its seam signature. Reverting both is safe \u2014 the sweep still names zero offenders.; Temp-directory leak: `simEnv()` mkdtemps a fresh home on every call with no `home` (mandated by M1 and pinned by leg (a)'s \"each call mints a fresh home\"), and nothing ever removes it. Several call sites are per-invocation rather than per-module \u2014 `test_retire.mjs`'s `spawnSync('sh', \u2026, { env: simEnv() })` inside its command loop, `test_run_engine_actor_routing.mjs`'s `sh = (cmd) => spawnSync('bash', ['-c', cmd], { env: simEnv() })`, `test_doctor*.mjs`'s `runCli` when a case passes no `home` \u2014 and the CLI under test writes into that HOME. `tests/test_fleet_suite.py`'s `sim_env()` does the same once per bridged sim (~92 per suite run). Nothing fails, but a full suite now leaves a few hundred directories under `os.tmpdir()`. A `process.on('exit', \u2026)` rm in `_helpers.mjs` for the homes it minted (and an `atexit`/fixture cleanup in the bridge) would close it without touching the contract.; Guard coverage gap in the probe, worth naming in its doc: `callSitesOf(src, SPAWN_NAMES)` is called with the default `dotted: false`, so only spawns reached by a bare imported name are seen. A sim written as `import * as cp from 'node:child_process'; cp.spawnSync(argv, { env: { ...process.env } })` is invisible to M2's inherit rule and M4's sibling rule forever. `dotted: false` is the right default here (the lobby fixture's own `exec(cmd, argv, options)` seam would otherwise collide through `deps.exec(`), and no file in the tree uses the namespace form today, so this blocks nothing \u2014 but the file documents the `dotted` choice only for the fs read names. Either state the namespace gap beside that note, or add a cheap companion assertion that no swept file imports `child_process` as a namespace.; Scope: `fleet/tests/test_janitor_reap_only.mjs` is edited by this patch but is not in the task's FILES list. The change is comment-only (a JSDoc reword of the `exec(...)` seam description) and has no bearing on any Machine clause: the probe's `scan()` blanks comments in both the `code` and `skeleton` views before any rule reads them, so the original wording could never have registered as a spawn call site. It is cosmetic churn in a file the task does not authorise. Non-blocking because it changes no behaviour and the exam and both constraint `Check:` commands are green; the fix (either dropping the edit or widening FILES) lies outside this task's declared scope, hence actor `plan`.; Temp-directory leak: several sims call `simEnv()` inline at each spawn instead of hoisting one module-level binding \u2014 e.g. the doc-grep loop and `runProcess` in `test_retire.mjs`, `sliceSha` in `test_launch_pins.mjs`, `runCli` in `test_doctor.mjs` / `test_doctor_config_keys.mjs` / `test_doctor_render.mjs`, and the gate/`sh` helpers in `test_run_engine_actor_routing.mjs`. With no `home` argument, M1 makes every call mint a fresh `fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-sim-'))`, and none of these are ever removed, so a full bridge sweep of 92 sims strews an unbounded number of empty directories under TMPDIR. This is correct per M1 and the probe accepts it (the rule asks only that the `env:` value resolve to `simEnv`), so it settles no criterion \u2014 but the sims that already do `const ENV = simEnv()` once at module scope (`_engine_helpers.mjs`, `_sandbox_boot_helpers.mjs`) show the intended shape. Fix: hoist a single `const ENV = simEnv()` per file and pass `env: ENV`, or pass a shared `home` to the inline calls.; Coverage beyond the enumerated set: M4 names nine nested-spawn sites at BASE, but leg (f) of `test_run_main.mjs` also drops a `sh(\"node fleet/tests/test_roles_peer.mjs | grep -q \u2026\")` and its `test_exam_edited_patches.mjs` counterpart \u2014 a tenth and eleventh site the plan's list does not mention. The removals are lawful under M4's general clause (\"no `test_*.mjs` spawns another `test_*.mjs`\"), sit inside the declared FILES, are replaced with the same `existsSync` name pins as the other nine, and are disclosed in-code; the bridge still runs both siblings under their own names. Raised only so the discrepancy between the plan's enumeration and the actual BASE population is on the record \u2014 the enumeration, not the diff, is what was incomplete.; path outside FILES: `fleet/tests/test_janitor_reap_only.mjs`; concern: out-of-FILES: fleet/tests/test_janitor_reap_only.mjs \u2014 one prose line in a doc comment reworded (`exec(cmd, argv)` spelled as `cmd`, then `argv`) so the probe's static sweep does not read a comment as a spawn site with no env. No behaviour change; nothing deleted.; concern: M4 says \"nine BASE sites must go\", but fleet/tests/test_run_main.mjs (in FILES) carried two more sibling-sim runs at BASE \u2014 `sh(\"node fleet/tests/test_roles_peer.mjs | grep -q \u2026\")` and the same for test_exam_edited_patches.mjs, indirect through a `bash -c` string, which is why the Proof's raw grep gate never saw them. M4's rule is absolute, so both were converted to existsSync names under fleet/tests/ like the other sites: eleven removed, not nine.; concern: Leg (e)'s eight files: five (test_sandbox_boot_render_env, test_sandbox_boot_state_exams, test_setup_script_render_env, test_run_engine_exam_evidence, test_run_engine_state_exams) checked their siblings through a directory constant (HERE/TESTS_DIR) with no textual `fleet/tests` inside the existsSync, and test_launch_render used `path.join(FLEET_DIR, 'tests', sim)`. All six now read `path.join(REPO_ROOT, 'fleet/tests', <name>)`. The other two already carried full `fleet/tests/test_*.mjs` literals and were left as they are, so the eight are not byte-identical in shape.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-87/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1928 items]\n\n........................................................................ [  3%]\n........................................................................ [  7%]\n........................................................................ [ 11%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 29%]\n........................................................................ [ 33%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 85%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n........................................................                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1928 passed, 5 warnings in 472.60s (0:07:52) =================\n"
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=/planted/render.env ULTRA_PLANTED=1 GH_TOKEN=planted ANTHROPIC_API_KEY=planted CLAUDE_CONFIG_DIR=planted-config FLEET_TEST_SLACK=7 python3 -c \"import sys, os; sys.path.insert(0, 'tests'); from test_fleet_suite import sim_env; e = sim_env(); bad = [k for k in e if k.startswith(('ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_')) and k != 'FLEET_TEST_SLACK']; assert not bad, bad; assert e.get('FLEET_TEST_SLACK') == '7', e.get('FLEET_TEST_SLACK'); assert 'HOME' in e and 'PATH' in e, e; tools = ('node', 'python3', 'git', 'bash', 'sh'); loose = [d for d in e['PATH'].split(':') if not any(os.path.exists(os.path.join(d, t)) for t in tools)]; assert not loose, loose; print(sorted(e))\"",
+      "exit": 0,
+      "stdout": "['FLEET_TEST_SLACK', 'HOME', 'PATH', 'TMPDIR']\n"
+    },
+    {
+      "task": "1",
+      "cmd": "f=$(mktemp) && echo 'TINYAPP_RENDER_URL=http://planted.invalid' > $f && export TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=$f && ls fleet/tests/test_sandbox_boot*.mjs | xargs -n1 -I{} sh -c 'node {} | grep -q \"ALL TESTS PASSED\"'",
+      "exit": 0,
+      "stdout": "xargs: warning: options --max-args and --replace/-I/-i are mutually exclusive, ignoring previous --max-args value\n"
+    },
+    {
+      "task": "1",
+      "cmd": "f=$(mktemp) && echo 'TINYAPP_RENDER_URL=http://planted.invalid' > $f && TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=$f ULTRA_PLANTED=1 CLAUDE_CONFIG_DIR=planted-config python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot or hermetic or render' -q -p no:cacheprovider",
+      "exit": 0,
+      "stdout": "................                                                         [100%]\n16 passed, 74 deselected in 176.82s (0:02:56)\n"
+    },
+    {
+      "task": "1",
+      "cmd": "test -z \"$(grep -lE '(spawn|spawnSync|execFile|execFileSync|exec|execSync)\\([^;]*(test_[a-z_]*\\.mjs|pytest)' fleet/tests/test_*.mjs | grep -v test_sims_are_hermetic)\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_referee_linker.mjs | grep -q 'ALL TESTS PASSED' && echo test_referee_linker.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_referee_linker.mjs wall=3s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_run_engine_candidate_bootstrap.mjs | grep -q 'ALL TESTS PASSED' && echo test_run_engine_candidate_bootstrap.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_run_engine_candidate_bootstrap.mjs wall=3s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_sandbox_boot_render_env.mjs | grep -q 'ALL TESTS PASSED' && echo test_sandbox_boot_render_env.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_sandbox_boot_render_env.mjs wall=3s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_sandbox_boot_state_exams.mjs | grep -q 'ALL TESTS PASSED' && echo test_sandbox_boot_state_exams.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_sandbox_boot_state_exams.mjs wall=1s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_launch_render.mjs | grep -q 'ALL TESTS PASSED' && echo test_launch_render.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_launch_render.mjs wall=1s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_launch_test_command.mjs | grep -q 'ALL TESTS PASSED' && echo test_launch_test_command.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_launch_test_command.mjs wall=3s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_setup_script_render_env.mjs | grep -q 'ALL TESTS PASSED' && echo test_setup_script_render_env.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_setup_script_render_env.mjs wall=0s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_run_engine_exam_evidence.mjs | grep -q 'ALL TESTS PASSED' && echo test_run_engine_exam_evidence.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_run_engine_exam_evidence.mjs wall=4s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "s=$(date +%s) && node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED' && echo test_run_engine_state_exams.mjs wall=$(( $(date +%s) - s ))s",
+      "exit": 0,
+      "stdout": "test_run_engine_state_exams.mjs wall=2s\n"
+    },
+    {
+      "task": "1",
+      "cmd": "python3 -m pytest tests/test_fleet_suite.py -q -p no:cacheprovider -n auto",
+      "exit": 0,
+      "stdout": "bringing up nodes...\nbringing up nodes...\n\n........................................................................ [ 80%]\n..................                                                       [100%]\n90 passed in 151.07s (0:02:31)\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/run-engine.mjs fleet/run-main.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/publish-fold.mjs fleet/launch.mjs fleet/doctor.mjs fleet/janitor.mjs fleet/referee-linker.mjs skills/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 661049,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 2,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": true,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "b5c4eb1743e9cfa728c77b151704be3d23063015",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-87/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-87/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.332,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: fleet/tests/test_janitor_reap_only.mjs \u2014 one prose line in a doc comment reworded (`exec(cmd, argv)` spelled as `cmd`, then `argv`) so the probe's static sweep does not read a comment as a spawn site with no env. No behaviour change; nothing deleted.",
+    "task 1: M4 says \"nine BASE sites must go\", but fleet/tests/test_run_main.mjs (in FILES) carried two more sibling-sim runs at BASE \u2014 `sh(\"node fleet/tests/test_roles_peer.mjs | grep -q \u2026\")` and the same for test_exam_edited_patches.mjs, indirect through a `bash -c` string, which is why the Proof's raw grep gate never saw them. M4's rule is absolute, so both were converted to existsSync names under fleet/tests/ like the other sites: eleven removed, not nine.",
+    "task 1: Leg (e)'s eight files: five (test_sandbox_boot_render_env, test_sandbox_boot_state_exams, test_setup_script_render_env, test_run_engine_exam_evidence, test_run_engine_state_exams) checked their siblings through a directory constant (HERE/TESTS_DIR) with no textual `fleet/tests` inside the existsSync, and test_launch_render used `path.join(FLEET_DIR, 'tests', sim)`. All six now read `path.join(REPO_ROOT, 'fleet/tests', <name>)`. The other two already carried full `fleet/tests/test_*.mjs` literals and were left as they are, so the eight are not byte-identical in shape.",
+    "task 1: the driver's pre-review pass was red (the Proof's Run: command failed: node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED' \u2014 exit 1; the Proof's Run: command failed: f=$(mktemp) && echo 'TINYAPP_RENDER_URL=http://planted.invalid' > $f && TINYAPP_RENDER_URL=http://planted.invalid FLEET_RENDER_ENV=$f ULTRA_PLANTED=1 CLAUDE_CONFIG_DIR=planted-config python3 -m pytest tests/test_fleet_suite.py -k 'sandbox_boot or hermetic or render' -q -p no:cacheprovider \u2014 exit 1; the Proof's Run: command failed: python3 -m pytest tests/test_fleet_suite.py -q -p no:cacheprovider -n auto \u2014 exit 1; the Proof's exam failed: node fleet/tests/test_sims_are_hermetic.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1, Claim/Proof scope: the probe's sweep does not descend into `fleet/tests/exams/<slug>/`, which the bridge does collect. `fleet/tests/test_sims_are_hermetic.mjs:513` builds SWEPT from a non-recursive `fs.readdirSync(TESTS_DIR)` filtered to `test_*`/`_*`, while `collect_sims` in `tests/test_fleet_suite.py:113-114` globs both `tests/test_*.mjs` and `tests/exams/*/test_*.mjs`. A run-written exam sim is therefore dispatched by the bridge but never held to the three rules, so 'one probe fails the moment any of it does' has a blind spot for exam sims. The substance of the Claim still holds for them \u2014 the bridge hands each one `sim_env()` (`tests/test_fleet_suite.py:158`), so no fact of the box reaches an exam sim in the first place, and `exams/` is empty on main \u2014 which is why this is minor rather than blocking. M2/M3/M4 are scoped by name to the top-level globs, so this is a coverage gap against the Claim's second clause, not a contract breach."
+    },
+    {
+      "severity": "minor",
+      "detail": "Task 1, Claim (hygiene, not hermeticity): the rig mints temp directories that nothing ever removes. `simEnv()` with no `home` calls `fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-sim-'))` on every invocation (`fleet/tests/_helpers.mjs:80`), and several call sites invoke it per spawn rather than once \u2014 e.g. `fleet/tests/test_run_engine_actor_routing.mjs:507` (`const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8', env: simEnv() })`), `fleet/tests/test_setup_script.mjs:301,419`, `fleet/tests/test_retire.mjs:1214,1475`. `sim_env()` does the same once per bridged sim (`tests/test_fleet_suite.py:41`, prefix `fleet-bridge-`), and since it also sets `TMPDIR` to that directory, each sim's own temp trees land inside it. No teardown exists on either side, so a full suite run leaves roughly one directory per sim plus one per bare `simEnv()` call under the box's tmpdir. The behaviour is exactly what M1 and the Context specify ('defaults to a fresh mkdtemp under os.tmpdir()'), so this is a follow-up issue about cleanup, not a shortfall against the contract."
+    }
+  ],
+  "blockedWaves": []
+}

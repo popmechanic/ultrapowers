@@ -1,0 +1,43 @@
+{
+  "engineHead": "b5c4eb1743e9cfa728c77b151704be3d23063015",
+  "attempts": {
+    "1": {
+      "tip": "83978e237a56708b329c0cda620751b5f4fe4b1d",
+      "candidate": "574b507991208244d4c61e446f7d67d869a0cc7a",
+      "disposition": "folded",
+      "pathsJoined": 3,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/tests/_sandbox_boot_helpers.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_run_engine_candidate_bootstrap.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_run_engine_suite_passes.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_residuals.mjs",
+          "path": "fleet/tests/_sandbox_boot_helpers.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sims_are_hermetic.mjs",
+          "path": "fleet/tests/_sandbox_boot_helpers.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

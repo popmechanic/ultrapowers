@@ -1,0 +1,3131 @@
+diff --git a/fleet/tests/README.md b/fleet/tests/README.md
+index 349e25dcd6ef2bfd40ffb2c238c0ea9e8dc48117..435dbfb1ff833b42ea61ee3024bcbb1954446637 100644
+--- a/fleet/tests/README.md
++++ b/fleet/tests/README.md
+@@ -15,3 +15,7 @@ Main areas under test:
+   calls a task's clone is allowed to make.
+ - `test_run_engine*.mjs` — the engine kernel: wave scheduling, review pairing,
+   the fix loop, the examiner, and the gate.
++- `_helpers.mjs` — the rig's environment: `simEnv()` builds the environment
++  every process a sim starts runs under, so a sim sees what it was handed and
++  never the box it runs on. `test_sims_are_hermetic.mjs` is the probe that
++  keeps it true.
+diff --git a/fleet/tests/_engine_helpers.mjs b/fleet/tests/_engine_helpers.mjs
+index 8aa0df0dc96de925e97593540f0481b787e93048..9d2ba9bffa9e0419f32696c0fbcff6cbdae23105 100644
+--- a/fleet/tests/_engine_helpers.mjs
++++ b/fleet/tests/_engine_helpers.mjs
+@@ -12,9 +12,15 @@ import { execFileSync } from 'node:child_process'
+ import { execSeam } from '../run-main.mjs'
+ import { cloneAtBase, makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+ import { runEngine } from '../run-engine.mjs'
++import { simEnv } from './_helpers.mjs'
++
++// The rig's own environment, one for the module: git sees a HOME of its own, so
++// no ~/.gitconfig of the box reaches a repository a sim builds. Every repo made
++// here sets user.name/user.email itself.
++export const ENV = simEnv()
+ 
+ export const gitSync = (argv, cwd) =>
+-  execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
++  execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+ 
+ // A target repo whose suite is `bash check.sh`: green unless a BROKEN marker
+ // file exists — the smallest controllable suite for reconcile scenarios.
+diff --git a/fleet/tests/_helpers.mjs b/fleet/tests/_helpers.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..03cc33378c0210e18465ea1767a791b24ca5d1ff
+--- /dev/null
++++ b/fleet/tests/_helpers.mjs
+@@ -0,0 +1,97 @@
++/**
++ * fleet/tests/_helpers.mjs — the rig's environment.
++ *
++ * Underscore-prefixed so test_fleet_suite.py's `test_*.mjs` glob does not run
++ * it as a test of its own.
++ *
++ * One export, `simEnv`, and one rule behind it: a sim sees what it was handed,
++ * never the box it runs on. Every process a sim starts gets an environment
++ * built here — the parent's own `ULTRA_`, `TINYAPP_`, `FLEET_`, `ANTHROPIC_`,
++ * `CLAUDE_` and `GH_` keys are dropped, `HOME`/`TMPDIR`/`FLEET_HOME` point at a
++ * directory the sim owns, and `PATH` carries the interpreters and nothing else.
++ * `fleet/tests/test_sims_are_hermetic.mjs` is the probe that keeps it true.
++ *
++ * Node's own rule (`node:child_process`): with an `env` option the child gets
++ * exactly that object and nothing of `process.env`, and the command — plus, in
++ * a `bash -c` child, its sub-commands — is looked up on `env.PATH`. That is why
++ * the interpreters ride the `PATH` this builds.
++ */
++
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++
++/** Prefixes of the parent's environment that never reach a child. */
++export const DROPPED_PREFIXES = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
++
++/**
++ * The one name kept by name from the parent: the deadline multiplier
++ * `fleet/tests/deadline-slack.mjs` reads in-process, a rig knob a developer
++ * sets on a slow box rather than a fact of the fleet.
++ */
++export const KEPT_KEYS = ['FLEET_TEST_SLACK']
++
++/** The interpreters a sim's children resolve on the `PATH` this builds. */
++const INTERPRETERS = ['python3', 'git', 'bash', 'sh']
++
++/** The first directory of the parent's `PATH` holding an executable `name`. */
++const whichDir = (name) => {
++  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
++    if (!dir) continue
++    const candidate = path.join(dir, name)
++    try {
++      fs.accessSync(candidate, fs.constants.X_OK)
++      return dir
++    } catch {
++      // Not here; keep walking. A missing interpreter is left out silently —
++      // the sim that needs it fails where it spawns it.
++    }
++  }
++  return null
++}
++
++// The walk above is the same answer every time for one parent `PATH`, and a sim
++// that runs hundreds of git commands asks for it hundreds of times; cache it
++// against the `PATH` it was read from, so a caller that changes `PATH` still
++// gets a fresh answer.
++let cached = { path: null, dirs: [] }
++const interpreterDirs = () => {
++  const parent = process.env.PATH ?? ''
++  if (cached.path !== parent) {
++    const dirs = []
++    for (const dir of [path.dirname(process.execPath), ...INTERPRETERS.map(whichDir)]) {
++      if (dir && !dirs.includes(dir)) dirs.push(dir)
++    }
++    cached = { path: parent, dirs }
++  }
++  return cached.dirs
++}
++
++/**
++ * The environment for one child process.
++ *
++ *   `bin`   a directory to put first on `PATH` — a case's stubs
++ *   `home`  the directory `HOME`, `TMPDIR` and `FLEET_HOME` all name;
++ *           defaults to a fresh `mkdtemp` under `os.tmpdir()`
++ *   `env`   the caller's own keys, laid over everything else last, so a
++ *           caller-supplied key of any name wins
++ */
++export function simEnv ({ bin, home, env } = {}) {
++  const root = home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-sim-'))
++
++  const dirs = []
++  for (const dir of [...(Array.isArray(bin) ? bin : bin ? [bin] : []), ...interpreterDirs()]) {
++    if (dir && !dirs.includes(dir)) dirs.push(dir)
++  }
++
++  const out = {
++    PATH: dirs.join(path.delimiter),
++    HOME: root,
++    TMPDIR: root,
++    FLEET_HOME: root,
++  }
++  for (const key of KEPT_KEYS) {
++    if (process.env[key] !== undefined) out[key] = process.env[key]
++  }
++  return { ...out, ...env }
++}
+diff --git a/fleet/tests/_lobby_helpers.mjs b/fleet/tests/_lobby_helpers.mjs
+index 86c4674085d8fefc940938ef80553e4b945ebb34..0eba7237a06fb20c11328a88c5cfa9aab6fecd8c 100644
+--- a/fleet/tests/_lobby_helpers.mjs
++++ b/fleet/tests/_lobby_helpers.mjs
+@@ -3,7 +3,7 @@
+  *
+  * Two pieces:
+  *
+- *   `makeExec` — a recording `exec(cmd, argv, options)` seam. Every call is
++ *   `makeExec` — a recording seam over `cmd`, `argv`, `options`. Every call is
+  *   appended to `exec.calls`, options included, so a leg can read the stdin a
+  *   lobby verb was given; a matching rule answers it; anything unmatched runs
+  *   for real when its command is in `passthrough` (`git`, so a plan commit in a
+@@ -23,6 +23,7 @@ import path from 'node:path'
+ import { spawnSync } from 'node:child_process'
+ 
+ import { EXE_HOST, defaultExec } from '../lobby.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ /** A canned answer. `stdout` may be a string or a value to JSON.stringify. */
+ export const answer = (stdout = '', { code = 0, stderr = '' } = {}) => ({
+@@ -104,8 +105,14 @@ export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
+   return exec
+ }
+ 
++// The environment every git below runs under: a HOME of the fixture's own, so
++// no ~/.gitconfig of the box reaches a repository an exam builds — each one
++// sets its own identity a few lines down. `env` last, so a caller can override.
++const GIT_HOME = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fleet-lobby-home-'))
++export const gitEnv = (env) => ({ ...simEnv({ home: GIT_HOME }), ...env })
++
+ const run = (cwd, argv, env) => {
+-  const res = spawnSync('git', argv, { cwd, encoding: 'utf8', env })
++  const res = spawnSync('git', argv, { cwd, encoding: 'utf8', env: gitEnv(env) })
+   if (res.status !== 0) {
+     throw new Error(`git ${argv.join(' ')} in ${cwd}: ${res.stdout}${res.stderr}`)
+   }
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index bae4648348e5de8fef05d26defb2b93bacecfae3..c15dd1bc6f3131854e0fd2e1930663f819200660 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -27,6 +27,8 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ export const SCRIPT = path.join(HERE, '..', 'sandbox-boot.sh')
+ 
+@@ -684,6 +686,19 @@ argv() { name="$1"; shift; { for a in "$name" "$@"; do printf '%s\\t' "$a"; done
+ const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-boot-'))
+ let caseNo = 0
+ 
++/**
++ * The environment for a child that belongs to no case — `bash -n` over the
++ * script, a reader run against the repository. Nothing of the box reaches it.
++ */
++export const ENV = simEnv()
++
++/**
++ * The environment for a stub called directly, WITHOUT a boot: the case's own
++ * stub dir first on `PATH`, `FLEET_HOME` its home, `env` last so a caller can
++ * override any of it. The stubs answer out of that home.
++ */
++export const stubEnv = (ctx, env) => ({ ...simEnv({ bin: ctx.bin, home: ctx.home }), ...env })
++
+ /**
+  * The renderer address file a boot reads, INSIDE the case's own home.
+  *
+@@ -736,9 +751,7 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true
+  * `bootAsync`, so the two start the script exactly alike.
+  */
+ const bootEnv = (ctx, env) => ({
+-      PATH: process.env.PATH,
+-      HOME: ctx.home,
+-      FLEET_HOME: ctx.home,
++      ...simEnv({ bin: ctx.bin, home: ctx.home }),
+       FLEET_BIN_DIR: ctx.bin,
+       FLEET_POLL_SECONDS: '0',
+       FLEET_STATUS_INTERVAL: '30',
+diff --git a/fleet/tests/fixtures/hermetic/leaky_sim.mjs b/fleet/tests/fixtures/hermetic/leaky_sim.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f50b8784b5c85b1f04e4eb11b792a022b057dcbb
+--- /dev/null
++++ b/fleet/tests/fixtures/hermetic/leaky_sim.mjs
+@@ -0,0 +1,34 @@
++/**
++ * fleet/tests/fixtures/hermetic/leaky_sim.mjs — the probe's own red.
++ *
++ * A sim-shaped file that breaks all three of the hermetic rules at once, one
++ * offence per rule: a spawn that inherits the parent's environment, a read of
++ * an absolute path on the box, and a spawn of another `test_*.mjs`. It is never
++ * collected (its name does not match `test_*.mjs`) and never executed — the
++ * probe's sweep is a static read of this text, and it exists so the sweep is
++ * shown to name what it claims to name.
++ */
++
++import fs from 'node:fs'
++import { spawnSync } from 'node:child_process'
++
++import { simEnv } from '../../_helpers.mjs'
++
++// (1) An inheriting spawn: the environment is the parent's, so every fact of
++// the box reaches the child.
++export const inherits = () => spawnSync('bash', ['-c', 'true'], { env: { ...process.env } })
++
++// (2) An absolute read: the renderer address the box's own setup installed,
++// swallowed so the leak is silent.
++export const reads = () => {
++  try {
++    return fs.readFileSync('/etc/fleet/render.env', 'utf8')
++  } catch {
++    return ''
++  }
++}
++
++// (3) A sibling-sim spawn: hermetic on the first rule and still a sim running
++// another sim, which is the bridge's job and not a sim's.
++export const runsSibling = () =>
++  spawnSync(process.execPath, ['fleet/tests/test_fitness.mjs'], { env: simEnv() })
+diff --git a/fleet/tests/test_claude_token.mjs b/fleet/tests/test_claude_token.mjs
+index 15a4988ac490dd2e0b4a6d1d1572a42947a726d5..3edb86bde3870441c1c28923af322c40cb543ef6 100644
+--- a/fleet/tests/test_claude_token.mjs
++++ b/fleet/tests/test_claude_token.mjs
+@@ -7,6 +7,7 @@
+ // OAuth token URL (as at BASE) and the usage URL.
+ import assert from 'node:assert/strict'
+ import * as CT from '../claude-token.mjs'
++import { simEnv } from './_helpers.mjs'
+ import {
+   OAUTH, INTEGRATION, KEYCHAIN, REFRESH_AHEAD_MS, pkce, authorizeUrlFor, cleanCode, codeForState,
+   login, refresh, status, installBearer, main
+@@ -314,7 +315,7 @@ await leg('the real lock: two processes, one refresh grant', async () => {
+     const r = await refresh(deps); process.stdout.write(JSON.stringify(r))
+   `
+   const run = () => new Promise((resolve) => {
+-    const p = spawn(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] })
++    const p = spawn(process.execPath, ['--input-type=module', '-e', script], { env: simEnv({ home }), stdio: ['ignore', 'pipe', 'pipe'] })
+     let out = '', err = ''; p.stdout.on('data', (d) => { out += d }); p.stderr.on('data', (d) => { err += d })
+     p.on('close', (code) => resolve({ code, out, err }))
+   })
+diff --git a/fleet/tests/test_confine_hook.mjs b/fleet/tests/test_confine_hook.mjs
+index a99fd418b3e19bf2c4ed5ffd3fdd04838cbc0e88..4963186b6400e430db0639c765b99de5e4c00e9a 100644
+--- a/fleet/tests/test_confine_hook.mjs
++++ b/fleet/tests/test_confine_hook.mjs
+@@ -12,6 +12,7 @@ import path from 'node:path'
+ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { decide, bashWriteTargets, within } from '../confine-hook.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const HOOK = fileURLToPath(new URL('../confine-hook.mjs', import.meta.url))
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'confine-'))
+@@ -141,16 +142,17 @@ assert.ok(D('Bash', { command: 'echo pwned > `echo /etc`/x' }).deny, 'backtick t
+ }
+ 
+ // ── the CLI: stdin → exit code ───────────────────────────────────────────────
+-// The base env STRIPS FLEET_RUN_DIR: when this suite runs INSIDE a fleet run
+-// (the sandbox baseline, a worker's testCmd), the worker env carries the live
+-// run's FLEET_RUN_DIR, and every deliberate test denial below would then be
++// The base env carries no FLEET_RUN_DIR: `simEnv` drops every `FLEET_` key of
++// this process, and when this suite runs INSIDE a fleet run (the sandbox
++// baseline, a worker's testCmd) that process carries the live run's
++// FLEET_RUN_DIR. Inherited, every deliberate test denial below would be
+ // appended to that run's confine-denials.jsonl — 4 of run-25's 6 logged
+ // denials were this suite, not real escapes, corrupting the confinement
+ // evidence. A test that needs the log passes FLEET_RUN_DIR explicitly.
+-const baseEnv = { ...process.env }
+-delete baseEnv.FLEET_RUN_DIR
++const HOOK_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-confine-home-'))
++const hookEnv = (env) => ({ ...simEnv({ home: HOOK_HOME }), ...env })
+ const run = (input, env = {}) => spawnSync('node', [HOOK], {
+-  input, encoding: 'utf8', cwd: clone, env: { ...baseEnv, ...env },
++  input, encoding: 'utf8', cwd: clone, env: hookEnv(env),
+ })
+ {
+   // The CLI must AUTHORITATIVELY allow/deny via the PreToolUse decision JSON —
+diff --git a/fleet/tests/test_doctor.mjs b/fleet/tests/test_doctor.mjs
+index e31d916166599e70e7b7ce47137fb5ee428cc34e..2aad77eb08a00c497f11ae9e31457ccb18e2c0d2 100644
+--- a/fleet/tests/test_doctor.mjs
++++ b/fleet/tests/test_doctor.mjs
+@@ -43,6 +43,7 @@ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+ import * as doctorModule from '../doctor.mjs'
++import { simEnv } from './_helpers.mjs'
+ import { doctor, parseIntegrations, ROW_IDS, DOCTOR_DEFAULTS } from '../doctor.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+@@ -773,9 +774,12 @@ const RED_DIR = shimDir('red', {
+ })
+ 
+ const runCli = (args, { dir, home } = {}) => {
+-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` }
+-  if (home) env.HOME = home
+-  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], { encoding: 'utf8', env, timeout: 60000 })
++  // The shim dir first on PATH and nothing of the box behind it; `home` is the
++  // case's own when it wants one, a fresh temp directory otherwise, so the CLI
++  // never finds the box's own ~/.ultrapowers/fleet.json.
++  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], {
++    encoding: 'utf8', env: simEnv({ bin: dir, home }), timeout: 60000,
++  })
+ }
+ 
+ const absentConfig = path.join(cliRoot, 'absent.json')
+diff --git a/fleet/tests/test_doctor_config_keys.mjs b/fleet/tests/test_doctor_config_keys.mjs
+index c57ff594d5f81f93cd198d259ee959629d963a42..7fd56691d2bdb3f4c776ac139f11f703c4a6cdcd 100644
+--- a/fleet/tests/test_doctor_config_keys.mjs
++++ b/fleet/tests/test_doctor_config_keys.mjs
+@@ -45,6 +45,7 @@ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+ import * as doctorModule from '../doctor.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const FLEET_DIR = path.resolve(HERE, '..')
+@@ -441,8 +442,11 @@ exit 0
+ })
+ 
+ const runCli = (args, { dir }) => {
+-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` }
+-  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], { encoding: 'utf8', env, timeout: 60000 })
++  // The shim dir first on PATH and nothing of the box behind it, and a HOME of
++  // this call's own, so the CLI never reads the box's ~/.ultrapowers/fleet.json.
++  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], {
++    encoding: 'utf8', env: simEnv({ bin: dir }), timeout: 60000,
++  })
+ }
+ 
+ {
+diff --git a/fleet/tests/test_doctor_render.mjs b/fleet/tests/test_doctor_render.mjs
+index 3c520c4a12b7f1e94a665612ade910240ea91511..3ff4d88984a4d53e0c0864e0010f69338829e7a8 100644
+--- a/fleet/tests/test_doctor_render.mjs
++++ b/fleet/tests/test_doctor_render.mjs
+@@ -47,6 +47,7 @@ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+ import * as doctorModule from '../doctor.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const FLEET_DIR = path.resolve(HERE, '..')
+@@ -644,8 +645,11 @@ exit 0
+ })
+ 
+ const runCli = (args, { dir }) => {
+-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` }
+-  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], { encoding: 'utf8', env, timeout: 60000 })
++  // The shim dir first on PATH and nothing of the box behind it, and a HOME of
++  // this call's own, so the CLI never reads the box's ~/.ultrapowers/fleet.json.
++  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], {
++    encoding: 'utf8', env: simEnv({ bin: dir }), timeout: 60000,
++  })
+ }
+ 
+ {
+diff --git a/fleet/tests/test_fleet_bootstrap.mjs b/fleet/tests/test_fleet_bootstrap.mjs
+index c7f9cba8d3e38d17d3937b876397161c423e01a7..b9cceadc8300fa694c789844391d8982f0f2fd93 100644
+--- a/fleet/tests/test_fleet_bootstrap.mjs
++++ b/fleet/tests/test_fleet_bootstrap.mjs
+@@ -21,6 +21,8 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const SCRIPT = path.join(HERE, '..', 'fleet-bootstrap.sh')
+ const ENGINE_REPO = 'https://github.com/popmechanic/ultrapowers.git'
+@@ -89,9 +91,7 @@ function run(ctx, env = {}, args = []) {
+   return spawnSync('bash', [SCRIPT, ...args], {
+     encoding: 'utf8',
+     env: {
+-      PATH: `${ctx.bin}:${process.env.PATH}`,
+-      HOME: ctx.home,
+-      FLEET_HOME: ctx.home,
++      ...simEnv({ bin: ctx.bin, home: ctx.home }),
+       STUB_LOG_DIR: ctx.logs,
+       STUB_RECORD: ctx.record,
+       STUB_RECORDER: RECORDER,
+@@ -130,7 +130,7 @@ const test = (name, fn) => tests.push([name, fn])
+ // ── the script itself ────────────────────────────────────────────────────────
+ 
+ test('the bootstrap parses, is executable, and fits its budget', () => {
+-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
++  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: simEnv() }).status, 0)
+   assert.ok(fs.statSync(SCRIPT).mode & 0o111, 'mode must carry an execute bit')
+   const n = fs.readFileSync(SCRIPT, 'utf8').split('\n').filter((l, i, a) => i < a.length - 1 || l).length
+   assert.ok(n <= 40, `${n} lines; the budget is 40`)
+diff --git a/fleet/tests/test_janitor_reap_only.mjs b/fleet/tests/test_janitor_reap_only.mjs
+index 59542c545874b83ea7a6a53b562fa0d0972b990d..39c6d2aee03b0a1ba9b420805bd8734623ea5915 100644
+--- a/fleet/tests/test_janitor_reap_only.mjs
++++ b/fleet/tests/test_janitor_reap_only.mjs
+@@ -6,9 +6,9 @@
+  * request is the sandbox's to merge, not the janitor's — so the janitor's whole
+  * `gh` surface is `gh api` reads, and every action it records is an `rm`.
+  *
+- * Every external call goes through the same `exec(cmd, argv)` seam the rest of
+- * the fleet uses; this exam cans `ssh` and `gh` and reads `exec.calls` for what
+- * was issued, so no network is touched. The rig is `test_janitor.mjs`'s:
++ * Every external call goes through the same `exec` seam the rest of the fleet
++ * uses — `cmd`, then `argv`; this exam cans `ssh` and `gh` and reads
++ * `exec.calls` for what was issued, so no network is touched. The rig is `test_janitor.mjs`'s:
+  * `makeExec` with `sshRule('ls ', …)` answering `vmsPayload(rows)`,
+  * `sshRule('rm ', answer(''))`, and `cmdRule('gh', 'api', …)` answering the
+  * contents envelope for each run's status page. The pages are canned at the
+diff --git a/fleet/tests/test_launch_pins.mjs b/fleet/tests/test_launch_pins.mjs
+index e20d9b992e24b07d00a0922be35b911e965aa1b8..0b9e1e2296825ed455ffd4f0f77b7788d2ba7823 100644
+--- a/fleet/tests/test_launch_pins.mjs
++++ b/fleet/tests/test_launch_pins.mjs
+@@ -49,6 +49,7 @@ import { fileURLToPath } from 'node:url'
+ import * as launchModule from '../launch.mjs'
+ import { launch } from '../launch.mjs'
+ import { FLEET_DEFAULTS, Refusal, defaultExec } from '../lobby.mjs'
++import { simEnv } from './_helpers.mjs'
+ import {
+   answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
+ } from './_lobby_helpers.mjs'
+@@ -209,8 +210,8 @@ const blobAt = (repo, rel) => repo.git(['rev-parse', `${repo.base}:${rel}`])
+ 
+ /** The sha a slice pin pins, computed by the exam the way M3 says to compute it. */
+ const sliceSha = (repo, command) => {
+-  const res = spawnSync('/bin/sh', ['-c', `${command} | git hash-object --stdin`],
+-    { cwd: repo.dir, encoding: 'utf8' })
++  const res = spawnSync('sh', ['-c', `${command} | git hash-object --stdin`],
++    { cwd: repo.dir, encoding: 'utf8', env: simEnv() })
+   assert.equal(res.status, 0, `the exam computes its own slice sha: ${res.stdout}${res.stderr}`)
+   const sha = String(res.stdout).trim()
+   assert.match(sha, /^[0-9a-f]{40}$/, 'the exam computes its own slice sha')
+diff --git a/fleet/tests/test_launch_render.mjs b/fleet/tests/test_launch_render.mjs
+index e067e997b07cbddec494aa603c53230ad49fb71b..ec2778805572b190da36ee32f14632ac64c2aaa4 100644
+--- a/fleet/tests/test_launch_render.mjs
++++ b/fleet/tests/test_launch_render.mjs
+@@ -36,7 +36,6 @@
+ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import path from 'node:path'
+-import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+ import { USAGE, launch } from '../launch.mjs'
+@@ -66,6 +65,7 @@ const CONFIG = Object.freeze({ cpu: '8', memory: '16GB' })
+ const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
+ 
+ const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const REPO_ROOT = path.resolve(FLEET_DIR, '..')
+ const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
+ 
+ // ── The seam's rules ────────────────────────────────────────────────────────
+@@ -449,18 +449,16 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
+ }
+ 
+ // ── f. [M1, M4] the sims this task must not disturb ─────────────────────────
++// Named, not run: the bridge in tests/test_fleet_suite.py collects every
++// fleet/tests/test_*.mjs and runs each one itself, so a sim that spawned these
++// two would run them twice and charge their wall to this name. What this leg
++// keeps is the coverage — the names stay written down here, and the sweep
++// asserts each is still a sim on the tree.
+ {
+   for (const sim of ['test_launch.mjs', 'test_launch_pins.mjs']) {
+-    const res = spawnSync(process.execPath, [path.join(FLEET_DIR, 'tests', sim)], {
+-      encoding: 'utf8'
+-    })
+-    assert.equal(
+-      res.status, 0,
+-      `(f) [M1, M4] ${sim} still passes; it exited ${res.status}:\n${res.stdout}${res.stderr}`
+-    )
+     assert.ok(
+-      String(res.stdout).includes('ALL TESTS PASSED'),
+-      `(f) [M1, M4] ${sim} prints the sentinel:\n${res.stdout}${res.stderr}`
++      fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', sim)),
++      `(f) [M1, M4] ${sim} is still a sim under fleet/tests/, collected and run by the bridge`
+     )
+   }
+ }
+diff --git a/fleet/tests/test_launch_run_number.mjs b/fleet/tests/test_launch_run_number.mjs
+index e191fa451f9e479a96cabba5239e9bc883bd5530..08e1d716dffa575cb600bf725e057749c7332b71 100644
+--- a/fleet/tests/test_launch_run_number.mjs
++++ b/fleet/tests/test_launch_run_number.mjs
+@@ -38,6 +38,8 @@ import path from 'node:path'
+ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ import * as launcher from '../launch.mjs'
+ import {
+   FLEET_DEFAULTS,
+@@ -542,7 +544,7 @@ const treeOf = (ws, sha) => {
+   const RUN_CHECK =
+     "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name:\\*\\*/p' fleet/CONTRACT.md" +
+     " | tr '\\n' ' ' | grep -q 'refused.*re-reads.*three pushes'"
+-  const res = spawnSync('bash', ['-c', RUN_CHECK], { cwd: REPO_ROOT, encoding: 'utf8' })
++  const res = spawnSync('bash', ['-c', RUN_CHECK], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv() })
+   assert.equal(
+     res.status, 0,
+     "(d) [M5] the **Run id:** bullet of fleet/CONTRACT.md says that a refused plan push re-reads the highest run and retries, up to three pushes — so the push is what reserves N"
+diff --git a/fleet/tests/test_launch_test_command.mjs b/fleet/tests/test_launch_test_command.mjs
+index ef7fd8f36ecde267e610312f4c0c402c2f3aff50..dee7c37722182e18e9b31f43b815e1ced1c54b3e 100644
+--- a/fleet/tests/test_launch_test_command.mjs
++++ b/fleet/tests/test_launch_test_command.mjs
+@@ -43,9 +43,11 @@
+ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import path from 'node:path'
+-import { execFile, spawnSync } from 'node:child_process'
++import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ import { launch } from '../launch.mjs'
+ import { FLEET_DEFAULTS, Refusal, defaultExec } from '../lobby.mjs'
+ import {
+@@ -253,7 +255,7 @@ const LADDER = 'import sys; sys.path.insert(0, "skills/ultrapowers/scripts"); '
+   'from ultra_run import detect_test_cmd; print(detect_test_cmd(sys.argv[1])[1])'
+ 
+ const sandboxRuleFor = (dir) => {
+-  const res = spawnSync('python3', ['-c', LADDER, dir], { cwd: REPO_ROOT, encoding: 'utf8' })
++  const res = spawnSync('python3', ['-c', LADDER, dir], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv() })
+   assert.equal(
+     res.status, 0,
+     `(e) [M1] the sandbox's ladder runs on ${dir}: ${res.stdout ?? ''}${res.stderr ?? ''}`
+@@ -405,11 +407,13 @@ for (const kase of UNDETECTABLE) {
+   deleted.cleanup()
+ }
+ 
+-// ── f–j. [M4] the five launch sims still print ALL TESTS PASSED ──────────────
++// ── f–j. [M4] the five launch sims the ladder must not disturb ───────────────
+ //
+-// One `Run:` per sim, run the way the Proof runs it: `node <sim>` from the
+-// repository root, its exit status and its `ALL TESTS PASSED` sentinel both
+-// read — a sim that stops short of the sentinel makes its `grep -q` exit 1.
++// Named, not run. The bridge in tests/test_fleet_suite.py collects every
++// fleet/tests/test_*.mjs and dispatches each on a worker of its own; a sim that
++// spawned these five ran them twice and charged five walls to this one name.
++// What the leg keeps is the coverage — the names stay written down here, and
++// each is asserted to still be a sim on the tree.
+ {
+   const SIMS = [
+     { leg: 'f', file: 'fleet/tests/test_launch.mjs' },
+@@ -419,33 +423,10 @@ for (const kase of UNDETECTABLE) {
+     { leg: 'j', file: 'fleet/tests/test_launch_reaps.mjs' }
+   ]
+ 
+-  const runSim = (file) => new Promise((resolve) => {
+-    execFile(
+-      process.execPath, [file],
+-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+-      (error, stdout, stderr) => resolve({
+-        code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
+-        stdout: String(stdout ?? ''),
+-        stderr: String(stderr ?? '')
+-      })
+-    )
+-  })
+-
+-  const runs = await Promise.all(SIMS.map((sim) => runSim(sim.file)))
+-  for (const [i, sim] of SIMS.entries()) {
+-    const res = runs[i]
+-    const tail = `${res.stdout}${res.stderr}`.split('\n').slice(-25).join('\n')
++  for (const sim of SIMS) {
+     assert.ok(
+       fs.existsSync(path.join(REPO_ROOT, sim.file)),
+-      `(${sim.leg}) [M4] ${sim.file} is a file this exam can run`
+-    )
+-    assert.ok(
+-      res.stdout.includes('ALL TESTS PASSED'),
+-      `(${sim.leg}) [M4] ${sim.file} prints ALL TESTS PASSED — its \`grep -q\` is the Run:, and a sim seeded with no pytest.ini stops short of the sentinel. Tail:\n${tail}`
+-    )
+-    assert.equal(
+-      res.code, 0,
+-      `(${sim.leg}) [M4] and exits 0. Tail:\n${tail}`
++      `(${sim.leg}) [M4] ${sim.file} is still a sim under fleet/tests/, collected and run by the bridge`
+     )
+   }
+ }
+diff --git a/fleet/tests/test_publish_fold.mjs b/fleet/tests/test_publish_fold.mjs
+index 7d47d6338ff44d68f768135d68a74a7b6532cd76..5df31c59e90b67f29e12f1583fa051222ffa6d33 100644
+--- a/fleet/tests/test_publish_fold.mjs
++++ b/fleet/tests/test_publish_fold.mjs
+@@ -41,6 +41,8 @@ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ import { execFileSync } from 'node:child_process'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ import { provisionRunTree, execSeam } from '../run-main.mjs'
+ // #751 Task 1 — the parse check: `CANDIDATE_CHECKS` and `parseArgvFor` are the
+ // two names the folder produces for this seam.
+@@ -112,7 +114,7 @@ const HEADING = '\nCONTENDING TASKS:'
+ 
+ // ── git, deterministic ───────────────────────────────────────────────────────
+ const ENV = {
+-  ...process.env,
++  ...simEnv(),
+   GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+   GIT_CONFIG_NOSYSTEM: '1',
+@@ -227,7 +229,7 @@ function compiledTask(planText, id) {
+   const out = path.join(dir, 'launch.json')
+   fs.writeFileSync(planFile, planText)
+   execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
+-    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++    { cwd: dir, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+   const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
+   fs.rmSync(dir, { recursive: true, force: true })
+   const t = (payload.tasks || []).find((x) => x.id === id)
+diff --git a/fleet/tests/test_publish_fold_block.mjs b/fleet/tests/test_publish_fold_block.mjs
+index fab92653ab1a9dde91d54aa1003331948af77603..8fa70bc4d2fd9e84a163c99f8a065695e8c8d7df 100644
+--- a/fleet/tests/test_publish_fold_block.mjs
++++ b/fleet/tests/test_publish_fold_block.mjs
+@@ -29,6 +29,8 @@ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ import { execFileSync } from 'node:child_process'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ import { contendingBlock } from '../publish-fold-block.mjs'
+ // #754 Task 2 — exams first: the ordered task list the block renders from, and
+ // the list the fold's exam check reads its `- Test:` bullets out of.
+@@ -40,7 +42,7 @@ const COMPILER = path.resolve(HERE, '../../skills/ultrapowers/scripts/compile_pl
+ // Deterministic commit metadata: identical dates keep the first-parent order
+ // the only thing that orders the frontier.
+ const ENV = {
+-  ...process.env,
++  ...simEnv(),
+   GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+   GIT_CONFIG_NOSYSTEM: '1',
+@@ -99,7 +101,7 @@ function compiledTask(planText, id) {
+   const out = path.join(dir, 'launch.json')
+   fs.writeFileSync(planFile, planText)
+   execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
+-    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++    { cwd: dir, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+   const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
+   fs.rmSync(dir, { recursive: true, force: true })
+   const t = (payload.tasks || []).find((x) => x.id === id)
+@@ -409,7 +411,7 @@ function compiledTaskWithRecord (planText, recordText, id) {
+   fs.writeFileSync(planFile, planText)
+   fs.writeFileSync(path.join(dir, 'plan.gate-verdicts.json'), recordText)
+   execFileSync('python3', [COMPILER, planFile, '--emit-launch', out],
+-    { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++    { cwd: dir, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+   const payload = JSON.parse(fs.readFileSync(out, 'utf8'))
+   fs.rmSync(dir, { recursive: true, force: true })
+   const t = (payload.tasks || []).find((x) => x.id === id)
+diff --git a/fleet/tests/test_referee_linker.mjs b/fleet/tests/test_referee_linker.mjs
+index 0c298744fed2a27e9fd955885fc5034b9df895f9..990101530e8ca3d6865d7a2d22783e4569e1f2c6 100644
+--- a/fleet/tests/test_referee_linker.mjs
++++ b/fleet/tests/test_referee_linker.mjs
+@@ -33,6 +33,8 @@ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ import { defaultExec, linkProduces } from '../referee-linker.mjs'
+ // Task 1 (#842) reads `PLACEHOLDER_TOKENS` off the module namespace rather than
+ // as a named import, so that a module which does not export it yet fails the
+@@ -71,7 +73,7 @@ const isProgram = (spelled, program) =>
+ 
+ // ── the sim's own git ─────────────────────────────────────────────────────
+ const ENV = {
+-  ...process.env,
++  ...simEnv(),
+   GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+   GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+   GIT_CONFIG_NOSYSTEM: '1',
+@@ -952,7 +954,7 @@ const TABLE = {
+   {
+     const probe = (cmd, argv) => {
+       try {
+-        execFileSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++        execFileSync(cmd, argv, { cwd: ROOT, encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+         return { code: 0, out: '' }
+       } catch (e) {
+         return { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stderr || e.stdout || e.message) }
+@@ -976,7 +978,9 @@ const TABLE = {
+   }
+ 
+   // (t) M7: `test_placeholder_token_set` names all four words as quoted strings
+-  //     inside its own body — at BASE `na` is the absent one — and it passes.
++  //     inside its own body — at BASE `na` is the absent one. Whether it passes
++  //     is read from the suite that collects it, not from a pytest this sim
++  //     starts.
+   {
+     const PY = path.resolve(ROOT, 'tests', 'test_compile_plan.py')
+     assert.ok(fs.existsSync(PY), `[M7] the compiler suite is at ${PY}`)
+@@ -995,19 +999,12 @@ const TABLE = {
+     assert.equal(words.length, 4,
+       `[M7] … which is a count of 4, where at BASE it is 3 — got ${words.length}`)
+ 
+-    let pytest = { code: 0, out: '' }
+-    try {
+-      pytest.out = execFileSync('python3',
+-        ['-m', 'pytest', 'tests/test_compile_plan.py', '-q', '-k', 'test_placeholder_token_set',
+-          '-p', 'no:cacheprovider'],
+-        { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+-    } catch (e) {
+-      pytest = { code: typeof e.status === 'number' ? e.status : 1, out: String(e.stdout || e.stderr || e.message) }
+-    }
+-    assert.equal(pytest.code, 0,
+-      `[M7] and that test passes — python3 -m pytest -k test_placeholder_token_set exited ` +
+-      `${pytest.code}: ${String(pytest.out).slice(-600)}`)
+-    ok('task 1 (t) [M7] test_placeholder_token_set names all four words and passes')
++    // That the test PASSES is pytest's own reading: `tests/test_compile_plan.py`
++    // is collected by the same suite this sim is joined into, so a sim that
++    // shelled out to `python3 -m pytest` here ran it a second time inside a
++    // worker already running it. What this leg reads is the source — the four
++    // words inside that test's own body — and the run above is the suite's.
++    ok('task 1 (t) [M7] test_placeholder_token_set names all four words, and the suite runs it')
+   }
+ }
+ 
+diff --git a/fleet/tests/test_referee_replay.mjs b/fleet/tests/test_referee_replay.mjs
+index 7613f87c16d17823e58ff904e314c9485e3957a2..a502a907f2c035588c0a58473737626d228c2d8c 100644
+--- a/fleet/tests/test_referee_replay.mjs
++++ b/fleet/tests/test_referee_replay.mjs
+@@ -25,6 +25,7 @@ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ 
+ import { referee } from '../referee.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ const FIXTURES = path.join(HERE, 'fixtures', 'referee')
+@@ -62,8 +63,11 @@ const scratch = (tag) => {
+ }
+ 
+ // ─── the rig ────────────────────────────────────────────────────────────────
++// One environment for every git below: a HOME of the sim's own, so no
++// ~/.gitconfig of the box reaches a repository the fixtures build.
++const ENV = simEnv()
+ const git = (argv, cwd) =>
+-  execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
++  execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+ 
+ // `git apply --check` first, so a fixture whose patch has drifted from its
+ // `base/` fails as a refusal here rather than as a puzzling assertion later.
+diff --git a/fleet/tests/test_retire.mjs b/fleet/tests/test_retire.mjs
+index 29ddda3b31de592d7d3e7a6e509c53b826b93fb7..a0ebbc65495ad76a085c17f560cc3cc4d8ace435 100644
+--- a/fleet/tests/test_retire.mjs
++++ b/fleet/tests/test_retire.mjs
+@@ -112,6 +112,7 @@ import {
+   planTagFor
+ } from '../lobby.mjs'
+ import { retire } from '../retire.mjs'
++import { simEnv } from './_helpers.mjs'
+ import { answer, cleanup, makeExec, tempDir } from './_lobby_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+@@ -886,7 +887,8 @@ const logLines = (file) =>
+ 
+ const runProcess = (args, dir) => spawnSync(process.execPath, [RETIRE_SRC, ...args], {
+   encoding: 'utf8',
+-  env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}` },
++  // The shim dir first on PATH, and nothing of the box behind it.
++  env: simEnv({ bin: dir }),
+   timeout: 60000
+ })
+ 
+@@ -1209,7 +1211,7 @@ for (const [command, why] of [
+   [`sed -n '1,/^import /p' fleet/retire.mjs | tr '\\n' ' ' | grep -q 'open-PR read per terminal candidate'`,
+     "and its `--dry-run` paragraph still says the open-PR read is made per terminal candidate — that is a stays, not a change: a rewrite that says the read is per pair again fails here"]
+ ]) {
+-  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000 })
++  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv(), timeout: 60000 })
+   assert.equal(res.status, 0,
+     `#752 Task 1 (j)/M6 \`${command}\` exits 0: ${why}; status ${res.status}, stderr: ${res.stderr}`)
+ }
+@@ -1470,7 +1472,7 @@ const DOC_TEXT = { [CONTRACT_REL]: contractText, [RUNBOOK_REL]: runbookText }
+ /** One of the Proof's two greps, as `{ file, line, text }` rows. */
+ const grepDocs = (pattern) => {
+   const res = spawnSync('grep', ['-n', pattern, CONTRACT_REL, RUNBOOK_REL],
+-    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000 })
++    { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv(), timeout: 60000 })
+   assert.ok(res.status === 0 || res.status === 1,
+     `#724 Task 1 (h)/M6 \`grep -n '${pattern}' ${CONTRACT_REL} ${RUNBOOK_REL}\` ran; status ${res.status}, stderr: ${res.stderr}`)
+   return String(res.stdout).split('\n').filter((l) => l !== '').map((row) => {
+diff --git a/fleet/tests/test_run_engine_actor_routing.mjs b/fleet/tests/test_run_engine_actor_routing.mjs
+index 531971e24f39b2ad5e596bac0e90edd7cb5860d7..99a9686b897cad133ebef01e304e3b2c4f16077f 100644
+--- a/fleet/tests/test_run_engine_actor_routing.mjs
++++ b/fleet/tests/test_run_engine_actor_routing.mjs
+@@ -33,6 +33,7 @@ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { ackDecision } from '../run-main.mjs'
+ import { REVIEWER_SCHEMA } from '../run-engine.mjs'
++import { simEnv } from './_helpers.mjs'
+ import { rig, makeRepo, passReview, cleanCritic, doneImpl, gitSync } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-actor-routing-'))
+@@ -128,7 +129,7 @@ const oneTaskRun = ({ name, files = ['a.txt'], reviews, fixWrites = false }) =>
+   // there: clean tree, the recorded merge head, the branch it merged onto.
+   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
+     '--run-id', 'sim', '--branch', branch, '--report', reportPath, '--repo', integ],
+-    { encoding: 'utf8' })
++    { encoding: 'utf8', env: simEnv() })
+   assert.equal(gate.status, 2,
+     'gate_check.py must exit 2 (NEEDS_ACK) on a plan-defect deferral: ' +
+     gate.stdout + gate.stderr)
+@@ -376,7 +377,7 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
+   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
+   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
+     '--run-id', 'sim', '--branch', r.branch, '--report', reportPath, '--repo', r.integ],
+-    { encoding: 'utf8' })
++    { encoding: 'utf8', env: simEnv() })
+   assert.equal(gate.status, 1,
+     '(d)/M4: the frozen gate exits 1 on the parked task: ' + gate.stdout + gate.stderr)
+   const verdict = JSON.parse(gate.stdout)
+@@ -503,7 +504,7 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
+     'grep \'tasks\\[\\]\\.actor\' ' + q(p) + ' | grep -q \'plan\'',
+     'grep \'deferredVerification. | no |\' ' + q(p) + ' | grep -q \'actor\'',
+   ].join(' && ')
+-  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8' }).status
++  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8', env: simEnv() }).status
+   assert.equal(sh(IMPL_GREP(IMPL_MD)), 0,
+     '(h)/M8: the implementer.md grep exits 0 on the document as written')
+   assert.equal(sh(RF_GREP(RF_MD)), 0,
+diff --git a/fleet/tests/test_run_engine_candidate_bootstrap.mjs b/fleet/tests/test_run_engine_candidate_bootstrap.mjs
+index 7d0178723525800ef0e27627003b752094f0ef47..aa081e0f083d8f4c33928c027a4808c683d04bdc 100644
+--- a/fleet/tests/test_run_engine_candidate_bootstrap.mjs
++++ b/fleet/tests/test_run_engine_candidate_bootstrap.mjs
+@@ -63,7 +63,7 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+-import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ // Namespace import on purpose: a missing named export is a link-time
+ // SyntaxError that reads like a bad import path. This way the absent
+ // implementation reports itself as the assertion it is, on the line below.
+@@ -138,7 +138,7 @@ const marked = (log, marker, dir) => logLines(log).filter((l) => l === marker +
+ // task clone is provisioned and only the two tracked files reach the patch.
+ const runInstall = (cwd) => {
+   try {
+-    execFileSync('bash', ['install.sh'], { cwd, stdio: 'ignore' })
++    execFileSync('bash', ['install.sh'], { cwd, env: ENV, stdio: 'ignore' })
+   } catch { /* the boom scenario's install fails here too; the clone is not the leg */ }
+ }
+ const addDependency = (name) => (cwd) => {
+@@ -297,18 +297,18 @@ async function scenario({ files, onImpl, extraArgs = { bootstrapCmd: 'bash insta
+     'within one sentence')
+ }
+ 
+-// ── (g) the sibling sims still print their sentinel [M2][M3] ─────────────────
++// ── (g) the sibling sims this task must not disturb [M2][M3] ─────────────────
++// Named, not run: the bridge in tests/test_fleet_suite.py collects every
++// fleet/tests/test_*.mjs and dispatches each on a worker of its own, so a sim
++// that spawned these two ran them twice and charged their wall to this name.
++// The coverage the leg keeps is the names — each is still a sim on the tree,
++// and the reconcile loop and the exam-clone bootstrap are graded where they
++// live.
+ for (const sim of ['fleet/tests/test_run_engine_reconcile.mjs',
+                    'fleet/tests/test_run_engine_exam_together.mjs']) {
+-  let out
+-  try {
+-    out = execFileSync('node', [sim], { cwd: REPO_ROOT, encoding: 'utf8' })
+-  } catch (e) {
+-    out = String((e && (e.stdout || e.message)) || e)
+-  }
+-  assert.ok(out.includes('ALL TESTS PASSED'),
+-    '[M2][M3] leg (g): ' + sim + ' still passes — the reconcile loop and the exam-clone ' +
+-    'bootstrap are unchanged: ' + out.slice(-1200))
++  assert.ok(fs.existsSync(path.join(REPO_ROOT, sim)),
++    '[M2][M3] leg (g): ' + sim + ' is still a sim under fleet/tests/, collected and run by ' +
++    'the bridge — the reconcile loop and the exam-clone bootstrap are graded there')
+ }
+ 
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_exam_evidence.mjs b/fleet/tests/test_run_engine_exam_evidence.mjs
+index d5b39fb7f58e3d643514cc1be8b91257925bcf9b..0a546d1d02474bf65f101f86d104ab7bade693b2 100644
+--- a/fleet/tests/test_run_engine_exam_evidence.mjs
++++ b/fleet/tests/test_run_engine_exam_evidence.mjs
+@@ -38,7 +38,6 @@ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+-import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+@@ -46,7 +45,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-evidence-'))
+ // Removed on exit, red or green (rmSync unlinks the fleet-copy's `skills`
+ // symlink rather than following it into the repo).
+ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
+-const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))
++const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+ const REVIEWER_MD = fileURLToPath(new URL('../roles/reviewer.md', import.meta.url))
+ 
+ const EXAM_CMD = 'bash t1_test.sh'
+@@ -473,11 +472,14 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
+ }
+ 
+ // ── leg (e): the wave-0 exam verdict and the recorded-edit rule stand [M5] ──
++// Named, not run: the bridge in tests/test_fleet_suite.py collects every
++// fleet/tests/test_*.mjs and dispatches each on a worker of its own, so a sim
++// that spawned these two ran them twice and charged their wall to this name.
++// The coverage this leg keeps is the names — each is still a sim on the tree,
++// and the verdict and the recorded-edit rule are graded where they live.
+ for (const name of ['test_run_engine_examiner.mjs', 'test_run_engine_exam_edits.mjs']) {
+-  const out = execFileSync(process.execPath, [path.join(TESTS_DIR, name)],
+-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+-  assert.ok(out.includes('ALL TESTS PASSED'),
+-    name + ' still passes unchanged: ' + out.slice(-400))
++  assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', name)),
++    'fleet/tests/' + name + ' is still a sim under fleet/tests/, collected and run by the bridge')
+ }
+ 
+ // ── leg (f) ─────────────────────────────────────────────────────────────────
+diff --git a/fleet/tests/test_run_engine_exam_fix_edit.mjs b/fleet/tests/test_run_engine_exam_fix_edit.mjs
+index 1d5b2acbfdf29568bf9406b67860cf34db881f12..655bf49e50f9c5f55dec609ece687fe614bc9fd0 100644
+--- a/fleet/tests/test_run_engine_exam_fix_edit.mjs
++++ b/fleet/tests/test_run_engine_exam_fix_edit.mjs
+@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
+ import { execSeam } from '../run-main.mjs'
+ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+ import { runEngine } from '../run-engine.mjs'
+-import { makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-fix-'))
+ const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+@@ -270,7 +270,7 @@ assert.equal(skipsShoutScan('skills/ultrapowers/SKILL.md'), false,
+   const BASE_SHA = 'd6efce4'
+   const git = (argv) => {
+     try {
+-      return { code: 0, out: execFileSync('git', argv, { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
++      return { code: 0, out: execFileSync('git', argv, { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
+     } catch (e) {
+       return { code: 1, out: '' }
+     }
+diff --git a/fleet/tests/test_run_engine_exam_together.mjs b/fleet/tests/test_run_engine_exam_together.mjs
+index 71b366c9f77ddc7a84a26cd2584a770dc1522671..46d7b8ae12151b2fa3ecacece0030a68a2fba957 100644
+--- a/fleet/tests/test_run_engine_exam_together.mjs
++++ b/fleet/tests/test_run_engine_exam_together.mjs
+@@ -60,7 +60,7 @@ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { makeCwdFor } from '../run-waves.mjs'
+-import { rig, makeRepo, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, rig, makeRepo, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-together-'))
+ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
+@@ -128,7 +128,7 @@ const readEvents = (runDir) => {
+ const showBytes = (cwd, ref, file) => {
+   try {
+     return execFileSync('git', ['show', ref + ':' + file],
+-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++      { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+   } catch (e) {
+     return 'ABSENT: ' + String((e && e.message) || e)
+   }
+diff --git a/fleet/tests/test_run_engine_gate.mjs b/fleet/tests/test_run_engine_gate.mjs
+index c781943a6f555ca362a9bb1561b5823a0057e1e1..c4e20c22ce2320cdfd2778ed473fdef7dab5ec84 100644
+--- a/fleet/tests/test_run_engine_gate.mjs
++++ b/fleet/tests/test_run_engine_gate.mjs
+@@ -10,7 +10,7 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+-import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-gate-'))
+ const SCRIPTS = fileURLToPath(new URL('../../skills/ultrapowers/scripts', import.meta.url))
+@@ -41,7 +41,7 @@ assert.equal(report.coverage.complete, true)
+ 
+ // run-main's bridge leg, mirrored: the integration branch travels clone → repo
+ // before the frozen scripts read the repo checkout.
+-execFileSync('git', ['fetch', '--no-tags', integ, branch + ':' + branch], { cwd: repo })
++execFileSync('git', ['fetch', '--no-tags', integ, branch + ':' + branch], { cwd: repo, env: ENV })
+ 
+ const resultPath = path.join(runDir, 'workflow-result.json')
+ fs.writeFileSync(resultPath, JSON.stringify(report, null, 2))
+@@ -49,13 +49,13 @@ fs.writeFileSync(resultPath, JSON.stringify(report, null, 2))
+ // finalize_report.py — the first frozen reader of the report.
+ const fin = execFileSync('python3', [path.join(SCRIPTS, 'finalize_report.py'),
+   '--report', resultPath, '--repo', repo, '--branch', branch],
+-  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++  { encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+ assert.ok(true, 'finalize_report accepted the engine report: ' + fin)
+ 
+ // gate_check.py — the frozen verdict.
+ const gateOut = execFileSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
+   '--run-id', 'gt1', '--branch', branch, '--report', resultPath, '--repo', repo],
+-  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++  { encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+ const gate = JSON.parse(gateOut)
+ const failed = (gate.checks || []).filter((c) => !c.ok)
+ assert.equal(failed.length, 0, 'gate checks failed: ' + JSON.stringify(failed))
+diff --git a/fleet/tests/test_run_engine_infra_retry.mjs b/fleet/tests/test_run_engine_infra_retry.mjs
+index c209f261be096f3c639bb449eb4a622495c52a61..87fc5ca2b303fc04b3c14fa0024454879ff3a2dd 100644
+--- a/fleet/tests/test_run_engine_infra_retry.mjs
++++ b/fleet/tests/test_run_engine_infra_retry.mjs
+@@ -57,6 +57,7 @@ import { fileURLToPath } from 'node:url'
+ // A namespace import, so a BASE that exports no `INFRA_BACKOFF_MS` fails leg
+ // (a)'s assertion — the absent implementation — rather than failing to link.
+ import * as engine from '../run-engine.mjs'
++import { simEnv } from './_helpers.mjs'
+ import {
+   makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl,
+ } from './_engine_helpers.mjs'
+@@ -266,7 +267,7 @@ assert.equal(engine.INFRA_BACKOFF_MS, 60000,
+   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
+   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
+     '--run-id', 'sim', '--branch', branch, '--report', reportPath, '--repo', integ],
+-    { encoding: 'utf8' })
++    { encoding: 'utf8', env: simEnv() })
+   assert.equal(gate.status, 1,
+     '(d)/M3: gate_check.py must exit 1 on the twice-dead critic: ' + gate.stdout + gate.stderr)
+   const verdict = JSON.parse(gate.stdout)
+diff --git a/fleet/tests/test_run_engine_integrated_runs.mjs b/fleet/tests/test_run_engine_integrated_runs.mjs
+index 0bb38104b86f30c555379ca7293e55f3cc959095..ba4831833b22bbc1d5342d7330e825fb8ba884ec 100644
+--- a/fleet/tests/test_run_engine_integrated_runs.mjs
++++ b/fleet/tests/test_run_engine_integrated_runs.mjs
+@@ -42,7 +42,7 @@ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+ // whole file would die with a SyntaxError that reads like a typo instead of
+ // like the absent implementation. The first assertion below names it instead.
+ import * as engineMod from '../run-engine.mjs'
+-import { rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const { runEngine, integratedRunEvidenceBlock } = engineMod
+ 
+@@ -295,7 +295,7 @@ const blockOf = (prompt) => {
+ const haveBase = (() => {
+   try {
+     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
+-      { cwd: REPO_ROOT, stdio: 'ignore' })
++      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
+     return true
+   } catch { return false }
+ })()
+@@ -307,7 +307,7 @@ if (haveBase) {
+   })
+   fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
+     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
+-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
++      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
+   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
+   ;({ runEngine: baseRunEngine } =
+     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
+diff --git a/fleet/tests/test_run_engine_proof_runs.mjs b/fleet/tests/test_run_engine_proof_runs.mjs
+index fa6e2294eddf33277b8cb52aa28a41bf0f3c8793..816adebb8ab0fcef162bb0d8b4002def8494ca62 100644
+--- a/fleet/tests/test_run_engine_proof_runs.mjs
++++ b/fleet/tests/test_run_engine_proof_runs.mjs
+@@ -42,7 +42,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
+ import { execSeam } from '../run-main.mjs'
+ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+ import { runEngine } from '../run-engine.mjs'
+-import { rig, makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, rig, makeRepo, provision, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-proof-runs-'))
+ // Removed on exit, red or green (rmSync unlinks the fleet-copy's `skills`
+@@ -273,7 +273,7 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+ const haveBase = (() => {
+   try {
+     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
+-      { cwd: REPO_ROOT, stdio: 'ignore' })
++      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
+     return true
+   } catch { return false }
+ })()
+@@ -285,7 +285,7 @@ if (haveBase) {
+   })
+   fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
+     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
+-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
++      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
+   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
+   ;({ runEngine: baseRunEngine } =
+     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
+@@ -977,7 +977,7 @@ for (const [leg, simName, probe, pinName] of [
+     'four `driver:proof-run` events with two at `iter` 1'],
+ ]) {
+   const copy = copyWithProbe(simName, probe)
+-  const r = spawnSync(process.execPath, [copy], { encoding: 'utf8' })
++  const r = spawnSync(process.execPath, [copy], { encoding: 'utf8', env: ENV })
+   const out = String(r.stdout || '')
+   assert.ok(out.includes(BODY_GREEN),
+     'leg (' + leg + '): every leg of ' + simName + ' holds — the sim prints its sentinel: ' +
+diff --git a/fleet/tests/test_run_engine_reserved_exams.mjs b/fleet/tests/test_run_engine_reserved_exams.mjs
+index 85bcf250d8135a8066db7bcbc918e25181376922..566a6dedaf876589c7db890babace2571ebf126c 100644
+--- a/fleet/tests/test_run_engine_reserved_exams.mjs
++++ b/fleet/tests/test_run_engine_reserved_exams.mjs
+@@ -63,7 +63,7 @@ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { examSlug, reservedExamPath, reservedExamDirs } from '../exam-paths.mjs'
+-import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-reserved-exams-'))
+ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
+@@ -90,7 +90,7 @@ const readEvents = (runDir) => {
+ const showBytes = (cwd, ref, file) => {
+   try {
+     return execFileSync('git', ['show', ref + ':' + file],
+-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++      { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+   } catch (e) {
+     return 'ABSENT: ' + String((e && e.message) || e)
+   }
+@@ -100,7 +100,7 @@ const isAbsent = (s) => typeof s === 'string' && s.startsWith('ABSENT: ')
+ const treePaths = (cwd, ref) => {
+   try {
+     return execFileSync('git', ['ls-tree', '-r', '--name-only', ref],
+-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++      { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+       .split('\n').filter(Boolean)
+   } catch (e) {
+     return ['ABSENT: ' + String((e && e.message) || e)]
+diff --git a/fleet/tests/test_run_engine_review_economy.mjs b/fleet/tests/test_run_engine_review_economy.mjs
+index db0f6ec95bd0569dc568a5696ae309a448b6792f..f848a2f4869f05a30a06b9384505437e361859d8 100644
+--- a/fleet/tests/test_run_engine_review_economy.mjs
++++ b/fleet/tests/test_run_engine_review_economy.mjs
+@@ -35,7 +35,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
+ import { execSeam } from '../run-main.mjs'
+ import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+ import { runEngine, REVIEWER_SCHEMA } from '../run-engine.mjs'
+-import { rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-review-economy-'))
+ // rmSync unlinks the base tree's `skills` symlink rather than following it.
+@@ -269,7 +269,7 @@ const eventsOf = (runDir) => {
+ const haveBase = (() => {
+   try {
+     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
+-      { cwd: REPO_ROOT, stdio: 'ignore' })
++      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
+     return true
+   } catch { return false }
+ })()
+@@ -281,7 +281,7 @@ if (haveBase) {
+   })
+   fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
+     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
+-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
++      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
+   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
+   ;({ runEngine: baseRunEngine } =
+     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
+diff --git a/fleet/tests/test_run_engine_state_exams.mjs b/fleet/tests/test_run_engine_state_exams.mjs
+index 127b260bfb7fa74bfcf99a5a1f1ae001ee28ba74..3ce49cc081218c12cf2a4e60f50ba7da7b1cc2df 100644
+--- a/fleet/tests/test_run_engine_state_exams.mjs
++++ b/fleet/tests/test_run_engine_state_exams.mjs
+@@ -53,7 +53,6 @@ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+-import { execFileSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ // Namespace import on purpose: at BASE the module provides neither
+ // `stateExamsOf` nor `stateExamBlock`, and a named import would fail to LINK —
+@@ -71,7 +70,7 @@ for (const k of Object.keys(process.env)) if (k.startsWith('ULTRA_')) delete pro
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-state-exams-'))
+ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
+-const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))
++const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+ const REPORT_FORMAT_MD = fileURLToPath(
+   new URL('../../skills/ultrapowers/references/report-format.md', import.meta.url))
+ 
+@@ -539,16 +538,20 @@ const BREACH = 'contract breach: https://x'
+     JSON.stringify(rows))
+ }
+ 
+-// ── leg (l): the four sibling engine sims still print the sentinel ──────────
++// ── leg (l): the four sibling engine sims this task must not disturb ─────────
+ // [M1] [M2] [M3] — the widened environment and the added report key break none
+ // of the pins that already stand on the exam evidence, the pre-review pass, the
+ // `ULTRA_BASE` readings and the integrated-run row shape.
++//
++// Named, not run: the bridge in tests/test_fleet_suite.py collects every
++// fleet/tests/test_*.mjs and dispatches each on a worker of its own, so a sim
++// that spawned these four ran them twice and charged four walls to this name.
++// The coverage the leg keeps is the names — each is still a sim on the tree, and
++// its pins are graded where they live.
+ for (const name of ['test_run_engine_exam_evidence.mjs', 'test_run_engine_pre_review.mjs',
+                     'test_run_engine_proof_runs.mjs', 'test_run_engine_integrated_runs.mjs']) {
+-  const out = execFileSync(process.execPath, [path.join(TESTS_DIR, name)],
+-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+-  assert.ok(out.includes('ALL TESTS PASSED'),
+-    name + ' still passes unchanged: ' + out.slice(-400))
++  assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', name)),
++    'fleet/tests/' + name + ' is still a sim under fleet/tests/, collected and run by the bridge')
+ }
+ 
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_suite_passes.mjs b/fleet/tests/test_run_engine_suite_passes.mjs
+index a7eadb457f6cdcca8adb372d1b0b0afc85217508..130a7aa26793163f0bcdea23880c2130fe0c736a 100644
+--- a/fleet/tests/test_run_engine_suite_passes.mjs
++++ b/fleet/tests/test_run_engine_suite_passes.mjs
+@@ -24,7 +24,7 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+-import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { ENV, makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+ 
+ // fleet/tests/<this file> → the repository root the tracked-file legs read.
+ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+@@ -233,7 +233,7 @@ const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passe
+     ['grep', '-n', '-e', SHALLOW_SUITE, '-e', SHALLOW_LEG, '-e', SHALLOW_DEFERRED,
+      '-e', RUN_SHALLOW_LEG, '-e', LEG_PHASE, '-e', LEG_CALL_PREFIX,
+      '--', 'fleet', 'skills', 'tests', '.github', ':!tests/fixtures'],
+-    { cwd: REPO_ROOT, encoding: 'utf8' })
++    { cwd: REPO_ROOT, env: ENV, encoding: 'utf8' })
+   assert.equal(sweep.error, undefined, '(e)/M5: the sweep could not run: ' + sweep.error)
+   assert.equal(String(sweep.stdout || ''), '',
+     '(e)/M5: a tracked file under fleet/, skills/, tests/ or .github/ still names the leg ' +
+diff --git a/fleet/tests/test_run_main.mjs b/fleet/tests/test_run_main.mjs
+index 676df100c7a6a340d4653a2f70cfbbfbc959d4e7..382a99a61db56461e690e483ec41051abc6c6338 100644
+--- a/fleet/tests/test_run_main.mjs
++++ b/fleet/tests/test_run_main.mjs
+@@ -24,9 +24,13 @@ import {
+ } from '../run-main.mjs'
+ import { makeEventLog } from '../run-waves.mjs'
+ import { ROLES } from '../run-worker.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-'))
+-const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++// One environment for every child below: a HOME of the sim's own and a PATH of
++// the interpreters, so nothing of the box reaches a git, a bash or a node here.
++const ENV = simEnv()
++const git = (argv, cwd) => execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+ 
+ // ── parseArgs ────────────────────────────────────────────────────────────────
+ {
+@@ -307,7 +311,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
+     calls.push([cmd, ...argv])
+     if (cmd === 'git') {
+       try {
+-        return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, encoding: 'utf8' }), stderr: '' }
++        return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, env: ENV, encoding: 'utf8' }), stderr: '' }
+       } catch (e) {
+         return { code: 1, stdout: '', stderr: String(e.stderr || e.message) }
+       }
+@@ -694,7 +698,7 @@ function freshRepo(name) {
+     const cmd = "printf '" + first + "\\n'; cat '" + outPayload + "'; cat '" + errPayload +
+       "' >&2; printf '" + last + "\\n'; exit " + exitCode
+     const r = spawnSync('bash', [acceptanceSh, '--suite-gate', '--branch', 'fleet-base',
+-      '--repo', wrapRepo, '--run', acceptanceWrap(cmd, runDir)], { encoding: 'utf8' })
++      '--repo', wrapRepo, '--run', acceptanceWrap(cmd, runDir)], { encoding: 'utf8', env: ENV })
+     let json
+     try {
+       json = JSON.parse(r.stdout)
+@@ -899,18 +903,20 @@ const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
+ // `Run:` commands, executed here from the repo root.
+ {
+   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+-  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: repoRoot, encoding: 'utf8' })
++  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: repoRoot, encoding: 'utf8', env: ENV })
+ 
+-  const peer = sh("node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'")
+-  assert.equal(peer.status, 0,
+-    'leg (f) [M4]: the first Run: — test_roles_peer.mjs still passes, so critic.md kept the shape ' +
+-    'it pins (no `3. ` duty, no `checklist`): ' + String(peer.stdout + peer.stderr).slice(-500))
+-
+-  const patches = sh("node fleet/tests/test_exam_edited_patches.mjs | grep -q 'ALL TESTS PASSED'")
+-  assert.equal(patches.status, 0,
+-    'leg (f) [M4]: the second Run: — test_exam_edited_patches.mjs still passes, so the ' +
+-    'report-format.md edit did not break the proposedPatches row: ' +
+-    String(patches.stdout + patches.stderr).slice(-500))
++  // The first two `Run:`s named two sibling sims. Named here, not run: the
++  // bridge in tests/test_fleet_suite.py collects every fleet/tests/test_*.mjs
++  // and dispatches each on a worker of its own, so a sim that spawned these two
++  // ran them twice — and handed them whatever environment this process carries.
++  // The coverage the leg keeps is the names: critic.md's shape is graded where
++  // test_roles_peer.mjs lives, and the proposedPatches row where
++  // test_exam_edited_patches.mjs does.
++  for (const sim of ['test_roles_peer.mjs', 'test_exam_edited_patches.mjs']) {
++    assert.ok(fs.existsSync(path.join(repoRoot, 'fleet/tests', sim)),
++      `leg (f) [M4]: fleet/tests/${sim} is still a sim under fleet/tests/, collected and run by ` +
++      'the bridge, which asserts ALL TESTS PASSED there')
++  }
+ 
+   const criticGrep = sh("grep -n 'verbatim' fleet/roles/critic.md")
+   const criticLines = criticGrep.stdout.split('\n').filter((l) => l.trim() !== '')
+diff --git a/fleet/tests/test_run_main_effort.mjs b/fleet/tests/test_run_main_effort.mjs
+index b35e8ad9215b263a93f5d0be3c8b06c2b6c1e6a3..6d454c4c9aedd09c54bd0684905406beb23b3e98 100644
+--- a/fleet/tests/test_run_main_effort.mjs
++++ b/fleet/tests/test_run_main_effort.mjs
+@@ -34,10 +34,14 @@ import { execFileSync } from 'node:child_process'
+ 
+ import { parseArgs, provisionRunTree, composeAgent } from '../run-main.mjs'
+ import { cloneAtBase, makeEventLog } from '../run-waves.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-effort-'))
++// One environment for every git below: a HOME of the sim's own, so no
++// ~/.gitconfig of the box reaches a repository this sim builds.
++const ENV = simEnv()
+ const git = (argv, cwd) =>
+-  execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++  execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+ 
+ /** The three values the knob offers. */
+ const EFFORTS = ['low', 'medium', 'high']
+diff --git a/fleet/tests/test_run_main_engine_dir.mjs b/fleet/tests/test_run_main_engine_dir.mjs
+index 51a487efa9ab68e835f5318a6d77b76689c66650..de994b4d8dc81a47bbacd3a6c859299ab0644252 100644
+--- a/fleet/tests/test_run_main_engine_dir.mjs
++++ b/fleet/tests/test_run_main_engine_dir.mjs
+@@ -23,6 +23,8 @@ import path from 'node:path'
+ import { execFileSync } from 'node:child_process'
+ import { fileURLToPath, pathToFileURL } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ const MODULE_URL = new URL('../run-main.mjs', import.meta.url)
+ const MODULE_PATH = fileURLToPath(MODULE_URL)
+ // M1's own formula, computed here from this test's location rather than read
+@@ -41,7 +43,10 @@ const mod = await import(MODULE_URL.href)
+ const { parseArgs, DEFAULTS, runMain } = mod
+ 
+ const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-enginedir-')))
+-const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++// One environment for every child below: a HOME of the sim's own and a PATH of
++// the interpreters, so nothing of the box reaches a git or a node here.
++const ENV = simEnv()
++const git = (argv, cwd) => execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+ const mkdir = (p) => { fs.mkdirSync(p, { recursive: true }); return p }
+ 
+ // ── leg (a) / M1 — ENGINE_DIR, and the end of REPO_DIR ───────────────────────
+@@ -63,7 +68,7 @@ const mkdir = (p) => { fs.mkdirSync(p, { recursive: true }); return p }
+     '(e) => { process.stderr.write(String((e && e.stack) || e)); process.exit(7) })'
+   let printed
+   try {
+-    printed = execFileSync(process.execPath, ['-e', childCode], { cwd: childCwd, encoding: 'utf8' })
++    printed = execFileSync(process.execPath, ['-e', childCode], { cwd: childCwd, env: ENV, encoding: 'utf8' })
+   } catch (e) {
+     assert.fail('[leg a / M1] the child process could not import fleet/run-main.mjs from an ' +
+       'unrelated cwd: ' + String((e && (e.stderr || e.message)) || e))
+@@ -143,7 +148,7 @@ const exec = async (cmd, argv, opts = {}) => {
+   calls.push({ cmd, argv: [...argv], cwd: opts.cwd })
+   if (cmd === 'git') {
+     try {
+-      return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, encoding: 'utf8' }), stderr: '' }
++      return { code: 0, stdout: execFileSync('git', argv, { cwd: opts.cwd, env: ENV, encoding: 'utf8' }), stderr: '' }
+     } catch (e) {
+       return { code: 1, stdout: '', stderr: String((e && (e.stderr || e.message)) || e) }
+     }
+diff --git a/fleet/tests/test_run_waves.mjs b/fleet/tests/test_run_waves.mjs
+index 963d7e97c2a63e2407d511a23bd5ed73f83cc96b..caeb54c5dcd30142e7f73b060fe435f14fde6cc0 100644
+--- a/fleet/tests/test_run_waves.mjs
++++ b/fleet/tests/test_run_waves.mjs
+@@ -12,9 +12,13 @@ import path from 'node:path'
+ import { execFileSync, spawnSync } from 'node:child_process'
+ import { fileURLToPath } from 'node:url'
+ import { cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase, withPatchCapture, makeEventLog, ulid } from '../run-waves.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runwaves-'))
+-const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
++// One environment for every child below: a HOME of the sim's own and a PATH of
++// the interpreters, so nothing of the box reaches a git or the fold kernel here.
++const ENV = simEnv()
++const git = (argv, cwd) => execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+ 
+ // ── 2. clones at BASE — the #314 cure ────────────────────────────────────────
+ // The fixture IS the #314 condition: a repository whose checkout has moved PAST
+@@ -116,7 +120,7 @@ assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isol
+   const runDir = path.join(tmp, 'run')
+   const fold = spawnSync('python3', [kernel, 'fold', '--repo', repo, '--run-dir', runDir,
+     '--wave', '1', '--base', BASE, '--patch', 'T1=' + p1, '--patch', 'T2=' + p2],
+-    { encoding: 'utf8' })
++    { encoding: 'utf8', env: ENV })
+   assert.equal(fold.status, 0, 'the kernel accepts driver-captured patches: ' + fold.stdout + fold.stderr)
+   const reply = JSON.parse(fold.stdout.trim().split('\n').pop())
+   // T1 rewrote a.txt's only line; T2 appended to it — a same-file conflict the
+diff --git a/fleet/tests/test_sandbox_boot.mjs b/fleet/tests/test_sandbox_boot.mjs
+index 16360735604e4c862880e83f22dbbeba96ec564e..5dfeece88649674251a360b4e03c86653245389e 100644
+--- a/fleet/tests/test_sandbox_boot.mjs
++++ b/fleet/tests/test_sandbox_boot.mjs
+@@ -30,7 +30,7 @@ import {
+   integrationsReads,
+   verbOf, dirOf, gitLog, evidenceDir, isEvidencePush, isIntegrationPush, addArguments,
+   evidenceDisciplineProblem,
+-  runTests,
++  runTests, ENV,
+ } from './_sandbox_boot_helpers.mjs'
+ // Section 3's two readers are what task 1 of run-34 (#723) PRODUCES in the rig.
+ // Read off the namespace rather than named-imported, so that a helpers module
+@@ -42,7 +42,7 @@ const tests = []
+ const test = (name, fn) => tests.push([name, fn])
+ 
+ test('the boot script parses', () => {
+-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
++  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0)
+ })
+ 
+ // ── 1. the whole green path ──────────────────────────────────────────────────
+@@ -1058,7 +1058,7 @@ test('#723 (h) the contract declares the phase commits in both bullets  [M5]', (
+     "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+   ]
+   for (const cmd of runs) {
+-    const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000 })
++    const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000, env: ENV })
+     assert.equal(r.status, 0,
+       `must exit 0: ${cmd}\n---\n${r.stdout || ''}${r.stderr || ''}`)
+   }
+diff --git a/fleet/tests/test_sandbox_boot_approval_evidence.mjs b/fleet/tests/test_sandbox_boot_approval_evidence.mjs
+index fefa54a4ae3f9c979ad6aeace78c41c1cc9e4294..948400092001c0885fbc57b6d2db6a40a647e270 100644
+--- a/fleet/tests/test_sandbox_boot_approval_evidence.mjs
++++ b/fleet/tests/test_sandbox_boot_approval_evidence.mjs
+@@ -73,7 +73,7 @@ import {
+   SCRIPT, PR_URL, RUN_PATH,
+   STUBS, PRELUDE, makeHome, boot,
+   statusOf, evidenceDir,
+-  runTests,
++  runTests, ENV,
+ } from './_sandbox_boot_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+@@ -245,7 +245,7 @@ const acceptanceRun = () =>
+ const read = (file) => fs.readFileSync(file)
+ 
+ test('the boot script parses  [rig]', () => {
+-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
++  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0)
+ })
+ 
+ // ── (a) each approval that was written is committed, byte for byte  [M1] ─────
+@@ -517,7 +517,7 @@ test('a PASS run whose engine wrote no acceptance.log commits none  [#739 Task 2
+ const ROOT = path.join(HERE, '..', '..')
+ /** Run one of the Proof's `Run:` commands, verbatim, and return its count. */
+ function grepCount(command) {
+-  const r = spawnSync('bash', ['-c', command], { cwd: ROOT, encoding: 'utf8' })
++  const r = spawnSync('bash', ['-c', command], { cwd: ROOT, encoding: 'utf8', env: ENV })
+   // `grep -c` exits 1 on a count of zero, so the number on stdout is the answer.
+   return Number((r.stdout || '').trim() || '0')
+ }
+@@ -551,7 +551,7 @@ test('collect_evidence\'s own body names acceptance.log  [#739 Task 2 / M1 / leg
+   assert.ok(count >= 1,
+     'the Proof\'s `sed`+`grep` over collect_evidence must count at least one ' +
+       '`acceptance.log`, got: ' + count)
+-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0,
++  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0,
+     'the boot script still parses with the copy in it')
+ })
+ 
+diff --git a/fleet/tests/test_sandbox_boot_approved.mjs b/fleet/tests/test_sandbox_boot_approved.mjs
+index 5a98524a562dffc5190b51f99ab617aaca2f9017..a04c1052f75d9deb614928bb2ac5a8681ad34e79 100644
+--- a/fleet/tests/test_sandbox_boot_approved.mjs
++++ b/fleet/tests/test_sandbox_boot_approved.mjs
+@@ -35,7 +35,7 @@ import {
+   SCRIPT, PR_URL, PR_AUTHOR,
+   STUBS, PRELUDE, makeHome, boot,
+   readLog, stream, statusOf, states, prPosts,
+-  runTests,
++  runTests, ENV,
+ } from './_sandbox_boot_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+@@ -80,7 +80,7 @@ function approvedHome() {
+ }
+ 
+ test('the boot script parses', () => {
+-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
++  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0)
+ })
+ 
+ // ── (a) an approved NEEDS_ACK run is gate-green  [M1] ────────────────────────
+diff --git a/fleet/tests/test_sandbox_boot_edges.mjs b/fleet/tests/test_sandbox_boot_edges.mjs
+index ae34757503a6cbbcef7c1ed4816761e6d807e2b4..36bc30c6fffbf63b3fdf71d4717a94bc1c2ea386 100644
+--- a/fleet/tests/test_sandbox_boot_edges.mjs
++++ b/fleet/tests/test_sandbox_boot_edges.mjs
+@@ -26,6 +26,7 @@ import {
+   verbOf, dirOf, gitLog, evidenceDir, isEvidencePush, addArguments,
+   runTests,
+ } from './_sandbox_boot_helpers.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const tests = []
+ const test = (name, fn) => tests.push([name, fn])
+@@ -703,14 +704,12 @@ const writeBigFile = (file, count, line) => {
+ const stubGit = (ctx, args, env = {}) => {
+   const r = spawnSync(path.join(ctx.bin, 'git'), args, {
+     encoding: 'utf8',
+-    env: {
+-      PATH: process.env.PATH,
+-      FLEET_HOME: ctx.home,
++    env: simEnv({ bin: ctx.bin, home: ctx.home, env: {
+       STUB_PLAN_H1: PLAN_H1,
+       STUB_PLAN_SHA: PLAN_SHA,
+       STUB_HEAD_SHA: HEAD_SHA,
+       ...env,
+-    },
++    } }),
+     // The injected answers are megabytes; node's default is one.
+     maxBuffer: 64 * MIB,
+   })
+diff --git a/fleet/tests/test_sandbox_boot_merge.mjs b/fleet/tests/test_sandbox_boot_merge.mjs
+index c5b12f3f127b5f6cf0e720e3320c8e8926125e6c..2fa6367b5c802ab1e5d934c8c86c608e5b6076b7 100644
+--- a/fleet/tests/test_sandbox_boot_merge.mjs
++++ b/fleet/tests/test_sandbox_boot_merge.mjs
+@@ -71,7 +71,7 @@ import {
+   readLog, lines, argvLines, stream, statusOf, committed, commitStates, notifies,
+   prPosts, engineRuns, unitsRun, gitLog, verbOf, dirOf, isIntegrationPush,
+   targetDir, checkReads, mergePuts,
+-  runTests,
++  runTests, ENV, stubEnv,
+ } from './_sandbox_boot_helpers.mjs'
+ 
+ const tests = []
+@@ -252,7 +252,7 @@ const assertLeftOpen = (ctx, leg) => {
+ // ── (l) the script parses ────────────────────────────────────────────────────
+ 
+ test('bash -n accepts fleet/sandbox-boot.sh  [leg (l)]', () => {
+-  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' })
++  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
+   assert.equal(r.status, 0, `(l) the boot script must parse:\n${r.stderr}`)
+ })
+ 
+@@ -1641,7 +1641,7 @@ test('the systemctl stub answers a fold unit inactive  [publish-fold M8 / leg (j
+   const ctx = makeHome()
+   const r = spawnSync(path.join(ctx.bin, 'systemctl'), ['--user', 'is-active', `${FOLD_UNIT_1}.service`], {
+     encoding: 'utf8',
+-    env: { PATH: process.env.PATH, FLEET_HOME: ctx.home },
++    env: stubEnv(ctx),
+   })
+   assert.equal(r.status, 0, r.stderr)
+   assert.equal(r.stdout.trim(), 'inactive',
+@@ -2376,7 +2376,7 @@ const dateStub = (ctx, leg) => {
+ const dateUnder = (ctx, argv, leg) => {
+   const r = spawnSync(dateStub(ctx, leg), argv, {
+     encoding: 'utf8',
+-    env: { PATH: `${ctx.bin}:${process.env.PATH}`, HOME: ctx.home, FLEET_HOME: ctx.home },
++    env: stubEnv(ctx),
+   })
+   assert.equal(r.status, 0,
+     `${leg} \`date ${argv.join(' ')}\` exits 0; it exited ${r.status} and printed: ` +
+diff --git a/fleet/tests/test_sandbox_boot_render_env.mjs b/fleet/tests/test_sandbox_boot_render_env.mjs
+index 67fd4118971cbb7c0d4f23334c7ef5e709744c25..3b7ded5df57ee2da1ea566252b726ad26271575d 100644
+--- a/fleet/tests/test_sandbox_boot_render_env.mjs
++++ b/fleet/tests/test_sandbox_boot_render_env.mjs
+@@ -32,8 +32,11 @@
+  *                  `test_sandbox_boot*.mjs` — this guarded exam included —
+  *                  contains the host's renderer path.
+  *   M3 / leg (d)   `test_sandbox_boot.mjs`, `test_sandbox_boot_effort.mjs` and
+- *                  `test_sandbox_boot_state_exams.mjs` each print
+- *                  `ALL TESTS PASSED`, which is what their bridge case asserts.
++ *                  `test_sandbox_boot_state_exams.mjs` are each a file under
++ *                  `fleet/tests/`. Whether each one prints `ALL TESTS PASSED` is
++ *                  its own bridge case's business: no sim runs another sim, so
++ *                  this leg names the three the rig change touches and leaves
++ *                  the running of them to the bridge.
+  *
+  * Two things about how this file is written.
+  *
+@@ -54,7 +57,6 @@
+  */
+ 
+ import assert from 'node:assert/strict'
+-import { spawn } from 'node:child_process'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+@@ -68,8 +70,7 @@ import {
+ import * as rig from './_sandbox_boot_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+-/** The repository root — where leg (d)'s sibling sims are run from. */
+-const ROOT = path.join(HERE, '..', '..')
++const REPO_ROOT = path.resolve(HERE, '..', '..')
+ 
+ const tests = []
+ const test = (name, fn) => tests.push([name, fn])
+@@ -190,10 +191,12 @@ const plantedBoot = (() => {
+   return () => done
+ })()
+ 
+-// ── leg (d)'s sibling sims, started with the boots ───────────────────────────
++// ── leg (d)'s sibling sims: names, not runs ──────────────────────────────────
+ //
+-// Spawned WITHOUT this exam's `FLEET_RENDER_ENV`, so each one runs exactly as
+-// the pytest bridge runs it.
++// The three sims the rig change touches. NOT spawned from here — a sim that
++// runs another sim runs it twice (the bridge already has a case for each) and
++// hands it whatever environment this process happens to carry. They survive as
++// names leg (d) checks exist under `fleet/tests/`; the bridge runs them.
+ 
+ const SIBLING_SIMS = [
+   'test_sandbox_boot.mjs',
+@@ -201,33 +204,6 @@ const SIBLING_SIMS = [
+   'test_sandbox_boot_state_exams.mjs',
+ ]
+ 
+-const simEnv = () => {
+-  const env = { ...process.env }
+-  delete env.FLEET_RENDER_ENV
+-  return env
+-}
+-
+-const sim = (file) => new Promise((resolve, reject) => {
+-  const child = spawn(process.execPath, [path.join('fleet', 'tests', file)], {
+-    cwd: ROOT,
+-    env: simEnv(),
+-    stdio: ['ignore', 'pipe', 'pipe'],
+-  })
+-  let stdout = ''
+-  let stderr = ''
+-  child.stdout.setEncoding('utf8')
+-  child.stderr.setEncoding('utf8')
+-  child.stdout.on('data', (c) => { stdout += c })
+-  child.stderr.on('data', (c) => { stderr += c })
+-  child.on('error', reject)
+-  child.on('close', (status) => resolve({ status, stdout, stderr }))
+-})
+-const siblings = new Map(SIBLING_SIMS.map((file) => {
+-  const done = sim(file)
+-  done.catch(() => {})
+-  return [file, done]
+-}))
+-
+ // ── (a) the promised boot runs under the rig's path, not the host's  [M1] ────
+ 
+ test('a promised boot pins FLEET_RENDER_ENV at renderEnvPath(ctx) and hands the engine an empty TINYAPP_RENDER_URL=  [M1 / leg (a)]', async () => {
+@@ -362,16 +338,14 @@ test('neither the rig nor any test_sandbox_boot*.mjs names the host renderer pat
+       `survivors were ${survivors.join(' ')}`)
+ })
+ 
+-// ── (d) the boot sims the rig change touches still print the sentinel  [M3] ──
++// ── (d) the boot sims the rig change touches are each a real sim  [M3] ───────
+ 
+ for (const file of SIBLING_SIMS) {
+-  test(`${file} still prints ALL TESTS PASSED  [M3 / leg (d)]`, async () => {
+-    const r = await siblings.get(file)
+-    assert.ok(r.stdout.includes('ALL TESTS PASSED'),
+-      `(d) [M3] \`node fleet/tests/${file}\` must print ALL TESTS PASSED — its bridge case ` +
+-        'asserts exactly that:\n' +
+-        r.stdout.split('\n').filter((l) => !l.startsWith('ok ')).join('\n') + r.stderr)
+-    assert.equal(r.status, 0, `(d) [M3] and exit 0`)
++  test(`${file} is a sim the bridge runs  [M3 / leg (d)]`, () => {
++    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', file)),
++      `(d) [M3] \`fleet/tests/${file}\` must exist — it is one of the sims the rig change ` +
++        'touches, and the bridge has a case of its own that runs it and asserts ' +
++        'ALL TESTS PASSED. This leg names it; it does not run it.')
+   })
+ }
+ 
+diff --git a/fleet/tests/test_sandbox_boot_selfmerge.mjs b/fleet/tests/test_sandbox_boot_selfmerge.mjs
+index 00ac21bd71e3e317953f6425fa230a28b267a1e6..e3708e485aad486156504bd71ce3efc4ceca5a53 100644
+--- a/fleet/tests/test_sandbox_boot_selfmerge.mjs
++++ b/fleet/tests/test_sandbox_boot_selfmerge.mjs
+@@ -42,7 +42,7 @@ import {
+   stream, statusOf, states, committed, commitStates, notifies, engineRuns,
+   readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads, directCalls,
+   targetDir, evidenceDir,
+-  runTests,
++  runTests, ENV,
+ } from './_sandbox_boot_helpers.mjs'
+ 
+ // The clock before any boot of this process: leg (h) bounds every appended
+@@ -321,7 +321,7 @@ test('every page carries merged, null until the merge  [M4 / leg (k)]', () => {
+ // ── 6. the script parses  [leg (l)] ──────────────────────────────────────────
+ 
+ test('bash -n accepts the script  [leg (l)]', () => {
+-  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' })
++  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
+   assert.equal(r.status, 0, r.stderr)
+ })
+ 
+@@ -701,7 +701,7 @@ test('the committed events.jsonl is byte-identical to the run dir\'s  [#703 M5 /
+ 
+ /** `fleet_events.py` over a run directory, as its non-empty stdout lines. */
+ const timeline = (ctx) => {
+-  const r = spawnSync('python3', [FLEET_EVENTS_PY, runDirOf(ctx)], { encoding: 'utf8' })
++  const r = spawnSync('python3', [FLEET_EVENTS_PY, runDirOf(ctx)], { encoding: 'utf8', env: ENV })
+   assert.equal(r.status, 0, `fleet_events.py exited ${r.status}: ${r.stderr}`)
+   return r.stdout.split('\n').filter((l) => l.trim() !== '')
+ }
+diff --git a/fleet/tests/test_sandbox_boot_state_exams.mjs b/fleet/tests/test_sandbox_boot_state_exams.mjs
+index efb12a28567dce14b5e0b19cc4d145a5e24ad349..6220907b5ff7fa23f10252e3a1c979588d640f1e 100644
+--- a/fleet/tests/test_sandbox_boot_state_exams.mjs
++++ b/fleet/tests/test_sandbox_boot_state_exams.mjs
+@@ -31,8 +31,10 @@
+  *                 copies of the same tree.
+  *   M1, M3 / (g)  the green-path boot sim and the approval-evidence sim — the
+  *                 transcripts copy and the once-nested rule for `transcripts/`,
+- *                 which `state-exams/` sits after — still print the sentinel,
+- *                 and the script parses under `bash -n`.
++ *                 which `state-exams/` sits after — are each a sim under
++ *                 `fleet/tests/`, named here and RUN by the bridge's own case
++ *                 for each, never from inside this one; and the script parses
++ *                 under `bash -n`.
+  *
+  * The rig is `_sandbox_boot_helpers.mjs`, shared with `test_sandbox_boot.mjs`:
+  * the stub bin dir, `makeHome`, `bootAsync`, `argvLines`, `foldArgv`,
+@@ -45,12 +47,12 @@
+  * "byte for byte" is asked of a binary.
+  *
+  * A boot is ~40 forks of stub shell, so this exam runs exactly two of them —
+- * the planted one and the bare one — side by side with the two sibling sims of
+- * leg (g), and every leg reads one of those four.
++ * the planted one and the bare one, side by side — and every leg reads one of
++ * those two.
+  */
+ 
+ import assert from 'node:assert/strict'
+-import { spawn, spawnSync } from 'node:child_process'
++import { spawnSync } from 'node:child_process'
+ import fs from 'node:fs'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+@@ -59,12 +61,11 @@ import {
+   SCRIPT, RUN_PATH,
+   STUBS, PRELUDE, makeHome, bootAsync, renderEnvPath,
+   argvLines, foldArgv, unitsRun, commitStates, evidenceDir,
+-  runTests,
++  runTests, ENV,
+ } from './_sandbox_boot_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+-/** The repository root — where the sibling sims of leg (g) are run from. */
+-const ROOT = path.join(HERE, '..', '..')
++const REPO_ROOT = path.resolve(HERE, '..', '..')
+ 
+ const tests = []
+ const test = (name, fn) => tests.push([name, fn])
+@@ -255,24 +256,10 @@ const bareBoot = (() => {
+   return () => done
+ })()
+ 
+-/** Leg (g)'s two sibling sims, started with the boots so the exam pays for them
+- *  once in wall clock rather than one after the other. */
+-const sim = (file) => new Promise((resolve, reject) => {
+-  const child = spawn(process.execPath, [path.join('fleet', 'tests', file)], {
+-    cwd: ROOT,
+-    stdio: ['ignore', 'pipe', 'pipe'],
+-  })
+-  let stdout = ''
+-  let stderr = ''
+-  child.stdout.setEncoding('utf8')
+-  child.stderr.setEncoding('utf8')
+-  child.stdout.on('data', (c) => { stdout += c })
+-  child.stderr.on('data', (c) => { stderr += c })
+-  child.on('error', reject)
+-  child.on('close', (status) => resolve({ status, stdout, stderr }))
+-})
+-const greenSim = sim('test_sandbox_boot.mjs')
+-const approvalSim = sim('test_sandbox_boot_approval_evidence.mjs')
++/** Leg (g)'s two sibling sims — NAMES, not runs. Each has a bridge case of its
++ *  own that runs it and asserts the sentinel; a sim that ran another sim would
++ *  run it twice, under whatever environment this process happens to carry. */
++const SIBLING_SIMS = ['test_sandbox_boot.mjs', 'test_sandbox_boot_approval_evidence.mjs']
+ 
+ // ── (a) no render file: one empty entry, and the boot still exits 0  [M1] ────
+ 
+@@ -466,30 +453,27 @@ test('the planted boot committed the record at least three times  [M3 / leg (f)]
+   }
+ })
+ 
+-// ── (g) the siblings still pass, and the script parses  [M1, M3] ─────────────
++// ── (g) the siblings are real sims, and the script parses  [M1, M3] ──────────
+ 
+ test('the boot script parses  [M1, M3 / leg (g)]', () => {
+-  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' })
++  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
+   assert.equal(r.status, 0, `(g) bash -n ${SCRIPT}:\n${r.stdout}${r.stderr}`)
+ })
+ 
+-test('the green-path boot sim still prints the sentinel  [M1, M3 / leg (g)]', async () => {
+-  const r = await greenSim
+-  assert.ok(r.stdout.includes('ALL TESTS PASSED'),
+-    '(g) [M1, M3] `node fleet/tests/test_sandbox_boot.mjs` must still print ALL TESTS PASSED:\n' +
+-      r.stdout.split('\n').filter((l) => !l.startsWith('ok ')).join('\n') + r.stderr)
+-  assert.equal(r.status, 0, '(g) [M1, M3] and exit 0')
+-})
+-
+-test('the approval-evidence sim still prints the sentinel  [M1, M3 / leg (g)]', async () => {
+-  // The transcripts copy and the once-nested rule for `transcripts/` live in
+-  // this sim; `state-exams/` is added AFTER that block, and must not disturb it.
+-  const r = await approvalSim
+-  assert.ok(r.stdout.includes('ALL TESTS PASSED'),
+-    '(g) [M1, M3] `node fleet/tests/test_sandbox_boot_approval_evidence.mjs` must still ' +
+-      'print ALL TESTS PASSED:\n' +
+-      r.stdout.split('\n').filter((l) => !l.startsWith('ok ')).join('\n') + r.stderr)
+-  assert.equal(r.status, 0, '(g) [M1, M3] and exit 0')
+-})
++// The transcripts copy and the once-nested rule for `transcripts/` live in the
++// approval-evidence sim; `state-exams/` is added AFTER that block, and must not
++// disturb it. That each of these two still prints the sentinel is asserted by
++// the bridge case that runs it — here they are named, and their existence is
++// what this leg holds.
++// `sibling`, not `file`: the name a sim hands its `existsSync` is how this
++// list reads as a list of names rather than of runs, and `file` is already
++// bound above to the `systemd-run` stub this sim writes.
++for (const sibling of SIBLING_SIMS) {
++  test(`${sibling} is a sim the bridge runs  [M1, M3 / leg (g)]`, () => {
++    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', sibling)),
++      `(g) [M1, M3] \`fleet/tests/${sibling}\` must exist — the bridge runs it and asserts ` +
++        'ALL TESTS PASSED there; this leg names it, it does not run it.')
++  })
++}
+ 
+ runTests(tests)
+diff --git a/fleet/tests/test_setup_script.mjs b/fleet/tests/test_setup_script.mjs
+index 32f2a4dab6b15bd6df9a7255fa954ecad95e0b42..b441796cd5cabbe1cf240029518ff95bff20ac1e 100644
+--- a/fleet/tests/test_setup_script.mjs
++++ b/fleet/tests/test_setup_script.mjs
+@@ -29,6 +29,7 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
+ import {
+   renderSetupScript,
+   readFleetFiles,
+@@ -297,29 +298,36 @@ function makeCase() {
+ function plant(ctx, text) {
+   fs.writeFileSync(ctx.script, text)
+   fs.chmodSync(ctx.script, 0o755)
+-  const syntax = spawnSync('bash', ['-n', ctx.script], { encoding: 'utf8' })
++  const syntax = spawnSync('bash', ['-n', ctx.script], { encoding: 'utf8', env: simEnv() })
+   assert.equal(syntax.status, 0, `the render must parse before it is run:\n${syntax.stderr}`)
+ }
+ 
++/**
++ * The environment one render runs under: the case's stub shims first on `PATH`,
++ * a `HOME` of the case's own, and `STUB_REAL_PATH` — the same PATH WITHOUT the
++ * shims, which `real()` restores when a stub wants the actual tool. `env` last,
++ * so a case can override any of it.
++ */
++const scriptEnv = (ctx, env) => ({
++  ...simEnv({ bin: ctx.bin, home: ctx.home }),
++  USER: 'exedev',
++  FLEET_LIB_DIR: ctx.lib,
++  FLEET_USER_BUS: ctx.bus,
++  STUB_LOG: ctx.log,
++  STUB_TMPROOT: ctx.root,
++  STUB_REAL_PATH: simEnv({ home: ctx.home }).PATH,
++  STUB_SHASUMS: SHASUMS_FIXTURE,
++  STUB_STATUS_SNAPSHOT: ctx.snapshot,
++  STUB_SNAPSHOT_MARK: ctx.mark,
++  ...env,
++})
++
+ function runScript(ctx, env = {}) {
+   const startedAt = Date.now()
+   return new Promise((resolve) => {
+     const child = spawn('bash', [ctx.script], {
+       stdio: ['ignore', 'pipe', 'pipe'],
+-      env: {
+-        PATH: `${ctx.bin}:${process.env.PATH}`,
+-        HOME: ctx.home,
+-        USER: 'exedev',
+-        FLEET_LIB_DIR: ctx.lib,
+-        FLEET_USER_BUS: ctx.bus,
+-        STUB_LOG: ctx.log,
+-        STUB_TMPROOT: ctx.root,
+-        STUB_REAL_PATH: process.env.PATH,
+-        STUB_SHASUMS: SHASUMS_FIXTURE,
+-        STUB_STATUS_SNAPSHOT: ctx.snapshot,
+-        STUB_SNAPSHOT_MARK: ctx.mark,
+-        ...env,
+-      },
++      env: scriptEnv(ctx, env),
+     })
+     let stdout = ''
+     let stderr = ''
+@@ -408,7 +416,7 @@ test('(a) [M1] the render for run 70 fits 10240 bytes and passes bash -n', () =>
+   for (const run of ['1', RUN, OTHER_RUN, '999999']) {
+     const f = path.join(tmpRoot, `syntax-${run}.sh`)
+     fs.writeFileSync(f, renderSetupScript({ run, bootstrap: files.bootstrap, unit: files.unit }))
+-    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8' })
++    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8', env: simEnv() })
+     assert.equal(r.status, 0, `bash -n failed for run=${run}:\n${r.stderr}`)
+   }
+ })
+diff --git a/fleet/tests/test_setup_script_render_env.mjs b/fleet/tests/test_setup_script_render_env.mjs
+index 003e8041983b7ffc51035940939ac3c511b07bc8..3bd349e7c52a0b69978c335c945d8fe32b752690 100644
+--- a/fleet/tests/test_setup_script_render_env.mjs
++++ b/fleet/tests/test_setup_script_render_env.mjs
+@@ -22,7 +22,9 @@
+  *      bad value can have reached any script text.
+  *  (e) [M1, M2] what the setup script already was is unchanged: the run literal
+  *      first, the self-delete last, no `--env`, inside the cap — and the
+- *      existing sim `test_setup_script.mjs` still prints its sentinel.
++ *      existing sim `test_setup_script.mjs` is still a sim beside this one,
++ *      which the bridge runs and asserts the sentinel for. No sim runs another
++ *      sim, so this leg names it rather than spawning it.
+  *
+  * Nothing here touches the machine: no real `sudo` runs (leg (f) shadows it with
+  * a function), no socket is opened, and every byte written lands under one
+@@ -37,9 +39,12 @@ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
+ import { renderSetupScript, readFleetFiles, SETUP_SCRIPT_MAX_BYTES } from '../setup-script.mjs'
++import { simEnv } from './_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+-const SIBLING_SIM = path.join(HERE, 'test_setup_script.mjs')
++const REPO_ROOT = path.resolve(HERE, '..', '..')
++/** Leg (e)'s sibling sim — a name this exam checks exists, never a run. */
++const SIBLING_SIM = 'test_setup_script.mjs'
+ 
+ // ── the contract's literals ──────────────────────────────────────────────────
+ 
+@@ -208,7 +213,7 @@ test('(f) [M1] running the heredoc and its install leaves the address in the ins
+ 
+   const r = spawnSync('bash', [harness], {
+     encoding: 'utf8',
+-    env: { ...process.env, TMP: tmp, HOME: path.join(tmp, 'home') },
++    env: simEnv({ home: tmp, env: { TMP: tmp, HOME: path.join(tmp, 'home') } }),
+   })
+   assert.equal(r.status, 0, `the fragment must run:\n${r.stderr}`)
+ 
+@@ -234,7 +239,7 @@ test('(b) [M1] the render with a renderer fits SETUP_SCRIPT_MAX_BYTES', () => {
+ test('(b) [M1] the render with a renderer passes bash -n', () => {
+   const file = path.join(tmpRoot, 'with-render.sh')
+   fs.writeFileSync(file, render)
+-  const r = spawnSync('bash', ['-n', file], { encoding: 'utf8' })
++  const r = spawnSync('bash', ['-n', file], { encoding: 'utf8', env: simEnv() })
+   assert.equal(r.status, 0, `bash -n failed on the render:\n${r.stderr}`)
+ })
+ 
+@@ -344,17 +349,14 @@ test('(e) [M2] the self-delete is still the last executable line', () => {
+   assert.equal(executable[executable.length - 1].trim(), SELF_DELETE)
+ })
+ 
+-test('(e) [M1, M2] the existing setup-script sim still prints its sentinel', () => {
+-  const r = spawnSync(process.execPath, [SIBLING_SIM], {
+-    encoding: 'utf8',
+-    cwd: HERE,
+-    timeout: 300000,
+-  })
++test('(e) [M1, M2] the existing setup-script sim is still a sim beside this one', () => {
++  // Named, not run: the bridge has a case of its own for `test_setup_script.mjs`
++  // that runs it and asserts ALL TESTS PASSED. A sim that spawned it here would
++  // run it twice, and hand it whatever environment this process carries.
+   assert.ok(
+-    r.stdout.includes('ALL TESTS PASSED'),
+-    `test_setup_script.mjs must still pass:\n${r.stdout}\n--- stderr ---\n${r.stderr}`,
++    fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', SIBLING_SIM)),
++    `fleet/tests/${SIBLING_SIM} must exist — the render this exam reads is the one that sim also renders`,
+   )
+-  assert.equal(r.status, 0, `test_setup_script.mjs exited ${r.status}`)
+ })
+ 
+ // ── run ──────────────────────────────────────────────────────────────────────
+diff --git a/fleet/tests/test_sims_are_hermetic.mjs b/fleet/tests/test_sims_are_hermetic.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f085e7a2d3cd34dacd714178ec0b0ac920dc836c
+--- /dev/null
++++ b/fleet/tests/test_sims_are_hermetic.mjs
+@@ -0,0 +1,1031 @@
++/**
++ * fleet/tests/test_sims_are_hermetic.mjs — the probe.
++ *
++ * The engine's pre-flight is this directory: the sims the bridge runs before
++ * any run flies. What a sim sees is what it was handed; nothing of the box it
++ * happens to be running on reaches it. This file is the one place that fails
++ * the moment any of that stops being true.
++ *
++ * The exam is written against the task's Machine clauses, leg by leg. Every
++ * assertion names the leg it belongs to and the clause it comes from, so a
++ * reader can map this file back to the contract:
++ *
++ *   M1  `fleet/tests/_helpers.mjs` exports `simEnv({ bin, home, env } = {})`.
++ *       The object it returns carries no key of the parent's environment whose
++ *       name begins `ULTRA_`, `TINYAPP_`, `FLEET_`, `ANTHROPIC_`, `CLAUDE_` or
++ *       `GH_` except `FLEET_TEST_SLACK`, copied when the parent has it; the
++ *       keys it sets itself are `PATH`, `HOME`, `TMPDIR` and `FLEET_HOME`, the
++ *       last three under `home`, which defaults to a fresh `mkdtemp` under
++ *       `os.tmpdir()`; the caller's `env` entries are laid over all of that
++ *       last, so a caller-supplied key of any name wins; and its `PATH` is
++ *       `bin` (when given) followed by the directories that hold `node`,
++ *       `python3`, `git`, `bash` and `sh` for the parent, and nothing else of
++ *       the parent's `PATH`.
++ *   M2  every process spawn in `fleet/tests/test_*.mjs` and
++ *       `fleet/tests/_*.mjs` passes an `env` derived from `simEnv`, and the
++ *       probe names every spawn that does not.
++ *   M3  no such file reads, stats or sources a string-literal absolute path
++ *       outside the checkout and `os.tmpdir()`, and the probe names every one.
++ *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`; each of the
++ *       nine sites at BASE survives only as names a sim checks exist under
++ *       `fleet/tests/` without running them. A mutated copy of a sim's own
++ *       text under the temp root is not a sibling run.
++ *   M5  `fleet/sandbox-boot.sh` names `/etc/fleet/render.env` exactly once, as
++ *       the default in `FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-...}"`, and the
++ *       rig pins `FLEET_RENDER_ENV` under every case's own home.
++ *   M6  `tests/test_fleet_suite.py` exports `sim_env()` and hands each bridged
++ *       `node` the environment it returns.
++ *   M7  the probe, pointed at `fleet/tests/fixtures/hermetic/leaky_sim.mjs`,
++ *       names its inheriting spawn, its `/etc/fleet/render.env` read and its
++ *       sibling-sim spawn — and the probe itself spawns nothing.
++ *
++ * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M4 at the nine sites, (f) M7,
++ * (g) M7, (h) M6, (i) M5.
++ *
++ * The sweep (legs b, c, d) is a static read of source, never an execution: it
++ * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
++ * file, and never `probe_*.mjs` (those are live probes, `fleet/tests/PROBES.md`,
++ * outside every sweep here) and never `fixtures/`. Reading source is also why
++ * this file needs no child process of its own — leg (f) holds it to that.
++ *
++ * The three rules, spelled once so an implementation can be read against them:
++ *
++ *   inherit  a call to one of `spawn`, `spawnSync`, `exec`, `execSync`,
++ *            `execFile`, `execFileSync`. Its options object is the argument
++ *            carrying `env:`; the accepted values are a literal `simEnv(`
++ *            call, a spread `{ ...simEnv(`, or an identifier bound — in the
++ *            same file, or in the sibling `_*.mjs` the file imports it from —
++ *            by `const X =`/`let X =`/a function whose body returns one of
++ *            those. A value mentioning `process.env` is refused outright.
++ *            Anything else, including no `env:` at all, is an offender named
++ *            by file and line. A helper is accepted by its body and not by its
++ *            name: `bootEnv` passes because its body in
++ *            `_sandbox_boot_helpers.mjs` spreads `simEnv(`.
++ *   absolute a call to an fs read/stat/open name whose first argument is a
++ *            string literal starting `/` and not under `os.tmpdir()`. Only
++ *            reads: the absolute strings a sim asserts a script *emits* or a
++ *            hook *denies* are fixtures, not paths it opens.
++ *   sibling  a spawn whose call text, or the initializer of any identifier
++ *            that call names (`const X =`, `for (const X of …)`, resolved one
++ *            level in the same file), carries a string literal matching
++ *            `test_[a-z0-9_]+\.mjs` or the word `pytest`. One level and no
++ *            further is what keeps `test_run_engine_proof_runs.mjs`'s
++ *            `spawnSync(process.execPath, [copy])` — where
++ *            `const copy = copyWithProbe(simName, probe)` resolves to no
++ *            literal — out of it: a mutated copy of a sim's own text under the
++ *            temp root is a pin proven to be a pin, not a sibling run.
++ *
++ * Comments are blanked before any rule reads a file, so a spawn quoted in
++ * prose is prose. String contents are blanked for the structural pass and kept
++ * for the literal pass, so both questions are asked of the same offsets.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const ROOT = path.resolve(HERE, '..', '..')
++const TESTS_DIR = HERE
++/** This file, the one sim the sweep leaves out — it quotes offenders on purpose. */
++const SELF = 'test_sims_are_hermetic.mjs'
++/** The deliverable leg (a) exercises, at the path the Produces line names. */
++const HELPERS = path.join(TESTS_DIR, '_helpers.mjs')
++/** The fixture leg (g) sweeps, at the path the Files list names. */
++const FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'leaky_sim.mjs')
++/** The bridge leg (h) reads. */
++const BRIDGE = path.join(ROOT, 'tests', 'test_fleet_suite.py')
++/** The boot script leg (i) reads. */
++const BOOT_SCRIPT = path.join(ROOT, 'fleet', 'sandbox-boot.sh')
++/** The rig whose `bootEnv` leg (i) reads. */
++const BOOT_HELPERS = path.join(TESTS_DIR, '_sandbox_boot_helpers.mjs')
++
++/** The deliverable, imported dynamically so a tree without it still reports
++ *  every other leg rather than dying at load. */
++let helpers = null
++let helpersError = null
++try {
++  helpers = await import('./_helpers.mjs')
++} catch (error) {
++  helpersError = error
++}
++
++// ── the source scanner ───────────────────────────────────────────────────────
++
++const REGEX_KEYWORDS = new Set([
++  'return', 'typeof', 'case', 'in', 'of', 'new', 'delete', 'void', 'instanceof',
++  'do', 'else', 'yield', 'await',
++])
++
++/**
++ * One pass over a source text. Returns three views at identical offsets:
++ *   code      the text with comments blanked (string literals intact)
++ *   skeleton  the same, with string and template contents blanked too, so
++ *             brackets, commas and identifiers can be counted without a
++ *             quoted one being mistaken for structure
++ *   strings   the span of every string and template literal
++ * Blanking preserves length and newlines, so a line number taken from any
++ * view is a line number in the file.
++ */
++const scan = (text) => {
++  const code = Array.from(text)
++  const skel = Array.from(text)
++  const strings = []
++  const n = text.length
++  const blank = (from, to, alsoCode) => {
++    for (let k = Math.max(0, from); k < Math.min(to, n); k++) {
++      if (text[k] === '\n') continue
++      skel[k] = ' '
++      if (alsoCode) code[k] = ' '
++    }
++  }
++  const prevSig = (at) => {
++    let j = at - 1
++    while (j >= 0 && /\s/.test(text[j])) j--
++    return j >= 0 ? text[j] : ''
++  }
++  const wordBefore = (at) => {
++    let j = at - 1
++    while (j >= 0 && /\s/.test(text[j])) j--
++    const end = j + 1
++    while (j >= 0 && /[\w$]/.test(text[j])) j--
++    return text.slice(j + 1, end)
++  }
++
++  let i = 0
++  while (i < n) {
++    const c = text[i]
++    const d = i + 1 < n ? text[i + 1] : ''
++    if (c === '/' && d === '/') {
++      let j = i
++      while (j < n && text[j] !== '\n') j++
++      blank(i, j, true)
++      i = j
++      continue
++    }
++    if (c === '/' && d === '*') {
++      const close = text.indexOf('*/', i + 2)
++      const j = close === -1 ? n : close + 2
++      blank(i, j, true)
++      i = j
++      continue
++    }
++    if (c === "'" || c === '"') {
++      let j = i + 1
++      while (j < n) {
++        if (text[j] === '\\') { j += 2; continue }
++        if (text[j] === c) { j++; break }
++        if (text[j] === '\n') break
++        j++
++      }
++      const closed = j - 1 > i && text[j - 1] === c
++      strings.push({ start: i, end: j })
++      blank(i + 1, closed ? j - 1 : j, false)
++      i = j
++      continue
++    }
++    if (c === '`') {
++      let j = i + 1
++      let depth = 0
++      while (j < n) {
++        if (text[j] === '\\') { j += 2; continue }
++        if (depth === 0 && text[j] === '`') { j++; break }
++        if (depth === 0 && text[j] === '$' && text[j + 1] === '{') { depth = 1; j += 2; continue }
++        if (depth > 0) {
++          if (text[j] === '{') depth++
++          else if (text[j] === '}') depth--
++        }
++        j++
++      }
++      strings.push({ start: i, end: j })
++      blank(i + 1, Math.max(i + 1, j - 1), false)
++      i = j
++      continue
++    }
++    if (c === '/') {
++      const p = prevSig(i)
++      const startsValue = p === '' || '(,=:[!&|?{};+-*%^~<>'.includes(p) ||
++        REGEX_KEYWORDS.has(wordBefore(i))
++      if (startsValue) {
++        let j = i + 1
++        let klass = false
++        while (j < n) {
++          const e = text[j]
++          if (e === '\\') { j += 2; continue }
++          if (e === '\n') break
++          if (klass) { if (e === ']') klass = false; j++; continue }
++          if (e === '[') { klass = true; j++; continue }
++          if (e === '/') { j++; break }
++          j++
++        }
++        // The body is blanked in the skeleton only: a `//` inside a character
++        // class is not a comment, and a quote inside one opens no string.
++        blank(i + 1, Math.max(i + 1, j - 1), false)
++        i = j
++        continue
++      }
++    }
++    i++
++  }
++  return { code: code.join(''), skeleton: skel.join(''), strings }
++}
++
++const lineOf = (text, index) => text.slice(0, index).split('\n').length
++
++const matchParen = (skeleton, open) => {
++  let depth = 0
++  for (let i = open; i < skeleton.length; i++) {
++    const c = skeleton[i]
++    if (c === '(') depth++
++    else if (c === ')') { depth--; if (depth === 0) return i }
++  }
++  return -1
++}
++
++/** The top-level argument ranges between `open` and `close`. */
++const splitArgs = (skeleton, open, close) => {
++  const args = []
++  let depth = 0
++  let start = open + 1
++  for (let i = open + 1; i < close; i++) {
++    const c = skeleton[i]
++    if ('([{'.includes(c)) depth++
++    else if (')]}'.includes(c)) depth--
++    else if (c === ',' && depth === 0) { args.push({ start, end: i }); start = i + 1 }
++  }
++  if (close > start) args.push({ start, end: close })
++  return args.filter((a) => skeleton.slice(a.start, a.end).trim() !== '')
++}
++
++const RESERVED = new Set([
++  'const', 'let', 'var', 'function', 'return', 'of', 'in', 'new', 'await', 'async',
++  'typeof', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue',
++  'try', 'catch', 'finally', 'throw', 'class', 'yield', 'delete', 'void', 'instanceof',
++  'import', 'export', 'default', 'from', 'this', 'true', 'false', 'null', 'undefined',
++  'process', 'path', 'fs', 'os', 'JSON', 'Math', 'Object', 'Array', 'String', 'Number',
++  'Boolean', 'Date', 'Buffer', 'URL', 'Promise', 'console', 'assert', 'require', 'Set',
++  'Map', 'RegExp', 'Error', 'globalThis',
++])
++
++/** Every identifier a skeleton slice names, skipping property names and the
++ *  keys of an object literal. */
++const identsIn = (skeletonSlice) => {
++  const out = []
++  const re = /[A-Za-z_$][A-Za-z0-9_$]*/g
++  let m
++  while ((m = re.exec(skeletonSlice)) !== null) {
++    const before = m.index > 0 ? skeletonSlice[m.index - 1] : ''
++    if (before === '.') continue
++    const rest = skeletonSlice.slice(m.index + m[0].length)
++    const nextChar = (rest.match(/^\s*(\S?)/) || ['', ''])[1]
++    if (nextChar === ':') continue
++    if (RESERVED.has(m[0])) continue
++    if (!out.includes(m[0])) out.push(m[0])
++  }
++  return out
++}
++
++const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
++
++/** Where an expression that starts at `from` ends: back at depth zero, at a
++ *  `;` or the end of the line. */
++const endOfExpression = (skeleton, from) => {
++  let i = from
++  while (i < skeleton.length && /\s/.test(skeleton[i])) i++
++  let depth = 0
++  for (; i < skeleton.length; i++) {
++    const c = skeleton[i]
++    if ('([{'.includes(c)) depth++
++    else if (')]}'.includes(c)) { if (depth === 0) return i; depth-- }
++    else if (depth === 0 && (c === ';' || c === '\n')) return i
++  }
++  return skeleton.length
++}
++
++/**
++ * The initializer bound to `ident` in `src`, as a span — `const X =`,
++ * `let X =`, `var X =`, `for (const … X … of EXPR)`, or a function
++ * declaration's body. The first binding found; no recursion of its own.
++ */
++const bindingOf = (src, ident) => {
++  const id = escapeRe(ident)
++  const decl = new RegExp(`(^|[\\s;{(\\[,])(?:export\\s+)?(?:const|let|var)\\s+${id}\\s*=`)
++  const m = decl.exec(src.skeleton)
++  if (m) {
++    const from = m.index + m[0].length
++    return { start: from, end: endOfExpression(src.skeleton, from) }
++  }
++  const forRe = /for\s*\(\s*(?:const|let|var)\s+([^;()]*?)\s+of\s+/g
++  let f
++  while ((f = forRe.exec(src.skeleton)) !== null) {
++    const bound = new RegExp(`(^|[^\\w$])${id}([^\\w$]|$)`)
++    if (!bound.test(f[1])) continue
++    const open = src.skeleton.indexOf('(', f.index)
++    const close = matchParen(src.skeleton, open)
++    if (close === -1) continue
++    return { start: f.index + f[0].length, end: close }
++  }
++  const fn = new RegExp(`(^|[\\s;}])(?:export\\s+)?(?:async\\s+)?function\\s+${id}\\s*\\(`)
++  const g = fn.exec(src.skeleton)
++  if (g) {
++    const open = src.skeleton.indexOf('(', g.index)
++    const close = matchParen(src.skeleton, open)
++    const brace = src.skeleton.indexOf('{', close)
++    if (brace !== -1) {
++      let depth = 0
++      for (let i = brace; i < src.skeleton.length; i++) {
++        if (src.skeleton[i] === '{') depth++
++        else if (src.skeleton[i] === '}') { depth--; if (depth === 0) return { start: brace, end: i + 1 } }
++      }
++    }
++  }
++  return null
++}
++
++const sliceOf = (src, span) => ({
++  code: src.code.slice(span.start, span.end),
++  skeleton: src.skeleton.slice(span.start, span.end),
++})
++
++// ── the three rules ──────────────────────────────────────────────────────────
++
++const SPAWN_NAMES = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync']
++
++/** The fs names that read, stat, open or source a path. */
++const READ_NAMES = ['readFileSync', 'readFile', 'existsSync', 'statSync', 'lstatSync',
++  'realpathSync', 'readdirSync', 'readdir', 'accessSync', 'access', 'openSync', 'open',
++  'createReadStream', 'copyFileSync', 'stat']
++
++/**
++ * Every call of one of `names` in a source. `dotted` says whether a name
++ * reached through a member expression counts: an fs read is written
++ * `fs.readFileSync(`, while a spawn is imported by name and a `.exec(` on some
++ * other object is not a process.
++ */
++const callSitesOf = (src, names, { dotted = false } = {}) => {
++  const out = []
++  const before = dotted ? '[^\\w$]' : '[^\\w$.]'
++  const re = new RegExp(`(^|${before})(${names.map(escapeRe).join('|')})\\s*\\(`, 'g')
++  let m
++  while ((m = re.exec(src.skeleton)) !== null) {
++    const nameAt = m.index + m[1].length
++    const openParen = src.skeleton.indexOf('(', nameAt + m[2].length)
++    const close = openParen === -1 ? -1 : matchParen(src.skeleton, openParen)
++    re.lastIndex = nameAt + m[2].length
++    if (close === -1) continue
++    out.push({
++      name: m[2],
++      start: nameAt,
++      open: openParen,
++      end: close + 1,
++      args: splitArgs(src.skeleton, openParen, close),
++    })
++  }
++  return out
++}
++
++/** The `env:` value of a call's options object, as a span — or null when no
++ *  argument carries one. A bare identifier argument is resolved one level so
++ *  `spawnSync(cmd, argv, opts)` is read through `opts`. */
++const envValueOf = (src, call) => {
++  const findIn = (span) => {
++    const skel = src.skeleton.slice(span.start, span.end)
++    const m = /(^|[{,]\s*)env\s*:/.exec(skel)
++    if (m) {
++      const from = span.start + m.index + m[0].length
++      let depth = 0
++      let i = from
++      for (; i < span.end; i++) {
++        const c = src.skeleton[i]
++        if ('([{'.includes(c)) depth++
++        else if (')]}'.includes(c)) { if (depth === 0) break; depth-- }
++        else if (c === ',' && depth === 0) break
++      }
++      return { start: from, end: i }
++    }
++    const short = /(^|[{,]\s*)env\s*([,}]|$)/.exec(skel)
++    if (short) {
++      const b = bindingOf(src, 'env')
++      return b || { start: span.start, end: span.end, unresolvedShorthand: true }
++    }
++    return null
++  }
++  for (const arg of call.args) {
++    const direct = findIn(arg)
++    if (direct) return direct
++    const skel = src.skeleton.slice(arg.start, arg.end).trim()
++    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(skel) && !RESERVED.has(skel)) {
++      const b = bindingOf(src, skel)
++      if (b) {
++        const through = findIn(b)
++        if (through) return through
++      }
++    }
++  }
++  return null
++}
++
++// The `\.\.\.` alternative is the spread: `{ ...simEnv() }` and
++// `{ ...process.env }` both put a dot in front of the name that matters.
++const PROCESS_ENV_RE = /(?:^|\.\.\.|[^\w$.])process\s*\.\s*env\b/
++const SIM_ENV_RE = /(?:^|\.\.\.|[^\w$.])simEnv\s*\(/
++
++/** Is this `env:` value derived from `simEnv`? A value naming `process.env` is
++ *  refused outright; otherwise a literal `simEnv(` call or a spread of one is
++ *  accepted, and any other identifier is resolved by its body. */
++const envIsSimEnv = (view, src, resolveImport, depth = 0, seen = new Set()) => {
++  if (PROCESS_ENV_RE.test(view.code)) return false
++  if (SIM_ENV_RE.test(view.code)) return true
++  if (depth >= 4) return false
++  for (const id of identsIn(view.skeleton)) {
++    if (seen.has(id)) continue
++    seen.add(id)
++    const local = bindingOf(src, id)
++    if (local && envIsSimEnv(sliceOf(src, local), src, resolveImport, depth + 1, seen)) return true
++    const imported = resolveImport ? resolveImport(id) : null
++    if (imported) {
++      const there = bindingOf(imported, id)
++      if (there && envIsSimEnv(sliceOf(imported, there), imported, null, depth + 1, new Set())) return true
++    }
++  }
++  return false
++}
++
++const literalsIn = (src, span) => src.strings
++  .filter((s) => s.start >= span.start && s.end <= span.end)
++  .map((s) => src.code.slice(s.start, s.end))
++
++const SIBLING_LITERAL_RE = /test_[a-z0-9_]+\.mjs|(^|[^\w])pytest([^\w]|$)/
++
++const TMP = os.tmpdir()
++
++/**
++ * The three rules over one source text. `resolveImport(ident)` hands back the
++ * scanned source of the sibling `_*.mjs` a name is imported from, or null.
++ */
++const sweep = (text, { file = '<source>', resolveImport = null } = {}) => {
++  const src = scan(text)
++  const inherit = []
++  const absolute = []
++  const siblings = []
++  const at = (index) => `${file}:${lineOf(src.code, index)}`
++  const snippet = (span) => src.code.slice(span.start, span.end).replace(/\s+/g, ' ').slice(0, 140)
++
++  for (const call of callSitesOf(src, SPAWN_NAMES)) {
++    const span = { start: call.start, end: call.end }
++    const env = envValueOf(src, call)
++    if (!env) {
++      inherit.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: 'no env:', text: snippet(span) })
++    } else if (!envIsSimEnv(sliceOf(src, env), src, resolveImport)) {
++      inherit.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: 'env not derived from simEnv', text: snippet(span) })
++    }
++
++    const quoted = literalsIn(src, span)
++    for (const id of identsIn(src.skeleton.slice(call.open, call.end))) {
++      const b = bindingOf(src, id)
++      if (b) quoted.push(...literalsIn(src, b))
++    }
++    if (quoted.some((q) => SIBLING_LITERAL_RE.test(q))) {
++      siblings.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: 'runs another sim', text: snippet(span) })
++    }
++  }
++
++  for (const call of callSitesOf(src, READ_NAMES, { dotted: true })) {
++    const first = call.args[0]
++    if (!first) continue
++    const quoted = literalsIn(src, first)
++    if (!quoted.length) continue
++    const value = quoted[0].slice(1, -1)
++    if (!value.startsWith('/')) continue
++    if (value === TMP || value.startsWith(`${TMP}/`)) continue
++    absolute.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: `absolute path ${value}`, text: snippet({ start: call.start, end: call.end }) })
++  }
++
++  return { inherit, absolute, siblings, src }
++}
++
++const named = (offenders) => offenders.map((o) => `${o.where} (${o.why}) ${o.text}`)
++
++// ── the tree ─────────────────────────────────────────────────────────────────
++
++const SWEPT = fs.readdirSync(TESTS_DIR)
++  .filter((n) => n.endsWith('.mjs') && (n.startsWith('test_') || n.startsWith('_')) && n !== SELF)
++  .sort()
++
++const cache = new Map()
++const sourceOf = (name) => {
++  if (!cache.has(name)) {
++    const full = path.join(TESTS_DIR, name)
++    cache.set(name, fs.existsSync(full) ? scan(fs.readFileSync(full, 'utf8')) : null)
++  }
++  return cache.get(name)
++}
++
++/** ident -> the sibling `_*.mjs` source it is imported from. */
++const importerFor = (src) => {
++  const map = new Map()
++  const re = /import\s*\{([^}]*)\}\s*from\s*(['"])(\.\/(_[A-Za-z0-9_]+\.mjs))\2/g
++  let m
++  while ((m = re.exec(src.code)) !== null) {
++    for (const part of m[1].split(',')) {
++      const name = part.trim().split(/\s+as\s+/).pop().trim()
++      if (name) map.set(name, m[4])
++    }
++  }
++  return (ident) => (map.has(ident) ? sourceOf(map.get(ident)) : null)
++}
++
++const TREE = SWEPT.map((name) => {
++  const text = fs.readFileSync(path.join(TESTS_DIR, name), 'utf8')
++  const src = scan(text)
++  return sweep(text, { file: name, resolveImport: importerFor(src) })
++})
++const treeOffenders = (kind) => TREE.flatMap((r) => r[kind])
++
++/** Every `test_*.mjs` name a file hands to an `existsSync` — the sibling list
++ *  read rather than run. Resolved transitively, since a list reaches the check
++ *  through a loop variable and sometimes through an entry of a record. */
++const namesCheckedForExistence = (src) => {
++  const found = new Set()
++  const collect = (span, depth, seen) => {
++    for (const q of literalsIn(src, span)) found.add(q.slice(1, -1))
++    if (depth <= 0) return
++    for (const id of identsIn(src.skeleton.slice(span.start, span.end))) {
++      if (seen.has(id)) continue
++      seen.add(id)
++      const b = bindingOf(src, id)
++      if (b) collect(b, depth - 1, seen)
++    }
++  }
++  for (const call of callSitesOf(src, ['existsSync', 'statSync', 'accessSync'], { dotted: true })) {
++    collect({ start: call.open, end: call.end }, 3, new Set())
++  }
++  return found
++}
++
++// ── the harness ──────────────────────────────────────────────────────────────
++
++const tests = []
++const test = (name, fn) => { tests.push([name, fn]) }
++
++// ── (a) the rig itself  [M1] ─────────────────────────────────────────────────
++
++const PLANT = {
++  ULTRA_PLANTED: '1',
++  TINYAPP_RENDER_URL: 'http://planted.invalid',
++  FLEET_RENDER_ENV: '/planted/render.env',
++  CLAUDE_CONFIG_DIR: 'planted-config',
++  GH_TOKEN: 'planted',
++  ANTHROPIC_API_KEY: 'planted',
++}
++const DROPPED = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
++const TOOLS = ['node', 'python3', 'git', 'bash', 'sh']
++
++/** Runs `fn` with the six planted keys (one per dropped prefix) on this
++ *  process, and restores the parent's own values after. */
++const withPlant = (extra, fn) => {
++  const before = new Map()
++  const keys = { ...PLANT, ...extra }
++  for (const [k, v] of Object.entries(keys)) {
++    before.set(k, process.env[k])
++    if (v === undefined) delete process.env[k]
++    else process.env[k] = v
++  }
++  try {
++    return fn()
++  } finally {
++    for (const [k, v] of before) {
++      if (v === undefined) delete process.env[k]
++      else process.env[k] = v
++    }
++  }
++}
++
++const simEnvOrThrow = () => {
++  assert.ok(helpers, `(a) [M1] fleet/tests/_helpers.mjs is the rig this exam grades, and it does not load: ${helpersError && helpersError.message}`)
++  assert.equal(typeof helpers.simEnv, 'function',
++    '(a) [M1] fleet/tests/_helpers.mjs exports simEnv({ bin, home, env } = {})')
++  return helpers.simEnv
++}
++
++test('simEnv() hands on no key of a planted parent  [M1 / leg (a)]', () => {
++  const simEnv = simEnvOrThrow()
++  withPlant({ FLEET_TEST_SLACK: '7' }, () => {
++    const e = simEnv()
++    for (const key of Object.keys(PLANT)) {
++      assert.equal(key in e, false,
++        `(a) [M1] ${key} is planted on the parent and must not be in what simEnv() hands a child — ` +
++        `got ${JSON.stringify(e[key])}`)
++    }
++    // The clause is about keys OF THE PARENT: `FLEET_HOME` begins with a swept
++    // prefix and is still the rig's own, minted under the case's own home.
++    const own = new Set(['PATH', 'HOME', 'TMPDIR', 'FLEET_HOME', 'FLEET_TEST_SLACK'])
++    const leaked = Object.keys(e).filter((k) => DROPPED.some((p) => k.startsWith(p)) && !own.has(k))
++    assert.deepEqual(leaked, [],
++      `(a) [M1] no key of the parent beginning ${DROPPED.join(', ')} survives except ` +
++      `FLEET_TEST_SLACK: ${JSON.stringify(leaked)}`)
++    assert.equal(e.FLEET_TEST_SLACK, '7',
++      '(a) [M1] FLEET_TEST_SLACK is the one swept name kept from the parent, copied when the parent has it')
++    assert.deepEqual(Object.keys(e).sort(), ['FLEET_HOME', 'FLEET_TEST_SLACK', 'HOME', 'PATH', 'TMPDIR'],
++      `(a) [M1] the keys simEnv() sets itself are PATH, HOME, TMPDIR and FLEET_HOME, plus the kept ` +
++      `FLEET_TEST_SLACK — no other key of the parent reaches a child: ${JSON.stringify(Object.keys(e).sort())}`)
++  })
++})
++
++test('a planted FLEET_HOME is the parent\'s, and never the child\'s  [M1 / leg (a)]', () => {
++  const simEnv = simEnvOrThrow()
++  // TMPDIR is left alone on purpose: `os.tmpdir()` reads it, and M1 sends the
++  // default home there. The planted key here is the FLEET_ one that names a
++  // home — the fact of the box #833 was about.
++  withPlant({ FLEET_HOME: '/planted/home', HOME: '/planted/home' }, () => {
++    const e = simEnv()
++    assert.notEqual(e.FLEET_HOME, '/planted/home',
++      "(a) [M1] FLEET_HOME is minted under the rig's own home, not read off the parent")
++    assert.notEqual(e.HOME, '/planted/home', '(a) [M1] and so is HOME')
++    assert.ok(e.HOME.startsWith(fs.realpathSync(TMP)) || e.HOME.startsWith(TMP),
++      `(a) [M1] under os.tmpdir(): ${e.HOME}`)
++  })
++})
++
++test('a parent without FLEET_TEST_SLACK gives a child without it  [M1 / leg (a)]', () => {
++  const simEnv = simEnvOrThrow()
++  withPlant({ FLEET_TEST_SLACK: undefined }, () => {
++    const e = simEnv()
++    assert.equal('FLEET_TEST_SLACK' in e, false,
++      '(a) [M1] FLEET_TEST_SLACK is copied when the parent has it, and only then')
++    assert.deepEqual(Object.keys(e).sort(), ['FLEET_HOME', 'HOME', 'PATH', 'TMPDIR'],
++      `(a) [M1] and the four keys it sets itself are all that is left: ${JSON.stringify(Object.keys(e).sort())}`)
++  })
++})
++
++test('HOME, TMPDIR and FLEET_HOME sit under one fresh directory in os.tmpdir()  [M1 / leg (a)]', () => {
++  const simEnv = simEnvOrThrow()
++  withPlant({}, () => {
++    const e = simEnv()
++    const home = e.HOME
++    assert.ok(home, '(a) [M1] simEnv() sets HOME')
++    for (const key of ['TMPDIR', 'FLEET_HOME']) {
++      assert.ok(e[key] === home || e[key].startsWith(home + path.sep),
++        `(a) [M1] ${key} (${e[key]}) is under the same home (${home})`)
++    }
++    assert.ok(fs.existsSync(home) && fs.statSync(home).isDirectory(),
++      `(a) [M1] home defaults to a fresh mkdtemp that exists: ${home}`)
++    const under = fs.realpathSync(TMP)
++    assert.ok(fs.realpathSync(home).startsWith(under + path.sep),
++      `(a) [M1] and it is under os.tmpdir() (${under}): ${fs.realpathSync(home)}`)
++    const second = simEnv()
++    assert.notEqual(second.HOME, home,
++      '(a) [M1] each call mints a fresh home — a shared one is a fact of the box by another name')
++  })
++})
++
++test('PATH is bin, then only the directories holding the five interpreters  [M1 / leg (a)]', () => {
++  const simEnv = simEnvOrThrow()
++  withPlant({}, () => {
++    const e = simEnv({ bin: '/x/bin', env: { FLEET_HOME: '/y' } })
++    const parts = e.PATH.split(path.delimiter)
++    assert.equal(parts[0], '/x/bin',
++      `(a) [M1] bin comes first when given: ${e.PATH}`)
++    assert.equal(parts[1], path.dirname(process.execPath),
++      `(a) [M1] and the directory of process.execPath follows it: ${e.PATH}`)
++    const holdsATool = (dir) => TOOLS.some((t) => fs.existsSync(path.join(dir, t)))
++    const loose = parts.slice(1).filter((d) => !holdsATool(d))
++    assert.deepEqual(loose, [],
++      `(a) [M1] every other entry holds one of ${TOOLS.join(', ')}, and nothing else of the parent's ` +
++      `PATH is kept: ${JSON.stringify(loose)}`)
++    const parent = new Set((process.env.PATH || '').split(path.delimiter))
++    const inherited = parts.filter((d) => d !== '/x/bin' && parent.has(d) && !holdsATool(d))
++    assert.deepEqual(inherited, [],
++      `(a) [M1] no entry of the parent's PATH that holds none of the five: ${JSON.stringify(inherited)}`)
++    assert.deepEqual(parts, [...new Set(parts)],
++      `(a) [M1] deduplicated in order: ${e.PATH}`)
++    assert.equal(e.FLEET_HOME, '/y',
++      "(a) [M1] the caller's env is laid over everything else last")
++  })
++})
++
++test("a caller's env wins for a key of any name  [M1 / leg (a)]", () => {
++  const simEnv = simEnvOrThrow()
++  withPlant({}, () => {
++    const e = simEnv({ env: { PATH: '/only/this', HOME: '/h', TMPDIR: '/t', ULTRA_KEEP: 'mine', PLAIN: 'x' } })
++    assert.equal(e.PATH, '/only/this', '(a) [M1] a caller-supplied PATH wins')
++    assert.equal(e.HOME, '/h', '(a) [M1] a caller-supplied HOME wins')
++    assert.equal(e.TMPDIR, '/t', '(a) [M1] a caller-supplied TMPDIR wins')
++    assert.equal(e.ULTRA_KEEP, 'mine',
++      '(a) [M1] a caller-supplied key of a swept name wins — the sweep is about the parent, not the caller')
++    assert.equal(e.PLAIN, 'x', '(a) [M1] and so does one of no swept name')
++  })
++})
++
++test('home, when given, is where the three keys point  [M1 / leg (a)]', () => {
++  const simEnv = simEnvOrThrow()
++  withPlant({}, () => {
++    const home = fs.mkdtempSync(path.join(TMP, 'hermetic-leg-a-'))
++    try {
++      const e = simEnv({ home })
++      assert.equal(e.HOME, home, '(a) [M1] HOME is the home it was handed')
++      assert.ok(e.TMPDIR === home || e.TMPDIR.startsWith(home + path.sep),
++        `(a) [M1] TMPDIR is under it: ${e.TMPDIR}`)
++      assert.ok(e.FLEET_HOME === home || e.FLEET_HOME.startsWith(home + path.sep),
++        `(a) [M1] FLEET_HOME is under it: ${e.FLEET_HOME}`)
++    } finally {
++      fs.rmSync(home, { recursive: true, force: true })
++    }
++  })
++})
++
++// ── (b) every spawn is handed its environment  [M2] ──────────────────────────
++
++test('the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]', () => {
++  assert.ok(SWEPT.length >= 50,
++    `(b) [M2] the sweep covers the pre-flight — ${SWEPT.length} files is not it`)
++  const offenders = treeOffenders('inherit')
++  assert.deepEqual(named(offenders), [],
++    `(b) [M2] every spawn in fleet/tests/test_*.mjs and fleet/tests/_*.mjs takes an env derived ` +
++    `from simEnv — ${offenders.length} do not:\n  ${named(offenders).slice(0, 40).join('\n  ')}`)
++})
++
++test('the same sweep names one offender for each inheriting shape  [M2 / leg (b)]', () => {
++  const cases = [
++    ["spawnSync('git', ['status'], { cwd })", 'no env: at all'],
++    ["spawnSync('git', ['status'], { env: process.env })", 'the parent handed over whole'],
++    ["execFileSync('git', ['status'], { env: { ...process.env, X: '1' } })", 'the parent spread'],
++    ["const ENV = { ...process.env }\nspawnSync('git', ['status'], { env: ENV })", 'the parent behind a name'],
++    ["const bootEnv = (ctx, env) => ({ ...process.env, ...env })\nspawn('bash', [script], { env: bootEnv(ctx, env) })",
++      'a helper whose body spreads the parent — a name is not what makes it hermetic'],
++  ]
++  for (const [source, why] of cases) {
++    const r = sweep(source, { file: '<case>' })
++    assert.equal(r.inherit.length, 1,
++      `(b) [M2] one offender for ${why}: ${JSON.stringify(source)} gave ${JSON.stringify(named(r.inherit))}`)
++  }
++})
++
++test('the same sweep names none for each simEnv-derived shape  [M2 / leg (b)]', () => {
++  const cases = [
++    ["spawnSync('git', ['status'], { env: simEnv() })", 'a literal simEnv() call'],
++    ["spawnSync('git', ['status'], { env: { ...simEnv(), X: '1' } })", 'a spread of one'],
++    ["const ENV = simEnv({ bin })\nspawnSync('git', ['status'], { env: ENV })", 'an identifier bound to one'],
++    ["const bootEnv = (ctx, env) => ({ ...simEnv({ bin: ctx.bin, home: ctx.home }), ...env })\nspawn('bash', [script], { env: bootEnv(ctx, env) })",
++      'a helper whose body spreads one'],
++  ]
++  for (const [source, why] of cases) {
++    const r = sweep(source, { file: '<case>' })
++    assert.deepEqual(named(r.inherit), [],
++      `(b) [M2] no offender for ${why}: ${JSON.stringify(source)} gave ${JSON.stringify(named(r.inherit))}`)
++  }
++})
++
++test("a sibling helper's bootEnv is accepted by its body, across the import  [M2 / leg (b)]", () => {
++  const helperSrc = scan("export const bootEnv = (ctx, env) => ({ ...simEnv({ bin: ctx.bin }), ...env })\n")
++  const leakySrc = scan("export const bootEnv = (ctx, env) => ({ ...process.env, ...env })\n")
++  const caller = "import { bootEnv } from './_sandbox_boot_helpers.mjs'\nspawn('bash', [script], { env: bootEnv(ctx, env) })"
++  const green = sweep(caller, { file: '<case>', resolveImport: (id) => (id === 'bootEnv' ? helperSrc : null) })
++  assert.deepEqual(named(green.inherit), [],
++    '(b) [M2] a name a file imports from a sibling _*.mjs is resolved in that sibling\'s source, and ' +
++    'a body that spreads simEnv( is accepted there')
++  const red = sweep(caller, { file: '<case>', resolveImport: (id) => (id === 'bootEnv' ? leakySrc : null) })
++  assert.equal(red.inherit.length, 1,
++    '(b) [M2] and the same name is named when that body spreads the parent instead')
++})
++
++// ── (c) no sim opens a path on the box  [M3] ─────────────────────────────────
++
++test('the sweep names zero literal absolute reads in fleet/tests/  [M3 / leg (c)]', () => {
++  const offenders = treeOffenders('absolute')
++  assert.deepEqual(named(offenders), [],
++    `(c) [M3] no sim reads, stats or sources a string-literal absolute path outside the checkout ` +
++    `and os.tmpdir():\n  ${named(offenders).slice(0, 40).join('\n  ')}`)
++})
++
++test('the same sweep names the box\'s render.env and leaves a temp path alone  [M3 / leg (c)]', () => {
++  const red = sweep("fs.readFileSync('/etc/fleet/render.env', 'utf8')", { file: '<case>' })
++  assert.equal(red.absolute.length, 1,
++    `(c) [M3] one offender for a read of /etc/fleet/render.env: ${JSON.stringify(named(red.absolute))}`)
++  const green = sweep("fs.readFileSync(path.join(os.tmpdir(), 'x'))", { file: '<case>' })
++  assert.deepEqual(named(green.absolute), [],
++    '(c) [M3] and none for a read under os.tmpdir()')
++})
++
++// ── (d) no sim runs another  [M4] ────────────────────────────────────────────
++
++test('the sweep names zero sibling-sim spawns in fleet/tests/  [M4 / leg (d)]', () => {
++  const offenders = treeOffenders('siblings')
++  assert.deepEqual(named(offenders), [],
++    `(d) [M4] no fleet/tests/test_*.mjs spawns another test_*.mjs or pytest — the bridge is what ` +
++    `runs them:\n  ${named(offenders).slice(0, 40).join('\n  ')}`)
++})
++
++test('the same sweep names each shape of a sim running another  [M4 / leg (d)]', () => {
++  const one = [
++    ["execFileSync(process.execPath, ['fleet/tests/test_fitness.mjs'])", 'a sim named in the call'],
++    ["execFileSync('python3', ['-m', 'pytest'])", 'a shell-out to pytest'],
++    ["for (const name of ['test_fitness.mjs']) {\n  execFileSync(process.execPath, [path.join(TESTS_DIR, name)]) }",
++      'a sim named by the list the argv walks'],
++  ]
++  for (const [source, why] of one) {
++    const r = sweep(source, { file: '<case>' })
++    assert.equal(r.siblings.length, 1,
++      `(d) [M4] one offender for ${why}: ${JSON.stringify(source)} gave ${JSON.stringify(named(r.siblings))}`)
++  }
++  const copy = "const copy = copyWithProbe(simName, probe)\nspawnSync(process.execPath, [copy])"
++  const r = sweep(copy, { file: '<case>' })
++  assert.deepEqual(named(r.siblings), [],
++    '(d) [M4] and none for a mutated copy of a sim\'s own text under the temp root — resolved one ' +
++    'level, copyWithProbe(simName, probe) carries no literal, and that pin is not a sibling run')
++})
++
++// ── (e) the nine sites, each replaced by a name read and not run  [M4] ───────
++
++/** The nine nested sites at BASE and the siblings each one ran. */
++const NESTED_AT_BASE = [
++  ['test_run_engine_candidate_bootstrap.mjs', ['test_run_engine_reconcile.mjs', 'test_run_engine_exam_together.mjs']],
++  ['test_sandbox_boot_render_env.mjs', ['test_sandbox_boot.mjs', 'test_sandbox_boot_effort.mjs', 'test_sandbox_boot_state_exams.mjs']],
++  ['test_sandbox_boot_state_exams.mjs', ['test_sandbox_boot.mjs', 'test_sandbox_boot_approval_evidence.mjs']],
++  ['test_launch_render.mjs', ['test_launch.mjs', 'test_launch_pins.mjs']],
++  ['test_launch_test_command.mjs', ['test_launch.mjs', 'test_launch_hold.mjs', 'test_launch_effort.mjs', 'test_launch_engine_source.mjs', 'test_launch_reaps.mjs']],
++  ['test_setup_script_render_env.mjs', ['test_setup_script.mjs']],
++  ['test_run_engine_exam_evidence.mjs', ['test_run_engine_examiner.mjs', 'test_run_engine_exam_edits.mjs']],
++  ['test_run_engine_state_exams.mjs', ['test_run_engine_exam_evidence.mjs', 'test_run_engine_pre_review.mjs', 'test_run_engine_proof_runs.mjs', 'test_run_engine_integrated_runs.mjs']],
++]
++
++for (const [file, siblings] of NESTED_AT_BASE) {
++  test(`${file} reads its sibling list and runs none of it  [M4 / leg (e)]`, () => {
++    const full = path.join(TESTS_DIR, file)
++    assert.ok(fs.existsSync(full), `(e) [M4] ${file} is a sim of this pre-flight`)
++    const result = TREE[SWEPT.indexOf(file)]
++    assert.deepEqual(named(result.siblings), [],
++      `(e) [M4] ${file} carries no spawn whose argv names a test_*.mjs: ${JSON.stringify(named(result.siblings))}`)
++    const checked = namesCheckedForExistence(result.src)
++    const missing = siblings.filter((name) => ![...checked].some((q) => q.endsWith(name)))
++    assert.deepEqual(missing, [],
++      `(e) [M4] and every sibling it used to run survives as a name it checks exists under ` +
++      `fleet/tests/ — an fs.existsSync on the repo path, so the list is read and never run. ` +
++      `Unnamed: ${JSON.stringify(missing)}; named: ${JSON.stringify([...checked].filter((q) => q.includes('test_')))}`)
++    for (const name of siblings) {
++      assert.ok(fs.existsSync(path.join(TESTS_DIR, name)),
++        `(e) [M4] ${name} is a file under fleet/tests/ for the bridge to dispatch`)
++    }
++  })
++}
++
++test('test_referee_linker.mjs drops the pytest shell-out and keeps its source pins  [M4 / leg (e)]', () => {
++  const file = 'test_referee_linker.mjs'
++  const full = path.join(TESTS_DIR, file)
++  assert.ok(fs.existsSync(full), `(e) [M4] ${file} is a sim of this pre-flight`)
++  const result = TREE[SWEPT.indexOf(file)]
++  assert.deepEqual(named(result.siblings), [],
++    `(e) [M4] ${file} carries no spawn whose argv names pytest: ${JSON.stringify(named(result.siblings))}`)
++  const text = fs.readFileSync(full, 'utf8')
++  assert.ok(text.includes('tests/test_compile_plan.py') || text.includes("'test_compile_plan.py'"),
++    '(e) [M4] and it still reads tests/test_compile_plan.py as text')
++  assert.ok(text.includes('test_placeholder_token_set'),
++    '(e) [M4] for its test_placeholder_token_set pins')
++  assert.ok(fs.existsSync(path.join(ROOT, 'tests', 'test_compile_plan.py')),
++    '(e) [M4] and that file is where the pins read it')
++})
++
++// ── (f) the probe spawns nothing  [M7] ───────────────────────────────────────
++
++test('the probe imports nothing from child_process  [M7 / leg (f)]', () => {
++  const own = fs.readFileSync(path.join(TESTS_DIR, SELF), 'utf8')
++  const CP = ['child', 'process'].join('_')
++  const forms = [
++    ['an import', new RegExp(`(^|[\\n;])\\s*import\\b[^\\n]*from\\s*['"](?:node:)?${CP}['"]`)],
++    ['a bare import', new RegExp(`(^|[\\n;])\\s*import\\s*['"](?:node:)?${CP}['"]`)],
++    ['a dynamic import', new RegExp(`import\\s*\\(\\s*['"](?:node:)?${CP}['"]`)],
++    ['a require', new RegExp(`require\\s*\\(\\s*['"](?:node:)?${CP}['"]`)],
++  ]
++  for (const [what, re] of forms) {
++    assert.equal(re.test(own), false,
++      `(f) [M7] the probe reads source and runs nothing — it carries ${what} of ${CP}`)
++  }
++})
++
++// ── (g) the fixture, one offender per rule  [M7] ─────────────────────────────
++
++test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]', () => {
++  assert.ok(fs.existsSync(FIXTURE),
++    '(g) [M7] fleet/tests/fixtures/hermetic/leaky_sim.mjs is the fixture that proves the sweep can ' +
++    'still fail — a probe that names nothing anywhere proves nothing')
++  const text = fs.readFileSync(FIXTURE, 'utf8')
++  const r = sweep(text, { file: 'fixtures/hermetic/leaky_sim.mjs' })
++  assert.equal(r.inherit.length, 1,
++    `(g) [M7] one inheriting spawn: ${JSON.stringify(named(r.inherit))}`)
++  assert.equal(r.absolute.length, 1,
++    `(g) [M7] one absolute read: ${JSON.stringify(named(r.absolute))}`)
++  assert.equal(r.siblings.length, 1,
++    `(g) [M7] one sibling-sim spawn: ${JSON.stringify(named(r.siblings))}`)
++  assert.equal(r.inherit.length + r.absolute.length + r.siblings.length, 3,
++    '(g) [M7] and three namings in all, one per rule')
++  assert.match(r.absolute[0].why, /\/etc\/fleet\/render\.env/,
++    `(g) [M7] the absolute read is of /etc/fleet/render.env: ${r.absolute[0].why}`)
++
++  const flat = text.replace(/\s+/g, ' ')
++  const PINS = [
++    "spawnSync('bash', ['-c', 'true'], { env: { ...process.env } })",
++    "fs.readFileSync('/etc/fleet/render.env', 'utf8')",
++    "spawnSync(process.execPath, ['fleet/tests/test_fitness.mjs'], { env: simEnv() })",
++  ]
++  for (const pin of PINS) {
++    assert.ok(flat.includes(pin),
++      `(g) [M7] the fixture carries this text verbatim, so the sweep is read against a known ` +
++      `source: ${pin}`)
++  }
++  assert.equal(path.basename(FIXTURE).startsWith('test_'), false,
++    '(g) [M7] and the fixture is never collected by the bridge — its name does not match test_*.mjs')
++  assert.equal(SWEPT.includes(path.basename(FIXTURE)), false,
++    '(g) [M7] nor swept as a sim of the tree')
++})
++
++// ── (h) the bridge hands each sim its environment  [M6] ──────────────────────
++
++test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]', () => {
++  assert.ok(fs.existsSync(BRIDGE), '(h) [M6] tests/test_fleet_suite.py is the bridge')
++  const text = fs.readFileSync(BRIDGE, 'utf8')
++  assert.match(text, /^def sim_env\(/m,
++    '(h) [M6] the bridge exports sim_env() as a module-level function beside collect_sims')
++  const calls = []
++  const re = /subprocess\.run\(\s*\[\s*["']node["']/g
++  let m
++  while ((m = re.exec(text)) !== null) {
++    const open = text.indexOf('(', m.index)
++    let depth = 0
++    let end = open
++    for (let i = open; i < text.length; i++) {
++      if (text[i] === '(') depth++
++      else if (text[i] === ')') { depth--; if (depth === 0) { end = i; break } }
++    }
++    calls.push(text.slice(m.index, end + 1))
++  }
++  assert.ok(calls.length >= 1,
++    '(h) [M6] the bridge dispatches each sim with subprocess.run(["node", path], …)')
++  for (const call of calls) {
++    assert.match(call, /env=sim_env\(\)/,
++      `(h) [M6] and hands that sim the environment sim_env() returns: ${call.replace(/\s+/g, ' ')}`)
++  }
++
++  const body = text.slice(text.search(/^def sim_env\(/m))
++  const end = body.slice(1).search(/^(def |@|class )/m)
++  const fn = end === -1 ? body : body.slice(0, end + 1)
++  for (const prefix of DROPPED) {
++    assert.ok(fn.includes(prefix),
++      `(h) [M6] sim_env() drops the same six prefixes as the rig, ${prefix} among them`)
++  }
++  assert.ok(fn.includes('FLEET_TEST_SLACK'),
++    '(h) [M6] and keeps FLEET_TEST_SLACK by name — the one FLEET_ name that is a rig knob and not a fleet fact')
++  for (const tool of TOOLS) {
++    assert.ok(fn.includes(tool),
++      `(h) [M6] and builds PATH from the same interpreters, ${tool} among them`)
++  }
++})
++
++// ── (i) the boot script names the box's file once, as a default  [M5] ────────
++
++test('fleet/sandbox-boot.sh names /etc/fleet/render.env once, as its default  [M5 / leg (i)]', () => {
++  assert.ok(fs.existsSync(BOOT_SCRIPT), '(i) [M5] fleet/sandbox-boot.sh is the boot the rig drives')
++  const lines = fs.readFileSync(BOOT_SCRIPT, 'utf8').split('\n')
++  const hits = lines.filter((l) => l.includes('/etc/fleet/render.env'))
++  assert.equal(hits.length, 1,
++    `(i) [M5] exactly one line names /etc/fleet/render.env — a boot that opened the box's file by ` +
++    `its own path would put a second there: ${JSON.stringify(hits)}`)
++  assert.equal(hits[0].trim(), 'FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-/etc/fleet/render.env}"',
++    `(i) [M5] and that line is the default the rig overrides: ${JSON.stringify(hits[0].trim())}`)
++})
++
++test('the boot rig pins FLEET_RENDER_ENV under every case\'s own home  [M5 / leg (i)]', () => {
++  assert.ok(fs.existsSync(BOOT_HELPERS), '(i) [M5] fleet/tests/_sandbox_boot_helpers.mjs is the boot rig')
++  const src = scan(fs.readFileSync(BOOT_HELPERS, 'utf8'))
++  const bootEnv = bindingOf(src, 'bootEnv')
++  assert.ok(bootEnv, '(i) [M5] the rig hands every boot one bootEnv')
++  const body = src.code.slice(bootEnv.start, bootEnv.end)
++  assert.match(body, /FLEET_RENDER_ENV\s*:\s*renderEnvPath\(ctx\)/,
++    `(i) [M5] which pins FLEET_RENDER_ENV to the case's own render.env, so no boot falls to the ` +
++    `box's default path: ${body.replace(/\s+/g, ' ').slice(0, 200)}`)
++  const renderEnvPath = bindingOf(src, 'renderEnvPath')
++  assert.ok(renderEnvPath, '(i) [M5] and renderEnvPath is the rig\'s own')
++  assert.match(src.code.slice(renderEnvPath.start, renderEnvPath.end), /ctx\.home/,
++    "(i) [M5] under the case's own home")
++})
++
++// ── the sentinel ─────────────────────────────────────────────────────────────
++
++let failures = 0
++for (const [name, fn] of tests) {
++  const started = Date.now()
++  try {
++    fn()
++    console.log(`ok (${Date.now() - started} ms) — ${name}`)
++  } catch (error) {
++    failures += 1
++    console.log(`FAIL — ${name}`)
++    console.log(String(error && error.stack ? error.stack : error))
++  }
++}
++if (failures) {
++  console.log(`${failures} FAILED`)
++  process.exit(1)
++}
++console.log(`ALL TESTS PASSED (${SWEPT.length} sims swept, 0 offenders)`)
+diff --git a/fleet/tests/test_strip_exams.mjs b/fleet/tests/test_strip_exams.mjs
+index b9395af0483faee7f5d8235c246650e3d2bf2725..5e22b522157878c1f1e91eb647c6f1fa5853c49b 100644
+--- a/fleet/tests/test_strip_exams.mjs
++++ b/fleet/tests/test_strip_exams.mjs
+@@ -49,6 +49,8 @@ import os from 'node:os'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ 
++import { simEnv } from './_helpers.mjs'
++
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+ /** The deliverable, at the path the Proof's Produces line names. */
+ export const SCRIPT = path.join(HERE, '..', 'strip-exams.sh')
+@@ -93,8 +95,13 @@ const KEPT_FILES = {
+ const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'strip-exams-'))
+ let caseNo = 0
+ 
++// One environment for every child below: git and the script see a HOME of this
++// exam's own, so no ~/.gitconfig of the box reaches a repository it builds —
++// each one sets its identity itself.
++const ENV = simEnv()
++
+ const git = (cwd, args, opts = {}) =>
+-  spawnSync('git', args, { cwd, encoding: 'utf8', ...opts })
++  spawnSync('git', args, { cwd, encoding: 'utf8', env: ENV, ...opts })
+ 
+ const gitOk = (cwd, args) => {
+   const r = git(cwd, args)
+@@ -189,6 +196,7 @@ const runStrip = (clone, branch, runId, dest) =>
+     cwd: tmpRoot,
+     encoding: 'utf8',
+     timeout: 60000,
++    env: ENV,
+   })
+ 
+ /** Everything a leg compares across the run. */
+diff --git a/tests/test_fleet_suite.py b/tests/test_fleet_suite.py
+index 8a2b0c69862eb1d22d29c3f955176d25af368b32..f7cca0f45a4ba5e9a0aced23eb3d9cffef8b2cc4 100644
+--- a/tests/test_fleet_suite.py
++++ b/tests/test_fleet_suite.py
+@@ -1,7 +1,58 @@
+ import fcntl
+-import glob, os, subprocess, pytest
++import glob, os, shutil, subprocess, tempfile, pytest
+ 
+ FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
++
++
++def sim_env():
++    """The environment one bridged `node <sim>` runs under.
++
++    `PATH` carries the directories holding the interpreters and nothing else —
++    a laptop's PATH is forty entries of plugin `bin/`s, and CI's puts node and
++    python3 under /opt/hostedtoolcache; that is what is being kept out. `HOME`
++    and `TMPDIR` name a directory of this call's own, so no sim reads the box's
++    `~/.ultrapowers/fleet.json` or `~/.gitconfig`. `FLEET_TEST_SLACK` is kept
++    when the parent has it — the deadline multiplier a developer sets on a slow
++    box, the one swept-prefix name that is not a fleet fact.
++
++    No `FLEET_HOME`: the bridge is not a sim's home. Each sim mints its own
++    under its own `mkdtemp`, and a `FLEET_` fact planted here is exactly the
++    ambient kind the hermetic probe keeps out.
++    """
++    # The prefixes of this process's environment that never reach a sim, and the
++    # one name that does. The same contract `fleet/tests/_helpers.mjs`'s `simEnv`
++    # holds for the children a sim starts, held here for the sims themselves:
++    # what a sim sees is what the bridge handed it, never a fact of the box the
++    # bridge runs on.
++    dropped_prefixes = ("ULTRA_", "TINYAPP_", "FLEET_", "ANTHROPIC_", "CLAUDE_", "GH_")
++    kept_keys = ("FLEET_TEST_SLACK",)
++    # `sh` is looked up too: a sim's `bash -c`/`sh -c` children resolve on the
++    # PATH they inherit from the sim, and the sim inherits this one.
++    interpreters = ("node", "python3", "git", "bash", "sh")
++    dirs = []
++    for tool in interpreters:
++        found = shutil.which(tool)
++        if not found:
++            # Left out silently: the sim that needs it fails where it spawns it.
++            continue
++        parent = os.path.dirname(found)
++        if parent not in dirs:
++            dirs.append(parent)
++    home = tempfile.mkdtemp(prefix="fleet-bridge-")
++    env = {"PATH": os.pathsep.join(dirs), "HOME": home, "TMPDIR": home}
++    for key in kept_keys:
++        if key in os.environ:
++            env[key] = os.environ[key]
++    # Built from nothing rather than filtered from the parent, so this last pass
++    # is a guard on what the lines above set: a key added here that carries a
++    # swept prefix and is not one of the kept names never reaches a sim.
++    return {
++        key: value
++        for key, value in env.items()
++        if key in kept_keys or not key.startswith(dropped_prefixes)
++    }
++
++
+ # Measured wall at 0.3.19 under `-n 6`: 40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s,
+ # 12.6 s, 10.6 s.
+ # Under `--dist load` a worker that picks up a 40 s sim last holds the whole
+@@ -104,7 +155,7 @@ def test_fleet_mjs(path):
+     # measured the numbers above. A wall only a little over an honest runtime
+     # reports a slow box as a broken suite; this one is a deadlock catcher,
+     # not a budget.
+-    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
++    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT, env=sim_env())
+     assert r.returncode == 0, r.stdout + r.stderr
+     assert "ALL TESTS PASSED" in r.stdout
+ 
