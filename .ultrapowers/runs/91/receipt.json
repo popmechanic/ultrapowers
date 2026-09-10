@@ -1,0 +1,145 @@
+{
+  "ok": true,
+  "stamp": "run-91",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-91"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The publish-fold exam returns, written for the merge that reads the tip",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "fleet/tests/test_sandbox_boot_publish_fold.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The publish-fold exam returns, written for the merge that reads the tip",
+          "files": [
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_publish_fold.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_publish_fold.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "timeout 300 node fleet/tests/test_sandbox_boot_publish_fold.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q 'tests/test_fleet_suite.py::test_fleet_mjs[test_sandbox_boot_publish_fold.mjs]'",
+            "test \"$(grep -c '^\\s*test(.*\\[publish-fold' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 41",
+            "test \"$(grep -c '^\\s*test(.*\\[#808' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 6",
+            "test \"$(grep -c '^\\s*test(.*\\[failing-block' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 6",
+            "test \"$(grep -c '^\\s*test(.*\\[strict-405' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 4",
+            "test \"$(grep -c '^\\s*test(.*\\[fold-again' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 11",
+            "for s in STUB_CHECKS checkUrlFor isCheckRead CHECK_URL check_runs /check-runs; do if grep -n -F \"$s\" fleet/tests/test_sandbox_boot_publish_fold.mjs; then echo \"survivor: $s\"; exit 1; fi; done",
+            "grep -q 'mergeableReads' fleet/tests/test_sandbox_boot_publish_fold.mjs && grep -q 'checkRunRequests' fleet/tests/test_sandbox_boot_publish_fold.mjs",
+            "test \"$(grep -c '^\\s*test(.*\\[held-patch' fleet/tests/test_sandbox_boot_publish_fold.mjs)\" = 1"
+          ],
+          "proofGuards": []
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The publish-fold exam returns, written for the merge th\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The sim is written for the script as it is; the script is never edited to fit the sim. A case whose sentence the script no longer makes true is rewritten to what the script does now, with a comment naming run-90 \u2014 never by changing `fleet/sandbox-boot.sh`, `fleet/CONTRACT.md` or `fleet/RUNBOOK.md`.\n- The first 662 lines of the deleted file \u2014 the check-runs poll exam \u2014 stay deleted: run-90 retired that behaviour on purpose, and nothing here brings it back.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/sandbox-boot.sh fleet/CONTRACT.md fleet/RUNBOOK.md skills/ultrapowers/SKILL.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-91/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-91/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-91/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-91/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
