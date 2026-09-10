@@ -1,0 +1,91 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "964cd50a413634002d13f18b77c210ca5ed77c2f5b01608f00c8cac1cf9194b6",
+      "verdict": "pass",
+      "reason": "every clause is falsified by a named leg or Run: \u2014 six planted keys one per prefix, the sweep's positive and negative mutants, the nine BASE sites enumerated, leaky_sim's exactly-three computed one per rule, the planted xargs reproducing #833's red as exit 123; no leg contradicts another."
+    }
+  },
+  "tally": {
+    "dispatched": 12,
+    "rejected": 10,
+    "passed": 2,
+    "rounds": 12,
+    "readers": "general-purpose, foreground, fed only extract_gate_input.py output",
+    "guide_review": "claude-code-guide: with an explicit env option a Node child inherits nothing of process.env and resolves the command on env.PATH (Unix fallback /usr/bin:/bin when PATH is absent); Python subprocess env= is the same \u2014 folded into Context"
+  },
+  "history": [
+    {
+      "round": 1,
+      "hash": "05e2ed9622e2b189dcab4c9c1eac6c67fae8dba4137f578e6196bf33ad399e99",
+      "verdict": "fail",
+      "reason": "the #856 grep Run: caught the probe's own sample literals, and leg (e) demanded the linker keep a pytest sibling in existsSync."
+    },
+    {
+      "round": 2,
+      "hash": "e5f03adcc4b9cee5fea0d19ec746c2d76f45ab404ab6803d95b73957307a65fc",
+      "verdict": "fail",
+      "reason": "M1 forbade every FLEET_ key while setting FLEET_HOME itself; leg (a) pinned both horns."
+    },
+    {
+      "round": 3,
+      "hash": "5e6fa25928c99347fb67461327b73189fddd704389b5c31c0be8ffae609f3507",
+      "verdict": "fail",
+      "reason": "leg (i) did not falsify M5 \u2014 the sentence's subject (pre-flight) was unnamed and the boot script's render read unpinned."
+    },
+    {
+      "round": 4,
+      "hash": "5cd365627ba0fe6eb227ed8cf635f32a96d03cbaefb24f80d431909aa85b3315",
+      "verdict": "fail",
+      "reason": "M5's 'empty value' universal contradicted the render sim's planted case; leg (e)'s existsSync contradicted M4's 'reads as text'."
+    },
+    {
+      "round": 5,
+      "hash": "07096018370b57e9925aa733c8829044bb108ddbbd252f9aa94803299bc221d9",
+      "verdict": "fail",
+      "reason": "'every boot sim' planted for only three; 'one box-owned file' never falsified; `time` builtin assumed of the driver's shell."
+    },
+    {
+      "round": 6,
+      "hash": "bd97e24b651a841567a1b3316516234dfb3cf4413afd69e95c2d940e451b3d97",
+      "verdict": "fail",
+      "reason": "legs (a)/(h) planted no FLEET_ (nor ANTHROPIC_/CLAUDE_) key, so a forwarded FLEET_RENDER_ENV passed."
+    },
+    {
+      "round": 7,
+      "hash": "9698a132c59f3f9e51514105fdf1d8695bde1bd8b5bd05ebe2793043bd54ea36",
+      "verdict": "fail",
+      "reason": "leg (b)'s only positive control was an env-less spawn; `env: process.env` shapes were never named."
+    },
+    {
+      "round": 8,
+      "hash": "a41b316706bb3966ae45d3df7257122a19e5a0f55f5917232c3dea83a4a8d4dc",
+      "verdict": "fail",
+      "reason": "leg (b) accepted bootEnv by name, so a bootEnv spreading process.env passed unnamed."
+    },
+    {
+      "round": 9,
+      "hash": "c10daa50a04f1acb89f6d741b0e4753d03d0fe21200497c5a1350e15c673499b",
+      "verdict": "fail",
+      "reason": "no leg falsified 'the rig pins FLEET_RENDER_ENV'; leg (h) never checked PATH or FLEET_TEST_SLACK for sim_env()."
+    },
+    {
+      "round": 10,
+      "hash": "bdbbfb15f285ea9aacc1dff2c3e30028b393de75b5e72f948e819ac7481e6ddf",
+      "verdict": "fail",
+      "reason": "the fixture's env-less sibling spawn counted under two rules, so 'exactly three' was unsatisfiable."
+    },
+    {
+      "round": 11,
+      "hash": "72cea3cbd18c69cfe44e4c86b1b3746104beb60d71d212d52d621a590eca6a7b",
+      "verdict": "pass",
+      "reason": "every leg names a concrete failing shape for its clause; the copyWithProbe exemption and the line-scoped grep agree; no pinned literal is contradicted."
+    },
+    {
+      "round": 12,
+      "hash": "964cd50a413634002d13f18b77c210ca5ed77c2f5b01608f00c8cac1cf9194b6",
+      "verdict": "pass",
+      "reason": "re-read after the leg-named-in-prose advisory fix (\"leg (a)\" -> \"first leg\"); every clause is falsified by a named leg or Run: \u2014 six planted keys one per prefix, the sweep's positive and negative mutants, the nine BASE sites enumerated, leaky_sim's exactly-three computed one per rule, the planted xargs reproducing #833's red as exit 123; no leg contradicts another."
+    }
+  ]
+}
