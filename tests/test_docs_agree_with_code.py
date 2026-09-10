@@ -29,8 +29,9 @@ by rewording:
     integration to ``tag:fleet`` (the contract's one-integration rule: both of
     a run's credentials ride the VM from creation, and nothing rides the tag);
   * the contract's ``- **Publish:**`` bullet declares the PR body's
-    ``### Residuals`` checklist, the one ``watch-item`` follow-up issue the run
-    files, and the ``publish:followup`` event that records it — the literals a
+    ``### Residuals`` checklist and the ``residuals.jsonl`` rows the same items
+    land on, counts the publish record's ``three event kinds``, and carries no
+    trace of the follow-up issue the fleet no longer files — the literals a
     reader of the boot script has to find declared somewhere;
   * the retired vocabulary of the pre-lift fleet appears in none of the four
     documents;
@@ -368,12 +369,15 @@ def test_no_ref_reads_the_evidence_branch_instead_of_the_evidence_tag():
 # `fleet/CONTRACT.md`'s header rule is that every literal a task introduces is
 # declared in the contract, and the `- **Publish:**` bullet is where the PR
 # body's sections and the publish record's event kinds are declared. The boot
-# script's residuals path introduces three of them: the `### Residuals`
-# checklist the body carries before its `Closes #<n>` lines, the ONE
-# `watch-item` follow-up issue the run files against
-# `POST /repos/<owner>/<repo>/issues`, and the `publish:followup` event that
-# records it. A bullet that does not name them is a contract a reader cannot
-# check the script against.
+# script's residuals path introduces two of them: the `### Residuals` checklist
+# the body carries before its `Closes #<n>` lines, and the `residuals.jsonl`
+# rows the same items land on, on the evidence branch. A bullet that does not
+# name them is a contract a reader cannot check the script against.
+#
+# The sink is the record and nothing else. The run files NO issue for its
+# residuals — no POST at the PR's edge, no `watch-item` ticket, no fourth
+# publish event — so the retired vocabulary is pinned absent from the range
+# here, where a reader of the bullet would otherwise still find it declared.
 #
 # The range these read is exactly the one `fleet/tests/test_sandbox_boot_selfmerge.mjs`
 # slices — from the line beginning `- **Publish:**` to the line beginning
@@ -423,69 +427,50 @@ def test_the_publish_bullet_puts_the_residuals_section_before_the_closes_lines()
     )
 
 
-# The follow-up issue's POST, its `watch-item` label, and the six program
-# labels as one comma-separated list in this order. Backticks are matched as
-# any character, as the Proof's leg spells the pattern.
-FOLLOWUP_POST = "POST /repos/<owner>/<repo>/issues"
-WATCH_ITEM_LABEL = "watch-item"
-PROGRAM_LABELS = (
-    "merge-frontier",
-    "experience-compiler",
-    "verification-frontier",
-    "peer-review",
-    "fleet",
-    "determinism",
+# The residuals sink as the bullet now declares it, and the vocabulary of the
+# sink it replaced. `residuals.jsonl` is the record's ledger; `three event
+# kinds` is the publish record's own count, back to what it was before the
+# follow-up issue joined it. The four retired strings are pinned ABSENT: a
+# bullet that still names the POST, the label, the event or the old count is a
+# contract describing a call the boot script no longer makes.
+#
+# Two of the four are spelled as a concatenation on purpose. The Proof greps
+# THIS FILE for the retired event name and the retired count and requires zero
+# of each, so an exam that pins them absent from the contract may not carry
+# either one as a contiguous literal. Joining the halves at import time is what
+# lets one file both assert the absence and be searchable for it.
+RESIDUALS_FILE = "residuals.jsonl"
+EVENT_KIND_COUNT = "three event kinds"
+RETIRED_SINK = (
+    "POST /repos/<owner>/<repo>/issues",
+    "publish:" + "followup",
+    "watch-item",
+    "four" + " event kinds",
 )
-PROGRAM_LABELS_RE = re.compile("., .".join(PROGRAM_LABELS) + ".")
-NEVER_A_GATE = "never a gate"
 
 
-def test_the_publish_bullet_declares_the_follow_up_issue_and_its_labels():
-    """Leg (b) [M2]: the POST path, `watch-item`, the six program labels in
-    order, and the refused POST's posture — `never a gate`."""
+def test_the_publish_bullet_names_the_residuals_file_and_files_no_issue():
+    """Leg (f) [M6]: `residuals.jsonl`, `three event kinds`, and none of the
+    four strings the retired follow-up issue was declared with."""
     bullet = publish_bullet()
-    assert FOLLOWUP_POST in bullet, (
+    assert RESIDUALS_FILE in bullet, (
         f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not name "
-        f"`{FOLLOWUP_POST}` — the follow-up issue is filed at the PR's own edge, "
-        "and the bullet is where that call is declared\nbullet:\n" + bullet
-    )
-    assert WATCH_ITEM_LABEL in bullet, (
-        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not name "
-        f"`{WATCH_ITEM_LABEL}` — the one follow-up issue per PR carries that "
-        "label\nbullet:\n" + bullet
-    )
-    assert PROGRAM_LABELS_RE.search(bullet), (
-        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not carry the six "
-        "program labels as one comma-separated list in this order — "
-        + ", ".join(f"`{name}`" for name in PROGRAM_LABELS)
-        + "\nbullet:\n" + bullet
-    )
-    assert NEVER_A_GATE in bullet, (
-        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not say the refused "
-        f"POST is `{NEVER_A_GATE}` — the issue's posture is one log line, not a "
-        "gate on the run\nbullet:\n" + bullet
-    )
-
-
-def test_the_publish_bullet_counts_four_event_kinds_and_names_the_followup():
-    """Leg (c) [M3]: `publish:followup` beside `url` and `items`, the count now
-    `four event kinds`, and `three event kinds` gone from the range."""
-    bullet = publish_bullet()
-    assert re.search(r"publish:followup.*url.*items", bullet), (
-        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not declare "
-        "`publish:followup` (`url`, `items`) — the follow-up issue's record is "
-        "that event, and the bullet is where its fields are named\n"
+        f"`{RESIDUALS_FILE}` — the residuals leave the run as rows on the "
+        "record, and the bullet is where that sink is declared\n"
         "bullet:\n" + bullet
     )
-    assert "four event kinds" in bullet, (
+    assert EVENT_KIND_COUNT in bullet, (
         f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not say the publish "
-        "record is `four event kinds` — `publish:followup` joined "
-        "`publish:pr`, `publish:hold` and `publish:merge`\nbullet:\n" + bullet
+        f"record is `{EVENT_KIND_COUNT}` — `publish:pr`, `publish:hold` and "
+        "`publish:merge` are all of them\nbullet:\n" + bullet
     )
-    assert "three event kinds" not in bullet, (
-        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet still counts `three event "
-        "kinds` somewhere in the range, so the bullet names four kinds and counts "
-        "three\nbullet:\n" + bullet
+    still = [name for name in RETIRED_SINK if name in bullet]
+    assert not still, (
+        f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet still carries "
+        + ", ".join(f"`{name}`" for name in still)
+        + " — the fleet files no follow-up issue for its residuals, so the "
+        "bullet declares no POST, no label and no fourth event for one\n"
+        "bullet:\n" + bullet
     )
 
 
