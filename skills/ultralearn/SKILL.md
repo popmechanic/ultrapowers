@@ -107,6 +107,37 @@ over N touching runs, and that list is the input to a deletion plan, which goes
 through the gate like any other work. `--ledger`, `--tree` and `--n` are the
 report's only flags.
 
+## The residual counter
+
+A **residual** is what a review round left behind — a deferred fix, a
+structural remark, a nit, an unverified claim. The reviewer writes them into
+the run's `residuals.jsonl`, one JSON object per line; the counter merges those
+lines into the accumulated ledger so that a remark made twice reads as the
+repeat it is. The key is `(file, normalized text)` — the text's whitespace runs
+collapsed to one space, stripped, lowercased — so the same words with a stray
+double space are one remark, and the same words on two files are two keys about
+one theme.
+
+`python3 skills/ultralearn/scripts/residual_counter.py <dir or tree>… --ledger <file>`
+appends one `residual` row per line of every `residuals.jsonl` at or under the
+paths, to the file named by `--ledger`, the counter's only flag. A row carries
+the line's own `run` as `runId` and its own `kind` as `residualKind`; its `key`
+is the `(file, normalized text)` hash and its `id` adds the run, so the same
+residual on two runs is two rows with one key. There is no default: without
+`--ledger` the counter counts the files and appends nothing. The ledger an
+operator usually names is `docs/superpowers/observations/ledger.jsonl`, the
+same file the findings and the catch counts land in. Appending is all it does —
+a second pass over the same paths appends nothing and leaves the ledger's bytes
+unchanged.
+
+`python3 skills/ultralearn/scripts/residual_report.py --ledger <file>` groups
+those rows by normalized text and lists the candidates: a residual seen in
+**two or more runs**, or on **two or more files**, most-repeated first.
+`--ledger` is the report's only flag. A residual seen once on one file is not a
+candidate and is not listed. The candidate list is the input to one
+consolidated issue per theme, filed by the operator at their sitting — never by
+the sandbox.
+
 ## Verb 2 — `ultralearn distill` (propose)
 
 Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings

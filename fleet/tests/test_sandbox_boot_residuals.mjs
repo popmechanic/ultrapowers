@@ -1,60 +1,45 @@
 /**
- * Exam for #711 tasks 1 and 2 — the residuals, in the PR body and in the
- * follow-up issue that lists the same items.
+ * Exam for #869 task 1 — the residuals are ROWS ON THE RECORD, and the run
+ * files no issue.
  *
- * ── task 1 — the PR body carries the residuals as a checklist ───────────────
- *
- * The claim: the sandbox writes every `deferred:external` ack and every
- * non-blocking reviewer/critic finding into the PR body as a checklist. At BASE
- * the gate receipt's acks and the report's minor findings and reviewer notes
- * died on the box — the only reader was whoever opened the evidence branch. The
- * card gains a `### Residuals` section between the `### Plan` heading's link
- * line and the `Closes #` lines, one `- [ ]` line per item, and nothing at all
- * when there are no residuals.
+ * The claim: the sandbox writes each residual as a ledger row on the evidence
+ * tag (`.ultrapowers/runs/<N>/residuals.jsonl`: `{run, task, file, line?, kind:
+ * nit|unverified|deferred|structural, text, sha}`) and files no issue. The PR
+ * body's `### Residuals` checklist is unchanged; what was a POST to
+ * `/repos/<owner>/<repo>/issues` becomes a file beside `report.json` on the
+ * branch the run already commits.
  *
  * The clauses this file pins:
  *
- *   M1  the seven-line checklist a full receipt-plus-report run renders, in
- *       order, its placement in the body, and the three names that are NOT
- *       residuals (a `deferred:runtime` ack, a `blocking` critic finding, a
- *       `failed` task's notes).                                legs (a), (b)
- *   M2  the rig's default record has no residuals: no heading, no `- [ ]`
- *       line, and the `Closes #` lines are still the body's last.
- *                                                              legs (c), (d)
- *   M3  a newline inside a detail becomes one space on one line, and a run
- *       with no `report.json` at all still renders the receipt's items.
- *                                                              legs (e), (f)
- *   M4  the rig's two knobs: `STUB_GATE_RECEIPT` and `STUB_REPORT` write the
- *       supplied document plus one newline, an empty `STUB_REPORT` writes no
- *       file at all, and both unset are the defaults.           leg  (g)
+ *   M1  the M1 record's seven rows: seven lines, the exact key set, `run` and
+ *       `sha` on every one, the seven `text` values against the same run's own
+ *       PR checklist, and the seven `kind`/`task` pairs.          leg (a)
+ *   M2  the kind mapping's three triggers: `cannot verify`, `could not verify`,
+ *       and the path token that fills `file`/`line` — against a record whose
+ *       rows have neither.                                        leg (b)
+ *   M3  no item, no file: the rig's default record leaves none at all, and the
+ *       parked run that opens no PR still leaves the receipt's two.  leg (c)
+ *   M4  the file is committed WITH the record — the rig's `git commit` arm
+ *       lists the run directory into `trees.log` at every commit, and the M1
+ *       boot's LAST commit carries the name.                       leg (d)
+ *   M5  no issue is filed: no `…/issues` curl of either shape, no log line, no
+ *       `issues.log`, no `publish:followup` event — and the run still merges,
+ *       still reaches `done`, still renders the same seven `- [ ]` lines; plus
+ *       the source-level absence of the five retired names.        leg (e)
+ *   M6  the two documents: `fleet/CONTRACT.md`'s record list and its
+ *       `- **Publish:**` bullet, and `tests/test_docs_agree_with_code.py`'s
+ *       literals — the greps of the Proof's `Run:` lines, read from here so
+ *       this file grades them too. The `Run:` that runs that pytest module
+ *       green is the Proof's own and is not re-run from inside this file.
+ *                                                                  leg (f)
  *
- * Task 1's leg (d) is the Proof's own `Run:` of `fleet/tests/test_sandbox_boot.mjs` —
- * its `Closes` and card legs read the same body this task changes, and the
- * driver runs that sim itself. It is not re-run from inside this file.
+ * ── the retained half: #711 task 1, the checklist in the PR body ─────────────
  *
- * ── task 2 — the run files one follow-up issue listing the same items ───────
- *
- * The claim: the run files one follow-up issue per run (`watch-item`, the
- * plan's program label) titled for the run, listing the same items with their
- * evidence sentences. The inverse of the `**Closes:**` machinery: what the
- * plan named is closed, what the run left is opened.
- *
- * The clauses this file pins:
- *
- *   M1  a green boot with the M1 record, a plan carrying `**Closes:** #660
- *       #668` and a rig answering every issue read with three labels makes,
- *       between the PR POST and the first check-runs read, exactly two issue
- *       reads and exactly one POST /issues; the payload's `title`, `labels`
- *       and `body`; the `followup: <url>` log line; and the one
- *       `publish:followup` event, after `publish:pr`.  legs (a), (b), (c)
- *   M2  no residual, no sink — the default record files nothing, and a run
- *       that opens no PR files nothing either.                legs (d), (e)
- *   M3  the sink never holds the run: a 422 POST still merges and still
- *       reaches `done`, and a 404 issue read still POSTs.     legs (f), (g)
- *   M4  a plan with no `**Closes:**` line reads no issue and POSTs with
- *       `labels` exactly `["watch-item"]`.                    leg  (h)
- *   M5  the rig's three knobs and two curl arms: the read's URL and its `say`
- *       line, the create's `say` line and `issues.log`.  legs (h), (i), (j)
+ * The section below the M4-knobs banner is #711 task 1's exam, unchanged: the
+ * seven checklist lines and their placement, the three names that are NOT
+ * residuals, the empty default, the flattened newline, the missing report, and
+ * the rig's two record knobs. This task changes none of it — the checklist is
+ * the source the row file's `text` values are read against.
  *
  * The rig is `_sandbox_boot_helpers.mjs`, shared with the other sandbox-boot
  * sims. A boot is ~40 forks of stub shell, so every case here boots ONCE into
@@ -65,9 +50,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
-  PLAN_H1, PLAN_LINK, PR_URL, RUN_DIR_PATH, RUN_PATH, TARGET,
+  BASE_SHA, PLAN_LINK, RUN_DIR_PATH, RUN_PATH,
   makeHome, boot, prPosts, evidenceDir, targetDir,
   argvLines, statusOf, stream,
   runTests,
@@ -75,6 +61,10 @@ import {
 
 const tests = []
 const test = (name, fn) => tests.push([name, fn])
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+/** The checkout this exam grades: `fleet/tests/` is two levels down. */
+const REPO = path.resolve(HERE, '..', '..')
 
 // ── the two M1 documents, spelled as the clause spells them ──────────────────
 //
@@ -140,31 +130,76 @@ const DEFAULT_REPORT = '{"stamp":"run-7"}'
 const CLOSES_EXTRA = '**Goal:** x\n**Closes:** #660 #668'
 const CLOSES_LINES = ['Closes #660', 'Closes #668']
 
-// ── #711 Task 2 — the follow-up issue: its literals ──────────────────────────
+// ── #869 — the row file's literals ───────────────────────────────────────────
 
-/** M1's issue document: `enhancement` is not a program label and is dropped;
- *  `peer-review` and `fleet` are, and are kept in the order first seen. */
-const M1_ISSUE_LABELS = '[{"name":"enhancement"},{"name":"peer-review"},{"name":"fleet"}]'
-/** The two tickets `**Closes:** #660 #668` names, in the plan's order. */
-const TICKETS = ['660', '668']
-/** The PR's own edge, as the global constraint spells it: `fleet_curl` against
- *  `https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/…`, never `gh`. */
-const ISSUES_URL = `https://github.int.exe.xyz/api/v3/repos/${TARGET}/issues`
-/** What the rig's `POST …/issues` arm answers with. */
-const FOLLOWUP_URL = 'https://github.com/popmechanic/smoke/issues/9'
-/** `fleet $RUN_ID residuals: $(plan_title)`. */
-const FOLLOWUP_TITLE = `fleet run-7 residuals: ${PLAN_H1}`
-/** `watch-item` first, then each program label once, in the order first seen. */
-const M1_LABELS = ['watch-item', 'peer-review', 'fleet']
-/** A run whose tickets said nothing keeps nothing but the program label. */
-const BARE_LABELS = ['watch-item']
+/** The name the file carries on the record, beside `report.json`. */
+const ROWS_NAME = 'residuals.jsonl'
+/** `run-<N>` for this rig's run 7 — every row's `run` cell. */
+const RUN_ID = 'run-7'
+/** The keys every row carries, exactly these seven and no others, sorted the
+ *  way `json.dumps(row, sort_keys=True)` writes them.  [M1] */
+const ROW_KEYS = ['file', 'kind', 'line', 'run', 'sha', 'task', 'text']
+
+/** The name each of M1's seven checklist lines is rendered under — the prefix
+ *  `- [ ] <name> — ` whose removal leaves the row's `text`.  [M1] */
+const M1_NAMES = [
+  'deferred:external', 'deferred:external', 'critic', 'critic',
+  'task 1 reviewer', 'task 1 reviewer', 'task 3 reviewer',
+]
+/** M1's seven `kind` values, in the checklist's order: the two external acks,
+ *  the two minor critic findings, the three reviewer pieces.  [M1] */
+const M1_KINDS = ['deferred', 'deferred', 'structural', 'structural', 'nit', 'nit', 'nit']
+/** And their seven `task` values — null for what no task owns, the row's own
+ *  `task` AS A STRING for the reviewer pieces.  [M1] */
+const M1_TASKS = [null, null, null, null, '1', '1', '3']
+
+/** One checklist line's text: everything after `- [ ] <name> — `. The detail
+ *  itself may carry ` — `, so only the FIRST one, after the name, is the
+ *  prefix. */
+const textOf = (line, name) => {
+  const prefix = `- [ ] ${name} — `
+  assert.ok(line.startsWith(prefix),
+    `the premise: \`${line}\` is rendered under the name \`${name}\``)
+  return line.slice(prefix.length)
+}
+/** M1's seven `text` values, read off M1's own seven checklist lines. */
+const M1_TEXTS = M1_LINES.map((l, i) => textOf(l, M1_NAMES[i]))
+
+// M2's record: no ack, no critic finding, ONE done task whose three `; `
+// pieces are the two trigger phrases and one path token.
+const VERIFY_GATE_RECEIPT = '{"verdict":"PASS","gateCheck":{"acks":[]}}'
+const VERIFY_NOTES = 'cannot verify the render step; Could not verify the 404 row;'
+  + ' sees fleet/tests/test_thing.mjs:12 twice'
+const VERIFY_REPORT = '{"stamp":"run-7","tasks":['
+  + `{"task":"4","status":"done","notes":"${VERIFY_NOTES}"}`
+  + ']}'
+/** Its three pieces, in order — the row `text` values.  [M2] */
+const VERIFY_TEXTS = VERIFY_NOTES.split('; ')
+/** `cannot verify`, `Could not verify` lowercased, then neither.  [M2] */
+const VERIFY_KINDS = ['unverified', 'unverified', 'nit']
+/** The one `/`-bearing token, and its trailing `:<digits>`.  [M2] */
+const TOKEN_FILE = 'fleet/tests/test_thing.mjs'
+const TOKEN_LINE = 12
+
+/** The five names `fleet/sandbox-boot.sh` may no longer carry.  [M5] */
+const RETIRED_SOURCE = [
+  'file_followup', 'followup_labels', 'PROGRAM_LABELS', 'publish:followup', '/issues',
+]
+/** The four `fleet/CONTRACT.md` may no longer carry.  [M6] */
+const RETIRED_CONTRACT = [
+  'POST /repos/<owner>/<repo>/issues', 'publish:followup', 'watch-item', 'four event kinds',
+]
+/** The three `tests/test_docs_agree_with_code.py` may no longer carry.  [M6] */
+const RETIRED_DOCS_TEST = ['FOLLOWUP_POST', 'publish:followup', 'four event kinds']
 
 // ── the boots ────────────────────────────────────────────────────────────────
 
 const CASE_ENV = {
-  // (a), (b): the two M1 documents.
+  // #711 (a), (b) — and #869's legs (a), (d), (e): the two M1 documents and a
+  // plan naming two tickets, which is the run that used to file the issue.
   m1: { STUB_GATE_RECEIPT: M1_GATE_RECEIPT, STUB_REPORT: M1_REPORT, STUB_PLAN_EXTRA: CLOSES_EXTRA },
   // (c), and (g)'s "both unset": neither knob, so the stub writes its defaults.
+  // #869's legs (c) and (d) read it too — the record with no residual at all.
   defaults: { STUB_PLAN_EXTRA: CLOSES_EXTRA },
   // (e): the newline detail, with the DEFAULT report (knob unset).
   newline: { STUB_GATE_RECEIPT: NEWLINE_GATE_RECEIPT, STUB_PLAN_EXTRA: CLOSES_EXTRA },
@@ -176,42 +211,17 @@ const CASE_ENV = {
   knobReceipt: { STUB_GATE_RECEIPT: KNOB_GATE_RECEIPT },
   knobReport: { STUB_REPORT: KNOB_REPORT },
 
-  // ── #711 Task 2 — the follow-up issue ──────────────────────────────────────
+  // ── #869 — the kind mapping's own record  [M2] ────────────────────────────
   //
-  // Task 2's legs (d) and (e) read the `defaults` boot above — the rig's own
-  // record, which has no residual and therefore no sink — so only the five
-  // cases below are its own.
+  // No ack and no critic finding, so every row here is a reviewer piece and the
+  // three kinds are the mapping's three answers.
+  verify: { STUB_GATE_RECEIPT: VERIFY_GATE_RECEIPT, STUB_REPORT: VERIFY_REPORT },
 
-  // (a), (b), (c), (i), (j): the M1 record, the plan's two tickets, and a rig
-  // answering every issue read with M1's three labels.
-  followup: {
-    STUB_GATE_RECEIPT: M1_GATE_RECEIPT,
-    STUB_REPORT: M1_REPORT,
-    STUB_PLAN_EXTRA: CLOSES_EXTRA,
-    STUB_ISSUE_LABELS: M1_ISSUE_LABELS,
-  },
-  // (f): the same run, with GitHub refusing the POST.
-  followup422: {
-    STUB_GATE_RECEIPT: M1_GATE_RECEIPT,
-    STUB_REPORT: M1_REPORT,
-    STUB_PLAN_EXTRA: CLOSES_EXTRA,
-    STUB_ISSUE_LABELS: M1_ISSUE_LABELS,
-    STUB_ISSUE_CODE: '422',
-  },
-  // (g): the same run, with both issue reads answering 404.
-  followupRead404: {
-    STUB_GATE_RECEIPT: M1_GATE_RECEIPT,
-    STUB_REPORT: M1_REPORT,
-    STUB_PLAN_EXTRA: CLOSES_EXTRA,
-    STUB_ISSUE_LABELS: M1_ISSUE_LABELS,
-    STUB_ISSUE_READ_CODE: '404',
-  },
-  // (h): residuals, but a plan with no `**Closes:**` line at all — and
-  // `STUB_ISSUE_LABELS` unset, so the rig's `[]` default stands.
-  followupNoCloses: { STUB_GATE_RECEIPT: M1_GATE_RECEIPT, STUB_REPORT: M1_REPORT },
-  // (e): the parked run that opens no PR — engine exit 1, `NEEDS_ACK`, zero
-  // commits ahead (`test_sandbox_boot.mjs`'s own no-PR recipe) — carrying M1's
-  // receipt, whose two external acks are residuals with no PR to hang off.
+  // #869's leg (c): the parked run that opens no PR — engine exit 1,
+  // `NEEDS_ACK`, zero commits ahead (`test_sandbox_boot.mjs`'s own no-PR
+  // recipe) — carrying M1's receipt, whose two external acks are residuals with
+  // no PR to hang off. The record is still committed, so the rows are still
+  // written.
   parkedNoPr: {
     STUB_VERDICT: 'NEEDS_ACK',
     STUB_NO_COMMITS: '1',
@@ -263,9 +273,9 @@ function residualSection(body) {
   return out
 }
 
-// ── (a) the seven lines, and where they sit  [M1] ────────────────────────────
+// ── (a) the seven lines, and where they sit  [#711 M1] ───────────────────────
 
-test('a receipt and a report full of residuals render the seven checklist lines, in order  [M1 / leg (a)]', () => {
+test('a receipt and a report full of residuals render the seven checklist lines, in order  [#711 M1 / leg (a)]', () => {
   const body = bodyOf('m1')
   assert.deepEqual(
     residualSection(body).filter(isChecklist),
@@ -279,7 +289,7 @@ test('a receipt and a report full of residuals render the seven checklist lines,
     'and no other line of the body begins `- [ ] `:\n---\n' + body)
 })
 
-test('`### Residuals` sits after the Plan link line and before the first `Closes #` line  [M1 / leg (a)]', () => {
+test('`### Residuals` sits after the Plan link line and before the first `Closes #` line  [#711 M1 / leg (a)]', () => {
   const body = bodyOf('m1')
   const all = body.split('\n')
 
@@ -304,9 +314,9 @@ test('`### Residuals` sits after the Plan link line and before the first `Closes
     'the two `Closes` lines are still the body\'s last two:\n---\n' + body)
 })
 
-// ── (b) what is NOT a residual  [M1] ─────────────────────────────────────────
+// ── (b) what is NOT a residual  [#711 M1] ────────────────────────────────────
 
-test('the runtime ack, the blocking finding and the failed task\'s notes appear nowhere in the body  [M1 / leg (b)]', () => {
+test('the runtime ack, the blocking finding and the failed task\'s notes appear nowhere in the body  [#711 M1 / leg (b)]', () => {
   const body = bodyOf('m1')
 
   // The premise, so this leg is a FILTERING claim and not an empty body: the
@@ -327,9 +337,9 @@ test('the runtime ack, the blocking finding and the failed task\'s notes appear 
   }
 })
 
-// ── (c) the default record has no residuals  [M2] ────────────────────────────
+// ── (c) the default record has no residuals  [#711 M2] ───────────────────────
 
-test('the rig\'s default receipt and report render no section and no checklist line  [M2 / leg (c)]', () => {
+test('the rig\'s default receipt and report render no section and no checklist line  [#711 M2 / leg (c)]', () => {
   const body = bodyOf('defaults')
   const all = body.split('\n')
   assert.deepEqual(all.filter((l) => l === HEADING), [],
@@ -340,13 +350,13 @@ test('the rig\'s default receipt and report render no section and no checklist l
     'the body\'s last lines are still the plan\'s two `Closes` lines:\n---\n' + body)
 })
 
-// Task 1's leg (d) is the Proof's `Run: node fleet/tests/test_sandbox_boot.mjs`
+// #711 task 1's leg (d) is that task's `Run: node fleet/tests/test_sandbox_boot.mjs`
 // — that sim's `Closes` and card legs read this same body, and the driver runs
-// it. (Task 2's own leg (d) is further down, with the rest of its legs.)
+// it.
 
-// ── (e) a newline inside a detail  [M3] ──────────────────────────────────────
+// ── (e) a newline inside a detail  [#711 M3] ─────────────────────────────────
 
-test('a detail carrying a newline renders as exactly one checklist line  [M3 / leg (e)]', () => {
+test('a detail carrying a newline renders as exactly one checklist line  [#711 M3 / leg (e)]', () => {
   const body = bodyOf('newline')
   assert.deepEqual(checklistLines(body), [NEWLINE_LINE],
     'one ack whose detail holds a newline is ONE line, the break become a space:\n---\n' + body)
@@ -354,9 +364,9 @@ test('a detail carrying a newline renders as exactly one checklist line  [M3 / l
     'and it is the section\'s only line:\n---\n' + body)
 })
 
-// ── (f) no report.json at all  [M3] ──────────────────────────────────────────
+// ── (f) no report.json at all  [#711 M3] ─────────────────────────────────────
 
-test('a run whose evidence holds no report.json still renders the receipt\'s one line  [M3 / leg (f)]', () => {
+test('a run whose evidence holds no report.json still renders the receipt\'s one line  [#711 M3 / leg (f)]', () => {
   const ctx = ctxOf('noReport')
   const report = path.join(evidenceDir(ctx), RUN_PATH, 'report.json')
   assert.equal(fs.existsSync(report), false,
@@ -369,7 +379,7 @@ test('a run whose evidence holds no report.json still renders the receipt\'s one
     'under `### Residuals`:\n---\n' + body)
 })
 
-// ── (g) the rig's two knobs  [M4] ────────────────────────────────────────────
+// ── (g) the rig's two knobs  [#711 M4] ───────────────────────────────────────
 //
 // Read through the EVIDENCE COPY the boot commits — `collect_evidence` copies
 // both documents out of the run directory, so what the copy holds is what the
@@ -382,316 +392,424 @@ const readEvidence = (key, name) => {
   return fs.readFileSync(f, 'utf8')
 }
 
-test('STUB_GATE_RECEIPT writes that document and one newline  [M4 / leg (g)]', () => {
+test('STUB_GATE_RECEIPT writes that document and one newline  [#711 M4 / leg (g)]', () => {
   assert.equal(readEvidence('knobReceipt', 'gate-receipt.json'), `${KNOB_GATE_RECEIPT}\n`,
     'the evidence copy is the supplied string plus exactly one trailing newline')
 })
 
-test('STUB_REPORT writes that document and one newline  [M4 / leg (g)]', () => {
+test('STUB_REPORT writes that document and one newline  [#711 M4 / leg (g)]', () => {
   assert.equal(readEvidence('knobReport', 'report.json'), `${KNOB_REPORT}\n`,
     'the evidence copy is the supplied string plus exactly one trailing newline')
 })
 
-test('STUB_REPORT set to the empty string writes no report.json at all  [M4 / leg (g)]', () => {
+test('STUB_REPORT set to the empty string writes no report.json at all  [#711 M4 / leg (g)]', () => {
   const f = evidenceFile('noReport', 'report.json')
   assert.equal(fs.existsSync(f), false,
     `an empty STUB_REPORT means NO report — not an empty one — so ${f} must be absent`)
 })
 
-test('with neither knob set the two records are the rig\'s defaults  [M4 / leg (g)]', () => {
+test('with neither knob set the two records are the rig\'s defaults  [#711 M4 / leg (g)]', () => {
   assert.equal(readEvidence('defaults', 'gate-receipt.json'), `${DEFAULT_GATE_RECEIPT}\n`)
   assert.equal(readEvidence('defaults', 'report.json'), `${DEFAULT_REPORT}\n`)
 })
 
 // ═════════════════════════════════════════════════════════════════════════════
-// #711 Task 2 — the follow-up issue
+// #869 task 1 — the ledger row file, and the issue that is no longer filed
 // ═════════════════════════════════════════════════════════════════════════════
+
+/** `<evidence worktree>/.ultrapowers/runs/7/residuals.jsonl` — the row file, on
+ *  the record the run commits and tags. */
+const rowsPath = (key) => path.join(evidenceDir(ctxOf(key)), RUN_PATH, ROWS_NAME)
+
+/** Its rows, one parsed JSON object per line, IN FILE ORDER. Fails when the
+ *  file is absent — a leg that expects none asks `fs.existsSync` instead. */
+function rowsOf(key) {
+  const f = rowsPath(key)
+  assert.ok(fs.existsSync(f), `${key}: ${f} does not exist`)
+  const raw = fs.readFileSync(f, 'utf8')
+  return raw.split('\n').filter((l) => l !== '').map((line, i) => {
+    let row
+    try {
+      row = JSON.parse(line)
+    } catch (error) {
+      throw new Error(`${f} line ${i + 1} is not one JSON object: ${line}\n${error}`)
+    }
+    assert.ok(row && typeof row === 'object' && !Array.isArray(row),
+      `${f} line ${i + 1} is not a JSON object: ${line}`)
+    return row
+  })
+}
+
+/** A row's keys, sorted — compared against `ROW_KEYS` by equality, so a missing
+ *  key and an extra one both fail. */
+const keysOf = (row) => Object.keys(row).sort()
+/** One cell of every row, in row order. */
+const cells = (rows, key) => rows.map((r) => r[key])
+/** The rows as text, for a failure a reader can act on. */
+const showRows = (rows) => rows.map((r) => JSON.stringify(r)).join('\n')
+
+// ── (a) the M1 record's seven rows  [M1] ─────────────────────────────────────
+
+test('the M1 record leaves seven rows, each with the seven keys, `run-7` and the base sha  [M1 / leg (a)]', () => {
+  const rows = rowsOf('m1')
+  assert.equal(rows.length, 7,
+    `${rowsPath('m1')} holds exactly seven lines, one per residual, and holds`
+      + ` ${rows.length}:\n${showRows(rows)}`)
+
+  rows.forEach((row, i) => {
+    assert.deepEqual(keysOf(row), ROW_KEYS,
+      `row ${i + 1} carries exactly the keys ${ROW_KEYS.join(', ')} — no more, no fewer:`
+        + ` ${JSON.stringify(row)}`)
+  })
+
+  assert.deepEqual(cells(rows, 'run'), Array(7).fill(RUN_ID),
+    `every row's \`run\` is \`${RUN_ID}\`:\n${showRows(rows)}`)
+  assert.deepEqual(cells(rows, 'sha'), Array(7).fill(BASE_SHA),
+    `every row's \`sha\` is the assignment's \`base=\` (${BASE_SHA}):\n${showRows(rows)}`)
+})
+
+test('the seven rows carry M1\'s `kind` and `task` sequences, `task` a string where a task owns it  [M1 / leg (a)]', () => {
+  const rows = rowsOf('m1')
+  assert.deepEqual(cells(rows, 'kind'), M1_KINDS,
+    'the two external acks are `deferred`, the two minor critic findings `structural`,'
+      + ` the three reviewer pieces \`nit\`:\n${showRows(rows)}`)
+  // `deepEqual` under `node:assert/strict` is the strict one: a `task` of 1 as a
+  // NUMBER is not `"1"`, and an absent `task` is not `null`.
+  assert.deepEqual(cells(rows, 'task'), M1_TASKS,
+    'what no task owns is `null`; a reviewer piece carries its row\'s `task` AS A STRING:'
+      + `\n${showRows(rows)}`)
+})
+
+test('the seven rows\' `text` values are the PR body\'s seven checklist lines less their `- [ ] <name> — ` prefix  [M1 / leg (a)]', () => {
+  const checklist = residualSection(bodyOf('m1')).filter(isChecklist)
+  assert.deepEqual(checklist, M1_LINES,
+    'the premise: this run\'s PR body carries M1\'s seven checklist lines:\n'
+      + checklist.join('\n'))
+
+  const expected = checklist.map((l, i) => textOf(l, M1_NAMES[i]))
+  assert.deepEqual(expected, M1_TEXTS,
+    'and stripping the name prefix off the body\'s lines is M1\'s seven texts')
+
+  const rows = rowsOf('m1')
+  assert.deepEqual(cells(rows, 'text'), expected,
+    'each row\'s `text` is its checklist item\'s text — the name and the em dash gone,'
+      + ` the detail's own em dashes kept:\n${showRows(rows)}`)
+})
+
+// ── (b) the kind mapping and the path token  [M2] ────────────────────────────
+
+test('`cannot verify` and `could not verify` make a piece `unverified`, anything else `nit`  [M2 / leg (b)]', () => {
+  const rows = rowsOf('verify')
+  assert.deepEqual(cells(rows, 'text'), VERIFY_TEXTS,
+    'the premise: the one done task\'s three `; ` pieces are these three rows:\n'
+      + showRows(rows))
+  assert.deepEqual(cells(rows, 'kind'), VERIFY_KINDS,
+    'a piece whose LOWERCASED text holds `cannot verify` is `unverified`; one holding'
+      + ' `could not verify` — here written `Could not verify` — is `unverified`; a piece'
+      + ` holding neither is \`nit\`:\n${showRows(rows)}`)
+})
+
+test('a piece carrying a path token fills `file` and `line`, and one with no `/` token leaves both null  [M2 / leg (b)]', () => {
+  const rows = rowsOf('verify')
+  assert.equal(rows.length, 3, `three pieces, three rows:\n${showRows(rows)}`)
+
+  assert.equal(rows[2].file, TOKEN_FILE,
+    '`file` is the first whitespace-delimited token carrying a `/`, its trailing'
+      + ` \`:<digits>\` cut: ${JSON.stringify(rows[2])}`)
+  assert.equal(rows[2].line, TOKEN_LINE,
+    `\`line\` is that token's trailing \`:<digits>\` as an INTEGER: ${JSON.stringify(rows[2])}`)
+
+  for (const i of [0, 1]) {
+    assert.equal(rows[i].file, null,
+      `a piece with no \`/\`-bearing token has \`file\` null: ${JSON.stringify(rows[i])}`)
+    assert.equal(rows[i].line, null,
+      `and \`line\` null: ${JSON.stringify(rows[i])}`)
+  }
+
+  // M1's seven texts carry no path token at all, so every one of those rows is
+  // null on both cells too.
+  const m1 = rowsOf('m1')
+  assert.deepEqual(cells(m1, 'file'), Array(7).fill(null),
+    `none of M1's seven texts carries a path token:\n${showRows(m1)}`)
+  assert.deepEqual(cells(m1, 'line'), Array(7).fill(null), `and none carries a line:\n${showRows(m1)}`)
+})
+
+// ── (c) no item, no file — and a parked run still writes one  [M3] ───────────
+
+test('the rig\'s default record leaves no residuals.jsonl at all — absent, not empty  [M3 / leg (c)]', () => {
+  // The premise: this run DID commit its record, so what is missing is the row
+  // file and not the whole evidence directory.
+  assert.ok(fs.existsSync(evidenceFile('defaults', 'report.json')),
+    'the premise: the default run copied its report onto the record')
+
+  assert.equal(fs.existsSync(rowsPath('defaults')), false,
+    `a run with no residual writes NO file — not an empty one — so ${rowsPath('defaults')}`
+      + ' must not exist')
+})
+
+test('the parked run that opens no PR still leaves the receipt\'s two `deferred` rows  [M3 / leg (c)]', () => {
+  const ctx = ctxOf('parkedNoPr')
+  assert.equal(prPosts(ctx).length, 0, 'the premise: this run opened no PR')
+
+  const rows = rowsOf('parkedNoPr')
+  assert.equal(rows.length, 2,
+    `the receipt's two \`deferred:external\` acks are two rows, and the file holds`
+      + ` ${rows.length}:\n${showRows(rows)}`)
+  rows.forEach((row, i) => {
+    assert.deepEqual(keysOf(row), ROW_KEYS,
+      `row ${i + 1} carries exactly the seven keys: ${JSON.stringify(row)}`)
+  })
+  assert.deepEqual(cells(rows, 'kind'), ['deferred', 'deferred'],
+    `both rows are \`deferred\`:\n${showRows(rows)}`)
+  assert.deepEqual(cells(rows, 'task'), [null, null],
+    `neither is owned by a task:\n${showRows(rows)}`)
+  assert.deepEqual(cells(rows, 'text'), M1_TEXTS.slice(0, 2),
+    'their `text` values are the two external acks\' details, whole and in the receipt\'s'
+      + ` order:\n${showRows(rows)}`)
+  assert.deepEqual(cells(rows, 'run'), [RUN_ID, RUN_ID])
+  assert.deepEqual(cells(rows, 'sha'), [BASE_SHA, BASE_SHA])
+})
+
+// ── (d) the file is committed WITH the record  [M4] ──────────────────────────
 //
-// The same items, a second time, where a person will find them: one issue per
-// run, filed from `publish` after the `publish:pr` event and before the merge.
-// The sink is never a gate — a refused POST is one log line and the run's fate
-// stays the merge's.
+// `$FLEET_HOME/trees.log` is the rig's `git commit` arm listing
+// `<evidence worktree>/.ultrapowers/runs/7` at EVERY commit, one space-separated
+// line per commit. The LAST line is therefore the tree as the last commit left
+// it — a row file written after that commit would not be in it.
+
+const treesPath = (key) => path.join(ctxOf(key).home, 'trees.log')
+/** Its lines, `[]` when the file does not exist. */
+const treesLines = (key) => {
+  const f = treesPath(key)
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l !== '') : []
+}
+/** One line's names — the `ls` listing the arm wrote, space-separated. */
+const namesIn = (line) => line.split(' ').filter((s) => s !== '')
+
+test('the M1 boot\'s LAST commit lists residuals.jsonl in the run directory  [M4 / leg (d)]', () => {
+  const all = treesLines('m1')
+  assert.ok(all.length >= 1,
+    `${treesPath('m1')} holds one line per commit, and this run committed — it holds none`)
+
+  const last = namesIn(all[all.length - 1])
+  assert.ok(last.includes(ROWS_NAME),
+    `the tree at the last commit carries \`${ROWS_NAME}\`, and it lists:\n`
+      + `${last.join(' ')}\n---\n${all.join('\n')}`)
+  // The premise, so this is a claim about the ROW FILE and not about a rig arm
+  // that lists everything or nothing: the record's own documents are there too.
+  for (const name of ['report.json', 'gate-receipt.json', 'status.json']) {
+    assert.ok(last.includes(name),
+      `the premise: the last commit's tree also carries \`${name}\`:\n${last.join(' ')}`)
+  }
+})
+
+test('the default boot commits no residuals.jsonl at any commit  [M4 / leg (d)]', () => {
+  const all = treesLines('defaults')
+  assert.ok(all.length >= 1,
+    `${treesPath('defaults')} holds one line per commit, and this run committed — it holds none`)
+
+  const carrying = all.filter((l) => namesIn(l).includes(ROWS_NAME))
+  assert.deepEqual(carrying, [],
+    `no commit of a run with no residual carries \`${ROWS_NAME}\`, and these do:\n`
+      + carrying.join('\n'))
+})
+
+// ── (e) no issue is filed  [M5] ──────────────────────────────────────────────
 
 /** One case's boot stream, timestamps already stripped by `stream`. */
 const streamOf = (key) => stream(ctxOf(key))
-/** How many stream lines are exactly `line`. */
-const sayCount = (key, line) => streamOf(key).filter((l) => l === line).length
-/** The index of the one stream line equal to `line`; fails when there is none. */
-function sayAt(key, line) {
-  const at = streamOf(key).indexOf(line)
-  assert.ok(at >= 0,
-    `${key}: the boot stream carries no \`${line}\` line:\n${streamOf(key).join('\n')}`)
-  return at
-}
-
-/** `$FLEET_HOME/issues.log` — written by the rig's `POST …/issues` arm, the
- *  way `pr.log` is written by its `/pulls` arm, and ABSENT when no POST was
- *  ever made. */
-const issuesLogPath = (key) => path.join(ctxOf(key).home, 'issues.log')
-/** Its raw lines, `[]` when the file does not exist. */
-const issuesLogLines = (key) => {
-  const f = issuesLogPath(key)
-  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l !== '') : []
-}
-/** Every POST /issues payload the run made, parsed. */
-const issuePosts = (key) => issuesLogLines(key).map((l) => JSON.parse(l))
-
 /** Every curl argv the run recorded. */
 const curlArgvs = (key) => argvLines(ctxOf(key), 'curl')
-/** The one https word of a curl argv. */
-const urlOf = (argv) => argv.find((s) => s.startsWith('https://'))
-/** The curl argv of the POST to `…/issues` (never a read, whose URL carries a
- *  number after it), or undefined. */
-const issuePostArgv = (key) => curlArgvs(key).find((a) => a.some((s) => s.endsWith('/issues')))
-/** The curl argvs of the issue READS, in call order. */
-const issueReadArgvs = (key) =>
-  curlArgvs(key).filter((a) => a.some((s) => /\/issues\/[0-9]+$/.test(s)))
+/** `$FLEET_HOME/issues.log` — what the rig's `POST …/issues` arm writes, and it
+ *  still writes it, so an absent file is a POST that was never made. */
+const issuesLogPath = (key) => path.join(ctxOf(key).home, 'issues.log')
 
-/** The run's own event log — the file the engine writes and the boot script
- *  appends to, one JSON object per line, IN FILE ORDER. */
+/** The run's own event log, one JSON object per line, IN FILE ORDER. */
 const eventsOf = (key) => {
   const f = path.join(targetDir(ctxOf(key)), RUN_DIR_PATH, 'events.jsonl')
   if (!fs.existsSync(f)) return []
   return fs.readFileSync(f, 'utf8').split('\n').filter((l) => l !== '').map((line, i) => {
     try {
-      const record = JSON.parse(line)
-      assert.ok(record && typeof record === 'object' && !Array.isArray(record),
-        `${f} line ${i + 1} is not a JSON object: ${line}`)
-      return record
+      return JSON.parse(line)
     } catch (error) {
       throw new Error(`${f} line ${i + 1} is not one JSON object: ${line}\n${error}`)
     }
   })
 }
-/** A record less its `id`/`ts` stamp, so a leg can assert its whole content. */
-const unstamped = (e) => {
-  const rest = { ...e }
-  delete rest.id
-  delete rest.ts
-  return rest
-}
-const followupEvents = (key) => eventsOf(key).filter((e) => e.kind === 'publish:followup')
 
-// ── (a) two reads and one POST, between the PR and the checks  [M1] ──────────
+test('the M1 run with two `**Closes:**` tickets makes no `…/issues` call of either shape  [M5 / leg (e)]', () => {
+  const argvs = curlArgvs('m1')
+  const show = argvs.map((a) => a.find((s) => s.startsWith('https://')) || a.join(' ')).join('\n')
 
-test('the two issue reads and the one POST /issues sit after the PR POST and before the first check-runs read  [M1 / leg (a)]', () => {
-  const s = streamOf('followup')
+  const collection = argvs.filter((a) => a.some((s) => s.endsWith('/issues')))
+  assert.deepEqual(collection.map((a) => a.join(' ')), [],
+    `no curl call POSTs to a \`…/issues\` collection:\n${show}`)
+  const reads = argvs.filter((a) => a.some((s) => /\/issues\/[0-9]+$/.test(s)))
+  assert.deepEqual(reads.map((a) => a.join(' ')), [],
+    `and none reads a \`…/issues/<n>\` document — the tickets are not read for labels:\n${show}`)
+
+  // The premise: this run DID talk to the edge, so the absence above is an
+  // absence of issue calls and not of curl.
+  assert.ok(argvs.some((a) => a.some((s) => s.endsWith('/pulls'))),
+    `the premise: this run POSTed its PR:\n${show}`)
+
+  // Nor through `gh`: a filing that went out another way is still a filing.
+  assert.deepEqual(argvLines(ctxOf('m1'), 'gh'), [],
+    'and the `gh` stub is never reached')
+})
+
+test('the M1 run\'s log carries no issue line and no `followup:` line, and writes no issues.log  [M5 / leg (e)]', () => {
+  const s = streamOf('m1')
   const show = `\n---\n${s.join('\n')}`
 
-  const prCreate = sayAt('followup', 'CALL curl pr create')
-  const read660 = sayAt('followup', 'CALL curl issue read 660')
-  const read668 = sayAt('followup', 'CALL curl issue read 668')
-  const create = sayAt('followup', 'CALL curl issue create')
-  const checks = sayAt('followup', 'CALL curl check-runs 1')
-
-  // Exactly two reads, and they are these two, in the plan's order.
-  const reads = s.filter((l) => l.startsWith('CALL curl issue read'))
-  assert.deepEqual(reads, ['CALL curl issue read 660', 'CALL curl issue read 668'],
-    'the tickets `**Closes:** #660 #668` names are read once each, in the plan\'s'
-      + ` order and no others:${show}`)
-
-  // Exactly one POST — one PR is one filing.
-  assert.equal(sayCount('followup', 'CALL curl issue create'), 1,
-    `exactly one POST …/issues is made:${show}`)
-
-  // Where the filing sits: after the PR exists (its `html_url` is the issue
-  // body's first line) and before the merge machinery starts reading checks.
-  for (const [name, at] of [['issue read 660', read660], ['issue read 668', read668],
-    ['issue create', create]]) {
-    assert.ok(at > prCreate,
-      `\`curl ${name}\` (${at}) must follow \`curl pr create\` (${prCreate}):${show}`)
-    assert.ok(at < checks,
-      `\`curl ${name}\` (${at}) must precede \`curl check-runs 1\` (${checks}):${show}`)
+  for (const prefix of ['CALL curl issue read', 'CALL curl issue create', 'followup:']) {
+    const carrying = s.filter((l) => l.startsWith(prefix))
+    assert.deepEqual(carrying, [],
+      `no line of the boot log begins \`${prefix}\`:${show}`)
   }
-  assert.ok(create > read660 && create > read668,
-    `\`curl issue create\` (${create}) must follow both issue reads`
-      + ` (${read660}, ${read668}) — the labels are read before they are posted:${show}`)
+  assert.equal(fs.existsSync(issuesLogPath('m1')), false,
+    `the rig's POST arm still writes ${issuesLogPath('m1')} when a POST is made, so its`
+      + ' absence is a POST that was never made')
 })
 
-// ── (b) the POST's shape and its payload  [M1] ───────────────────────────────
-
-test('the POST /issues is one `fleet_curl` against the PR\'s own edge, and its payload is the title, the labels and the body  [M1 / leg (b)]', () => {
-  const argv = issuePostArgv('followup')
-  assert.ok(argv,
-    'no curl argv POSTs to …/issues; the run\'s curl calls were:\n'
-      + curlArgvs('followup').map((a) => urlOf(a) || a.join(' ')).join('\n'))
-
-  // The edge, never `gh`: `https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues`.
-  assert.equal(urlOf(argv), ISSUES_URL, `the POST goes to the PR's own edge: ${argv.join(' ')}`)
-
-  const x = argv.indexOf('-X')
-  assert.ok(x >= 0 && argv[x + 1] === 'POST', `the call carries \`-X POST\`: ${argv.join(' ')}`)
-  assert.ok(
-    argv.some((s, i) => s === '-H' && argv[i + 1] === 'content-type: application/json'),
-    `the call carries \`-H 'content-type: application/json'\`: ${argv.join(' ')}`,
-  )
-  const d = argv.indexOf('-d')
-  assert.ok(d >= 0 && typeof argv[d + 1] === 'string' && argv[d + 1] !== '',
-    `the payload rides after \`-d\`: ${argv.join(' ')}`)
-
-  const posts = issuePosts('followup')
-  assert.equal(posts.length, 1, 'exactly one payload reached the rig\'s issues.log')
-  const payload = posts[0]
-
-  assert.equal(payload.title, FOLLOWUP_TITLE,
-    'the title is `fleet $RUN_ID residuals: $(plan_title)`')
-  assert.deepEqual(payload.labels, M1_LABELS,
-    '`watch-item` first, then each PROGRAM label once in the order first seen —'
-      + ' `enhancement` is not one and is absent: ' + JSON.stringify(payload.labels))
-
-  // The body is the PR's URL, an empty line, then the SAME lines the PR body's
-  // `### Residuals` section carries — byte for byte, in the same order.
-  const L = residualSection(bodyOf('followup')).filter(isChecklist)
-  assert.equal(L.length, 7,
-    'the premise: this run\'s PR body carries M1\'s seven checklist lines, and it carries '
-      + `${L.length}:\n${L.join('\n')}`)
-  assert.deepEqual(payload.body.split('\n'), [PR_URL, '', ...L],
-    'the issue body is the PR URL, an empty line, then the seven `- [ ]` lines'
-      + ` verbatim:\n---\n${payload.body}`)
-})
-
-// ── (c) the log line and the event  [M1] ─────────────────────────────────────
-
-test('a filed follow-up is one log line and one `publish:followup` event, after `publish:pr`  [M1 / leg (c)]', () => {
-  const s = streamOf('followup')
-  assert.ok(s.includes(`followup: ${FOLLOWUP_URL}`),
-    `the boot log carries the line \`followup: ${FOLLOWUP_URL}\`:\n---\n${s.join('\n')}`)
-
-  const all = eventsOf('followup')
+test('the M1 run records no `publish:followup` event, still merges, still reaches `done`  [M5 / leg (e)]', () => {
+  const all = eventsOf('m1')
   const followups = all.filter((e) => e.kind === 'publish:followup')
-  assert.equal(followups.length, 1,
-    'the run records exactly one `publish:followup` event:\n'
+  assert.deepEqual(followups, [],
+    'nothing that is not filed is recorded as filed:\n'
       + all.map((e) => JSON.stringify(e)).join('\n'))
-  assert.deepEqual(unstamped(followups[0]), {
-    kind: 'publish:followup', url: FOLLOWUP_URL, items: 7,
-  }, 'the record less its `id`/`ts` stamp — `items` is the number of lines filed, an integer')
+  // The premise: the publish record is still written — what went is the one kind.
+  assert.ok(all.some((e) => e.kind === 'publish:pr'),
+    'the premise: this run recorded its `publish:pr` event')
 
-  const at = all.findIndex((e) => e.kind === 'publish:followup')
-  const pr = all.findIndex((e) => e.kind === 'publish:pr')
-  assert.ok(pr >= 0, 'the premise: this run recorded its `publish:pr` event')
-  assert.ok(at > pr,
-    `the follow-up's record (line ${at + 1}) follows the PR's (line ${pr + 1})`)
-})
-
-// ── (d) no residual, no sink  [M2] ───────────────────────────────────────────
-
-test('the rig\'s default record files no issue at all — no read, no POST, no event  [M2 / leg (d)]', () => {
-  // The premise: this run DID publish, so what is missing is the sink and not
-  // the whole publish.
-  assert.equal(prPosts(ctxOf('defaults')).length, 1, 'the premise: this run opened its PR')
-
-  assert.deepEqual(streamOf('defaults').filter((l) => l.includes('curl issue')), [],
-    'a run with no residuals reads no issue and creates none:\n---\n'
-      + streamOf('defaults').join('\n'))
-  assert.equal(fs.existsSync(issuesLogPath('defaults')), false,
-    `no POST …/issues was made, so ${issuesLogPath('defaults')} must not exist`)
-  assert.deepEqual(followupEvents('defaults'), [],
-    'and no `publish:followup` event is appended')
-})
-
-// ── (e) a run that opens no PR files nothing  [M2] ───────────────────────────
-
-test('a run that opens no PR files no follow-up, residuals or not  [M2 / leg (e)]', () => {
-  const ctx = ctxOf('parkedNoPr')
-  assert.equal(prPosts(ctx).length, 0, 'the premise: this run opened no PR')
-
-  assert.deepEqual(stream(ctx).filter((l) => l.includes('curl issue')), [],
-    'no issue is read and none is created:\n---\n' + stream(ctx).join('\n'))
-  assert.equal(fs.existsSync(issuesLogPath('parkedNoPr')), false,
-    `no POST …/issues was made, so ${issuesLogPath('parkedNoPr')} must not exist`)
-})
-
-// ── (f) a refused POST never holds the run  [M3] ─────────────────────────────
-
-test('a POST answered 422 is one log line — the run still merges and still reaches `done`  [M3 / leg (f)]', () => {
-  const s = streamOf('followup422')
-  const show = `\n---\n${s.join('\n')}`
-
+  const s = streamOf('m1')
   assert.ok(s.includes('CALL curl pr merge'),
-    `the merge PUT is made as before — the sink is never a gate:${show}`)
-  assert.ok(s.includes(`followup: POST /repos/${TARGET}/issues answered 422`),
-    'the refusal is exactly one log line,'
-      + ` \`followup: POST /repos/${TARGET}/issues answered 422\`:${show}`)
-
-  assert.equal(statusOf(ctxOf('followup422')).state, 'done',
-    'the final status page is still `done`')
-  assert.deepEqual(followupEvents('followup422'), [],
-    'and nothing that was not filed is recorded as filed')
+    `the run still makes its merge PUT:\n---\n${s.join('\n')}`)
+  assert.equal(statusOf(ctxOf('m1')).state, 'done',
+    'and the final status page is `done`')
 })
 
-// ── (g) a read that answers 404 keeps nothing, and still files  [M3] ─────────
-
-test('issue reads answered 404 still file the follow-up, with `labels` exactly `["watch-item"]`  [M3 / leg (g)]', () => {
-  assert.equal(sayCount('followupRead404', 'CALL curl issue create'), 1,
-    'the POST is still made when the label reads answer nothing:\n---\n'
-      + streamOf('followupRead404').join('\n'))
-
-  const posts = issuePosts('followupRead404')
-  assert.equal(posts.length, 1, 'exactly one payload reached the rig\'s issues.log')
-  assert.deepEqual(posts[0].labels, BARE_LABELS,
-    'a read that answered non-2xx keeps nothing, so only the program label is left: '
-      + JSON.stringify(posts[0].labels))
+test('the PR body still carries the same seven `- [ ]` lines under `### Residuals`  [M5 / leg (e)]', () => {
+  const body = bodyOf('m1')
+  assert.deepEqual(residualSection(body).filter(isChecklist), M1_LINES,
+    'the checklist is unchanged by the filing that no longer happens:\n---\n' + body)
+  assert.deepEqual(checklistLines(body), M1_LINES,
+    'and it is still the body\'s only `- [ ] ` block:\n---\n' + body)
 })
 
-// ── (h) a plan that closes nothing  [M4] [M5] ────────────────────────────────
-
-test('a plan with no `**Closes:**` line reads no issue and files with `labels` exactly `["watch-item"]`  [M4 / leg (h)]', () => {
-  const s = streamOf('followupNoCloses')
-  const show = `\n---\n${s.join('\n')}`
-
-  assert.deepEqual(s.filter((l) => l.startsWith('CALL curl issue read')), [],
-    `no ticket is named, so no issue is read:${show}`)
-  assert.equal(sayCount('followupNoCloses', 'CALL curl issue create'), 1,
-    `and the follow-up is filed all the same:${show}`)
-
-  const posts = issuePosts('followupNoCloses')
-  assert.equal(posts.length, 1, 'exactly one payload reached the rig\'s issues.log')
-  assert.deepEqual(posts[0].labels, BARE_LABELS,
-    'nothing was read, so `labels` is the program label alone: '
-      + JSON.stringify(posts[0].labels))
-  assert.equal(posts[0].title, FOLLOWUP_TITLE,
-    'and the title is still `fleet $RUN_ID residuals: $(plan_title)`')
-})
-
-// ── (i) the rig's read arm: its URL and its line  [M5] ───────────────────────
-
-test('each ticket is read at `…/repos/popmechanic/smoke/issues/<n>`, one `curl issue read` line each  [M5 / leg (i)]', () => {
-  const reads = issueReadArgvs('followup')
-  assert.deepEqual(reads.map(urlOf), TICKETS.map((n) => `${ISSUES_URL}/${n}`),
-    'the two reads go to the edge\'s `/repos/<owner>/<repo>/issues/<n>`, in the plan\'s order:\n'
-      + curlArgvs('followup').map((a) => urlOf(a) || a.join(' ')).join('\n'))
-
-  const s = streamOf('followup')
-  for (const n of TICKETS) {
-    assert.equal(sayCount('followup', `CALL curl issue read ${n}`), 1,
-      `the rig logs \`curl issue read ${n}\` once:\n---\n${s.join('\n')}`)
+test('`fleet/sandbox-boot.sh` carries none of the five retired names  [M5 / leg (e)]', () => {
+  const source = fs.readFileSync(path.join(REPO, 'fleet', 'sandbox-boot.sh'), 'utf8')
+  const all = source.split('\n')
+  for (const name of RETIRED_SOURCE) {
+    const carrying = all
+      .map((l, i) => [i + 1, l])
+      .filter(([, l]) => l.includes(name))
+      .map(([n, l]) => `${n}: ${l}`)
+    assert.deepEqual(carrying, [],
+      `no line of \`fleet/sandbox-boot.sh\` may carry \`${name}\`, and these do:\n`
+        + carrying.join('\n'))
   }
-  assert.equal(sayCount('followup', 'CALL curl issue create'), 1,
-    `and \`curl issue create\` once:\n---\n${s.join('\n')}`)
 })
 
-// ── (j) the rig's create arm: what it appends is what was sent  [M5] ─────────
+// ── (f) the two documents  [M6] ──────────────────────────────────────────────
+//
+// The same reads the Proof's `Run:` lines make, from here: the four retired
+// strings, the record-list sentence, the two orderings inside the
+// `- **Publish:**` bullet, and the docs test's own literals. (The `Run:` that
+// runs `tests/test_docs_agree_with_code.py` green is the Proof's own and is not
+// re-run from inside this file.)
 
-test('issues.log holds exactly the one payload the POST carried after `-d`  [M5 / leg (j)]', () => {
-  const raw = issuesLogLines('followup')
-  assert.equal(raw.length, 1,
-    `${issuesLogPath('followup')} holds exactly one line, and holds ${raw.length}:\n`
-      + raw.join('\n'))
+const readRepoFile = (rel) => {
+  const f = path.join(REPO, rel)
+  assert.ok(fs.existsSync(f), `${f} does not exist`)
+  return fs.readFileSync(f, 'utf8')
+}
+/** The file joined on one line, the way the `Run:`s' `tr '\n' ' '` joins it. */
+const oneLine = (text) => text.split('\n').join(' ')
 
-  const argv = issuePostArgv('followup')
-  assert.ok(argv, 'the premise: a curl argv POSTs to …/issues')
-  const d = argv.indexOf('-d')
-  assert.ok(d >= 0, `the POST carries \`-d\`: ${argv.join(' ')}`)
-  assert.equal(raw[0], argv[d + 1],
-    'the rig appends the payload verbatim — what the log holds is what was sent')
+/** The `- **Publish:**` bullet, from its own line to the `- **Integration
+ *  naming` line, joined on one line — the range the Proof's two `sed -n` `Run:`
+ *  lines print. */
+function publishBullet(contract) {
+  const all = contract.split('\n')
+  const from = all.findIndex((l) => l.startsWith('- **Publish:**'))
+  assert.ok(from >= 0, '`fleet/CONTRACT.md` carries no line beginning `- **Publish:**`')
+  const to = all.findIndex((l, i) => i > from && l.startsWith('- **Integration naming'))
+  assert.ok(to > from,
+    '`fleet/CONTRACT.md` carries no line beginning `- **Integration naming` after the'
+      + ' `- **Publish:**` line')
+  return all.slice(from, to + 1).join(' ')
+}
+
+/** The first problem with reading `needles` in order out of `text`, or null —
+ *  what `grep -q 'a.*b.*c'` answers, as a sentence. */
+function outOfOrder(text, needles) {
+  let at = 0
+  for (const needle of needles) {
+    const i = text.indexOf(needle, at)
+    if (i < 0) {
+      return at === 0
+        ? `\`${needle}\` does not appear at all`
+        : `\`${needle}\` does not appear after the name before it`
+    }
+    at = i + needle.length
+  }
+  return null
+}
+
+test('`fleet/CONTRACT.md` carries none of the four retired strings  [M6 / leg (f)]', () => {
+  const contract = readRepoFile('fleet/CONTRACT.md')
+  const all = contract.split('\n')
+  for (const name of RETIRED_CONTRACT) {
+    const carrying = all
+      .map((l, i) => [i + 1, l])
+      .filter(([, l]) => l.includes(name))
+      .map(([n, l]) => `${n}: ${l}`)
+    assert.deepEqual(carrying, [],
+      `no document may name the per-run follow-up issue as a thing the fleet does, so no`
+        + ` line of \`fleet/CONTRACT.md\` may carry \`${name}\`, and these do:\n`
+        + carrying.join('\n'))
+  }
 })
 
-// ── the edge, not `gh` ───────────────────────────────────────────────────────
+test('the record list names residuals.jsonl in a sentence saying `present when`  [M6 / leg (f)]', () => {
+  const joined = oneLine(readRepoFile('fleet/CONTRACT.md'))
+  assert.ok(/residuals\.jsonl[^.]*present when/.test(joined),
+    '`fleet/CONTRACT.md` names `residuals.jsonl` and says `present when` of it with no `.`'
+      + ' between them — one sentence of the evidence-branch record list')
+})
 
-test('the follow-up is filed through curl — the `gh` stub is never reached  [global constraint]', () => {
-  for (const key of ['followup', 'followup422', 'followupRead404', 'followupNoCloses']) {
-    assert.deepEqual(argvLines(ctxOf(key), 'gh'), [],
-      `${key}: every GitHub call is \`fleet_curl\` against the edge; \`gh\` is called nowhere`)
+test('the `- **Publish:**` bullet reads `### Residuals` … `deferred:external` … `Closes #`, in that order  [M6 / leg (f)]', () => {
+  const bullet = publishBullet(readRepoFile('fleet/CONTRACT.md'))
+  const problem = outOfOrder(bullet, ['### Residuals', 'deferred:external', 'Closes #'])
+  assert.equal(problem, null,
+    `the bullet still describes the checklist and where it sits: ${problem}\n---\n${bullet}`)
+})
+
+test('the `- **Publish:**` bullet reads `residuals.jsonl` … `three event kinds`, in that order  [M6 / leg (f)]', () => {
+  const bullet = publishBullet(readRepoFile('fleet/CONTRACT.md'))
+  const problem = outOfOrder(bullet, ['residuals.jsonl', 'three event kinds'])
+  assert.equal(problem, null,
+    'the bullet names the row file BEFORE it counts the publish record\'s event kinds,'
+      + ` and the count is three: ${problem}\n---\n${bullet}`)
+})
+
+test('`tests/test_docs_agree_with_code.py` names the two new literals and none of the three retired  [M6 / leg (f)]', () => {
+  const docsTest = readRepoFile('tests/test_docs_agree_with_code.py')
+  const all = docsTest.split('\n')
+  for (const name of ['residuals.jsonl', 'three event kinds']) {
+    assert.ok(docsTest.includes(name),
+      `the docs exam reads the bullet for \`${name}\`; a docs exam that never reads it for`
+        + ' the new literals pins nothing')
+  }
+  for (const name of RETIRED_DOCS_TEST) {
+    const carrying = all
+      .map((l, i) => [i + 1, l])
+      .filter(([, l]) => l.includes(name))
+      .map(([n, l]) => `${n}: ${l}`)
+    assert.deepEqual(carrying, [],
+      `no line of \`tests/test_docs_agree_with_code.py\` may carry \`${name}\`, and these do:\n`
+        + carrying.join('\n'))
   }
 })
 

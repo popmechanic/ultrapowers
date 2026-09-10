@@ -131,12 +131,10 @@ PLAN_BLOB_PATH=".ultrapowers/plan.md"
 # name `<plan-stem>.gate-verdicts.json` — so it lands next to the plan under
 # that name, and a plan branch without one is a legacy-grammar plan, not a fault.
 VERDICTS_BLOB_PATH=".ultrapowers/gate-verdicts.json"
-# The label names a follow-up issue may inherit from the tickets its run closed
-# — the programs work is filed under, and nothing else. A ticket's OWN kind
-# (`bug`, `enhancement`) is not the follow-up's: the follow-up is a
-# `watch-item`. An allowlist and not a denylist, so a label the target adds
-# tomorrow lands on no issue this script files.
-PROGRAM_LABELS="merge-frontier experience-compiler verification-frontier peer-review fleet determinism"
+# The residual ledger's name inside the run's directory on the evidence branch:
+# one JSON object per residual, written beside the two documents it is read
+# from. The run's residuals leave the box on the record and nowhere else.
+RESIDUALS_FILE="residuals.jsonl"
 
 # Poll cadences. The defaults are the contract's; the tests set them to 0 so the
 # whole state machine runs in a second.
@@ -785,7 +783,7 @@ evidence_lock() {
 evidence_unlock() { rmdir "$EVIDENCE_LOCK" 2>/dev/null || true; }
 
 collect_evidence() {
-  local dest receipt approve run_dir f rel
+  local dest receipt approve run_dir f rel rows
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   mkdir -p "$dest"
   receipt="$(gate_receipt_path)"
@@ -846,6 +844,18 @@ collect_evidence() {
   # The receipt of the engine binary: written once, before the engine started,
   # so every transition from there on carries it.
   [ -f "$CLAUDE_VERSION_FILE" ] && cp "$CLAUDE_VERSION_FILE" "$dest/claude-version.txt"
+  # The residual ledger, written HERE and not at publish: a PR is closed by its
+  # merge and the checklist in its body closes with it, so the same items go
+  # onto the record, where nothing closes them. Written from the two copies
+  # just made — so every transition after the engine wrote them carries it, and
+  # a parked run that opens no PR still commits it.
+  #
+  # NO ITEM, NO FILE — an absent ledger is a run that left nothing, not a run
+  # that was never read — and a file an earlier transition wrote is left as it
+  # was: the items only grow, so re-reading the same record rewrites the same
+  # bytes and appends nothing.
+  rows="$(residual_rows || true)"
+  if [ -n "$rows" ]; then printf '%s\n' "$rows" >"$dest/$RESIDUALS_FILE"; fi
   cp "$STATUS_FILE" "$dest/status.json" 2>/dev/null || true
   log "evidence: $(ls "$dest" | tr '\n' ' ')"
 }
@@ -1243,16 +1253,36 @@ plan_closes() {
 #
 # Every item is ONE line: a newline inside a detail becomes a space, or the
 # checklist would grow lines no reader could tick.
-residual_items() {
+#
+# TWO RENDERINGS, ONE READER. The same items go out twice — as the card's
+# `- [ ] <name> — <text>` checklist, which a merge closes with the PR, and as
+# `residuals.jsonl` on the evidence branch, which nothing closes. A second
+# parser of the same two documents would be a second answer to the same
+# question, so the mode is an argument and the walk above it is shared.
+residual_read() { # $1 = `checklist` | `rows`
   local dest
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
   # The em dash is written `—` and the lines go out as UTF-8 bytes: this
   # runs under whatever locale the unit inherited, and a `C` one would other-
   # wise refuse to read the detail it is quoting.
   python3 -c '
-import json, sys
+import json, re, sys
 
 DASH = " — "
+
+MODE, RECEIPT, REPORT, RUN_ID, BASE_SHA = sys.argv[1:6]
+
+# The evidence a residual points at, when its text names one: the first
+# whitespace-delimited token carrying a `/` that reads as a repo-relative path
+# with an extension, its trailing `:<digits>` — when it has one — the line. A
+# text that names no such token points at nothing, which is `null` and not the
+# empty string.
+PATH_TOKEN = re.compile(r"^(?:[\w.-]+/)+[\w.-]+\.[A-Za-z0-9]+(?::(\d+))?$")
+
+# A reviewer piece that says the reviewer could not check the thing is not a
+# nit: it is an unverified claim, and the difference is what a reader triages
+# on.
+UNVERIFIED = ("cannot verify", "could not verify")
 
 def load(path):
     try:
@@ -1270,22 +1300,37 @@ def flat(value):
     text = value if isinstance(value, str) else ""
     return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
 
+def evidence(text):
+    """`(file, line)` for the first path token in `text`, else `(None, None)`."""
+    for token in text.split():
+        if "/" not in token:
+            continue
+        found = PATH_TOKEN.match(token)
+        if not found:
+            continue
+        at = found.group(1)
+        return (token[: -(len(at) + 1)], int(at)) if at else (token, None)
+    return None, None
+
+# One tuple per residual: the checklist name, the one-line text, the kind a
+# triager sorts on, and the task it belongs to (`None` for the items no single
+# task owns).
 items = []
 
 # Every ack whose type is exactly `deferred:external`, its detail whole: the
 # structural-false-green sentence included, since that sentence is the reason
 # the item needs a person rather than another run.
-receipt = load(sys.argv[1])
+receipt = load(RECEIPT)
 check = receipt.get("gateCheck")
 for ack in listing(check if isinstance(check, dict) else {}, "acks"):
     if isinstance(ack, dict) and ack.get("type") == "deferred:external":
-        items.append("deferred:external" + DASH + flat(ack.get("detail")))
+        items.append(("deferred:external", flat(ack.get("detail")), "deferred", None))
 
-report = load(sys.argv[2])
+report = load(REPORT)
 # Minor findings from the critic. A blocking one never reaches a green run.
 for finding in listing(report, "completenessFindings"):
     if isinstance(finding, dict) and finding.get("severity") == "minor":
-        items.append("critic" + DASH + flat(finding.get("detail")))
+        items.append(("critic", flat(finding.get("detail")), "structural", None))
 
 # Every `; `-separated piece of the notes of every merged task: minor findings
 # from the reviewers, then the plan-defect and concern entries. A task that is
@@ -1293,14 +1338,37 @@ for finding in listing(report, "completenessFindings"):
 for row in listing(report, "tasks"):
     if not isinstance(row, dict) or row.get("status") != "done":
         continue
+    task = str(row.get("task"))
     for piece in flat(row.get("notes")).split("; "):
         if piece:
-            items.append("task " + str(row.get("task")) + " reviewer" + DASH + piece)
+            low = piece.lower()
+            kind = "unverified" if any(p in low for p in UNVERIFIED) else "nit"
+            items.append(("task " + task + " reviewer", piece, kind, task))
 
-out = "".join("- [ ] " + item + "\n" for item in items)
+if MODE == "rows":
+    # Keys sorted, so a row is one shape however it was built, and one object
+    # per line: the ledger is read by `while read`, not by a JSON parser.
+    out = ""
+    for name, text, kind, task in items:
+        where, at = evidence(text)
+        out += json.dumps({
+            "file": where,
+            "kind": kind,
+            "line": at,
+            "run": RUN_ID,
+            "sha": BASE_SHA,
+            "task": task,
+            "text": text,
+        }, sort_keys=True) + "\n"
+else:
+    out = "".join("- [ ] " + name + DASH + text + "\n" for name, text, _, _ in items)
 sys.stdout.buffer.write(out.encode("utf-8"))
-' "$dest/gate-receipt.json" "$dest/report.json"
+' "$1" "$dest/gate-receipt.json" "$dest/report.json" "$RUN_ID" "$BASE_SHA"
 }
+
+# The card's checklist, and the record's ledger.
+residual_items() { residual_read checklist; }
+residual_rows() { residual_read rows; }
 
 # The receipt as the `### Checks` fence shows it: the document the engine wrote,
 # byte for byte, except that a `gateCheck.acks` array is dropped.
@@ -1657,108 +1725,6 @@ publish() { # $1 = outcome (gate-green|parked)
   # reader of the log can tell a parked run's draft from a ready PR without the
   # page. A run that opens no PR reaches none of this and records none of it.
   append_event publish:pr "url=s:$PR_URL" "number=i:$(pr_number)" "draft=b:$draft"
-  # And the inverse of the `Closes #` lines this card ends with: what the run
-  # did NOT finish, filed as its own ticket. Here, so that one PR is one filing
-  # — `do_boot`'s re-entry branch skips this whole function when the page
-  # already names a PR — and before the merge, which is what closes the PR the
-  # follow-up links back to.
-  file_followup
-}
-
-# --- the follow-up issue -----------------------------------------------------
-#
-# The program labels the plan's tickets carry, one per line, each once, in the
-# order first seen across the tickets in the plan's order.
-#
-# The tickets are the ones `plan_closes` names and nothing else in the plan is
-# read: one `GET /repos/<owner>/<repo>/issues/<n>` each through the same edge
-# `publish` POSTs to. A read that answers non-2xx, does not parse, or names
-# nothing keeps nothing — the filing is worth more than its labels, so a ticket
-# the reader cannot see costs the issue a label and never the POST.
-followup_labels() {
-  local kept name n answer code
-  plan_closes | sed 's/^Closes #//' | {
-    kept=""
-    while read -r n; do
-      [ -n "$n" ] || continue
-      answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues/$n" \
-        -w '\n%{http_code}' 2>/dev/null || true)"
-      code="$(printf '%s' "$answer" | tail -n 1)"
-      case "$code" in 2[0-9][0-9]) : ;; *) continue ;; esac
-      # `json_field` answers the first match only and cannot walk an array, and
-      # `labels` is an array of `{ "name": … }` objects — so `python3` walks it,
-      # exactly as `residual_items` walks the receipt's acks. A name carrying
-      # whitespace is dropped rather than word-split into two.
-      for name in $(printf '%s' "$answer" | sed '$d' | python3 -c '
-import json, sys
-try:
-    doc = json.loads(sys.stdin.read())
-except Exception:
-    sys.exit(0)
-labels = doc.get("labels") if isinstance(doc, dict) else None
-for item in labels if isinstance(labels, list) else []:
-    name = item.get("name") if isinstance(item, dict) else item
-    if isinstance(name, str) and name and name.split() == [name]:
-        print(name)
-' 2>/dev/null); do
-        case " $kept " in *" $name "*) continue ;; esac
-        case " $PROGRAM_LABELS " in *" $name "*) kept="$kept $name" ;; esac
-      done
-    done
-    for name in $kept; do printf '%s\n' "$name"; done
-  }
-}
-
-# The inverse of the `**Closes:**` machinery: one issue per run listing what the
-# run did NOT finish, or no issue at all.
-#
-# The PR body already carries the same lines under `### Residuals`, but a PR is
-# closed by its merge and the checklist closes with it. So the items go out a
-# second time as a ticket of their own — `watch-item`, titled for the run, its
-# first line the PR that produced it — which is still open tomorrow.
-#
-# The sink is never a gate. A `fleet_curl` that does not complete, a non-2xx,
-# an answer with no `html_url`: each is one log line and `return 0`. What
-# becomes of this run is the merge's business, not the filing's.
-file_followup() {
-  local items count heading title labels name body payload answer code reply url
-  items="$(residual_items || true)"
-  # Nothing to hand on is no issue — and no REST call to make one with.
-  [ -n "$items" ] || return 0
-  count="$(printf '%s\n' "$items" | wc -l | tr -d ' ')"
-  heading="$(plan_title)"
-  [ -n "$heading" ] || heading="$RUN_ID"
-  title="fleet $RUN_ID residuals: $heading"
-  # `watch-item` first — the follow-up's own kind, the one label every one of
-  # these carries — then the programs its tickets are filed under, so the issue
-  # lands in the same reader's lane the work did.
-  labels="\"watch-item\""
-  for name in $(followup_labels); do
-    labels="$labels,\"$(json_escape "$name")\""
-  done
-  # The PR, a blank line, then the checklist byte for byte: a reader who opens
-  # this issue first can reach the run that filed it in one click.
-  body="$(printf '%s\n\n%s' "$PR_URL" "$items")"
-  payload="{\"title\":\"$(json_escape "$title")\",\"body\":\"$(json_escape "$body")\",\"labels\":[$labels]}"
-  answer="$(fleet_curl -sS -X POST "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/issues" \
-    -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
-  code="$(printf '%s' "$answer" | tail -n 1)"
-  reply="$(printf '%s' "$answer" | sed '$d')"
-  case "$code" in
-    2[0-9][0-9]) : ;;
-    *) log "followup: POST /repos/$TARGET_REPO/issues answered ${code:-<no answer>}"; return 0 ;;
-  esac
-  url="$(printf '%s' "$reply" | json_field html_url)"
-  [ -n "$url" ] || {
-    log "followup: POST /repos/$TARGET_REPO/issues answered $code with no html_url"
-    return 0
-  }
-  log "followup: $url"
-  # The filing's own record, beside the PR's: the ticket and how many boxes it
-  # carries. No cell on the status page — the log line and this event are the
-  # follow-up's record.
-  append_event publish:followup "url=s:$url" "items=i:$count"
-  return 0
 }
 
 # A disposition that lands AFTER the PR was opened — every fold-again's, and
