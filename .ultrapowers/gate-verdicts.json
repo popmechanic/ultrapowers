@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "17e7acc599b6185aec07a030a2ec05cb4cad4af906c47a81528753d9b9b7eaac",
+      "verdict": "pass",
+      "reason": "receipt shape and exit per row; missing-tests BLOCKED; absent key plus four named-string scans; two deletions plus four per-file scans, every path in Files"
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "pass": 1,
+        "fail": 0
+      }
+    }
+  }
+}
