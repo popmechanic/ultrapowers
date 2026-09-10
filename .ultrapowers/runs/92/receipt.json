@@ -1,0 +1,227 @@
+{
+  "ok": true,
+  "stamp": "run-92",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-92"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The plan carries a signed summary",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultrawrite/SKILL.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The card reads for a person",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "README.md",
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs",
+          "fleet/tests/test_sandbox_boot.mjs",
+          "fleet/tests/test_sandbox_boot_join.mjs",
+          "fleet/tests/test_sandbox_boot_publish_fold.mjs",
+          "fleet/tests/test_sandbox_boot_residuals.mjs",
+          "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+          "skills/ultrapowers/SKILL.md",
+          "tests/test_docs_agree_with_code.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The plan carries a signed summary",
+          "files": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "skills/ultrawrite/SKILL.md"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q '\\*\\*Summary:\\*\\*.*what this is.*why it exists.*how it benefits.*same touch.*verbatim'",
+            "sed -n '/^## Elicit the claim/,/^## Authoring a queue/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q '\\*\\*Summary:\\*\\*.*AskUserQuestion'",
+            "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | grep '^- ' | grep '\\*\\*Summary:\\*\\*' | grep -q 'three sentences'",
+            "d=$(mktemp -d) && awk 'BEGIN{d=0} {print} !d && /^\\*\\*Grammar:\\*\\*/ {print \"\"; print \"**Claim:** do: open a widget. see: its size printed. (elicited)\"; print \"**Summary:** One. Two. Three.\"; d=1}' evals/fixtures/claims/plan.md > \"$d/plan.md\" && cp evals/fixtures/claims/plan.gate-verdicts.json \"$d/plan.gate-verdicts.json\" && python3 skills/ultrapowers/scripts/compile_plan.py --check \"$d/plan.md\" > \"$d/out.txt\" && test \"$(head -1 \"$d/out.txt\")\" = \"PLAN OK\"",
+            "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite"
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "2",
+          "title": "The card reads for a person",
+          "files": [
+            "README.md",
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot.mjs",
+            "fleet/tests/test_sandbox_boot_card.mjs",
+            "fleet/tests/test_sandbox_boot_join.mjs",
+            "fleet/tests/test_sandbox_boot_publish_fold.mjs",
+            "fleet/tests/test_sandbox_boot_residuals.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+            "skills/ultrapowers/SKILL.md",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "README.md",
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot.mjs",
+            "fleet/tests/test_sandbox_boot_join.mjs",
+            "fleet/tests/test_sandbox_boot_publish_fold.mjs",
+            "fleet/tests/test_sandbox_boot_residuals.mjs",
+            "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+            "skills/ultrapowers/SKILL.md",
+            "tests/test_docs_agree_with_code.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_card.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_card.mjs",
+          "proofRuns": [
+            "! grep -n 'checks are green' skills/ultrapowers/SKILL.md README.md",
+            "sed -n '/^4\\. \\*\\*The PR is the gate\\.\\*\\*/,/^5\\. \\*\\*Reap\\.\\*\\*/p' skills/ultrapowers/SKILL.md | tr '\\n' ' ' | grep -q 'merges itself.*own gate is green.*main has not moved'",
+            "sed -n '/^### 4\\. Build/,/^### One hazard/p' README.md | tr '\\n' ' ' | grep -q 'merges itself.*own gate is green.*main has not moved'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_residuals.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_card.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The card is written for a person first: nothing above the collapsed record is a hash, a JSON fence, a file listing or a reviewer's sentence.\n- Every value on the card is read from the plan file, `report.json`, `gate-receipt.json` or the status page \u2014 never narrated by a model at publish time.\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-92/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-92/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-92/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-92/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
