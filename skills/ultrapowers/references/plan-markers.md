@@ -74,7 +74,7 @@ A dependency that lives **only** inside a test's `import` of a sibling task's sy
 invisible to the compiler by design: it infers edges from markers, `Files:` paths, and
 `Interfaces:` symbols, never from source or test *file contents*.
 
-Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; a Files entry with an unknown or wrong-case label (`Delete:`, `modify:`) is a loud, named compile-time violation carrying a did-you-mean canonical-label fix (see Files grammar below) — never silently dropped; a canonical-label line with a wrong colon spacing, bullet character, or unbackticked multi-path value is a formatting-only near-miss, still tolerated and surfaced-but-dropped from overlap inference so one stray bullet never fails the whole compile; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
+Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; a Files entry with an unknown or wrong-case label (`Remove:`, `modify:`) is a loud, named compile-time violation carrying a did-you-mean canonical-label fix (see Files grammar below) — never silently dropped; a canonical-label line with a wrong colon spacing, bullet character, or unbackticked multi-path value is a formatting-only near-miss, still tolerated and surfaced-but-dropped from overlap inference so one stray bullet never fails the whole compile; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
 
 `Depends-on` edges bind only between `implementation` tasks: a marker naming a `gate`/`release`/`manual` task (or an unknown id) is dropped at compile time and surfaced in `marker_conflicts` — ordering against excluded tasks is meaningless once they leave the wave set. The same drop-and-surface rule covers text dependencies naming excluded tasks, and self-referential markers.
 
@@ -162,11 +162,15 @@ set; each of those is now a **refusal** rather than a soft serializing edge:
 A `**Files:**` bullet is a canonical label, a colon, and one backticked path —
 nothing else:
 
-- **Canonical labels:** `Create`, `Modify`, `Test` (`Test fixture(s)` /
-  `Fixture(s)` remain accepted aliases). Any other label — an unknown verb
-  (`Delete:`, `Read:`, `Remove:`, `catch-all:`) or a wrong-case spelling of a
-  known one (`modify:`) — is a compile-time violation naming a canonical
-  replacement (a `Delete:`/`Remove:` line suggests `Modify`, a `Read:` line
+- **Canonical labels:** `Create`, `Modify`, `Delete`, `Test` (`Test fixture(s)` /
+  `Fixture(s)` remain accepted aliases). A `Delete:` path is a write for
+  overlap purposes and, under `--check --base`, must exist at BASE — the
+  compiler then prints the file's line count, test-case count and section
+  banners as a `BASE fact:` line after the verdict (#896), so nobody signs a
+  sentence about what a file holds without the tree having said. Any other
+  label — an unknown verb (`Read:`, `Remove:`, `catch-all:`) or a wrong-case
+  spelling of a known one (`modify:`) — is a compile-time violation naming a
+  canonical replacement (a `Remove:` line suggests `Delete`, a `Read:` line
   suggests `Test`, an `add:` line suggests `Create`).
 - **One backticked path per bullet, nothing trailing it.** A parenthetical note
   after the path (`` `src/lib/db.js` (only the pool init, lines 12-40) ``)

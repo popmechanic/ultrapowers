@@ -150,6 +150,8 @@ publish.
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
+The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines of a clean compile are printed after the engine line.
+
 The launcher, in this order: validates the plan, the target and the base;
 reads the pool; computes N from the target's `ultra/*-run-*` branches and its
 `ultra/{plan,evidence}/run-<N>` tags; refuses when `gh-<owner>-<repo>` does not

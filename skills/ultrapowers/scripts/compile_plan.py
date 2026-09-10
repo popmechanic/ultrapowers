@@ -61,7 +61,7 @@ REVIEW_ALIASES = {"adversarial": "peer"}
 # Files: block after it closes (see parse_task) — a path outside Files: is a
 # rendered marker conflict, never a SystemExit.
 MARKER_COMMUTES = re.compile(r"^\*\*Commutes:\*\*\s*(.+?)\s*$")
-FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
+FILE_LINE = re.compile(r"^-\s*(Create|Modify|Delete|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
 # A Proof `Run:` bullet (#589): the task's proof is a COMMAND, not an exam
 # file. Deliberately NOT a FILE_LINE alternative — a `Run:` value is never a
 # path, so it must never reach the Files parser, the disjointness set, or
@@ -1113,7 +1113,7 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
     commutes = []
     late_markers = []
     marker_violations = []
-    creates, modifies, reads = [], [], []
+    creates, modifies, reads, deletes = [], [], [], []
     # Verbatim (label, rest) for every `Label: value` Files bullet (canonical or
     # not) — the strict-grammar input to _files_violations (#85). Unknown-label
     # lines are CAPTURED here, not dropped, so they surface as loud violations.
@@ -1328,6 +1328,13 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
                     files_entries_seen = True
                 if f.group(1) == "Create":
                     creates.extend(paths)
+                elif f.group(1) == "Delete":
+                    # A file the task removes (#896). A write for overlap
+                    # purposes — two tasks touching one path still share a
+                    # wave and fold — and, under `--check --base`, the path
+                    # the compiler describes as a BASE fact before anyone
+                    # signs a sentence about what the file holds.
+                    deletes.extend(paths)
                 elif f.group(1) in ("Modify", "Test fixture(s)", "Fixture(s)"):
                     # A declared test fixture is a file the task OWNS and writes
                     # (test data committed alongside the code) — treat it as a
@@ -1346,7 +1353,7 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
     # dropped from the task's own commutes list so it never participates in
     # auto-union eligibility downstream.
     commutes_conflicts = []
-    own_paths = set(creates) | set(modifies) | set(reads)
+    own_paths = set(creates) | set(modifies) | set(reads) | set(deletes)
     kept_commutes = []
     for p in commutes:
         if p in own_paths:
@@ -1390,8 +1397,9 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
              marker_violations=marker_violations,
              files_raw=files_raw,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
+             deletes=sorted(set(deletes)),
              reads=sorted(set(reads)),
-             writes=sorted(set(creates) | set(modifies)),
+             writes=sorted(set(creates) | set(modifies) | set(deletes)),
              interfaces={"consumes": consumes, "produces": produces},
              prose=prose)
     if grammar == CLAIMS_GRAMMAR:
@@ -1591,12 +1599,12 @@ def _interface_token(entry):
 # same-wave write race can never hide behind a parenthetical (2026-07-03 foreign
 # run: the two most contended files silently lost overlap coverage) — nor behind
 # a Files-less task the compiler cannot see any contention for at all.
-CANONICAL_FILE_LABELS = ("Create", "Modify", "Test", "Test fixture(s)",
-                         "Fixture(s)")
+CANONICAL_FILE_LABELS = ("Create", "Modify", "Delete", "Test",
+                         "Test fixture(s)", "Fixture(s)")
 # `catch-all` was the declared-open-write-set construct (#85). The tier that
 # consumed it is gone, so the bullet is now just an unknown label — routed
 # through the same did-you-mean rather than parsed into a phantom construct.
-_LABEL_SUGGEST = {"delete": "Modify", "remove": "Modify", "read": "Test",
+_LABEL_SUGGEST = {"remove": "Delete", "read": "Test",
                   "create-or-modify": "Modify", "add": "Create",
                   "catch-all": "Modify"}
 _FILES_GLOB_CHARS = "*?[{"
@@ -1663,6 +1671,7 @@ def _files_violations(task):
     # and a `- none` block reaches here identically: it parses to no paths.
     if (task.get("marker_type") == "implementation"
             and not (task.get("creates") or task.get("modifies")
+                     or task.get("deletes")
                      or task.get("reads"))):
         out.append(
             "Task %s: implementation task declares no file paths under Files: "
@@ -1697,7 +1706,7 @@ def _late_marker_note(task_id, late_markers):
                 task_id, "; ".join(sorted(set(late_markers))[:3])))
 
 
-def collect_violations(plan_path):
+def collect_violations(plan_path, base_tree=None):
     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
     parse as main() but collects EVERY violation across the whole plan in one
     pass instead of exiting at the first: Files grammar (_files_violations,
@@ -1775,7 +1784,134 @@ def collect_violations(plan_path):
         if _files_grammar_exempt(t):
             continue
         violations.extend(_files_violations(t))
+    # A `Delete:` names a file of the tree the plan launches on; one the base
+    # does not have is a plan about some other tree (#896). Only decidable
+    # with a base to read, so a bare `--check` leaves it alone.
+    if base_tree is not None:
+        for t in tasks:
+            for rel in t.get("deletes", []):
+                if base_tree._blob_mode(rel) is None:
+                    violations.append(
+                        "grammar: task %s: `- Delete: `%s`` names a path absent "
+                        "at BASE — a deleted file must exist at the base the "
+                        "plan launches on" % (t["id"], rel))
     return violations
+
+
+# --------------------------------------------------------------------------- #
+# BASE facts printed under `--check --base` (#896)                             #
+# --------------------------------------------------------------------------- #
+# Two facts about the tree that an author narrates from memory and gets wrong
+# (runs 84, 88, 90 — 2026-09-10): what a file the plan deletes actually holds,
+# and which files OUTSIDE a task's Files carry a literal its Machine clauses
+# pin. Both are functions of artifacts we hold, so the compiler reads them off
+# the tree at BASE and prints them after the verdict. They are facts, not
+# advisories: nothing here refuses, and there is no species vocabulary — the
+# reader is the author, before a gate reader is dispatched.
+
+# A test case, in the shapes this repository's suites use.
+_CASE_LINE_RE = re.compile(r"^\s*(?:test\(|it\(|def test_)")
+# A section banner: a comment line that is a shouted heading — mostly capitals,
+# at least twelve characters — or a box-drawing rule. What `THE PUBLISH FOLD —
+# the exam of …` looks like at the top of a section.
+_BANNER_RE = re.compile(
+    r"^\s*(?://|#)\s*((?:[A-Z][A-Z0-9'\u2019#,:\-]*\s+){2}[A-Z][A-Z0-9'\u2019#,:\-]*.*?)\s*$")
+_BANNER_CAP = 70
+_RULE_RE = re.compile(r"^\s*(?://|#)\s*[\u2550\u2500=\-]{20,}\s*$")
+# A Machine-clause literal short enough to be everywhere is not a fact worth
+# printing; eight characters is where a quoted string starts to name one thing.
+_LITERAL_MIN = 8
+_LITERAL_FILES_SHOWN = 6
+_LITERAL_CARRIERS_MAX = 40
+
+
+def _file_shape(base_tree, rel):
+    """(lines, cases, banners) of `rel` at BASE, or None when unreadable."""
+    text = base_tree.read_text(rel)
+    if text is None:
+        return None
+    lines = text.splitlines()
+    cases = sum(1 for l in lines if _CASE_LINE_RE.match(l))
+    banners = []
+    for l in lines:
+        m = _BANNER_RE.match(l)
+        if m and not _RULE_RE.match(l):
+            banners.append(m.group(1).strip()[:_BANNER_CAP])
+    return len(lines), cases, banners
+
+
+def _tree_files_carrying(base_tree, literal):
+    """Every path at BASE whose text carries `literal` verbatim, sorted."""
+    args = ["grep", "-F", "-l", "-e", literal]
+    if base_tree.is_sha:
+        out = _git(base_tree.repo, *args, base_tree.rev, "--", ".")
+        strip = base_tree.rev + ":"
+        paths = [l[len(strip):] if l.startswith(strip) else l
+                 for l in out.splitlines()]
+    else:
+        out = _git(base_tree.repo, *args, "--", ".")
+        paths = out.splitlines()
+    return sorted(p for p in paths if p)
+
+
+def _machine_literals(t, base_tree):
+    """The backticked literals of a task's Machine clauses, in order, deduped,
+    long enough to name one thing, and not a path referent (paths are the
+    pinning script's business)."""
+    machine = machine_restatement((t.get("claims") or {}).get("claim", ""))
+    out = []
+    for tok in PATH_RE.findall(machine):
+        tok = tok.strip()
+        if len(tok) < _LITERAL_MIN or "\n" in tok or tok in out:
+            continue
+        # A token that IS a path of the tree is a referent, pinned by the
+        # pinning script; a path-shaped token the tree does not have
+        # (`run_acceptance.sh` after its deletion, run-88) is a literal like
+        # any other, and the files that still say it are the fact.
+        rel = _path_referent(tok)
+        if rel is not None and base_tree._blob_mode(rel) is not None:
+            continue
+        out.append(tok)
+    return out
+
+
+def base_fact_lines(tasks, base_tree):
+    """One line per fact, in task order — empty for a legacy plan or a task
+    with nothing to say. Printed by `--check --base` after the verdict."""
+    lines = []
+    for t in tasks:
+        if _files_grammar_exempt(t) or "claims" not in t:
+            continue
+        own = (set(t.get("creates", [])) | set(t.get("modifies", []))
+               | set(t.get("reads", [])) | set(t.get("deletes", [])))
+        for rel in t.get("deletes", []):
+            shape = _file_shape(base_tree, rel)
+            if shape is None:
+                continue
+            n, cases, banners = shape
+            shown = "; ".join('"%s"' % b for b in banners[:8])
+            if len(banners) > 8:
+                shown += "; and %d more" % (len(banners) - 8)
+            lines.append(
+                "BASE fact: task %s deletes `%s` — %d lines, %d test cases, "
+                "%d section banner%s%s"
+                % (t["id"], rel, n, cases, len(banners),
+                   "" if len(banners) == 1 else "s",
+                   (": " + shown) if banners else ""))
+        for lit in _machine_literals(t, base_tree):
+            carriers = [p for p in _tree_files_carrying(base_tree, lit)
+                        if p not in own]
+            # A string carried by half the tree pins nothing in particular.
+            if not carriers or len(carriers) > _LITERAL_CARRIERS_MAX:
+                continue
+            head = ", ".join(carriers[:_LITERAL_FILES_SHOWN])
+            more = len(carriers) - _LITERAL_FILES_SHOWN
+            lines.append(
+                "BASE fact: task %s: `%s` is carried at BASE by %s%s — not in "
+                "this task's Files"
+                % (t["id"], lit, head,
+                   (" and %d more" % more) if more > 0 else ""))
+    return lines
 
 
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
@@ -2381,7 +2517,7 @@ _REFERENT_EXTS = frozenset(
     "sql csv lock cfg ini env tgz log".split())
 _MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
 _FILES_BULLET_RE = re.compile(
-    r"^\s*[-*+]\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
+    r"^\s*[-*+]\s*(Create|Modify|Delete|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
 
 
 def _path_referent(tok):
@@ -2475,7 +2611,7 @@ def main(argv=None):
     base_tree = (BaseTree.from_flag(args.base, args.plan)
                  if args.base is not None else None)
     if args.check:
-        violations = collect_violations(args.plan)
+        violations = collect_violations(args.plan, base_tree)
         if violations:
             print("\n\n".join(violations))
             print()
@@ -2484,6 +2620,17 @@ def main(argv=None):
         else:
             print("PLAN OK")
             rc = 0
+        # The tree's own facts about the plan, after the verdict and only with
+        # a tree to read (#896): what a deleted file holds, and which files
+        # outside a task's Files carry a literal its clauses pin.
+        if base_tree is not None:
+            plan_text = args.plan.read_text()
+            grammar = plan_grammar(plan_text)
+            tasks = [parse_task(t, raise_on_marker_error=False, grammar=grammar,
+                                plan_claim=parse_plan_claim(plan_text))
+                     for t in split_tasks(plan_text)]
+            for line in base_fact_lines(tasks, base_tree):
+                print(line)
         return rc
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "

@@ -461,6 +461,56 @@ export async function verifyPlanPins ({ exec, repoDir, base, planText }) {
 }
 
 /**
+ * The compiler, relative to this file — the plugin's own copy, the one
+ * `skills/ultrapowers/SKILL.md` tells the operator to run by hand before a
+ * launch. Running it here is what makes "compile with --check --base first"
+ * a fact about every launch rather than a step someone remembers (#865).
+ */
+const COMPILER_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ultrapowers', 'scripts', 'compile_plan.py'
+)
+/** The pinning script, as the re-pin command names it. */
+const PIN_SCRIPT_REL = 'skills/ultrawrite/scripts/pin_base_facts.py'
+/** The stamp a generated `**BASE facts:**` block carries: the sha it was read at. */
+const BASE_FACTS_STAMP = /\*\*BASE facts:\*\*\s*\(generated at ([0-9a-f]{7,40})\)/g
+
+/**
+ * The plan compiles against the tree at `--base`, or it is a refusal — before
+ * any lobby verb, any push, any `ls-remote`. Two reads, in order:
+ *
+ *  1. A `**BASE facts:**` block stamped `(generated at <sha>)` was generated
+ *     from some tree; when that sha is not a prefix of `--base`, the block is a
+ *     fact about another commit and every worker would read stale Context
+ *     (#865). The refusal carries the exact re-pin command.
+ *  2. `compile_plan.py --check --base <base> <plan>` — the grammar, the gate
+ *     record and, since #896, the tree's own facts about the plan (what a
+ *     deleted file holds; which files outside a task's Files carry a literal
+ *     its clauses pin). A non-zero exit is a refusal carrying the compiler's
+ *     text verbatim; the `BASE fact:` lines of a clean compile ride the result
+ *     so the launch line prints them.
+ *
+ * The compiler runs through the exec seam like every other subprocess, so a sim
+ * that answers `python3` decides what the compiler said.
+ */
+export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText }) {
+  const stamps = [...String(planText).matchAll(BASE_FACTS_STAMP)].map((m) => m[1])
+  const stale = [...new Set(stamps.filter((sha) => !base.startsWith(sha)))]
+  if (stale.length > 0) {
+    throw new Refusal(
+      `launch: the plan's **BASE facts:** blocks were generated at ${stale.join(', ')}, not at --base ${base} — ` +
+      `re-pin them first: python3 ${PIN_SCRIPT_REL} --write --base ${base} ${planPath}`
+    )
+  }
+  const res = await exec('python3', [COMPILER_PATH, '--check', '--base', base, planPath], { cwd: repoDir })
+  if (res.code !== 0) {
+    throw new Refusal(
+      `launch: compile_plan.py --check --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
+    )
+  }
+  return String(res.stdout ?? '').split('\n').filter((line) => line.startsWith('BASE fact:'))
+}
+
+/**
  * The engine sha, when `--engine` was not given: the tip of the PUBLIC
  * ultrapowers repository, read with `git ls-remote`. The sandbox clones from
  * GitHub at `engine=`, so the only shas that can work are the ones GitHub
@@ -671,6 +721,8 @@ export async function launch ({
   // a stale one is found here, with local git reads only, before the first
   // `ls-remote` and long before anything is pushed or any lobby verb issued.
   await verifyPlanPins({ exec, repoDir, base: opts.base, planText })
+  // ... and the plan compiles against that same tree, or nothing is launched.
+  const baseFacts = await verifyPlanCompiles({ exec, repoDir, base: opts.base, planPath, planText })
 
   // ── The base is on the target's default branch, or it is a refusal. The
   //    origin names its own default branch and that branch's tip in one
@@ -897,7 +949,10 @@ export async function launch ({
     launchedAt: now().toISOString(),
     commands,
     reaped,
-    reapError
+    reapError,
+    // What the compiler read off the tree at `--base` about this plan (#896):
+    // printed by the launch line, never a refusal.
+    baseFacts
   }
 }
 
@@ -1155,7 +1210,8 @@ export const renderLaunch = (result) => [
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
   result.account === undefined ? null : `account=${result.account}`,
   result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
-  engineLine(result)
+  engineLine(result),
+  ...(result.baseFacts ?? [])
 ].filter((line) => line !== null).join('\n')
 
 async function main (argv) {

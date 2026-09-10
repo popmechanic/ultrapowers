@@ -63,7 +63,7 @@ conflict. Keep both markers in the contiguous run directly under the heading.
   Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
   An operator who does not read diffs cannot verify an edge, so no edge is signed.
 
-The Files block carries canonical `Create:` / `Modify:` / `Test:` bullets, backticked
+The Files block carries canonical `Create:` / `Modify:` / `Delete:` / `Test:` bullets, backticked
 paths, no globs and no open write sets. It is doubly load-bearing: wave shape *and* edge
 derivation.
 
@@ -273,6 +273,18 @@ repository, so every BASE fact — which paths exist, which file mentions a `Pro
 symbol, which test pins a Machine-clause span — resolves against the exact commit
 `launch.mjs --base` will hand the run, not against whatever the working tree happens to
 hold. Unset, `--base` defaults to the plan's own git toplevel.
+
+With a base, the verdict is followed by the tree's own facts about the plan, one
+`BASE fact:` line each (#896): what a `- Delete:` file holds at BASE (its line count,
+test-case count and section banners — read them before signing a sentence about what
+the file is; run-90 deleted five exams on the sentence "entirely the check-runs poll"),
+and every file outside a task's Files that carries a literal its Machine clauses pin —
+the shape that parked runs 84, 88 and 90. A carrier that pins the value the task
+changes goes into that task's Files; the line is a fact, never a refusal. The launcher
+runs this same compile at `--base` before it pushes anything and prints the same
+lines, so a plan that does not compile at the launch base is refused on the laptop
+(#865), and a `**BASE facts:**` block generated at another sha is refused with the
+re-pin command.
 
 The rejection species are listed in `references/authoring-gotchas.md` and read by the
 author before a reader is dispatched — nothing prints them.

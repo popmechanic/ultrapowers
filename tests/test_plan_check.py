@@ -40,7 +40,7 @@ CANONICAL = """# P
 
 VIOLATING = CANONICAL.replace(
     "- Modify: `src/a.py`",
-    "- Modify: `src/a.py` (only the top half)\n- Delete: `old/b.py`")
+    "- Modify: `src/a.py` (only the top half)\n- Remove: `old/b.py`")
 
 
 def run_check(tmp_path, text):
@@ -63,7 +63,7 @@ def test_check_reports_every_violation_with_fixes(tmp_path):
     assert proc.returncode == 2
     out = proc.stdout + proc.stderr
     assert "annotation" in out.lower()      # the annotated Modify line
-    assert "unknown files label" in out.lower()  # the Delete: line
+    assert "unknown files label" in out.lower()  # the Remove: line
     assert "src/a.py" in out                # extracted path shown as the fix
 
 

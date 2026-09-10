@@ -903,23 +903,24 @@ def test_unbackticked_comma_paths_lose_no_overlap(tmp_path):
 
 
 def test_unparsed_bullets_in_files_block_surface_and_keep_block_open(tmp_path):
-    # #85: an unknown Files label (`- Delete:`) is now a LOUD compile error with a
+    # #85: an unknown Files label (`- Remove:`) is now a LOUD compile error with a
     # did-you-mean, not a silent near-miss drop. (A colon-less natural-English
-    # bullet stays a soft near-miss, but the Delete violation bails first.) Same
-    # scenario as the old tolerant pin, flipped to the strict grammar.
+    # bullet stays a soft near-miss, but the Remove violation bails first.) Same
+    # scenario as the old tolerant pin, flipped to the strict grammar. `Delete:`
+    # became canonical at #896, so the example unknown label is `Remove:`.
     plan = tmp_path / "bullets.md"
     plan.write_text(
         "# Plan: Unparsed bullets\n\n"
         "### Task 1: unknown label\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify `src/app.py` to wire it in\n- Delete: `old.py`\n- Modify: `keep.py`\n\n"
+        "**Files:**\n- Modify `src/app.py` to wire it in\n- Remove: `old.py`\n- Modify: `keep.py`\n\n"
         "- [ ] **Step 1:** a\n\n"
         "### Task 2: writer\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
     )
     p = compile_plan_raw(plan)
     assert p.returncode == 1
-    assert "Delete" in p.stderr and "old.py" in p.stderr
-    assert "Modify" in p.stderr      # the did-you-mean suggestion
+    assert "Remove" in p.stderr and "old.py" in p.stderr
+    assert "Delete" in p.stderr      # the did-you-mean suggestion
 
 
 def test_depends_space_variant_text_rule_tolerates_punctuation(tmp_path):
@@ -1602,8 +1603,8 @@ def test_annotated_files_line_is_a_violation_with_extract_fix():
 
 def test_unknown_label_is_a_violation_with_did_you_mean():
     from compile_plan import _files_violations
-    v = _files_violations({"id": "3", "files_raw": [("Delete", "`old/x.py`")]})
-    assert len(v) == 1 and "Modify" in v[0]
+    v = _files_violations({"id": "3", "files_raw": [("Remove", "`old/x.py`")]})
+    assert len(v) == 1 and "Delete" in v[0]
 
 
 def test_glob_is_a_violation():
