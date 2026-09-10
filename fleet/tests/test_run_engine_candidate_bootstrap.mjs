@@ -278,12 +278,12 @@ async function scenario({ files, onImpl, extraArgs = { bootstrapCmd: 'bash insta
   assert.ok(!detail.includes('Cannot find module'),
     '[M3] leg (d): and none of the suite\'s: ' + detail)
 
-  // The suite ran in the integration clone exactly once — the baseline pass on
-  // BASE's tree, which the red candidate pays for. The candidate itself was
-  // never tested: a bootstrap that failed is the answer already.
-  assert.equal(marked(log, 'check', integ).length, 1,
-    '[M3] leg (d): the suite ran in the integration clone exactly once — the baseline\'s — ' +
-    'so testCmd was never run on the candidate: ' + JSON.stringify(logLines(log)))
+  // The suite never ran in the integration clone at all: a bootstrap that failed
+  // is the answer already, so the candidate was never tested — and BASE's own
+  // verdict is read in the baseline's clone, not this one (#862).
+  assert.equal(marked(log, 'check', integ).length, 0,
+    '[M3] leg (d): testCmd was never run in the integration clone — the candidate was not ' +
+    'tested and the baseline runs elsewhere: ' + JSON.stringify(logLines(log)))
 }
 
 // ── (f) the reconcile role's sentence [M5] ───────────────────────────────────

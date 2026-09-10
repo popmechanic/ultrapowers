@@ -1211,12 +1211,25 @@ export async function runEngine({
   }
   await git(['checkout', '-q', '-b', integrationBranch], integ)
   const baseSha = await git(['rev-parse', 'HEAD'], integ)
+  // The baseline's own clone (#862). The suite on BASE runs HERE and nowhere
+  // else: read-treeing BASE into the integration clone — #712's shape — put the
+  // baseline in the same worktree the wave's candidate lives in, so it could
+  // only run once the candidate had been built and tested. A clone of its own is
+  // what lets it start in Setup and settle while wave 1 works. Driver-cut,
+  // exactly like the clones run-main provisions (Amendment 10: no prompt exists
+  // for any of this to be misread).
+  const baselineDir = path.join(clonesDir, 'baseline')
+  cloneAtBase({ repo: repoDir, dest: baselineDir, base: baseSha })
   if (bootstrapCmd) {
     // Every fresh clone needs its dependencies before a suite can run there —
-    // the integration clone (candidate, baseline, reconcile suite runs) and each
-    // task clone (implementer red-green cycles). Driver-run, so the warm-cache
-    // prompt choreography does not exist on this path.
-    for (const dir of [integ, ...WAVES.flat().map((t) => path.join(clonesDir, 'task-' + t.id))]) {
+    // the integration clone (candidate, reconcile suite runs), the baseline
+    // clone (the one pass on BASE) and each task clone (implementer red-green
+    // cycles). Driver-run, so the warm-cache prompt choreography does not exist
+    // on this path. The baseline is bootstrapped BEFORE its suite starts below:
+    // a suite run against an uninstalled tree would report BASE red on a missing
+    // module and park a run whose repository was fine.
+    for (const dir of [integ, baselineDir,
+                       ...WAVES.flat().map((t) => path.join(clonesDir, 'task-' + t.id))]) {
       const b = await sh(bootstrapCmd, dir)
       if (b.code !== 0) {
         judgmentCalls.push('bootstrap failed in ' + path.basename(dir) + ' (exit ' + b.code +
@@ -1225,47 +1238,46 @@ export async function runEngine({
       }
     }
   }
-  // The suite on BASE is LAZY (#712): a run whose every wave goes green never
-  // runs it at all — green runs pay nothing — and the first wave whose
-  // candidate is red pays for it once, because only then is the question
-  // ("the diff's red, or BASE's own?") worth a suite's wall clock. `null`
-  // until `runBaseline()` answers it; `{ passed, output }` after.
-  let baseline = null
   log('setup: branch ' + integrationBranch + ' at ' + baseSha)
 
-  // Run the suite on BASE's tree, at most once per run. Called from the wave
-  // site the moment a candidate suite comes back red and before the first
-  // `reconcile:` dispatch, so the note the reconcile agent and the critic read
-  // is settled before either of them speaks; a no-op once `baseline` is set,
-  // which is why a second red wave costs nothing.
+  // The suite on BASE is EAGER (#862, widening #712's lazy pass): it is started
+  // HERE, in Setup, and nothing waits for it — wave 1 is dispatched while it
+  // runs, so the answer is off the critical path and settled by the wave barrier
+  // at the latest. #712's economy is kept in spirit: this is the one and only
+  // site that runs the suite on BASE, so a run pays for it exactly once however
+  // many waves go red.
   //
-  // BASE and not the previous wave's head: that head was judged green when it
-  // was adopted, so a later wave's red is the diff's unless BASE itself moved
-  // under the run, which it cannot.
+  // BASE and not a wave's head: a head that was adopted was judged green when it
+  // was, so a later wave's red is the diff's unless BASE itself was already red
+  // — which is the question this pass answers, once, before anyone is asked to
+  // repair anything.
   //
-  // The clone's index and worktree hold `restoreTree` (the candidate) at the
-  // call site, so BASE's tree is swapped in for the run and swapped back out
-  // before returning — the reconcile agent edits files in that worktree and
-  // the driver commits whatever `git add -A` finds there, so leaving BASE's
-  // tree behind would silently revert the wave.
-  const runBaseline = async (restoreTree) => {
-    if (baseline !== null) return
-    await git(['read-tree', '-u', '--reset', baseSha + '^{tree}'], integ)
-    const r = await sh(testCmd, integ)
-    await git(['read-tree', '-u', '--reset', restoreTree + '^{tree}'], integ)
+  // `null` until it settles; `{ passed, output }` after. A plain promise and NOT
+  // one of `parallel`'s thunks: the bounded pool is the dispatch width, and a
+  // baseline holding one of its slots would delay the very dispatch it is meant
+  // to run beside.
+  let baseline = null
+  const settleBaseline = (passed, output) => {
+    baseline = { passed, output }
+    log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + baseSha)
+    if (!passed) {
+      judgmentCalls.push('baseline: the suite is RED on BASE (' + output +
+        ') — the red this run inherited, not the diff\'s: the run parks at the ' +
+        'wave barrier at the latest, and no reconcile is dispatched at it')
+    }
+  }
+  const baselineSettled = sh(testCmd, baselineDir).then(
     // A green baseline keeps BASE's record — a tail of the summary. A red one
     // records the failing test's own block, which is what every reader of
     // `baseline.output` below is quoting.
-    baseline = { passed: r.code === 0,
-                 output: r.code === 0
-                   ? tail(r.stdout + r.stderr, 2000)
-                   : failingBlock(r.stdout + r.stderr) }
-    log('baseline: ' + (baseline.passed ? 'green' : 'RED') + ' on ' + baseSha)
-    if (!baseline.passed) {
-      judgmentCalls.push('baseline: the suite is RED on BASE (' +
-        baseline.output + ') — this wave\'s red is inherited, not the diff\'s')
-    }
-  }
+    (r) => settleBaseline(r.code === 0, r.code === 0
+      ? tail(r.stdout + r.stderr, 2000)
+      : failingBlock(r.stdout + r.stderr)),
+    // A suite the driver could not even start is not a green BASE: the run has
+    // no evidence its repository was passing, and the whole point of reading the
+    // baseline first is to refuse to attribute a red to a diff on a guess.
+    (e) => settleBaseline(false, 'the baseline suite could not be run on BASE: ' +
+      String((e && e.message) || e)))
 
   // ── dependency cascade (ported) ────────────────────────────────────────────
   const blockedByDep = new Set()
@@ -2503,9 +2515,11 @@ export async function runEngine({
       return { status: 'MERGED', headSha: candidate,
                suite: { passed: true, output: tail(suite.stdout + suite.stderr) } }
     }
-    // Red candidate: settle whether BASE itself is red before dispatching
-    // anyone at it. Restores the candidate tree before returning.
-    await runBaseline(candidate)
+    // Red candidate: BASE's own verdict is settled before anyone is dispatched
+    // at it. It settled in Setup, or settles here at the latest — and a RED one
+    // never reaches this line, because the wave barrier above parks the run
+    // before a candidate is ever folded.
+    await baselineSettled
     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
       let rec
@@ -2582,6 +2596,60 @@ export async function runEngine({
     for (const line of compositionUnpinnedRows(waveNumber, tasks)) judgmentCalls.push(line)
   }
 
+  // ── the red-baseline park (#862) ───────────────────────────────────────────
+  // A run whose repository was already failing before it opened has nothing to
+  // reconcile: every candidate it could build would be red for a reason no
+  // implementer wrote and no reconcile agent can be held to. So the run parks —
+  // before wave 1's first dispatch when the baseline settled during Setup, and
+  // at the wave barrier when it settled later. Either way the wave is
+  // TEST_FAILED on the baseline's own block, every later wave is SKIPPED, and
+  // the integration branch is left exactly where the wave found it.
+  const baselineIsRed = () => baseline !== null && baseline.passed === false
+  // The one concession the "park before any worker" half needs. `.then` on a
+  // pending promise never fires synchronously, so a wave loop that only READ the
+  // flag would reach its first chunk with the flag still unset however fast the
+  // suite answered — a repository that is red in twenty milliseconds would still
+  // dispatch its whole first wave and park at the barrier. So the first dispatch
+  // yields the baseline a bounded head start and NOT a wait: a suite that
+  // answers inside the window parks the run with nothing dispatched, and one
+  // that does not is left running while wave 1 goes out. Half a second, because
+  // that is long enough for any suite that was going to answer instantly and
+  // short enough to be nothing beside the seconds a real one takes — which is
+  // what keeps the baseline off the critical path rather than on it.
+  const BASELINE_HEAD_START_MS = 500
+  const baselineHeadStart = () => Promise.race([baselineSettled,
+    new Promise((resolve) => {
+      const t = globalThis.setTimeout(resolve, BASELINE_HEAD_START_MS)
+      // Unref'd: the baseline's own child process is what holds the loop open
+      // while this races, and a head start must never be the reason a finished
+      // run is still alive.
+      if (t && typeof t.unref === 'function') t.unref()
+    })])
+  const parkOnRedBaseline = async (w, prevHead, results, branches) => {
+    const detail = 'baseline: the suite is RED on BASE (' + baseline.output +
+      ') — this run inherited that red: no candidate was tested and no reconcile ' +
+      'was dispatched against it'
+    // The branch never moved this wave — the fold has not run — so this is a
+    // restoration, not a rollback: the same one the TEST_FAILED path below the
+    // reconcile loop makes, kept here so the guarantee ("the integration branch
+    // still resolves to the head the wave started on") is stated at both exits.
+    await git(['reset', '--hard', prevHead], integ)
+    await exec('git', ['clean', '-fd'], { cwd: integ })
+    waveMerges.push({ wave: w + 1, status: 'TEST_FAILED', detail, branches })
+    blockedWaves.push({ wave: w + 1, detail })
+    log('wave ' + (w + 1) + ' parked: the suite was already RED on BASE when the run opened')
+    for (const t of WAVES[w]) {
+      if (!results.some((r) => r && r.task === t.id)) {
+        unfinished.push(t.id + ': never dispatched — the suite was already RED on BASE')
+      }
+    }
+    const cascade = 'cascade-blocked by wave ' + (w + 1) + ': the suite is RED on BASE'
+    for (let d = w + 1; d < WAVES.length; d++) {
+      WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+      waveMerges.push({ wave: d + 1, status: 'SKIPPED', detail: cascade, branches: [] })
+    }
+  }
+
   let lastSuite = null
   for (let w = 0; w < WAVES.length; w++) {
     phase(waveLabel(w))
@@ -2633,7 +2701,17 @@ export async function runEngine({
                   review: 'lean', fixIterations: 0, proofFixes: 0 }
       results.push(r); taskResults.push(r)
     }
+    // Wave 1 reaches this line microseconds after Setup started the baseline;
+    // the head start is what gives an already-broken repository the chance to
+    // say so before anyone is dispatched at it. Once the baseline has settled
+    // (every wave after the first) it costs nothing at all.
+    if (baseline === null) await baselineHeadStart()
     for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
+      // The baseline has answered, and the answer is RED: not one implementer is
+      // dispatched into a repository that was failing before the run opened.
+      // Read as a flag, never awaited — this is the question "has it settled red
+      // yet?", asked once per chunk, so a slow baseline stops nothing here.
+      if (baselineIsRed()) break
       noteFailures()
       const chunk = WAVES[w].slice(off, off + CONCURRENCY)
       const runnable = chunk.filter((t) => {
@@ -2694,6 +2772,15 @@ export async function runEngine({
         }
       }
       noteFailures()
+    }
+
+    // The wave barrier. A baseline that had not settled when the chunks were
+    // dispatched settles HERE — this is the one place the run waits for it, and
+    // it is already past every dispatch this wave will make.
+    await baselineSettled
+    if (baselineIsRed()) {
+      await parkOnRedBaseline(w, waveBaseSha, results, results.filter(isMergeable).map((r) => r.task))
+      break
     }
 
     const mergeable = results.filter(isMergeable)
