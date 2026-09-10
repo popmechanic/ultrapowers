@@ -1,0 +1,55 @@
+{
+  "task": "1",
+  "n": 1,
+  "findings": [
+    {
+      "check": "test-count",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "top-level tests +5 / −10 across the patch: net drop of 5, removing `test_acceptance_sealed_parsed`, `test_acceptance_waived_parsed`, `test_marked_plan_without_acceptance_fails`, `test_fenced_acceptance_line_is_ignored`, `test_acceptance_suite_parsed`, `test_acceptance_suite_satisfies_enforcement`, `test_fenced_suite_line_is_ignored`, `test_zero_markers_plan_flags_all_heuristic`, `test_check_refuses_marked_plan_with_no_acceptance_line`, `test_check_leaves_unmarked_plans_alone` with no removal declared in the task"
+    }
+  ],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `skills/ultrapowers/scripts/compile_plan.py`"
+    },
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `tests/test_compile_plan.py`"
+    },
+    {
+      "check": "footprint",
+      "detail": "path in FILES and in a wave sibling's FILES (overlap=fold): `tests/test_compile_plan_claims.py`"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_compile_plan_acceptance_line.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultrapowers/scripts/compile_plan.py": "py",
+    "tests/test_compile_plan.py": "py",
+    "tests/test_compile_plan_acceptance_line.py": "py",
+    "tests/test_compile_plan_claims.py": "py",
+    "tests/test_plan_check.py": "py",
+    "tests/test_webapp_fixture.py": "py"
+  },
+  "ms": 1
+}

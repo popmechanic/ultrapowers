@@ -1,0 +1,48 @@
+{
+  "task": "4",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_run_record_keys.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +10 / −7 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/failing-block.mjs": "mjs",
+    "fleet/launch.mjs": "mjs",
+    "fleet/referee.mjs": "mjs",
+    "fleet/run-engine.mjs": "mjs",
+    "fleet/run-main.mjs": "mjs",
+    "fleet/tests/test_run_engine.mjs": "mjs",
+    "fleet/tests/test_run_main.mjs": "mjs",
+    "fleet/tests/test_run_record_keys.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_approval_evidence.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_parked_error.mjs": "mjs"
+  },
+  "ms": 2
+}

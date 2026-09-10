@@ -1,0 +1,61 @@
+{
+  "task": "3",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "path owned by a wave sibling and absent from FILES: `skills/ultradocket/SKILL.md`"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "path owned by a wave sibling and absent from FILES: `skills/ultrapowers/references/design-rationale.md`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `skills/ultrapowers/scripts/gate_check.py`"
+    },
+    {
+      "check": "test-count",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "top-level tests +7 / −24 across the patch: net drop of 17, removing `test_suite_gate_green_passes`, `test_suite_gate_red_parks`, `test_suite_gate_red_carries_assertion_redkind`, `test_suite_gate_no_tests_never_false_greens`, `test_suite_gate_worktree_cleaned_up`, `test_deleted_modes_are_refused_with_usage`, `test_suite_gate_without_base_warns_disarmed`, `test_suite_gate_with_base_does_not_warn`, `test_exam_worktree_temp_parent_is_cleaned`, `test_huge_exam_output_still_emits_json_receipt`, `test_suite_gate_bootstrap_provisions_worktree`, `test_suite_gate_without_bootstrap_still_reds_honestly`, `test_suite_gate_failed_bootstrap_is_env_not_assertion`, `test_suite_gate_rejects_empty_run`, `test_suite_gate_survives_symlinked_tmpdir`, `test_uncreatable_temp_parent_errors_instead_of_using_cwd`, `test_suite_gate_refuses_whitespace_only_run`, `test_sealed_disposition_is_blocked_without_administering`, `test_suite_acceptance_dispatch`, `test_failed_acceptance_forces_blocked`, `test_suite_acceptance_command_comes_from_receipt`, `test_bootstrap_passed_through_when_receipt_has_it`, `test_missing_receipt_testcmd_blocks_loudly`, `test_empty_receipt_testcmd_blocks_loudly` with no removal declared in the task"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_ultra_gate_record.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultrapowers/scripts/ultra_gate.py": "py",
+    "skills/ultrapowers/scripts/ultra_run.py": "py",
+    "tests/test_run_acceptance.py": "py",
+    "tests/test_ultra_gate.py": "py",
+    "tests/test_ultra_gate_record.py": "py",
+    "tests/test_ultra_run.py": "py"
+  },
+  "ms": 4
+}
