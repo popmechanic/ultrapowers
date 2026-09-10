@@ -122,10 +122,18 @@ const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passe
     '(a)/M1 precondition: the suite command logged no execution at all — the log is the ' +
     'only witness this leg has, so an empty one is a broken fixture, not a green run')
   const wanted = real(integ)
-  const strays = executions.filter((e) => real(e.dir) !== wanted)
+  // #862 — two clones may run this command and no third: the integration clone
+  // (every candidate) and the baseline clone (the one pass on BASE, cut in
+  // Setup). A depth-1 clone, a task clone, anything else is a stray.
+  const baselineDir = real(path.join(runDir, 'clones', 'baseline'))
+  const strays = executions.filter((e) => real(e.dir) !== wanted && real(e.dir) !== baselineDir)
   assert.deepEqual(strays, [],
-    '(a)/M1: the suite command ran outside ' + wanted + ' — every execution must happen in ' +
-    '<runDir>/clones/integration, and these did not: ' + JSON.stringify(strays))
+    '(a)/M1: the suite command ran outside ' + wanted + ' and ' + baselineDir + ' — every ' +
+    'execution must happen in <runDir>/clones/integration or <runDir>/clones/baseline, and ' +
+    'these did not: ' + JSON.stringify(strays))
+  assert.equal(executions.filter((e) => real(e.dir) === baselineDir).length, 1,
+    '(a)/M1: exactly one execution in <runDir>/clones/baseline — the run\'s one pass on ' +
+    'BASE: ' + JSON.stringify(executions))
 
   // (b)/M2 — the phases announced, in order, with nothing between the wave and
   // the review. `phases` is the rig\'s array beside `logs`, filled by the

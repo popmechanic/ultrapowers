@@ -2,10 +2,10 @@
 // the engine quotes the failing test's own BLOCK wherever it quoted a tail.
 //
 // The claim: after a run whose suite went red — on BASE, or on a wave's folded
-// candidate — the judgment call, the critic's brief, the reconcile agent's
-// brief and a blocked wave's detail each quote the failing test's own block and
-// so name the failing leg; and a run whose suite stayed green records exactly
-// what it recorded before.
+// candidate — the judgment call, the parked or blocked wave's detail, the
+// reconcile agent's brief and `suiteLine`'s section each quote the failing
+// test's own block and so name the failing leg; and a run whose suite stayed
+// green records exactly what it recorded before.
 //
 // How every leg tells a block from a tail, without knowing how the engine cut
 // it: the rig's `check.sh` prints a pytest-shaped failure and then PADS. The
@@ -106,33 +106,35 @@ const task = (id) => ({
   writes: [id + '.txt'], commutes: [], body: 'sim task ' + id,
 })
 
-// ── (i) BASE itself red, reconciled green → legs (a) and (b) [M1, M2] ────────
-// `BROKEN` is committed at BASE, so the wave's candidate is red and so is the
-// baseline the driver then runs. The reconcile stub removes the marker and
-// reports FIXED, so the wave still ends MERGED — the run under test is a red
-// BASELINE, not a blocked wave.
+// ── (i) BASE itself red → legs (a) and (b) [M1, M2] ──────────────────────────
+// `BROKEN` is committed at BASE, so the baseline the driver reads in Setup is
+// red and the run PARKS on it (#862): no candidate is folded and no reconcile is
+// dispatched. What this scenario reads is therefore the two records a parked run
+// leaves — the baseline's own, and the wave's `detail` — and each must carry the
+// failing test's own block rather than a tail.
 {
   const { repo, runDir } = scenario('i', { BROKEN: 'red at BASE\n' })
-  let criticPrompt = null
+  // Whoever the engine dispatches is recorded rather than refused: this
+  // scenario reads the RECORDS a parked run leaves, and the one dispatch it
+  // asserts about is the reconcile that must not happen.
+  const labels = []
   const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') {
       fs.writeFileSync(path.join(cwd, 'T1.txt'), 'useful work\n')
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
-    if (kind === 'reconcile') {
-      fs.rmSync(path.join(cwd, 'BROKEN'))
-      return { status: 'FIXED', summary: 'removed the BROKEN marker' }
-    }
-    if (opts.label === 'integration') { criticPrompt = prompt; return cleanCritic() }
+    if (opts.label === 'integration') return cleanCritic()
     throw new Error('scenario (i): unexpected dispatch ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves: [[task('T1')]], stub, stamp: 'rr-i' })
   const report = await run()
 
-  assert.equal(report.waveMerges[0].status, 'MERGED',
-    'scenario (i) precondition: FIXED → MERGED — ' + JSON.stringify(report.judgmentCalls))
+  assert.equal(report.waveMerges[0].status, 'TEST_FAILED',
+    'scenario (i) precondition: a red baseline parks the wave — ' +
+    JSON.stringify(report.judgmentCalls))
   assert.ok(report.baseline && report.baseline.passed === false,
     'scenario (i) precondition: the baseline ran and BASE was RED — ' +
     JSON.stringify(report.baseline))
@@ -163,23 +165,24 @@ const task = (id) => ({
     'leg (b) [M2]: that judgment call contains no ' + JSON.stringify(PADDING_MARKER) + ' — ' +
     JSON.stringify(redCalls[0]))
 
-  assert.ok(criticPrompt !== null, 'leg (b) [M2]: the completeness critic was dispatched')
-  const criticPrefix = 'Baseline: the suite is RED on BASE — '
-  const criticLines = criticPrompt.split('\n').filter((l) => l.startsWith(criticPrefix))
-  assert.equal(criticLines.length, 1,
-    'leg (b) [M2]: exactly one line of the critic\'s brief starts ' +
-    JSON.stringify(criticPrefix))
-  // The excerpt the brief carries after that prefix runs to the end of the
-  // brief: a block is several lines, so the quotation is a region, not one
-  // physical line. What the leg asserts is what the region carries.
-  const briefExcerpt = criticPrompt.slice(
-    criticPrompt.indexOf(criticPrefix) + criticPrefix.length)
-  assert.ok(briefExcerpt.includes(LEG_LINE),
-    'leg (b) [M2]: the critic\'s Baseline excerpt CONTAINS the leg-naming line — ' +
-    JSON.stringify(briefExcerpt.slice(0, 200)))
-  assert.ok(!criticPrompt.includes(PADDING_MARKER),
-    'leg (b) [M2]: the critic\'s brief contains no ' + JSON.stringify(PADDING_MARKER) +
-    ' anywhere — an engine that hands it a tail pastes padding into the brief')
+  // The parked wave's own record. A run that parks on BASE's red dispatches no
+  // reconcile at all — there is no candidate to reconcile — so the second reader
+  // of the block is the wave's `detail`, and it quotes the block for the same
+  // reason the judgment call does: whoever reads the report must see WHICH leg
+  // was already failing, not forty lines of padding.
+  assert.equal(labels.filter((l) => l.startsWith('reconcile:')).length, 0,
+    'leg (b) [M2]: no reconcile agent is dispatched against a red BASE — ' +
+    JSON.stringify(labels))
+  const detail = String(report.waveMerges[0].detail)
+  assert.ok(detail.startsWith('baseline: the suite is RED on BASE'),
+    'leg (b) [M2]: the parked wave\'s detail BEGINS "baseline: the suite is RED on BASE" — ' +
+    JSON.stringify(detail.slice(0, 120)))
+  assert.ok(detail.includes(LEG_LINE),
+    'leg (b) [M2]: the parked wave\'s detail CONTAINS the leg-naming line — a detail cut ' +
+    'as a tail of this output has lost it: ' + JSON.stringify(detail.slice(0, 200)))
+  assert.ok(!detail.includes(PADDING_MARKER),
+    'leg (b) [M2]: the parked wave\'s detail contains no ' + JSON.stringify(PADDING_MARKER) +
+    ' — a tail of any length the engine took at BASE is all padding')
 }
 
 // ── (ii) a red wave candidate, reconciled green → leg (c) [M3] ───────────────
@@ -307,8 +310,9 @@ const task = (id) => ({
 
   assert.equal(report.waveMerges[0].status, 'MERGED',
     'scenario (iv) precondition: the wave merged — ' + JSON.stringify(report.judgmentCalls))
-  assert.strictEqual(report.baseline, null,
-    'leg (f) [M6]: report.baseline is strictly null on an all-green run — ' +
+  assert.equal(report.baseline && report.baseline.passed, true,
+    'leg (f) [M6]: report.baseline records a GREEN BASE on an all-green run — the baseline ' +
+    'is read once per run whatever the waves do, so it is never null after Setup — ' +
     JSON.stringify(report.baseline))
   assert.ok(!report.judgmentCalls.some((j) => String(j).startsWith('baseline:')),
     'leg (f) [M6]: no judgmentCalls entry starts with "baseline:" — ' +
