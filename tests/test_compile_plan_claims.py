@@ -375,11 +375,8 @@ WIDE = {
     "waves": [["1", "2", "3", "4", "5", "6"]],
     "dag_edges": [],
     "waveLabels": ["6 Modules"],
-    "gates": ["7"],
-    "post_merge_runbook": [],
     "mode": "parallel",
     "degrade_reason": None,
-    "allHeuristic": False,
 }
 CHAINED = {
     "waves": [["1"], ["2"], ["3"], ["4"], ["5"]],
@@ -389,11 +386,8 @@ CHAINED = {
                   {"from": "4", "to": "5", "why": "marker"}],
     "waveLabels": ["Entry validation", "Line parser", "Running balance",
                    "Report formatter", "CLI entry point"],
-    "gates": ["6"],
-    "post_merge_runbook": [],
     "mode": "parallel",
     "degrade_reason": None,
-    "allHeuristic": False,
 }
 
 
@@ -422,8 +416,7 @@ def test_a_provenance_tag_split_by_a_line_wrap_is_still_recognized():
 def test_interface_tokens_skip_language_keywords():
     # Papercut: `Produces: class FailedLookup(RuntimeError)` tokenized to
     # `class`, so two unrelated `class X` / `class Y` contracts would pair
-    # into a FALSE edge (silent and permanent) and blast-radius advisories
-    # matched every file containing the keyword.
+    # into a FALSE edge, silent and permanent.
     from compile_plan import _interface_token
     assert _interface_token("`class FailedLookup(RuntimeeError)`".replace("ee", "e")) == "FailedLookup"
     assert _interface_token("`def helper(x: int) -> str`") == "helper"

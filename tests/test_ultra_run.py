@@ -486,7 +486,9 @@ def test_compile_success_detail_is_summary_not_json(tmp_path):
     s = next(x for x in receipt["stages"] if x["stage"] == "compile")
     assert not s["detail"].startswith("{")
     assert "task(s)" in s["detail"] and "wave(s)" in s["detail"]
-    assert (receipt["compile"]["acceptance"] or {}).get("mode", "unmarked") in s["detail"]
+    # No acceptance clause: the `**Acceptance:**` line left the grammar, so the
+    # compile carries no `acceptance` key for the summary to quote.
+    assert "acceptance" not in s["detail"]
 
 
 def test_failure_details_survive_not_a_repo(tmp_path):

@@ -31,7 +31,8 @@ Leg by leg, each assertion naming the clause it comes from:
     `tests/exams/<slug>/__init__.py` is present; without it, collection aborts.
 
 `test_fleet_suite` is imported by module name — the convention of this suite
-(`tests/test_compile_plan_check_cost.py` line 57) — and `collect_sims` is
+(`tests/test_compile_plan_check_constraints.py` does the same) — and
+`collect_sims` is
 fetched off it inside leg (a), so its absence at BASE reads as the missing
 export rather than as a collection error for the whole file.
 """

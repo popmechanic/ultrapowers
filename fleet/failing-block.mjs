@@ -2,9 +2,8 @@
 // suite's output (#763 part 2, on #739's ground).
 //
 // A red suite's output is read twice: once by the record, which keeps all of it
-// (`<run dir>/acceptance.log`, `publish-fold/suite-<attempt>.txt`), and once by
-// a reader — a judgment call, a brief, a wave detail, a pull-request body — who
-// wants the failure. A fixed tail is the wrong cut for the second reader: the
+// (`publish-fold/suite-<attempt>.txt`), and once by a reader — a judgment call,
+// a brief, a wave detail, a pull-request body — who wants the failure. A fixed tail is the wrong cut for the second reader: the
 // interesting lines are wherever the failing test printed them, and a tail of N
 // characters keeps the summary and drops the assertion whenever the block runs
 // long. So the excerpt is a BLOCK: it begins at the failing test's own first

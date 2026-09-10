@@ -42,8 +42,7 @@ const MINUS = '−'
 // Always emitted. Eight recorded reviewer findings were the reviewer asking for
 // the integrated run that the driver already performs on the adopted tree.
 const INTEGRATED_SUITE =
-  "the run's Acceptance is `suite`; the driver runs the integrated suite on " +
-  'the adopted tree, not this review'
+  'the driver runs the integrated suite on the adopted tree, not this review'
 
 // --------------------------------------------------------------------------- //
 // small helpers                                                                //

@@ -28,11 +28,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import compile_plan  # noqa: E402
-# Task 4 leg (c) [M3]: the frozen-sha byte-identity assertion is that file's,
-# imported and re-run from here.
-import test_compile_plan_proof_runs as proof_runs  # noqa: E402
 from compile_plan import (  # noqa: E402
     gate_input_hash,
     parse_claims_body,
@@ -466,24 +462,3 @@ def test_task4_two_paths_tokens_still_draw_the_base_refusal(tmp_path):
             == ["exam-command: the template must carry {paths} exactly once"]), (
         "leg (c) [M3]: and it is the BASE wording, not the new one:\n"
         + r.stdout)
-
-
-def _fixture_fn(fixture):
-    """The plain function inside a pytest fixture object, so leg (e) of
-    `tests/test_compile_plan_proof_runs.py` can be re-run from here."""
-    fn = getattr(fixture, "__wrapped__", None)
-    if fn is None and hasattr(fixture, "_get_wrapped_function"):
-        fn = fixture._get_wrapped_function()
-    assert fn is not None, "cannot unwrap %r" % (fixture,)
-    return fn
-
-
-def test_task4_every_run_less_fixture_plan_still_checks_byte_identically(
-        tmp_path_factory):
-    """leg (c) [M3]: the two new rules are additive — every Run-less fixture
-    plan's bare `--check` output stays byte-identical to the compiler at the
-    frozen sha. The assertion is `tests/test_compile_plan_proof_runs.py`'s
-    own, imported and called."""
-    base_compiler = _fixture_fn(proof_runs.base_compiler)(tmp_path_factory)
-    proof_runs.test_every_run_less_fixture_plan_checks_byte_identically_to_base(
-        base_compiler)

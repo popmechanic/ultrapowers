@@ -189,12 +189,7 @@ nothing else:
 Interfaces grammar below — over an entire plan in one pass, printing every
 violation with its did-you-mean fix and exiting 2, or printing `PLAN OK` and
 exiting 0. Plain compile enforces the same rules but stops at the first
-violating task (`SystemExit`) instead of collecting every one. `--check --renders`
-appends the advisory renders after the verdict — P1 Produces blast-radius (code
-files at BASE outside a task's Files that mention a Produces symbol) and P2
-referent-existence (paths, `report.json` fields, `Task N` refs the body names
-that resolve nowhere); every such line starts with `ADVISORY `, and the verdict
-and exit code are unchanged (#345).
+violating task (`SystemExit`) instead of collecting every one.
 
 ## Interfaces grammar
 

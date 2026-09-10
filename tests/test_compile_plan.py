@@ -1,11 +1,10 @@
 """compile_plan.py turns a marked plan into the Step-3 transparency block,
 deterministically. The marked fixture's documented expectations (waves
-[[1,2],[3]], 4 -> gate config, 5 -> runbook) finally execute."""
+[[1,2],[3]], per-task dispositions) finally execute."""
 import json
 import pathlib
 import subprocess
 import sys
-import tempfile
 
 import pytest
 
@@ -14,39 +13,11 @@ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 from compile_plan import FILES_EXEMPT_MARKERS  # noqa: E402
 
-_WAIVER = "**Acceptance:** waived — inline test plan"
-
-
-def _with_waiver(path):
-    """Return a path to a copy of `path` that has an Acceptance waiver injected
-    immediately after the first line (plan title) if no **Acceptance:** line is
-    already present. Pre-existing fixtures that carry their own waiver or seal
-    are passed through unchanged. Returns the original path or a NamedTemporaryFile
-    path; caller is responsible for cleanup."""
-    text = pathlib.Path(path).read_text()
-    if "**Acceptance:**" in text:
-        return path, None  # already has one; no temp file needed
-    # Inject after the very first line so it sits at plan-header level
-    lines = text.splitlines(keepends=True)
-    insert_at = 1  # after line 0 (title)
-    injected = "".join(lines[:insert_at]) + _WAIVER + "\n\n" + "".join(lines[insert_at:])
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
-    tmp.write(injected)
-    tmp.close()
-    return tmp.name, tmp.name
-
-
 def _run_compiler(path, *extra):
-    """Run the compiler on `path` (waiver injected when the fixture carries
-    none); returns the CompletedProcess."""
-    effective, tmp = _with_waiver(path)
-    try:
-        return subprocess.run(
-            [sys.executable, str(COMPILER), str(effective)] + list(extra),
-            capture_output=True, text=True)
-    finally:
-        if tmp:
-            pathlib.Path(tmp).unlink(missing_ok=True)
+    """Run the compiler on `path`; returns the CompletedProcess."""
+    return subprocess.run(
+        [sys.executable, str(COMPILER), str(path)] + list(extra),
+        capture_output=True, text=True)
 
 
 def compile_plan(path):
@@ -75,8 +46,6 @@ def compile_plan_raw_with(path, extra):
 def test_marked_fixture_compiles_to_documented_waves():
     out = compile_plan(ROOT / "tests/fixtures/marked-plan.md")
     assert out["waves"] == [["1", "2"], ["3"]]
-    assert out["post_merge_runbook"] == ["5"]
-    assert out["gates"] == ["4"]
     assert {"from": "1", "to": "3", "why": "marker"} in out["dag_edges"]
     assert out["marker_conflicts"] == []
     assert out["mode"] == "parallel"
@@ -1071,75 +1040,6 @@ def test_inline_files_header_prose_value_has_no_writes(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Helpers for acceptance-marker tests
-# ---------------------------------------------------------------------------
-
-def compile_text(plan_markdown, tmp_path=None):
-    """Write plan_markdown to a temp file and compile it.
-
-    Returns (returncode, parsed_json_or_None, stderr_string).
-    """
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
-        f.write(plan_markdown)
-        tmp = pathlib.Path(f.name)
-    p = subprocess.run([sys.executable, str(COMPILER), str(tmp)],
-                       capture_output=True, text=True)
-    tmp.unlink(missing_ok=True)
-    out = None
-    if p.returncode == 0:
-        try:
-            out = json.loads(p.stdout)
-        except json.JSONDecodeError:
-            pass
-    return p.returncode, out, p.stderr
-
-
-SEAL_LINE = "**Acceptance:** sealed a1b2c3d4e5f6 (sha256:" + "ab" * 32 + ")"
-WAIVE_LINE = "**Acceptance:** waived — fixture plan, exam not applicable"
-
-
-def _minimal_marked_plan(acceptance_line=None):
-    head = ["# Tiny Implementation Plan", ""]
-    if acceptance_line:
-        head += [acceptance_line, ""]
-    return "\n".join(head + [
-        "### Task 1: Thing",
-        "**Type:** implementation",
-        "**Depends-on:** none",
-        "**Files:**",
-        "- Create: `a.py`",
-        "- [ ] **Step 1: do it**",
-    ]) + "\n"
-
-
-def test_acceptance_sealed_parsed():
-    code, out, _ = compile_text(_minimal_marked_plan(SEAL_LINE))
-    assert code == 0
-    assert out["acceptance"] == {"mode": "sealed", "sealId": "a1b2c3d4e5f6",
-                                 "sha256": "ab" * 32}
-
-
-def test_acceptance_waived_parsed():
-    code, out, _ = compile_text(_minimal_marked_plan(WAIVE_LINE))
-    assert code == 0
-    assert out["acceptance"]["mode"] == "waived"
-    assert "not applicable" in out["acceptance"]["reason"]
-
-
-def test_marked_plan_without_acceptance_fails():
-    code, _, err = compile_text(_minimal_marked_plan())
-    assert code != 0
-    assert "Acceptance" in err and "sealed-acceptance" in err
-
-
-def test_fenced_acceptance_line_is_ignored():
-    plan = _minimal_marked_plan("```\n" + SEAL_LINE + "\n```")
-    code, _, err = compile_text(plan)
-    assert code != 0, "a fenced example must not count as the plan's seal"
-
-
-# ---------------------------------------------------------------------------
 # Text-based compile helpers (thin wrappers to avoid duplicating subprocess logic)
 # ---------------------------------------------------------------------------
 
@@ -1164,28 +1064,6 @@ def _serialize_text(plan_md):
 
 def compile_raw_text(plan_md):
     return _with_plan_file(plan_md, compile_plan_raw)
-
-
-# ---------------------------------------------------------------------------
-# Suite acceptance disposition tests
-# ---------------------------------------------------------------------------
-
-def test_acceptance_suite_parsed():
-    out = compile_plan_text(_minimal_marked_plan(
-        "**Acceptance:** suite — verified by the committed suite"))
-    assert out["acceptance"]["mode"] == "suite"
-    assert "committed suite" in out["acceptance"]["reason"]
-
-
-def test_acceptance_suite_satisfies_enforcement():
-    r = compile_raw_text(_minimal_marked_plan("**Acceptance:** suite — x"))
-    assert r.returncode == 0
-
-
-def test_fenced_suite_line_is_ignored():
-    plan = _minimal_marked_plan("```\n**Acceptance:** suite — fenced\n```")
-    r = compile_raw_text(plan)
-    assert r.returncode != 0, "a fenced suite line must not count as a disposition"
 
 
 # ---------------------------------------------------------------------------
@@ -1782,8 +1660,6 @@ def test_canonical_files_block_compiles_clean():
 # ---------------------------------------------------------------------------
 
 def test_files_parser_accepts_fixture_label_none_and_dotfiles():
-    # Title line first so compile_plan_text's waiver injection (after line 0)
-    # lands at plan level, not inside Task 1's marker header block.
     plan = '''# Plan: fixture/dotfile coverage
 
 ### Task 1: Build
@@ -1838,38 +1714,13 @@ def test_empty_writes_buildqa_task_classifies_as_gate():
     out = compile_plan_text(plan)
     t2 = {t["id"]: t for t in out["tasks"]}["2"]
     assert t2["disposition"] == "gate"
-    assert "2" in out["gates"]
     assert "2" not in [e["to"] for e in out["dag_edges"] if e.get("why", "").startswith("ambiguous")]
 
 
 # ---------------------------------------------------------------------------
-# Task 3: compiler diagnostics — description-inferred edge class, 0-markers
-# flag, gate-heading boundary.
-# (A `# Plan: …` title line precedes each marked plan so compile_plan_text's
-# waiver injection — after line 0 — lands at plan level, not inside Task 1's
-# marker header block; this mirrors the convention used throughout this file.)
+# Task 3: compiler diagnostics — description-inferred edge class,
+# gate-heading boundary.
 # ---------------------------------------------------------------------------
-
-def test_zero_markers_plan_flags_all_heuristic():
-    plan = '''# Plan: zero markers
-
-### Task 1: A
-**Files:**
-- Create: `a.py`
-
-- [ ] do
-
-### Task 2: B
-**Files:**
-- Create: `b.py`
-
-- [ ] do
-'''
-    out = compile_plan_text(plan)
-    assert out["allHeuristic"] is True
-    assert any("0 markers" in c["note"] or "all dispositions inferred" in c["note"]
-               for c in out["marker_conflicts"])
-
 
 def test_non_task_gate_heading_is_a_boundary():
     plan = '''# Plan: boundary fixture
@@ -1986,7 +1837,6 @@ def test_emit_args_writes_complete_launch_skeleton(tmp_path):
     assert skel["edges"] == [[e["from"], e["to"]] for e in out["dag_edges"]]
     assert skel["dependencyEdges"] == [
         f"{e['from']} -> {e['to']} ({e['why']})" for e in out["dag_edges"]]
-    assert skel["acceptance"] == out["acceptance"]
     assert skel["waveLabels"] == out["waveLabels"]
     assert skel["globalConstraints"] == out["globalConstraints"]
     assert pathlib.Path(skel["planPath"]).is_absolute()

@@ -15,11 +15,10 @@ worktree**, never in the session repository. The verdict is then independent of
 the session checkout's position on both of the legs that could otherwise read
 it. The integrity checks below derive from ref-resolved `HEAD` — the report's
 recorded merge sha and the completeness critic's own `git rev-parse HEAD`, both
-verified mechanically — not from where the session happens to sit. And
-acceptance is administered in a **fresh detached worktree** of the branch
-(`run_acceptance.sh --suite-gate` does this), so the other
-place the checkout position could bite is closed too. Neither leg alone
-establishes position-independence: head-match without the detached suite-gate
+verified mechanically — not from where the session happens to sit. And the
+suite is run in a **clone of its own**, never in the session repository, so the
+other place the checkout position could bite is closed too. Neither leg alone
+establishes position-independence: head-match without that separate clone
 would still run the tests in whatever tree the operator left behind.
 
 So the engine never moves the operator's checkout, and (as of #84) no longer
@@ -62,8 +61,9 @@ failure cascade-blocked the rest of the diamond. A prose-only reference like tha
 that once serialized it was deleted in Phase 2 (0.2.17), so the guard is authoring —
 declare the `**Interfaces:**` `Consumes`/`Produces` pair, which is the edge's only
 source under the claims grammar (#390 retired the `**Depends-on:**` marker and, with
-it, the `undeclared-dependency` cross-check there — its remedy became unsayable; the
-surviving warning is the unmatched-`Consumes` `ADVISORY`). Legacy-grammar plans keep
+it, the `undeclared-dependency` cross-check there — its remedy became unsayable; an
+unmatched `Consumes:` is the author's own to catch, since nothing warns on
+it). Legacy-grammar plans keep
 both the marker and the cross-check. The same run motivated the FILES and SIBLING-FILES scope rules
 carried by the implementer/reviewer role prompts (`fleet/roles/*.md` since 0.3.0):
 the implementer's final commit deleted a sibling-owned file its task never named,

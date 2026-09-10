@@ -995,7 +995,6 @@ export async function runEngine({
     log('run-engine: worker testCmd capped for concurrency (#436) — ' + workerTestCmd)
   }
   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
-  const ACCEPTANCE = (args.acceptance && typeof args.acceptance === 'object') ? args.acceptance : null
   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
   // The executable half of the Global Constraints: `{ cmd, minor }` entries the
@@ -3045,19 +3044,6 @@ export async function runEngine({
     ? { command: testCmd, passed: lastSuite.passed, output: lastSuite.output }
     : { command: testCmd, passed: false, output: 'not run — no wave merged' }
 
-  let acceptance = null
-  if (ACCEPTANCE && ACCEPTANCE.mode === 'waived') {
-    acceptance = { mode: 'waived', reason: String(ACCEPTANCE.reason || ''), passed: null }
-  } else if (ACCEPTANCE && ACCEPTANCE.mode === 'suite') {
-    acceptance = { mode: 'suite', passed: tests.passed, reason: String(ACCEPTANCE.reason || '') }
-    if (!acceptance.passed) judgmentCalls.push(
-      'suite acceptance did not pass (committed test suite failed) — gate must not Approve')
-  } else if (ACCEPTANCE && ACCEPTANCE.mode === 'sealed') {
-    acceptance = { mode: 'sealed', sealId: ACCEPTANCE.sealId, sha256: ACCEPTANCE.sha256,
-                   status: 'PENDING_GATE', passed: null,
-                   note: 'administered deterministically at the pre-merge gate' }
-  }
-
   const mergedBranches = new Set()
   for (const wm of waveMerges) if (wm && wm.status === 'MERGED') for (const b of (wm.branches || [])) mergedBranches.add(b)
   const tasksPlanned = WAVES.flat().length
@@ -3109,7 +3095,6 @@ export async function runEngine({
       refereeBlocking,
       refereeSkippedPairs,
     },
-    acceptance,
     baseline,
     waveMerges,
     frontier,

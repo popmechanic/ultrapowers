@@ -334,7 +334,9 @@ def test_extract_gate_input_task_is_unchanged(tmp_path):
 # (f) --emit-args carries planClaim [M5]
 # ---------------------------------------------------------------------------
 
-ARGS_KEYS = ["waves", "wavesPath", "edges", "dependencyEdges", "acceptance",
+# No `acceptance`: the `**Acceptance:**` line left the grammar and the key left
+# this payload with it — see tests/test_compile_plan_acceptance_line.py.
+ARGS_KEYS = ["waves", "wavesPath", "edges", "dependencyEdges",
              "waveLabels", "globalConstraints", "constraintChecks", "planPath"]
 
 
@@ -441,8 +443,7 @@ def test_755_plan_claim_provenance_reads_a_quoted_header_tag():
 
 
 def test_755_a_quoted_header_claim_checks_clean(tmp_path):
-    # [M1] leg (a): `--check` exits 0 with `PLAN OK` as its FIRST line (the
-    # advisory tail rides below it, after a blank line).
+    # [M1] leg (a): `--check` exits 0 with `PLAN OK` as its FIRST line.
     proc = _check(tmp_path, _plan(HEADER_QUOTED, _task("1", "(derived)")))
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout.splitlines()[0] == "PLAN OK", proc.stdout

@@ -46,8 +46,6 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
-    `acceptance.log` — the gate's acceptance run's full stdout+stderr — is there when the engine
-    wrote it, beside the receipt that quotes only its 4000-char tail.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
     `referee/task-<id>-<n>.json` — one per patch the driver's referee graded, `n` the number of fix
@@ -227,11 +225,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     every git command, ref move and push is the script's.
   - after the engine: exit 1 WITH a gate receipt is a verdict (parked), not a failure. `ahead = git rev-list
     --count <base>..ultra/integration-run-N`; `ahead == 0` → state `parked`, evidence committed, NO push,
-    NO PR. That parked page names what failed: `error` is
-    `parked: <branch> has no commits ahead of base (verdict <verdict>)`, and when
-    `<run dir>/acceptance.log` exists and carries a failure line, ` — ` and the failing test's own block cut
-    from it by `failing_block` (the rule `fleet/failing-block.mjs` states). With no such log the sentence is
-    the whole cell. Otherwise the publish fold above runs, and then
+    NO PR. That parked page names what failed: `error` is exactly
+    `parked: <branch> has no commits ahead of base (verdict <verdict>)`, the whole cell.
+    Otherwise the publish fold above runs, and then
     `publishing` (written only after `systemctl --user is-active fleet-engine-<N>.service` and `systemctl --user is-active fleet-fold-<N>-<attempt>.service` are inactive;
     evidence committed BEFORE the push, except a fold-again's push, made under `running`, before its `publishing` commit) → the head is on the remote (`push_head`'s `git push origin
     ultra/integration-run-N`) → one REST call, never `gh`: `curl -sS -X POST

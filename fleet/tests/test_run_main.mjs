@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import {
   parseArgs, fillTiers, ackDecision, acksOf, criticDecision, boundedParallel, provisionRunTree,
   writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage, DEFAULTS,
-  makeAddDirsFor, acceptanceWrap,
+  makeAddDirsFor,
   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
 } from '../run-main.mjs'
 import { makeEventLog } from '../run-waves.mjs'
@@ -300,13 +300,6 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
   const runDir = path.join(repoDir, '.claude/ultrapowers', 'run-' + runId)
   const argsFile = path.join(runDir, 'args.json')
   const calls = []
-  // run-42 task 1: the receipt as each script SEES it, snapshotted at call
-  // time. `receipt.json` is the gate's acceptance command, so what matters is
-  // its value at the moment ultra_gate.py reads it — not at the end of the run.
-  const seen = { validateKnobs: null, gate: null }
-  const snapReceipt = () => {
-    try { return JSON.parse(fs.readFileSync(path.join(runDir, 'receipt.json'), 'utf8')) } catch { return null }
-  }
   const exec = async (cmd, argv, opts) => {
     calls.push([cmd, ...argv])
     if (cmd === 'git') {
@@ -318,7 +311,6 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
     }
     const script = path.basename(argv[0])
     if (script === 'ultra_run.py' && argv.includes('--validate-knobs')) {
-      seen.validateKnobs = snapReceipt()
       // A knob defect: the verb exits non-zero with its one JSON line on stdout.
       if (validateExit !== 0) return { code: validateExit, stdout: KNOB_DEFECT_LINE, stderr: '' }
       return { code: 0, stdout: '{"ok": true}', stderr: '' }
@@ -328,7 +320,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
       fs.writeFileSync(argsFile, JSON.stringify({
         waves,
         wavesPath: path.join(runDir, 'launch.json'),
-        edges: [], acceptance: { mode: 'suite' }, waveLabels: ['w1'],
+        edges: [], waveLabels: ['w1'],
         globalConstraints: '', planPath: argv[1],
         pluginRoot: repoDir, runDir, testCmd: 'true',
       }))
@@ -346,7 +338,6 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
       return { code: 0, stdout: JSON.stringify({ mode: 'suite', stamp: runId, branch: 'ultra/integration-' + runId }), stderr: '' }
     }
     if (script === 'ultra_gate.py') {
-      seen.gate = snapReceipt()
       // The REAL gate-receipt shape (ultra_gate.py:107): acks are NESTED under
       // gateCheck, never flat at the top. A flat {acks} stub is what let the
       // two-move-rule bypass through review — the stub must match the script.
@@ -362,7 +353,7 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves, validate
     }
     throw new Error('exec stub: unexpected ' + cmd + ' ' + argv.join(' '))
   }
-  return { exec, calls, runDir, seen }
+  return { exec, calls, runDir }
 }
 
 const WAVES = [[{ id: 'T1', title: 't', files: ['a.txt'], tier: null, review: 'lean', writes: ['a.txt'], commutes: [] }]]
@@ -597,154 +588,6 @@ function freshRepo(name) {
   assert.equal(empty[i + 1], '', "'' rides verbatim so ultra_run.py disables derivation")
   const given = await drive('boot-given', 'bun install')
   assert.equal(given[given.indexOf('--bootstrap-cmd') + 1], 'bun install')
-}
-
-// ── run-42 task 1 — the driver tees the gate's acceptance run into the run dir ─
-// Claim (#739): the gate's acceptance run writes its full stdout+stderr to
-// `<run dir>/acceptance.log`. `ultra_gate.py` and `run_acceptance.sh` are
-// FROZEN, so the only non-frozen writer of the gate's acceptance command is
-// this driver, and the only channel is `receipt.json`'s `testCmd` — the string
-// ultra_gate hands to run_acceptance.sh as its `--run`.
-
-// Legs (a) [M1] and (b) [M2] — one runMain drive, read at two points of the flow.
-{
-  const repoDir = freshRepo('flow-acceptance-log')
-  const runId = 'run-97'
-  const { exec, calls, runDir, seen } = makeExecStub({ repoDir, runId, gateExit: 0, waves: WAVES })
-  const out = await runMain(
-    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
-    {
-      exec, log: () => {},
-      runEngineFn: async () => ({ integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [] }),
-      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
-    },
-  )
-  assert.equal(out.code, 0, out.verdict + ': ' + out.detail)
-
-  // (a) [M1] The receipt as ultra_gate.py sees it AT CALL TIME — a snapshot the
-  // gate-mode stub took while it was being invoked, not the end-of-run file.
-  const snap = seen.gate
-  assert.ok(snap, 'leg (a) [M1]: the ultra_gate.py gate-mode stub read a receipt.json')
-  const argsFile = path.join(runDir, 'args.json')
-  const logPath = path.join(runDir, 'acceptance.log')
-  assert.equal(path.dirname(snap.argsFile), runDir,
-    'leg (a) [M1]: the run dir IS path.dirname of the receipt argsFile')
-  assert.equal(snap.testCmd, acceptanceWrap('true', runDir),
-    'leg (a) [M1]: the gate reads acceptanceWrap(<the stamped testCmd>, <run dir>)')
-  // Spelled out verbatim, so an acceptanceWrap that merely agrees with itself
-  // cannot pass this leg: the literal IS the contract.
-  assert.equal(snap.testCmd, "set -o pipefail; { true; } 2>&1 | tee '" + logPath + "'",
-    "leg (a) [M1]: the exact literal set -o pipefail; { <testCmd>; } 2>&1 | tee '<run dir>/acceptance.log'")
-  assert.equal(snap.acceptanceLog, logPath,
-    'leg (a) [M1]: acceptanceLog is <run dir>/acceptance.log — a reader of the evidence branch ' +
-    'sees where the output went without parsing the command')
-  assert.ok(path.isAbsolute(snap.acceptanceLog), 'leg (a) [M1]: acceptanceLog is an absolute path')
-  assert.equal(snap.ok, true, 'leg (a) [M1]: ok is the value ultra_run.py wrote')
-  assert.equal(snap.baseBranch, 'fleet-base', 'leg (a) [M1]: baseBranch is the value ultra_run.py wrote')
-  assert.equal(snap.argsFile, argsFile, 'leg (a) [M1]: argsFile is the value ultra_run.py wrote')
-  assert.equal(snap.testCmdSource, 'plan', 'leg (a) [M1]: testCmdSource is kept as stamped')
-  const { testCmd: _rewritten, acceptanceLog: _added, ...carried } = snap
-  assert.deepEqual(carried, { ok: true, baseBranch: 'fleet-base', argsFile, testCmdSource: 'plan' },
-    'leg (a) [M1]: testCmd is the only rewritten key and acceptanceLog the only added one — ' +
-    'every other key the receipt carried is unchanged in value')
-
-  // (b) [M2] The wrapper reaches the gate through the receipt and no reader before it.
-  const onDisk = JSON.parse(fs.readFileSync(argsFile, 'utf8'))
-  assert.equal(onDisk.testCmd, 'true',
-    "leg (b) [M2]: args.json keeps the engine's plain command — run-engine.mjs reads args.testCmd")
-  assert.ok(seen.validateKnobs, 'leg (b) [M2]: the --validate-knobs stub read a receipt.json')
-  assert.equal(seen.validateKnobs.testCmd, 'true',
-    'leg (b) [M2]: the rewrite lands AFTER --validate-knobs read the receipt, and before the gate')
-  const approveArgv = calls.find((c) => c.includes('--approve'))
-  assert.ok(approveArgv, 'leg (b) [M2]: the green flow reached ultra_gate.py --approve')
-  for (const c of calls) {
-    for (const el of c) {
-      assert.ok(!String(el).includes('acceptance.log'),
-        'leg (b) [M2]: no exec argv of the whole flow carries the log path — the receipt is the ' +
-        'only channel: ' + c.join(' '))
-    }
-  }
-}
-
-// Legs (c) and (d) [M3] — the wrapper evaluated exactly the way the frozen
-// run_acceptance.sh evaluates its --run in suite-gate mode: a REAL invocation
-// of that script against a throwaway repository. Both frozen tails (8000 in the
-// script's JSON, 4000 in the gate receipt) are shorter than either 10000-byte
-// stream, so a log holding only a tail cannot pass.
-{
-  const engineRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-  const acceptanceSh = path.join(engineRoot, 'skills/ultrapowers/scripts/run_acceptance.sh')
-  assert.ok(fs.existsSync(acceptanceSh), 'the frozen run_acceptance.sh is where the gate calls it')
-
-  const wrapRepo = freshRepo('acceptance-wrap-repo')
-  const nonce = 'AW7QX'
-  const payloadDir = path.join(tmp, 'acceptance-wrap-payload')
-  fs.mkdirSync(payloadDir, { recursive: true })
-  const outPayload = path.join(payloadDir, 'stdout.txt')
-  const errPayload = path.join(payloadDir, 'stderr.txt')
-  fs.writeFileSync(outPayload, 'o'.repeat(10000) + '\n')
-  fs.writeFileSync(errPayload, 'e'.repeat(10000) + '\n')
-  const first = 'BEGIN-' + nonce
-  const last = 'END-' + nonce
-  // Bytes the command emits: marker line + 10000 on stdout + 10000 on stderr +
-  // marker line. Separate processes write in sequence, so the order is fixed.
-  const emitted = Buffer.byteLength(first + '\n') +
-    fs.statSync(outPayload).size + fs.statSync(errPayload).size +
-    Buffer.byteLength(last + '\n')
-
-  const driveAcceptance = (exitCode, label) => {
-    const runDir = path.join(tmp, 'acceptance-wrap-run-' + exitCode)
-    fs.mkdirSync(runDir, { recursive: true })
-    const cmd = "printf '" + first + "\\n'; cat '" + outPayload + "'; cat '" + errPayload +
-      "' >&2; printf '" + last + "\\n'; exit " + exitCode
-    const r = spawnSync('bash', [acceptanceSh, '--suite-gate', '--branch', 'fleet-base',
-      '--repo', wrapRepo, '--run', acceptanceWrap(cmd, runDir)], { encoding: 'utf8', env: ENV })
-    let json
-    try {
-      json = JSON.parse(r.stdout)
-    } catch {
-      assert.fail(label + ': run_acceptance.sh did not emit one JSON object on stdout: ' +
-        JSON.stringify(r.stdout.slice(-500)) + ' / ' + JSON.stringify(String(r.stderr).slice(-500)))
-    }
-    const logPath = path.join(runDir, 'acceptance.log')
-    assert.ok(fs.existsSync(logPath), label + ': <run dir>/acceptance.log exists')
-    const buf = fs.readFileSync(logPath)
-    const text = buf.toString('utf8')
-    assert.equal(buf.length, emitted,
-      label + ': the log is exactly the bytes the command emitted (' + emitted + '), not a tail')
-    assert.equal(text.split('\n')[0], first, label + ': the opening marker is the log\'s first line')
-    assert.equal(text.replace(/\n$/, '').split('\n').at(-1), last,
-      label + ': the closing marker is the log\'s last line')
-    return { status: r.status, json }
-  }
-
-  // (c) [M3] A suite that passes: the script greens, the log is complete, and
-  // what tee forwarded on stdout is what the script captured into its JSON.
-  const green = driveAcceptance(0, 'leg (c) [M3] exit 0')
-  assert.equal(green.status, 0, 'leg (c) [M3]: the script exits 0 for a suite that exits 0')
-  assert.equal(green.json.passed, true, 'leg (c) [M3]: passed is true in the emitted JSON')
-  assert.equal(green.json.exitCode, 0, 'leg (c) [M3]: exitCode is the suite\'s 0')
-  assert.ok(green.json.output.length <= 8000,
-    'leg (c) [M3]: the frozen 8000-char tail is unchanged — the gate\'s capture is untouched')
-  assert.ok(green.json.output.includes(last),
-    'leg (c) [M3]: the JSON output carries the closing marker — tee forwards on stdout what the ' +
-    'script captures, so the receipt tail keeps its content')
-  assert.ok(!green.json.output.includes(first),
-    'leg (c) [M3]: the JSON output does NOT carry the opening marker — it is a tail, and only the ' +
-    'log holds the whole run')
-
-  // (d) [M3] The exit status crosses the pipe: pipefail, not tee's 0.
-  const red = driveAcceptance(3, 'leg (d) [M3] exit 3')
-  assert.equal(red.status, 1, 'leg (d) [M3]: the script exits 1 for a suite that exits 3')
-  assert.equal(red.json.exitCode, 3,
-    'leg (d) [M3]: exitCode is the suite\'s 3 — set -o pipefail, not tee\'s 0')
-  assert.equal(red.json.passed, false, 'leg (d) [M3]: passed is false')
-
-  const noTests = driveAcceptance(5, 'leg (d) [M3] exit 5')
-  assert.equal(noTests.json.exitCode, 5,
-    'leg (d) [M3]: exitCode 5 reaches the frozen no-tests guard — the pipeline did not launder ' +
-    'the code to tee\'s 0')
-  assert.equal(noTests.json.passed, false, 'leg (d) [M3]: the no-tests guard still refuses to green')
 }
 
 // ── #753 Task 2 — a manual ack settled by the driver's own executed Run: ─────

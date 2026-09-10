@@ -236,10 +236,9 @@ the complexity-creep era; #519 had already demoted trims): the reviewer hunts
 under-specification, scope reconciliation, and contradictions, with trim proposals
 welcome but not the mandate; the spec carries a `## Spec review` section with
 adopt-or-answer for every finding. Historical specs carry `## Trim review` sections
-(dispatch brief still in `skills/ultralearn/references/distilling-proposals.md` §The spec review). Plans default to `**Acceptance:** suite — the committed suite is the verification.`
-(the compiler's frozen vocabulary needs the `suite — <reason>` form; a bare `suite`
-fails to parse — caught live on sitting 2's drain plan). A prose or procedure task proves
-itself with a `- Run:` bullet — a command the driver executes and an output a person can read —
+(dispatch brief still in `skills/ultralearn/references/distilling-proposals.md` §The spec review).
+A prose or procedure task proves itself with a `- Run:` bullet — a command the driver
+executes and an output a person can read —
 never a sentence matched against itself (#592; the 224 prose-pin tests in 25 files that did
 exactly that were deleted in the lift, and `tests/test_docs_agree_with_code.py` keeps the
 structural dozen).
@@ -253,21 +252,14 @@ structural dozen).
   they have. Release commit `chore(release): 0.0.x — …`, landed through a PR with `gh pr merge --auto --squash` so the required check runs in front of it (#680, since 0.3.18), then `gh release create v0.x.y`. **After pushing a
   release, confirm CI on `main` is green (`gh run list --branch main --limit 1`)** — main sat red
   across two releases (0.2.12→0.2.13) and nothing surfaced it until PR #161.
-- **The verification periphery is FROZEN (0.1.0).** The gate scripts
-  (`gate_check.py`, `ultra_gate.py`, `run_acceptance.sh`) and the
-  compiler's diagnostic vocabulary change only for an
-  eval-measured regression (`evals/ab_runner.py` numbers), never on an
-  incident narrative alone — the one licensed exception is the Phase-2 tier
-  deletion (`read-after-write`/`prose-reference`/`ambiguous-files`/`catch-all`,
-  spec §2a), adjudicated by the recorded corpus migration reading
-  (`evals/frontier/results/2026-08-20-phase2-migration.md`: exactly the
-  expected `−3 prose-reference` + degrade-deletion mode flips — plus that
-  deletion's one downstream wave-shape promotion, on a single plan whose
-  deleted edge was gating — and no other delta, against the pre-registered
-  97-plan census) plus the T15 rig re-run (Task 12). `suite` is the default
-  disposition; a `sealed` line still parses (frozen vocabulary) but is
-  `BLOCKED` at the gate — the sealing subsystem was cut in One Driver Phase 0
-  (row 7).
+- **The verification periphery is ordinary code (2026-09-10, #871).** The gate scripts
+  (`gate_check.py`, `ultra_gate.py`) and the compiler's diagnostic vocabulary are edited
+  like anything else here — no eval-measured regression is owed in front of a change.
+  What they are worth is measured instead, on #872's pre-registered readings: critical-path
+  minutes, the suite verdict at both sites (the task's own clone and the adopted tree), how
+  many PRs were held and what came of them, catches per release, and regressions found
+  later. The 0.1.0 freeze ended with the two things it was protecting — the plan-level
+  Acceptance line and the advisory tier — both of which are gone.
 - **Judgment prompts are data files.** `fleet/roles/*.md` (sizes reported, not gated —
   #496) are read at dispatch by `fleet/run-engine.mjs` — the single copy; the pre-0.3.0 bake/re-bake convention and its drift pin are deleted with
   `waves.js`. `references/plan-markers.md` is the runtime half only (its authoring rules
@@ -276,9 +268,7 @@ structural dozen).
   `tests/test_recommendation_rubric.py`).
 - **Fleet engine sims ride the pytest suite.** `fleet/tests/test_*.mjs` are run by
   `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 300 s per file, no network — `curl`,
-  `git`, `gh`, `ssh`, `systemd-run` and `systemctl` are stubbed through a PATH shim); the old
-  `run_acceptance.sh --suite-gate` harness leg is inert since 0.3.0 (its
-  `harnesses/*.js` trigger path no longer exists — the frozen script is untouched).
+  `git`, `gh`, `ssh`, `systemd-run` and `systemctl` are stubbed through a PATH shim).
 - **The four operator documents are pinned to the code, not to their sentences.**
   `tests/test_docs_agree_with_code.py` reads `SKILL.md`, `first-run.md`, `fleet/RUNBOOK.md` and
   `README.md` and checks structure: every launch-line flag is in `launch.mjs`'s usage, the

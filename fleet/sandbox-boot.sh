@@ -795,12 +795,9 @@ collect_evidence() {
   [ -n "$approve" ] && cp "$approve" "$dest/approve-receipt.json"
   run_dir="$(run_dir_path)"
   # `standing-approval.json` is the pre-authorization record the engine writes
-  # beside the receipts. `acceptance.log` is the acceptance run's whole
-  # stdout+stderr, teed there by the driver's suite command — `gate-receipt.json`
-  # keeps only its 4000-char tail, so the log is the only full copy. Every name
-  # here is copied WHEN THE ENGINE WROTE IT — a run that needed no approval, or
-  # that died before the gate ran, commits none.
-  for f in report.json events.jsonl receipt.json standing-approval.json acceptance.log; do
+  # beside the receipts. Every name here is copied WHEN THE ENGINE WROTE IT — a
+  # run that needed no approval, or that died before the gate ran, commits none.
+  for f in report.json events.jsonl receipt.json standing-approval.json; do
     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
   done
   # The engine's per-worker transcripts — the reduced records ultralearn's
@@ -1442,8 +1439,8 @@ failing_block() { # $1 = the suite file
 # `failing_block`'s fallback prints a file with no start line WHOLE. That is
 # right for the fold's `suite red` section, which is only ever handed a suite
 # that failed, and wrong for any caller that may be handed a GREEN log: there
-# the whole file would land in the cell it was quoting one block into. So those
-# callers ask this first. The pattern is `failing_block`'s own start line and
+# the whole file would land in the cell it was quoting one block into. Such a
+# caller asks this first. The pattern is `failing_block`'s own start line and
 # the two must agree literal for literal, exactly as both agree with
 # `fleet/failing-block.mjs`'s `START`. POSIX awk only, for the same reasons.
 has_failing_block() { # $1 = the suite file
@@ -2131,7 +2128,7 @@ do_boot() {
     run_engine
   fi
 
-  local code outcome verdict approval approved_how ahead acceptance_log failing
+  local code outcome verdict approval approved_how ahead
   code="$(engine_exit_code)"
   collect_evidence
 
@@ -2190,22 +2187,6 @@ $(engine_tail)"
   ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "^$BASE_SHA" "$BRANCH" 2>/dev/null || echo 0)"
   if [ "$ahead" = "0" ]; then
     ERROR="parked: $BRANCH has no commits ahead of base (verdict ${verdict:-none})"
-    # …and, when the gate's acceptance run left a log, WHAT was failing. A run
-    # that parks with nothing ahead of base is most often a run whose repository
-    # was red before it opened, and the branch count alone tells the reader it is
-    # held without telling them by what. `acceptance.log` is the gate's own tee
-    # of that suite, and `failing_block` cuts the failing test's own block from
-    # it by the same rule the publish fold's `suite red` section uses. An absent
-    # file — a waived exam, a run that never reached the gate — leaves the
-    # sentence exactly as it was, and so does a GREEN one: a park with every task
-    # blocked over a passing BASE tees a log with no failure line in it, and
-    # `failing_block` would hand back the whole file, so the log is asked for a
-    # failing line first.
-    acceptance_log="$(run_dir_path)/acceptance.log"
-    if [ -f "$acceptance_log" ] && has_failing_block "$acceptance_log"; then
-      failing="$(failing_block "$acceptance_log")"
-      [ -n "$failing" ] && ERROR="$ERROR — $failing"
-    fi
     write_status parked "nothing to publish"
     collect_evidence
     push_evidence "$RUN_ID: parked — nothing ahead of base"

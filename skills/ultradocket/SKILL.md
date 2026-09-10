@@ -33,9 +33,9 @@ accepted entries become `State: accepted`.
 
 Record each entry's triage rationale in the durable `**Notes:**` field (it
 survives every lifecycle transition, unlike free text packed into the `Score`
-line). Triage does **not** assign an acceptance disposition —
-that is decided at planning (sweep step 3). Do not guess `suite`/`waived` at
-triage; conflating the acceptance mode with "self-contained" is a known triage trap.
+line). Triage assigns no verification disposition at all: how a plan is verified
+is the plan's own business, and every plan is verified the same way — by the
+suite the run records. There is nothing to guess here.
 
 Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
 
@@ -48,11 +48,10 @@ Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
 **Plan:** docs/superpowers/plans/2026-06-14-stripe-webhook-retry.md
 ```
 
-`docket_lib` still parses a `**Seal:**` field, because the disposition
-vocabulary is frozen — `compile_docket` no longer validates it (#612) — but **do
-not write one.** The sealing subsystem was cut in One Driver Phase 0; a `sealed` plan
-parses and is then `BLOCKED` at the gate. `suite` is the default and the right
-choice for this repo's own work. Deleting the residual machinery is #386.
+`docket_lib` still parses a `**Seal:**` field and round-trips whatever it finds
+there — `compile_docket` no longer validates it (#612) — but **do not write
+one.** The subsystem it named was cut in One Driver Phase 0 and nothing
+downstream reads the field. Deleting the residual machinery is #386.
 
 Lifecycle: `triaged → accepted → planned → queued → executed → verified`; any
 non-terminal state → `parked`. Transitions go through `docket_lib.transition`,
@@ -83,10 +82,10 @@ One iteration:
    it for me", summarize the plan against the issue's stated scope and any
    standing scope cuts, flag every deviation, and still take an explicit
    per-plan yes.
-   Plans the sweep writes must carry the exact compiling Acceptance form —
-   `**Acceptance:** suite — <one-line rationale>` (or the waived
-   equivalent) — verified by the pipeline's existing `compile_plan.py --check`
-   step; a bare `suite.` parses as `missing` and reds the drain.
+   A plan the sweep writes carries no verification-disposition line at all: the
+   compiler stopped reading one, and the drain's gate is the suite result the
+   run records. `compile_plan.py --check` is still the pipeline's own step, and
+   it must print `PLAN OK`.
 4. **Choose the engine.** Apply the **shared execution-fit rubric** — the same
    one the routing hook and ultrawrite use (pinned by
    `tests/test_recommendation_rubric.py`) — to the finished marked plan, and
@@ -139,21 +138,18 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    - `subagent-driven` → invoke `superpowers:subagent-driven-development` against
      the per-plan branch.
    - `inline` → invoke `superpowers:executing-plans` against the per-plan branch.
-3. **Administer the correctness gate** against the plan's branch, dispatched on
-   the plan's disposition (its `**Acceptance:**` line, read as `acceptance.mode`
-   from `compile_plan`). Each runner makes its own detached worktree (agnostic to
-   the current checkout) and is exit-code authority:
-   - `suite` → `run_acceptance.sh --suite-gate --branch <branch> --base <docket-integration-line-HEAD>`
-     — the committed suite (`python3 -m pytest`) run on the branch; exit 0 ⇒ pass.
-     This is the disposition for ultrapowers' own engine/skill/doc work, which
-     authors no held-out exam. `--base` (the ref the plan branched from) is still
-     passed, but its JS-behavioral leg is **inert since 0.3.0**: it triggered on
-     `skills/ultrapowers/harnesses/*.js`, a path that no longer exists. The
-     concern it protected (issue #79 — an engine-behavioral plan riding a
-     Python-only green) is now covered by construction, because the engine sims
-     live in `fleet/tests/` and ride the pytest suite itself.
-   - `waived` → no gate exists; **park for the operator** at the end gate. Never
-     auto-merge unverified work.
+3. **Read the correctness gate** for the plan's branch. There is one gate and no
+   dispatch on a per-plan disposition: the committed suite (`python3 -m pytest`)
+   run on that branch, in a clone of its own so the verdict is agnostic to the
+   current checkout, and its exit code is the authority — exit 0 ⇒ pass. For a
+   fleet-driven entry the run has already recorded that verdict, so read it off
+   the gate receipt rather than administering a second one; for a sequential
+   executor, run the suite on the branch yourself. This is the whole gate for
+   ultrapowers' own engine/skill/doc work, which authors no held-out exam, and
+   the engine sims are inside it, because they live in `fleet/tests/` and ride
+   the pytest suite (issue #79's concern, now covered by construction). A branch
+   with no recorded suite verdict is unverified work: **park it for the
+   operator** at the end gate rather than auto-merging.
 4. **Merge or park** — the deterministic step:
    - **Green gate** → run `scripts/merge_entry.py --repo <repo> --branch
      <plan-branch> --docket docs/superpowers/docket.md --issue <n>`. It is the
@@ -202,8 +198,8 @@ deterministic side:
   branch stops the drain early.
 - **Trust the gate, not "looks done."** A "finished" signal from a
   non-deterministic executor is never enough to merge. Correctness is decided by
-  the plan's suite gate (`run_acceptance.sh --suite-gate`, exit-code authority)
-  — or, for a fleet-driven entry, the orchestrator's gate receipt: exit 0 ⇒
+  the recorded suite result on the branch (exit-code authority) — for a
+  fleet-driven entry, the one on the orchestrator's gate receipt: exit 0 ⇒
   merge; any non-zero ⇒ park. An over-eager auto-advance therefore cannot land
   broken work on the integration line — the gate it can't touch gates the
   merge.
@@ -220,8 +216,8 @@ gate and the single end gate.
 ### The single end gate
 
 When the queue drains or the budget ceiling hits, present **one** pre-merge
-portfolio gate. Per entry: exam evidence (raw runner JSON), engine, cost,
-disposition (`executed`/merged or `parked` + reason), branch, the review
+portfolio gate. Per entry: the recorded suite verdict and its output, engine,
+cost, outcome (`executed`/merged or `parked` + reason), branch, the review
 posture used (suite-gate authority, or the escalated tasks named); plus
 portfolio totals and the could-have-parallelized projection. Then the operator
 disposes of the portfolio: merge the docket integration line to base, or open
