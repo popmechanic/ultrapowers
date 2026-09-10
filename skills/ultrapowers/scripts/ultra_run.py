@@ -482,8 +482,8 @@ def main(argv=None):
     ap.add_argument("--bootstrap-cmd", default=None,
                     help="per-worktree dependency install; wins over the "
                          "lockfile-derived default, '' disables it; stamped "
-                         "into the receipt so the gate provisions its "
-                         "acceptance worktree")
+                         "into the receipt so the engine provisions its "
+                         "clones")
     ap.add_argument("--overlap", choices=OVERLAP_CHOICES, default=None,
                     help="scheduling knob forwarded to compile_plan.py's "
                          "--overlap; omit to use the compiler's own default "
