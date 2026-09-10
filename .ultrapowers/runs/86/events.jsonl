@@ -1,0 +1,11 @@
+{"kind":"run:open","runId":"run-86","base":"","source":"fleet/run-main.mjs","id":"01M24AVDXS00008WRDPM899PWG","ts":1788999481273}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M24AVDXV0000ERHKSFZECVY1","ts":1788999481275}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 5e0447c6582dd725b2dbf8f690269550c77c09a5; 1 task clone(s) + integration","id":"01M24AVE8J00007FD9HHNNVYN8","ts":1788999481618}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M24AVEKF0000EWP4Z1E1CW93","ts":1788999481967}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M24AVEKF0001R9EKCQ72BJV6","ts":1788999481967}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 6","id":"01M24AVEKK000085RVPRB7V10Q","ts":1788999481971}
+{"kind":"engine:phase","phase":"Setup","id":"01M24AVEKM0000YDMMCHH4FESC","ts":1788999481972}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-86 at 5e0447c6582dd725b2dbf8f690269550c77c09a5","id":"01M24AVEN60000BEYZMQ9XKHJW","ts":1788999482022}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M24AVEN60001GCWAPZWQRSXR","ts":1788999482022}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"deb501d8-b660-4918-8daa-ed69a5b2a481","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-86/clones/exam-1","model":"opus","id":"01M24AVEQZ00004YPVCPWBF3WE","ts":1788999482111}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"d257ddae-2c4a-4301-8653-5bb04d91d261","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-86/clones/task-1","model":"opus","id":"01M24AVER10000N5P86VBQ2R2V","ts":1788999482113}
