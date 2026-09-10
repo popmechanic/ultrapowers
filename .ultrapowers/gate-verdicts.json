@@ -1,0 +1,36 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "1dd098085469f6cae1a73d81e3824eab39ad874f46725419c888f21f443f4e4f",
+   "verdict": "pass",
+   "reason": "round 2: six ordered literals in the document section, Summary before AskUserQuestion in elicitation, the self-review bullet, a fixture with a plan-level Claim and a Summary under it compiled with the compiler's own exit and PLAN OK first, validate exit"
+  },
+  "2": {
+   "hash": "3a0d1be1bcec5818dcced9eeed9208d81cf41ef78edcd8b0c3da6aea24437c32",
+   "verdict": "pass",
+   "reason": "round 4 (M8 added after run-90 left two doc sentences unowned; round 3 rejected a file-wide grep): leg (h) names the two scoped ranges and checks the three literals in order inside each, the negation grep names its survivor; the counts (7 residuals = 2+2+3, eight M7 literals, six metadata rows) compute"
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 3,
+  "rounds": {
+   "1": {
+    "pass": 0,
+    "fail": 2
+   },
+   "2": {
+    "pass": 2,
+    "fail": 0
+   },
+   "3": {
+    "pass": 0,
+    "fail": 1
+   },
+   "4": {
+    "pass": 1,
+    "fail": 0
+   }
+  }
+ }
+}
