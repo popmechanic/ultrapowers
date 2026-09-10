@@ -1,0 +1,72 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "67b274d0d8780e0ee0a799260708fc123b46e43211df21b148d18b4a087f0717",
+      "verdict": "pass",
+      "reason": "each clause has a falsifying leg: four enumerated variants, four dead keys and ten survivors named, seven identifiers grepped to zero"
+    },
+    "2": {
+      "hash": "5068872cc2b63cec7e4d613004441a962fa2346995b0049fc45a10141e328b26",
+      "verdict": "pass",
+      "reason": "round 3: byte-exact PLAN OK, empty ADVISORY listing plus two exit-2 flag probes, nine hasattr checks, sixteen absences, glob-derived census with two exit-1 stubs and the BASE-vs-tree diff"
+    },
+    "3": {
+      "hash": "83b15afcac684719b96c755cb786da4d2686b4fe85a3f75ac2084dfe60a1d461",
+      "verdict": "pass",
+      "reason": "receipt fields and exit codes pinned from a supplied report; four forbidden strings, two absent files, the summary regex"
+    },
+    "4": {
+      "hash": "a0e53f2d827df5d92afd228fbeb98c74a0a53f28ca0499919e8ee4ff879af90d",
+      "verdict": "pass",
+      "reason": "report/receipt/park-cell/file-string legs each fail on their own literal; three sims sentinel-checked"
+    },
+    "5": {
+      "hash": "9c59e5f13753520f5d85c760c68b7cd42e05249342b250b69c373634cf729874",
+      "verdict": "pass",
+      "reason": "round 3: section-then-bullet scoping for #871/#872; backticked Run: regex over the Proof bullet; per-file empty listing; four validate exits"
+    },
+    "6": {
+      "hash": "3e376bf975e080c3f4bf71d6925465a6a8d9bd3d59da635cc887444c3ce15329",
+      "verdict": "pass",
+      "reason": "grep -c 0 on the millisecond comparison, dispatch-count assertion present, sim sentinel"
+    }
+  },
+  "tally": {
+    "dispatched": 10,
+    "rejected": 4,
+    "rounds": {
+      "1": {
+        "pass": 4,
+        "fail": 2
+      },
+      "2": {
+        "pass": 0,
+        "fail": 2
+      },
+      "3": {
+        "pass": 2,
+        "fail": 0
+      }
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "fail": [
+        "2",
+        "5"
+      ]
+    },
+    {
+      "round": 2,
+      "fail": [
+        "2",
+        "5"
+      ]
+    },
+    {
+      "round": 3,
+      "fail": []
+    }
+  ]
+}
