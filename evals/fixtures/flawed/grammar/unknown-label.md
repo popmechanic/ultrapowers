@@ -8,7 +8,7 @@
 **Depends-on:** none
 
 **Files:**
-- Delete: `old/b.py`
+- Remove: `old/b.py`
 
 **Interfaces:**
 - Consumes: nothing
