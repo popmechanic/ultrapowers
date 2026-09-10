@@ -1,0 +1,41 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: `residual_counter.py` `residual_counter.py` is not an identifier — no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_ultralearn_residuals.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +27 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the run's Acceptance is `suite`; the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/residual_counter.py": "py",
+    "skills/ultralearn/scripts/residual_report.py": "py",
+    "tests/test_ultralearn_residuals.py": "py"
+  },
+  "ms": 2
+}
