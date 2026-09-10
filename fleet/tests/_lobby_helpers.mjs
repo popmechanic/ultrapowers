@@ -3,7 +3,7 @@
  *
  * Two pieces:
  *
- *   `makeExec` — a recording `exec(cmd, argv, options)` seam. Every call is
+ *   `makeExec` — a recording seam over `cmd`, `argv`, `options`. Every call is
  *   appended to `exec.calls`, options included, so a leg can read the stdin a
  *   lobby verb was given; a matching rule answers it; anything unmatched runs
  *   for real when its command is in `passthrough` (`git`, so a plan commit in a
@@ -23,6 +23,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 import { EXE_HOST, defaultExec } from '../lobby.mjs'
+import { simEnv } from './_helpers.mjs'
 
 /** A canned answer. `stdout` may be a string or a value to JSON.stringify. */
 export const answer = (stdout = '', { code = 0, stderr = '' } = {}) => ({
@@ -104,8 +105,14 @@ export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
   return exec
 }
 
+// The environment every git below runs under: a HOME of the fixture's own, so
+// no ~/.gitconfig of the box reaches a repository an exam builds — each one
+// sets its own identity a few lines down. `env` last, so a caller can override.
+const GIT_HOME = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fleet-lobby-home-'))
+export const gitEnv = (env) => ({ ...simEnv({ home: GIT_HOME }), ...env })
+
 const run = (cwd, argv, env) => {
-  const res = spawnSync('git', argv, { cwd, encoding: 'utf8', env })
+  const res = spawnSync('git', argv, { cwd, encoding: 'utf8', env: gitEnv(env) })
   if (res.status !== 0) {
     throw new Error(`git ${argv.join(' ')} in ${cwd}: ${res.stdout}${res.stderr}`)
   }

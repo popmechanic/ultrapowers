@@ -1,7 +1,58 @@
 import fcntl
-import glob, os, subprocess, pytest
+import glob, os, shutil, subprocess, tempfile, pytest
 
 FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
+
+
+def sim_env():
+    """The environment one bridged `node <sim>` runs under.
+
+    `PATH` carries the directories holding the interpreters and nothing else —
+    a laptop's PATH is forty entries of plugin `bin/`s, and CI's puts node and
+    python3 under /opt/hostedtoolcache; that is what is being kept out. `HOME`
+    and `TMPDIR` name a directory of this call's own, so no sim reads the box's
+    `~/.ultrapowers/fleet.json` or `~/.gitconfig`. `FLEET_TEST_SLACK` is kept
+    when the parent has it — the deadline multiplier a developer sets on a slow
+    box, the one swept-prefix name that is not a fleet fact.
+
+    No `FLEET_HOME`: the bridge is not a sim's home. Each sim mints its own
+    under its own `mkdtemp`, and a `FLEET_` fact planted here is exactly the
+    ambient kind the hermetic probe keeps out.
+    """
+    # The prefixes of this process's environment that never reach a sim, and the
+    # one name that does. The same contract `fleet/tests/_helpers.mjs`'s `simEnv`
+    # holds for the children a sim starts, held here for the sims themselves:
+    # what a sim sees is what the bridge handed it, never a fact of the box the
+    # bridge runs on.
+    dropped_prefixes = ("ULTRA_", "TINYAPP_", "FLEET_", "ANTHROPIC_", "CLAUDE_", "GH_")
+    kept_keys = ("FLEET_TEST_SLACK",)
+    # `sh` is looked up too: a sim's `bash -c`/`sh -c` children resolve on the
+    # PATH they inherit from the sim, and the sim inherits this one.
+    interpreters = ("node", "python3", "git", "bash", "sh")
+    dirs = []
+    for tool in interpreters:
+        found = shutil.which(tool)
+        if not found:
+            # Left out silently: the sim that needs it fails where it spawns it.
+            continue
+        parent = os.path.dirname(found)
+        if parent not in dirs:
+            dirs.append(parent)
+    home = tempfile.mkdtemp(prefix="fleet-bridge-")
+    env = {"PATH": os.pathsep.join(dirs), "HOME": home, "TMPDIR": home}
+    for key in kept_keys:
+        if key in os.environ:
+            env[key] = os.environ[key]
+    # Built from nothing rather than filtered from the parent, so this last pass
+    # is a guard on what the lines above set: a key added here that carries a
+    # swept prefix and is not one of the kept names never reaches a sim.
+    return {
+        key: value
+        for key, value in env.items()
+        if key in kept_keys or not key.startswith(dropped_prefixes)
+    }
+
+
 # Measured wall at 0.3.19 under `-n 6`: 40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s,
 # 12.6 s, 10.6 s.
 # Under `--dist load` a worker that picks up a 40 s sim last holds the whole
@@ -104,7 +155,7 @@ def test_fleet_mjs(path):
     # measured the numbers above. A wall only a little over an honest runtime
     # reports a slow box as a broken suite; this one is a deadlock catcher,
     # not a budget.
-    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT)
+    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT, env=sim_env())
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ALL TESTS PASSED" in r.stdout
 

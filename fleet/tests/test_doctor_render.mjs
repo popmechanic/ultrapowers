@@ -47,6 +47,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import * as doctorModule from '../doctor.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FLEET_DIR = path.resolve(HERE, '..')
@@ -644,8 +645,11 @@ exit 0
 })
 
 const runCli = (args, { dir }) => {
-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` }
-  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], { encoding: 'utf8', env, timeout: 60000 })
+  // The shim dir first on PATH and nothing of the box behind it, and a HOME of
+  // this call's own, so the CLI never reads the box's ~/.ultrapowers/fleet.json.
+  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], {
+    encoding: 'utf8', env: simEnv({ bin: dir }), timeout: 60000,
+  })
 }
 
 {

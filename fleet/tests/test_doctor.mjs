@@ -43,6 +43,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import * as doctorModule from '../doctor.mjs'
+import { simEnv } from './_helpers.mjs'
 import { doctor, parseIntegrations, ROW_IDS, DOCTOR_DEFAULTS } from '../doctor.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -773,9 +774,12 @@ const RED_DIR = shimDir('red', {
 })
 
 const runCli = (args, { dir, home } = {}) => {
-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` }
-  if (home) env.HOME = home
-  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], { encoding: 'utf8', env, timeout: 60000 })
+  // The shim dir first on PATH and nothing of the box behind it; `home` is the
+  // case's own when it wants one, a fresh temp directory otherwise, so the CLI
+  // never finds the box's own ~/.ultrapowers/fleet.json.
+  return spawnSync(process.execPath, [DOCTOR_SRC, ...args], {
+    encoding: 'utf8', env: simEnv({ bin: dir, home }), timeout: 60000,
+  })
 }
 
 const absentConfig = path.join(cliRoot, 'absent.json')

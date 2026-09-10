@@ -38,7 +38,6 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
@@ -46,7 +45,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-evidence-'))
 // Removed on exit, red or green (rmSync unlinks the fleet-copy's `skills`
 // symlink rather than following it into the repo).
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
-const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const REVIEWER_MD = fileURLToPath(new URL('../roles/reviewer.md', import.meta.url))
 
 const EXAM_CMD = 'bash t1_test.sh'
@@ -473,11 +472,14 @@ async function scenario({ tasks, exams = {}, review = () => passReview(),
 }
 
 // ── leg (e): the wave-0 exam verdict and the recorded-edit rule stand [M5] ──
+// Named, not run: the bridge in tests/test_fleet_suite.py collects every
+// fleet/tests/test_*.mjs and dispatches each on a worker of its own, so a sim
+// that spawned these two ran them twice and charged their wall to this name.
+// The coverage this leg keeps is the names — each is still a sim on the tree,
+// and the verdict and the recorded-edit rule are graded where they live.
 for (const name of ['test_run_engine_examiner.mjs', 'test_run_engine_exam_edits.mjs']) {
-  const out = execFileSync(process.execPath, [path.join(TESTS_DIR, name)],
-    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  assert.ok(out.includes('ALL TESTS PASSED'),
-    name + ' still passes unchanged: ' + out.slice(-400))
+  assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', name)),
+    'fleet/tests/' + name + ' is still a sim under fleet/tests/, collected and run by the bridge')
 }
 
 // ── leg (f) ─────────────────────────────────────────────────────────────────

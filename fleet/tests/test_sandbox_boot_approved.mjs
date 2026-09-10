@@ -35,7 +35,7 @@ import {
   SCRIPT, PR_URL, PR_AUTHOR,
   STUBS, PRELUDE, makeHome, boot,
   readLog, stream, statusOf, states, prPosts,
-  runTests,
+  runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -80,7 +80,7 @@ function approvedHome() {
 }
 
 test('the boot script parses', () => {
-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
+  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0)
 })
 
 // ── (a) an approved NEEDS_ACK run is gate-green  [M1] ────────────────────────

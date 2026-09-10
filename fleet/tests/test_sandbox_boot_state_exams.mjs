@@ -31,8 +31,10 @@
  *                 copies of the same tree.
  *   M1, M3 / (g)  the green-path boot sim and the approval-evidence sim — the
  *                 transcripts copy and the once-nested rule for `transcripts/`,
- *                 which `state-exams/` sits after — still print the sentinel,
- *                 and the script parses under `bash -n`.
+ *                 which `state-exams/` sits after — are each a sim under
+ *                 `fleet/tests/`, named here and RUN by the bridge's own case
+ *                 for each, never from inside this one; and the script parses
+ *                 under `bash -n`.
  *
  * The rig is `_sandbox_boot_helpers.mjs`, shared with `test_sandbox_boot.mjs`:
  * the stub bin dir, `makeHome`, `bootAsync`, `argvLines`, `foldArgv`,
@@ -45,12 +47,12 @@
  * "byte for byte" is asked of a binary.
  *
  * A boot is ~40 forks of stub shell, so this exam runs exactly two of them —
- * the planted one and the bare one — side by side with the two sibling sims of
- * leg (g), and every leg reads one of those four.
+ * the planted one and the bare one, side by side — and every leg reads one of
+ * those two.
  */
 
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -59,12 +61,11 @@ import {
   SCRIPT, RUN_PATH,
   STUBS, PRELUDE, makeHome, bootAsync, renderEnvPath,
   argvLines, foldArgv, unitsRun, commitStates, evidenceDir,
-  runTests,
+  runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-/** The repository root — where the sibling sims of leg (g) are run from. */
-const ROOT = path.join(HERE, '..', '..')
+const REPO_ROOT = path.resolve(HERE, '..', '..')
 
 const tests = []
 const test = (name, fn) => tests.push([name, fn])
@@ -255,24 +256,10 @@ const bareBoot = (() => {
   return () => done
 })()
 
-/** Leg (g)'s two sibling sims, started with the boots so the exam pays for them
- *  once in wall clock rather than one after the other. */
-const sim = (file) => new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, [path.join('fleet', 'tests', file)], {
-    cwd: ROOT,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  let stdout = ''
-  let stderr = ''
-  child.stdout.setEncoding('utf8')
-  child.stderr.setEncoding('utf8')
-  child.stdout.on('data', (c) => { stdout += c })
-  child.stderr.on('data', (c) => { stderr += c })
-  child.on('error', reject)
-  child.on('close', (status) => resolve({ status, stdout, stderr }))
-})
-const greenSim = sim('test_sandbox_boot.mjs')
-const approvalSim = sim('test_sandbox_boot_approval_evidence.mjs')
+/** Leg (g)'s two sibling sims — NAMES, not runs. Each has a bridge case of its
+ *  own that runs it and asserts the sentinel; a sim that ran another sim would
+ *  run it twice, under whatever environment this process happens to carry. */
+const SIBLING_SIMS = ['test_sandbox_boot.mjs', 'test_sandbox_boot_approval_evidence.mjs']
 
 // ── (a) no render file: one empty entry, and the boot still exits 0  [M1] ────
 
@@ -466,30 +453,27 @@ test('the planted boot committed the record at least three times  [M3 / leg (f)]
   }
 })
 
-// ── (g) the siblings still pass, and the script parses  [M1, M3] ─────────────
+// ── (g) the siblings are real sims, and the script parses  [M1, M3] ──────────
 
 test('the boot script parses  [M1, M3 / leg (g)]', () => {
-  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' })
+  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
   assert.equal(r.status, 0, `(g) bash -n ${SCRIPT}:\n${r.stdout}${r.stderr}`)
 })
 
-test('the green-path boot sim still prints the sentinel  [M1, M3 / leg (g)]', async () => {
-  const r = await greenSim
-  assert.ok(r.stdout.includes('ALL TESTS PASSED'),
-    '(g) [M1, M3] `node fleet/tests/test_sandbox_boot.mjs` must still print ALL TESTS PASSED:\n' +
-      r.stdout.split('\n').filter((l) => !l.startsWith('ok ')).join('\n') + r.stderr)
-  assert.equal(r.status, 0, '(g) [M1, M3] and exit 0')
-})
-
-test('the approval-evidence sim still prints the sentinel  [M1, M3 / leg (g)]', async () => {
-  // The transcripts copy and the once-nested rule for `transcripts/` live in
-  // this sim; `state-exams/` is added AFTER that block, and must not disturb it.
-  const r = await approvalSim
-  assert.ok(r.stdout.includes('ALL TESTS PASSED'),
-    '(g) [M1, M3] `node fleet/tests/test_sandbox_boot_approval_evidence.mjs` must still ' +
-      'print ALL TESTS PASSED:\n' +
-      r.stdout.split('\n').filter((l) => !l.startsWith('ok ')).join('\n') + r.stderr)
-  assert.equal(r.status, 0, '(g) [M1, M3] and exit 0')
-})
+// The transcripts copy and the once-nested rule for `transcripts/` live in the
+// approval-evidence sim; `state-exams/` is added AFTER that block, and must not
+// disturb it. That each of these two still prints the sentinel is asserted by
+// the bridge case that runs it — here they are named, and their existence is
+// what this leg holds.
+// `sibling`, not `file`: the name a sim hands its `existsSync` is how this
+// list reads as a list of names rather than of runs, and `file` is already
+// bound above to the `systemd-run` stub this sim writes.
+for (const sibling of SIBLING_SIMS) {
+  test(`${sibling} is a sim the bridge runs  [M1, M3 / leg (g)]`, () => {
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', sibling)),
+      `(g) [M1, M3] \`fleet/tests/${sibling}\` must exist — the bridge runs it and asserts ` +
+        'ALL TESTS PASSED there; this leg names it, it does not run it.')
+  })
+}
 
 runTests(tests)

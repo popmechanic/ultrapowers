@@ -63,7 +63,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { examSlug, reservedExamPath, reservedExamDirs } from '../exam-paths.mjs'
-import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-reserved-exams-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
@@ -90,7 +90,7 @@ const readEvents = (runDir) => {
 const showBytes = (cwd, ref, file) => {
   try {
     return execFileSync('git', ['show', ref + ':' + file],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   } catch (e) {
     return 'ABSENT: ' + String((e && e.message) || e)
   }
@@ -100,7 +100,7 @@ const isAbsent = (s) => typeof s === 'string' && s.startsWith('ABSENT: ')
 const treePaths = (cwd, ref) => {
   try {
     return execFileSync('git', ['ls-tree', '-r', '--name-only', ref],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
       .split('\n').filter(Boolean)
   } catch (e) {
     return ['ABSENT: ' + String((e && e.message) || e)]

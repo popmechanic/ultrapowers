@@ -34,10 +34,14 @@ import { execFileSync } from 'node:child_process'
 
 import { parseArgs, provisionRunTree, composeAgent } from '../run-main.mjs'
 import { cloneAtBase, makeEventLog } from '../run-waves.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runmain-effort-'))
+// One environment for every git below: a HOME of the sim's own, so no
+// ~/.gitconfig of the box reaches a repository this sim builds.
+const ENV = simEnv()
 const git = (argv, cwd) =>
-  execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 
 /** The three values the knob offers. */
 const EFFORTS = ['low', 'medium', 'high']

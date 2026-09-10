@@ -27,6 +27,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const SCRIPT = path.join(HERE, '..', 'sandbox-boot.sh')
 
@@ -691,6 +693,19 @@ const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-boot-'))
 let caseNo = 0
 
 /**
+ * The environment for a child that belongs to no case — `bash -n` over the
+ * script, a reader run against the repository. Nothing of the box reaches it.
+ */
+export const ENV = simEnv()
+
+/**
+ * The environment for a stub called directly, WITHOUT a boot: the case's own
+ * stub dir first on `PATH`, `FLEET_HOME` its home, `env` last so a caller can
+ * override any of it. The stubs answer out of that home.
+ */
+export const stubEnv = (ctx, env) => ({ ...simEnv({ bin: ctx.bin, home: ctx.home }), ...env })
+
+/**
  * The renderer address file a boot reads, INSIDE the case's own home.
  *
  * The boot script falls back to a path on the box when `FLEET_RENDER_ENV` names
@@ -742,9 +757,7 @@ export function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true 
  * `bootAsync`, so the two start the script exactly alike.
  */
 const bootEnv = (ctx, env) => ({
-      PATH: process.env.PATH,
-      HOME: ctx.home,
-      FLEET_HOME: ctx.home,
+      ...simEnv({ bin: ctx.bin, home: ctx.home }),
       FLEET_BIN_DIR: ctx.bin,
       FLEET_POLL_SECONDS: '0',
       FLEET_STATUS_INTERVAL: '30',

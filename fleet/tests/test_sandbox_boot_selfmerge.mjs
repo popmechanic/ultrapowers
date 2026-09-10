@@ -42,7 +42,7 @@ import {
   stream, statusOf, states, committed, commitStates, notifies, engineRuns,
   readLog, argvLines, prPosts, mergePuts, mergeArgv, checkReads, directCalls,
   targetDir, evidenceDir,
-  runTests,
+  runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
 
 // The clock before any boot of this process: leg (h) bounds every appended
@@ -321,7 +321,7 @@ test('every page carries merged, null until the merge  [M4 / leg (k)]', () => {
 // ── 6. the script parses  [leg (l)] ──────────────────────────────────────────
 
 test('bash -n accepts the script  [leg (l)]', () => {
-  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' })
+  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
   assert.equal(r.status, 0, r.stderr)
 })
 
@@ -701,7 +701,7 @@ test('the committed events.jsonl is byte-identical to the run dir\'s  [#703 M5 /
 
 /** `fleet_events.py` over a run directory, as its non-empty stdout lines. */
 const timeline = (ctx) => {
-  const r = spawnSync('python3', [FLEET_EVENTS_PY, runDirOf(ctx)], { encoding: 'utf8' })
+  const r = spawnSync('python3', [FLEET_EVENTS_PY, runDirOf(ctx)], { encoding: 'utf8', env: ENV })
   assert.equal(r.status, 0, `fleet_events.py exited ${r.status}: ${r.stderr}`)
   return r.stdout.split('\n').filter((l) => l.trim() !== '')
 }

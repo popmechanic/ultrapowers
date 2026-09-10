@@ -12,9 +12,15 @@ import { execFileSync } from 'node:child_process'
 import { execSeam } from '../run-main.mjs'
 import { cloneAtBase, makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 import { runEngine } from '../run-engine.mjs'
+import { simEnv } from './_helpers.mjs'
+
+// The rig's own environment, one for the module: git sees a HOME of its own, so
+// no ~/.gitconfig of the box reaches a repository a sim builds. Every repo made
+// here sets user.name/user.email itself.
+export const ENV = simEnv()
 
 export const gitSync = (argv, cwd) =>
-  execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  execFileSync('git', argv, { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
 // A target repo whose suite is `bash check.sh`: green unless a BROKEN marker
 // file exists — the smallest controllable suite for reconcile scenarios.

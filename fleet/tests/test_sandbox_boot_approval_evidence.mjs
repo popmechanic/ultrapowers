@@ -73,7 +73,7 @@ import {
   SCRIPT, PR_URL, RUN_PATH,
   STUBS, PRELUDE, makeHome, boot,
   statusOf, evidenceDir,
-  runTests,
+  runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -245,7 +245,7 @@ const acceptanceRun = () =>
 const read = (file) => fs.readFileSync(file)
 
 test('the boot script parses  [rig]', () => {
-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
+  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0)
 })
 
 // ── (a) each approval that was written is committed, byte for byte  [M1] ─────
@@ -517,7 +517,7 @@ test('a PASS run whose engine wrote no acceptance.log commits none  [#739 Task 2
 const ROOT = path.join(HERE, '..', '..')
 /** Run one of the Proof's `Run:` commands, verbatim, and return its count. */
 function grepCount(command) {
-  const r = spawnSync('bash', ['-c', command], { cwd: ROOT, encoding: 'utf8' })
+  const r = spawnSync('bash', ['-c', command], { cwd: ROOT, encoding: 'utf8', env: ENV })
   // `grep -c` exits 1 on a count of zero, so the number on stdout is the answer.
   return Number((r.stdout || '').trim() || '0')
 }
@@ -551,7 +551,7 @@ test('collect_evidence\'s own body names acceptance.log  [#739 Task 2 / M1 / leg
   assert.ok(count >= 1,
     'the Proof\'s `sed`+`grep` over collect_evidence must count at least one ' +
       '`acceptance.log`, got: ' + count)
-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0,
+  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: ENV }).status, 0,
     'the boot script still parses with the copy in it')
 })
 

@@ -22,7 +22,9 @@
  *      bad value can have reached any script text.
  *  (e) [M1, M2] what the setup script already was is unchanged: the run literal
  *      first, the self-delete last, no `--env`, inside the cap — and the
- *      existing sim `test_setup_script.mjs` still prints its sentinel.
+ *      existing sim `test_setup_script.mjs` is still a sim beside this one,
+ *      which the bridge runs and asserts the sentinel for. No sim runs another
+ *      sim, so this leg names it rather than spawning it.
  *
  * Nothing here touches the machine: no real `sudo` runs (leg (f) shadows it with
  * a function), no socket is opened, and every byte written lands under one
@@ -37,9 +39,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { renderSetupScript, readFleetFiles, SETUP_SCRIPT_MAX_BYTES } from '../setup-script.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const SIBLING_SIM = path.join(HERE, 'test_setup_script.mjs')
+const REPO_ROOT = path.resolve(HERE, '..', '..')
+/** Leg (e)'s sibling sim — a name this exam checks exists, never a run. */
+const SIBLING_SIM = 'test_setup_script.mjs'
 
 // ── the contract's literals ──────────────────────────────────────────────────
 
@@ -208,7 +213,7 @@ test('(f) [M1] running the heredoc and its install leaves the address in the ins
 
   const r = spawnSync('bash', [harness], {
     encoding: 'utf8',
-    env: { ...process.env, TMP: tmp, HOME: path.join(tmp, 'home') },
+    env: simEnv({ home: tmp, env: { TMP: tmp, HOME: path.join(tmp, 'home') } }),
   })
   assert.equal(r.status, 0, `the fragment must run:\n${r.stderr}`)
 
@@ -234,7 +239,7 @@ test('(b) [M1] the render with a renderer fits SETUP_SCRIPT_MAX_BYTES', () => {
 test('(b) [M1] the render with a renderer passes bash -n', () => {
   const file = path.join(tmpRoot, 'with-render.sh')
   fs.writeFileSync(file, render)
-  const r = spawnSync('bash', ['-n', file], { encoding: 'utf8' })
+  const r = spawnSync('bash', ['-n', file], { encoding: 'utf8', env: simEnv() })
   assert.equal(r.status, 0, `bash -n failed on the render:\n${r.stderr}`)
 })
 
@@ -344,17 +349,14 @@ test('(e) [M2] the self-delete is still the last executable line', () => {
   assert.equal(executable[executable.length - 1].trim(), SELF_DELETE)
 })
 
-test('(e) [M1, M2] the existing setup-script sim still prints its sentinel', () => {
-  const r = spawnSync(process.execPath, [SIBLING_SIM], {
-    encoding: 'utf8',
-    cwd: HERE,
-    timeout: 300000,
-  })
+test('(e) [M1, M2] the existing setup-script sim is still a sim beside this one', () => {
+  // Named, not run: the bridge has a case of its own for `test_setup_script.mjs`
+  // that runs it and asserts ALL TESTS PASSED. A sim that spawned it here would
+  // run it twice, and hand it whatever environment this process carries.
   assert.ok(
-    r.stdout.includes('ALL TESTS PASSED'),
-    `test_setup_script.mjs must still pass:\n${r.stdout}\n--- stderr ---\n${r.stderr}`,
+    fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', SIBLING_SIM)),
+    `fleet/tests/${SIBLING_SIM} must exist — the render this exam reads is the one that sim also renders`,
   )
-  assert.equal(r.status, 0, `test_setup_script.mjs exited ${r.status}`)
 })
 
 // ── run ──────────────────────────────────────────────────────────────────────

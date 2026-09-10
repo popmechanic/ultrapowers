@@ -21,6 +21,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCRIPT = path.join(HERE, '..', 'fleet-bootstrap.sh')
 const ENGINE_REPO = 'https://github.com/popmechanic/ultrapowers.git'
@@ -89,9 +91,7 @@ function run(ctx, env = {}, args = []) {
   return spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
     env: {
-      PATH: `${ctx.bin}:${process.env.PATH}`,
-      HOME: ctx.home,
-      FLEET_HOME: ctx.home,
+      ...simEnv({ bin: ctx.bin, home: ctx.home }),
       STUB_LOG_DIR: ctx.logs,
       STUB_RECORD: ctx.record,
       STUB_RECORDER: RECORDER,
@@ -130,7 +130,7 @@ const test = (name, fn) => tests.push([name, fn])
 // ── the script itself ────────────────────────────────────────────────────────
 
 test('the bootstrap parses, is executable, and fits its budget', () => {
-  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
+  assert.equal(spawnSync('bash', ['-n', SCRIPT], { env: simEnv() }).status, 0)
   assert.ok(fs.statSync(SCRIPT).mode & 0o111, 'mode must carry an execute bit')
   const n = fs.readFileSync(SCRIPT, 'utf8').split('\n').filter((l, i, a) => i < a.length - 1 || l).length
   assert.ok(n <= 40, `${n} lines; the budget is 40`)

@@ -24,7 +24,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 // fleet/tests/<this file> → the repository root the tracked-file legs read.
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -241,7 +241,7 @@ const mkTmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), 'engine-suite-passe
     ['grep', '-n', '-e', SHALLOW_SUITE, '-e', SHALLOW_LEG, '-e', SHALLOW_DEFERRED,
      '-e', RUN_SHALLOW_LEG, '-e', LEG_PHASE, '-e', LEG_CALL_PREFIX,
      '--', 'fleet', 'skills', 'tests', '.github', ':!tests/fixtures'],
-    { cwd: REPO_ROOT, encoding: 'utf8' })
+    { cwd: REPO_ROOT, env: ENV, encoding: 'utf8' })
   assert.equal(sweep.error, undefined, '(e)/M5: the sweep could not run: ' + sweep.error)
   assert.equal(String(sweep.stdout || ''), '',
     '(e)/M5: a tracked file under fleet/, skills/, tests/ or .github/ still names the leg ' +

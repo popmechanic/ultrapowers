@@ -43,8 +43,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFile, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+
+import { simEnv } from './_helpers.mjs'
 
 import { launch } from '../launch.mjs'
 import { FLEET_DEFAULTS, Refusal, defaultExec } from '../lobby.mjs'
@@ -253,7 +255,7 @@ const LADDER = 'import sys; sys.path.insert(0, "skills/ultrapowers/scripts"); ' 
   'from ultra_run import detect_test_cmd; print(detect_test_cmd(sys.argv[1])[1])'
 
 const sandboxRuleFor = (dir) => {
-  const res = spawnSync('python3', ['-c', LADDER, dir], { cwd: REPO_ROOT, encoding: 'utf8' })
+  const res = spawnSync('python3', ['-c', LADDER, dir], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv() })
   assert.equal(
     res.status, 0,
     `(e) [M1] the sandbox's ladder runs on ${dir}: ${res.stdout ?? ''}${res.stderr ?? ''}`
@@ -405,11 +407,13 @@ for (const kase of UNDETECTABLE) {
   deleted.cleanup()
 }
 
-// ── f–j. [M4] the five launch sims still print ALL TESTS PASSED ──────────────
+// ── f–j. [M4] the five launch sims the ladder must not disturb ───────────────
 //
-// One `Run:` per sim, run the way the Proof runs it: `node <sim>` from the
-// repository root, its exit status and its `ALL TESTS PASSED` sentinel both
-// read — a sim that stops short of the sentinel makes its `grep -q` exit 1.
+// Named, not run. The bridge in tests/test_fleet_suite.py collects every
+// fleet/tests/test_*.mjs and dispatches each on a worker of its own; a sim that
+// spawned these five ran them twice and charged five walls to this one name.
+// What the leg keeps is the coverage — the names stay written down here, and
+// each is asserted to still be a sim on the tree.
 {
   const SIMS = [
     { leg: 'f', file: 'fleet/tests/test_launch.mjs' },
@@ -419,33 +423,10 @@ for (const kase of UNDETECTABLE) {
     { leg: 'j', file: 'fleet/tests/test_launch_reaps.mjs' }
   ]
 
-  const runSim = (file) => new Promise((resolve) => {
-    execFile(
-      process.execPath, [file],
-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-      (error, stdout, stderr) => resolve({
-        code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
-        stdout: String(stdout ?? ''),
-        stderr: String(stderr ?? '')
-      })
-    )
-  })
-
-  const runs = await Promise.all(SIMS.map((sim) => runSim(sim.file)))
-  for (const [i, sim] of SIMS.entries()) {
-    const res = runs[i]
-    const tail = `${res.stdout}${res.stderr}`.split('\n').slice(-25).join('\n')
+  for (const sim of SIMS) {
     assert.ok(
       fs.existsSync(path.join(REPO_ROOT, sim.file)),
-      `(${sim.leg}) [M4] ${sim.file} is a file this exam can run`
-    )
-    assert.ok(
-      res.stdout.includes('ALL TESTS PASSED'),
-      `(${sim.leg}) [M4] ${sim.file} prints ALL TESTS PASSED — its \`grep -q\` is the Run:, and a sim seeded with no pytest.ini stops short of the sentinel. Tail:\n${tail}`
-    )
-    assert.equal(
-      res.code, 0,
-      `(${sim.leg}) [M4] and exits 0. Tail:\n${tail}`
+      `(${sim.leg}) [M4] ${sim.file} is still a sim under fleet/tests/, collected and run by the bridge`
     )
   }
 }

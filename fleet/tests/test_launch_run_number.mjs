@@ -38,6 +38,8 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { simEnv } from './_helpers.mjs'
+
 import * as launcher from '../launch.mjs'
 import {
   FLEET_DEFAULTS,
@@ -542,7 +544,7 @@ const treeOf = (ws, sha) => {
   const RUN_CHECK =
     "sed -n '/^- \\*\\*Run id:\\*\\*/,/^- \\*\\*VM name:\\*\\*/p' fleet/CONTRACT.md" +
     " | tr '\\n' ' ' | grep -q 'refused.*re-reads.*three pushes'"
-  const res = spawnSync('bash', ['-c', RUN_CHECK], { cwd: REPO_ROOT, encoding: 'utf8' })
+  const res = spawnSync('bash', ['-c', RUN_CHECK], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv() })
   assert.equal(
     res.status, 0,
     "(d) [M5] the **Run id:** bullet of fleet/CONTRACT.md says that a refused plan push re-reads the highest run and retries, up to three pushes — so the push is what reserves N"

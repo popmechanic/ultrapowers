@@ -35,7 +35,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execSeam } from '../run-main.mjs'
 import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 import { runEngine, REVIEWER_SCHEMA } from '../run-engine.mjs'
-import { rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, rig, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-review-economy-'))
 // rmSync unlinks the base tree's `skills` symlink rather than following it.
@@ -269,7 +269,7 @@ const eventsOf = (runDir) => {
 const haveBase = (() => {
   try {
     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
-      { cwd: REPO_ROOT, stdio: 'ignore' })
+      { cwd: REPO_ROOT, env: ENV, stdio: 'ignore' })
     return true
   } catch { return false }
 })()
@@ -281,7 +281,7 @@ if (haveBase) {
   })
   fs.writeFileSync(path.join(baseTree, 'fleet', 'run-engine.mjs'),
     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
-      { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
+      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
   ;({ runEngine: baseRunEngine } =
     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))

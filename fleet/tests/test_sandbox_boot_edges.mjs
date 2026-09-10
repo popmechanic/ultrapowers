@@ -26,6 +26,7 @@ import {
   verbOf, dirOf, gitLog, evidenceDir, isEvidencePush, addArguments,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
+import { simEnv } from './_helpers.mjs'
 
 const tests = []
 const test = (name, fn) => tests.push([name, fn])
@@ -703,14 +704,12 @@ const writeBigFile = (file, count, line) => {
 const stubGit = (ctx, args, env = {}) => {
   const r = spawnSync(path.join(ctx.bin, 'git'), args, {
     encoding: 'utf8',
-    env: {
-      PATH: process.env.PATH,
-      FLEET_HOME: ctx.home,
+    env: simEnv({ bin: ctx.bin, home: ctx.home, env: {
       STUB_PLAN_H1: PLAN_H1,
       STUB_PLAN_SHA: PLAN_SHA,
       STUB_HEAD_SHA: HEAD_SHA,
       ...env,
-    },
+    } }),
     // The injected answers are megabytes; node's default is one.
     maxBuffer: 64 * MIB,
   })

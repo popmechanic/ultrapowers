@@ -112,6 +112,7 @@ import {
   planTagFor
 } from '../lobby.mjs'
 import { retire } from '../retire.mjs'
+import { simEnv } from './_helpers.mjs'
 import { answer, cleanup, makeExec, tempDir } from './_lobby_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -886,7 +887,8 @@ const logLines = (file) =>
 
 const runProcess = (args, dir) => spawnSync(process.execPath, [RETIRE_SRC, ...args], {
   encoding: 'utf8',
-  env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}` },
+  // The shim dir first on PATH, and nothing of the box behind it.
+  env: simEnv({ bin: dir }),
   timeout: 60000
 })
 
@@ -1209,7 +1211,7 @@ for (const [command, why] of [
   [`sed -n '1,/^import /p' fleet/retire.mjs | tr '\\n' ' ' | grep -q 'open-PR read per terminal candidate'`,
     "and its `--dry-run` paragraph still says the open-PR read is made per terminal candidate — that is a stays, not a change: a rewrite that says the read is per pair again fails here"]
 ]) {
-  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000 })
+  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv(), timeout: 60000 })
   assert.equal(res.status, 0,
     `#752 Task 1 (j)/M6 \`${command}\` exits 0: ${why}; status ${res.status}, stderr: ${res.stderr}`)
 }
@@ -1470,7 +1472,7 @@ const DOC_TEXT = { [CONTRACT_REL]: contractText, [RUNBOOK_REL]: runbookText }
 /** One of the Proof's two greps, as `{ file, line, text }` rows. */
 const grepDocs = (pattern) => {
   const res = spawnSync('grep', ['-n', pattern, CONTRACT_REL, RUNBOOK_REL],
-    { cwd: REPO_ROOT, encoding: 'utf8', timeout: 60000 })
+    { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv(), timeout: 60000 })
   assert.ok(res.status === 0 || res.status === 1,
     `#724 Task 1 (h)/M6 \`grep -n '${pattern}' ${CONTRACT_REL} ${RUNBOOK_REL}\` ran; status ${res.status}, stderr: ${res.stderr}`)
   return String(res.stdout).split('\n').filter((l) => l !== '').map((row) => {

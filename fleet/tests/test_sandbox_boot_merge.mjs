@@ -71,7 +71,7 @@ import {
   readLog, lines, argvLines, stream, statusOf, committed, commitStates, notifies,
   prPosts, engineRuns, unitsRun, gitLog, verbOf, dirOf, isIntegrationPush,
   targetDir, checkReads, mergePuts,
-  runTests,
+  runTests, ENV, stubEnv,
 } from './_sandbox_boot_helpers.mjs'
 
 const tests = []
@@ -252,7 +252,7 @@ const assertLeftOpen = (ctx, leg) => {
 // ── (l) the script parses ────────────────────────────────────────────────────
 
 test('bash -n accepts fleet/sandbox-boot.sh  [leg (l)]', () => {
-  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' })
+  const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
   assert.equal(r.status, 0, `(l) the boot script must parse:\n${r.stderr}`)
 })
 
@@ -1641,7 +1641,7 @@ test('the systemctl stub answers a fold unit inactive  [publish-fold M8 / leg (j
   const ctx = makeHome()
   const r = spawnSync(path.join(ctx.bin, 'systemctl'), ['--user', 'is-active', `${FOLD_UNIT_1}.service`], {
     encoding: 'utf8',
-    env: { PATH: process.env.PATH, FLEET_HOME: ctx.home },
+    env: stubEnv(ctx),
   })
   assert.equal(r.status, 0, r.stderr)
   assert.equal(r.stdout.trim(), 'inactive',
@@ -2376,7 +2376,7 @@ const dateStub = (ctx, leg) => {
 const dateUnder = (ctx, argv, leg) => {
   const r = spawnSync(dateStub(ctx, leg), argv, {
     encoding: 'utf8',
-    env: { PATH: `${ctx.bin}:${process.env.PATH}`, HOME: ctx.home, FLEET_HOME: ctx.home },
+    env: stubEnv(ctx),
   })
   assert.equal(r.status, 0,
     `${leg} \`date ${argv.join(' ')}\` exits 0; it exited ${r.status} and printed: ` +

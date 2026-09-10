@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-gate-'))
 const SCRIPTS = fileURLToPath(new URL('../../skills/ultrapowers/scripts', import.meta.url))
@@ -41,7 +41,7 @@ assert.equal(report.coverage.complete, true)
 
 // run-main's bridge leg, mirrored: the integration branch travels clone → repo
 // before the frozen scripts read the repo checkout.
-execFileSync('git', ['fetch', '--no-tags', integ, branch + ':' + branch], { cwd: repo })
+execFileSync('git', ['fetch', '--no-tags', integ, branch + ':' + branch], { cwd: repo, env: ENV })
 
 const resultPath = path.join(runDir, 'workflow-result.json')
 fs.writeFileSync(resultPath, JSON.stringify(report, null, 2))
@@ -49,13 +49,13 @@ fs.writeFileSync(resultPath, JSON.stringify(report, null, 2))
 // finalize_report.py — the first frozen reader of the report.
 const fin = execFileSync('python3', [path.join(SCRIPTS, 'finalize_report.py'),
   '--report', resultPath, '--repo', repo, '--branch', branch],
-  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  { encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
 assert.ok(true, 'finalize_report accepted the engine report: ' + fin)
 
 // gate_check.py — the frozen verdict.
 const gateOut = execFileSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
   '--run-id', 'gt1', '--branch', branch, '--report', resultPath, '--repo', repo],
-  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  { encoding: 'utf8', env: ENV, stdio: ['ignore', 'pipe', 'pipe'] })
 const gate = JSON.parse(gateOut)
 const failed = (gate.checks || []).filter((c) => !c.ok)
 assert.equal(failed.length, 0, 'gate checks failed: ' + JSON.stringify(failed))

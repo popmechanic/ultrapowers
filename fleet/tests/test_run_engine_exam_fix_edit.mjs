@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { execSeam } from '../run-main.mjs'
 import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
 import { runEngine } from '../run-engine.mjs'
-import { makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { ENV, makeRepo, provision, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-fix-'))
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
@@ -270,7 +270,7 @@ assert.equal(skipsShoutScan('skills/ultrapowers/SKILL.md'), false,
   const BASE_SHA = 'd6efce4'
   const git = (argv) => {
     try {
-      return { code: 0, out: execFileSync('git', argv, { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
+      return { code: 0, out: execFileSync('git', argv, { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
     } catch (e) {
       return { code: 1, out: '' }
     }

@@ -49,6 +49,7 @@ import { fileURLToPath } from 'node:url'
 import * as launchModule from '../launch.mjs'
 import { launch } from '../launch.mjs'
 import { FLEET_DEFAULTS, Refusal, defaultExec } from '../lobby.mjs'
+import { simEnv } from './_helpers.mjs'
 import {
   answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
 } from './_lobby_helpers.mjs'
@@ -209,8 +210,8 @@ const blobAt = (repo, rel) => repo.git(['rev-parse', `${repo.base}:${rel}`])
 
 /** The sha a slice pin pins, computed by the exam the way M3 says to compute it. */
 const sliceSha = (repo, command) => {
-  const res = spawnSync('/bin/sh', ['-c', `${command} | git hash-object --stdin`],
-    { cwd: repo.dir, encoding: 'utf8' })
+  const res = spawnSync('sh', ['-c', `${command} | git hash-object --stdin`],
+    { cwd: repo.dir, encoding: 'utf8', env: simEnv() })
   assert.equal(res.status, 0, `the exam computes its own slice sha: ${res.stdout}${res.stderr}`)
   const sha = String(res.stdout).trim()
   assert.match(sha, /^[0-9a-f]{40}$/, 'the exam computes its own slice sha')

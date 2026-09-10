@@ -6,9 +6,9 @@
  * request is the sandbox's to merge, not the janitor's — so the janitor's whole
  * `gh` surface is `gh api` reads, and every action it records is an `rm`.
  *
- * Every external call goes through the same `exec(cmd, argv)` seam the rest of
- * the fleet uses; this exam cans `ssh` and `gh` and reads `exec.calls` for what
- * was issued, so no network is touched. The rig is `test_janitor.mjs`'s:
+ * Every external call goes through the same `exec` seam the rest of the fleet
+ * uses — `cmd`, then `argv`; this exam cans `ssh` and `gh` and reads
+ * `exec.calls` for what was issued, so no network is touched. The rig is `test_janitor.mjs`'s:
  * `makeExec` with `sshRule('ls ', …)` answering `vmsPayload(rows)`,
  * `sshRule('rm ', answer(''))`, and `cmdRule('gh', 'api', …)` answering the
  * contents envelope for each run's status page. The pages are canned at the
