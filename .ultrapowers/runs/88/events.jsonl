@@ -134,3 +134,12 @@
 {"kind":"driver:integrated-check","cmd":"python3 skills/ultrapowers/scripts/compile_plan.py --check evals/fixtures/claims/plan.md | head -1 | grep -q 'PLAN OK'","exit":0,"minor":false,"wave":1,"id":"01M266TR290000HYBQ5T6P4F3B","ts":1789062373449}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M266TR2A0000DSD9ET6Q09DM","ts":1789062373450}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"d71ff4ce-fae2-4d09-9213-ded43cb452c4","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-88/clones/integration","model":"opus","id":"01M266TR2A0001NXWFJQQCG1M6","ts":1789062373450}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"d71ff4ce-fae2-4d09-9213-ded43cb452c4","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5541,"output":20305,"cacheRead":1793962,"cacheCreation":116367,"costUsd":2.595981000000001,"models":["claude-opus-5"]},"id":"01M26733S60000G7JFJA3VVNMV","ts":1789062647590}
+{"kind":"transcript:slice","label":"integration","sessionId":"d71ff4ce-fae2-4d09-9213-ded43cb452c4","bytes":11630,"id":"01M26733SF0000CYTNHT960SH0","ts":1789062647599}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M26733SV0000BQAR1B9PJR33","ts":1789062647611}
+{"kind":"driver:stage","stage":"finalize","id":"01M26733X20000EDYGG2D0T8M9","ts":1789062647714}
+{"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-88/acceptance.log","id":"01M26733Z40000X7VD32EA0895","ts":1789062647780}
+{"kind":"driver:stage","stage":"gate","id":"01M26733Z50000GRPFFQM8A9PD","ts":1789062647781}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M267GYXT0000KX829F0HKZV1","ts":1789063101370}
+{"kind":"run:open","runId":"run-88","base":"a4138b230fb10986a2ac1603f2467d41c62a512b","source":"fleet/publish-fold.mjs","id":"01M267GZ6R0000Q1HCGQPDPFCQ","ts":1789063101656}
+{"kind":"driver:publish-fold","run":"88","attempt":"1","base":"a4138b230fb10986a2ac1603f2467d41c62a512b","tip":"a4138b230fb10986a2ac1603f2467d41c62a512b","candidate":"4a646348447fa848d3ef5b84f14a4e882bce9bdb","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M267H1780000QS35HZZSPAKV","ts":1789063103720}
