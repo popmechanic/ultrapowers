@@ -1,0 +1,64 @@
+{
+  "mode": "gate",
+  "stamp": "run-86",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-86/report.json",
+  "branch": "ultra/integration-run-86",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"1\", \"files\": [\"fleet/tests/README.md\", \"fleet/tests/_engine_helpers.mjs\", \"fleet/tests/_helpers.mjs\", \"fleet/tests/_lobby_helpers.mjs\", \"fleet/tests/_sandbox_boot_helpers.mjs\", \"fleet/tests/fixtures/hermetic/leaky_sim.mjs\", \"fleet/tests/test_claude_token.mjs\", \"fleet/tests/test_confine_hook.mjs\", \"fleet/tests/test_doctor.mjs\", \"fleet/tests/test_doctor_config_keys.mjs\", \"fleet/tests/test_doctor_render.mjs\", \"fleet/tests/test_fleet_bootstrap.mjs\", \"fleet/tests/test_launch_pins.mjs\", \"fleet/tests/test_launch_render.mjs\", \"fleet/tests/test_launch_run_number.mjs\", \"fleet/tests/test_launch_test_command.mjs\", \"fleet/tests/test_publish_fold.mjs\", \"fleet/tests/test_publish_fold_block.mjs\", \"fleet/tests/test_referee_linker.mjs\", \"fleet/tests/test_referee_replay.mjs\", \"fleet/tests/test_retire.mjs\", \"fleet/tests/test_run_engine_actor_routing.mjs\", \"fleet/tests/test_run_engine_candidate_bootstrap.mjs\", \"fleet/tests/test_run_engine_exam_evidence.mjs\", \"fleet/tests/test_run_engine_exam_fix_edit.mjs\", \"fleet/tests/test_run_engine_exam_together.mjs\", \"fleet/tests/test_run_engine_gate.mjs\", \"fleet/tests/test_run_engine_infra_retry.mjs\", \"fleet/tests/test_run_engine_integrated_runs.mjs\", \"fleet/tests/test_run_engine_proof_runs.mjs\", \"fleet/tests/test_run_engine_reserved_exams.mjs\", \"fleet/tests/test_run_engine_review_economy.mjs\", \"fleet/tests/test_run_engine_state_exams.mjs\", \"fleet/tests/test_run_engine_suite_passes.mjs\", \"fleet/tests/test_run_main.mjs\", \"fleet/tests/test_run_main_effort.mjs\", \"fleet/tests/test_run_main_engine_dir.mjs\", \"fleet/tests/test_run_waves.mjs\", \"fleet/tests/test_sandbox_boot.mjs\", \"fleet/tests/test_sandbox_boot_approval_evidence.mjs\", \"fleet/tests/test_sandbox_boot_approved.mjs\", \"fleet/tests/test_sandbox_boot_edges.mjs\", \"fleet/tests/test_sandbox_boot_merge.mjs\", \"fleet/tests/test_sandbox_boot_render_env.mjs\", \"fleet/tests/test_sandbox_boot_selfmerge.mjs\", \"fleet/tests/test_sandbox_boot_state_exams.mjs\", \"fleet/tests/test_setup_script.mjs\", \"fleet/tests/test_setup_script_render_env.mjs\", \"fleet/tests/test_sims_are_hermetic.mjs\", \"fleet/tests/test_strip_exams.mjs\", \"tests/test_fleet_suite.py\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 0/1 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "1 \u2014 plan-defect: M1 says simEnv sets FLEET_HOME, and the Context says sim_env() is that contract 'key for key' \u2014 but the Proof's own `Run:` for leg (h) asserts sim_env() returns no key with a FLEET_ prefix other than FLEET_TEST_SLACK, which a FLEET_HOME would fail. I resolved it in favour of the executable Run: the JS simEnv() sets FLEET_HOME (leg (a) checks only the six planted names, so it passes), and the Python sim_env() sets PATH/HOME/TMPDIR/FLEET_TEST_SLACK only. M6's own text asks only that sim_env drop the six prefixes, keep FLEET_TEST_SLACK and build PATH from the same interpreters, all of which it does. Rationale recorded in the sim_env docstring: a sim is not one of its own children, and a FLEET_ fact planted by the bridge is the ambient kind the sweep exists to keep out."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.qL7Gs4jV6I/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 6/6 workers\\n6 workers [1927 items]\\n\\n........................................................................ [  3%]\\n........................................................................ [  7%]\\n........................................................................ [ 11%]\\n........................................................................ [ 14%]\\n........................................................................ [ 18%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 29%]\\n........................................................................ [ 33%]\\n........................................................................ [ 37%]\\n........................................................................ [ 41%]\\n........................................................................ [ 44%]\\n........................................................................ [ 48%]\\n........................................................................ [ 52%]\\n........................................................................ [ 56%]\\n........................................................................ [ 59%]\\n........................................................................ [ 63%]\\n........................................................................ [ 67%]\\n........................................................................ [ 70%]\\n........................................................................ [ 74%]\\n........................................................................ [ 78%]\\n........................................................................ [ 82%]\\n........................................................................ [ 85%]\\n........................................................................ [ 89%]\\n........................................................................ [ 93%]\\n........................................................................ [ 97%]\\n.......................................................                  [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1927 passed, 5 warnings in 905.11s (0:15:05) =================\"}\n"
+  },
+  "verdict": "BLOCKED"
+}

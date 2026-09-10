@@ -1,1 +1,1 @@
-{"run":"86","state":"running","phase":"Integration Review","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-86","vm":"fleet-r86-2609100017-4a2c","startedAt":"2026-09-10T00:17:34Z","updatedAt":"2026-09-10T01:01:04Z","error":null}
+{"run":"86","state":"parked","phase":"nothing to publish","pr":null,"prAuthor":null,"merged":null,"branch":"ultra/integration-run-86","vm":"fleet-r86-2609100017-4a2c","startedAt":"2026-09-10T00:17:34Z","updatedAt":"2026-09-10T01:15:41Z","error":"parked: ultra/integration-run-86 has no commits ahead of base (verdict BLOCKED)"}

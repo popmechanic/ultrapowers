@@ -39,3 +39,4 @@
 {"kind":"driver:stage","stage":"finalize","id":"01M24D9C2900006C5MR1P3692G","ts":1789002035273}
 {"kind":"driver:stage","stage":"acceptance-capture","detail":"gate suite tees to /home/exedev/target/.claude/ultrapowers/run-run-86/acceptance.log","id":"01M24D9C3X00005798YEMW43GF","ts":1789002035325}
 {"kind":"driver:stage","stage":"gate","id":"01M24D9C3X0001ST6AAX7F6PE4","ts":1789002035325}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M24E50FH0000X766SB867J5W","ts":1789002940913}
