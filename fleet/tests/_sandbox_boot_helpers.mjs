@@ -382,7 +382,13 @@ case "$verb" in
     # A commit is the moment the evidence becomes readable off the box, so
     # snapshot the status page exactly as it is committed.
     snap="$dir/.ultrapowers/runs/7/status.json"
-    [ -f "$snap" ] && cat "$snap" >>"$FLEET_HOME/commits.log" ;;
+    [ -f "$snap" ] && cat "$snap" >>"$FLEET_HOME/commits.log"
+    # And the names the run directory carried AT THAT MOMENT, one line per
+    # commit, \`ls\` order and space-separated. The snapshot above says what the
+    # page held; this says what the tree held — so a file written after the
+    # last commit, which never reaches the branch, is a name no line carries.
+    ls "$dir/.ultrapowers/runs/7" 2>/dev/null | tr '\\n' ' ' >>"$FLEET_HOME/trees.log"
+    printf '\\n' >>"$FLEET_HOME/trees.log" ;;
   push)
     case "$*" in
       *evidence-run-7*)
@@ -850,6 +856,9 @@ export const commitStates = (ctx) => committed(ctx).map((c) => c.state)
 /** The `phase` cell of each committed page, in commit order — the branch's own
  *  account of what the run was doing at every commit it made (#723). */
 export const commitPhases = (ctx) => committed(ctx).map((c) => c.phase)
+/** The run directory's names at each evidence commit, oldest first — one line
+ *  per commit, space-separated in `ls` order. `[]` when the run made none. */
+export const trees = (ctx) => lines(readLog(ctx, 'trees.log'))
 /**
  * What the refresher relayed to the LIVE PAGE while the engine unit was alive:
  * the consecutive-deduplicated phases of the `status: state=running phase=…`

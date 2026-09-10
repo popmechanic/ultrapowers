@@ -56,6 +56,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
     contents are the exam's own output copied file by file — is there on the same terms, present
     when the exams wrote it.
+    `residuals.jsonl` — one JSON object per residual, present when the run had one:
+    `{run, task, file, line, kind, text, sha}`, `kind` one of `nit`, `unverified`, `deferred`,
+    `structural`. It is the same items the PR body lists, on the record rather than in a page a
+    merge closes; append-only, and a run that left nothing writes no file.
     `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
     and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
     `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
@@ -305,20 +309,17 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   After `### Plan`, the body carries a `### Residuals` checklist — one `- [ ]` line per
   `deferred:external` ack of the gate receipt and per non-blocking reviewer/critic finding of
   `report.json`, each with its evidence sentence — before the `Closes #<n>` lines, and no section at
-  all when there is none. With residuals the sandbox files ONE follow-up issue per PR opened,
-  `POST /repos/<owner>/<repo>/issues`, titled `fleet run-<N> residuals: <plan H1>`, labelled
-  `watch-item` plus the program labels read off the run's `**Closes:**` tickets —
-  `merge-frontier`, `experience-compiler`, `verification-frontier`, `peer-review`, `fleet`, `determinism` —
-  its body the PR's URL and the same lines; a refused POST is one log line and never a gate.
-  The publish record is four event kinds, appended to the run's `events.jsonl` beside the engine's
+  all when there is none. The same items are also rows of `residuals.jsonl` on the run's record,
+  written with the evidence and not at publish — the checklist closes with the PR that carries it,
+  the rows do not — and the sandbox files no issue for them, against this target or any other.
+  The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's
   own and carrying the same `id`/`ts` stamp: `publish:pr` (`url`, `number`, `draft`) once the POST
   answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
   `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
   merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
   `checks red`, `checks pending` or `refused` and `detail` the account (`check <name> concluded
-  <conclusion>`, `still pending after <N>s`, `merge PUT answered <code>`); and `publish:followup`
-  (`url`, `items`) once the follow-up issue's POST answers 2xx. The LAST `publish:merge` line is what
-  became of the PR.
+  <conclusion>`, `still pending after <N>s`, `merge PUT answered <code>`). The LAST `publish:merge`
+  line is what became of the PR.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created attached to nothing by `node fleet/target.mjs <owner>/<repo>`;
   `new --integration claude-max,gh-<owner>-<repo>[,browser-run]` binds them to the run's VM at
