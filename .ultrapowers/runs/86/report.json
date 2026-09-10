@@ -1,0 +1,150 @@
+{
+  "integrationBranch": "ultra/integration-run-86",
+  "baseSha": "5e0447c6582dd725b2dbf8f690269550c77c09a5",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "plan-defect",
+      "notes": "plan-defect: M1 says simEnv sets FLEET_HOME, and the Context says sim_env() is that contract 'key for key' \u2014 but the Proof's own `Run:` for leg (h) asserts sim_env() returns no key with a FLEET_ prefix other than FLEET_TEST_SLACK, which a FLEET_HOME would fail. I resolved it in favour of the executable Run: the JS simEnv() sets FLEET_HOME (leg (a) checks only the six planted names, so it passes), and the Python sim_env() sets PATH/HOME/TMPDIR/FLEET_TEST_SLACK only. M6's own text asks only that sim_env drop the six prefixes, keep FLEET_TEST_SLACK and build PATH from the same interpreters, all of which it does. Rationale recorded in the sim_env docstring: a sim is not one of its own children, and a FLEET_ fact planted by the bridge is the ambient kind the sweep exists to keep out.",
+      "actor": "plan",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged"
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 1,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "acceptance": {
+    "mode": "suite",
+    "passed": false,
+    "reason": "the committed suite is the verification."
+  },
+  "baseline": null,
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "fleet/tests/README.md",
+        "fleet/tests/_engine_helpers.mjs",
+        "fleet/tests/_helpers.mjs",
+        "fleet/tests/_lobby_helpers.mjs",
+        "fleet/tests/_sandbox_boot_helpers.mjs",
+        "fleet/tests/fixtures/hermetic/leaky_sim.mjs",
+        "fleet/tests/test_claude_token.mjs",
+        "fleet/tests/test_confine_hook.mjs",
+        "fleet/tests/test_doctor.mjs",
+        "fleet/tests/test_doctor_config_keys.mjs",
+        "fleet/tests/test_doctor_render.mjs",
+        "fleet/tests/test_fleet_bootstrap.mjs",
+        "fleet/tests/test_launch_pins.mjs",
+        "fleet/tests/test_launch_render.mjs",
+        "fleet/tests/test_launch_run_number.mjs",
+        "fleet/tests/test_launch_test_command.mjs",
+        "fleet/tests/test_publish_fold.mjs",
+        "fleet/tests/test_publish_fold_block.mjs",
+        "fleet/tests/test_referee_linker.mjs",
+        "fleet/tests/test_referee_replay.mjs",
+        "fleet/tests/test_retire.mjs",
+        "fleet/tests/test_run_engine_actor_routing.mjs",
+        "fleet/tests/test_run_engine_candidate_bootstrap.mjs",
+        "fleet/tests/test_run_engine_exam_evidence.mjs",
+        "fleet/tests/test_run_engine_exam_fix_edit.mjs",
+        "fleet/tests/test_run_engine_exam_together.mjs",
+        "fleet/tests/test_run_engine_gate.mjs",
+        "fleet/tests/test_run_engine_infra_retry.mjs",
+        "fleet/tests/test_run_engine_integrated_runs.mjs",
+        "fleet/tests/test_run_engine_proof_runs.mjs",
+        "fleet/tests/test_run_engine_reserved_exams.mjs",
+        "fleet/tests/test_run_engine_review_economy.mjs",
+        "fleet/tests/test_run_engine_state_exams.mjs",
+        "fleet/tests/test_run_engine_suite_passes.mjs",
+        "fleet/tests/test_run_main.mjs",
+        "fleet/tests/test_run_main_effort.mjs",
+        "fleet/tests/test_run_main_engine_dir.mjs",
+        "fleet/tests/test_run_waves.mjs",
+        "fleet/tests/test_sandbox_boot.mjs",
+        "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+        "fleet/tests/test_sandbox_boot_approved.mjs",
+        "fleet/tests/test_sandbox_boot_edges.mjs",
+        "fleet/tests/test_sandbox_boot_merge.mjs",
+        "fleet/tests/test_sandbox_boot_render_env.mjs",
+        "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+        "fleet/tests/test_sandbox_boot_state_exams.mjs",
+        "fleet/tests/test_setup_script.mjs",
+        "fleet/tests/test_setup_script_render_env.mjs",
+        "fleet/tests/test_sims_are_hermetic.mjs",
+        "fleet/tests/test_strip_exams.mjs",
+        "tests/test_fleet_suite.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "1",
+      "reason": "plan-defect",
+      "why": "plan-defect: M1 says simEnv sets FLEET_HOME, and the Context says sim_env() is that contract 'key for key' \u2014 but the Proof's own `Run:` for leg (h) asserts sim_env() returns no key with a FLEET_ prefix other than FLEET_TEST_SLACK, which a FLEET_HOME would fail. I resolved it in favour of the executable Run: the JS simEnv() sets FLEET_HOME (leg (a) checks only the six planted names, so it passes), and the Python sim_env() sets PATH/HOME/TMPDIR/FLEET_TEST_SLACK only. M6's own text asks only that sim_env drop the six prefixes, keep FLEET_TEST_SLACK and build PATH from the same interpreters, all of which it does. Rationale recorded in the sim_env docstring: a sim is not one of its own children, and a FLEET_ fact planted by the bridge is the ambient kind the sweep exists to keep out."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: plan-defect: M1 says simEnv sets FLEET_HOME, and the Context says sim_env() is that contract 'key for key' \u2014 but the Proof's own `Run:` for leg (h) asserts sim_env() returns no key with a FLEET_ prefix other than FLEET_TEST_SLACK, which a FLEET_HOME would fail. I resolved it in favour of the executable Run: the JS simEnv() sets FLEET_HOME (leg (a) checks only the six planted names, so it passes), and the Python sim_env() sets PATH/HOME/TMPDIR/FLEET_TEST_SLACK only. M6's own text asks only that sim_env drop the six prefixes, keep FLEET_TEST_SLACK and build PATH from the same interpreters, all of which it does. Rationale recorded in the sim_env docstring: a sim is not one of its own children, and a FLEET_ fact planted by the bridge is the ambient kind the sweep exists to keep out.",
+    "task 1: M4 enumerates nine sibling-spawn sites; I removed a tenth. test_run_main.mjs leg (f) shelled out to `sh -c \"node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'\"` and the same for test_exam_edited_patches.mjs. The task's own discovery grep (`(spawnSync|execFileSync|execFile|spawn)\\((process\\.execPath|'node')`) cannot see a sim named inside a shell string, so it missed them \u2014 but M4's categorical claim and the Proof's `Run:` grep (`(spawn|...)\\([^;]*(test_[a-z_]*\\.mjs|pytest)`) both catch them, so they had to go. Replaced by an fs.existsSync loop over the two names, leg letter and citation kept. test_run_main.mjs is in FILES, so this is inside the footprint.",
+    "task 1: The probe's static sweep must distinguish `child_process` spawn calls from regex `.exec(` calls and from the lobby/janitor/launch sims' own `exec` seam functions \u2014 there are ~40 such non-spawn `exec(` sites across the tree. The task text defines a spawn site as 'a call to one of the six child_process names', which I read as requiring the sweep to resolve the name to a node:child_process import; a sweep that matched the bare token `exec(` would name dozens of false offenders. My own verification sweep resolved the imported names per file and found zero spawns without a simEnv-derived env.",
+    "task 1: examiner: (h) [M6] \u2014 the planted-key `python3 -c` Run: prints an empty `bad` list, FLEET_TEST_SLACK comes back as `7`, and every returned PATH entry is a directory holding one of node/python3/git/bash/sh \u2014 That half is an execution of the bridge's sim_env() in a planted process, and the probe spawns nothing by leg (f)/M7 \u2014 it imports no child_process at all, so it cannot run python3 without failing its own leg. Encoded statically instead: the exam asserts tests/test_fleet_suite.py declares a module-level sim_env() whose body names all six dropped prefixes, FLEET_TEST_SLACK, the five interpreters and HOME/TMPDIR/FLEET_HOME, and that subprocess.run([\"node\", path], \u2026) binds env=sim_env(). The executable half is the task's own `Run:` line.",
+    "task 1: examiner: (i) [M5] \u2014 under the planted `xargs` Run:, every file `ls fleet/tests/test_sandbox_boot*.mjs` lists runs directly under node with TINYAPP_RENDER_URL/FLEET_RENDER_ENV planted and prints the sentinel, so xargs exits 0 \u2014 Same reason: running the boot sims under a plant is a spawn, and the probe spawns nothing (leg (f)/M7). Encoded statically instead: the exam pins /etc/fleet/render.env to exactly one line of fleet/sandbox-boot.sh and that line to `FLEET_RENDER_ENV=\"${FLEET_RENDER_ENV:-/etc/fleet/render.env}\"`, and pins the rig's bootEnv to bind FLEET_RENDER_ENV: renderEnvPath( under the case's home. The executable half is the task's own `Run:` line.",
+    "task 1: plan-defect against a Proof leg named by the implementer \u2014 no fix round dispatched; failed with actor plan \u2014 plan-defect: M1 says simEnv sets FLEET_HOME, and the Context says sim_env() is that contract 'key for key' \u2014 but the Proof's own `Run:` for leg (h) asserts sim_env() returns no key with a FLEET_ prefix other than FLEET_TEST_SLACK, which a FLEET_HOME would fail. I resolved it in favour of the executable Run: the JS simEnv() sets FLEET_HOME (leg (a) checks only the six planted names, so it passes), and the Python sim_env() sets PATH/HOME/TMPDIR/FLEET_TEST_SLACK only. M6's own text asks only that sim_env drop the six prefixes, keep FLEET_TEST_SLACK and build PATH from the same interpreters, all of which it does. Rationale recorded in the sim_env docstring: a sim is not one of its own children, and a FLEET_ fact planted by the bridge is the ambient kind the sweep exists to keep out.",
+    "suite acceptance did not pass (committed test suite failed) \u2014 gate must not Approve"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}
