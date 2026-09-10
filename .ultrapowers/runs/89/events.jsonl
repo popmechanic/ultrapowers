@@ -31,3 +31,13 @@
 {"kind":"driver:integrated-check","cmd":"python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers","exit":0,"minor":false,"wave":1,"id":"01M2693FHF00005C8NXE5KTTP6","ts":1789064756783}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M2693FHF0001HXGYA4K421N7","ts":1789064756783}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"df997ede-ac18-4fce-9dbf-3fe422f32e70","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-89/clones/integration","model":"opus","id":"01M2693FHG00008ZK0N92XNTKN","ts":1789064756784}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"df997ede-ac18-4fce-9dbf-3fe422f32e70","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3023,"output":9793,"cacheRead":835046,"cacheCreation":57082,"costUsd":1.248283,"models":["claude-opus-5"]},"id":"01M2697F9Q0000H90ZA5VJYZYH","ts":1789064887607}
+{"kind":"transcript:slice","label":"integration","sessionId":"df997ede-ac18-4fce-9dbf-3fe422f32e70","bytes":11442,"id":"01M2697F9X0000G9CX8PP12FV8","ts":1789064887613}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2697FA300003YNN4NWEYPKC","ts":1789064887619}
+{"kind":"driver:stage","stage":"finalize","id":"01M2697FB50000KNMG1Z1C78NN","ts":1789064887653}
+{"kind":"driver:stage","stage":"gate","id":"01M2697FD000004JCMV7PX884S","ts":1789064887712}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M269MK8R000092NKVDD9Z6KT","ts":1789065317656}
+{"kind":"driver:stage","stage":"approve","id":"01M269MK8R0001Y2ZKNEZBQ6TA","ts":1789065317656}
+{"kind":"driver:approved","stamp":"run-89","integrationBranch":"ultra/integration-run-89","id":"01M269MKAQ00004XWKZNQ2YYJ5","ts":1789065317719}
+{"kind":"run:open","runId":"run-89","base":"22518b81dc4d132e552d6ec3a586d789de7306ae","source":"fleet/publish-fold.mjs","id":"01M269MKHR0000S4QQ74137YZG","ts":1789065317944}
+{"kind":"driver:publish-fold","run":"89","attempt":"1","base":"22518b81dc4d132e552d6ec3a586d789de7306ae","tip":"22518b81dc4d132e552d6ec3a586d789de7306ae","candidate":"d4dbc0cbe8a1579b81dbd26882756f69490908ec","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M269MNBM00003E0GQ5Q40F1Y","ts":1789065319796}
