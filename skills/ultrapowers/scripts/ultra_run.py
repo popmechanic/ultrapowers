@@ -570,9 +570,8 @@ def main(argv=None):
     if r.returncode == 0:
         compile_obj = json.loads(r.stdout)
         waves = compile_obj.get("waves") or []
-        mode = (compile_obj.get("acceptance") or {}).get("mode") or "unmarked"
-        summary = "%d task(s) in %d wave(s); acceptance: %s" % (
-            sum(len(w) for w in waves), len(waves), mode)
+        summary = "%d task(s) in %d wave(s)" % (
+            sum(len(w) for w in waves), len(waves))
     if not stage("compile", r.returncode == 0,
                  success=summary, failure=r.stderr or r.stdout):
         return bail()

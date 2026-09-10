@@ -22,10 +22,9 @@ grammar, leg by leg:
     backtick is refused in BOTH channels (`--check` exits 2, the full compile
     exits 1) with the exact `grammar:` line the clause spells; a WHOLLY
     backticked value is not refused and yields the unwrapped command.
-  M4 / leg (d) — every fixture plan still compiles, and each one carrying no
-    `Run:` bullet keeps `--check` output byte-identical to the BASE compiler's
-    (the byte-identity assertion of `tests/test_compile_plan_proof_runs.py`
-    re-run here, so a fixture that now differs names itself).
+  M4 / leg (d) — every fixture plan still compiles, under this compiler and
+    under the BASE one alike, so a fixture the new parser now refuses names
+    itself.
 
 The BASE compiler is the blob at the frozen sha `tests/test_compile_plan_proof_runs.py`
 pins — imported, never re-copied, and never `HEAD:` (a tautology once merged).
@@ -41,18 +40,12 @@ COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 import compile_plan  # noqa: E402
-import test_compile_plan_proof_runs as _proof_runs_exam  # noqa: E402
 from test_compile_plan_claims import (  # noqa: E402
     HEADER, PROOF, SLOTS, _sign, _task, _write,
 )
 from test_compile_plan_proof_runs import (  # noqa: E402,F401
     BASE_SHA, CORPUS, base_compiler,
 )
-
-# Leg (d)'s second half is leg (e) of the `Run:` exam, re-run against the same
-# frozen BASE blob. Aliased to a private name so pytest collects it once, there.
-_base_byte_identity = (
-    _proof_runs_exam.test_every_run_less_fixture_plan_checks_byte_identically_to_base)
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +96,10 @@ FENCED_SECTION = ("- The suite is green.\n"
                   "- Naming: no shouting.")
 
 # The `--emit-args` top-level keys before this task (no `--run-dir`), plus the
-# one key it adds.
-BASE_ARGS_KEYS = {"waves", "wavesPath", "edges", "dependencyEdges", "acceptance",
+# one key it adds. `acceptance` is not among them: the `**Acceptance:**` line
+# left the grammar in the same wave, and the key left the payload with it —
+# see tests/test_compile_plan_acceptance_line.py.
+BASE_ARGS_KEYS = {"waves", "wavesPath", "edges", "dependencyEdges",
                   "waveLabels", "globalConstraints", "planPath", "planClaim"}
 
 
@@ -375,7 +370,7 @@ def test_a_wholly_backticked_run_and_check_are_not_refused(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# (d) [M4] the whole fixture corpus still compiles, and stays byte-identical
+# (d) [M4] the whole fixture corpus still compiles, under both compilers
 # ---------------------------------------------------------------------------
 
 TASK_HEAD_RE = re.compile(r"^###\s+Task\s+\w+:", re.M)
@@ -408,10 +403,3 @@ def test_every_corpus_plan_still_compiles(base_compiler):
             "leg (d) [M4]: %s carries no task heading — it must be refused "
             "exactly as the BASE compiler refuses it (got %d, BASE %d)"
             % (plan.relative_to(ROOT), mine, theirs))
-
-
-def test_every_run_less_corpus_plan_still_checks_byte_identically(base_compiler):
-    # leg (d) [M4]: the `Run:` exam's frozen-sha byte-identity assertion,
-    # re-run against this task's compiler, so a Check:-less fixture whose
-    # `--check` output now differs names itself here.
-    _base_byte_identity(base_compiler)

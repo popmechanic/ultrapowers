@@ -70,8 +70,7 @@ assert.equal(report.coverage.complete, true)
 assert.equal(report.waveMerges.length, 2)
 assert.ok(report.waveMerges.every((m) => m.status === 'MERGED' && m.headSha))
 assert.equal(report.tests.passed, true, 'the DRIVER ran the suite: ' + report.tests.output)
-assert.equal(report.acceptance.mode, 'suite')
-assert.equal(report.acceptance.passed, true)
+assert.ok(!('acceptance' in report))
 // #862 — the baseline is EAGER: the suite ran on BASE once, during Setup, on
 // every run that got that far. This one is green there, so the field is the
 // record of a green BASE and never null.

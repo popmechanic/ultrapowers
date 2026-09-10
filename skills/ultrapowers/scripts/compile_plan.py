@@ -27,7 +27,6 @@ the agent per dependency-analysis.md.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import hashlib
 import json
 import re
@@ -73,8 +72,8 @@ RUN_LINE = re.compile(r"^-\s*Run:\s*(.+)$")
 # guard on — the file it is answerable for keeping honest. Like `Run:`, it is
 # deliberately NOT a FILE_LINE alternative: a `Guard:` names no NEW obligation
 # the compiler enforces, so it must never reach proof_tests, derive_task_test_
-# cmd, or the disjointness set. It rides to the wave entry as `proofGuards` and
-# earns at most an ADVISORY (see `_render_guard`) — never a `grammar:` refusal.
+# cmd, or the disjointness set. It rides to the wave entry as `proofGuards`
+# and never earns a `grammar:` refusal.
 GUARD_LINE = re.compile(r"^-\s*Guard:\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
@@ -550,12 +549,12 @@ def _backtick_command_violation(kind, command, task_id=None):
 # Machine line NUMBER its clauses (`M1. … M2. …`) and every Proof leg CITE the
 # clause it establishes (`[M2]`). The citation grammar is active for a task
 # exactly when its Machine line carries a clause marker; an unnumbered Machine
-# line (every plan authored before #554) parses as it always did and draws one
-# advisory. Under the active grammar the mechanical gaps are refusals — a clause
-# no leg cites, a leg citing nothing or a clause that does not exist — and the
-# two judgment species (a universal/negation clause whose citing legs name
-# nothing that fails, an enumerated clause with one citing leg) are advisories
-# the gate agent reads with the mechanical gaps already closed.
+# line (every plan authored before #554) parses as it always did. Under the
+# active grammar the mechanical gaps are refusals — a clause no leg cites, a
+# leg citing nothing or a clause that does not exist — and the judgment calls
+# beyond them (a universal whose citing legs name nothing that fails, an
+# enumerated clause with one citing leg) are the gate agent's to make, with
+# the mechanical gaps already closed.
 MACHINE_LEAD_RE = re.compile(r"^machine\s*:\s*", re.I)
 # A clause marker: `M<n>.` followed by whitespace, not glued to a word or a
 # backtick (so `M1.5` in a literal or `xM2.` never marks a clause).
@@ -565,22 +564,6 @@ LEG_CITE_RE = re.compile(r"\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]")
 LEG_LABEL_RE = re.compile(r"\(([a-z])\)")
 LEGS_LEAD_RE = re.compile(r"(?m)^[-*+]?\s*legs?\s*:\s*", re.I)
 BULLET_RE = re.compile(r"^[-*+]\s+")
-# The judgment species. A clause is `universal` on a quantifier, `negation` on
-# a negating word; either wants a citing leg that names what FAILS, is ABSENT,
-# or is EXACTLY so — the falsifier tokens the ticket lists, plus the near
-# synonyms run-51's accepted legs actually used. An `enumerated` clause names
-# rows ("for each of node, pytest") and wants one leg per row, which the
-# compiler can only approximate as "more than one citing leg".
-UNIVERSAL_RE = re.compile(
-    r"\b(every|all|each|any|always|only|whole|entire)\b", re.I)
-NEGATION_RE = re.compile(
-    r"\b(no|none|never|not|nothing|without|neither|nor|unchanged|absent|"
-    r"byte-identical|identical)\b", re.I)
-FALSIFIER_RE = re.compile(
-    r"\b(fails?|failing|absent|exact(?:ly)?|verbatim|no|none|not|never|zero|empty|"
-    r"refuses?|refused|identical|unchanged|deep-equals|only|nothing)\b", re.I)
-ENUMERATED_RE = re.compile(
-    r"\b(each of|for each|every one of|for every|one per)\b", re.I)
 
 
 def machine_restatement(claim):
@@ -704,105 +687,6 @@ def clause_citation_violations(task_id, clauses, numbering_error, legs):
             v.append("grammar: Machine clause %s has no citing Proof leg — task "
                      "%s: %s" % (c["id"], task_id, _short(c["text"])))
     return v
-
-
-def clause_citation_advisories(task_id, clauses, legs):
-    """The `ADVISORY grammar:` lines of the two judgment species for one task,
-    plus the one line an unnumbered Machine line draws."""
-    lines = []
-    if not clauses:
-        lines.append(
-            "ADVISORY grammar: Machine line carries no numbered clauses — task "
-            "%s; write it `M1. … M2. …` so every Proof leg can cite the clause "
-            "it establishes (`[M1]`)" % task_id)
-        return lines
-    for c in clauses:
-        citing = [l for l in legs if c["id"] in l["cites"]]
-        species = ("universal" if UNIVERSAL_RE.search(c["text"]) else
-                   "negation" if NEGATION_RE.search(c["text"]) else None)
-        if species and not any(FALSIFIER_RE.search(l["text"]) for l in citing):
-            lines.append(
-                "ADVISORY grammar: %s clause %s has no falsifying leg — task "
-                "%s: %s; a citing leg should name what fails, is absent, or is "
-                "exactly so" % (species, c["id"], task_id, _short(c["text"])))
-        if ENUMERATED_RE.search(c["text"]) and len(citing) < 2:
-            lines.append(
-                "ADVISORY grammar: enumerated clause %s is cited by %d leg — "
-                "task %s: %s; each enumerated row needs its own leg"
-                % (c["id"], len(citing), task_id, _short(c["text"])))
-    return lines
-
-
-# A Proof leg that quantifies over a path prefix (#536). The six forms the
-# check reads: `no|every|each file under|in X` and the negated backticked glob
-# (`no `fleet/tests/test_*.mjs` …`), X and the glob backticked. A quantifier
-# whose prefix the task's own Files cover is checked BY the task's diff; one
-# whose prefix they do not cover is a statement about BASE, and BASE may
-# already hold a violator the author never looked for — run-49's Task 6 wrote
-# "no `fleet/tests/test_*.mjs` contains more than ten `driveOne(` call sites"
-# over a tree where one held 16. Advisory, never a refusal: a universal the
-# author has genuinely checked is a good leg, and the line is the prompt.
-DIR_QUANT_RE = re.compile(
-    r"\b(?:no|every|each)\s+file\s+(?:under|in)\s+`([^`]+)`", re.I)
-GLOB_QUANT_RE = re.compile(r"\bno\s+`([^`]*[*?\[][^`]*)`", re.I)
-GLOB_CHARS = "*?["
-
-
-def _glob_prefix(glob):
-    """The leading glob-free directory part of a path glob, slash-terminated
-    (`fleet/tests/test_*.mjs` -> `fleet/tests/`); the glob itself when its
-    first segment already globs (`*.mjs`)."""
-    segments = glob.split("/")
-    lead = []
-    for s in segments:
-        if any(c in s for c in GLOB_CHARS):
-            break
-        lead.append(s)
-    return "/".join(lead) + "/" if lead else glob
-
-
-def _quantified_prefixes(text):
-    """Every path prefix the leg `text` quantifies over, in reading order."""
-    out = []
-    for m in DIR_QUANT_RE.finditer(text):
-        raw = m.group(1).strip()
-        out.append(_glob_prefix(raw) if any(c in raw for c in GLOB_CHARS)
-                   else raw.rstrip("/") + "/")
-    for m in GLOB_QUANT_RE.finditer(text):
-        out.append(_glob_prefix(m.group(1).strip()))
-    return out
-
-
-def _prefix_covered(prefix, paths):
-    """True when one of the task's own Files paths lies under `prefix` (or,
-    for a bare glob, matches it)."""
-    if prefix.endswith("/"):
-        return any(p == prefix.rstrip("/") or p.startswith(prefix)
-                   for p in paths)
-    return any(fnmatch.fnmatch(p, prefix)
-               or fnmatch.fnmatch(p.rsplit("/", 1)[-1], prefix)
-               for p in paths)
-
-
-def directory_quantifier_advisories(task_id, legs, own_paths):
-    """One `ADVISORY grammar: Proof leg ` line per (leg, quantified prefix)
-    pair whose prefix no path in the task's own Files covers."""
-    lines = []
-    for leg in legs:
-        seen = []
-        for prefix in _quantified_prefixes(leg["text"]):
-            if prefix in seen:
-                continue
-            seen.append(prefix)
-            if _prefix_covered(prefix, own_paths):
-                continue
-            lines.append(
-                "ADVISORY grammar: Proof leg quantifies over a path prefix "
-                "outside the task's Files — task %s, leg %s: `%s`; \"%s\"; a "
-                "universal over `%s` is checked against BASE, not against "
-                "this task's diff"
-                % (task_id, leg["label"], prefix, _short(leg["text"]), prefix))
-    return lines
 
 
 def parse_claims_body(body, task_id, plan_claim=None):
@@ -1529,46 +1413,14 @@ def classify(t):
         return "gate", True
     # EMPTY_WRITES_GATE: a task that writes nothing and whose only steps are
     # build/verification (positive build/QA evidence, no implementation prose) is
-    # a gate, not implementation — a verification task belongs in `gates`, not in
-    # the wave plan ([c171bd23cbab3265]). The build/QA-evidence guard keeps a
-    # prose-only task (no writes, no build/QA steps) classified `implementation`
-    # rather than swept into the gate bucket.
+    # a gate, not implementation — a verification task belongs in the gate
+    # bucket, not in the wave plan ([c171bd23cbab3265]). The build/QA-evidence
+    # guard keeps a prose-only task (no writes, no build/QA steps) classified
+    # `implementation` rather than swept into the gate bucket.
     if (not t["writes"] and BUILDQA_EV.search(prose)
             and not _has_implementation_prose(prose)):
         return "gate", True
     return "implementation", True
-
-
-ACCEPT_SEALED = re.compile(
-    r"^\*\*Acceptance:\*\*\s*sealed\s+([0-9a-f]{8,40})\s*\(sha256:([0-9a-f]{64})\)\s*$",
-    re.I)
-ACCEPT_WAIVED = re.compile(r"^\*\*Acceptance:\*\*\s*waived\s*[—–-]\s*(.+?)\s*$", re.I)
-ACCEPT_SUITE = re.compile(r"^\*\*Acceptance:\*\*\s*suite\s*[—–-]\s*(.+?)\s*$", re.I)
-
-
-def parse_acceptance(text):
-    """Plan-level sealed-acceptance marker.
-
-    Fence-aware scan of the whole document (the line conventionally sits in
-    the plan header, but position is not load-bearing). Returns
-    {"mode": "sealed", "sealId", "sha256"} | {"mode": "waived", "reason"}
-    | {"mode": "suite", "reason"} | {"mode": "missing"}.
-    Spec: docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md
-    """
-    for line, in_fence in _fence_aware_lines(text):
-        if in_fence:
-            continue
-        s = line.strip()
-        m = ACCEPT_SEALED.match(s)
-        if m:
-            return {"mode": "sealed", "sealId": m.group(1), "sha256": m.group(2)}
-        m = ACCEPT_WAIVED.match(s)
-        if m:
-            return {"mode": "waived", "reason": m.group(1)}
-        m = ACCEPT_SUITE.match(s)
-        if m:
-            return {"mode": "suite", "reason": m.group(1)}
-    return {"mode": "missing"}
 
 
 # Top-level `## Global Constraints` section (v6, spec 2026-06-16). Fence-aware
@@ -1698,8 +1550,7 @@ _BARE_SYMBOL_LEAD = re.compile(r"([A-Za-z_][\w.\-]*)\s*(?:$|\(|->|=)")
 # Declaration keywords that LEAD a signature without being the symbol —
 # `class FailedLookup(RuntimeError)` names FailedLookup, not `class`. Without
 # this skip, two unrelated `class X` / `class Y` contracts pair on the keyword
-# into a FALSE edge (silent and permanent), and the P1 blast-radius advisory
-# matches every file containing the keyword (2026-09-01 papercut: 67 files).
+# into a FALSE edge, silent and permanent.
 _DECL_KEYWORDS = frozenset((
     "class", "def", "async", "function", "const", "let", "var",
     "interface", "type", "struct", "enum", "export", "abstract", "static"))
@@ -1846,15 +1697,6 @@ def _late_marker_note(task_id, late_markers):
                 task_id, "; ".join(sorted(set(late_markers))[:3])))
 
 
-# The refusal main() raises at compile time (#440). One constant, two call
-# sites: --check must refuse exactly what the full compile refuses, or its
-# "green here means it launches" promise is false.
-ACCEPTANCE_MISSING_ERROR = (
-    "marked plan has no **Acceptance:** line (sealed or waived). "
-    "Seal the exam (ultraplan sealing step) or record an explicit waiver. "
-    "See docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md")
-
-
 def collect_violations(plan_path):
     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
     parse as main() but collects EVERY violation across the whole plan in one
@@ -1933,222 +1775,7 @@ def collect_violations(plan_path):
         if _files_grammar_exempt(t):
             continue
         violations.extend(_files_violations(t))
-    # #440: scoped to MARKED plans, exactly as main() is — four committed
-    # plans are unmarked and Acceptance-less, and must keep passing.
-    if any(not classify(t)[1] for t in tasks) and \
-            parse_acceptance(plan_text)["mode"] == "missing":
-        violations.append(ACCEPTANCE_MISSING_ERROR)
     return violations
-
-
-# ---------------------------------------------------------------------------
-# The claims-v1 ADVISORY channel (spec 2026-08-31 §1.5, §3). Everything the
-# compiler NOTICES about a claims-v1 plan but will not act on: a body slot
-# phrased as an order (the text tier is off under claims-v1), a Consumes that
-# pairs with no sibling Produces, the Context word count, and a same-file pair
-# it cannot classify without a tree. Every line starts `ADVISORY grammar: ` and
-# rides the `--check` tail AFTER the frozen verdict. Nothing here refuses — at
-# any word count — and nothing here touches the exit code.
-# ---------------------------------------------------------------------------
-ORDERING_PHRASE_RE = re.compile(r"\bafter Task\s+\w+")
-# The lead word of a Consumes/Produces value, bullet and backticks stripped —
-# just enough to recognize the placeholders (`none`, `nothing (first task)`)
-# the unmatched-Consumes advisory must stay silent about.
-_INTERFACE_LEAD_RE = re.compile(r"^\s*(?:[-*+]\s*)?`?([A-Za-z][\w.-]*)")
-
-
-def _slot_prose(text):
-    """Slot text with fenced lines dropped — the same fence-aware rule the
-    legacy prose scan uses, so a fenced example never draws an advisory."""
-    return "\n".join(l for l, fenced in _fence_aware_lines(text) if not fenced)
-
-
-def _is_placeholder_interface(value):
-    """True for an explicitly empty Interfaces value (`none`, `nothing`)."""
-    m = _INTERFACE_LEAD_RE.match(value)
-    return bool(m) and m.group(1).lower() in PLACEHOLDER_TOKENS
-
-
-def claims_grammar_advisories(tasks, tree_root=None):
-    """Every `ADVISORY grammar:` line the parsed claims-v1 `tasks` draw.
-
-    Pure and total: it reads the parsed tasks (and, for the same-file tier,
-    the `BaseTree` at `tree_root`, when one is provided, one shared path at a
-    time) and returns lines. `tasks` that carry no claims overlay — every
-    legacy task — contribute nothing."""
-    tasks = [t for t in tasks if t.get("claims")]
-    produced = {t["id"]: {tok for pr in t["interfaces"]["produces"]
-                          if (tok := _interface_token(pr))} for t in tasks}
-    lines = []
-    for t in tasks:
-        claims = t["claims"]
-        # Ordering phrasing: under claims-v1 the sentence reads as an order and
-        # is not one, because the text tier is off. Advisory, not a refusal —
-        # the prose may be describing the world rather than sequencing it.
-        for slot in CLAIMS_SLOTS:
-            body = _slot_prose(claims.get(slot.lower().replace("-", "_"), ""))
-            for m in ORDERING_PHRASE_RE.finditer(body):
-                lines.append(
-                    "ADVISORY grammar: ordering phrasing in a body slot never "
-                    "orders — task %s, %s: %r; ordering is derived from "
-                    "Interfaces and Files, so this sentence orders nothing"
-                    % (t["id"], slot, m.group(0)))
-        # A Consumes with no sibling Produces draws no interface edge, so
-        # nothing orders the task against a producer. Free prose and a typo'd
-        # symbol are the same finding: neither pairs.
-        siblings = set()
-        for other in tasks:
-            if other["id"] != t["id"]:
-                siblings |= produced[other["id"]]
-        for entry in t["interfaces"]["consumes"]:
-            value = entry.strip()
-            if not value or _is_placeholder_interface(value):
-                continue
-            token = _interface_token(entry)
-            if token and token in siblings:
-                continue
-            lines.append(
-                "ADVISORY grammar: Consumes pairs with no sibling Produces — "
-                "task %s: %s — %s, so no interface edge orders this task"
-                % (t["id"], value,
-                   "no sibling Produces `%s`" % token if token else
-                   "the value is prose, which never tokens into a symbol"))
-        # The word count is a MEASUREMENT, never a threshold (spec §1.5).
-        lines.append("ADVISORY grammar: Context is %d words — task %s"
-                     % (len(_slot_prose(claims.get("context", "")).split()),
-                        t["id"]))
-        # Clause-to-leg citation (#554): the judgment species, and the one
-        # line an unnumbered Machine line draws.
-        lines.extend(clause_citation_advisories(
-            t["id"], claims.get("machine_clauses") or [],
-            claims.get("proof_legs") or []))
-        # A Proof leg quantifying over a directory the task does not write
-        # (#536): the gate cannot see it — it reads the Claim and Proof text
-        # with no tree — and the compiler has one.
-        lines.extend(directory_quantifier_advisories(
-            t["id"], claims.get("proof_legs") or [],
-            sorted(set(t["creates"]) | set(t["modifies"]) | set(t["reads"]))))
-    # Same-file pairs. What the compiler can say about a shared path depends on
-    # whether it was handed a tree: with none it cannot tell a mergeable text
-    # file from a non-text one it would have to order, and says so. With one it
-    # asks `is_binary` per shared path — a non-text answer means the pair
-    # cannot fold, so the advisory names the order the compile puts on it
-    # instead of naming its own ignorance. A text-only pair folds and stays
-    # silent.
-    #
-    # That order is NOT always Tier 2b's document-order `non-text-overlap`
-    # edge. Tier 2b is guarded twice (:1734): it yields to any edge already on
-    # the pair, and to one that would close a cycle. So an interface edge can
-    # own the pair, in EITHER direction, and the advisory must report what the
-    # compile actually did — asking the edge builder, not re-deriving the guess
-    # and getting the reverse of the truth.
-    pairs = []
-    for i, a in enumerate(tasks):
-        for b in tasks[i + 1:]:
-            shared = sorted((set(a["writes"]) | set(a["reads"]))
-                            & (set(b["writes"]) | set(b["reads"])))
-            if shared:
-                pairs.append((a, b, shared))
-    edges = None
-    if pairs and tree_root is not None:
-        # The same edge set the compile builds: same grammar, same tree, and
-        # the shipped `fold` overlap default (`serialize` is the rollback knob,
-        # not what a `--check` predicts). Only implementation tasks enter it,
-        # exactly as the compile's own `impl` filter does.
-        edges, _ = build_edges(
-            [t for t in tasks if classify(t)[0] == "implementation"],
-            grammar=CLAIMS_GRAMMAR, tree_root=tree_root)
-    for a, b, shared in pairs:
-        if tree_root is None:
-            lines.append(
-                # This sentence is byte-frozen, not free prose: leg (e) of
-                # tests/test_compile_plan_proof_runs.py pins every `--check`
-                # byte for the Run-less fixture corpus against the compiler at
-                # sha 0a3559a, and two of those fixtures print this line. #637
-                # asked it to say `--base <checkout-dir>`; that edit fails the
-                # frozen comparison, so the checkout-dir wording lives in the
-                # `--base` help entry and the renders skip note instead.
-                "ADVISORY grammar: same-file pair not classifiable without "
-                "a tree — tasks %s and %s both name %s; pass --base so the "
-                "compiler can tell a mergeable text file from a non-text "
-                "one it must order"
-                % (a["id"], b["id"],
-                   ", ".join("`%s`" % p for p in shared)))
-            continue
-        non_text = [p for p in shared if tree_root.is_binary(p)]
-        if not non_text:
-            continue
-        lines.append(
-            "ADVISORY grammar: non-text same-file pair — tasks %s and %s "
-            "both name %s; %s"
-            % (a["id"], b["id"], ", ".join("`%s`" % p for p in non_text),
-               _pair_ordering(edges, a["id"], b["id"])))
-    return lines
-
-
-def _reaches(edges, src, dst):
-    """True when `dst` is reachable from `src` over `edges` (src itself is not
-    a hit — an unordered pair must not read as ordered)."""
-    adj = {}
-    for e in edges:
-        adj.setdefault(e["from"], []).append(e["to"])
-    stack, seen = list(adj.get(src, ())), set()
-    while stack:
-        n = stack.pop()
-        if n == dst:
-            return True
-        if n in seen:
-            continue
-        seen.add(n)
-        stack.extend(adj.get(n, ()))
-    return False
-
-
-def _pair_ordering(edges, a_id, b_id):
-    """How the compile orders the pair (a_id, b_id), as an advisory clause.
-
-    Three cases, and every non-text pair lands in one of them:
-      * a direct edge, in either direction — name it and its `why`. This is
-        Tier 2b's own `a -> b (non-text-overlap)` when no earlier tier claimed
-        the pair, and the earlier tier's edge and label when one did (Tier 2b's
-        `seen` guard means the label is that tier's, not `non-text-overlap`).
-      * no direct edge but a path — Tier 2b's cycle guard declined, because the
-        other task already reaches this one transitively. The order is real;
-        no single edge carries it, so none is named.
-      * neither — the pair is not two implementation tasks, so no tier reaches
-        it and the compile orders nothing. The non-text hazard is real and
-        unmanaged, which is precisely what the reader needs told."""
-    direct = next((e for e in edges
-                   if {e["from"], e["to"]} == {a_id, b_id}), None)
-    if direct is not None:
-        return ("the compile orders %s -> %s (%s)"
-                % (direct["from"], direct["to"], direct["why"]))
-    for x, y in ((a_id, b_id), (b_id, a_id)):
-        if _reaches(edges, x, y):
-            return ("the compile already orders %s before %s, transitively"
-                    % (x, y))
-    return ("the compile orders neither — the pair is not two implementation "
-            "tasks, so no edge tier reaches it")
-
-
-def collect_advisories(plan_path, tree_root=None):
-    """The `--check` advisory tail for a claims-v1 plan; [] for a legacy plan
-    and for one the check's structural net already rejected (the same
-    early-abort guards render_advisories uses — a parse the check could not
-    trust is not one to advise over)."""
-    plan_text = Path(plan_path).read_text()
-    if plan_grammar(plan_text) != CLAIMS_GRAMMAR:
-        return []
-    if _malformed_task_headings(plan_text):
-        return []
-    raw = split_tasks(plan_text)
-    ids = [t["id"] for t in raw]
-    if not raw or len(set(ids)) != len(ids):
-        return []
-    return claims_grammar_advisories(
-        [parse_task(t, raise_on_marker_error=False, grammar=CLAIMS_GRAMMAR,
-                    plan_claim=parse_plan_claim(plan_text))
-         for t in raw], tree_root)
 
 
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
@@ -2240,8 +1867,8 @@ OVERLAP_DEFAULT = "fold"
 # TEXT and for nothing else. A non-text file (a raster asset, a compiled blob,
 # a symlink whose content is a target rather than lines) has no line-wise
 # merge, so two tasks naming one must be ordered. Classifying it needs a tree
-# to read, and the compiler is handed one only when the caller provides it; with
-# no tree root nothing is ordered and the advisory channel says exactly why.
+# to read, and the compiler is handed one only when the caller provides it;
+# with no tree root the pair is left unordered.
 _BINARY_SNIFF_BYTES = 8192
 
 
@@ -2277,13 +1904,12 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
     `grammar` selects the plan's declared grammar (plan_grammar). Under the
     default "legacy" every tier below is exactly what it has always been. Under
     "claims-v1" (spec 2026-08-31 §3 edge-tier table) three things differ, and
-    nothing else: the TEXT tier is off (a body slot's prose orders nothing —
-    the advisory channel says so out loud), the `undeclared-dependency`
-    cross-check is retired (see its own comment), and a same-file pair whose
-    shared path is NON-TEXT under `tree_root` is ordered, since no kernel fold
-    can merge it. `tree_root` is the `BaseTree` the non-text classifier reads —
-    a checkout directory or a commit sha, and this tier cannot tell which; None
-    (the default) leaves the pair unordered and draws an advisory instead.
+    nothing else: the TEXT tier is off (a body slot's prose orders nothing),
+    the `undeclared-dependency` cross-check is retired (see its own comment),
+    and a same-file pair whose shared path is NON-TEXT under `tree_root` is
+    ordered, since no kernel fold can merge it. `tree_root` is the `BaseTree`
+    the non-text classifier reads — a checkout directory or a commit sha, and
+    this tier cannot tell which; None (the default) leaves the pair unordered.
     """
     if overlap_mode not in OVERLAP_MODES:
         raise ValueError("unknown overlap mode: %r" % (overlap_mode,))
@@ -2364,8 +1990,7 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
     # Tier 1: Explicit — text edges, LEGACY ONLY. Under claims-v1 ordering
     # is derived from Interfaces and Files and never from prose (spec §3),
     # so this tier does not run at all — a Context slot that says "after
-    # Task 1 completes" draws an `ADVISORY grammar:` line instead of a
-    # silent edge the grammar never signed.
+    # Task 1 completes" orders nothing.
     # (Moved up from the bottom to enforce precedence; scans fence-stripped
     # prose so a fenced example saying "runs after Task A" fabricates nothing.)
     if grammar != CLAIMS_GRAMMAR:
@@ -2566,33 +2191,15 @@ def layer(impl, edges):
 
 
 # --------------------------------------------------------------------------- #
-# Advisory renders (#345 eval cell) — `--check --renders` ONLY.               #
+# The tree at BASE — every git read of it goes through here.                  #
 # --------------------------------------------------------------------------- #
-# The --check diagnostic vocabulary is frozen (0.1.0). These renders are
-# ADVISORY: they print AFTER the check verdict, never change the exit code,
-# and print nothing at all when they have nothing to say — so `PLAN OK` stays
-# byte-identical on a clean plan. They live behind the `--renders` flag so the
-# default `--check` output is unchanged until an eval-measured adoption flips
-# the default (evals/check_renders_ab.py writes the measurement).
-#
-# A render is `fn(tasks, ctx) -> list[str]`: `tasks` is the parse_task output
-# for every task in document order; `ctx` is {"base": Path, "plan_path": Path,
-# "tracked": set[str] (git ls-files under base), "task_ids": set[str],
-# "exclude": tuple[str, ...] (base-relative paths hidden from every tracked-
-# file lookup — `--exclude`, the eval campaign's seam for keeping its own
-# files out of its measurement; empty by default)}. Every line a render
-# returns starts with the literal prefix "ADVISORY ".
-CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh")
-# Registry of (name, fn). Renders APPEND themselves here — an order-insensitive
-# registration surface; the order lines print in is registration order.
-ADVISORY_RENDERS = []
 
 
 def _git_run(base, *args, binary=False):
     """THE subprocess call every git read of a base tree makes: `git -C <base>`
     in the plan's own repository. Returns (ok, stdout) — ok False on ANY
     failure (missing git, not a checkout, no match, an absent path at a rev),
-    so advisory code never raises. `binary=True` returns bytes, for a blob that
+    so a tree read never raises. `binary=True` returns bytes, for a blob that
     need not decode as text."""
     try:
         p = subprocess.run(["git", "-C", str(base), *args],
@@ -2604,77 +2211,18 @@ def _git_run(base, *args, binary=False):
 
 def _git(base, *args):
     """git in `base`; stdout text, or '' on ANY failure (missing git, not a
-    checkout, no match) — advisory code never raises. Name and signature are
+    checkout, no match) — a tree read never raises. Name and signature are
     load-bearing: `pin_base_facts.py` imports this."""
     ok, out = _git_run(base, *args)
     return out if ok else ""
 
 
-def _exclude_pathspecs(exclude):
-    return [":(exclude)" + p for p in exclude]
-
-
 # `rev` is how a read names the tree it reads. The sentinel "HEAD" is the
-# DIRECTORY reader: it passes no tree-ish at all, so `ls-files` reads the index
-# and `git grep` the working tree — an author's uncommitted file still resolves,
-# exactly as it did at BASE. Any other rev is a commit sha, and every read is of
-# that commit's tree, with no file opened off disk.
+# DIRECTORY reader: it passes no tree-ish at all, so a read is of the working
+# tree — an author's uncommitted file still resolves, exactly as it did at
+# BASE. Any other rev is a commit sha, and every read is of that commit's
+# tree, with no file opened off disk.
 WORKTREE_REV = "HEAD"
-
-
-def _rev_args(rev):
-    """The tree-ish argument a read takes: none for the directory reader, the
-    sha itself for a sha reader."""
-    return () if rev == WORKTREE_REV else (rev,)
-
-
-def _strip_rev(rev, paths):
-    """`git grep` prints each hit as `<tree-ish>:<path>` when it is given one;
-    the reader's callers see a plain relative path either way."""
-    if rev == WORKTREE_REV:
-        return paths
-    return [p[len(rev) + 1:] if p.startswith(rev + ":") else p for p in paths]
-
-
-def _git_tracked(base, exclude=(), rev=WORKTREE_REV):
-    """Tracked paths under `base`, relative to it, minus `exclude`. At a sha
-    that is the commit's own tree (`ls-tree -r`); at the directory sentinel it
-    stays `ls-files`, so an uncommitted file resolves as it does at BASE."""
-    spec = ["--", "."] + _exclude_pathspecs(exclude) if exclude else []
-    if rev == WORKTREE_REV:
-        return set(_git(base, "ls-files", *spec).split())
-    return set(_git(base, "ls-tree", "-r", "--name-only", rev, *spec).split())
-
-
-def _code_pathspecs(exclude=()):
-    return ["--"] + ["*" + ext for ext in CODE_EXTS] + _exclude_pathspecs(exclude)
-
-
-def _git_word_files(base, word, exclude=(), rev=WORKTREE_REV):
-    """Tracked CODE files (CODE_EXTS) under `base` containing `word` as a
-    whole word (`git grep -l -w -F`), sorted, relative to `base`."""
-    return sorted(_strip_rev(rev, _git(base, "grep", "-l", "-w", "-F", word,
-                                       *_rev_args(rev),
-                                       *_code_pathspecs(exclude)).split()))
-
-
-def _git_literal_in_code(base, literal, exclude=(), rev=WORKTREE_REV):
-    """True when some tracked CODE file under `base` contains `literal`."""
-    return bool(_git(base, "grep", "-l", "-F", literal, *_rev_args(rev),
-                     *_code_pathspecs(exclude)).strip())
-
-
-def _git_substring_files(base, literal, exclude=(), rev=WORKTREE_REV):
-    """Tracked files under `base` containing `literal` as a SUBSTRING
-    (`git grep -l -F`), sorted, relative to `base`.
-
-    Unlike `_git_word_files` this is neither word-bounded nor extension-scoped:
-    a Machine clause pins spans like `runner: None`, which is not one word and
-    can be asserted from a fixture of any extension. `-e` keeps a span opening
-    with `-` from reading as a flag."""
-    return sorted(_strip_rev(rev, _git(base, "grep", "-l", "-F", "-e", literal,
-                                       *_rev_args(rev), "--",
-                                       *_exclude_pathspecs(exclude)).split()))
 
 
 def default_base(plan_path):
@@ -2758,18 +2306,6 @@ class BaseTree:
         return hash(self.repo if not self.is_sha else (self.repo, self.rev))
 
     # --- the tree, question by question ---------------------------------- #
-    def tracked(self, exclude=()):
-        return _git_tracked(self.repo, exclude, self.rev)
-
-    def word_files(self, word, exclude=()):
-        return _git_word_files(self.repo, word, exclude, self.rev)
-
-    def literal_in_code(self, literal, exclude=()):
-        return _git_literal_in_code(self.repo, literal, exclude, self.rev)
-
-    def substring_files(self, literal, exclude=()):
-        return _git_substring_files(self.repo, literal, exclude, self.rev)
-
     def read_text(self, path):
         """`path`'s text at BASE, or None when it is not readable there."""
         if not self.is_sha:
@@ -2835,130 +2371,15 @@ class BaseTree:
         return None
 
 
-def render_advisories(plan_path, base, exclude=()):
-    """Every registered render's lines for `plan_path` against the tree at
-    `base`. Returns [] when the plan failed the check's structural early-abort
-    net (malformed heading, no tasks, duplicate ids) — a parse the check could
-    not trust is not one to render over. A `base` that is not a git checkout
-    yields the single skip note instead of guessing. A render that raises
-    degrades to one `render failed` line — advisory output never changes the
-    check's exit code, so nothing here may propagate.
-
-    `base` is a `BaseTree` — a checkout directory or a commit sha, and the
-    renders below cannot tell which. A bare path is accepted and read as the
-    directory case, so a caller holding a checkout need not build one."""
-    plan_text = Path(plan_path).read_text()
-    if _malformed_task_headings(plan_text):
-        return []
-    raw = split_tasks(plan_text)
-    ids = [t["id"] for t in raw]
-    if not raw or len(set(ids)) != len(ids):
-        return []
-    if base is None:
-        return ["ADVISORY renders skipped: no git checkout found for %s (pass --base)"
-                % Path(plan_path).resolve().parent]
-    if not isinstance(base, BaseTree):
-        base = BaseTree(base)
-    if not base.is_checkout():
-        return ["ADVISORY renders skipped: %s is not a git checkout" % base]
-    # Grammar-aware, like the compile and `--check` call sites: a claims-v1
-    # body is six SLOTS, not legacy prose, and its two unsigned tiers are
-    # zeroed. Parsing it as legacy here made the renders read slot bodies
-    # under a grammar the plan is not written in.
-    tasks = [parse_task(t, raise_on_marker_error=False,
-                        grammar=plan_grammar(plan_text),
-                        plan_claim=parse_plan_claim(plan_text)) for t in raw]
-    exclude = tuple(exclude)
-    ctx = {"base": base, "plan_path": Path(plan_path).resolve(),
-           "tracked": base.tracked(exclude), "task_ids": set(ids),
-           "exclude": exclude}
-    lines = []
-    for name, fn in ADVISORY_RENDERS:
-        try:
-            lines.extend(fn(tasks, ctx))
-        except Exception as e:  # noqa: BLE001 — advisory: degrade, never raise
-            lines.append("ADVISORY %s: render failed (%s)" % (name, type(e).__name__))
-    return lines
-
-
-# P1 — Produces blast radius (#233 build, #345 eval cell). For every symbol a
-# task's Produces declares, the CODE files at BASE outside the task's own
-# Files that mention it as a whole word. Keyed on EVERY Produces symbol, not
-# only deleted/renamed ones — run-14's additive shim-outcome shape change had
-# its strict-equality pin in a sibling-owned test file. Advisory: a listed
-# file is somewhere the implementer must look (ultraplan Move 3), never a
-# refusal.
-_SYMBOL_RE = re.compile(r"^[A-Za-z_]\w*$")
-_BLAST_LIST_CAP = 8
-
-
-def _multiword_symbol(sym):
-    """camelCase / snake_case / CONSTANT_CASE — an identifier, not a word."""
-    return "_" in sym or any(c.isupper() for c in sym[1:])
-
-
-def _produces_symbols(task):
-    """Symbol tokens the task's Produces lines declare, document order, deduped.
-    Every backticked span reduces like _interface_token's lead (cut at the
-    first '(', whitespace, or ':'); the lead span is kept at >= 5 chars or
-    multi-word, a non-lead span only when multi-word — single common words
-    (`main`, `delivered`, `token`) are grep noise, measured (#345)."""
-    out = []
-    for entry in task["interfaces"]["produces"]:
-        for k, span in enumerate(PATH_RE.findall(entry)):
-            sym = re.split(r"[(\s:]", span, 1)[0].strip("`").strip()
-            if not _SYMBOL_RE.match(sym) or sym.lower() in PLACEHOLDER_TOKENS:
-                continue
-            if not _multiword_symbol(sym) and (k > 0 or len(sym) < 5):
-                continue
-            if sym not in out:
-                out.append(sym)
-    return out
-
-
-def _render_blast_radius(tasks, ctx):
-    lines = []
-    for t in tasks:
-        own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
-        for sym in _produces_symbols(t):
-            hits = [f for f in ctx["base"].word_files(sym, ctx.get("exclude", ()))
-                    if f not in own]
-            if not hits:
-                continue
-            lines.append("ADVISORY blast-radius: Task %s Produces `%s` — %d file(s) "
-                         "at BASE outside Task %s's Files mention it:"
-                         % (t["id"], sym, len(hits), t["id"]))
-            lines.extend("  - " + f for f in hits[:_BLAST_LIST_CAP])
-            if len(hits) > _BLAST_LIST_CAP:
-                lines.append("  … +%d more" % (len(hits) - _BLAST_LIST_CAP))
-    return lines
-
-
-ADVISORY_RENDERS.append(("blast-radius", _render_blast_radius))
-
-
-# --- advisory renders register below (append zone) --------------------------
-
-# P2 — referent existence (#321 item 2 ∪ #237(b) ∪ #237(c); #345 eval cell).
-# A plan body asserting the existence of something the compiler can check —
-# a path against the tree at BASE, a report/detail field against
-# report-format.md (or the code that defines it), a `Task N` against the
-# plan's own headings — is resolved once; each unresolved referent renders
-# once, advisory. Ultraplan authoring rule 6 is the prose half.
+# Path referents. A backticked token in a task body may name a repo path, and
+# `skills/ultrawrite/scripts/pin_base_facts.py` resolves those referents
+# against the tree at BASE. It imports the normalizer (`_path_referent`) and
+# the body-line selector (`_referent_scan_lines`) from here rather than
+# re-implementing either, so what it pins is exactly what the compiler reads.
 _REFERENT_EXTS = frozenset(
     "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
     "sql csv lock cfg ini env tgz log".split())
 _MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
-_FIELD_HEADS = ("report", "result", "detail", "tasks", "waveMerges", "frontier",
-                "coverage", "acceptance", "tests", "baseline", "blockedWaves",
-                "missingDeliverables", "deferredVerification")
-_FIELD_RE = re.compile(r"^(?:%s)(?:\[\])?(?:\.[A-Za-z_]\w*(?:\[\])?)+$"
-                       % "|".join(_FIELD_HEADS))
-# `Task <id>` where <id> LOOKS like a task id: contains a digit, or is 1-3
-# uppercase alphanumerics led by a letter (`A`, `B3`, `IV`). `Task agents`,
-# `Task IDs`, `Task list` never match. Only the first id of a list/range is
-# captured — under-reporting is the safe direction for an advisory.
-_TASK_REF_RE = re.compile(r"\bTasks?\s+((?=[A-Za-z0-9]*\d)[A-Za-z0-9]+|[A-Z][A-Z0-9]{0,2})\b")
 _FILES_BULLET_RE = re.compile(
     r"^\s*[-*+]\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
 
@@ -2982,25 +2403,6 @@ def _path_referent(tok):
     return None
 
 
-def _report_field_vocab():
-    """Every field name report-format.md defines: JSON keys in its schema
-    block plus every segment of every backticked dotted token in its text.
-    None when the file cannot be read (a compiler copied out of its plugin
-    tree) — the field check then skips rather than reporting every field
-    as unknown."""
-    try:
-        text = (PLUGIN_ROOT / "skills/ultrapowers/references/report-format.md").read_text()
-    except OSError:
-        return None
-    names = set(re.findall(r'"([A-Za-z_]\w*)"\s*:', text))
-    for tok in re.findall(r"`([A-Za-z_][\w\[\].]*)`", text):
-        for seg in tok.split("."):
-            seg = seg.replace("[]", "")
-            if seg:
-                names.add(seg)
-    return names
-
-
 def _referent_scan_lines(task):
     """Body lines whose backticked tokens are referents: EVERY line including
     fenced content (a fenced markdown block names paths just as deadly),
@@ -3016,1066 +2418,6 @@ def _referent_scan_lines(task):
     return out
 
 
-def _render_referents(tasks, ctx):
-    base, tracked, ids = ctx["base"], ctx["tracked"], ctx["task_ids"]
-    basenames = {p.rsplit("/", 1)[-1] for p in tracked}
-    creates = {t["id"]: set(t["creates"]) for t in tasks}
-    all_files = set()
-    for t in tasks:
-        all_files |= set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
-    exclude = ctx.get("exclude", ())
-    vocab = _report_field_vocab()
-    lines = []
-    if vocab is None:
-        lines.append("ADVISORY referent: report-format.md vocabulary unavailable — "
-                     "field referents not checked")
-    for t in tasks:
-        own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
-        dep_creates = set()
-        for d in t["depends_on"]:
-            dep_creates |= creates.get(d, set())
-        seen = set()
-        for line in _referent_scan_lines(t):
-            for tok in PATH_RE.findall(line):
-                tok = tok.strip()
-                p = _path_referent(tok)
-                if p is not None:
-                    if p in seen:
-                        continue
-                    seen.add(p)
-                    resolved = (
-                        p in tracked or p in own or p in dep_creates
-                        or ("/" not in p and (p in basenames
-                                              or any(f.endswith("/" + p) for f in all_files)))
-                        or base.literal_in_code(p, exclude))
-                    if not resolved:
-                        lines.append("ADVISORY referent: Task %s names `%s` — not at BASE, "
-                                     "not in Task %s's Files, not Created by a task it "
-                                     "Depends-on" % (t["id"], p, t["id"]))
-                    continue
-                if vocab is not None and _FIELD_RE.match(tok):
-                    if tok in seen:
-                        continue
-                    seen.add(tok)
-                    segs = [s.replace("[]", "") for s in tok.split(".")[1:]]
-                    missing = [s for s in segs
-                               if s not in vocab and not base.word_files(s, exclude)]
-                    if missing:
-                        lines.append("ADVISORY referent: Task %s names `%s` — `%s` is not a "
-                                     "report-format.md field and appears in no code file "
-                                     "at BASE" % (t["id"], tok, missing[0]))
-        for m in _TASK_REF_RE.finditer(t["prose"]):
-            ref = m.group(1)
-            key = "Task " + ref
-            if ref in ids or key in seen:
-                continue
-            seen.add(key)
-            lines.append("ADVISORY referent: Task %s names Task %s — no such task heading "
-                         "in this plan" % (t["id"], ref))
-    return lines
-
-
-ADVISORY_RENDERS.append(("referent", _render_referents))
-
-
-# P3 — unverifiable from a sandbox (#458). Documents whose correctness is
-# established by a human running commands against live infrastructure, not by
-# any check in this repo. A task that writes one makes claims no sandbox can
-# verify — run-30 drew three `deferred:*` acks that were guaranteed by its
-# plan's shape before the run started. Extend this tuple when another such
-# record appears; it is deliberately a short explicit list rather than a
-# heuristic, because a heuristic here would flag ordinary docs.
-HAND_EXECUTED_RECORDS = (
-    "fleet/RUNBOOK.md",
-    "fleet/tests/PROBES.md",
-)
-
-
-def _render_unverifiable(tasks, ctx):
-    lines = []
-    for t in tasks:
-        # writes only: reading a hand-executed record asserts nothing about the
-        # live infrastructure it records.
-        hits = sorted((set(t["creates"]) | set(t["modifies"]))
-                      .intersection(HAND_EXECUTED_RECORDS))
-        if not hits:
-            continue
-        lines.append("ADVISORY unverifiable-from-sandbox: Task %s edits %s — a "
-                     "hand-executed record. No reviewer can check its claims from "
-                     "a sandbox; carry the evidence (commands and their output) in "
-                     "the task body so review can check correspondence instead of "
-                     "truth." % (t["id"], ", ".join(hits)))
-    return lines
-
-
-ADVISORY_RENDERS.append(("unverifiable-from-sandbox", _render_unverifiable))
-
-
-# P4 — process rules in `## Global Constraints` (#441). The engine forwards
-# this section verbatim to every reviewer as its attention lens
-# (`fleet/run-engine.mjs`'s globalConstraintsBlock), and a reviewer's only
-# evidence is a diff — which cannot show the order in which its lines came to
-# exist. A rule about HOW the work was produced therefore has no answer there,
-# and honest reviewers escalate it: run-32 put "every test must have been
-# observed to fail before its implementation exists" in this section and drew
-# 25 `cannotVerify` entries plus the single `deferred:manual` ack that was the
-# sole reason the run parked instead of auto-approving.
-#
-# ultraplan already carries the prose half ("State what must be true of the
-# result… not the order it was produced in"); this is the machine half. Like
-# HAND_EXECUTED_RECORDS it is a short explicit phrase list, never a heuristic —
-# an ordinary result-claim ("every new module has a test") must not trip it.
-PROCESS_RULE_PHRASES = (
-    (re.compile(r"\bred[-\s]then[-\s]green\b", re.I), "red-then-green"),
-    (re.compile(r"\bfailing tests?\s+(?:first|before)\b", re.I), "failing-test-first"),
-    (re.compile(r"\b(?:writ\w+)\s+(?:the\s+|a\s+)?tests?\s+first\b", re.I), "tests-first"),
-    (re.compile(r"\bobserved to fail\b", re.I), "observed-to-fail"),
-    (re.compile(r"\bbefore\s+(?:its|the|any)\s+implementation\b", re.I), "before-implementation"),
-    (re.compile(r"\btest[-\s]driven\b", re.I), "test-driven"),
-    (re.compile(r"\bTDD\b", re.I), "tdd"),
-    (re.compile(r"\bcommit\s+(?:cadence|order|sequence)\b", re.I), "commit-cadence"),
-    (re.compile(r"\bin\s+(?:this|the following)\s+order\b", re.I), "explicit-ordering"),
-)
-PROCESS_RULE_CLIP = 90
-
-
-def _bullet_text(s):
-    """A bullet's sentence: list marker gone, wrapped lines collapsed to one
-    space \u2014 what a reader hears when the bullet is read aloud."""
-    return re.sub(r"^(?:[-*+]|\d+\.)\s+", "", " ".join(s.split()))
-
-
-def _clip(s, n=PROCESS_RULE_CLIP):
-    # A constraints section is a bullet list; quote the sentence, not its marker.
-    s = _bullet_text(s)
-    return s if len(s) <= n else s[:n - 1].rstrip() + "\u2026"
-
-
-def _render_process_rules(tasks, ctx):
-    body = parse_global_constraints(ctx["plan_path"].read_text())
-    lines = []
-    for raw in body.splitlines():
-        text = raw.strip()
-        if not text:
-            continue
-        for pattern, label in PROCESS_RULE_PHRASES:
-            if pattern.search(text):
-                lines.append(
-                    'ADVISORY process-rule: `## Global Constraints` says "%s" '
-                    "(%s) \u2014 a rule about how the work was produced, which no "
-                    "reviewer can check against a diff. State the result here and "
-                    "put the ordering in the task's own steps; left in this "
-                    "section it becomes a cannotVerify entry per task and a "
-                    "deferred:manual ack that parks the run."
-                    % (_clip(text), label))
-                break
-    return lines
-
-
-ADVISORY_RENDERS.append(("process-rule", _render_process_rules))
-
-
-# P4b — the other half of the same section (#632). Where a process rule is a
-# constraint NO reviewer can decide, this is one a COMMAND could have: "`x.mjs`
-# is byte-identical to BASE", "`report.sh` prints `ready`". Left as prose it is
-# still only the reviewer's attention lens, so it comes back as a per-task
-# unverifiable finding and parks the run on an ack — while the same sentence
-# written as a `- Check:` is run by the driver and decided before anyone reads
-# a diff.
-#
-# Like PROCESS_RULE_PHRASES this is a short explicit list, never a heuristic: a
-# bullet must name something a command could be handed (a backticked path or
-# script) AND say something a command could decide about it. Either alone is an
-# ordinary orienting sentence.
-PROSE_CHECK_PHRASES = ("byte-identical", "unchanged from BASE", "is not edited",
-                       "are not edited", "not changed", "prints ", "exits 0")
-# A backticked span is a path when it carries a directory separator, or ends in
-# one of these — a bare `validate_skill.py` names a script with no slash in it.
-PROSE_CHECK_PATH_EXTS = (".py", ".mjs", ".sh", ".ts", ".js", ".md")
-_BULLET_START = re.compile(r"^(?:[-*+]|\d+\.)\s+\S")
-
-
-def _prose_bullets(body):
-    """The section's bullets, each one sentence: a line starting no new `- ` is
-    a continuation and joins the bullet above it. A wrapped bullet routinely
-    carries its path on the first line and its phrase on the second, and
-    matching line by line sees neither."""
-    bullets, open_bullet = [], False
-    for raw in body.splitlines():
-        line = raw.strip()
-        if not line:
-            open_bullet = False
-        elif _BULLET_START.match(line):
-            bullets.append(_bullet_text(line))
-            open_bullet = True
-        elif open_bullet:
-            bullets[-1] += " " + line
-    return bullets
-
-
-def _prose_check_paths(text):
-    """The backticked paths and scripts a bullet names, document order."""
-    out = []
-    for span in PATH_RE.findall(text):
-        span = span.strip()
-        if "/" in span or span.endswith(PROSE_CHECK_PATH_EXTS):
-            if span not in out:
-                out.append(span)
-    return out
-
-
-def _render_prose_check(tasks, ctx):
-    plan_text = ctx["plan_path"].read_text()
-    # The section's own `- Check:` commands. A task's Proof `Run:` is NOT one of
-    # these: it runs for that one task, while the bullet binds every task — so
-    # the exclusion is by path named in a section Check:, which is exactly what
-    # keeps a plan's prose gloss above its own Check: lines silent.
-    checked = " ".join(c["cmd"] for c in parse_constraint_checks(plan_text))
-    lines = []
-    for text in _prose_bullets(parse_global_constraints(plan_text)):
-        low = text.lower()
-        if not any(p.lower() in low for p in PROSE_CHECK_PHRASES):
-            continue
-        paths = _prose_check_paths(text)
-        if not paths or any(p in checked for p in paths):
-            continue
-        lines.append(
-            'ADVISORY prose-check: `## Global Constraints` says "%s" — a '
-            "command can decide this; write it as a Check: so the driver runs "
-            "it, since a prose bullet is only the referee's lens and parks the "
-            "run on an ack" % _clip(text))
-    return lines
-
-
-ADVISORY_RENDERS.append(("prose-check", _render_prose_check))
-
-
-# P5 — the recurring rejection species (#616). The 2026-09-04 rejections kept
-# turning on the same handful of shapes: a `;`-chained `Run:`, a `leg (e)`
-# written in prose, a default the Machine pins and no leg asserts, an `every`
-# checked as a count floor, a duration bound with no clock in sight. Each is a
-# TEXT property of a claims-v1 task's own slots, so the compiler can name it
-# before a reader is dispatched — and, like every render here, it only names it
-# (#492/#496: advisories report, never refuse).
-#
-# Each species reads a `Run:` command, a Proof leg, or a Machine clause against
-# the legs that CITE it. A task whose Machine line numbers no clause has no
-# clauses to read against, so it is silent exactly as a legacy task is — the
-# same empty-`machine_clauses` guard the citation grammar itself uses.
-RUN_JOIN_ADVICE = ("the exit status is the last command's — join with && "
-                   "or || exit 1")
-RUN_CLIP = 80
-# A back-reference by label: `parse_proof_legs` splits only at the NEXT expected
-# label, so `leg (b)` inside leg (d) reads as prose — and the reader who renames
-# a leg silently invalidates the sentence.
-PROSE_LEG_RE = re.compile(r"\blegs?\s*\(([a-z])\)")
-PROSE_LEG_ADVICE = ('the parser splits at the next expected label — write '
-                    '"the previous leg"')
-# `defaults to 4` with no citing leg naming `4`: the default is a number the
-# Proof never reads back.
-DEFAULT_LITERAL_RE = re.compile(r"\bdefaults?\s+to\s+`?([^\s,;.`]+)`?", re.I)
-UNPINNED_DEFAULT_DETAIL = "no citing leg pins it"
-# `every row` cited only by `at least 3 rows`: a floor is satisfied by a proper
-# subset, so nothing in the Proof falsifies the universal. A leg that says
-# `exactly`, or re-states the quantifier, or excludes the rest, does.
-COUNT_UNIVERSAL_RE = re.compile(r"\b(every|each|all)\b", re.I)
-COUNT_FLOOR_RE = re.compile(r"\bat least\b", re.I)
-COUNT_CLOSED_RE = re.compile(r"\b(exactly|every|each|all|no other|none)\b", re.I)
-COUNT_FLOOR_DETAIL = "a universal cited only by a count floor"
-# `waits <= 90 s` cited by a leg that counts iterations: the bound is a wall
-# time and no leg reads a wall clock.
-DURATION_RE = re.compile(
-    r"(≤|<=|within|under|at most|no more than)\s*\d+\s*"
-    r"(ms|s|sec|seconds?|min|minutes?)\b", re.I)
-CLOCK_RE = re.compile(
-    r"(elapsed|wall|Date\.now|time\.|perf_counter|monotonic|clock)", re.I)
-NO_CLOCK_DETAIL = "a duration bound with no wall-clock leg"
-# `a VM older than 6 h is stale` cited only by a leg probing `7 h`: the bound is
-# stated, but every leg lands on the near side of it, so nothing in the Proof
-# reads where the bound actually sits. The FAR side of a lower-bounded shape is
-# below it, of an upper-bounded shape above it. `no more than` is upper-bounded
-# whole, so the shapes are tried longest-first and the lower-bounded `more than`
-# inside it never wins; `>=` before `>`, `<=` before `<`, for the same reason.
-LOWER_BOUND_SHAPES = ("over", "more than", "older than", "at least")
-UPPER_BOUND_SHAPES = ("under", "less than", "younger than", "at most",
-                      "no more than", "within")
-LOWER_BOUND_SYMBOLS = (">=", ">")
-UPPER_BOUND_SYMBOLS = ("<=", "<", "≤")
-BOUND_RE = re.compile(
-    r"(?:(?<![\w-])(?P<word>%s)(?![\w-])|(?P<sym>%s))"
-    r"\s*(?P<num>\d+(?:\.\d+)?)(?:[ \t]*(?P<unit>[A-Za-z]+))?"
-    % ("|".join(sorted(LOWER_BOUND_SHAPES + UPPER_BOUND_SHAPES,
-                       key=len, reverse=True)),
-       "|".join(re.escape(s) for s in sorted(
-           LOWER_BOUND_SYMBOLS + UPPER_BOUND_SYMBOLS, key=len, reverse=True))),
-    re.I)
-# A number a leg carries, with the unit that rides on it — `7 h`, `199 bytes`,
-# `3 times`, or a bare `4` inside a backticked `-n 4`.
-LEG_NUMBER_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)(?:[ \t]*([A-Za-z]+))?")
-ONE_SIDED_DETAIL = "clause %s bounds at %s; its legs probe one side only"
-# `the type is `github` or the name starts `gh-`` cited by a leg naming only
-# `github`: the Proof argues one arm of the either/or and leaves the other
-# unread. Both alternatives are backticked and the ` or ` sits between them.
-DISJUNCT_RE = re.compile(r"`([^`]+)`[^`]*?(?<![\w-])or(?![\w-])[^`]*?`([^`]+)`")
-DISJUNCT_DETAIL = "clause %s names `%s` or `%s`; the legs name only `%s`"
-# The two integration-hostile shapes (#631). Since #604 the driver re-runs every
-# merged task's `Run:` on the ADOPTED tree, where every sibling's changes have
-# folded in — so both of these pass in the task's own clone and fail there,
-# through no fault of the task.
-#
-# `test "$(pytest --collect-only -q | tail -1 | cut -d' ' -f1)" = 1461`: a suite
-# total is wrong by construction once any sibling adds a test. The pin is only
-# hostile when it counts the WHOLE suite — a collect-only naming a path counts
-# that path, which siblings do not move, so the segment before the first `|` is
-# read for a token that looks like one.
-COLLECT_ONLY_RE = re.compile(r"--collect-only\b")
-INTEGER_COMPARE_RE = re.compile(r"(?:(?<=\s)|^)(?:==?|-eq)\s+\d+(?!\S)")
-SUITE_TOTAL_ADVICE = ("the driver re-runs this on the adopted tree, where "
-                      "every sibling's tests have folded in — count a named "
-                      "path, or assert a delta")
-# `test ! -e tests/drainprobe`: a bare directory survives as a `__pycache__`
-# long after the thing it held is gone. A last segment carrying a `.` is a file
-# name, which does not come back on its own.
-ABSENCE_RE = re.compile(r"(?:(?<=[;&|])|^)\s*test\s+!\s+-[ed]\s+(\S+)")
-DIRECTORY_ABSENCE_ADVICE = ("a bare directory survives as a `__pycache__` on "
-                            "the adopted tree — name the file whose absence "
-                            "is the claim")
-# The two WIDTH species (#582). These read the task's shape rather than its
-# text: how many files it writes, how many clauses its contract carries. Both
-# are named before a VM is spent on the task — eight is the low end of run-55's
-# measured knee ("between 8 and 19 files"), so MORE than eight draws the line
-# and eight itself is silent. `reads` (the Files block's `Test:` paths) is not
-# a write and does not count.
-WIDTH_THRESHOLD = 8
-WIDE_FILES_ADVICE = ("run-55's 19-file task hit the worker wall clock while "
-                     "its 3–8-file siblings finished; split along a Produces "
-                     "symbol")
-WIDE_CONTRACT_ADVICE = "one contract per task; split along a Produces symbol"
-# The NARROW knee (#666, proposal 1: the advisory reads the paths, not only
-# the count). Eight is the knee for app-path work; engine work knees lower.
-# A task that rewrites `fleet/run-engine.mjs`, or more than one
-# `fleet/tests/test_*.mjs` sim, is wide at FOUR — more than four draws the
-# line and four itself is silent, the same strictness as `WIDTH_THRESHOLD`.
-# A sim is a `startswith`/`endswith`, so a helpers module under the same
-# directory without the `test_` prefix is not one. Every other task keeps the
-# eight knee and its BASE line.
-NARROW_WIDTH_THRESHOLD = 4
-SIM_PATH_PREFIX = "fleet/tests/test_"
-SIM_PATH_SUFFIX = ".mjs"
-WIDE_FILES_ENGINE_ADVICE = ("wide at four because it writes "
-                            "fleet/run-engine.mjs — run-10's eight-file "
-                            "engine task took 24.7 min while its one- and "
-                            "two-file siblings took 2–4; split along a "
-                            "Produces symbol")
-WIDE_FILES_SIMS_ADVICE = ("wide at four because it writes %d "
-                          "fleet/tests/test_*.mjs sims — run-10's eight-file "
-                          "engine task took 24.7 min while its one- and "
-                          "two-file siblings took 2–4; split along a Produces "
-                          "symbol")
-
-
-# The ENGINE-SELF-CHANGE species (#461). Since 0.3.5 the engine a run executes
-# is the `engine=` sha in the VM's assignment, cloned to
-# `/home/exedev/engines/<sha>` before the run starts — so a patch to one of
-# these files lands in the integration branch, never in the running process.
-# A task that writes one therefore cannot observe its own change from its own
-# run, and a Proof that claims a live-run behaviour for it is unfalsifiable
-# until the NEXT run. Like HAND_EXECUTED_RECORDS this is a short explicit list
-# plus one prefix, never a heuristic — `fleet/launch.mjs` and
-# `fleet/tests/test_run_engine.mjs` are under `fleet/` and are not the engine.
-ENGINE_PATHS = (
-    "fleet/run-engine.mjs",
-    "fleet/run-worker.mjs",
-    "fleet/run-waves.mjs",
-)
-# Every role prompt shapes the workers the same way the engine does.
-ENGINE_PATH_PREFIX = "fleet/roles/"
-ENGINE_SELF_CHANGE_ADVICE = ("shapes the workers, and the run that builds it "
-                             "runs the engine it started with — the behaviour "
-                             "is first observed by the next run; prove it with "
-                             "a sim, never a live-run claim")
-
-
-# The one TREE-reading species (#656). A clause that replaces a literal some
-# existing test already asserts is a strict-equality pin the implementer will
-# break blind — unless that test is in some task's Files, where it folds. So
-# the pinning file is named before a reader is dispatched.
-BACKTICK_SPAN_RE = re.compile(r"`([^`\n]+)`")
-# Below six characters a span is grep noise: `src/`, `'Ada'`, `M1.` match half
-# the tree as substrings, and this species greps for a substring, not a word.
-MIN_SPAN = 6
-# No file-count ceiling: the operator's 2026-09-07 decision on #756 drops the
-# vocabulary threshold along with every other hard cap here — the compiler
-# names each literal and its files, and the author and the gate reader weigh
-# them. `plan_title` sits in 1 tracked test file and `commit` in 83; both are
-# named, and the reader decides what to make of the second.
-PINNED_ELSEWHERE_SEGMENT = "%s is asserted in %s"
-# The closing clause reads off the line's DISTINCT files, not its segments: two
-# spans pinned by the same one file still name one file.
-PINNED_ELSEWHERE_ONE = ", which is in no task's Files"
-PINNED_ELSEWHERE_MANY = ", none of which is in any task's Files"
-# A test file by path or by basename: under a tests directory the repo keeps
-# suites in, or named the way a runner discovers one.
-TEST_DIR_PREFIXES = ("tests/", "fleet/tests/")
-# A span shaped like a bare file name — word, dot and hyphen characters closing
-# on a dot and a short extension (`status-page.json`, `plan.md`).
-BARE_FILE_NAME_RE = re.compile(r"[\w.\-]+\.[A-Za-z]{1,4}")
-# The driver's `state` enum, off CONTRACT.md's `status.json` line: a clause
-# quoting one of these names the state machine the compiler already knows, not
-# a literal a sibling test pins to this task's implementation.
-STATE_WORDS = frozenset(("booting", "running", "publishing",
-                         "done", "parked", "failed"))
-
-
-def _is_test_file(path):
-    basename = path.rsplit("/", 1)[-1]
-    return (path.startswith(TEST_DIR_PREFIXES)
-            or basename.startswith("test_") or ".test." in basename)
-
-
-def _is_pinning_file(path, declared):
-    """A tracked path this species may name: a test file by one of the four
-    shapes, carrying a CODE extension, that no task's Files block declares.
-
-    The extension is what keeps a fixture PLAN out — `_git_substring_files`
-    greps every tracked file whatever its suffix, so the plan corpus under
-    `tests/fixtures/plans/` sits under a `tests/` prefix and would otherwise
-    read as a suite pinning its neighbours' literals."""
-    return (_is_test_file(path) and path.endswith(CODE_EXTS)
-            and path not in declared)
-
-
-def _is_pinnable_span(span):
-    """False for the three candidates a pinning file does not make a pin.
-
-    A PATH (`fleet/tests/x.py`, `status-page.json`) is a name the implementer
-    reads off the Files block, not a literal to break blind; a PLACEHOLDER
-    (`ultra/integration-run-<N>`) is a shape, and the angle brackets say so;
-    and a STATE WORD is the driver's own vocabulary, which the compiler knows
-    without a test to tell it. Length decides none of the three: `publishings!`
-    is twelve characters and drawn, `'done'` is six and skipped."""
-    if "/" in span or BARE_FILE_NAME_RE.fullmatch(span):
-        return False
-    opened = span.find("<")
-    if opened != -1 and span.find(">", opened + 1) != -1:
-        return False
-    return span.strip("'\"").lower() not in STATE_WORDS
-
-
-def _clause_spans(clauses):
-    """The backticked spans of `MIN_SPAN`+ characters across a task's Machine
-    clauses, document order, deduped — a span repeated across clauses is one
-    candidate, and so one segment of the task's line.
-
-    A span ending in `/` is dropped whatever its length: that is a directory
-    prefix (`fleet/tests/`, `src/`), which every import line under it contains
-    and no test pins. The rest of the path shapes, and the two other kinds a
-    file cannot pin, are `_is_pinnable_span`'s."""
-    spans, seen = [], set()
-    for clause in clauses:
-        for m in BACKTICK_SPAN_RE.finditer(clause["text"]):
-            span = m.group(1)
-            if len(span) < MIN_SPAN or span.endswith("/") or span in seen:
-                continue
-            seen.add(span)
-            spans.append(span)
-    return spans
-
-
-def _declared_files(tasks):
-    """Every path any task's Files block names — its `writes` (Create:/Modify:)
-    and its `reads` (Test:). A pin inside one of these folds at merge time."""
-    declared = set()
-    for t in tasks:
-        declared |= set(t.get("writes") or ()) | set(t.get("reads") or ())
-    return declared
-
-
-def _species_pinned_elsewhere(task_id, clauses, base, declared, exclude):
-    """At most ONE line per task: every candidate span with a pinning file, in
-    clause order, each naming its files in path order — the whole weighing put
-    in front of the reader at once rather than a line per (task, span, path).
-
-    No count silences a span: nine pinning files are nine names on the line."""
-    segments, named = [], set()
-    for span in _clause_spans(clauses):
-        if not _is_pinnable_span(span):
-            continue
-        pinning = sorted(path
-                         for path in base.substring_files(span, exclude)
-                         if _is_pinning_file(path, declared))
-        if not pinning:
-            continue
-        named.update(pinning)
-        segments.append(PINNED_ELSEWHERE_SEGMENT % (span, ", ".join(pinning)))
-    if not segments:
-        return []
-    closing = (PINNED_ELSEWHERE_ONE if len(named) == 1
-               else PINNED_ELSEWHERE_MANY)
-    return [_species_line("pinned-elsewhere", task_id,
-                          "; ".join(segments) + closing)]
-
-
-def _clip_run(command, n=RUN_CLIP):
-    """A command's first `n` characters, whitespace collapsed — the command,
-    not its marker, so nothing is stripped off the front."""
-    s = " ".join(command.split())
-    return s if len(s) <= n else s[:n - 1].rstrip() + "…"
-
-
-def _species_line(species, task_id, detail, leg=None):
-    return ("ADVISORY proof-species: %s — task %s%s: %s"
-            % (species, task_id, ", leg %s" % leg if leg else "", detail))
-
-
-def _chains_on_semicolon(command):
-    """True when `command` carries a `;` outside single and double quotes.
-
-    A quoted `;` (`echo 'a; b'`, `python3 -c "print(1); print(2)"`) is an
-    argument, not a chain, so the walk toggles on the unescaped quotes and only
-    flags a `;` seen outside both. A backslash escapes the next character
-    everywhere but inside single quotes, where shell treats it literally."""
-    single = double = False
-    i = 0
-    while i < len(command):
-        c = command[i]
-        if c == "\\" and not single:
-            i += 2
-            continue
-        if c == "'" and not double:
-            single = not single
-        elif c == '"' and not single:
-            double = not double
-        elif c == ";" and not single and not double:
-            return True
-        i += 1
-    return False
-
-
-def _citing_legs(legs, clause_id):
-    return [leg for leg in legs if clause_id in leg["cites"]]
-
-
-def _species_run_chained_semicolon(task_id, clauses, legs, runs):
-    return [_species_line("run-chained-semicolon", task_id,
-                          "%s — %s" % (_clip_run(cmd), RUN_JOIN_ADVICE))
-            for cmd in runs if _chains_on_semicolon(cmd)]
-
-
-def _species_leg_named_in_prose(task_id, clauses, legs, runs):
-    lines = []
-    for leg in legs:
-        m = PROSE_LEG_RE.search(leg["text"])
-        if m:
-            lines.append(_species_line(
-                "leg-named-in-prose", task_id,
-                "`(%s)` — %s" % (m.group(1), PROSE_LEG_ADVICE),
-                leg=leg["label"]))
-    return lines
-
-
-def _species_default_unpinned(task_id, clauses, legs, runs):
-    lines = []
-    for clause in clauses:
-        m = DEFAULT_LITERAL_RE.search(clause["text"])
-        cited = _citing_legs(legs, clause["id"])
-        # An UNCITED clause is already a citation-grammar refusal; this species
-        # is about a clause the Proof does argue, whose legs skip the literal.
-        if m and cited and not any(m.group(1) in leg["text"] for leg in cited):
-            lines.append(_species_line(
-                "default-unpinned", task_id,
-                "`%s` — %s" % (m.group(1), UNPINNED_DEFAULT_DETAIL)))
-    return lines
-
-
-def _species_universal_as_count_floor(task_id, clauses, legs, runs):
-    lines = []
-    for clause in clauses:
-        cited = _citing_legs(legs, clause["id"])
-        if not COUNT_UNIVERSAL_RE.search(clause["text"]) or not cited:
-            continue
-        if all(COUNT_FLOOR_RE.search(leg["text"])
-               and not COUNT_CLOSED_RE.search(leg["text"]) for leg in cited):
-            lines.append(_species_line("universal-as-count-floor", task_id,
-                                       COUNT_FLOOR_DETAIL))
-    return lines
-
-
-def _species_duration_without_clock(task_id, clauses, legs, runs):
-    lines = []
-    for clause in clauses:
-        cited = _citing_legs(legs, clause["id"])
-        if not DURATION_RE.search(clause["text"]) or not cited:
-            continue
-        if not any(CLOCK_RE.search(leg["text"]) for leg in cited):
-            lines.append(_species_line("duration-without-clock", task_id,
-                                       NO_CLOCK_DETAIL))
-    return lines
-
-
-def _clause_bound(text):
-    """The first numeric bound `text` states, as
-    `(value, unit, verbatim, lower)` — or None when it states none.
-
-    `verbatim` is the number with its unit exactly as the clause writes them
-    (`6 h`, `10240 bytes`), which is what rides into the advisory line; `lower`
-    is True for the shapes whose far side lies below the bound."""
-    m = BOUND_RE.search(text)
-    if not m:
-        return None
-    shape = (m.group("word") or m.group("sym")).lower()
-    lower = shape in LOWER_BOUND_SHAPES or shape in LOWER_BOUND_SYMBOLS
-    end = m.end("unit") if m.group("unit") else m.end("num")
-    return (float(m.group("num")), (m.group("unit") or "").lower(),
-            text[m.start("num"):end], lower)
-
-
-def _leg_numbers(legs):
-    """Every `(value, unit)` the legs carry, `[M…]` citations stripped first —
-    a clause marker is the leg's bookkeeping, not a number it probes."""
-    return [(float(m.group(1)), (m.group(2) or "").lower())
-            for leg in legs
-            for m in LEG_NUMBER_RE.finditer(LEG_CITE_RE.sub(" ", leg["text"]))]
-
-
-def _species_threshold_one_sided(task_id, clauses, legs, runs):
-    lines = []
-    for clause in clauses:
-        cited = _citing_legs(legs, clause["id"])
-        bound = _clause_bound(clause["text"])
-        if not bound or not cited:
-            continue
-        value, unit, verbatim, lower = bound
-        # Only a number in the bound's own unit is comparable to it: a leg
-        # counting `3 times` against a `90 s` bound probes neither side, and a
-        # leg that merely restates `90 s` probes nothing — that shape belongs to
-        # `default-unpinned` or `duration-without-clock`.
-        probes = [v for v, u in _leg_numbers(cited) if u == unit and v != value]
-        if probes and not any(v < value if lower else v > value for v in probes):
-            lines.append(_species_line(
-                "threshold-one-sided", task_id,
-                ONE_SIDED_DETAIL % (clause["id"], verbatim)))
-    return lines
-
-
-def _species_disjunct_without_leg(task_id, clauses, legs, runs):
-    lines = []
-    for clause in clauses:
-        cited = _citing_legs(legs, clause["id"])
-        m = DISJUNCT_RE.search(clause["text"])
-        if not m or not cited:
-            continue
-        spans = (m.group(1), m.group(2))
-        named = [s for s in spans
-                 if any(s in leg["text"] for leg in cited)]
-        if len(named) == 1:
-            lines.append(_species_line(
-                "disjunct-without-leg", task_id,
-                DISJUNCT_DETAIL % ((clause["id"],) + spans + (named[0],))))
-    return lines
-
-
-def _pins_suite_total(command):
-    """True when `command` compares a whole-suite `--collect-only` count against
-    a bare integer.
-
-    The segment before the first `|` is the collect-only invocation itself; a
-    token there containing `/` or ending in `.py` names a path, which scopes the
-    count to something a sibling does not move."""
-    if not COLLECT_ONLY_RE.search(command):
-        return False
-    if not INTEGER_COMPARE_RE.search(command):
-        return False
-    head = command.split("|", 1)[0]
-    return not any("/" in tok or tok.endswith(".py") for tok in head.split())
-
-
-def _bare_directory_absence(command):
-    """The `test ! -e <path>` / `test ! -d <path>` paths whose last segment
-    carries no `.` — a directory name, not a file name."""
-    return [m.group(1) for m in ABSENCE_RE.finditer(command)
-            if "." not in m.group(1).rstrip("/").rsplit("/", 1)[-1]]
-
-
-def _species_suite_total_pin(task_id, clauses, legs, runs):
-    return [_species_line("suite-total-pin", task_id,
-                          "%s — %s" % (_clip_run(cmd), SUITE_TOTAL_ADVICE))
-            for cmd in runs if _pins_suite_total(cmd)]
-
-
-def _species_directory_absence_pin(task_id, clauses, legs, runs):
-    return [_species_line("directory-absence-pin", task_id,
-                          "%s — %s" % (_clip_run(cmd),
-                                       DIRECTORY_ABSENCE_ADVICE))
-            for cmd in runs if _bare_directory_absence(cmd)]
-
-
-def _is_sim_path(path):
-    """A sim under the fleet's test directory — `fleet/tests/test_<name>.mjs`.
-    A helpers module beside it carries no `test_` prefix and is not one."""
-    return (path.startswith(SIM_PATH_PREFIX)
-            and path.endswith(SIM_PATH_SUFFIX))
-
-
-def _species_wide_files(task, clauses):
-    """A task that writes more than `WIDTH_THRESHOLD` files — `Create:` plus
-    `Modify:`, never `Test:` — or more than `NARROW_WIDTH_THRESHOLD` when
-    what it writes is the engine or more than one sim. One line per task: the
-    engine reason wins when both hold."""
-    writes = list(task["creates"]) + list(task["modifies"])
-    n = len(writes)
-    if n > NARROW_WIDTH_THRESHOLD:
-        # `ENGINE_PATHS[0]` is `fleet/run-engine.mjs`; the other engine paths
-        # and the role prompts keep the eight knee.
-        if ENGINE_PATHS[0] in writes:
-            reason = WIDE_FILES_ENGINE_ADVICE
-        else:
-            sims = sum(1 for p in writes if _is_sim_path(p))
-            reason = WIDE_FILES_SIMS_ADVICE % sims if sims > 1 else None
-        if reason is not None:
-            return [_species_line("wide-files", task["id"],
-                                  "%d Create/Modify entries, %s" % (n, reason))]
-    if n <= WIDTH_THRESHOLD:
-        return []
-    return [_species_line("wide-files", task["id"],
-                          "%d Create/Modify entries — %s"
-                          % (n, WIDE_FILES_ADVICE))]
-
-
-def _species_wide_contract(task, clauses):
-    """A task whose Machine line numbers more than `WIDTH_THRESHOLD` clauses —
-    more contract than one task's Proof can argue."""
-    if len(clauses) <= WIDTH_THRESHOLD:
-        return []
-    return [_species_line("wide-contract", task["id"],
-                          "%d Machine clauses — %s"
-                          % (len(clauses), WIDE_CONTRACT_ADVICE))]
-
-
-def _is_engine_path(path):
-    return path in ENGINE_PATHS or path.startswith(ENGINE_PATH_PREFIX)
-
-
-def _species_engine_self_change(task, clauses):
-    """A task that writes an engine path or a role prompt — `Create:` plus
-    `Modify:`, never `Test:`, since reading the engine changes no worker."""
-    hits = sorted(p for p in set(task["creates"]) | set(task["modifies"])
-                  if _is_engine_path(p))
-    return [_species_line("engine-self-change", task["id"],
-                          "%s %s" % (path, ENGINE_SELF_CHANGE_ADVICE))
-            for path in hits]
-
-
-# Species order inside a task; print order overall is task-major, so every line
-# for a task prints before any line for the next.
-PROOF_SPECIES = (
-    _species_run_chained_semicolon,
-    _species_leg_named_in_prose,
-    _species_default_unpinned,
-    _species_universal_as_count_floor,
-    _species_duration_without_clock,
-    _species_threshold_one_sided,
-    _species_disjunct_without_leg,
-    _species_suite_total_pin,
-    _species_directory_absence_pin,
-)
-
-# The width species read the whole task, not its clauses, legs and runs — same
-# line shape, same task-major order, their own signature.
-PROOF_WIDTH_SPECIES = (
-    _species_wide_files,
-    _species_wide_contract,
-)
-
-# The FILES species read a task's declared paths rather than its width or its
-# text — same `(task, clauses)` signature, same line shape, walked from the
-# same loop, so registration here inherits the render's claims-v1 guard.
-PROOF_FILES_SPECIES = (
-    _species_engine_self_change,
-)
-
-
-def _render_proof_species(tasks, ctx):
-    # `pinned-elsewhere` is the one species that reads the TREE rather than the
-    # task's own text, so it takes the reader and the plan-wide declared set
-    # instead of PROOF_SPECIES' (clauses, legs, runs) — both computed once, then
-    # run last within each task so print order stays task-major.
-    base = ctx["base"]
-    declared = _declared_files(tasks)
-    exclude = ctx["exclude"]
-    lines = []
-    for t in tasks:
-        claims = t.get("claims") or {}
-        clauses = claims.get("machine_clauses") or []
-        if not clauses:
-            continue
-        legs = claims.get("proof_legs") or []
-        runs = claims.get("proof_runs") or []
-        for species in PROOF_SPECIES:
-            lines.extend(species(t["id"], clauses, legs, runs))
-        for species in PROOF_WIDTH_SPECIES + PROOF_FILES_SPECIES:
-            lines.extend(species(t, clauses))
-        lines.extend(_species_pinned_elsewhere(t["id"], clauses, base,
-                                               declared, exclude))
-    return lines
-
-
-ADVISORY_RENDERS.append(("proof-species", _render_proof_species))
-
-
-# P6 — a `Check:` that runs a sim is a per-task cost (#657). A `- Check:` bullet
-# under `## Global Constraints` is run by the driver in EVERY task's clone on
-# every pass, so a check that runs a test suite is paid W times over on a wave
-# of width W — while the same command as the owning task's `Run:` is paid once.
-# The compiler can name that cost before a reader is dispatched.
-#
-# Its own render, not a `proof-species` line: the species line shape names a
-# task, and a `Check:` belongs to none. For the same reason it belongs to no
-# grammar — a legacy-grammar plan's section is read exactly as a claims-v1
-# plan's is. A `(minor)` check is never dispatched, so it costs nothing.
-CHECK_COST_ADVICE = ("paid by every task on every pass; if one task owns what "
-                     "it tests, make it that task's Run:")
-
-
-def _names_test_path(command):
-    """True when some token of `command` names a path under `tests/` or
-    `fleet/tests/` — a token beginning `tests/` or `fleet/tests/`, or one
-    carrying `/tests/` anywhere (`packages/x/tests/y.mjs`)."""
-    return any(tok.startswith(("tests/", "fleet/tests/")) or "/tests/" in tok
-               for tok in command.split())
-
-
-def _render_check_cost(tasks, ctx):
-    return ["ADVISORY check-cost: %s — %s"
-            % (_clip_run(check["cmd"]), CHECK_COST_ADVICE)
-            for check in parse_constraint_checks(ctx["plan_path"].read_text())
-            if not check["minor"] and _names_test_path(check["cmd"])]
-
-
-ADVISORY_RENDERS.append(("check-cost", _render_check_cost))
-
-
-# P7 — a leg that diffs or shows a BASE sha guards for the sha's absence, or it
-# is not a leg (#572 item 1). The driver hands a task a depth-1 clone, which
-# holds exactly one commit: `git diff d6efce4 -- fleet/x.mjs` there does not
-# report "no change", it dies "bad object". A leg written that way passes
-# nowhere and fails nowhere; it reads as verified and proves nothing. The fix
-# is in the same command — `git cat-file -e <sha>^{commit} && …` or
-# `git rev-parse --verify <sha> && …` — so the leg is skipped, not silently
-# lost, when BASE is out of reach.
-#
-# Its own render, not a `proof-species` line, for the same reason `check-cost`
-# is: a `Check:` belongs to no task and the species line shape names one. So a
-# `Check:` is read here under any grammar, exactly as a claims-v1 `Run:` is.
-SHA_UNGUARDED_ADVICE = ("%s reaches for BASE, which a depth-1 clone does not "
-                        "hold; guard it in the same command with git cat-file "
-                        "-e <sha>^{commit} or git rev-parse --verify, and skip "
-                        "the leg when the guard fails")
-
-# The verb, then any run of whitespace-separated flag tokens (`--name-only`,
-# `-1`, `--format=%H`, a bare `--`), then the operand. Only the four verbs that
-# resolve a revision are read: `git hash-object`'s sha is an OUTPUT, not a
-# lookup, so `test "$(git hash-object x)" = <40 hex>` is silent.
-SHA_VERB_OPERAND_RE = re.compile(
-    r"\bgit\s+(?:diff|show|log|cat-file)\b(?:\s+-\S*)*\s+(?!-)(\S+)")
-# The three operand shapes: a bare short-or-full sha, a `<sha>:<path>` reach
-# and a `HEAD:<path>` reach. 6 hex is not a sha and 41 hex is not one either,
-# so both bounds are closed.
-SHA_OPERAND_RES = (re.compile(r"[0-9a-f]{7,40}\Z"),
-                   re.compile(r"[0-9a-f]{7,40}:"),
-                   re.compile(r"HEAD:"))
-# Tested BEFORE the verb, because the guard itself carries the verb `cat-file`
-# and would otherwise flag itself.
-SHA_GUARDS = ("git cat-file -e", "git rev-parse --verify")
-
-
-def _unguarded_sha_operand(command):
-    """The first sha-shaped operand `command` reaches for unguarded, or None.
-
-    None when the command carries either guard anywhere in it — a
-    `git cat-file -e d6efce4^{commit} && git diff … d6efce4 …` command is one
-    command, and the guard covers the whole of it."""
-    if any(guard in command for guard in SHA_GUARDS):
-        return None
-    for m in SHA_VERB_OPERAND_RE.finditer(command):
-        operand = m.group(1)
-        if any(shape.match(operand) for shape in SHA_OPERAND_RES):
-            return operand
-    return None
-
-
-def _sha_unguarded_line(subject, command, operand):
-    return ("ADVISORY sha-unguarded: %s%s — %s"
-            % (subject, _clip_run(command), SHA_UNGUARDED_ADVICE % operand))
-
-
-def _render_sha_unguarded(tasks, ctx):
-    # Task order first, then section order — the Run: lines of every task
-    # before the first Check: line, as the two subjects are read in two passes.
-    lines = []
-    for t in tasks:
-        for cmd in (t.get("claims") or {}).get("proof_runs") or []:
-            operand = _unguarded_sha_operand(cmd)
-            if operand:
-                lines.append(_sha_unguarded_line(
-                    "task %s Run: " % t["id"], cmd, operand))
-    for check in parse_constraint_checks(ctx["plan_path"].read_text()):
-        if check["minor"]:
-            continue
-        operand = _unguarded_sha_operand(check["cmd"])
-        if operand:
-            lines.append(_sha_unguarded_line("Check: ", check["cmd"], operand))
-    return lines
-
-
-ADVISORY_RENDERS.append(("sha-unguarded", _render_sha_unguarded))
-
-
-# P8 — a committed exam never reads BASE (#730; map #727 move B3). Run-35 wrote
-# the driver's BASE env var, or-defaulted to a frozen sha, into a committed sim
-# to carry two `Run:`-assigned BASE comparisons as test legs; the peer blocked
-# it twice and the fix cap parked the run. A BASE comparison is a `Run:` — the
-# driver hands that command the sha — so a `Test:` file that reaches for the
-# env var, or that freezes a commit sha of the checkout, is naming a Run:'s job
-# inside the suite.
-#
-# An ADVISORY, never a refusal: the same 40-hex shape is used lawfully (the
-# frozen pre-edit literal the skill teaches is a full sha fetched `--depth=1`),
-# so this render names the shape and the reader decides. It reads the TREE, so
-# it is its own render rather than a PROOF_SPECIES entry — but it prints the
-# same `ADVISORY proof-species:` line every species prints, via _species_line.
-BASE_SHA_IN_SUITE = "base-sha-in-suite"
-BASE_SHA_IN_SUITE_ADVICE = "a BASE comparison is a Run:, never a committed exam"
-# Spelled as a concatenation so no file of this repo carries the whole word by
-# naming the render — a `Test:` file that did would draw a line on itself.
-BASE_SHA_TOKEN = "ULTRA_" + "BASE"
-# Whole word, so a `$` or a `process.env.` prefix still counts and a longer
-# name that merely starts with it (…BASELINE) does not.
-BASE_SHA_TOKEN_RE = re.compile(r"\b%s\b" % BASE_SHA_TOKEN)
-# A full sha and nothing shorter or longer: both bounds are closed against ANY
-# hex digit, so a 39- or 41-hex run matches at no position.
-BASE_SHA_HEX40_RE = re.compile(r"(?<![0-9a-fA-F])[0-9a-f]{40}(?![0-9a-fA-F])")
-
-
-def _test_paths_in_order(task):
-    """A task's `Test:` paths in DOCUMENT order, deduped by first occurrence.
-
-    `task["reads"]` is sorted and setted, which loses the order the Files block
-    declares; the verbatim `files_raw` pairs keep it. Every path is filtered
-    back through `reads`, so this never admits one the Files parser rejected."""
-    accepted = set(task.get("reads") or ())
-    out, seen = [], set()
-    for label, rest in task.get("files_raw", []):
-        if label != "Test":
-            continue
-        for path in (p.split(":")[0] for p in PATH_RE.findall(rest)):
-            if path in accepted and path not in seen:
-                seen.add(path)
-                out.append(path)
-    return out
-
-
-def _base_sha_findings(text, base):
-    """One file's findings: `(sha, line)` for every DISTINCT resolving 40-hex
-    literal in first-occurrence order, then the first line reading the token
-    (None when it reads none). Shas before the token, per M2."""
-    shas, seen, token_line = [], set(), None
-    for n, line in enumerate(text.splitlines(), 1):
-        for m in BASE_SHA_HEX40_RE.finditer(line):
-            sha = m.group(0)
-            if sha in seen:
-                continue
-            seen.add(sha)
-            if base.resolves_as_commit(sha):
-                shas.append((sha, n))
-        if token_line is None and BASE_SHA_TOKEN_RE.search(line):
-            token_line = n
-    return shas, token_line
-
-
-def _render_base_sha_in_suite(tasks, ctx):
-    # Task order, then `Test:` order — a path named by two tasks draws a line
-    # for each, since each task owns its own exam.
-    base, tracked = ctx["base"], ctx["tracked"]
-    lines = []
-    for t in tasks:
-        if not t.get("claims"):
-            continue  # legacy grammar: no claims-v1 task, no proof species
-        for path in _test_paths_in_order(t):
-            if path not in tracked:
-                continue  # an untracked or absent exam is no exam yet
-            text = base.read_text(path)
-            if text is None:
-                continue
-            shas, token_line = _base_sha_findings(text, base)
-            for sha, n in shas:
-                lines.append(_species_line(
-                    BASE_SHA_IN_SUITE, t["id"],
-                    "%s freezes commit %s at line %d — %s"
-                    % (path, sha, n, BASE_SHA_IN_SUITE_ADVICE)))
-            if token_line is not None:
-                lines.append(_species_line(
-                    BASE_SHA_IN_SUITE, t["id"],
-                    "%s reads %s at line %d — %s"
-                    % (path, BASE_SHA_TOKEN, token_line,
-                       BASE_SHA_IN_SUITE_ADVICE)))
-    return lines
-
-
-ADVISORY_RENDERS.append((BASE_SHA_IN_SUITE, _render_base_sha_in_suite))
-
-
-# P9 — a `Guard:` names a file the task is answerable for, and a task can only
-# be answerable for a file it declares (#777; #767 decisions 3 and 7). The
-# compiler checks that pairing and says so; it does not refuse it. That is the
-# whole of the bullet's enforcement, and it is deliberate — `Guard:` adds no
-# word to the frozen diagnostic vocabulary, so a mis-aimed guard is an ADVISORY
-# a reader weighs, never a `grammar:` line that stops a compile.
-#
-# Its own render, appended last: `check-cost`'s neighbour is pinned to be
-# `sha-unguarded` (tests/test_compile_plan_sha_unguarded.py [M1]), so a new
-# render joins the registry at the end, where it displaces nobody.
-#
-# Two ways a guard can be mis-aimed, in precedence order. A path the task's
-# Files block does not name is the coarser miss and wins: the task cannot touch
-# it at all, so asking whether its Proof runs it is moot. A path the Files block
-# DOES name but the Proof never names as a `Test:` is the finer one: the task
-# owns the file, but nothing in its own Proof exercises it, so the guard is a
-# claim with no exam behind it. A guard that is both a Files path and a Proof
-# `Test:` path is exactly what a guard should be, and prints nothing — as does
-# every task naming no `Guard:` at all, which is every task at BASE.
-GUARD_NOT_IN_FILES = "not in its Files"
-GUARD_NO_PROOF_TEST = "the Proof names no Test: at that path"
-
-
-def _render_guard(tasks, ctx):
-    lines = []
-    for task in tasks:
-        claims = task.get("claims") or {}
-        guards = claims.get("proof_guards") or []
-        if not guards:
-            continue
-        # The Files block's paths, all three labels: `creates`/`modifies` are
-        # its writes, `reads` its `Test:` bullets.
-        files = (set(task.get("creates") or ())
-                 | set(task.get("modifies") or ())
-                 | set(task.get("reads") or ()))
-        proof_tests = set(claims.get("proof_tests_ordered") or ())
-        for path in guards:
-            if path not in files:
-                reason = GUARD_NOT_IN_FILES
-            elif path not in proof_tests:
-                reason = GUARD_NO_PROOF_TEST
-            else:
-                continue
-            lines.append("ADVISORY guard: task %s names `%s` — %s"
-                         % (task["id"], path, reason))
-    return lines
-
-
-ADVISORY_RENDERS.append(("guard", _render_guard))
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
@@ -4087,7 +2429,7 @@ def main(argv=None):
     ap.add_argument("--emit-args", type=Path, default=None, dest="emit_args",
                     metavar="PATH",
                     help="also write the complete Workflow launch-args skeleton "
-                         "(waves/wavesPath/edges/acceptance/waveLabels/"
+                         "(waves/wavesPath/edges/waveLabels/"
                          "globalConstraints/planPath) to PATH; the orchestrator "
                          "adds only per-task tier/review/testCmd and run knobs. "
                          "Requires --emit-launch.")
@@ -4109,11 +2451,6 @@ def main(argv=None):
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
                          "routes all scratch there")
-    ap.add_argument("--renders", action="store_true",
-                    help="with --check only (#345): after the verdict, print "
-                         "the ADVISORY renders (Produces blast-radius, "
-                         "referent-existence). Advisory: never changes the exit "
-                         "code; prints nothing when there is nothing to say.")
     ap.add_argument("--base", type=Path, default=None,
                     help="the tree file-level questions resolve against, given "
                          "either as <checkout-dir>, a checkout directory, or "
@@ -4121,19 +2458,9 @@ def main(argv=None):
                          "repository, which must be present locally: its tree "
                          "is read with git show/ls-tree, never checked out. It "
                          "is the tree the claims-v1 non-text same-file "
-                         "classifier reads — on a plain compile, where it "
-                         "orders the pair, and under --check, where the "
-                         "advisory names the order the compile would impose. "
-                         "With --check it requires --renders and is also what "
-                         "the renders resolve against (default: the git "
-                         "toplevel of the plan's directory). Unset, a "
-                         "claims-v1 same-file pair is left unordered and draws "
-                         "a not-classifiable advisory instead.")
-    ap.add_argument("--exclude", action="append", default=[], metavar="PATH",
-                    help="with --renders only, repeatable: a BASE-relative "
-                         "tracked path the renders must not see (the eval "
-                         "campaign's seam for keeping its own files out of "
-                         "its measurement)")
+                         "classifier reads on a plain compile, where it orders "
+                         "the pair. Unset, a claims-v1 same-file pair is left "
+                         "unordered.")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -4142,16 +2469,6 @@ def main(argv=None):
         sys.exit("error: --check is mutually exclusive with --emit-launch/"
                  "--emit-args/--run-dir (--check only validates grammar; it "
                  "never emits launch files)")
-    if args.renders and not args.check:
-        sys.exit("error: --renders requires --check (renders are the check's "
-                 "advisory tail; plain compile never prints them)")
-    # --base is the check's render tree AND the plain compile's claims-v1
-    # non-text classifier root; inside --check it still requires --renders,
-    # which is the only thing that reads it there.
-    if args.base is not None and args.check and not args.renders:
-        sys.exit("error: --base requires --renders")
-    if args.exclude and not args.renders:
-        sys.exit("error: --exclude requires --renders")
     # One reader for the tree at BASE, built before any verdict is printed: a
     # `--base` sha that names no commit of the plan's repository is an input
     # error, and an input error prints no verdict line at all.
@@ -4167,20 +2484,6 @@ def main(argv=None):
         else:
             print("PLAN OK")
             rc = 0
-        # Advisory tail: after the frozen verdict, separated by one blank line,
-        # ONLY when there is something to say. rc is untouched by either half.
-        # The claims-v1 `ADVISORY grammar:` lines ride unconditionally (they
-        # are the grammar's own channel and empty for every legacy plan); the
-        # #345 renders ride behind --renders.
-        lines = collect_advisories(args.plan, base_tree)
-        if args.renders:
-            lines = lines + render_advisories(args.plan,
-                                              base_tree if base_tree is not None
-                                              else default_base(args.plan),
-                                              exclude=tuple(args.exclude))
-        if lines:
-            print()
-            print("\n".join(lines))
         return rc
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
@@ -4315,36 +2618,21 @@ def main(argv=None):
         {"task": t["id"], "edge": "", "note": note}
         for t in tasks for note in t.get("commutes_conflicts", []))
 
-    acceptance = parse_acceptance(plan_text)
     global_constraints = parse_global_constraints(plan_text)
     # The other kind of constraint: commands, not sentences. They ride beside
     # `globalConstraints` in all three payloads — the driver runs them, and
     # `fleet/run-main.mjs` spreads the args file into the engine's `args`, so
     # nothing else upstream has to learn the key.
     constraint_checks = parse_constraint_checks(plan_text)
-    marked = any(not t.get("heuristic") for t in out_tasks)
-    if acceptance["mode"] == "missing" and marked:
-        sys.exit("error: " + ACCEPTANCE_MISSING_ERROR)
-    if acceptance["mode"] == "missing":
-        type_conflicts.append({"task": "", "edge": "",
-                               "note": "acceptance: missing (unmarked plan — warning only)"})
-    # 0-markers: no task carries a trusted **Type:**/**Depends-on:** marker, so
-    # EVERY disposition was guessed. Surface it loudly (and expose `allHeuristic`
-    # on the result) so the Step-3 render can flag a heuristic-only wave plan.
-    if not marked:
-        type_conflicts.append({"task": "", "edge": "",
-            "kind": "all-heuristic",
-            "note": "0 markers — all dispositions inferred; the wave plan is "
-                    "heuristic-only"})
 
     impl = [t for t in tasks if t["disposition"] == "implementation"]
     if not impl:
         # Bug D: a gates/release/manual-only plan compiles to waves: [] —
         # waves.js refuses empty waves, so warn loudly while still emitting
-        # the JSON (exit 0): the runbook and gates remain meaningful.
+        # the JSON (exit 0): the per-task dispositions remain meaningful.
         print("compile_plan: no implementation tasks — nothing to wave "
-              "(plan is gates/release/manual only); the runbook and gates "
-              "still apply.", file=sys.stderr)
+              "(plan is gates/release/manual only); the per-task "
+              "dispositions still apply.", file=sys.stderr)
     edges, conflicts = build_edges(impl, overlap_mode=args.overlap,
                                    grammar=grammar, tree_root=base_tree)
     waves = layer(impl, edges)
@@ -4421,7 +2709,7 @@ def main(argv=None):
           "proofRuns": list(
               (by_id[tid].get("claims") or {}).get("proof_runs", [])),
           # The Proof `Guard:` paths (#777), in Proof order, [] for a task that
-          # names none (and for every legacy-grammar body). An advisory, not an
+          # names none (and for every legacy-grammar body). Plain data, not an
           # obligation: the engine reads it with `Array.isArray` and an absent
           # key as [], and no `grammar:` line is ever drawn from it.
           "proofGuards": list(
@@ -4437,16 +2725,11 @@ def main(argv=None):
         "tasks": out_tasks,
         "dag_edges": edges,
         "marker_conflicts": marker_conflicts,
-        "gates": [t["id"] for t in tasks if t["disposition"] == "gate"],
-        "post_merge_runbook": [t["id"] for t in tasks
-                               if t["disposition"] in ("release", "manual")],
         "waves": waves,
         "launch_waves": launch_waves,
         "waveLabels": wave_labels,
         "mode": mode,
         "degrade_reason": degrade,
-        "allHeuristic": not marked,
-        "acceptance": acceptance,
         "globalConstraints": global_constraints,
         "constraintChecks": constraint_checks,
     }
@@ -4473,7 +2756,6 @@ def main(argv=None):
             "waves": waves,
             "waveLabels": wave_labels,
             "edges": [[e["from"], e["to"]] for e in edges],
-            "acceptance": acceptance,
             "globalConstraints": global_constraints,
             "constraintChecks": constraint_checks,
         }
@@ -4483,7 +2765,7 @@ def main(argv=None):
 
     if emit_args is not None:
         # The complete launch-args skeleton: everything deterministic rides
-        # from here so the orchestrator never hand-assembles edges/acceptance
+        # from here so the orchestrator never hand-assembles the edges
         # (forgetting args.edges silently disabled dependency blocking).
         args_payload = {
             "waves": launch_waves,
@@ -4491,7 +2773,6 @@ def main(argv=None):
             "edges": [[e["from"], e["to"]] for e in edges],
             "dependencyEdges": [f"{e['from']} -> {e['to']} ({e['why']})"
                                 for e in edges],
-            "acceptance": acceptance,
             "waveLabels": wave_labels,
             "globalConstraints": global_constraints,
             "constraintChecks": constraint_checks,

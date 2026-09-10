@@ -55,7 +55,7 @@ deploys far more than the reviewed change ([64016ca13dd763a4]).
 Per-task and per-wave reviews (and per-phase reviews, in a multi-run pipeline)
 certify *local* correctness only; none of them evaluates the fully-integrated
 tree across phases against the *combined* plan. That is a structural blind spot:
-six green per-phase sealed gates once still let ~21 cross-phase integration bugs
+six green per-phase gates once still let ~21 cross-phase integration bugs
 through — including a crash — because every gate was judging its own slice, not
 the whole.
 

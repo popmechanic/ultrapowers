@@ -197,10 +197,9 @@ def test_derive_task_test_cmd_on_empty_and_single_py():
 
 # --- (i) --check output is unchanged: it never mentions testCmd ------------
 
-def test_check_renders_output_never_mentions_test_cmd():
+def test_check_output_never_mentions_test_cmd():
     p = subprocess.run(
-        [sys.executable, str(COMPILER), str(CLAIMS_FIXTURE),
-         "--check", "--renders"],
+        [sys.executable, str(COMPILER), str(CLAIMS_FIXTURE), "--check"],
         capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
     assert [line for line in p.stdout.splitlines() if "testCmd" in line] == []

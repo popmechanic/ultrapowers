@@ -17,21 +17,23 @@ clauses of that grammar, leg by leg:
   M4 / leg (d) — `Run:` bullets are not legs: `parse_proof_legs` skips them the
     way it skips `Test:` bullets, so one draws no "cites no Machine clause"
     refusal and cites nothing.
-  M5 / leg (e) — every fixture plan under `evals/fixtures/*/` and
-    `tests/fixtures/plans/` that carries no `Run:` bullet gets `--check` output
-    byte-identical to the BASE compiler's, the BASE compiler being the blob at
-    the frozen sha 0a3559a (never `HEAD:`, which is a tautology once merged).
   M6 / leg (f) — every compiled task object carries `proofRuns`: `[]` for a
     task without `Run:` bullets, both commands for a task with two.
 
 `proof_runs` is read off the claims dict `parse_claims_body` returns (the
 function that fills a task's `claims`); `proofRuns` is read off the wave
 entries `--emit-args` writes, beside `proofTests` and `testCmd`.
+
+Leg (e) [M5] pinned whole `--check` stdout of every `Run:`-less fixture plan
+against the compiler blob at the frozen sha 0a3559a. Deleting the advisory
+tier moved that stdout for every claims-v1 fixture, so the pin is gone. What
+the pin built stays, because `tests/test_compile_plan_check_constraints.py`
+reads it: `CORPUS`, `BASE_SHA` and the `base_compiler` fixture, which that
+exam compares `globalConstraints` values and compile exit codes against.
 """
 import fcntl
 import json
 import pathlib
-import re
 import subprocess
 import sys
 
@@ -182,10 +184,6 @@ def _compile_tasks(tmp_path, *tasks):
     payload, _ = _emit_args(tmp_path, plan)
     return _entries(payload)
 
-
-# The Proof bullet the grammar defines; used to skip a corpus plan that has
-# adopted one (leg (e) speaks only about plans that carry none).
-RUN_BULLET_RE = re.compile(r"^[-*+]\s*Run:\s", re.M)
 
 # The two commands leg (a) names: one bare, one wholly backticked.
 RUN_BULLETS = ["- Run: python3 -m pytest -q tests/x.py",
@@ -346,7 +344,7 @@ def test_a_run_bullet_beside_lettered_legs_draws_no_uncited_leg_refusal():
     assert all("Run:" not in leg["text"] for leg in claims["proof_legs"])
 
 
-# --- (e) [M5] the fixture corpus is byte-identical against the BASE blob ----
+# --- the fixture corpus and the BASE blob, for the exam that reads them -----
 
 CORPUS = (sorted((ROOT / "evals/fixtures").glob("*/plan.md"))
           + sorted((ROOT / "tests/fixtures/plans").glob("*.md")))
@@ -358,7 +356,7 @@ def base_compiler(tmp_path_factory):
     depth-1 checkout (CI) does not hold BASE; fetch exactly that commit from
     origin, which serves any reachable sha.
 
-    Five test modules share this fixture (two call it as a plain function), so
+    Test modules share this fixture, so
     under xdist several workers reach the fetch at once — and concurrent
     fetches into one repository lose on `.git/shallow.lock`: three of four exit
     128 and the loser's `git show` then reports the sha as absent (CI run
@@ -389,37 +387,10 @@ def base_compiler(tmp_path_factory):
     return path
 
 
-def _check_bytes(compiler, plan):
-    p = subprocess.run([sys.executable, str(compiler), str(plan), "--check"],
-                       capture_output=True, cwd=str(ROOT))
-    return p.returncode, p.stdout, p.stderr
-
-
 def test_the_fixture_corpus_is_not_empty():
     assert len(CORPUS) >= 15, (
-        "leg (e) [M5]: the witnesses are the fixture plans themselves — "
-        "found only %d" % len(CORPUS))
-
-
-def test_every_run_less_fixture_plan_checks_byte_identically_to_base(base_compiler):
-    compared, differing = [], []
-    for plan in CORPUS:
-        if RUN_BULLET_RE.search(plan.read_text()):
-            continue
-        compared.append(plan)
-        if _check_bytes(COMPILER, plan) != _check_bytes(base_compiler, plan):
-            differing.append(str(plan.relative_to(ROOT)))
-    assert compared, "leg (e) [M5]: no Run-less fixture plan was compared"
-    assert differing == [], (
-        "leg (e) [M5]: `Run:` is additive — `--check` output must stay "
-        "byte-identical to the BASE compiler (%s) for every plan carrying no "
-        "`Run:` bullet; these differ: %s" % (BASE_SHA[:7], differing))
-
-
-def test_the_base_blob_is_not_the_current_compiler(base_compiler):
-    assert base_compiler.read_bytes() != COMPILER.read_bytes(), (
-        "leg (e) [M5]: the frozen-sha comparison is vacuous until the "
-        "compiler actually changes — %s is unedited" % COMPILER_REL)
+        "the witnesses of every corpus-wide comparison are the fixture plans "
+        "themselves — found only %d" % len(CORPUS))
 
 
 # --- (f) [M6] proofRuns on every compiled task object -----------------------

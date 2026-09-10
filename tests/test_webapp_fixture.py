@@ -22,7 +22,6 @@ def test_plan_compiles_with_waves():
     result = json.loads(out.stdout)
     assert len(result["waves"]) >= 2          # real dependency structure
     assert any(len(w) >= 2 for w in result["waves"])  # real parallel width
-    assert result["acceptance"]["mode"] == "suite"
 
 
 def test_plan_passes_grammar_check():

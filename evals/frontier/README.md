@@ -4,7 +4,7 @@
 §Roadmap step 4, operator decision 2026-09-08): 388 files of frozen replay evidence —
 `corpus-index.json`, the per-run `wave-<n>` directories holding `conflicts.json`,
 `fold_log.jsonl`, `fold_stats.json` and `task-*.patch`, and the eighty-one `results/`
-readings written by `run_eval.py`, `check_renders_ab.py` and by hand. The durable copy is
+readings written by `run_eval.py` and by hand. The durable copy is
 the operator's laptop: copy both directories out of the working tree before pulling the
 commit that removes them, then put them back, where the `.gitignore` rule now keeps them
 out of the index. A fresh clone, a fleet sandbox and CI correctly find nothing here but

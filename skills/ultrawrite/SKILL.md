@@ -22,7 +22,7 @@ grammar — that is the rollback path, not a choice), one `**Claim:**` line — 
 own do:/see: sentence about what they will see after the run, closed `(elicited)` when they
 said it to you and `(quoted from #NNN)` when an issue already carries that sentence
 verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
-`## Global Constraints`, and one `**Acceptance:**` line.
+and `## Global Constraints`.
 
 Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
 tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
@@ -81,13 +81,13 @@ derivation.
   symbol per bullet** (the compiler reads the first symbol of a bullet and nothing after
   a comma, so a line listing three symbols derives no edge for the other two). **A test's
   import of a sibling's symbol is a `Consumes:`**; that is now the whole ordering story
-  for test-only edges. Placeholders (`none`, `nothing`) are legal and quiet, but a
-  `Consumes:` no sibling `Produces:` draws an `ADVISORY`, because with no marker backstop
-  a typo and a prose sentence are both silently missing edges.
-- **Context:** what the implementer must know that the repo cannot tell it. Its word count
-  is reported as an `ADVISORY` and nothing refuses on it. Steps prose smuggled in here is
-  caught structurally instead: fences are illegal outside Proof, and task-reference
-  ordering phrases (`after Task 2`) draw an advisory and order nothing.
+  for test-only edges. Placeholders (`none`, `nothing`) are legal and quiet. Read every
+  `Consumes:` against its sibling's `Produces:` yourself, because with no marker backstop
+  a typo and a prose sentence are both silently missing edges, and nothing warns on one.
+- **Context:** what the implementer must know that the repo cannot tell it. Keep it short;
+  nothing refuses on its length. Steps prose smuggled in here is
+  caught structurally instead: fences are illegal outside Proof, and a task-reference
+  ordering phrase (`after Task 2`) orders nothing at all.
 - **Proof:** the exam — tests, golden pairs, fixtures, executable probes. The only slot
   where code fences are legal. Its `Test:` paths must be **disjoint** from this task's
   `Create:`/`Modify:` paths: the exam is a distinct artifact. Its legs — `(a) … (b) …` —
@@ -95,13 +95,16 @@ derivation.
   cites, a leg citing nothing, or a citation of a clause that does not exist. A universal
   or negation clause (`every`, `no`, `byte-identical`) wants a leg that names what fails
   or is absent; an enumerated clause (`for each of node, pytest`) wants one leg per row —
-  both draw an `ADVISORY` when missing, which is the species run-51's gate rejected 11 of
-  24 pairs for.
+  check both yourself, since nothing flags them: that is the species run-51's gate rejected
+  11 of 24 pairs for.
   A `Run:` bullet names a command the driver executes in the task's clone after the
   implementer's patch lands; its exit code and output are evidence the reviewer reads
   against the legs, and a non-zero exit sends the task to the fix loop. A task whose
   deliverable is prose proves itself with `Run:` commands, never with a test that
   matches sentences of a document.
+  And one `Run:` names one probe — a command the driver pays once, never a loop over a glob
+  of sims (run-87 paid 175 s per boot sim, three passes, for two such lines). A sweep over
+  every sim belongs to the one task that owns the sims, as one line, or nowhere.
   A `- Guard:` bullet in this slot names **one of this Proof's own `Test:` paths**, and it
   is the one way an exam file reaches the pull request: the peer examiner still writes the
   exam, but the file it names is written at that path and is merged with the task. An exam
@@ -257,12 +260,12 @@ each of them idle behind a barrier it did not need.
 Then resolve provenance and compile:
 
     python3 $UW/check_provenance.py <plan.md>
-    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py --check --renders --base <checkout-dir|sha> <plan.md>
+    python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py --check --base <checkout-dir|sha> <plan.md>
 
 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
-`quoted from #NNN` claim against its issue body at signing time. `compile_plan.py --check`
-must print `PLAN OK`; read its `ADVISORY` lines before handoff. A plan is not done until
-all three pass.
+`quoted from #NNN` claim against its issue body at signing time. The plan is done when
+`compile_plan.py --check` prints `PLAN OK` and those two checks — the proof gate and
+`check_provenance.py` — have passed.
 
 `--base` takes a checkout directory or a 40-hex sha, and a sha must be present locally:
 the compiler reads that commit's tree with `git show`/`git ls-tree` in the plan's own
@@ -271,14 +274,8 @@ symbol, which test pins a Machine-clause span — resolves against the exact com
 `launch.mjs --base` will hand the run, not against whatever the working tree happens to
 hold. Unset, `--base` defaults to the plan's own git toplevel.
 
-The `ADVISORY proof-species:` lines of `compile_plan.py --check --renders` name the
-rejection species found by hand — `run-chained-semicolon`, `leg-named-in-prose`,
-`default-unpinned`, `universal-as-count-floor`, `duration-without-clock`,
-`suite-total-pin`, `directory-absence-pin`, `pinned-elsewhere`, `check-cost`,
-`prose-check`, `wide-files`, `wide-contract`, `threshold-one-sided`,
-`disjunct-without-leg`, `base-sha-in-suite`. Read each one
-and repair the slot it points at *before* a reader is dispatched at that task: a reader
-spending its one question on a species the compiler already named is a reader wasted.
+The rejection species are listed in `references/authoring-gotchas.md` and read by the
+author before a reader is dispatched — nothing prints them.
 
 ## The worktree-pure contract
 
@@ -337,9 +334,9 @@ Independence is a property of contracts, not of files.
    every strict-equality pin of it, in any sibling's file — list that file in its own
    Files block. One shape does not fold, though: N tasks that each add one line to one
    list are N **adjacent inserts at one location**, which the fold sends to a resolver —
-   run-12 (2026-09-05, PR #662) had five tasks each append one
-   `ADVISORY_RENDERS.append((…))` line to `compile_plan.py`, and the fold spent three
-   resolver workers (3.4 worker-minutes, 6.6 of the 13-minute post-review tail) ordering
+   run-12 (2026-09-05, PR #662) had five tasks each append one registration line to
+   `compile_plan.py`, and the fold spent three resolver workers
+   (3.4 worker-minutes, 6.6 of the 13-minute post-review tail) ordering
    five lines any order would have satisfied. Give each such task its **own region or
    file**: a registration is a new file discovered by glob, never an appended line.
 5. **Prefer several small concurrent plans** folding into one frontier over one large plan
@@ -398,21 +395,14 @@ winner **(recommended)**:
 A claims-v1 plan has no steps to follow, but a sequential executor can implement
 task-by-task from contract plus proof.
 
-## Acceptance disposition
-
-- `**Acceptance:** suite — <reason>` — the default: the committed suite plus per-task
-  review is the verification.
-- `**Acceptance:** waived — <reason>` — verification genuinely skipped, by explicit
-  operator choice. Waivers surface verbatim at the wave-plan gate, in the report, and at
-  the pre-merge gate. Never waive silently on the operator's behalf.
-
 ## Self-review
 
 The author reads `references/authoring-gotchas.md` — the lessons every claims-v1 sitting
 since run-45 paid for, each a rule with its reason — before the gate readers are
 dispatched, and checks the plan against each of them; the file also names the compiler
-advisories and refusals that already catch the mechanical half, so those are read off
-`compile_plan.py --check` rather than re-derived here.
+refusals that already catch the mechanical half, so those are read off
+`compile_plan.py --check` rather than re-derived here. Everything else in it is the
+author's own to check — nothing prints it.
 
 - Every task carries all six slots, in order, none empty, and no checkbox steps.
 - The plan carries one `**Claim:**` above the first task, elicited or quoted from an
@@ -432,7 +422,7 @@ advisories and refusals that already catch the mechanical half, so those are rea
 - The rationale line states each wave's width; every chain longer than one names the
   runtime behaviour its consumer needs (rule 2), and any exam that quantifies over a
   directory was checked against BASE for pre-existing violators (#536).
-- Global Constraints state results, not process; the plan carries an Acceptance line.
+- Global Constraints state results, not process.
 - The `**Closes:**` line, when present, sits directly under `**Goal:**` and names only the
   target repository's issues.
 - No pinned number is a guess: every pinned literal was computed, not assumed — the author

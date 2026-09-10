@@ -971,8 +971,8 @@ export const NO_TEST_CMD_FIX =
 /**
  * The sandbox's test-command ladder, run against the tree at `--base` on the
  * laptop. This mirrors `detect_test_cmd` in `skills/ultrapowers/scripts/ultra_run.py`
- * — the verification periphery is frozen, so its rules are copied here rather
- * than imported, and the Python ladder stays the one the sandbox runs.
+ * — the launcher spawns no python, so the ladder is mirrored here and
+ * `detect_test_cmd` in `ultra_run.py` stays the one the sandbox runs.
  *
  * Only whether a rung matches is decided here: the launcher never runs pytest,
  * never asks about xdist and never spawns python. The rule name is for the

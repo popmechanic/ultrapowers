@@ -21,9 +21,8 @@ Three modes, one resolver:
   one `stale:` line per fact that no longer holds.
 
 A referent that does not resolve at BASE is OMITTED rather than pinned as
-missing: the compiler's `ADVISORY referent:` line already names it, and a block
-of facts is not the place to record an absence. A plan that is not claims-v1 is
-not this script's business and exits 0 saying so.
+missing: a block of facts is not the place to record an absence. A plan that is
+not claims-v1 is not this script's business and exits 0 saying so.
 
 Nothing here reaches the network, and the resolver is the compiler's own — the
 referent scan, the path normalizer and the tree reader (`BaseTree`, `_git`) are

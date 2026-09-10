@@ -10,8 +10,7 @@ the Proof names something unrunnable — that is the point of shipping both.
 
 Leg (f) pins the rest of the entry: with `proofTests` deleted, the `waves`
 array of each corpus fixture deep-equals a literal recorded from the BASE
-compiler, and the plan-determined lines of `--check --renders` stdout equal
-the BASE bytes.
+compiler.
 """
 import json
 import pathlib
@@ -221,18 +220,6 @@ BASE_WIDE_WAVES = [
     ],
 ]
 
-BASE_CLAIMS_CHECK = (
-    'PLAN OK\n'
-    'ADVISORY grammar: Context is 24 words — task 1\n'
-    'ADVISORY grammar: Machine line carries no numbered clauses — task 1; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n'
-    'ADVISORY grammar: Context is 27 words — task 2\n'
-    'ADVISORY grammar: Machine line carries no numbered clauses — task 2; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n'
-    'ADVISORY grammar: Context is 26 words — task 3\n'
-    'ADVISORY grammar: Machine line carries no numbered clauses — task 3; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n')
-
-BASE_WIDE_CHECK = "PLAN OK\n"
-
-
 # The keys this pin deliberately does NOT compare: the Proof-slot LISTS, each
 # added by its own task and pinned by its own exam (`proofTests` by #515/#553,
 # `proofRuns` by #589, `proofGuards` by #777). What this pin guards is that
@@ -246,24 +233,6 @@ def _waves_without_proof_slots(payload):
             for wave in payload["waves"]]
 
 
-def _check_renders(fixture):
-    """The plan-determined lines of `--check --renders` stdout.
-
-    The whole render is a function of the tree, not of the plan alone: its
-    blast-radius paragraphs list every tracked code file mentioning a task's
-    Produces symbols, so a file some other task adds turns a whole-stdout pin
-    red for a reason that has nothing to do with the compiler (#563). What
-    this pin compares is the two kinds of line the plan text alone decides —
-    the `PLAN OK` verdict and every `ADVISORY grammar:` line."""
-    p = subprocess.run(
-        [sys.executable, str(COMPILER), str(fixture), "--check", "--renders"],
-        capture_output=True, text=True)
-    assert p.returncode == 0, p.stdout + p.stderr
-    return "".join(line for line in p.stdout.splitlines(True)
-                   if line == "PLAN OK\n"
-                   or line.startswith("ADVISORY grammar:"))
-
-
 def test_claims_fixture_entries_keep_every_other_key_at_its_base_value(tmp_path):
     payload = _emit_args(tmp_path, CLAIMS_FIXTURE)
     assert _waves_without_proof_slots(payload) == BASE_CLAIMS_WAVES
@@ -272,11 +241,3 @@ def test_claims_fixture_entries_keep_every_other_key_at_its_base_value(tmp_path)
 def test_wide_fixture_entries_keep_every_other_key_at_its_base_value(tmp_path):
     payload = _emit_args(tmp_path, WIDE_FIXTURE)
     assert _waves_without_proof_slots(payload) == BASE_WIDE_WAVES
-
-
-def test_claims_fixture_check_renders_stdout_is_unchanged():
-    assert _check_renders(CLAIMS_FIXTURE) == BASE_CLAIMS_CHECK
-
-
-def test_wide_fixture_check_renders_stdout_is_unchanged():
-    assert _check_renders(WIDE_FIXTURE) == BASE_WIDE_CHECK

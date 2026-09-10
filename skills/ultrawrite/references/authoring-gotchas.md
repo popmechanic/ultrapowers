@@ -6,12 +6,12 @@ makes it a rule and the run or sitting that cost it — a fresh clone, a subagen
 author and a stranger operator get the same guidance from this file that the
 last sitting got from one agent's memory.
 
-Where a rule is already enforced mechanically, the bullet names the compiler's
-own line, so the reading to learn is the compiler's output and not this file:
-`suite-total-pin` and `directory-absence-pin` are `ADVISORY proof-species:`
-lines from `compile_plan.py --check`, and a `Run:`/`Check:` command carrying a
-backtick is the grammar refusal `command carries a backtick`. Run the checker
-and read its advisories before a reader is dispatched.
+A few of these rules the compiler still refuses outright, and the bullet names
+the refusal so the reading to learn is the compiler's output: a `Run:`/`Check:`
+command carrying a backtick is `command carries a backtick` from
+`compile_plan.py --check`. Every other species below is the author's own to
+check, here, against this file — `suite-total-pin` and `directory-absence-pin`
+included. Nothing prints them.
 
 ## The eleven rows
 
@@ -58,9 +58,8 @@ and read its advisories before a reader is dispatched.
   falsifies neither; a rule that would fire on an existing fixture is a plan
   defect, so read the sibling fixture before writing the clause; and `leg (e)`
   written inside another leg's prose splits the leg even when (e) is another
-  file's leg — say "the previous leg" or "its frozen-sha comparison". The
-  compiler names the mechanical half of these as `ADVISORY proof-species:`
-  lines; read them before a reader is dispatched.
+  file's leg — say "the previous leg" or "its frozen-sha comparison". Nothing
+  prints this list: read it here, row by row, before a reader is dispatched.
 - **Absolute collected-count pins are integration-hostile.**
   `test "$(pytest --collect-only -q | tail -1 | cut -d' ' -f1)" = 1461` passes
   in the task's clone and fails on the adopted tree, where every merged `Run:`
@@ -84,12 +83,10 @@ and read its advisories before a reader is dispatched.
 - **A behaviour change owns every existing pin of it.** Before dispatch,
   `git grep` the literal a clause replaces across `tests/` and `fleet/tests/`
   and list every hit in the task's Files — an unlisted pin of the old value was
-  run-8's one blocking finding. Two siblings of the same species: a clause can
-  contradict a frozen sim the plan also names as a `Run:` (both cannot pass, so
+  run-8's one blocking finding. A sibling of the same species: a clause can
+  contradict a frozen sim the plan also names as a `Run:` — both cannot pass, so
   read every sim a Proof invokes for the shape it pins before writing a
-  rendering clause), and the corpus byte-pins freeze advisory text, not only the
-  vocabulary, so a reworded advisory line needs its frozen sha re-pinned outside
-  the compiler task's Files (run-8, 2026-09-04).
+  rendering clause (run-8, 2026-09-04).
 - **Check every field name a Context names against the report format.** A
   Context that wrote `report.review.findings` for what is
   `completenessFindings` made the examiner mark the leg unsatisfiable and adapt
