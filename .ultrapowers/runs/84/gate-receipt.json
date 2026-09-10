@@ -1,0 +1,64 @@
+{
+  "mode": "gate",
+  "stamp": "run-84",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-84/report.json",
+  "branch": "ultra/integration-run-84",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/sandbox-boot.sh:2225-2242 \u2014 the parked `status.json.error` cell that appends the failing block of `<run dir>/acceptance.log` (M6), plus its exam fleet/tests/test_sandbox_boot_parked_error.mjs \u2014 Both arms run the real boot script, but only under _sandbox_boot_helpers.mjs's stubbed `git`/`gh`/`systemctl`/`claude` with `acceptance.log` seeded by the test itself. The end-to-end path the Claim's last clause names \u2014 the real gate wrapping the suite with `acceptanceWrap` (fleet/run-main.mjs:243-246), teeing to that path, and the resulting cell being published on a live sandbox VM's status page \u2014 needs a sandbox VM and GitHub, neither of which exists in this environment. The two sides do agree on the literal path here: run-main writes `<runDir>/acceptance.log` and boot reads `$(run_dir_path)/acceptance.log`, and boot's POSIX-awk `failing_block`/`has_failing_block` patterns match fleet/failing-block.mjs's START/END literal for literal. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "1 \u2014 plan-defect: the parked cell quotes the WHOLE acceptance.log when the log exists but carries no failure line. M6 conditions the ` \u2014 <block>` continuation on the log \"carries a failure line\"; the diff only tests `[ -f \"$acceptance_log\" ]` and then `[ -n \"$failing\" ]` (fleet/sandbox-boot.sh:2218-2222). But `failing_block`'s awk falls back to the entire file when it matches no start marker (fleet/sandbox-boot.sh:1364, `if (!start) { start = 1; stop = NR }` \u2014 the same fallback fleet/failing-block.mjs:36-38,63 documents: \"A text with no start line ... is returned WHOLE\"), so `$failing` is non-empty for ANY non-empty log. A run that parks with nothing ahead of base on a GREEN acceptance run \u2014 every task failed or BLOCKED on a green BASE, which the gate still tees to `<run dir>/acceptance.log` (fleet/run-main.mjs:243,246) \u2014 now writes the entire pytest session log into `status.json.error`. That is reachable, is a regression this diff introduces, and the fix is inside FILES. The task's Context prescribed exactly this shape (\"when that file exists and the block is non-empty\"), which is why it is prefixed plan-defect; M6 itself is unambiguous. The exam is complicit: fleet/tests/test_sandbox_boot_parked_error.mjs has only the seeded-failure arm and the file-absent arm, so the \"carries a failure line\" clause of M6 is unverified \u2014 a third arm with a green log is what settles it."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\\nrootdir: /tmp/tmp.CDjZxNR5Mh/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.4.0\\ncreated: 6/6 workers\\n6 workers [1929 items]\\n\\n........................................................................ [  3%]\\n........................................................................ [  7%]\\n........................................................................ [ 11%]\\n........................................................................ [ 14%]\\n........................................................................ [ 18%]\\n........................................................................ [ 22%]\\n........................................................................ [ 26%]\\n........................................................................ [ 29%]\\n........................................................................ [ 33%]\\n........................................................................ [ 37%]\\n........................................................................ [ 41%]\\n........................................................................ [ 44%]\\n........................................................................ [ 48%]\\n........................................................................ [ 52%]\\n........................................................................ [ 55%]\\n........................................................................ [ 59%]\\n........................................................................ [ 63%]\\n........................................................................ [ 67%]\\n........................................................................ [ 70%]\\n........................................................................ [ 74%]\\n........................................................................ [ 78%]\\n........................................................................ [ 82%]\\n........................................................................ [ 85%]\\n........................................................................ [ 89%]\\n........................................................................ [ 93%]\\n........................................................................ [ 97%]\\n.........................................................                [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1929 passed, 5 warnings in 921.58s (0:15:21) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
