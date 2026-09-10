@@ -9,9 +9,15 @@ import path from 'node:path'
 import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-rec-'))
+// `proofTests` names the path this fixture's red lands on, so the red stays
+// ATTRIBUTED to T1 (#871): a candidate whose failing paths belong to no task of
+// the wave is adopted and recorded instead of reconciled, and both scenarios
+// below are about the reconcile route. The rig's `check.sh` prints no `FAILED
+// <path>::` line of its own, so the naming is what pins the route rather than
+// what the output happens to say.
 const waves = () => [[{
   id: 'T1', title: 'breaks the suite', files: ['T1.txt'], tier: 'standard', review: 'lean',
-  writes: ['T1.txt'], commutes: [], body: 'task T1',
+  writes: ['T1.txt'], proofTests: ['fleet/tests/test_sim.mjs'], commutes: [], body: 'task T1',
 }]]
 
 // ── 1. red candidate → reconcile fixes → driver commits → MERGED ────────────

@@ -20,19 +20,17 @@ def test_ultrawrite_skill_validates():
     assert code == 0, out
 
 
-def test_ci_validates_every_shipped_skill():
-    # A skill dropped from CI is a skill whose references rot unnoticed; #390
+def test_every_shipped_skill_validates():
+    # A skill nothing validates is a skill whose references rot unnoticed; #390
     # retired ultraplan and added ultrawrite, so derive the list, never type it.
-    ci = (ROOT / ".github/workflows/ci.yml").read_text()
+    # The sweep used to live in a workflow; since #871 retired it (2026-09-10)
+    # this case is where every shipped skill is validated.
     shipped = sorted(d.name for d in (ROOT / "skills").iterdir()
                      if (d / "SKILL.md").is_file())
     assert shipped == ["ultradocket", "ultralearn", "ultrapowers", "ultrawrite"]
-    # Since #641 CI validates `skills/*/` in one loop, so every directory the
-    # tree ships is covered without being named; the pin is on the loop.
-    assert "for s in skills/*/; do" in ci, \
-        ".github/workflows/ci.yml does not loop over skills/*/"
-    assert "validate_skill.py \"${s%/}\"" in ci
-    assert "ultraplan" not in ci
+    for name in shipped:
+        code, out = run(ROOT / "skills" / name)
+        assert code == 0, name + ": " + out
 
 def test_missing_description_fails(tmp_path):
     (tmp_path / "SKILL.md").write_text("---\nname: x\n---\nbody\n")

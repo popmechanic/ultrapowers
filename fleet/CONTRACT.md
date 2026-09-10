@@ -248,24 +248,34 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     a recorded `pr` is never opened twice; clones present are not re-cloned; `.ultrapowers/runs/<N>/` is
     never checked out over. A failure at ANY step commits and pushes a `failed` page before exiting
     (pre-clone included).
-  - merge: after a gate-green publish the script polls `GET /repos/<owner>/<repo>/commits/<head>/check-runs`
-    every 2 s and, when every listed run is completed with `success`, `neutral` or `skipped`, issues one
+  - merge: after a gate-green publish the script merges on ITS OWN EVIDENCE and asks the target for
+    no opinion of the head. The publish fold rebased the branch onto the default branch's tip and
+    recorded which tip in `publish-fold/receipt.json`, and the gate then greened the target's suite
+    on the tree that produced; so the merge's one remaining question is whether that tip is still the
+    base's. `git fetch origin <default>` then `git rev-parse refs/remotes/origin/<default>`, compared
+    to the receipt's `tip`. EQUAL: one
     `PUT /repos/<owner>/<repo>/pulls/<n>/merge` (`merge_method` squash, `commit_title` the plan's H1, `sha`
     the head, and `commit_message` the run's two trailers on two lines — `Fleet-Run: <N>`
-    then `Plan-Tag: ultra/plan/run-<N>`) and records the answer's `sha` as `merged`; an answer with no runs waits
-    `MERGE_CHECKS_GRACE` (120 s) and is then merged as having nothing to wait for; a failed run, 30
-    minutes (`MERGE_CHECK_WAIT`) of pending, or a refused PUT leaves the PR open with `merged` null.
+    then `Plan-Tag: ultra/plan/run-<N>`), and the answer's `sha` is recorded as `merged`.
+    DIFFERENT: no PUT at all — this run has measured nothing about the tree that merge would make —
+    and the PR is left open with `left open: base moved`, one `publish:merge` line whose `left` is
+    `base moved` and whose `detail` is `tip <old> → <new>`, and another fold. A comparison that
+    cannot be made (an unreadable default branch, a receipt with no `tip`) is not a refusal: the PUT
+    goes out. `MERGE_CHECK_WAIT` (30 minutes) is the wait on `GET /pulls/<n>` for a non-null
+    `mergeable` before a PUT that follows a fold-again, and names no check run.
     The merge folds again for a moved tip, for as long as the fold stays clean and the clock holds:
-    a 405 whose `message` says the pull request is not mergeable,
+    the tip read above, or a 405 whose `message` says the pull request is not mergeable,
     or that the base branch was modified, or that a required status check is expected
     (the match ignores case), means the target moved between the fold and the PUT, so the script writes
     `running "publish fold (attempt <n>)"` (an evidence commit),
     re-folds onto the new tip, pushes with the lease, writes `publishing` (an evidence commit),
-    re-enters its check-runs loop on the new head, polls `GET /pulls/<n>` until `mergeable` is
-    non-null and PUTs once more — and answers the next such 405 the same way, for as long as the
-    base keeps moving. THE BOUND IS A WALL CLOCK, NOT A COUNT: the first base-moved 405 always earns
+    reads the tip again on the new head, polls `GET /pulls/<n>` until `mergeable` is
+    non-null and PUTs once more — and answers the next such refusal the same way, for as long as the
+    base keeps moving. THE BOUND IS A WALL CLOCK, NOT A COUNT: the first base-moved refusal always earns
     its fold, and each one after it earns another only while fewer than `FOLD_AGAIN_WAIT`
-    (`FLEET_FOLD_AGAIN_WAIT`, default 3600 s) seconds have passed since that first one. The end of
+    (`FLEET_FOLD_AGAIN_WAIT`, default 3600 s) seconds have passed since that first one — and a re-fold
+    that comes back on the tip it already offered buys no further fold, because a folder that cannot
+    reach the base will not reach it on a third try. The end of
     that clock leaves the PR open with
     `left open: merge PUT answered 405 after <N>s of folding again`, where `<N>` is `FOLD_AGAIN_WAIT`;
     a fold that moved nothing has no new head to offer and makes no further PUT, leaving the PR open
@@ -273,7 +283,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     clean leaves the `left open: publish fold — <disposition text>` hold it always did.
     Every PUT is one `publish:merge` line, in order, and the LAST of them is what became of the PR.
     Any other non-2xx keeps the one PUT it made.
-    `hold=1` in the assignment skips all of it.
+    `hold=1` in the assignment skips all of it, and so does a gate receipt whose `suite.unattributed`
+    is a non-empty list: the PR is ready, no tip is read, no PUT is issued, the note is
+    `left open: suite red, unattributed: <first path>`, the `publish:merge` line's `left` is `held`
+    and its `detail` the paths joined by `, `, and the card carries the `## Held` section below.
   - record: after the last evidence push of a `done` or `parked` run, tag the plan commit `ultra/plan/run-<N>` and the evidence head `ultra/evidence/run-<N>`, verify both with `git ls-remote --tags` against the remote, then delete the branches `ultra/plan-run-<N>` and `ultra/evidence-run-<N>` in the same step.
     A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
     both branches and logs `record: … kept` — the record step never leaves a run with neither a tag
@@ -293,9 +306,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   never a fixed number. `parked` and `failed` are terminal wherever they are reached.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR.
-  The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; a ready PR the
-  sandbox merges itself once its checks are green, unless the assignment carries `hold=1`, and a
-  draft is the operator's to merge or close. Between the push and the POST the script polls
+  The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; the
+  sandbox merges its own ready PR once its gate is green and the default branch's tip is the one it
+  folded onto — it asks the target for no verdict of its own — unless the assignment carries
+  `hold=1` or the gate receipt carries an unattributed red, and a draft is the operator's to merge
+  or close. Between the push and the POST the script polls
   `GET /repos/<owner>/<repo>/branches/<branch>` every 2 s until it reports the pushed head (at most
   `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
   `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
@@ -317,9 +332,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   answers 2xx; `publish:hold` (`why`, the phase's text after `left open: ` — `hold=1`, or
   `publish fold — <disposition text>`) for a PR left open without asking; and `publish:merge` per
   merge decision — `sha` alone when the PUT merged, else `sha` null with `left` one of
-  `checks red`, `checks pending` or `refused` and `detail` the account (`check <name> concluded
-  <conclusion>`, `still pending after <N>s`, `merge PUT answered <code>`). The LAST `publish:merge`
+  `held`, `base moved` or `refused` and `detail` the account (the unattributed paths joined by
+  `, `, `tip <old> → <new>`, `merge PUT answered <code>`). The LAST `publish:merge`
   line is what became of the PR.
+  A run held on an unattributed red also carries a `## Held` section in the card, after
+  `## Publish fold` and before `### Evidence`: the failing block cut from `report.json`'s
+  `tests.output`, then `gh pr merge <number> --squash --match-head-commit <head>`, then one line
+  `Fix: <first path> went red on the fold of run-<N>`. No other run carries it.
 - **Integration naming:** ONE GitHub integration per target, `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, created attached to nothing by `node fleet/target.mjs <owner>/<repo>`;
   `new --integration claude-max,gh-<owner>-<repo>[,browser-run]` binds them to the run's VM at

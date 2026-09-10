@@ -131,9 +131,11 @@ def test_recorded_green_suite_passes_the_gate(tmp_path):
     assert printed["verdict"] == "PASS", (
         "[M1] leg (a): verdict is %r, not PASS — receipt: %s"
         % (printed.get("verdict"), json.dumps(printed)))
-    assert printed.get("suite") == {"passed": True, "output": output}, (
+    assert printed.get("suite") == {"passed": True, "unattributed": [],
+                                    "output": output}, (
         "[M1] leg (a): receipt.suite is %r, not the recorded result "
-        "{'passed': True, 'output': %r}" % (printed.get("suite"), output))
+        "{'passed': True, 'unattributed': [], 'output': %r}"
+        % (printed.get("suite"), output))
     assert code == 0, (
         "[M1] leg (a): exit %d, not 0 — receipt: %s" % (code, json.dumps(printed)))
     assert saved is not None, (
@@ -141,7 +143,8 @@ def test_recorded_green_suite_passes_the_gate(tmp_path):
     assert saved["verdict"] == "PASS", (
         "[M1] leg (a): saved gate receipt records verdict %r, not PASS"
         % saved.get("verdict"))
-    assert saved.get("suite") == {"passed": True, "output": output}, (
+    assert saved.get("suite") == {"passed": True, "unattributed": [],
+                                  "output": output}, (
         "[M1] leg (a): saved gate receipt's suite is %r" % (saved.get("suite"),))
 
 
@@ -157,13 +160,72 @@ def test_recorded_red_suite_blocks_the_gate(tmp_path):
     assert printed["verdict"] == "BLOCKED", (
         "[M2] leg (b): a recorded red suite yielded verdict %r, not BLOCKED — "
         "receipt: %s" % (printed.get("verdict"), json.dumps(printed)))
-    assert printed.get("suite") == {"passed": False, "output": output}, (
-        "[M2] leg (b): receipt.suite is %r, not {'passed': False, 'output': %r}"
-        % (printed.get("suite"), output))
+    assert printed.get("suite") == {"passed": False, "unattributed": [],
+                                    "output": output}, (
+        "[M2] leg (b): receipt.suite is %r, not {'passed': False, "
+        "'unattributed': [], 'output': %r}" % (printed.get("suite"), output))
     assert code == 1, (
         "[M2] leg (b): exit %d, not 1 — a recorded red suite must block" % code)
     assert saved is not None and saved["verdict"] == "BLOCKED", (
         "[M2] leg (b): saved gate receipt is %r" % (saved,))
+
+
+# ── the unattributed red (Task 1: "An unattributed red is reported, an ────────
+#    attributed one is repaired") [M5]
+#
+# The `[]` case is leg (b) above, kept exactly as it was: a red suite whose
+# failing paths are the run's own still BLOCKS. What is added here is the one
+# reading that does not — a red every one of whose failing paths went red on a
+# fold no task of its wave names. The gate copies the list into the receipt and
+# passes, because that red is a fact about the repository the run inherited
+# rather than about the work it did.
+
+
+def test_unattributed_red_suite_passes_the_gate(tmp_path):
+    """`tests.passed` false with a non-empty `tests.unattributed` writes
+    verdict PASS, `suite.unattributed` equal to the report's list, and exits
+    0."""
+    output = "1 failed, 552 passed in 12.34s"
+    code, printed, saved = run_gate(tmp_path, {
+        "command": "python3 -m pytest -q", "passed": False,
+        "unattributed": ["tests/other.py"], "output": output})
+
+    assert printed["verdict"] == "PASS", (
+        "[M5]: a red suite whose failing paths no task names yielded verdict "
+        "%r, not PASS — receipt: %s"
+        % (printed.get("verdict"), json.dumps(printed)))
+    assert printed.get("suite") == {"passed": False,
+                                    "unattributed": ["tests/other.py"],
+                                    "output": output}, (
+        "[M5]: receipt.suite is %r, not {'passed': False, 'unattributed': "
+        "['tests/other.py'], 'output': %r}" % (printed.get("suite"), output))
+    assert code == 0, (
+        "[M5]: exit %d, not 0 — an unattributed red does not block" % code)
+    assert saved is not None and saved["verdict"] == "PASS", (
+        "[M5]: saved gate receipt is %r" % (saved,))
+    assert saved.get("suite", {}).get("unattributed") == ["tests/other.py"], (
+        "[M5]: the saved receipt's suite.unattributed is %r"
+        % (saved.get("suite", {}).get("unattributed"),))
+
+
+def test_red_suite_with_an_empty_unattributed_list_still_blocks(tmp_path):
+    """The `[]` case, spelled out: `unattributed: []` is the same reading as no
+    key at all — BLOCKED, exit 1."""
+    code, printed, saved = run_gate(tmp_path, {
+        "command": "python3 -m pytest -q", "passed": False,
+        "unattributed": [], "output": "boom"})
+
+    assert printed["verdict"] == "BLOCKED", (
+        "[M5]: `unattributed: []` yielded verdict %r, not BLOCKED — receipt: %s"
+        % (printed.get("verdict"), json.dumps(printed)))
+    assert printed.get("suite") == {"passed": False, "unattributed": [],
+                                    "output": "boom"}, (
+        "[M5]: receipt.suite is %r" % (printed.get("suite"),))
+    assert code == 1, (
+        "[M5]: exit %d, not 1 — a red no `unattributed` excuses must block"
+        % code)
+    assert saved is not None and saved["verdict"] == "BLOCKED", (
+        "[M5]: saved gate receipt is %r" % (saved,))
 
 
 def test_report_without_a_tests_block_blocks_naming_tests(tmp_path):

@@ -69,6 +69,44 @@ import { examSlug, reservedExamPath } from './exam-paths.mjs'
 import { referee } from './referee.mjs'
 import { linkProduces } from './referee-linker.mjs'
 
+// ── which tests went red (#871 decisions 1 and 4) ────────────────────────────
+// `failingBlock` above answers "what does the failure read like"; this answers
+// "which files failed", because the wave barrier has one more question to ask
+// of a red candidate: did any task of this wave name the path that went red?
+// The source is pytest's short summary — one `FAILED <path>::<id>` line per
+// failure — and the one shape that lies about its path is the fleet bridge:
+// every node sim runs as `tests/test_fleet_suite.py::test_fleet_mjs[<id>]`,
+// whose `<id>` is the sim's name under `fleet/tests/` (`test_x.mjs`, or
+// `exams/<slug>/test_x.mjs` for a run's own exam — `tests/test_fleet_suite.py`
+// itself names no task's file). So a bridged line is translated back to the
+// path a plan would have written, and every other line is taken as it reads.
+const FAILED_LINE = /^FAILED\s+(\S+?)::(\S*)/
+const BRIDGE_FILE = 'tests/test_fleet_suite.py'
+const BRIDGE_ID = /\[([^\]]+\.mjs)\]/
+
+/**
+ * The test paths a suite output reports as failing, in order, deduplicated.
+ *
+ *   output  a suite's stdout+stderr, whatever shape printed it
+ *
+ * Returns `[]` for an output carrying no `FAILED <path>::<id>` line — a bare
+ * non-zero exit, an install that died before pytest ran, a green run.
+ */
+export function failingTestPaths (output) {
+  const paths = []
+  for (const raw of String(output ?? '').split('\n')) {
+    const m = FAILED_LINE.exec(raw.trim())
+    if (!m) continue
+    let p = m[1]
+    if (p === BRIDGE_FILE) {
+      const id = BRIDGE_ID.exec(m[2])
+      if (id) p = 'fleet/tests/' + id[1]
+    }
+    if (!paths.includes(p)) paths.push(p)
+  }
+  return paths
+}
+
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
 export const REVIEWER_MODEL = TIER.mostCapable
@@ -1256,12 +1294,35 @@ export async function runEngine({
   // baseline holding one of its slots would delay the very dispatch it is meant
   // to run beside.
   let baseline = null
-  const settleBaseline = (passed, output) => {
+  // Which tests are red, comma-joined, read off the RAW suite output and not off
+  // `baseline.output`: pytest prints its `FAILED <path>::<test>` lines in the
+  // short summary, which is BELOW the block `failingBlock` cuts, so the block a
+  // reader quotes does not carry them. `unparsed` when no line names one — a red
+  // suite that printed no `FAILED` line is still a blind sensor, and saying the
+  // paths could not be read beats naming nothing at all.
+  let baselineFailing = 'unparsed'
+  const failingPaths = (raw) => {
+    const paths = String(raw ?? '').split('\n')
+      .map((line) => /^FAILED (.+?)::/.exec(line))
+      .filter(Boolean).map((m) => m[1])
+    return paths.length ? paths.join(', ') : 'unparsed'
+  }
+  // The one sentence a red BASE owes its reader, shared by the judgment call
+  // here and the wave's park detail below (#871 decision 2). It leads with the
+  // prefix `baseline: the suite is RED on BASE` byte for byte — two sims pin
+  // that with `startsWith` — and then says the thing the prefix alone does not:
+  // the suite cannot be read for this run, and these are the tests that are red.
+  // The block comes last, where it has always been.
+  const redBaselineHead = (output) =>
+    'baseline: the suite is RED on BASE — the sensor is blind for this run; failing: ' +
+    baselineFailing + ' (' + output + ')'
+  const settleBaseline = (passed, output, raw) => {
     baseline = { passed, output }
     log('baseline: ' + (passed ? 'green' : 'RED') + ' on ' + baseSha)
     if (!passed) {
-      judgmentCalls.push('baseline: the suite is RED on BASE (' + output +
-        ') — the red this run inherited, not the diff\'s: the run parks at the ' +
+      baselineFailing = failingPaths(raw)
+      judgmentCalls.push(redBaselineHead(output) +
+        ' — the red this run inherited, not the diff\'s: the run parks at the ' +
         'wave barrier at the latest, and no reconcile is dispatched at it')
     }
   }
@@ -1271,12 +1332,12 @@ export async function runEngine({
     // `baseline.output` below is quoting.
     (r) => settleBaseline(r.code === 0, r.code === 0
       ? tail(r.stdout + r.stderr, 2000)
-      : failingBlock(r.stdout + r.stderr)),
+      : failingBlock(r.stdout + r.stderr), r.stdout + r.stderr),
     // A suite the driver could not even start is not a green BASE: the run has
     // no evidence its repository was passing, and the whole point of reading the
     // baseline first is to refuse to attribute a red to a diff on a guess.
     (e) => settleBaseline(false, 'the baseline suite could not be run on BASE: ' +
-      String((e && e.message) || e)))
+      String((e && e.message) || e), ''))
 
   // ── dependency cascade (ported) ────────────────────────────────────────────
   const blockedByDep = new Set()
@@ -2519,6 +2580,44 @@ export async function runEngine({
     // never reaches this line, because the wave barrier above parks the run
     // before a candidate is ever folded.
     await baselineSettled
+    // ── the unattributed red (#871 decisions 1 and 4) ────────────────────────
+    // A green baseline makes every candidate red the fold's own; it does not
+    // make it any TASK's. When the paths that went red are named by no task of
+    // this wave — not in its `files`, not in its `proofTests` — there is no
+    // implementer to hold to it and no reconcile agent who could be told what
+    // to repair: the candidate is adopted exactly as a green one is, and the
+    // red is RECORDED, one judgment-call line per path, so the run keeps going
+    // with the fact on the record rather than parking on someone else's test.
+    // Attribution is string equality on the path the record spelled — no
+    // globbing, no resolving — and it takes the WHOLE wave (WAVES[waveIdx]),
+    // not just the tasks that merged: a task whose review failed still names
+    // the files it was given. One attributed path in the list is enough to
+    // send the candidate down the reconcile route below, as is an output that
+    // named no path at all (a bare non-zero exit, a dead install).
+    const failing = failingTestPaths(suite.stdout + suite.stderr)
+    const claimed = new Set()
+    for (const t of (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : waveTasks)) {
+      for (const key of ['files', 'proofTests']) {
+        for (const p of (Array.isArray(t && t[key]) ? t[key] : [])) {
+          if (typeof p === 'string' && p) claimed.add(p)
+        }
+      }
+    }
+    const unattributed = failing.filter((p) => !claimed.has(p))
+    if (failing.length && unattributed.length === failing.length) {
+      await git(['reset', '--hard', candidate], integ)
+      await emitWeave(candidate)
+      frontier.push(entry())
+      for (const p of unattributed) {
+        judgmentCalls.push('unattributed red: ' + p + ' went red on wave ' +
+          waveNumber + '\'s fold; no task names it')
+      }
+      log('wave ' + waveNumber + ' candidate suite RED in ' + unattributed.join(', ') +
+        ' — no task names it: adopted and recorded, no reconcile dispatched')
+      return { status: 'MERGED', headSha: candidate,
+               suite: { passed: false, unattributed,
+                        output: tail(suite.stdout + suite.stderr) } }
+    }
     for (let attempt = 1; attempt <= 2 && suite.code !== 0; attempt++) {
       log('wave ' + waveNumber + ' candidate suite RED — reconcile attempt ' + attempt)
       let rec
@@ -2625,8 +2724,8 @@ export async function runEngine({
       if (t && typeof t.unref === 'function') t.unref()
     })])
   const parkOnRedBaseline = async (w, prevHead, results, branches) => {
-    const detail = 'baseline: the suite is RED on BASE (' + baseline.output +
-      ') — this run inherited that red: no candidate was tested and no reconcile ' +
+    const detail = redBaselineHead(baseline.output) +
+      ' — this run inherited that red: no candidate was tested and no reconcile ' +
       'was dispatched against it'
     // The branch never moved this wave — the fold has not run — so this is a
     // restoration, not a rollback: the same one the TEST_FAILED path below the
@@ -2650,6 +2749,10 @@ export async function runEngine({
   }
 
   let lastSuite = null
+  // Every path a wave adopted red because no task of that wave named it, in
+  // wave order and once each — `lastSuite` carries only the LAST wave's, and
+  // the report owes the reader the run's whole list.
+  const unattributedReds = []
   for (let w = 0; w < WAVES.length; w++) {
     phase(waveLabel(w))
     noteFailures()
@@ -2812,10 +2915,20 @@ export async function runEngine({
       headSha: merge.headSha,
       detail: merge.detail,
       branches: mergeable.map((r) => r.task),
+      // #871 — the adopted-red row carries the suite that made it one. A
+      // `MERGED` row whose suite is `passed: false` is a reading no other row
+      // has, so the paths that bought the adoption travel with it. Green rows
+      // are unchanged: the run's suite is `tests`, and a green tail repeated
+      // per wave records nothing a reader did not already have.
+      ...(merge.suite && Array.isArray(merge.suite.unattributed)
+        ? { suite: merge.suite } : {}),
     })
     if (merge.status === 'MERGED') {
       waveBaseSha = merge.headSha
       lastSuite = merge.suite
+      for (const p of ((merge.suite && merge.suite.unattributed) || [])) {
+        if (!unattributedReds.includes(p)) unattributedReds.push(p)
+      }
       // The suite just ran in this clone; sweep its cache litter before any
       // integrated `Run:` reads the tree. Once per wave that reaches here, and
       // ahead of the loop — so every proof below sees the same swept tree.
@@ -3040,9 +3153,13 @@ export async function runEngine({
     .concat(planDeferred)
 
   // tests: the DRIVER's own suite run on the adopted tree (was: the critic's).
+  // `unattributed` is always present — `[]` on a green run, on a run that
+  // merged nothing, and on one whose reds were every bit its tasks' own.
   const tests = lastSuite
-    ? { command: testCmd, passed: lastSuite.passed, output: lastSuite.output }
-    : { command: testCmd, passed: false, output: 'not run — no wave merged' }
+    ? { command: testCmd, passed: lastSuite.passed, output: lastSuite.output,
+        unattributed: unattributedReds }
+    : { command: testCmd, passed: false, output: 'not run — no wave merged',
+        unattributed: unattributedReds }
 
   const mergedBranches = new Set()
   for (const wm of waveMerges) if (wm && wm.status === 'MERGED') for (const b of (wm.branches || [])) mergedBranches.add(b)

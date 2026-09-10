@@ -33,10 +33,11 @@ node fleet/doctor.mjs --json                                              # whic
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one run on the fleet
 ```
 
-- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on all four skills (`ultrapowers`,
-  `ultrawrite`, `ultralearn`, `ultradocket`), prints skill/role prose sizes (report only, gates
-  nothing), then `pytest tests/ -n auto` (which bridges every `fleet/tests/test_*.mjs`, the
-  engine sims included).
+- **There is no CI** (#871 decision 3, 2026-09-10) — nothing runs on push or pull request:
+  the fleet run's gate is the check (`ultra_gate.py`, reading the suite result the engine
+  recorded), a PR merges from the sandbox once that gate is green, and a release's check is
+  the confidence run on the merged engine. The command above is the same suite by hand; it
+  bridges every `fleet/tests/test_*.mjs`, the engine sims included.
 
 ## Layout
 
@@ -249,9 +250,15 @@ structural dozen).
   release), patch bumps otherwise — the 0.3.5 lift stayed a patch on the operator's call ("we're
   still fixing the features that .3 was meant to deliver"). A release bumps **both** `plugin.json`
   **and** `marketplace.json` to the same value — `plugin.json` wins silently if they drift, and
-  they have. Release commit `chore(release): 0.0.x — …`, landed through a PR with `gh pr merge --auto --squash` so the required check runs in front of it (#680, since 0.3.18), then `gh release create v0.x.y`. **After pushing a
-  release, confirm CI on `main` is green (`gh run list --branch main --limit 1`)** — main sat red
-  across two releases (0.2.12→0.2.13) and nothing surfaced it until PR #161.
+  they have. Release commit `chore(release): 0.0.x — …`, landed through a PR merged with
+  `gh pr merge <n> --squash` once the confidence run on the merged engine is green — there is no
+  required check left to wait in front of it (#871 decision 3, 2026-09-10) — then
+  `gh release create v0.x.y`.
+- **The depth-1 guard retired with CI** — #712 deleted the engine's depth-1 rehearsal and left
+  the workflow's default-depth checkout standing in for it, the one thing that would fail a
+  history-coupled test. That premise died with the workflow (2026-09-10, #871 decision 13):
+  since 0.3.5 every fleet clone is the sandbox's own full clone at BASE and no live path runs
+  git against a shallow boundary, so there is no depth-1 case left to rehearse.
 - **The verification periphery is ordinary code (2026-09-10, #871).** The gate scripts
   (`gate_check.py`, `ultra_gate.py`) and the compiler's diagnostic vocabulary are edited
   like anything else here — no eval-measured regression is owed in front of a change.

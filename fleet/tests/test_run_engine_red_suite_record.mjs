@@ -101,9 +101,16 @@ const scenario = (name, files = {}) => {
   return { repo, runDir: path.join(dir, 'run') }
 }
 
+// `proofTests` names the very path the fixture output above fails —
+// `tests/test_fleet_suite.py::test_fleet_mjs[test_sim.mjs]` is the bridge's
+// spelling of `fleet/tests/test_sim.mjs` — so this task NAMES the red and the
+// candidate stays on the reconcile route (#871). A red no task of the wave
+// names is adopted and recorded instead, and the scenarios below are about the
+// records a reconciled and a parked run leave.
 const task = (id) => ({
   id, title: 'task ' + id, files: [id + '.txt'], tier: 'standard', review: 'lean',
-  writes: [id + '.txt'], commutes: [], body: 'sim task ' + id,
+  writes: [id + '.txt'], proofTests: ['fleet/tests/test_sim.mjs'], commutes: [],
+  body: 'sim task ' + id,
 })
 
 // ── (i) BASE itself red → legs (a) and (b) [M1, M2] ──────────────────────────
@@ -153,11 +160,16 @@ const task = (id) => ({
     ' — a tail of any length the engine took at BASE is all padding')
 
   // ── leg (b): the judgment call and the critic's brief [M2] ────────────────
+  // The opening is pinned by its prefix alone — `baseline: the suite is RED on
+  // BASE` — and not by the punctuation that follows it: the sentence continues
+  // with the blind-sensor clause and the failing paths before it quotes the
+  // block, and this leg is about WHICH text the block is (a block, not a tail),
+  // not about the words that introduce it.
   const redCalls = report.judgmentCalls.filter(
-    (j) => String(j).startsWith('baseline: the suite is RED on BASE ('))
+    (j) => String(j).startsWith('baseline: the suite is RED on BASE'))
   assert.equal(redCalls.length, 1,
     'leg (b) [M2]: exactly one judgmentCalls entry starts with "baseline: the suite is RED ' +
-    'on BASE (" — ' + JSON.stringify(report.judgmentCalls))
+    'on BASE" — ' + JSON.stringify(report.judgmentCalls))
   assert.ok(redCalls[0].includes(LEG_LINE),
     'leg (b) [M2]: that judgment call CONTAINS the leg-naming line — ' +
     JSON.stringify(redCalls[0]))

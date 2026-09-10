@@ -125,9 +125,11 @@ test('a one-task engine run\'s report has no acceptance key, and keeps tests  [M
     'object. The engine was handed acceptance: { mode: "suite" } in its args and carried none of ' +
     'it out: ' + JSON.stringify(report.acceptance))
 
-  assert.deepEqual(Object.keys(report.tests).sort(), ['command', 'output', 'passed'],
-    'leg (a) [M1]: and `tests` still carries exactly command, passed and output — the driver\'s own ' +
-    'suite run on the adopted tree is what the record keeps: ' + JSON.stringify(report.tests))
+  assert.deepEqual(Object.keys(report.tests).sort(),
+    ['command', 'output', 'passed', 'unattributed'],
+    'leg (a) [M1]: and `tests` still carries exactly command, passed, output and (#871) the ' +
+    'run\'s unattributed reds — the driver\'s own suite run on the adopted tree is what the ' +
+    'record keeps: ' + JSON.stringify(report.tests))
   assert.equal(report.tests.command, 'bash check.sh',
     'leg (a) [M1]: tests.command is the suite command the run was given')
   assert.equal(report.tests.passed, true,

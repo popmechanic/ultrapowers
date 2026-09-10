@@ -190,11 +190,16 @@ ready on PASS or on the two-move rule's approval, a draft carrying the gate
 receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so
 the PR is the whole index of the run. `pr` and `prAuthor` on the status page are
 the answer's `html_url` and `user.login`.
-A ready PR merges itself: the sandbox polls its head's check runs and
-squash-merges it once every check is green, unless the launch said `--hold`; a
-failed check, thirty minutes of pending, or a refused merge leaves it open for
-you, and `status.json`'s `merged` cell says which. A draft is yours to merge or
-close. A squash-merge takes the plan's title as its subject, because the fold
+A ready PR merges itself, on the run's own evidence and nobody else's: the
+publish fold rebased the branch onto the default branch's tip and the gate then
+greened the target's suite on that tree, so the sandbox squash-merges once its
+gate is green and that tip is still the base's — it asks the target for no
+second opinion. A base that moved buys another fold rather than another ask; a
+refused merge, `--hold` on the launch line, or a gate whose suite went red on a
+path no task owns leaves the PR open for you, and `status.json`'s `merged` cell
+says which. A held PR's card carries a `## Held` section: what went red, the
+`gh pr merge` line that finishes it, and the path to fix. A draft is yours to
+merge or close. A squash-merge takes the plan's title as its subject, because the fold
 commit is titled from the plan's H1 and `frontier fold wave <n>` rides its body.
 A `prAuthor` that is the installation bot rather than you means
 `--act-as-user` did not take — link your GitHub account on exe.dev's
@@ -267,11 +272,10 @@ A park is a verdict, not a dead end. Which of the two shapes below applies is
 read off the finding, and both leave the parked branch where it is.
 
 **The finding is fixable.** Ack it and merge the run by hand: `gh pr ready <n>`,
-then `gh pr merge <n> --squash` — not `gh pr merge <n> --auto`, which GitHub
-refuses on a pull request already in clean status ("Pull request is in clean
-status"). The finding is then fixed by its own run on main, a one-task plan
-whose Claim is the finding. That is the shape run-54 was re-driven by on
-2026-09-08, as run-57: ready, squash-merge, then a plan for the finding.
+then `gh pr merge <n> --squash`. The finding is then fixed by its own run on
+main, a one-task plan whose Claim is the finding. That is the shape run-54 was
+re-driven by on 2026-09-08, as run-57: ready, squash-merge, then a plan for the
+finding.
 
 **The finding is not fixable.** The run is closed — its pull request closed, its
 integration branch left to the retire sweep (`node fleet/retire.mjs --target
@@ -452,10 +456,10 @@ behind only what it read.
 The `publishing` state is the sandbox asserting about itself: the engine
 service is inactive before anything is pushed. That guards against an
 accident, not a hostile model. What bounds a hostile model is mechanical: one
-repository, six hours, a pull request whose merge waits on the target's own
-checks, and `--hold` to keep a human at the merge button. Credentials lapse on
-wall clock with nothing to revoke. The
-Claude token is on no VM and in no argv.
+repository, six hours, a pull request the sandbox merges only when its own gate
+is green and main has not moved, and `--hold` to keep a human at the merge
+button. Credentials lapse on wall clock with nothing to revoke. The Claude
+token is on no VM and in no argv.
 
 ## Rollback
 

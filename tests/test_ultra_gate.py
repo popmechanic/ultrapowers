@@ -86,7 +86,7 @@ def test_envelope_unwrap_and_pass(tmp_path):
     assert out["branch"] == "ultra/int"
     saved = repo / ".claude/ultrapowers/run-t1/report.json"
     assert json.loads(saved.read_text())["integrationBranch"] == "ultra/int"
-    assert out["suite"] == {"passed": True, "output": "ok"}
+    assert out["suite"] == {"passed": True, "unattributed": [], "output": "ok"}
     assert "wfRuns" not in out
 
 
@@ -141,7 +141,7 @@ def test_recorded_red_suite_forces_blocked(tmp_path):
     out = json.loads(r.stdout)
     assert r.returncode == 1
     assert out["verdict"] == "BLOCKED"
-    assert out["suite"] == {"passed": False, "output": "ok"}
+    assert out["suite"] == {"passed": False, "unattributed": [], "output": "ok"}
     saved = json.loads((repo / ".claude/ultrapowers/run-t1/gate-receipt.json")
                        .read_text())
     assert saved["verdict"] == "BLOCKED"
