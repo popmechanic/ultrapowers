@@ -177,9 +177,12 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   fold); #485 *The Record* (re-chartered 2026-09-04: the TinyBase store's deletion at 0.3.5 was
   approved inside #589 but never argued on its own, so the destination is now *what is the
   live multi-run record — git, a hub (#601 prototype), or a CRDT again — and what does each
-  delete?*); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and
-  §Rules before any kernel work; never patch `skills/ultrapowers/kernel/vendor/manyana.py`, it
-  is sha-pinned on purpose). **One piece moved out of #360 by One Driver Amendment 9
+  delete?*); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
+  licenses** (tier 2, the cross-run fold, shipped at #715; tier 1 shipped as shadow seeding only;
+  every kernel-seen join after run-44 was line-disjoint; re-charter on the first publish fold with a
+  conflict; #359 #665 #832 #728 keep the `merge-frontier` label). Its standing rules: read its
+  §Ground truth and §Rules before any kernel work; never patch
+  `skills/ultrapowers/kernel/vendor/manyana.py`, it is sha-pinned on purpose. **One piece moved out of #360 by One Driver Amendment 9
   (2026-08-29): the kernel's INPUT SHAPE** — it takes patches against BASE instead of
   `--branch <task>=<branch>:<sha>`, so no worker needs shared refs and the worktree-vs-clone
   question dissolves. Semantics, layering and the sha-pin are untouched and still #360's.
@@ -223,7 +226,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   `skills/ultrawrite/SKILL.md`, `test_publish_fold.mjs`, `CONTRACT.md` + `compile_plan.py`) all folded
   green with zero conflicts, which met the pre-registered condition and retired the earlier rule
   ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one of those
-  joins was line-disjoint, so the resolver's only real fold is still run-36 (2 misses, 2026-09-07);
+  joins was line-disjoint; the resolver's only real folds are run-36 (2 resolvers, merged) and run-44
+  (4 resolvers, 2 misses, suite red, caught), both 2026-09-07 — 6 dispatches, 2 misses, both caught;
   the next drain that produces a conflict is the resolver's measurement, not a reason to serialize.
   Allocated vCPU stays over-committable (48 on a 16-vCPU plan during that drain), so contention, not
   allocation, bounds concurrent runs.
