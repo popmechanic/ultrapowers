@@ -44,3 +44,13 @@
 {"kind":"driver:integrated-check","cmd":"node --check fleet/run-engine.mjs","exit":0,"minor":false,"wave":1,"id":"01M270SNB80000XBQWWG2V8X0A","ts":1789089600872}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M270SNB8000191CXA2XAV5FT","ts":1789089600872}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"dcce8455-7365-450b-87ee-9c2c766aee5f","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-94/clones/integration","model":"opus","id":"01M270SNB90000C8PHS0QE8140","ts":1789089600873}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"dcce8455-7365-450b-87ee-9c2c766aee5f","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3157,"output":7561,"cacheRead":665889,"cacheCreation":73928,"costUsd":1.2770344999999999,"models":["claude-opus-5"]},"id":"01M270WRJ500002WMJXGQ7SE0A","ts":1789089702469}
+{"kind":"transcript:slice","label":"integration","sessionId":"dcce8455-7365-450b-87ee-9c2c766aee5f","bytes":11399,"id":"01M270WRJJ0000DQ3KY89FZE6Z","ts":1789089702482}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M270WRK40000S3YRHGMQYY3J","ts":1789089702500}
+{"kind":"driver:stage","stage":"finalize","id":"01M270WRNX0000Q2SE02ZA2560","ts":1789089702589}
+{"kind":"driver:stage","stage":"gate","id":"01M270WRQD0000KB0J7Q2PB0MX","ts":1789089702637}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M270WRTE00000QC5J0EPBYRT","ts":1789089702734}
+{"kind":"driver:stage","stage":"approve","id":"01M270WRTE0001TZ9ZJWMGQGMR","ts":1789089702734}
+{"kind":"driver:approved","stamp":"run-94","integrationBranch":"ultra/integration-run-94","id":"01M270WRW60000JQ8DT901KENG","ts":1789089702790}
+{"kind":"run:open","runId":"run-94","base":"0e1a4f00b71083503641452bf7cbe1484a27f2d5","source":"fleet/publish-fold.mjs","id":"01M270WS470000RKM4GXQPTPV1","ts":1789089703047}
+{"kind":"driver:publish-fold","run":"94","attempt":"1","base":"0e1a4f00b71083503641452bf7cbe1484a27f2d5","tip":"4dd082b58cd83040f04dfa8f926d6aa4b23737fb","candidate":"93080ae037c2bca97589576a3143dbcc47aa2e22","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M2719DCW0000VS0EFV704VPM","ts":1789090117020}

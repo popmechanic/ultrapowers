@@ -1,0 +1,129 @@
+{
+  "integrationBranch": "ultra/integration-run-94",
+  "baseSha": "0e1a4f00b71083503641452bf7cbe1484a27f2d5",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "6b3b9b07dcf02cdce06b44f33ac1a8d05beb91ce",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-94/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: footprint \u2014 the change necessarily edits two files the task did not declare and no Proof `Run:` covers: `fleet/tests/test_run_engine_pre_review.mjs` (its ub1 and d2 fixtures are single-/disjoint-task waves, so under M2 they lose the integrated `Run:` execution that legs [M3]/[M2] read; the diff gives each fixture a second task that only DECLARES the partner's path, so the patches stay disjoint and every `Check:` reading is unchanged, and narrows `driver:check-run` to `e.task === 'T1'` so the added task's events do not pollute the deepEqual) and `tests/test_roles_run_evidence.py` (it pinned the exact strings `{ task, cmd, exit, stdout }` and `blocking completeness finding` in the report-format row that M6 requires rewritten; the diff replaces them with the `joined`/`with` shape and adds a negative assertion that `blocking completeness finding` is gone \u2014 a strengthening, not a loosening). Both edits are the right ones and are disclosed in comments, and REFEREE already recorded both paths; what is short is the task's own Files list and Proof, which named `Run:` lines for the four other sibling sims but not for these two. Nothing in RUN/EXAM/CHECK evidence executes either file \u2014 the committed suite on the adopted tree (the stated Acceptance, which REFEREE marks settled) is what would settle them.; `skills/ultrapowers/references/report-format.md`'s `waveMerges` row still enumerates the row's fields as \"`wave`, `status`, `headSha`, `command`, `detail`, and `branches`\" and does not name the new `joined` array the engine now pushes onto every such row (M1). A reader can reach it from the rewritten `integratedRuns` row, which points at `waveMerges[w].joined`, so this blocks nothing \u2014 and there is precedent for the drift, since `suite` (#871) is unlisted there too. M6 only demands the `integratedRuns` row and `fleet/roles/critic.md`, so this is advisory. If fixed, the added clause must not contain the literal `` `integratedRuns` ``: both `fleet/tests/test_run_engine_joined_proofs.mjs` leg (f) and `tests/test_roles_run_evidence.py::test_the_integrated_runs_row_is_one_row` require exactly one line in the file carrying that literal.; Scope footprint: the diff edits two paths the task's FILES list does not carry \u2014 `fleet/tests/test_run_engine_pre_review.mjs` (leg (d2) and the ULTRA_BASE leg both pinned an integrated `Run:` execution for fixtures whose single/disjoint tasks now join nothing, so a second task is added to each to restore the join) and `tests/test_roles_run_evidence.py` (its BASE assertions pin the `integratedRuns` row's old item shape `{ task, cmd, exit, stdout }` and the literal `blocking completeness finding`, both of which M6 requires the row to stop saying). Both edits are forced by M2 and M6 and are minimal and disclosed in comments \u2014 the pre_review hunks move only the fixtures' declared `files`/stubs, and the check-run assertion is narrowed to `e.task === 'T1'` because the added T2 now emits its own check-run events. The defect is the plan's FILES list, which enumerated the sims to rewrite (`integrated_runs`, `integrated_clean`, `state_exams`, `proof_runs`) and explicitly cleared `test_run_main.mjs` but missed these two; no edit inside this tree's declared scope answers it. The driver already recorded both as minor footprint lines.; unverified: `fleet/tests/test_run_engine_pre_review.mjs` and `tests/test_roles_run_evidence.py` are changed by this patch but appear in no evidence block here \u2014 they are not among the Proof's four `Run:` lines, not the exam, and not a `Check:`. Their greenness rests entirely on the driver's integrated-suite run on the adopted tree (which the REFEREE marks settled as the driver's own step). What would settle it at this review's granularity: `node fleet/tests/test_run_engine_pre_review.mjs` and `pytest tests/test_roles_run_evidence.py` added as `Run:` lines. Two specific risks the suite is the only reader of: in the pre_review d2 leg both A and B now declare `shared.txt` in `files` (and, if `mkTask` mirrors `files` into `writes`, both would also claim to write it), and the ULTRA_BASE leg's added T2 changes the set of `driver:check-run` events the leg's other assertions read.; Error path: `patchPaths` (fleet/run-engine.mjs, new) swallows every `readFileSync` failure into `return []`. The empty/absent-patch case that catch exists for is legitimate, but a patch file that exists and cannot be read silently narrows the task's touch set to its declared `files`, which can silently drop a join and skip an integrated `Run:` the wave needed \u2014 the same silence as a genuinely disjoint task. Worth one `log()` when `patchFile` is a non-empty string and the read throws, so a missed join is distinguishable from an absent one in the run log.; path outside FILES: `fleet/tests/test_run_engine_pre_review.mjs`; path outside FILES: `tests/test_roles_run_evidence.py`; concern: out-of-FILES: `fleet/tests/test_run_engine_pre_review.mjs` \u2014 two of its fixtures are single-task or disjoint waves whose assertions require an integrated `Run:` execution (the `[M4]` critic-prompt leg and the `ULTRA_BASE` leg (f)), which #887 now re-runs nothing for. Both were joined through DECLARED `files` only (a sibling task that declares the same path without writing it), so every patch, `Check:` reading and evidence-block assertion in that file is unchanged; leg (f)'s `driver:check-run` filter was narrowed to task `T1` now that a second task runs the same checks. The file is run as a subprocess by `test_run_engine_proof_runs.mjs` leg (f), which is one of this task's Proof `Run:` lines, so it could not be left red.; concern: out-of-FILES: `tests/test_roles_run_evidence.py` \u2014 its two `integratedRuns`-row pins required the literal `blocking completeness finding` and the item shape `{ task, cmd, exit, stdout }`, which Proof leg (f) [M6] forbids and supersedes. They now pin `{ task, cmd, exit, stdout, joined, with }`, `not a blocking`, `reported`, `pair`, and assert `blocking completeness finding` is ABSENT from the row. Its critic.md paragraph pin is unchanged and still passes \u2014 the new sentences were added inside the same paragraph.; concern: plan-defect: the task's Context says to keep critic.md's authoritative sentence and add that a red there is \"reported, not a block\", but the `integratedRunEvidenceBlock` text the critic reads does not itself name the pair (the Context explicitly leaves that function's rendering alone, and its opening sentence is pinned verbatim by three sims). The paragraph therefore says the RUN reports the red with the pair named \u2014 the judgment call quoting the command, the shared path and the other task \u2014 rather than claiming the block prints it. Rendering `joined`/`with` into the block would be a larger, separately-pinned change.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-94/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1619 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1619 passed, 5 warnings in 392.84s (0:06:32) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_integrated_clean.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "node --check fleet/run-engine.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 406504,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 4,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 395.37s (0:06:35) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "c442b3b7962b7f27fd0e9872907bca54d381acfe",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-94/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-94/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.291,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: `fleet/tests/test_run_engine_pre_review.mjs` \u2014 two of its fixtures are single-task or disjoint waves whose assertions require an integrated `Run:` execution (the `[M4]` critic-prompt leg and the `ULTRA_BASE` leg (f)), which #887 now re-runs nothing for. Both were joined through DECLARED `files` only (a sibling task that declares the same path without writing it), so every patch, `Check:` reading and evidence-block assertion in that file is unchanged; leg (f)'s `driver:check-run` filter was narrowed to task `T1` now that a second task runs the same checks. The file is run as a subprocess by `test_run_engine_proof_runs.mjs` leg (f), which is one of this task's Proof `Run:` lines, so it could not be left red.",
+    "task 1: out-of-FILES: `tests/test_roles_run_evidence.py` \u2014 its two `integratedRuns`-row pins required the literal `blocking completeness finding` and the item shape `{ task, cmd, exit, stdout }`, which Proof leg (f) [M6] forbids and supersedes. They now pin `{ task, cmd, exit, stdout, joined, with }`, `not a blocking`, `reported`, `pair`, and assert `blocking completeness finding` is ABSENT from the row. Its critic.md paragraph pin is unchanged and still passes \u2014 the new sentences were added inside the same paragraph.",
+    "task 1: plan-defect: the task's Context says to keep critic.md's authoritative sentence and add that a red there is \"reported, not a block\", but the `integratedRunEvidenceBlock` text the critic reads does not itself name the pair (the Context explicitly leaves that function's rendering alone, and its opening sentence is pinned verbatim by three sims). The paragraph therefore says the RUN reports the red with the pair named \u2014 the judgment call quoting the command, the shared path and the other task \u2014 rather than claiming the block prints it. Rendering `joined`/`with` into the block would be a larger, separately-pinned change.",
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_run_engine_joined_proofs.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 1 / Context: the new report field `waveMerges[].joined` (required by M1 and written at fleet/run-engine.mjs:2990) is not documented in the `waveMerges` row of skills/ultrapowers/references/report-format.md:106, which still enumerates only `wave`, `status`, `headSha`, `command`, `detail`, `branches`. The rewritten `integratedRuns` row (same file, line 102) forward-references it \u2014 \"read it beside `waveMerges` and its `joined`\" \u2014 so a reader following that pointer lands on a row that never mentions the field. M6 only constrains the `integratedRuns` row and the critic paragraph, both of which are correct, so this is an issue worth filing rather than a merge stopper."
+    }
+  ],
+  "blockedWaves": []
+}

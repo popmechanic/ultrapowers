@@ -1,0 +1,125 @@
+diff --git a/fleet/claude-token.mjs b/fleet/claude-token.mjs
+index b7e8e7b42cd5a198c848bf06cd24d358be9bac4c..a4e73fca863f198ae32cdfd0fb975fad2c52a5d9 100644
+--- a/fleet/claude-token.mjs
++++ b/fleet/claude-token.mjs
+@@ -7,7 +7,7 @@
+ //                                         the same, with no question at the terminal:
+ //                                         the process polls the clipboard until the
+ //                                         copied `code#state` carries THIS login's state
+-//   node fleet/claude-token.mjs refresh   rotate before a run when < 30 min remain
++//   node fleet/claude-token.mjs refresh   rotate before a run when < 4 h remain
+ //   node fleet/claude-token.mjs status    when the current access token expires
+ //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
+ //                                         its access token is still fresh (`--json`)
+@@ -59,7 +59,16 @@ export const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', acc
+ export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
+ export const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
+ export const LOCK_STALE_MS = 2 * 60 * 1000
+-export const REFRESH_AHEAD_MS = 30 * 60 * 1000
++// A launch rotates the access token when fewer than this remain. Four hours,
++// not thirty minutes: the token lives eight hours and nothing refreshes it
++// mid-run, so a run launched with thirty-one minutes left dies at minute
++// thirty-one with a 401 to whichever worker is mid-call. Run-92
++// (2026-09-11 00:28 UTC) did exactly that on the token run-88's launch had
++// minted at 16:28; the five launches between them each found more than
++// thirty minutes remaining and rotated nothing. Four hours is the longest
++// run on record (about ninety minutes) with room to spare, and a rotation is
++// one refresh grant behind the single-flight lock — cheap.
++export const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
+ // `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
+ export const CLIPBOARD_POLL_MS = 2 * 1000
+ export const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
+diff --git a/fleet/tests/test_claude_token.mjs b/fleet/tests/test_claude_token.mjs
+index 3edb86bde3870441c1c28923af322c40cb543ef6..de9b3e4a1e1c5284cc0a3c945a9197473faa9de4 100644
+--- a/fleet/tests/test_claude_token.mjs
++++ b/fleet/tests/test_claude_token.mjs
+@@ -223,7 +223,7 @@ await leg('login: a failed exchange quotes the status and writes nothing', async
+   assert.equal(h.calls.lobby.filter((c) => !c.verb.startsWith('integrations list')).length, 0)
+ })
+ 
+-await leg('refresh: fresh for more than 30 min → nothing touched', async () => {
++await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → nothing touched', async () => {
+   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
+   const r = await refresh(h.deps)
+   assert.equal(r.refreshed, false)
+@@ -231,7 +231,7 @@ await leg('refresh: fresh for more than 30 min → nothing touched', async () =>
+   assert.equal(h.calls.lobby.length, 0)
+ })
+ 
+-await leg('refresh: inside 30 min → rotate, store the NEW triple before the edge, then edit', async () => {
++await leg('refresh: inside REFRESH_AHEAD_MS (4 h) → rotate, store the NEW triple before the edge, then edit', async () => {
+   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
+   const order = []
+   const origWrite = h.deps.keychainWrite; h.deps.keychainWrite = (name, v) => { order.push('keychain'); return origWrite(name, v) }
+@@ -273,7 +273,10 @@ await leg('installBearer: a failing lobby verb surfaces the lobby\'s own words w
+ })
+ 
+ await leg('refresh is single-flight: the record is read under the lock, so a queued sibling finds the rotated triple and does nothing', async () => {
+-  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
++  // The minted token lives eight hours here, as the real one does: with a
++  // four-hour refresh-ahead window, a one-hour fake would still be "inside
++  // the window" after the first rotation and the sibling would rotate again.
++  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 }, expiresIn: 8 * 3600 })
+   let held = 0; const trace = []
+   h.deps.lock = () => { held += 1; trace.push('lock'); return () => { held -= 1; trace.push('unlock') } }
+   const origRead = h.deps.keychainRead
+@@ -281,7 +284,7 @@ await leg('refresh is single-flight: the record is read under the lock, so a que
+   const first = await refresh(h.deps)
+   const second = await refresh(h.deps)
+   assert.equal(first.refreshed, true)
+-  assert.equal(second.refreshed, false, 'the sibling sees the rotated triple (fresh for 60 min) and does nothing')
++  assert.equal(second.refreshed, false, 'the sibling sees the rotated triple (fresh for 8 h) and does nothing')
+   assert.equal(h.calls.fetch.length, 1, 'one refresh grant, not two')
+   assert.deepEqual(trace, ['lock', 'unlock', 'lock', 'unlock'])
+   assert.equal(held, 0)
+@@ -310,7 +313,7 @@ await leg('the real lock: two processes, one refresh grant', async () => {
+     deps.keychainRead = () => fs.readFileSync(${JSON.stringify(rec)}, 'utf8')
+     deps.keychainWrite = (name, v) => { fs.writeFileSync(${JSON.stringify(rec)}, v); return true }
+     deps.lobby = (verb) => ({ code: 0, out: verb.startsWith('integrations list') ? JSON.stringify({ integrations: [{ name: 'claude-max' }] }) : 'ok' })
+-    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 3600 }) } }
++    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 8 * 3600 }) } }
+     deps.log = () => {}
+     const r = await refresh(deps); process.stdout.write(JSON.stringify(r))
+   `
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 6ae1d27de003b15234edc7d79e28e3e3999339d3..7d3b0441bd58670a6ecd2a295cb480ace137e4cd 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -24,6 +24,14 @@ said it to you and `(quoted from #NNN)` when an issue already carries that sente
+ verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
+ and `## Global Constraints`.
+ 
++Directly under that `**Claim:**` line — the next line, no blank between — the plan carries
++one `**Summary:**` paragraph: three sentences in the operator's register saying what this
++is, why it exists and how it benefits the user. The author writes those sentences and the
++operator confirms them in the same touch as the Claim, never a second one, and the pull
++request the run opens quotes them verbatim, so what a reader meets is what the operator
++signed. It is one paragraph running to the next blank line, no markdown inside; like
++`**Closes:**` it is free prose to the compiler — nothing parses it.
++
+ Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
+ tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
+ Proof `Test:` paths (`npx vitest run {paths}`). Without it the compiler derives each task's
+@@ -185,6 +193,13 @@ rejects it. Quote the sentence that says what should be true instead.
+ that you couldn't before?"* — offering 2–3 pre-chewed do:/see: options via
+ AskUserQuestion. The operator's pick plus their edits is the claim.
+ 
++**The summary rides with the claim.** Draft the three `**Summary:**` sentences yourself —
++what this is, why it exists, how it benefits them — in the operator's register, off the
++issue or the conversation, and put that draft to the operator inside the *same*
++AskUserQuestion that carries the Claim: one touch, not two. The operator adjudicates and
++never authors: their edits are the summary. A summary written in the technical register —
++a file name, a function name, a sha — is a defect you fix before the gate.
++
+ Aim claims where the suite is structurally blind: integration seams, visual states, CLI
+ output, error-path wording. A claim that only restates what a test already asserts buys
+ nothing.
+@@ -421,6 +436,8 @@ author's own to check — nothing prints it.
+   issue. Every task Claim is either the operator's words with a provenance tag or
+   `(derived)` under the plan-level Claim, paired with a machine restatement at the same
+   layer, and its gate verdict is recorded and fresh.
++- The plan carries one `**Summary:**` paragraph of three sentences directly under that
++  Claim, in the operator's register — what this is, why it exists, how it benefits them.
+ - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
+   task's own writes; every fence sits in Proof.
+ - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
