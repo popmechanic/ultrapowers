@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "6d90b23ddc8a0ceb8d9947205d8c90bcf6de2fbde947908ef4c8b63490f2fddc",
+      "verdict": "pass",
+      "reason": "Every clause is falsified by its leg: M1 by the two test ! -e checks, M2 by the negated greps, M3 by the per-name def loop then pytest, M4 by a count bounded on both sides, M5 by grep -q on each sim's sentinel."
+    }
+  },
+  "tally": {"dispatched": 2, "rejected": 1, "rounds": {"1": {"fail": 1}, "2": {"pass": 1}}},
+  "history": [
+    {"round": 1, "task": "1", "verdict": "fail", "reason": "M2's leg (b) filtered by extension and did not exclude tests/fixtures/, so it could pass on a tree where the clause is false."}
+  ]
+}
