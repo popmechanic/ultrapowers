@@ -49,3 +49,6 @@
 {"kind":"transcript:slice","label":"review:2:1:1","sessionId":"0ca33b30-3aab-443f-b085-822a2e92f043","bytes":11253,"id":"01M28XJK29000004B1TMXB1SFS","ts":1789153332297}
 {"kind":"worker:end","label":"review:2:1:2","role":"reviewer","sessionId":"29c21310-c584-4951-bd67-d6931ccff020","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5702,"output":18380,"cacheRead":1327942,"cacheCreation":83971,"costUsd":1.9916910000000003,"models":["claude-opus-5"]},"id":"01M28XKK1G0000F8YCRA79X3XB","ts":1789153365040}
 {"kind":"transcript:slice","label":"review:2:1:2","sessionId":"29c21310-c584-4951-bd67-d6931ccff020","bytes":11434,"id":"01M28XKK1P000002SVMMMYRXJP","ts":1789153365046}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1","2"],"headSha":"1ae8072ce53983a8fc895f1fb79459bc6c621d1d","id":"01M28XZA520000BXA1CW7NRP0B","ts":1789153749154}
+{"kind":"driver:integrated-clean","wave":1,"removed":10,"id":"01M28XZA5G0000QEXZJGFHJ2SC","ts":1789153749168}
+{"kind":"driver:integrated-run","task":"1","cmd":"node fleet/tests/test_claude_token.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"joined":["fleet/RUNBOOK.md"],"with":["2"],"id":"01M28XZAPX00000EPRH8CRR8NK","ts":1789153749725}
