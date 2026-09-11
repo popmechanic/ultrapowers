@@ -1,0 +1,149 @@
+{
+  "ok": true,
+  "stamp": "run-108",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-108"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "An `exam:` concern beside a still-red exam buys a reviewer, not a park",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/reviewer.md",
+          "fleet/run-engine.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "An `exam:` concern beside a still-red exam buys a reviewer, not a park",
+          "files": [
+            "fleet/roles/reviewer.md",
+            "fleet/run-engine.mjs",
+            "fleet/tests/test_run_engine_exam_concern.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/reviewer.md",
+            "fleet/run-engine.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_exam_concern.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_exam_concern.mjs",
+          "proofRuns": [
+            "tr '\\n' ' ' < fleet/roles/reviewer.md | grep -Eq 'EXAM CONCERN:.{0,600}proposedPatch'",
+            "grep '^| .tasks\\[\\]\\.reviewVerdict. |' skills/ultrapowers/references/report-format.md | grep -q 'EXAM CONCERN'",
+            "grep '^| .tasks\\[\\]\\.proofFixes. |' skills/ultrapowers/references/report-format.md | grep -q 'EXAM CONCERN'",
+            "node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_fixloop.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_exam_concern.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "An `exam:` concern beside a still-red exam buys a revie\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The driver never refuses an exam edit and never edits an exam itself: an exam changes only through a fix round's applied patch, recorded as `examEdited` and read by a reviewer (CLAUDE.md \u00a7Wayfinding, Peer Review, 2026-09-02).\n- A task whose exam is red never merges: the existing rule that a red exam in a review round is a blocking issue whatever the reviewer returned stays in force, so the second reader of an `exam:` concern is a reviewer dispatch, never the implementer's own word.\n- The route is one added branch at the existing `proof-red` return; no new `reviewVerdict` value, no new schema field, no new role file.\n\n**Acceptance:** suite \u2014 the committed suite plus per-task review is the verification; the new sim joins it through `tests/test_fleet_suite.py`'s glob.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/fix.md fleet/roles/implementer.md fleet/roles/examiner.md",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-108/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-108/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-108/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-108/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
