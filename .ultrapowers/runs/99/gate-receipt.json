@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-99",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-99/report.json",
+  "branch": "ultra/integration-run-99",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"1\", \"files\": [\"skills/ultralearn/SKILL.md\", \"skills/ultralearn/scripts/catch_counter.py\", \"skills/ultralearn/scripts/catch_report.py\", \"tests/test_catch_report_window.py\", \"tests/test_fleet_suite.py\", \"tests/test_ultralearn_catch_report.py\", \"tests/test_ultralearn_catches.py\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 0/1 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "suite": {
+    "passed": false,
+    "unattributed": [],
+    "output": "not run \u2014 no wave merged"
+  },
+  "verdict": "BLOCKED"
+}

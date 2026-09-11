@@ -21,3 +21,17 @@
 {"kind":"driver:exam-run","task":"1","cmd":"python3 -m pytest -q tests/test_catch_report_window.py","exit":1,"iter":0,"id":"01M27R1A3H00007014KRPG12GZ","ts":1789113968753}
 {"kind":"driver:check-run","task":"1","cmd":"python3 -m pytest -q tests/test_ultralearn_docs.py","exit":0,"minor":false,"iter":0,"id":"01M27R1AGM0000YSPXSR6R4PNJ","ts":1789113969172}
 {"kind":"worker:start","label":"fix:1:0","role":"implementer","sessionId":"9cf1e279-e698-49a9-85a0-1395211368b8","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-99/clones/task-1","model":"opus","id":"01M27R1AQ800002F2SKG9RJHHJ","ts":1789113969384}
+{"kind":"worker:end","label":"fix:1:0","role":"implementer","sessionId":"9cf1e279-e698-49a9-85a0-1395211368b8","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3433,"output":11227,"cacheRead":549199,"cacheCreation":39053,"costUsd":0.9629694999999999,"models":["claude-opus-5"]},"id":"01M27R66TQ0000ZC4DKWBYTK5V","ts":1789114129239}
+{"kind":"transcript:slice","label":"fix:1:0","sessionId":"9cf1e279-e698-49a9-85a0-1395211368b8","bytes":11518,"id":"01M27R66TT0000DZBDKD49KV3Z","ts":1789114129242}
+{"kind":"driver:proof-run","task":"1","cmd":"python3 -m pytest -q tests/test_ultralearn_catch_report.py","exit":0,"iter":0,"id":"01M27R67CH0000EKV0JKAHE6J2","ts":1789114129809}
+{"kind":"driver:proof-run","task":"1","cmd":"python3 -m pytest -q tests/test_ultralearn_catches.py","exit":0,"iter":0,"id":"01M27R67S30000Z67B82RXF3XV","ts":1789114130211}
+{"kind":"driver:proof-run","task":"1","cmd":"python3 -m pytest -q tests/test_ultralearn_docs.py","exit":0,"iter":0,"id":"01M27R683T0000A7GJBBQ6Y2WV","ts":1789114130554}
+{"kind":"driver:exam-run","task":"1","cmd":"python3 -m pytest -q tests/test_catch_report_window.py","exit":1,"iter":0,"id":"01M27R68XQ00008H47DZ71YQYW","ts":1789114131383}
+{"kind":"driver:check-run","task":"1","cmd":"python3 -m pytest -q tests/test_ultralearn_docs.py","exit":0,"minor":false,"iter":0,"id":"01M27R69A20000RHR78428Y5FD","ts":1789114131778}
+{"kind":"engine:log","line":"task 1 proof-red after the pre-review repair round","id":"01M27R69JH0000ZD102MQRGP3P","ts":1789114132049}
+{"kind":"engine:log","line":"wave 1 merge skipped: no mergeable results","id":"01M27R69JH0001K50QSD215Q2J","ts":1789114132049}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M27R69JJ0000V8QGS2MRX2Q3","ts":1789114132050}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M27R69JS0000Q3V1GNC9WP0Q","ts":1789114132057}
+{"kind":"driver:stage","stage":"finalize","id":"01M27R69K700008CEH3Z6RCKXZ","ts":1789114132071}
+{"kind":"driver:stage","stage":"gate","id":"01M27R69MQ0000X8ZKFYC1AQ83","ts":1789114132119}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M27R69R40000NPK36ZAMWXPF","ts":1789114132228}

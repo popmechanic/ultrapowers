@@ -1,0 +1,94 @@
+{
+  "integrationBranch": "ultra/integration-run-99",
+  "baseSha": "dd16e3e19bbb6c10a89a20903ac2c1e1272c5487",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "proof-red",
+      "notes": "the Proof's exam failed: python3 -m pytest -q tests/test_catch_report_window.py \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n...............................                                          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1615 passed, 5 warnings in 361.72s (0:06:01) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "skills/ultralearn/SKILL.md",
+        "skills/ultralearn/scripts/catch_counter.py",
+        "skills/ultralearn/scripts/catch_report.py",
+        "tests/test_catch_report_window.py",
+        "tests/test_fleet_suite.py",
+        "tests/test_ultralearn_catch_report.py",
+        "tests/test_ultralearn_catches.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: python3 -m pytest -q tests/test_catch_report_window.py \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 1: exam: tests/test_catch_report_window.py::test_leg_b_cli_with_n_ends_with_the_note_after_the_listing cannot pass for any report output. Its `_section` helper reads a section from its `## ` heading to the next `## ` line, so the recount note that M2 requires as the report's final line (after the `## Zero catches over <N> runs` listing) is captured as the listing's last entry; the case then asserts the line before the note equals that same last entry. Left red and unedited per the exam rule; the other 23 cases in the file pass, and legs (a), (c), (d), (e) plus the rest of leg (b) \u2014 including the no-`--n` note placement and the k == 0 silence \u2014 are green.",
+    "task 1: still red after the pre-review repair round (the Proof's exam failed: python3 -m pytest -q tests/test_catch_report_window.py \u2014 exit 1) \u2014 no reviewer was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}
