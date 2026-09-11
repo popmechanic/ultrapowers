@@ -249,11 +249,12 @@ structural dozen).
 - **Versioning:** 0.x.y — minor bumps for architectural releases (0.1.0 = the subtraction
   release), patch bumps otherwise — the 0.3.5 lift stayed a patch on the operator's call ("we're
   still fixing the features that .3 was meant to deliver"). A release bumps **both** `plugin.json`
-  **and** `marketplace.json` to the same value — `plugin.json` wins silently if they drift, and
-  they have. Release commit `chore(release): 0.0.x — …`, landed through a PR merged with
-  `gh pr merge <n> --squash` once the confidence run on the merged engine is green — there is no
-  required check left to wait in front of it (#871 decision 3, 2026-09-10) — then
-  `gh release create v0.x.y`.
+  **and** `marketplace.json` to the same value — 0.3.25 today — `plugin.json` wins silently if
+  they drift, and they have. Shipping one is itself fleet work: a release is a fleet plan, whose
+  H1 is the `chore(release): 0.x.y — …` line and whose one task bumps both manifests to the new
+  version and edits this bullet's version. The PR is opened and merged by the sandbox (the squash
+  commit's title is that H1), and the operator then runs `gh release create v0.x.y` with the
+  notes. 0.3.25 (2026-09-10) was the first release shipped this way.
 - **The depth-1 guard retired with CI** — #712 deleted the engine's depth-1 rehearsal and left
   the workflow's default-depth checkout standing in for it, the one thing that would fail a
   history-coupled test. That premise died with the workflow (2026-09-10, #871 decision 13):
