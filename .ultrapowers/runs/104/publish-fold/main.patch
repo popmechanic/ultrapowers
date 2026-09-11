@@ -1,15 +1,36 @@
 diff --git a/CLAUDE.md b/CLAUDE.md
-index 14da9edbfc5d3ae3e94c6389e07d5b1c2d05c34e..930d1790607361faa610f4ddf8a7b612dc36b187 100644
+index 14da9edbfc5d3ae3e94c6389e07d5b1c2d05c34e..972447d27efcc898bc8acf74fc06d57e53aeb4e2 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -177,9 +177,12 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
-   fold); #485 *The Record* (re-chartered 2026-09-04: the TinyBase store's deletion at 0.3.5 was
-   approved inside #589 but never argued on its own, so the destination is now *what is the
-   live multi-run record — git, a hub (#601 prototype), or a CRDT again — and what does each
+@@ -160,26 +160,20 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
+   2026-09-07: a prose rule violated twice becomes a check; the referee reading of 2026-09-11 on
+   #911 — reviewers never escalated a referee finding, 3 of 3 terminal verdicts false — decided the
+   referee's deletion whole, plan in authoring; rule 4 cuts both ways: a check is kept only if the
+-  record shows it raises what a model would not); #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
+-  operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
+-  #553 examiner / #554 clause-to-leg / #555 BASE-facts Context / #556 collaborative review all
+-  shipped; live tickets #232 #526 #572 #582; #599 (should exams be sealed again?) closed
+-  2026-09-04 — exams stay recorded-and-reviewed, sealing returns only on a run that shows a
+-  gaming shape. Its rules: the exam is written by a peer, never the submitter or the editor;
+-  the plan names nothing it does not Produce/Consume outside a tool-generated BASE-facts block;
+-  one signature per plan; review is collaborative and independence is authorship, not secrecy —
+-  the implementer runs the peer's exam; an edit to it is recorded as `examEdited`, named to the
+-  referee, and reviewed — never refused by the driver, since 2026-09-02); #525 *The Verification
++  record shows it raises what a model would not); #551 *Peer Review* — **CLOSED 2026-09-11 as reached** (#552–#556, #638, #642, #644 shipped; exams
++  recorded-and-reviewed, sealing retired; the pair question answered on #232: the second reviewer
++  earns its keep; #526 stays an enhancement); #525 *The Verification
+   Frontier* (review finds truth it cannot enforce — three generations of
+   blocking-findings-that-could-not-block; tickets #518/#519/#232, experiment queue
+   #511→#522→#462→#516, single novelty per run window; run-57 was the first run that did block,
+   on a real defect); #414 *Experience Compiler* (run = event log, ledger = wiki, learning =
+-  fold); #485 *The Record* (re-chartered 2026-09-04: the TinyBase store's deletion at 0.3.5 was
+-  approved inside #589 but never argued on its own, so the destination is now *what is the
+-  live multi-run record — git, a hub (#601 prototype), or a CRDT again — and what does each
 -  delete?*); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and
 -  §Rules before any kernel work; never patch `skills/ultrapowers/kernel/vendor/manyana.py`, it
 -  is sha-pinned on purpose). **One piece moved out of #360 by One Driver Amendment 9
-+  delete?*); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
++  fold); #485 *The Record* — **CLOSED 2026-09-11 as superseded** by #810/#913 (finished record = the
++  two tags; live record = the kata daemon on the hub VM, #814 shape 3); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
 +  licenses** (tier 2, the cross-run fold, shipped at #715; tier 1 shipped as shadow seeding only;
 +  every kernel-seen join after run-44 was line-disjoint; re-charter on the first publish fold with a
 +  conflict; #359 #665 #832 #728 keep the `merge-frontier` label). Its standing rules: read its
@@ -18,7 +39,7 @@ index 14da9edbfc5d3ae3e94c6389e07d5b1c2d05c34e..930d1790607361faa610f4ddf8a7b612
    (2026-08-29): the kernel's INPUT SHAPE** — it takes patches against BASE instead of
    `--branch <task>=<branch>:<sha>`, so no worker needs shared refs and the worktree-vs-clone
    question dissolves. Semantics, layering and the sha-pin are untouched and still #360's.
-@@ -223,7 +226,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
+@@ -223,7 +217,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
    `skills/ultrawrite/SKILL.md`, `test_publish_fold.mjs`, `CONTRACT.md` + `compile_plan.py`) all folded
    green with zero conflicts, which met the pre-registered condition and retired the earlier rule
    ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one of those
@@ -28,7 +49,7 @@ index 14da9edbfc5d3ae3e94c6389e07d5b1c2d05c34e..930d1790607361faa610f4ddf8a7b612
    the next drain that produces a conflict is the resolver's measurement, not a reason to serialize.
    Allocated vCPU stays over-committable (48 on a 16-vCPU plan during that drain), so contention, not
    allocation, bounds concurrent runs.
-@@ -293,10 +297,14 @@ structural dozen).
+@@ -293,10 +288,14 @@ structural dozen).
    the contract's literals (the unit, the engine directory, the VM name) are the ones taught, and
    the retired vocabulary of the pre-lift fleet appears nowhere. Reword freely; do not name a
    script that is not there.
@@ -47,3 +68,17 @@ index 14da9edbfc5d3ae3e94c6389e07d5b1c2d05c34e..930d1790607361faa610f4ddf8a7b612
  - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
    happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
    not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script. On the fleet the
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index f330ce662b7d372c47b6ab3f7d52483fd252ee95..dc6ded80101251569a659caa1d510df4d208a8e3 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -46,7 +46,8 @@ cache path itself differs by version and by host, so derive it rather than
+ naming it.
+ 
+ The doctor answers with one row per piece, and its row ids are `exe-dev`,
+-`capacity`, `claude`, `github`, `integrations`, in that order. Each row carries
++`capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `render`, in that
++order. Each row carries
+ a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
+ section of `references/first-run.md` that repairs it. Read the rows back to the
+ user as a short list before touching anything. Configuration lives in
