@@ -55,8 +55,9 @@ NO_STAMP_NOTE = "%d row(s) carry no startedAt — recount them"
 
 HEADER = "| test | catches | touching runs | status |"
 # GFM renders a pipe table only when the header is followed by a delimiter row,
-# one cell per column — the same row `merge_ledger.py` writes under its own
-# header. Without it the whole report reads as one paragraph of pipes.
+# one cell per column — a delimiter row of the same shape as the one
+# `merge_ledger.py` writes under its own (five-cell) header. Without it the
+# whole report reads as one paragraph of pipes.
 DELIMITER = "| --- | --- | --- | --- |"
 CURVE_HEADING = "## Zero-catch curve"
 
