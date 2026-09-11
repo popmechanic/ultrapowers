@@ -1,0 +1,94 @@
+{
+  "integrationBranch": "ultra/integration-run-101",
+  "baseSha": "121c6cec8d6d05ea77d38b621c04d15f9133a610",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "referee-red",
+      "notes": "Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 6,
+    "refereeBlocking": 2,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n........................................                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1624 passed, 5 warnings in 363.02s (0:06:03) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        ".claude-plugin/marketplace.json",
+        ".claude-plugin/plugin.json",
+        "CLAUDE.md",
+        "tests/test_release_0_3_25.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: referee exam-files \u2014 Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`",
+    "task 1: the driver's pre-review pass was red (Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`) \u2014 one repair round before any reviewer read the patch",
+    "task 1: referee-finding-wrong: \"Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`\" is not a defect here, and writing that file would be the actual violation. Evidence: (1) `fleet/exam-paths.mjs` states the rule outright \u2014 \"A task's Proof names the path its exam is written FOR. This module answers the different question of where that exam is written TO. The two are allowed to differ\" \u2014 and `reservedExamPath` maps `tests/<rest>` to `tests/exams/<slug>/<rest>`, so this Proof's `tests/test_release_0_3_25.py` lands at `tests/exams/run_101/test_release_0_3_25.py`, which IS present in the tree. (2) The driver's own TEST COMMAND for this task names that remapped path, so the driver already resolved the exam there. (3) `skills/ultrawrite/SKILL.md:116-121`: only a `- Guard:` bullet makes an exam sit at the Proof path and reach the pull request; this task's Proof has no `Guard:` bullet (verified against launch.json), so the exam is unguarded, \"lives instead on the run's evidence tag\", and the examiner writes it under `tests/exams/<run>/` \u2014 exactly what the task Context says in words. (4) `skills/ultrawrite/SKILL.md:105`: \"Its `Test:` paths must be disjoint from this task's `Create:`/`Modify:` paths: the exam is a distinct artifact\" \u2014 the implementer does not author it; the task JSON's `writes` array confirms this, listing only the three manifests/CLAUDE.md and not the test path. (5) Concrete harm if I had created it: `fleet/strip-exams.sh` strips only the reserved `tests/exams/<slug>/` directories, never the Proof path, so a file at `tests/test_release_0_3_25.py` would ride into the pull request and into main's permanent suite as a one-run fact that the next release (0.3.26) turns red \u2014 the precise outcome the unguarded convention exists to prevent. (6) Faithfully implementing leg (a) at that committed path would additionally draw `base-sha-in-suite`: `skills/ultrawrite/SKILL.md:141-145` says a committed exam \"never reads ULTRA_BASE\" and never freezes a commit sha of this repository, yet leg (a) is defined as a `git show $ULTRA_BASE:<path>` comparison. I therefore made no edit rather than churning the tree; no PROPOSED PATCH accompanied the finding.",
+    "task 1: scope: `tests/test_release_0_3_25.py` appears in my FILES list but not in the task's `writes` array, and per the evidence above it belongs to the peer examiner. I wrote nothing to it and touched no sibling-owned path; the only files ever modified by this task remain `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `CLAUDE.md`, all committed at HEAD.",
+    "task 1: referee exam-files \u2014 Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`",
+    "task 1: still red after the pre-review repair round (Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`) \u2014 no reviewer was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}

@@ -1,0 +1,50 @@
+{
+  "task": "1",
+  "n": 1,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `tests/exams/run_101/__init__.py`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `tests/exams/run_101/test_release_0_3_25.py`"
+    },
+    {
+      "check": "exam-files",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "Proof `Test:` path absent at HEAD: `tests/test_release_0_3_25.py`"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +7 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "tests/test_release_0_3_25.py": "py"
+  },
+  "ms": 1
+}
