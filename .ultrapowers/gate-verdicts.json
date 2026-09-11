@@ -1,0 +1,14 @@
+{
+ "tasks": {
+  "2": {
+   "hash": "3a0d1be1bcec5818dcced9eeed9208d81cf41ef78edcd8b0c3da6aea24437c32",
+   "verdict": "pass",
+   "reason": "round 4 (M8 added after run-90 left two doc sentences unowned; round 3 rejected a file-wide grep): leg (h) names the two scoped ranges and checks the three literals in order inside each, the negation grep names its survivor; the counts (7 residuals = 2+2+3, eight M7 literals, six metadata rows) compute"
+  }
+ },
+ "tally": {
+  "dispatched": 0,
+  "rejected": 0,
+  "note": "verdict carried from 2026-09-10-the-card.gate-verdicts.json task 2 (round 4 pass); Claim and Proof verbatim, hash unchanged"
+ }
+}
