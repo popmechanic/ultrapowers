@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_ledger import _read_jsonl  # noqa: E402  (one ledger reader, shared)
+from _outcome import swallow  # noqa: E402
 
 # The ledger holds the findings rows `merge_ledger.py` writes (no `kind`) in
 # the same file. Only this kind is the catch record; everything else is another
@@ -95,7 +96,8 @@ def _when(value):
     text = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
         when = datetime.fromisoformat(text)
-    except ValueError:
+    except ValueError as exc:
+        swallow("timestamp not ISO-8601; the row carries no time", exc)
         return None
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
@@ -244,7 +246,8 @@ def tree_runners(tree, tests):
         try:
             lines = (tree / rel).read_text(encoding="utf-8",
                                            errors="replace").splitlines()
-        except OSError:
+        except OSError as exc:
+            swallow("test file unreadable; it cannot be a runner", exc)
             continue
         if any(line.strip() == RUNNER_MARKER for line in lines):
             out.append(rel)
@@ -264,7 +267,8 @@ def tree_landings(tree, tests):
                 ["git", "-C", str(tree), "log", "--diff-filter=A",
                  "--format=%cI", "-1", "--", rel],
                 capture_output=True, text=True)
-        except OSError:
+        except OSError as exc:
+            swallow("git unavailable; no landing dates for this tree", exc)
             return out
         if proc.returncode != 0:
             continue
