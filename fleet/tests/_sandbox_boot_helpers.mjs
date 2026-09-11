@@ -661,6 +661,25 @@ if [ -z "\${STUB_NO_RECEIPT:-}" ]; then
   printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
 fi
 [ -n "\${STUB_ENGINE_SLEEP:-}" ] && sleep "$STUB_ENGINE_SLEEP"
+# AN ENGINE THE SIM ENDS, not the clock: with STUB_ENGINE_HOLD set the unit
+# stays alive — and the boot script's refresher keeps ticking beside it — until
+# the case writes \`$FLEET_HOME/stub/engine-release\`. That is what lets a leg
+# append its own lines to the run dir's events.jsonl, move the stub clock, read
+# the page and the commits, and only then let the run finish \`publishing →
+# done\` like every other green one. The cap is two minutes of 0.05s polls: a
+# sim that forgets to release leaves a red run, never a wedged suite.
+if [ -n "\${STUB_ENGINE_HOLD:-}" ]; then
+  held=0
+  until [ -f "$FLEET_HOME/stub/engine-release" ]; do
+    held=$((held + 1))
+    if [ "$held" -ge 2400 ]; then
+      say "systemd-run engine: engine-release never arrived"
+      rm -f "$FLEET_HOME/stub/engine-alive"
+      exit 3
+    fi
+    sleep 0.05
+  done
+fi
 # Removed IMMEDIATELY before the exit: from here on the unit is done and every
 # evidence push is accepted again.
 rm -f "$FLEET_HOME/stub/engine-alive"
