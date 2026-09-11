@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "9fe3181d3f313a5dd9ff35b7278426cbed1bf21877438c5b4a254390255306ea",
+      "verdict": "pass",
+      "reason": "round 2: declared-files-vs-patch case for the union; four wave shapes with computed counts; with values as plan-order complements; the exact judgment line; Check: blocking isolated in its own run; doc literals named per file"
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "pass": 0,
+        "fail": 1
+      },
+      "2": {
+        "pass": 1,
+        "fail": 0
+      }
+    }
+  }
+}
