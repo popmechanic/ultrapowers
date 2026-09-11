@@ -220,8 +220,8 @@ def derive_catches(run_dir):
     empty union is dropped, so a path no receipt entry backs — and every path
     of a run with no receipt at all — carries no entry here. This row is a
     reading of the log, and never invents a row for a file the log is silent
-    about: the report's tree walk over the repository is the only source of
-    `unobserved` rows."""
+    about: `catch_report.py`'s tree walk over the repository is the only source
+    of `unobserved` rows."""
     run_dir = Path(run_dir)
     events = read_events(run_dir)
     report = _read_json(run_dir / "report.json")
@@ -234,9 +234,10 @@ def derive_catches(run_dir):
     started_at = status.get("startedAt") if isinstance(status, dict) else None
     if not isinstance(started_at, str):
         started_at = None
-    # "Neither readable" is the pair of Nones `_read_json` returns for a
-    # missing, unreadable or malformed file.
-    have_record = report is not None or receipt is not None
+    # "Neither readable" means neither file is a JSON object: `_read_json`
+    # returns None for a missing, unreadable or malformed file, and a bare
+    # string or list is no record either (#860).
+    have_record = isinstance(report, dict) or isinstance(receipt, dict)
     exam_edited = _exam_edited(report)
     writes = _writes(receipt)
 

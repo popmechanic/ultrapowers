@@ -14,6 +14,7 @@ collection error.
 Every fixture run directory is built under pytest's `tmp_path`: the record this
 counter reads is the engine's, and the exam writes no bytes into the tree.
 """
+import ast
 import hashlib
 import importlib.util
 import json
@@ -641,15 +642,23 @@ def test_task1_e_outcomes_is_the_six_member_tuple(tmp_path):
 
 
 def test_task1_e_outcomes_is_defined_and_used(tmp_path):
-    """Task 1 leg (e)/M3: the name `OUTCOMES` occurs at least twice in
-    `skills/ultralearn/scripts/catch_counter.py` — its definition and a use —
-    the exam's reading of the Proof's `grep -c OUTCOMES … -ge 2`."""
-    counter = _load()
-    lines = [line for line in SCRIPT.read_text(encoding="utf-8").splitlines()
-             if "OUTCOMES" in line]
-    assert len(lines) >= 2, (
-        "OUTCOMES is defined and used, so at least two lines name it; got %r"
-        % (lines,))
+    """Task 1 leg (e)/M3: `skills/ultralearn/scripts/catch_counter.py` defines
+    the module-level name `OUTCOMES` exactly once and reads it at least once
+    outside that definition — pinned by AST (#860), so deleting the tuple
+    unpack that uses it fails this leg, where a substring count did not."""
+    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+    definitions = [node for node in tree.body
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == "OUTCOMES"
+                           for t in node.targets)]
+    assert len(definitions) == 1, (
+        "OUTCOMES is defined once at module level; got %d" % len(definitions))
+    defined_at = definitions[0].lineno
+    uses = [node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == "OUTCOMES"
+            and isinstance(node.ctx, ast.Load)
+            and node.lineno != defined_at]
+    assert uses, "OUTCOMES is read at least once outside its definition"
 
 
 # --- task 1 leg (f) — M4: no writes behind a path, and the docstring --------
