@@ -17,3 +17,4 @@
 {"kind":"transcript:slice","label":"exam:2","sessionId":"c08f1e05-05fb-4327-b87e-2df55811c132","bytes":11314,"id":"01M28X54TH0000RXHEPZN7XEWF","ts":1789152891729}
 {"kind":"worker:end","label":"exam:3","role":"examiner","sessionId":"456826a1-97d8-421a-977f-a34b56d44d19","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3061,"output":18913,"cacheRead":1359903,"cacheCreation":77665,"costUsd":1.9447315000000003,"models":["claude-opus-5"]},"id":"01M28X6P140000NPZYJRZY5GW4","ts":1789152942116}
 {"kind":"transcript:slice","label":"exam:3","sessionId":"456826a1-97d8-421a-977f-a34b56d44d19","bytes":11764,"id":"01M28X6P17000087MH39R31NKW","ts":1789152942119}
+{"kind":"engine:log","line":"baseline: green on 258df95a5b082e6240c6a71fa28c0cf43ba7abbc","id":"01M28XA2BE0000C7NSVFBHH9WX","ts":1789153053038}
