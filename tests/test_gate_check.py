@@ -221,3 +221,67 @@ def test_verdict_echoes_repo_context_and_no_lock(tmp_path):
     assert [c["name"] for c in out["checks"]] == [
         "report-parse", "clean-tree", "wave-merges", "head-match",
         "git-verified", "ancestry", "deliverables"]
+
+
+# #863 — a `deferred:external`/`deferred:browser` ack whose subject is the
+# render branch, on a task whose state-exam rows all read `render: "ran"`, is
+# contradicted by the run's own record; the driver already ran those exams
+# against the live renderer, so the item is a note, not a park.
+RUN4_DEFERRAL = {
+    "deliverable": "task-3: the render branch end to end against a live renderer",
+    "reason": "external",
+    "why": "cannot be re-measured here — the suite forbids network",
+}
+
+
+def exam_row(exam, render, ms):
+    return {"exam": exam, "store_ms": 12, "render_ms": ms, "render": render,
+            "mutant_killed": True, "contract": "ok"}
+
+
+def test_deferral_the_record_contradicts_is_a_note_not_a_park(tmp_path):
+    repo, head = make_repo(tmp_path)
+    r = good_report(head)
+    r["deferredVerification"] = [dict(RUN4_DEFERRAL)]
+    r["tasks"] = [{"task": "task-3", "status": "done", "stateExams": [
+        exam_row("buy-milk", "ran", 2499), exam_row("empty-todo-refused", "ran", 2292)]}]
+    p, out = run_gate(repo, r)
+    assert p.returncode == 0 and out["verdict"] == "PASS", out
+    assert out["acks"] == []
+    (note,) = out["notes"]
+    assert note["type"] == "satisfied-by-record"
+    assert note["downgraded"] == "deferred:external"
+    assert [x["exam"] for x in note["rows"]] == ["buy-milk", "empty-todo-refused"]
+    assert "exam buy-milk render ran (2499 ms)" in note["detail"]
+    assert "exam empty-todo-refused render ran (2292 ms)" in note["detail"]
+
+
+def test_deferral_with_a_skipped_render_still_parks(tmp_path):
+    repo, head = make_repo(tmp_path)
+    r = good_report(head)
+    r["deferredVerification"] = [dict(RUN4_DEFERRAL)]
+    r["tasks"] = [{"task": "task-3", "status": "done", "stateExams": [
+        exam_row("buy-milk", "ran", 2499), exam_row("empty-todo-refused", "skipped", None)]}]
+    p, out = run_gate(repo, r)
+    assert p.returncode == 2 and out["verdict"] == "NEEDS_ACK"
+    assert [a["type"] for a in out["acks"]] == ["deferred:external"]
+    assert out["notes"] == []
+
+
+def test_deferral_with_no_matching_row_still_parks(tmp_path):
+    repo, head = make_repo(tmp_path)
+    r = good_report(head)
+    # The named task has no state-exam record at all; another task's rendered
+    # exams are not its evidence.
+    r["deferredVerification"] = [dict(RUN4_DEFERRAL)]
+    r["tasks"] = [{"task": "task-3", "status": "done", "stateExams": []},
+                  {"task": "task-1", "status": "done", "stateExams": [exam_row("x", "ran", 5)]}]
+    p, out = run_gate(repo, r)
+    assert p.returncode == 2 and [a["type"] for a in out["acks"]] == ["deferred:external"]
+    # And an external deferral whose subject is not the render is never read
+    # against the record, however green the rows.
+    r["deferredVerification"] = [{"deliverable": "task-1: the Stripe webhook",
+                                  "reason": "external", "why": "no network"}]
+    p, out = run_gate(repo, r)
+    assert p.returncode == 2 and [a["type"] for a in out["acks"]] == ["deferred:external"]
+    assert out["notes"] == []
