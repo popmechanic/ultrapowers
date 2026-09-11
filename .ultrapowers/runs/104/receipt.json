@@ -1,0 +1,214 @@
+{
+  "ok": true,
+  "stamp": "run-104",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-104"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "A launch installs the token it holds, whether or not it rotated it",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/RUNBOOK.md",
+          "fleet/claude-token.mjs",
+          "fleet/tests/test_claude_token.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The sandbox proves its bearer before the engine starts, and a dead one parks the run with its class and trace id",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/_sandbox_boot_helpers.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "A launch installs the token it holds, whether or not it rotated it",
+          "files": [
+            "fleet/RUNBOOK.md",
+            "fleet/claude-token.mjs",
+            "fleet/tests/test_claude_token.mjs",
+            "fleet/tests/test_claude_token_install.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/RUNBOOK.md",
+            "fleet/claude-token.mjs",
+            "fleet/tests/test_claude_token.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_claude_token_install.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_claude_token_install.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_claude_token.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+            "sed -n '/^\\*\\*3\\. .claude. /,/^\\*\\*4\\. .github. /p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'every launch.*four hours'",
+            "! grep -n '30 minutes of expiry' fleet/RUNBOOK.md"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_claude_token_install.mjs"
+          ]
+        },
+        {
+          "id": "2",
+          "title": "The sandbox proves its bearer before the engine starts, and a dead one parks the run with its class and trace id",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs",
+            "fleet/tests/test_sandbox_boot_bearer.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/_sandbox_boot_helpers.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_bearer.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_bearer.mjs",
+          "proofRuns": [
+            "sed -n '/^  - engine: /,/^  - publish fold:/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'claude auth status.*/api/oauth/usage.*parked: credential.*bearer.*edge.*trace'",
+            "sed -n '/^3\\. .\\/home\\/exedev\\/www\\/engine.log./,/^4\\. .journalctl/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q 'bearer probe:.*parked: credential'",
+            "node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sandbox_boot_edges.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_sims_are_hermetic.mjs | grep -q 'ALL TESTS PASSED'",
+            "python3 -m pytest -q tests/test_docs_agree_with_code.py"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_bearer.mjs"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "fleet \u00b7 2 tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- No secret in any argv, log line, status cell or evidence file: the access token reaches the edge on stdin only, and the sandbox never holds one (its bearer is the edge's placeholder replacement).\n- The sims are hermetic: every process a sim starts gets a `simEnv` environment and no sim reaches the network (`fleet/tests/test_sims_are_hermetic.mjs` is the probe).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "bash -n fleet/sandbox-boot.sh",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-104/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-104/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-104/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-104/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
