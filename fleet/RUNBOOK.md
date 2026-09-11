@@ -98,9 +98,12 @@ That opens claude.ai for consent (the same OAuth flow Claude Code uses, with
 PKCE), reads the code you copy from the callback page off the clipboard,
 exchanges it, keeps the refresh token in your login keychain, and puts the
 access token on `claude-max` on stdin. Nothing is printed. The launcher runs
-`node fleet/claude-token.mjs refresh` before every launch, so the bearer at the
-edge is never within 30 minutes of expiry when a run starts; `status` shows the
-expiry.
+`node fleet/claude-token.mjs refresh` before every launch, which installs the
+keychain's access token on `claude-max` at every launch and rotates it first when
+fewer than four hours remain — so a token something else rotated (a `usage` read
+meters an account by rotating it, and never installs) is on the edge before the
+VM exists, and the bearer a run starts on always has the whole run ahead of it;
+`status` shows the expiry.
 
 Rotate the token with `integrations edit claude-max --bearer=-` and a fresh
 token on stdin. `claude-max` rides the run's VM from creation, `--for` the run's
@@ -319,7 +322,16 @@ Four logs, in the order a run writes them:
 3. `/home/exedev/www/engine.log` — the engine's stdout and stderr, also served
    at `https://<vm>.exe.xyz/engine.log` and committed to the evidence branch.
    The `claude auth status` line before the engine starts has to show
-   `oauth_token`.
+   `oauth_token`, and the line after it is the bearer probe: `bearer probe:
+   alive` is the credential answering and the engine unit starting, `bearer
+   probe: inconclusive (…)` is an answer the probe could not classify (curl
+   failed, or a status that is neither 200 nor 401/403) and the run went ahead
+   anyway. A page whose `error` begins `parked: credential` is a run that never
+   started its engine at all: the class word says which side refused.
+   `bearer` is the token itself — relaunch after
+   `node fleet/claude-token.mjs refresh --force --account <acct>` on the box
+   that holds it. `edge` is exe.dev's proxy refusing this VM, and the cell
+   carries the 32-hex trace id that goes to support@exe.dev with the VM name.
 4. `journalctl --user -u fleet-engine-<N>` — the service's own view: OOM kills
    (`MemoryMax=40G`), the exit code, the timing.
 

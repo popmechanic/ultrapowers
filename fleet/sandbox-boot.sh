@@ -940,6 +940,110 @@ log_auth_status() {
   printf '%s\n' "$version" >"$CLAUDE_VERSION_FILE"
 }
 
+# --- the bearer probe --------------------------------------------------------
+#
+# ONE REQUEST, BEFORE THE WAVE. `claude auth status` proves the box is holding
+# an oauth_token; it does not prove that token still works. A revoked bearer
+# (run-100) or an integration the VM lost (run-95) is found today by the first
+# worker to be refused — after the exams and the implementers have been
+# launched and their tokens spent. This asks the cheapest question there is,
+# once, and parks the run at boot when the answer is a refusal.
+#
+# WHY `/api/oauth/usage`: the edge injects its own bearer on every request to
+# the proxy and an injected header REPLACES the client's same-named one
+# (measured 2026-09-03, memory `exe-http-proxy-header-semantics`), so the
+# placeholder below is swapped for the real token and the answer is about that
+# token and not about this script. The endpoint costs no tokens — it is the one
+# `fleet/claude-token.mjs usage` already reads.
+#
+# TWO REFUSALS, TOLD APART BY THE BODY'S SHAPE, because they send an operator to
+# two different places:
+#
+#   * the BEARER itself — 401/403 with a JSON body carrying `"type":"error"`;
+#     the token is dead or the account is not permitted, and the fix is a
+#     refresh. The message is the document's own, verbatim.
+#   * the EDGE — a 403 whose body is exe.dev's plain-text
+#     `integration not found or not attached to this VM (trace: <32 hex>)`,
+#     byte-identical for an integration that was detached and one that never
+#     existed. The trace id is what exe.dev support resolves, so the whole line
+#     rides into the cell.
+#
+# ANYTHING ELSE IS INCONCLUSIVE AND PROCEEDS. A probe that manufactured a park
+# out of a flake — curl that could not connect, a 500 from the proxy — would
+# cost more runs than it saved, and a run whose credential really is dead is
+# still stopped by the engine's own `CREDENTIAL_STATUSES` row at its first
+# worker. The probe's job is to make the common case cheap, not to be the only
+# guard.
+bearer_probe() {
+  local answer code body trimmed compact class="" message="" edge_line
+  # `await_branch_visible`'s shape: no `-f`, the status riding as the answer's
+  # last line, so a refusal is an ANSWER to be classified rather than an error
+  # that takes down a `set -e` script. `--max-time` bounds a proxy that hangs:
+  # a boot must not wait on this longer than it would take to find out the hard
+  # way.
+  answer="$(fleet_curl -sS --max-time 20 \
+    -H 'authorization: Bearer placeholder' \
+    "$ANTHROPIC_PROXY_URL/api/oauth/usage" -w '\n%{http_code}' 2>/dev/null || true)"
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  body="$(printf '%s' "$answer" | sed '$d')"
+
+  if [ "$code" = 200 ]; then
+    log "bearer probe: alive"
+    return 0
+  fi
+  case "$code" in
+    401|403) : ;;
+    *) log "bearer probe: inconclusive (${code:-no answer})"; return 0 ;;
+  esac
+
+  # A JSON error document: the first non-space byte is `{` and the document
+  # says so. `json_field message` answers the FIRST `"message": "…"` in it,
+  # which in this body is `error.message`.
+  trimmed="$(printf '%s' "$body" | sed -e 's/^[[:space:]]*//')"
+  compact="$(printf '%s' "$body" | tr -d ' \t\n')"
+  case "$trimmed" in
+    '{'*)
+      case "$compact" in
+        *'"type":"error"'*)
+          class=bearer
+          message="$(printf '%s' "$body" | json_field message)"
+          [ -n "$message" ] || message="no message" ;;
+      esac ;;
+  esac
+
+  # The edge's own refusal, matched on the sentence it is, with the trace id
+  # kept verbatim. The `grep` is guarded exactly as `json_field`'s is: a match
+  # that found nothing is an answer, and the `head` below closes early over it.
+  if [ -z "$class" ] && [ "$code" = 403 ]; then
+    edge_line="$(printf '%s' "$body" | { grep -Eo 'integration not found or not attached to this VM \(trace: [0-9a-f]{32}\)' || true; } | head -n 1)"
+    if [ -n "$edge_line" ]; then
+      class=edge
+      message="$edge_line"
+    fi
+  fi
+
+  # A 401/403 of some third shape is still the bearer being refused — the class
+  # a reader can act on — with as much of the body as a status cell can carry.
+  if [ -z "$class" ]; then
+    class=bearer
+    message="$(printf '%s' "$body" | tr '\n' ' ' | cut -c1-200)"
+    [ -n "$message" ] || message="no message"
+  fi
+
+  # The park, in `do_boot`'s nothing-to-publish shape exactly: the page, the
+  # evidence commit and its push, both record tags, one notify, exit 0. The run
+  # never started an engine, so there is nothing to wait for and nothing to
+  # publish — what it leaves is the record of why.
+  ERROR="parked: credential $class $code — $message"
+  log "bearer probe: refused — $ERROR"
+  write_status parked "credential"
+  collect_evidence
+  push_evidence "$RUN_ID: parked — credential"
+  record_tags
+  notify "run-$RUN_N parked" "$TARGET_REPO — $ERROR"
+  exit 0
+}
+
 # A transient SERVICE, not a scope: `--wait` hands back the engine's exit code
 # and is refused for a scope, `--collect` unloads the unit when it stops so the
 # is-active check below reads `inactive` rather than a lingering `failed`, and
@@ -956,6 +1060,9 @@ run_engine() {
   [ -n "$EFFORT" ] && knobs+=(--implementer-effort "$EFFORT")
   :
   log_auth_status
+  # AFTER the token is proven present and BEFORE anything is started: the whole
+  # value of this probe is that it happens while nothing has been spent.
+  bearer_probe
 
   # The renderer address, when this box has one. An `if` and not a trailing
   # `&& .`: a bare `&&` as a function's last command makes the function's exit
