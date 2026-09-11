@@ -22,7 +22,7 @@
 // The leg-naming line the legs search for is the literal
 // `the recorded text names the failing leg`; the padding marker is `PADDING-`.
 //
-// Pattern and rig are `test_run_engine_baseline.mjs`'s: `makeRepo(dir, {
+// Pattern and rig are the shared engine rig's: `makeRepo(dir, {
 // 'check.sh': … })` replaces the helper's plain BROKEN-rule script, the agent
 // seam is stubbed, everything below it is real. Each scenario gets its own
 // `mkdtemp` directory and its own `stamp`; no ports, no shared fixtures.

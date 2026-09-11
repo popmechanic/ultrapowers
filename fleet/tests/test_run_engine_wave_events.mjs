@@ -24,7 +24,7 @@
 //
 // Legs: (a) M1, (b) M2 + M3, (c) M3, (d) M4.
 //
-// The rig is test_run_engine_baseline.mjs's shape — `makeRepo`, the agent seam
+// The rig is the shared engine rig's shape — `makeRepo`, the agent seam
 // stubbed, everything below it real — with one addition this exam needs: the
 // engine's `log`/`phase` seams are wired into `<runDir>/events.jsonl` through
 // the production `makeEventLog`, and the stub agent emits the

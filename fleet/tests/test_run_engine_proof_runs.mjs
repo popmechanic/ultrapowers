@@ -959,12 +959,6 @@ for (const [leg, simName, probe, pinName] of [
       pin: 'evs.some((e) => e.kind === \'driver:check-run\' && e.task === \'T1\' && e.iter === 1)',
       why: 'BASE ran the Check: again for the review round' }),
     'a `driver:check-run` at `iter` 1'],
-  // (g) the exam-evidence sim: two post-patch `driver:exam-run` events.
-  ['g', 'test_run_engine_exam_evidence.mjs',
-    probeSource({ tag: 'g713', exam: true,
-      pin: 'evs.filter((e) => e.kind === \'driver:exam-run\' && e.task === \'T1\').length === 2',
-      why: 'BASE recorded two post-patch driver:exam-run events' }),
-    'two post-patch `driver:exam-run` events'],
   // (h) the implementer-suite sim: a `driver:exam-run` at iter 1.
   ['h', 'test_run_engine_implementer_suite.mjs',
     probeSource({ tag: 'h713', exam: true,

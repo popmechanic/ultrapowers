@@ -582,9 +582,9 @@ export const integratedCheckEvidenceBlock = (checks) => {
 // #729 — the referee's own record, rendered for the reviewer that reads the
 // same patch. It goes LAST in the review prompt, after CHECK EVIDENCE: the
 // evidence blocks before it are pinned to each other by
-// `test_run_engine_pre_review.mjs` (CHECK follows RUN to the byte), and
-// `test_run_engine_exam_evidence.mjs` asserts a prompt with no such block
-// names none of them — which is why this block must never contain the strings
+// `test_run_engine_pre_review.mjs` (CHECK follows RUN to the byte), and a
+// prompt carrying no such block is read by the absence of its name — which is
+// why this block must never contain the strings
 // `RUN EVIDENCE:`, `EXAM EVIDENCE:` or `CHECK EVIDENCE:`.
 // A settled line is a check that ran and decided; a finding is already the fix
 // loop's business, so the reviewer is told not to re-derive either. `null`

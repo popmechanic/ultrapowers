@@ -69,8 +69,7 @@ def sim_env():
 # cap and this list keep being read together.
 SLOW_FIRST = ('test_sandbox_boot_selfmerge.mjs', 'test_run_engine_proof_runs.mjs',
               'test_sandbox_boot.mjs', 'test_sandbox_boot_merge.mjs',
-              'test_sandbox_boot_edges.mjs', 'test_run_engine_exam_evidence.mjs',
-              'test_publish_fold.mjs')
+              'test_sandbox_boot_edges.mjs')
 
 
 def _sim_id(fleet_dir, path):

@@ -9,8 +9,6 @@ Main areas under test:
   handing it its task, and reaping the result.
 - `test_run_waves.mjs` — the waves loader and patch capture: reading the wave
   plan and turning each finished clone into a diff against its base.
-- `test_run_main.mjs` — the deterministic engine entry: argument handling and
-  the top-level run control flow.
 - `test_confine_hook.mjs` — the implementer confinement boundary: which tool
   calls a task's clone is allowed to make.
 - `test_run_engine*.mjs` — the engine kernel: wave scheduling, review pairing,

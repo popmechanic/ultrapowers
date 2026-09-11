@@ -28,8 +28,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-referee-'))
 
 // ── the shared literals ─────────────────────────────────────────────────────
 // The block's opening sentence and its position are the reviewer's contract;
-// the three evidence-block names are what it must never contain, because
-// test_run_engine_exam_evidence.mjs reads their absence as "no such block".
+// the three evidence-block names are what it must never contain, because a
+// prompt carrying no such block is read by their absence.
 const REFEREE_MARK = '\n\nREFEREE:'
 const OPENING = 'REFEREE: the driver\'s own arithmetic over the patch'
 const EVIDENCE_BLOCKS = ['EXAM EVIDENCE:', 'RUN EVIDENCE:', 'CHECK EVIDENCE:']

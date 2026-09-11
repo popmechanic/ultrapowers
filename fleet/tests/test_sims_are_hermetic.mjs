@@ -27,7 +27,7 @@
  *   M3  no such file reads, stats or sources a string-literal absolute path
  *       outside the checkout and `os.tmpdir()`, and the probe names every one.
  *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`; each of the
- *       nine sites at BASE survives only as names a sim checks exist under
+ *       eight sites at BASE survives only as names a sim checks exist under
  *       `fleet/tests/` without running them. A mutated copy of a sim's own
  *       text under the temp root is not a sibling run.
  *   M5  `fleet/sandbox-boot.sh` names `/etc/fleet/render.env` exactly once, as
@@ -39,7 +39,7 @@
  *       names its inheriting spawn, its `/etc/fleet/render.env` read and its
  *       sibling-sim spawn — and the probe itself spawns nothing.
  *
- * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M4 at the nine sites, (f) M7,
+ * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M4 at the eight sites, (f) M7,
  * (g) M7, (h) M6, (i) M5.
  *
  * The sweep (legs b, c, d) is a static read of source, never an execution: it
@@ -837,18 +837,17 @@ test('the same sweep names each shape of a sim running another  [M4 / leg (d)]',
     'level, copyWithProbe(simName, probe) carries no literal, and that pin is not a sibling run')
 })
 
-// ── (e) the nine sites, each replaced by a name read and not run  [M4] ───────
+// ── (e) the eight sites, each replaced by a name read and not run  [M4] ──────
 
-/** The nine nested sites at BASE and the siblings each one ran. */
+/** The nested sites at BASE and the siblings each one ran. */
 const NESTED_AT_BASE = [
   ['test_run_engine_candidate_bootstrap.mjs', ['test_run_engine_reconcile.mjs', 'test_run_engine_exam_together.mjs']],
   ['test_sandbox_boot_render_env.mjs', ['test_sandbox_boot.mjs', 'test_sandbox_boot_effort.mjs', 'test_sandbox_boot_state_exams.mjs']],
-  ['test_sandbox_boot_state_exams.mjs', ['test_sandbox_boot.mjs', 'test_sandbox_boot_approval_evidence.mjs']],
+  ['test_sandbox_boot_state_exams.mjs', ['test_sandbox_boot.mjs']],
   ['test_launch_render.mjs', ['test_launch.mjs', 'test_launch_pins.mjs']],
   ['test_launch_test_command.mjs', ['test_launch.mjs', 'test_launch_hold.mjs', 'test_launch_effort.mjs', 'test_launch_engine_source.mjs', 'test_launch_reaps.mjs']],
   ['test_setup_script_render_env.mjs', ['test_setup_script.mjs']],
-  ['test_run_engine_exam_evidence.mjs', ['test_run_engine_examiner.mjs', 'test_run_engine_exam_edits.mjs']],
-  ['test_run_engine_state_exams.mjs', ['test_run_engine_exam_evidence.mjs', 'test_run_engine_pre_review.mjs', 'test_run_engine_proof_runs.mjs', 'test_run_engine_integrated_runs.mjs']],
+  ['test_run_engine_state_exams.mjs', ['test_run_engine_pre_review.mjs', 'test_run_engine_proof_runs.mjs', 'test_run_engine_integrated_runs.mjs']],
 ]
 
 for (const [file, siblings] of NESTED_AT_BASE) {

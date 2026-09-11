@@ -21,9 +21,9 @@ task's FILES answers it, `plan` when only the task's own text can.
 
 There is no bake step: this directory is the single copy, so editing a file
 here changes what the next dispatch sends. Prompt sizes are reported, not
-gated — `fleet/tests/test_run_engine.mjs` prints each file's word count and
-gates nothing on it (#496). The same test rejects shouted imperatives, and
-`fleet/tests/test_roles_peer.mjs` pins the register this directory keeps: the
+gated — a release commit body carries each file's word count and gates nothing
+on it (#496). `fleet/tests/test_roles_peer.mjs` rejects shouted imperatives and
+pins the register this directory keeps: the
 clause each rule turns on, not a sentence frozen verbatim against its own
 author (#612) — a rule that needs shouting belongs in code.
 
