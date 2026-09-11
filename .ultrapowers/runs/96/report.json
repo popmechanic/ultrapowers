@@ -1,0 +1,112 @@
+{
+  "integrationBranch": "ultra/integration-run-96",
+  "baseSha": "782dda69c7b935bf2b5e996a5462dc33fb0c33b8",
+  "waves": [
+    [
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "29e99ca84cfa6e6629d8979b2851c616d181dee9",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-96/patches/task-2.patch",
+      "reviewVerdict": "fixed",
+      "notes": "GLOBAL CONSTRAINT (no `Check:` behind it, so this is my reading): \"nothing above the collapsed record is a hash, a JSON fence, a file listing or a reviewer's sentence.\" M2 requires the answer line `**Merged** <sha>`, and `fleet/sandbox-boot.sh:~1812` renders the full squash sha above `<details>` \u2014 literally a hash above the record. The two clauses cannot both be satisfied as written. I read the constraint's intent as forbidding the hash *table* and the receipt fence, and M2 is explicit and authorized, so the diff does the right thing; flagging it so the operator can settle the wording of the constraint rather than sending it to a fix round (no edit inside this task's FILES can answer it without breaking M2 and its exam leg).; `mutant_cell` in the new `card_head` reader (`fleet/sandbox-boot.sh:~1785`) answers `SURVIVED` for a *malformed* record, not only for a killed-mutant failure: `if any(k is False for k in killed) or len(killed) != len(exams)` \u2014 a `stateExams` list holding a non-dict element drops out of `killed` and trips the length test. That contradicts the reader's own stated rule in the block comment above it (\"a document that is absent, unparsable or oddly shaped answers `\u2014`\"), and `SURVIVED` is the loudest, most actionable cell on the card to hand a reader on a shape problem. Suggest `return EM` when `len(killed) != len(exams)`, keeping `SURVIVED` for an actual `mutant_killed: false`. M4 does not specify the malformed case, so nothing in the exam is affected either way.; The M4 table writes each Claim into a markdown cell unescaped (`fleet/sandbox-boot.sh`, `card_head`'s `out.append(\"| \" + \" | \".join(cells) + \" |\")`). A plan or task Claim containing a `|` splits the row and the rendered table silently gains a column \u2014 the one character that can break a cell read straight off the plan. One line fixes it: escape the cell text, e.g. build the claim cell as `(claim or EM).replace(\"|\", \"\\\\|\")`. No leg covers it, so a leg with a pipe in a task Claim would be worth adding alongside.; M1 says the first line is the plan's `**Summary:**` paragraph verbatim, and every plan the exam writes (`planExtra` in `fleet/tests/test_sandbox_boot_card.mjs`) signs a one-line summary \u2014 so the shape a real compiled plan has, a paragraph wrapped over several lines, is never exercised. `card_head`'s `header_value` joins the wrapped lines on a single space and collapses runs of whitespace, which is exactly what `_plan_header_value` in `skills/ultrapowers/scripts/compile_plan.py:321` does for every other bold header value, so the behavior is right; it is the pin that is missing. Add a leg whose stub plan's `**Summary:**` wraps over two lines and whose expected first card line is the two joined on one space.; EXAM EDIT \u2014 accepted, no fix required. The submission changed the one `Test:` path a peer wrote, `fleet/tests/test_sandbox_boot_card.mjs`, in the `a parked run answers `**Parked:** <error>`  [M2 / leg (b)]` case only. The peer's assertion accepted either of two lines (`accepted = ['**Parked:** ' + statusOf(ctx).error, '**Parked:**']`, `assert.ok(accepted.includes(line))`), because on the peer's tree `ERROR` was set after `render_card` ran and the card therefore quoted an empty cell. The edited hunk replaces that with two assertions: `assert.ok(error, ...)` \u2014 the page must actually carry a parked `error` \u2014 and `assert.equal(line, '**Parked:** ' + error)`. Every tree that passes the edited exam passes the peer's (an exact match against a non-empty `error` is a member of the peer's `accepted` set), and the bare-`**Parked:**` alternative the peer allowed is exactly the ordering bug the diff fixes by hoisting `ERROR=\"parked: gate verdict ${verdict:-none}\"` from `fleet/sandbox-boot.sh:2406` up into the `outcome=\"parked\"` branch at `:2288`. No assertion the peer wrote was dropped or loosened: this is a strict strengthening, and it is what makes M2's `**Parked:** <error>` \u2014 `<error>` being the status page's own cell \u2014 actually verified rather than satisfiable by an empty tail. The hoist is condition-for-condition equivalent at the terminal write (`outcome != \"gate-green\"` at `:2400` is the same branch as `:2288`'s `else`), so the parked page ends with the same `error` it always carried; its only other effect is that the intermediate `write_status publishing` writes of a parked run now also carry that sentence, which no sim pins and which is true of the run at that point. Recorded per the exam-edit rule; nothing to change.; EXAM EDIT \u2014 accepted, no action. `fleet/tests/test_sandbox_boot_card.mjs`'s parked leg (`a parked run answers **Parked:** <error>  [M2 / leg (b)]`) was tightened after the peer wrote it: the peer accepted either `**Parked:** ${statusOf(ctx).error}` or a bare `**Parked:**`; the submission drops the bare alternative, adds a premise assertion that the page's `error` cell is non-empty, and turns the membership check into an equality against `**Parked:** ${error}`. Every original assertion survives \u2014 any tree passing the edited leg produces exactly the peer's `accepted[0]`, so it passes the peer's bytes too \u2014 and the surrounding assertions (`state === 'parked'`, `draft === true`) are untouched. This is a strengthening edit, and the submission answered it in production code rather than in the exam: `ERROR=\"parked: gate verdict ...\"` moved from after the publish (`fleet/sandbox-boot.sh:~2663`) to the point where `outcome=\"parked\"` is decided (`~2541`), so the page carries the sentence the card quotes before `render_card` reads it. Recorded, not blocked.; plan-defect: M5's second promotion arm cannot fire on a real report. M5 (and the new CONTRACT.md paragraph, and `card_head`'s `actors` set at `fleet/sandbox-boot.sh:~1920`) promote above the record the checklist items \"whose task row carries `actor` `plan`\". But `residual_read` emits a `task <id> reviewer` item only for rows with `status == \"done\"` (`fleet/sandbox-boot.sh:1382-1390`, unchanged at BASE), while `skills/ultrapowers/references/report-format.md`'s `tasks[].actor` row says the key is \"Present only on a row the driver parked for the plan (#722)\" \u2014 i.e. the one `failed` row \u2014 and \"Absent from every other row\". So no item a plan-actor row could own is ever in the checklist, and the arm is inert in production. Leg (e)'s fixture (`RESIDUAL_REPORT`, task 3: `status: 'done'` plus `actor: 'plan'`) is the shape report-format says does not occur, so the leg pins the branch only against an unreachable state. Nothing on the card is wrong today \u2014 nothing is falsely promoted or falsely suppressed \u2014 which is why this is minor, and the fix is not an edit to this diff: either M5 should drop the arm, or `residual_read` should list a parked plan-actor row's notes, and that second option changes the `### Residuals` checklist's item set, which this task's Context explicitly fences off (\"add nothing there beyond what a moved heading needs\") and which `fleet/tests/test_sandbox_boot_residuals.mjs`'s seven-line pin reads. The plan owns the choice.; concern: exam-edit: the only fix for this finding is an edit to the Proof `Test:`/`Guard:` file fleet/tests/test_sandbox_boot_card.mjs, which is in this round's FILES but not in the task's `writes` list. I made it solely because both blocking issues are that edit and both carry the referee's PROPOSED PATCH for it; the change only tightens leg (b) (removes the accepted bare `**Parked:**`, adds a premise assertion that the page carries an `error`), it does not relax or reshape any other assertion, and no production code was touched to make it pass.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 2,
+      "proofFixes": 1,
+      "examEdited": [
+        "fleet/tests/test_sandbox_boot_card.mjs"
+      ],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-96/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1621 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.....................................                                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1621 passed, 5 warnings in 415.01s (0:06:55) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1051795,
+    "blockingFindings": 2,
+    "blockingPerReviewerMinute": 0.11409067356281406,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 1,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n....................................                                     [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1620 passed, 5 warnings in 397.27s (0:06:37) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "0db4467fb47832ceefaa976dd20acb6c43e39dbc",
+      "branches": [
+        "2"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-96/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-96/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.431,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "The `<details><summary>Record</summary>` fold in the PR body (fleet/sandbox-boot.sh:1867, 1908)",
+      "reason": "browser",
+      "why": "The sims assert the body's bytes and ordering, but whether GitHub actually collapses the record and renders the markdown inside it (the blank line after `<summary>` that the task's Context calls out) can only be seen in a rendered pull request, which this environment cannot open."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_sandbox_boot_card.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 2: exam-edit: the only fix for this finding is an edit to the Proof `Test:`/`Guard:` file fleet/tests/test_sandbox_boot_card.mjs, which is in this round's FILES but not in the task's `writes` list. I made it solely because both blocking issues are that edit and both carry the referee's PROPOSED PATCH for it; the change only tightens leg (b) (removes the accepted bare `**Parked:**`, adds a premise assertion that the page carries an `error`), it does not relax or reshape any other assertion, and no production code was touched to make it pass.",
+    "task 2: the fix round edited the exam \u2014 fleet/tests/test_sandbox_boot_card.mjs no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "Task 2, Claim slot (and Global Constraint 1). The operator's sentence ends \"every sha and receipt is folded away below\" and the plan's first global constraint says \"nothing above the collapsed record is a hash\" \u2014 but the answer line the tree renders above the `<details>` record can be a sha: `fleet/sandbox-boot.sh:1811-1812` prints `\"**Merged** \" + MERGED` when the status page's `merged` cell holds a squash sha, and `fleet/CONTRACT.md:316` declares that form. The implementation is faithful to its own signed Machine restatement (M2 enumerates `**Merged** <sha>` explicitly) and `fleet/tests/test_sandbox_boot_card.mjs:629` pins it, so this is a tension the plan itself signed, not a coding defect \u2014 and per the task's Context note (2) a one-attempt run never reaches it. Worth an issue against the plan text (either the Claim's \"every sha\" clause or M2's `**Merged** <sha>` form), not worth holding the merge."
+    }
+  ],
+  "blockedWaves": []
+}
