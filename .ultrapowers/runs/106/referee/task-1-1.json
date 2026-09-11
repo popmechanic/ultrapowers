@@ -1,0 +1,81 @@
+{
+  "task": "1",
+  "n": 1,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/referee-linker.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/referee.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/exams/run_106/test_run_engine_reviewer_prompt.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/test_referee_linker.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/test_referee_replay.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/test_run_engine_referee.mjs` absent from FILES"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: `reviewEconomy: { reviewerMs, blockingFindings, blockingPerReviewerMinute, pairRounds, r2MarginalBlocking }` `reviewEconomy` is followed by `:` in the bullet — a field, path or assignment, not an exported symbol; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_run_engine_reviewer_prompt.mjs at fleet/tests/exams/run_106/test_run_engine_reviewer_prompt.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +0 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/run-engine.mjs": "mjs",
+    "fleet/tests/test_run_engine_exam_edits.mjs": "mjs",
+    "fleet/tests/test_run_engine_integrated_runs.mjs": "mjs",
+    "fleet/tests/test_run_engine_pre_review.mjs": "mjs",
+    "fleet/tests/test_run_engine_proof_runs.mjs": "mjs",
+    "fleet/tests/test_run_engine_review_economy.mjs": "mjs",
+    "fleet/tests/test_run_engine_review_pair.mjs": "mjs",
+    "fleet/tests/test_run_engine_reviewer_prompt.mjs": "mjs",
+    "fleet/tests/test_run_engine_state_exams.mjs": "mjs",
+    "fleet/tests/test_run_record_keys.mjs": "mjs"
+  },
+  "ms": 3
+}

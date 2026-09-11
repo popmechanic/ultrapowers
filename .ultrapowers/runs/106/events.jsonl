@@ -110,3 +110,13 @@
 {"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YCEBD0000WQQZF2N1A51M","ts":1789154179437}
 {"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_pre_review.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YCMQV0000V2QGWSGBN9RR","ts":1789154185979}
 {"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_state_exams.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YCPXW0000KJF31WZZYVCF","ts":1789154188220}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YDJ760000HZ9DNM3PAKEA","ts":1789154216166}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_integrated_runs.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YDQ4S0000668ZK2R0GDCE","ts":1789154221209}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_record_keys.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YDS0G00004Z0GRCZK5858","ts":1789154223120}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_run_engine_exam_edits.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YDYNQ0000QNHDTQRRK06K","ts":1789154228919}
+{"kind":"driver:proof-run","task":"1","cmd":"node fleet/tests/test_roles_peer.mjs | grep -q 'ALL TESTS PASSED'","exit":0,"iter":0,"id":"01M28YDYQB0000VR0M2Y0CZRPS","ts":1789154228971}
+{"kind":"driver:proof-run","task":"1","cmd":"python3 -m pytest tests/test_roles_run_evidence.py -q","exit":0,"iter":0,"id":"01M28YDYXB0000JZ9ZY10CAMW6","ts":1789154229163}
+{"kind":"driver:exam-run","task":"1","cmd":"node fleet/tests/exams/run_106/test_run_engine_reviewer_prompt.mjs","exit":0,"iter":0,"id":"01M28YFQ760000M8PVFA50WAN6","ts":1789154286822}
+{"kind":"driver:check-run","task":"1","cmd":"! grep -rnE 'referee\\.mjs|referee-linker|REFEREE:|refereeBlock|runReferee|absorbReferee|referee-red|refereeFindings|refereeBlocking|refereeSkippedPairs|refereeMinors|refereeResult|refereeRepairedPair|refereeLinker|mechanical referee|driver.s referee|driver.s own arithmetic|referee/task-|fixtures/referee|examLanding' fleet skills tests --exclude-dir=node_modules --exclude-dir=exams","exit":1,"minor":true,"iter":0,"id":"01M28YFQ9C0000JXVTSFZZNYVQ","ts":1789154286892}
+{"kind":"driver:check-run","task":"1","cmd":"bash -n fleet/sandbox-boot.sh","exit":0,"minor":false,"iter":0,"id":"01M28YFQ9Q0000Q5N8HX40PN32","ts":1789154286903}
+{"kind":"engine:log","line":"task 1 referee-red after the pre-review repair round","id":"01M28YFQ9T0000KG12FND6DC9Y","ts":1789154286906}
