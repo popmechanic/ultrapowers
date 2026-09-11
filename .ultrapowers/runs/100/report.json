@@ -1,0 +1,91 @@
+{
+  "integrationBranch": "ultra/integration-run-100",
+  "baseSha": "e2ce29b5e34745c3a771cf9f1cd9f66ab22576b1",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "RUN_FATAL: refusing to dispatch impl:1 \u2014 the run already failed at exam:1: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": false,
+    "output": "________________ test_no_unmarked_except_handler_in_any_script _________________\n[gw4] linux -- Python 3.12.3 /usr/bin/python3\n\n    def test_no_unmarked_except_handler_in_any_script():\n        violations = swept_violations()\n>       assert violations == [], \"unmarked swallows:\\n\" + \"\\n\".join(violations)\nE       AssertionError: unmarked swallows:\nE         skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:247: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:267: except handler discards its exception without raising or swallow(<reason>)\nE       assert ['skills/ultr...ow(<reason>)'] == []\nE         Left contains 3 more items, first extra item: 'skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)'\nE         Use -v to get more diff\n\ntests/test_ultralearn_swallows.py:117: AssertionError"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "TEST_FAILED",
+      "detail": "baseline: the suite is RED on BASE \u2014 the sensor is blind for this run; failing: tests/test_ultralearn_swallows.py, tests/test_ultralearn_swallows.py, tests/test_ultralearn_swallows.py (________________ test_no_unmarked_except_handler_in_any_script _________________\n[gw4] linux -- Python 3.12.3 /usr/bin/python3\n\n    def test_no_unmarked_except_handler_in_any_script():\n        violations = swept_violations()\n>       assert violations == [], \"unmarked swallows:\\n\" + \"\\n\".join(violations)\nE       AssertionError: unmarked swallows:\nE         skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:247: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:267: except handler discards its exception without raising or swallow(<reason>)\nE       assert ['skills/ultr...ow(<reason>)'] == []\nE         Left contains 3 more items, first extra item: 'skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)'\nE         Use -v to get more diff\n\ntests/test_ultralearn_swallows.py:117: AssertionError) \u2014 this run inherited that red: no candidate was tested and no reconcile was dispatched against it",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        ".claude-plugin/marketplace.json",
+        ".claude-plugin/plugin.json",
+        "CLAUDE.md",
+        "tests/test_release_0_3_25.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: agent error at mostCapable \u2014 retrying once at mostCapable (same tier): RUN_FATAL: API refused with 401 (credential or config) \u2014 the run cannot proceed (label impl:1)",
+    "task 1: agent error after same-tier retry at mostCapable \u2014 RUN_FATAL: refusing to dispatch impl:1 \u2014 the run already failed at exam:1: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+    "baseline: the suite is RED on BASE \u2014 the sensor is blind for this run; failing: tests/test_ultralearn_swallows.py, tests/test_ultralearn_swallows.py, tests/test_ultralearn_swallows.py (________________ test_no_unmarked_except_handler_in_any_script _________________\n[gw4] linux -- Python 3.12.3 /usr/bin/python3\n\n    def test_no_unmarked_except_handler_in_any_script():\n        violations = swept_violations()\n>       assert violations == [], \"unmarked swallows:\\n\" + \"\\n\".join(violations)\nE       AssertionError: unmarked swallows:\nE         skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:247: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:267: except handler discards its exception without raising or swallow(<reason>)\nE       assert ['skills/ultr...ow(<reason>)'] == []\nE         Left contains 3 more items, first extra item: 'skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)'\nE         Use -v to get more diff\n\ntests/test_ultralearn_swallows.py:117: AssertionError) \u2014 the red this run inherited, not the diff's: the run parks at the wave barrier at the latest, and no reconcile is dispatched at it"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": [
+    {
+      "wave": 1,
+      "detail": "baseline: the suite is RED on BASE \u2014 the sensor is blind for this run; failing: tests/test_ultralearn_swallows.py, tests/test_ultralearn_swallows.py, tests/test_ultralearn_swallows.py (________________ test_no_unmarked_except_handler_in_any_script _________________\n[gw4] linux -- Python 3.12.3 /usr/bin/python3\n\n    def test_no_unmarked_except_handler_in_any_script():\n        violations = swept_violations()\n>       assert violations == [], \"unmarked swallows:\\n\" + \"\\n\".join(violations)\nE       AssertionError: unmarked swallows:\nE         skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:247: except handler discards its exception without raising or swallow(<reason>)\nE         skills/ultralearn/scripts/catch_report.py:267: except handler discards its exception without raising or swallow(<reason>)\nE       assert ['skills/ultr...ow(<reason>)'] == []\nE         Left contains 3 more items, first extra item: 'skills/ultralearn/scripts/catch_report.py:98: except handler discards its exception without raising or swallow(<reason>)'\nE         Use -v to get more diff\n\ntests/test_ultralearn_swallows.py:117: AssertionError) \u2014 this run inherited that red: no candidate was tested and no reconcile was dispatched against it"
+    }
+  ]
+}
