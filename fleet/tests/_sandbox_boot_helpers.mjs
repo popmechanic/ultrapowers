@@ -307,6 +307,28 @@ case "$url" in
       "${FOLLOWUP_URL}" "\${STUB_ISSUE_CODE:-201}" ;;
   *notify.int.exe.xyz*)
     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
+  *claude-max.int.exe.xyz/api/oauth/usage)
+    # THE BEARER PROBE, answered by \`STUB_BEARER\` — the one knob every boot sim
+    # shares, because the probe runs on the way to the engine in ALL of them.
+    # UNSET or empty is the live bearer (the usage document, then 200); the
+    # named rows are the two refusals the boot script must tell apart, plus the
+    # two answers it must refuse to classify. The body and the status ride as
+    # two lines, the shape \`-w '\\n%{http_code}'\` makes real curl print.
+    say "curl bearer"
+    case "\${STUB_BEARER:-}" in
+      revoked)
+        printf '{"type":"error","error":{"type":"authentication_error","message":"OAuth access token has been revoked"}}\\n401\\n' ;;
+      forbidden)
+        printf '{"type":"error","error":{"type":"permission_error","message":"This account is not permitted"}}\\n403\\n' ;;
+      edge)
+        printf 'integration not found or not attached to this VM (trace: 53af9083708deefaa364aa37e112695d)\\n403\\n' ;;
+      down)
+        exit 7 ;;
+      500)
+        printf 'upstream error\\n500\\n' ;;
+      *)
+        printf '{"five_hour":{"utilization":1,"resets_at":"x"},"seven_day":{"utilization":1,"resets_at":"x"}}\\n200\\n' ;;
+    esac ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
 esac
 `,

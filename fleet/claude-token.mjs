@@ -7,7 +7,9 @@
 //                                         the same, with no question at the terminal:
 //                                         the process polls the clipboard until the
 //                                         copied `code#state` carries THIS login's state
-//   node fleet/claude-token.mjs refresh   rotate before a run when < 4 h remain
+//   node fleet/claude-token.mjs refresh   install the keychain's access token at the
+//                                         edge before a run, rotating it first when
+//                                         < 4 h remain
 //   node fleet/claude-token.mjs status    when the current access token expires
 //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
 //                                         its access token is still fresh (`--json`)
@@ -33,6 +35,12 @@
 // usage would switch every live sandbox to that account mid-run (the prompt
 // cache is per account). So rotation and installation are separate — `refresh`
 // installs unless `--no-install`, and `usage` rotates with `install: false`.
+// Installation is unconditional, rotation is not: `refresh` installs the record's
+// access token even when the record is fresh and nothing rotates, because a
+// `usage` read minutes earlier may have rotated that account with
+// `install: false` and left the edge carrying a revoked bearer (run-100,
+// 2026-09-11). One idempotent `integrations edit … --bearer -` per launch is the
+// price of a launch line that is honest about what the edge carries.
 //
 // The flow, constants and request shapes are popmechanic/loom's
 // (skills/loom/references/oauth-reference.md), measured there against claude.ai.
@@ -347,9 +355,17 @@ export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT,
     const rec = readRecord(deps, account)
     if (!rec) throw new Error('no refresh token in the keychain — run `node fleet/claude-token.mjs login` first')
     const remaining = rec.expiresAt - deps.now()
-    if (!force && remaining > REFRESH_AHEAD_MS) {
-      deps.log(`${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
-      return { refreshed: false, expiresAt: rec.expiresAt }
+    // A record with no `accessToken` is the pre-`usage` shape (`readRecord` asks
+    // only for `refreshToken` and `expiresAt`): there is nothing to install, so
+    // it rotates as if it were inside the window.
+    if (!force && remaining > REFRESH_AHEAD_MS && typeof rec.accessToken === 'string') {
+      // Fresh, so no grant is spent — but the bearer still goes on, because the
+      // edge may be carrying a token something else rotated away (see the header).
+      const how = install ? installBearer(deps, rec.accessToken, account) : null
+      deps.log(how
+        ? `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — bearer ${how} for ${account}`
+        : `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
+      return { refreshed: false, installed: install, expiresAt: rec.expiresAt }
     }
     const tokens = await refreshGrant(deps, rec.refreshToken)
     // The rotated pair replaces the old one BEFORE the edge is touched: a consumed
@@ -358,7 +374,7 @@ export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT,
     writeRecord(deps, tokens, account)
     if (install) installBearer(deps, tokens.accessToken, account)
     deps.log(`${INTEGRATION}: refreshed ${account}; fresh until ${iso(tokens.expiresAt)}`)
-    return { refreshed: true, expiresAt: tokens.expiresAt }
+    return { refreshed: true, installed: install, expiresAt: tokens.expiresAt }
   } finally {
     release()
   }

@@ -208,6 +208,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     service's (`--wait`). The render entry passes the boot's render address through to the engine and
     is empty when the run carries no render integration — a value, never a bearer.
     `claude auth status` must show `oauth_token` — logged before the engine starts.
+    Beside it, once, the bearer probe: one `GET https://claude-max.int.exe.xyz/api/oauth/usage`
+    through the proxy carrying `-sS`, `--max-time 20` and the header
+    `authorization: Bearer placeholder` (the edge replaces that header with the real token, so the
+    answer is about the token and not about the script), with the status riding as the answer's last
+    line. A 200 logs `bearer probe: alive` and the unit starts. A 401 or 403 whose body is a JSON
+    error document (`"type":"error"`) parks the run right there, before any engine, exam or
+    implementer has spent a token: state `parked`, phase `credential`, `error` exactly
+    `parked: credential bearer <status> — <the body's error.message>`, evidence committed and pushed,
+    both record tags pushed, a `run-<N> parked` notify, exit 0. exe.dev's own plain-text 403 parks
+    the same way as `parked: credential edge 403 — integration not found or not attached to this VM
+    (trace: <32 hex>)`, the trace id verbatim — that is the id support resolves. Anything else — curl
+    non-zero, or a status outside {200, 401, 403} — logs `bearer probe: inconclusive (…)` and starts
+    the unit: a probe never manufactures a park out of a flake, and a credential that really is dead
+    is still stopped by the engine's own credential row at its first worker.
     No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
   - publish fold: the target's default branch may have moved while the run worked, so before the PR is
     opened the boot script folds that tip into the run's branch — under state `running` with phase

@@ -223,12 +223,24 @@ await leg('login: a failed exchange quotes the status and writes nothing', async
   assert.equal(h.calls.lobby.filter((c) => !c.verb.startsWith('integrations list')).length, 0)
 })
 
-await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → nothing touched', async () => {
+// Fresh no longer means untouched: no grant is spent, but the record's access
+// token is installed anyway, because a `usage` read may have rotated it away
+// from under the edge (run-100). The verbs are one `integrations list` and one
+// `integrations edit`; the token rides stdin, as everywhere else.
+await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → no grant, but the bearer is installed', async () => {
   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
   const r = await refresh(h.deps)
-  assert.equal(r.refreshed, false)
-  assert.equal(h.calls.fetch.length, 0)
-  assert.equal(h.calls.lobby.length, 0)
+  assert.deepEqual(r, { refreshed: false, installed: true, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
+  assert.equal(h.calls.fetch.length, 0, 'a fresh record spends no refresh grant')
+  assert.deepEqual(h.calls.lobby.map((c) => c.verb), [
+    'integrations list --json',
+    `integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}`
+  ])
+  assert.equal(h.calls.lobby[1].input, 'a0', 'the record\'s own token, on stdin')
+  assert.ok(!h.calls.lobby.some((c) => c.verb.includes('a0')), 'and in no verb')
+  const last = h.calls.logs[h.calls.logs.length - 1]
+  assert.match(last, /bearer edited/)
+  assert.doesNotMatch(last, /nothing to do/)
 })
 
 await leg('refresh: inside REFRESH_AHEAD_MS (4 h) → rotate, store the NEW triple before the edge, then edit', async () => {
@@ -450,13 +462,13 @@ await leg('[M4 leg (d)] main([\'login\']) without the flag prompts once and read
   assert.equal(r.how, 'edited')
 })
 
-await leg('[M4 leg (d)] main refresh/status behave as at BASE', async () => {
+await leg('[M4 leg (d)] main refresh/status route as at BASE — now answering `installed` too', async () => {
   const fresh = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
-  assert.deepEqual(await main(['refresh'], fresh.deps), { refreshed: false, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
+  assert.deepEqual(await main(['refresh'], fresh.deps), { refreshed: false, installed: true, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
   assert.equal(fresh.calls.fetch.length, 0)
 
   const forced = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 10 * REFRESH_AHEAD_MS } })
-  assert.deepEqual(await main(['refresh', '--force'], forced.deps), { refreshed: true, expiresAt: T0 + 3600 * 1000 })
+  assert.deepEqual(await main(['refresh', '--force'], forced.deps), { refreshed: true, installed: true, expiresAt: T0 + 3600 * 1000 })
   assert.equal(forced.calls.fetch[0].body.grant_type, 'refresh_token')
 
   const st = harness({ record: { refreshToken: 'SECRET', accessToken: 'SECRET-ACCESS', expiresAt: T0 + 90 * 60_000 } })
