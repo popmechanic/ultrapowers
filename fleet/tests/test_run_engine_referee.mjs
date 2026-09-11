@@ -55,7 +55,7 @@ const del = (cwd, rel) => fs.rmSync(path.join(cwd, rel), { force: true })
 const stubOf = (h) => (prompt, opts, cwd) => {
   const kind = String(opts.label).split(':')[0]
   if (kind === 'review') return h.review ? h.review(opts) : passReview()
-  if (kind === 'exam') return h.exam ? h.exam(opts, cwd) : { status: 'DONE', summary: 'exam written' }
+  if (kind === 'exam') return h.exam ? h.exam(opts, cwd, prompt) : { status: 'DONE', summary: 'exam written' }
   if (opts.label === 'integration') return cleanCritic()
   if (kind === 'impl' || kind === 'fix') {
     const handler = kind === 'fix' ? h.fix : h.impl
@@ -665,6 +665,46 @@ const examTask = (over = {}) =>
     (l) => l.includes('agent error') && l.includes('cannot read the captured patch'))
   assert.ok(calls.length >= 1,
     '[M5] the report says which task erred and why: ' + JSON.stringify(r.report.judgmentCalls))
+}
+
+// ── (i) an unguarded exam is read where it LANDED [M3, M4] ──────────────────
+// Run-101 (2026-09-11): the Proof named `tests/test_release_0_3_25.py`, the
+// exam was unguarded, so the engine sent the examiner to
+// `tests/exams/run_101/…` and put the Proof path back to BASE (#777). The exam
+// passed, the referee looked for the Proof path at HEAD, found nothing, and
+// filed a blocking exam-files finding — the first run whose unguarded exam was
+// green at referee time was the first to fail on it. The referee now reads
+// existence at the landing path the engine hands it.
+{
+  let landed = null
+  const r = await drive('i1', [examTask({
+    proofTests: ['tests/test_rel.py'], files: ['one.txt', 'tests/test_rel.py'],
+  })], {
+    impl: (cwd) => write(cwd, 'one.txt', 'one\n'),
+    exam: (opts, cwd, prompt) => {
+      const m = /EXAM PATHS: tests\/test_rel\.py -> (\S+)/.exec(String(prompt))
+      assert.ok(m, '[M4] the examiner is told where the exam lands: ' + String(prompt).slice(0, 300))
+      landed = m[1]
+      write(cwd, landed, '# the peer exam\n')
+      return { status: 'DONE', summary: 'exam written' }
+    },
+  })
+  assert.ok(landed && landed.startsWith('tests/exams/') && landed.endsWith('/test_rel.py'),
+    '[M4] the landing is under the reserved directory: ' + landed)
+  const row = r.row('T1')
+  assert.equal(row.status, 'done',
+    '[M3] an unguarded exam that landed is no absent path: ' + JSON.stringify(row))
+  assert.deepEqual(r.of('fix:'), [],
+    '[M4] and buys no repair round: ' + r.labels.join(','))
+  const rec = readReferee(r.runDir, 'T1', 0)
+  assert.deepEqual(findingsOf(rec, 'exam-files'), [],
+    '[M4] no exam-files finding: ' + JSON.stringify(rec.findings))
+  const settled = settledOf(rec, 'exam-files')
+  assert.equal(settled.length, 1, '[M4] one settled exam-files line: ' + JSON.stringify(rec.settled))
+  assert.ok(settled[0].detail.includes('tests/test_rel.py at ' + landed),
+    '[M4] naming the Proof path and where it landed: ' + settled[0].detail)
+  assert.ok(!fs.existsSync(path.join(r.repo, 'tests', 'test_rel.py')),
+    '[M4] and the Proof path itself is not at HEAD — the landing is the only copy')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

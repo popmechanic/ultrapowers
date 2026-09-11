@@ -235,9 +235,20 @@ const examCheck = (task, opts) => {
   }
   const cloneDir = str(opts.cloneDir)
   const own = new Set(arr(task.files).map(str))
+  // Where each Proof path LANDED (#777): an unguarded exam is written to the
+  // reserved directory and the Proof path itself is put back to BASE, so the
+  // name the Proof gives is exactly where the file is not. The engine hands the
+  // map; a path it does not name (a guarded exam, a sim's `t1_test.sh`, a caller
+  // without the map) lands at itself, which is the read this always was.
+  const landingMap = (opts.examLanding && typeof opts.examLanding === 'object')
+    ? opts.examLanding : {}
+  const landingOf = (p) => {
+    const land = landingMap[p]
+    return typeof land === 'string' && land.trim() !== '' ? land : p
+  }
   const missing = proofTests.filter((p) => {
     try {
-      return !fs.existsSync(path.join(cloneDir, p))
+      return !fs.existsSync(path.join(cloneDir, landingOf(p)))
     } catch {
       return true
     }
@@ -248,14 +259,15 @@ const examCheck = (task, opts) => {
       // the fix round can reach was ever asked to create it.
       findings: missing.map((p) => finding('exam-files', 'blocking',
         own.has(p) ? 'implementer' : 'plan',
-        'Proof `Test:` path absent at HEAD: ' + tick(p))),
+        'Proof `Test:` path absent at HEAD: ' + tick(p) +
+        (landingOf(p) === p ? '' : ' (landing ' + tick(landingOf(p)) + ')'))),
       settled: [],
     }
   }
   return {
     findings: [],
     settled: [settle('exam-files', (proofTests.length
-      ? proofTests.join(', ') + ' exists'
+      ? proofTests.map((p) => (landingOf(p) === p ? p : p + ' at ' + landingOf(p))).join(', ') + ' exists'
       : 'the Proof names no Test: path') + '; exam ran, exit 0')],
   }
 }

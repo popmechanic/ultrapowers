@@ -2008,6 +2008,10 @@ export async function runEngine({
         task, patchPath: impl.patch, baseSha: baseShaForTask, headSha: impl.headSha,
         cloneDir, siblingFiles, exam, examEvidence, n,
         linker: refereeLinker, runDir,
+        // Where each Proof path actually landed (#777): an unguarded exam sits
+        // under the reserved directory and the Proof path is back at BASE, so
+        // the referee reads existence at the landing, never at the name.
+        examLanding: Object.fromEntries(proofTests.map((p) => [p, landingOf(p)])),
       })
       const found = Array.isArray(result.findings) ? result.findings : []
       refereeFindings += found.length
