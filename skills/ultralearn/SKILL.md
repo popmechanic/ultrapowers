@@ -107,6 +107,22 @@ over N touching runs, and that list is the input to a deletion plan, which goes
 through the gate like any other work. `--ledger`, `--tree` and `--n` are the
 report's only flags.
 
+Three rules make the count honest (first ratchet, 2026-09-11). **The window
+starts when the test lands:** each row carries `startedAt`, the run's own
+start from its status page, and a test's touching runs are only the rows that
+started after the test landed — the committer date of the commit that first
+added the file, read from the tree's history; an untracked test lands at the
+epoch. A row with no `startedAt` counts toward no test's window, and the
+report closes with `<k> row(s) carry no startedAt — recount them` while any
+such row remains. **A recount supersedes:** the report reads the last row per
+run and an earlier row for the same run contributes nothing — but the counter
+appends only rows whose id the ledger lacks, so to recount a run, remove the
+run's old line first and count it again. **Runners are never candidates:** a
+test file whose text carries the line `# catch-counter: runner` (the fleet
+bridge, `tests/test_fleet_suite.py`) has status `runner`; it runs other tests,
+earns no catch of its own, sits on no point of the curve and is never a
+candidate in the `--n` listing.
+
 ## The residual counter
 
 A **residual** is what a review round left behind — a deferred fix, a

@@ -207,8 +207,9 @@ def _outcome_of(events, pos, red, task, path, exam_edited, writes,
 
 
 def derive_catches(run_dir):
-    """The run's `catch-count` row: exactly `kind`, `runId`, `driverRuns`,
-    `catches`, `reds`, `touched`, `exercises` (M7).
+    """The run's `catch-count` row: exactly `kind`, `runId`, `startedAt`,
+    `driverRuns`, `catches`, `reds`, `touched`, `exercises` (M7; `startedAt`
+    since the first ratchet).
 
     `catches[T]` counts the distinct fix rounds that turned a red naming `T`
     green without editing `T`; `reds` carries every judged red, credited or
@@ -225,6 +226,14 @@ def derive_catches(run_dir):
     events = read_events(run_dir)
     report = _read_json(run_dir / "report.json")
     receipt = _read_json(run_dir / "receipt.json")
+    # When the run started, as its own status page says — the clock the
+    # report's per-test window is measured against (first ratchet, task 2).
+    # A run with no page, or a page with no `startedAt`, carries null, and the
+    # report counts such a row toward no test's window.
+    status = _read_json(run_dir / "status.json")
+    started_at = status.get("startedAt") if isinstance(status, dict) else None
+    if not isinstance(started_at, str):
+        started_at = None
     # "Neither readable" is the pair of Nones `_read_json` returns for a
     # missing, unreadable or malformed file.
     have_record = report is not None or receipt is not None
@@ -261,6 +270,7 @@ def derive_catches(run_dir):
     return {
         "kind": ROW_KIND,
         "runId": opened.get("runId") if isinstance(opened, dict) else None,
+        "startedAt": started_at,
         "driverRuns": driver_runs,
         "catches": {path: len(rounds) for path, rounds in credits.items()},
         "reds": reds,

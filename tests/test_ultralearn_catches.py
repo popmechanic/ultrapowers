@@ -26,8 +26,8 @@ SCRIPT = REPO / "skills/ultralearn/scripts/catch_counter.py"
 SCRIPTS_DIR = REPO / "skills/ultralearn/scripts"
 
 # M7: the row is exactly these keys — no more, no fewer.
-ROW_KEYS = {"kind", "runId", "driverRuns", "catches", "reds", "touched",
-            "exercises"}
+ROW_KEYS = {"kind", "runId", "startedAt", "driverRuns", "catches", "reds",
+            "touched", "exercises"}
 
 # The Context's outcome vocabulary, one of which every `reds` entry carries.
 OUTCOMES = {"caught", "exam-edited", "task-writes", "rerun", "stayed-red",
@@ -282,9 +282,9 @@ def test_h_two_kinds_of_red_before_one_fix_round_credit_once(tmp_path):
 
 # --- leg (i) — M7: the row's shape ------------------------------------------
 
-def test_i_row_has_exactly_the_seven_keys(tmp_path):
-    """(i)/M7: the row of (a) carries exactly `kind`, `runId`, `driverRuns`,
-    `catches`, `reds`, `touched`, `exercises`; `kind` is `catch-count`,
+def test_i_row_has_exactly_the_eight_keys(tmp_path):
+    """(i)/M7: the row of (a) carries exactly `kind`, `runId`, `startedAt`,
+    `driverRuns`, `catches`, `reds`, `touched`, `exercises`; `kind` is `catch-count`,
     `runId` is the `run:open` event's, and `driverRuns` counts the two
     driver-run events."""
     counter = _load()
