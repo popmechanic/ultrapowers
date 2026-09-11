@@ -1,0 +1,1376 @@
+diff --git a/fleet/claude-token.mjs b/fleet/claude-token.mjs
+index b7e8e7b42cd5a198c848bf06cd24d358be9bac4c..a4e73fca863f198ae32cdfd0fb975fad2c52a5d9 100644
+--- a/fleet/claude-token.mjs
++++ b/fleet/claude-token.mjs
+@@ -7,7 +7,7 @@
+ //                                         the same, with no question at the terminal:
+ //                                         the process polls the clipboard until the
+ //                                         copied `code#state` carries THIS login's state
+-//   node fleet/claude-token.mjs refresh   rotate before a run when < 30 min remain
++//   node fleet/claude-token.mjs refresh   rotate before a run when < 4 h remain
+ //   node fleet/claude-token.mjs status    when the current access token expires
+ //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
+ //                                         its access token is still fresh (`--json`)
+@@ -59,7 +59,16 @@ export const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', acc
+ export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
+ export const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
+ export const LOCK_STALE_MS = 2 * 60 * 1000
+-export const REFRESH_AHEAD_MS = 30 * 60 * 1000
++// A launch rotates the access token when fewer than this remain. Four hours,
++// not thirty minutes: the token lives eight hours and nothing refreshes it
++// mid-run, so a run launched with thirty-one minutes left dies at minute
++// thirty-one with a 401 to whichever worker is mid-call. Run-92
++// (2026-09-11 00:28 UTC) did exactly that on the token run-88's launch had
++// minted at 16:28; the five launches between them each found more than
++// thirty minutes remaining and rotated nothing. Four hours is the longest
++// run on record (about ninety minutes) with room to spare, and a rotation is
++// one refresh grant behind the single-flight lock — cheap.
++export const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
+ // `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
+ export const CLIPBOARD_POLL_MS = 2 * 1000
+ export const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
+diff --git a/fleet/roles/critic.md b/fleet/roles/critic.md
+index 13f492579a574ab24198664f3f6e13dcfd804ad4..65ac7a1fc7a959d9267552b3ad3929c8268872e6 100644
+--- a/fleet/roles/critic.md
++++ b/fleet/roles/critic.md
+@@ -33,7 +33,12 @@ for human judgment (aesthetic, product-fit), not for a command the driver ran.
+ When that evidence settles the presence of a deliverable and only the judgment
+ is left, the `manual` item's `why` quotes the settling command verbatim, as the
+ `$ <cmd>` line of the block gives it; a paraphrase is not a citation, and an
+-item that carries one parks at the gate as it does today.
++item that carries one parks at the gate as it does today. The block lists only
++the commands of tasks the fold JOINED — each one shares a path with another
++merged task — so a red there is a finding about the join itself, not against
++either task: it is reported with the pair named (a judgment call quoting the
++command, the shared path and the other task), and it is not a blocking finding.
++Do not spend one on it.
+ 
+ The INTEGRATED CHECK EVIDENCE block is the same for the global constraints that
+ carry a `Check:` command: the driver ran each one itself on the adopted
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 3e2fabe29a78525d141569157d930533dd1721b8..1ce2c620329cd48cd19f181db0b163eff45a9765 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -479,6 +479,59 @@ export const stateExamBlock = (rows) => {
+     rows.map((r) => '\n- ' + r.exam + ': mutant ' +
+       String((r.mutant_path || r.path || '')) + ' killed: true').join('')
+ }
++// ── #887 — the join: which paths two of a wave's tasks both touched ──────────
++//
++// Re-running every merged task's `Run:` on the fold asks most tasks a question
++// whose answer is already in hand: a task whose paths no other task of the wave
++// went near reads the same tree it read in its own clone, and its proof can
++// only repeat itself there. What the fold actually raises is a question about
++// PAIRS — two tasks whose work met in one file — so the pass is narrowed to the
++// tasks that have one.
++//
++// A task's TOUCH SET is its declared `files` united with the paths its captured
++// patch changed, and both halves are load-bearing. The patch alone misses a
++// file the plan handed two tasks that only one of them edited — the other wrote
++// its code against that file and is just as exposed to the other's edit. The
++// declared list alone misses whatever an implementer touched outside its Files,
++// which is precisely the overlap nobody planned for.
++//
++// The paths a patch changed are the `b/<p>` halves of its `diff --git a/<p>
++// b/<p>` headers — the `b` half because a DELETED file still carries one, and a
++// task that removed a path contends for it exactly as a task that wrote it does.
++export const patchPaths = (patchFile) => {
++  let text = ''
++  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return [] }
++  const out = []
++  for (const line of text.split('\n')) {
++    if (!line.startsWith('diff --git ')) continue
++    const m = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
++    if (m && m[2] && !out.includes(m[2])) out.push(m[2])
++  }
++  return out
++}
++// Declared first, then whatever the capture adds to them — de-duped, order
++// stable, so a reader sees the plan's spelling ahead of the capture's.
++export const touchSetOf = (task, patchFile) => {
++  const out = []
++  const declared = (task && Array.isArray(task.files)) ? task.files : []
++  for (const p of declared.concat(patchPaths(patchFile))) {
++    const s = String(p == null ? '' : p).trim()
++    if (s && !out.includes(s)) out.push(s)
++  }
++  return out
++}
++// The wave's joined set: every path at least TWO of its touch sets carry,
++// sorted. A one-task wave joins nothing to itself and a wave whose tasks are
++// pairwise disjoint joins nothing either — both answer `[]`. Computed from the
++// wave's own rows every wave: no cache, no hashing, nothing the compiler has to
++// know.
++export const joinedPathsOf = (touchSets) => {
++  const counts = new Map()
++  for (const set of (Array.isArray(touchSets) ? touchSets : [])) {
++    for (const p of new Set(Array.isArray(set) ? set : [])) counts.set(p, (counts.get(p) || 0) + 1)
++  }
++  return [...counts.entries()].filter(([, n]) => n >= 2).map(([p]) => p).sort()
++}
+ // #604 (b)+(c) — the INTEGRATED `Run:` proofs. The per-task execution above
+ // answers "does this command pass on the patch its author wrote"; it cannot
+ // answer "does it still pass on the tree the wave actually adopted", and the
+@@ -1089,8 +1142,9 @@ export async function runEngine({
+   const judgmentCalls = []
+   const unfinished = []
+   const frontier = []
+-  // #604 — one record per merged task's `Run:` command, executed on the tree
+-  // its wave adopted, and the blocking findings a non-zero exit mints.
++  // #604 — one record per JOINED merged task's `Run:` command (#887), executed
++  // on the tree its wave adopted, and the blocking findings a non-zero
++  // `Check:` mints. A red `Run:` mints none: it is reported with its pair.
+   const integratedRuns = []
+   const integratedChecks = []
+   const integratedFindings = []
+@@ -2908,6 +2962,20 @@ export async function runEngine({
+     const waveTasks = (Array.isArray(WAVES[w]) ? WAVES[w] : [])
+       .filter((t) => t && mergeable.some((r) => r.task === t.id))
+     compositionRows(w + 1, waveTasks)
++    // #887 — the wave's join, computed right here from the rows the barrier
++    // folded: every patch is already captured and every declared Files list is
++    // the plan's own, so this needs no kernel read and no tree read. Only the
++    // MERGEABLE rows contribute — a task that never landed put nothing on the
++    // tree for another task to meet.
++    const touchSets = new Map(waveTasks.map((t) =>
++      [t.id, touchSetOf(t, (mergeable.find((r) => r.task === t.id) || {}).patch)]))
++    const joined = joinedPathsOf([...touchSets.values()])
++    // What this task shares, and who with: the task's own joined paths (in the
++    // wave's sorted order) and the other tasks that carry them, in plan order.
++    const joinedFor = (id) => joined.filter((p) => (touchSets.get(id) || []).includes(p))
++    const sharersOf = (id, paths) => waveTasks
++      .filter((t) => t.id !== id && paths.some((p) => (touchSets.get(t.id) || []).includes(p)))
++      .map((t) => t.id)
+     const merge = await foldWave(mergeable, w, waveTasks, waveBaseSha)
+     waveMerges.push({
+       wave: w + 1,
+@@ -2915,6 +2983,11 @@ export async function runEngine({
+       headSha: merge.headSha,
+       detail: merge.detail,
+       branches: mergeable.map((r) => r.task),
++      // #887 — the paths this wave's tasks met on, `[]` when they met on none.
++      // The row the adoption pushes is where a reader looks for what the fold
++      // actually put at risk, so the set that selected the integrated pass
++      // travels with it.
++      joined,
+       // #871 — the adopted-red row carries the suite that made it one. A
+       // `MERGED` row whose suite is `passed: false` is a reading no other row
+       // has, so the paths that bought the adoption travel with it. Green rows
+@@ -2942,6 +3015,13 @@ export async function runEngine({
+       // contribute — `waveTasks` is already WAVES[w] narrowed to the mergeable
+       // rows, in Proof order within each task.
+       for (const t of waveTasks) {
++        // #887 — and only the JOINED ones. A task whose touch set meets no
++        // other task's in this wave would be re-asked its proof about the tree
++        // it already answered for; the pass exists for the pairs, so a task
++        // with no partner here runs nothing at all.
++        const shared = joinedFor(t.id)
++        if (shared.length === 0) continue
++        const withIds = sharersOf(t.id, shared)
+         const cmds = Array.isArray(t.proofRuns)
+           ? t.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
+           : []
+@@ -2957,20 +3037,26 @@ export async function runEngine({
+           // nothing without a run directory, so the absence IS the instruction.
+           const r = await sh(cmd, integ,
+             examEnv({ base: baseSha, task: t.id, pass: 'integrated' }))
+-          integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
+-          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1 })
++          // Every record names the join that bought it: the shared paths, and
++          // the tasks on the other side of them. A reader of a red line needs
++          // the PAIR, not only the command.
++          integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
++                                joined: shared.slice(), with: withIds.slice() })
++          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1,
++                        joined: shared.slice(), with: withIds.slice() })
+           if (r.code === 0) continue
+-          // A red integrated run is never a deferral: the driver has the
+-          // answer and it is a defect in the INTEGRATED tree, which is the
+-          // completeness critic's subject. So it is minted as a typed #474
+-          // finding and joins review.findings before the report is built —
+-          // the existing brake then refuses the run with no second code path.
+-          const detail = 'integrated Run: ' + cmd + ' (task ' + t.id + ') exited ' + r.code +
+-            ' on the adopted tree'
+-          integratedFindings.push({ severity: 'blocking', detail })
+-          judgmentCalls.push(detail + ' — it passed in the task\'s own clone; the fold changed ' +
+-            'the answer, so the run is BLOCKED whatever the critic returns')
+-          log('wave ' + (w + 1) + ': ' + detail)
++          // #871 decision 1, applied to the join (#887): a red here is REPORTED
++          // with the pair named, not gated. The proof passed in the task's own
++          // clone and the only new fact is that two tasks met in a file — which
++          // of them is wrong is a question this run cannot answer, and blocking
++          // the whole run on it spends a park on an unattributed red. So no
++          // completeness finding is minted: the judgment call carries the
++          // reading, the critic reads the same bytes as INTEGRATED RUN
++          // EVIDENCE, and the `Check:` pass below keeps the brake it has.
++          const call = 'task ' + t.id + '\'s proof ' + cmd + ' went red on the fold of ' +
++            shared.join(', ') + ' with task ' + withIds.join(', ')
++          judgmentCalls.push(call)
++          log('wave ' + (w + 1) + ': ' + call)
+         }
+       }
+       // The run's standing `Check:` commands on the same adopted tree. A
+@@ -3076,9 +3162,11 @@ export async function runEngine({
+   await runCritic()
+   judgmentCalls.push(...criticCalls)
+ 
+-  // A red integrated `Run:` proof outranks whatever the critic returned, and it
+-  // is folded into the SAME list the #474 brake already reads — appended after
+-  // the critic so it survives a critic that died and was replaced above.
++  // A red integrated `Check:` outranks whatever the critic returned, and it is
++  // folded into the SAME list the #474 brake already reads — appended after
++  // the critic so it survives a critic that died and was replaced above. A red
++  // integrated `Run:` is not here: since #887 it is reported with the pair it
++  // names and blocks nothing (the judgment call carries it).
+   if (integratedFindings.length) {
+     review.findings = (Array.isArray(review.findings) ? review.findings : []).concat(integratedFindings)
+   }
+diff --git a/fleet/tests/test_claude_token.mjs b/fleet/tests/test_claude_token.mjs
+index 3edb86bde3870441c1c28923af322c40cb543ef6..de9b3e4a1e1c5284cc0a3c945a9197473faa9de4 100644
+--- a/fleet/tests/test_claude_token.mjs
++++ b/fleet/tests/test_claude_token.mjs
+@@ -223,7 +223,7 @@ await leg('login: a failed exchange quotes the status and writes nothing', async
+   assert.equal(h.calls.lobby.filter((c) => !c.verb.startsWith('integrations list')).length, 0)
+ })
+ 
+-await leg('refresh: fresh for more than 30 min → nothing touched', async () => {
++await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → nothing touched', async () => {
+   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
+   const r = await refresh(h.deps)
+   assert.equal(r.refreshed, false)
+@@ -231,7 +231,7 @@ await leg('refresh: fresh for more than 30 min → nothing touched', async () =>
+   assert.equal(h.calls.lobby.length, 0)
+ })
+ 
+-await leg('refresh: inside 30 min → rotate, store the NEW triple before the edge, then edit', async () => {
++await leg('refresh: inside REFRESH_AHEAD_MS (4 h) → rotate, store the NEW triple before the edge, then edit', async () => {
+   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
+   const order = []
+   const origWrite = h.deps.keychainWrite; h.deps.keychainWrite = (name, v) => { order.push('keychain'); return origWrite(name, v) }
+@@ -273,7 +273,10 @@ await leg('installBearer: a failing lobby verb surfaces the lobby\'s own words w
+ })
+ 
+ await leg('refresh is single-flight: the record is read under the lock, so a queued sibling finds the rotated triple and does nothing', async () => {
+-  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
++  // The minted token lives eight hours here, as the real one does: with a
++  // four-hour refresh-ahead window, a one-hour fake would still be "inside
++  // the window" after the first rotation and the sibling would rotate again.
++  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 }, expiresIn: 8 * 3600 })
+   let held = 0; const trace = []
+   h.deps.lock = () => { held += 1; trace.push('lock'); return () => { held -= 1; trace.push('unlock') } }
+   const origRead = h.deps.keychainRead
+@@ -281,7 +284,7 @@ await leg('refresh is single-flight: the record is read under the lock, so a que
+   const first = await refresh(h.deps)
+   const second = await refresh(h.deps)
+   assert.equal(first.refreshed, true)
+-  assert.equal(second.refreshed, false, 'the sibling sees the rotated triple (fresh for 60 min) and does nothing')
++  assert.equal(second.refreshed, false, 'the sibling sees the rotated triple (fresh for 8 h) and does nothing')
+   assert.equal(h.calls.fetch.length, 1, 'one refresh grant, not two')
+   assert.deepEqual(trace, ['lock', 'unlock', 'lock', 'unlock'])
+   assert.equal(held, 0)
+@@ -310,7 +313,7 @@ await leg('the real lock: two processes, one refresh grant', async () => {
+     deps.keychainRead = () => fs.readFileSync(${JSON.stringify(rec)}, 'utf8')
+     deps.keychainWrite = (name, v) => { fs.writeFileSync(${JSON.stringify(rec)}, v); return true }
+     deps.lobby = (verb) => ({ code: 0, out: verb.startsWith('integrations list') ? JSON.stringify({ integrations: [{ name: 'claude-max' }] }) : 'ok' })
+-    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 3600 }) } }
++    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 8 * 3600 }) } }
+     deps.log = () => {}
+     const r = await refresh(deps); process.stdout.write(JSON.stringify(r))
+   `
+diff --git a/fleet/tests/test_run_engine_integrated_clean.mjs b/fleet/tests/test_run_engine_integrated_clean.mjs
+index 1fadc9638b771330a302f87524a7d4372e80c0ef..cadd7d51e742e27db26bcfd9273926fc62d4c0a9 100644
+--- a/fleet/tests/test_run_engine_integrated_clean.mjs
++++ b/fleet/tests/test_run_engine_integrated_clean.mjs
+@@ -14,6 +14,11 @@
+ // execution the assertions observe is the driver's own — the same rig the
+ // existing integrated-runs sim uses.
+ //
++// Since #887 the integrated pass runs only a JOINED task's commands, so this
++// fixture's three tasks all write `shared.txt`: the sweep's subject is the
++// tree the first integrated run reads, and a wave with no join has no first
++// integrated run to sweep for.
++//
+ // Machine clauses under test:
+ //   M1 — before the first integrated `Run:` command of a wave executes in the
+ //        integration clone, every directory named `__pycache__` or
+@@ -57,6 +62,11 @@ const CMD_B = 'test ! -e pkg/__pycache__'
+ // touches, `check.sh` a file the rig commits at BASE.
+ const CMD_C = 'test -e notes.txt && test -e check.sh'
+ 
++// The path the wave's three tasks MEET in (#887), written with identical bytes
++// by each of them: the join is what selects the integrated `Run:` pass at all.
++const SHARED = 'shared.txt'
++const SHARED_CONTENT = 'shared-by-every-task\n'
++
+ const mkTask = (id, file, over = {}) => ({
+   id, title: id.toLowerCase(), files: [file], tier: 'standard', review: 'lean',
+   writes: [file], commutes: [], proofTests: [], proofRuns: [],
+@@ -97,6 +107,12 @@ const stub = (prompt, opts, cwd) => {
+   if (kind === 'impl') {
+     const id = opts.label.split(':')[1]
+     fs.writeFileSync(path.join(cwd, fileOf(id)), 'from-' + id + '\n')
++    // #887 — the integrated pass is the JOIN's: every task here writes
++    // `shared.txt` with the same bytes, so the three touch sets meet in it (and
++    // the fold still applies all three patches cleanly). Without the join this
++    // wave re-runs nothing and the sweep would have no first integrated run to
++    // precede.
++    fs.writeFileSync(path.join(cwd, SHARED), SHARED_CONTENT)
+     // The driver's pre-review pass executes each task's `Run:` in the task's
+     // OWN clone, where the suite command never ran. A's proof asks for
+     // `.git/__pycache__` and C's for `notes.txt`; both are planted here so the
+@@ -120,6 +136,9 @@ assert.equal(report.coverage.complete, true,
+ assert.equal(report.waveMerges[0].status, 'MERGED',
+   'sim precondition: wave 1 was adopted: ' + JSON.stringify(report.waveMerges))
+ assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
++assert.deepEqual(report.waveMerges[0].joined, [SHARED],
++  'sim precondition: the wave\'s tasks meet in ' + SHARED + ', which is what makes this a ' +
++  'wave with integrated runs at all (#887): ' + JSON.stringify(report.waveMerges[0]))
+ assert.ok(Array.isArray(report.integratedRuns) && report.integratedRuns.length === 3,
+   'sim precondition: one integrated run per merged task: ' +
+   JSON.stringify(report.integratedRuns))
+diff --git a/fleet/tests/test_run_engine_integrated_runs.mjs b/fleet/tests/test_run_engine_integrated_runs.mjs
+index ba4831833b22bbc1d5342d7330e825fb8ba884ec..b97dbce3b37fab8e9281e55674560abf099634a5 100644
+--- a/fleet/tests/test_run_engine_integrated_runs.mjs
++++ b/fleet/tests/test_run_engine_integrated_runs.mjs
+@@ -11,21 +11,28 @@
+ // kernel, the real `sh`); only the judgments are canned, so every command
+ // execution the assertions observe is the driver's own.
+ //
++// Since #887 the pass is the JOIN's: a task's commands are re-run only when one
++// of its touched paths is also touched by another task of the same wave, which
++// is the only way the fold can have changed the answer. Every fixture here that
++// expects an integrated execution therefore has its tasks meet in `shared.txt`;
++// `test_run_engine_joined_proofs.mjs` owns the join rule itself.
++//
+ // Machine clauses under test:
+-//   M1 — after adopt and before the critic, each `done` task's `proofRuns` runs
+-//        in Proof order in the integration clone through the same `sh` seam,
+-//        recorded as { task, cmd, exit, stdout } (stdout+stderr, last 4,000
+-//        characters) under `report.integratedRuns`, plus one
+-//        `driver:integrated-run` event per command carrying task, cmd, exit, wave.
++//   M1 — after adopt and before the critic, each joined `done` task's
++//        `proofRuns` runs in Proof order in the integration clone through the
++//        same `sh` seam, recorded as { task, cmd, exit, stdout, joined, with }
++//        (stdout+stderr, last 4,000 characters) under `report.integratedRuns`,
++//        plus one `driver:integrated-run` event per command carrying task, cmd,
++//        exit, wave — and the join it was selected by.
+ //   M2 — the critic's prompt carries the block after the `SUITE (driver-run,
+ //        post-fold)` section: the opening sentence verbatim, then per command
+ //        `$ <cmd>`, `exit <n>`, the recorded output. No merged task with
+ //        `proofRuns` ⇒ no block, and a critic prompt byte-identical to BASE's.
+-//   M3 — a non-zero integrated exit appends the typed completeness finding
+-//        { severity: 'blocking', detail: 'integrated Run: <cmd> (task <id>)
+-//        exited <n> on the adopted tree' } to `completenessFindings` and
+-//        `judgmentCalls`, so the #474 brake refuses the run; never a
+-//        `deferredVerification` item.
++//   M3 — a non-zero integrated exit is REPORTED, not gated (#871 decision 1):
++//        no completeness finding whose detail begins `integrated Run:`, nothing
++//        refused at the #474 brake, and one `judgmentCalls` line naming the
++//        task, the command, the fold's path and the task on the other side of
++//        it; never a `deferredVerification` item.
+ //   M4 — unmerged tasks and unadopted waves contribute nothing; a run with no
+ //        `proofRuns` anywhere leaves `integratedRuns` as [] and every captured
+ //        prompt of every role byte-identical to the same run on BASE's engine.
+@@ -71,8 +78,21 @@ const mkTask = (id, file, over = {}) => ({
+   writes: [file], commutes: [], proofTests: [], proofRuns: [],
+   body: 'task ' + id + ' body', ...over,
+ })
+-const fileOf = (id) => (id === 'A' ? 'a.txt' : id === 'B' ? 'b.txt' : id)
+-const contentOf = (id) => (id === 'A' ? 'from-A\n' : B_CONTENT)
++const fileOf = (id) => (id === 'A' ? 'a.txt' : id === 'B' ? 'b.txt' : id === 'C' ? 'c.txt' : id)
++const contentOf = (id) =>
++  (id === 'A' ? 'from-A\n' : id === 'B' ? B_CONTENT : 'from-' + id + '\n')
++
++// The path the wave's tasks MEET in (#887). Every implementer stub below writes
++// it with the same bytes, so the touch sets join on it and the fold still
++// applies both patches cleanly — the join is what selects the integrated pass,
++// and without it a wave of disjoint tasks re-runs nothing.
++const SHARED = 'shared.txt'
++const SHARED_CONTENT = 'shared-by-every-task\n'
++// One implementer's whole footprint: its own file, and the shared one.
++const implWrite = (cwd, id) => {
++  fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
++  fs.writeFileSync(path.join(cwd, SHARED), SHARED_CONTENT)
++}
+ 
+ // The run's own record. An absent file reads as no records, so a BASE engine
+ // that writes none fails a count assertion rather than an ENOENT.
+@@ -136,8 +156,7 @@ const blockOf = (prompt) => {
+   const stub = (prompt, opts, cwd) => {
+     const kind = opts.label.split(':')[0]
+     if (kind === 'impl') {
+-      const id = opts.label.split(':')[1]
+-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
++      implWrite(cwd, opts.label.split(':')[1])
+       return doneImpl(cwd)
+     }
+     if (kind === 'review') return passReview()
+@@ -148,6 +167,9 @@ const blockOf = (prompt) => {
+   const report = await run()
+   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
+   assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
++  assert.deepEqual(report.waveMerges[0].joined, [SHARED],
++    'sim precondition: the wave\'s tasks meet in ' + SHARED + ', which is what selects ' +
++    'the integrated pass at all: ' + JSON.stringify(report.waveMerges[0]))
+ 
+   // [M1] the report key, its contents and their order.
+   assert.ok(Array.isArray(report.integratedRuns),
+@@ -161,9 +183,14 @@ const blockOf = (prompt) => {
+     { task: 'B', cmd: 'cat b.txt', exit: 0 },
+   ], 'the integrated runs are A\'s command then B\'s two, in Proof order')
+   for (const r of report.integratedRuns) {
+-    assert.deepEqual(Object.keys(r).sort(), ['cmd', 'exit', 'stdout', 'task'],
+-      'each record is exactly { task, cmd, exit, stdout }: ' + JSON.stringify(r))
++    assert.deepEqual(Object.keys(r).sort(), ['cmd', 'exit', 'joined', 'stdout', 'task', 'with'],
++      'each record is exactly { task, cmd, exit, stdout, joined, with }: ' + JSON.stringify(r))
+     assert.equal(typeof r.stdout, 'string', 'stdout is a string: ' + JSON.stringify(r))
++    // [M1] the join each record was selected by: the shared path, and the other
++    // task that carries it.
++    assert.deepEqual(r.joined, [SHARED], 'the record names the fold\'s path: ' + JSON.stringify(r))
++    assert.deepEqual(r.with, [r.task === 'A' ? 'B' : 'A'],
++      'and the task on the other side of it: ' + JSON.stringify(r))
+   }
+   assert.equal(report.integratedRuns[2].stdout, B_CONTENT,
+     '`cat b.txt` records what the file actually holds')
+@@ -204,8 +231,7 @@ const blockOf = (prompt) => {
+     prompts[opts.label] = prompt
+     const kind = opts.label.split(':')[0]
+     if (kind === 'impl') {
+-      const id = opts.label.split(':')[1]
+-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
++      implWrite(cwd, opts.label.split(':')[1])
+       return doneImpl(cwd)
+     }
+     if (kind === 'review') return passReview()
+@@ -402,13 +428,16 @@ async function pinRun(engine, tasks) {
+   }
+ }
+ 
+-// ── leg (c): green in the clone, red on the adopted tree [M3] ────────────────
++// ── leg (c): green in the clone, red on the adopted tree — REPORTED [M3] ─────
+ // A's proof asserts b.txt is ABSENT: true in A's own clone (so #589 dispatches
+ // no fix round), false once B's b.txt is folded in. That difference is the whole
+-// point of running the proofs a second time.
++// point of running the proofs a second time — and since #887 it is the JOIN's
++// finding, named with its pair and blocking nothing (#871 decision 1): which of
++// the two tasks is wrong is not a question this run can answer, so it reports
++// rather than parks.
+ {
+   const CMD = 'test ! -e b.txt'
+-  const DETAIL = 'integrated Run: ' + CMD + ' (task A) exited 1 on the adopted tree'
++  const CALL = 'task A\'s proof ' + CMD + ' went red on the fold of ' + SHARED + ' with task B'
+   const repo = makeRepo(path.join(tmp, 'repo-c'))
+   const runDir = path.join(tmp, 'run-c')
+   const waves = [[
+@@ -422,8 +451,7 @@ async function pinRun(engine, tasks) {
+     prompts[opts.label] = prompt
+     const kind = opts.label.split(':')[0]
+     if (kind === 'impl') {
+-      const id = opts.label.split(':')[1]
+-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
++      implWrite(cwd, opts.label.split(':')[1])
+       return doneImpl(cwd)
+     }
+     if (kind === 'review') return passReview()
+@@ -438,39 +466,40 @@ async function pinRun(engine, tasks) {
+   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
+   assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
+ 
+-  // [M3] the integrated execution disagrees with the clone-local one.
+-  assert.deepEqual(report.integratedRuns.map((r) => ({ task: r.task, cmd: r.cmd, exit: r.exit })),
+-    [{ task: 'A', cmd: CMD, exit: 1 }],
+-    'the integrated run records exit 1 on the folded tree')
++  // [M3] the integrated execution disagrees with the clone-local one — and
++  // carries the join it was selected by.
++  assert.deepEqual(report.integratedRuns.map(
++    (r) => ({ task: r.task, cmd: r.cmd, exit: r.exit, joined: r.joined, with: r.with })),
++    [{ task: 'A', cmd: CMD, exit: 1, joined: [SHARED], with: ['B'] }],
++    'the integrated run records exit 1 on the folded tree, with the shared path and the ' +
++    'other task named: ' + JSON.stringify(report.integratedRuns))
+   assert.deepEqual(integratedEvents(runDir).map(eventShape),
+     [{ task: 'A', cmd: CMD, exit: 1, wave: 1 }],
+     'and the event carries the non-zero exit')
+ 
+-  // [M3] the typed completeness finding, verbatim.
+-  const blocking = report.completenessFindings
+-    .filter((f) => f && typeof f === 'object' && f.severity === 'blocking')
+-  assert.equal(blocking.length, 1,
+-    'exactly one blocking completeness finding: ' + JSON.stringify(report.completenessFindings))
+-  assert.deepEqual(Object.keys(blocking[0]).sort(), ['detail', 'severity'],
+-    'the finding is the same {severity, detail} shape a critic returns')
+-  assert.equal(blocking[0].detail, DETAIL,
+-    'the finding\'s detail is fixed by the Machine clause, verbatim')
+-
+-  // [M3] the run's judgment calls name it too.
+-  assert.ok(report.judgmentCalls.some((j) => String(j).includes(DETAIL)),
+-    'the judgment calls do not name the failed integrated run: ' +
++  // [M3] no completeness finding at all — this red is not one.
++  assert.deepEqual(report.completenessFindings.filter(
++    (f) => String((f && f.detail) || f).startsWith('integrated Run:')), [],
++    'a red integrated `Run:` must mint no completeness finding: ' +
++    JSON.stringify(report.completenessFindings))
++
++  // [M3] the judgment call is the whole record, and it names the pair.
++  const red = report.judgmentCalls.filter((j) => String(j).includes('went red on the fold'))
++  assert.deepEqual(red, [CALL],
++    'exactly one judgment call, the ticket\'s sentence verbatim: ' +
+     JSON.stringify(report.judgmentCalls))
+ 
+   // [M3] never a deferral — the driver has the answer, so nothing is deferred.
+   assert.deepEqual(report.deferredVerification, [],
+-    'a red integrated run is a blocking finding, never a deferredVerification item')
++    'a red integrated run is reported, never a deferredVerification item')
+ 
+-  // [M3] the #474 brake: the gate refuses the run.
++  // [M3] and the run is not refused for it: the #474 brake has nothing to read,
++  // and no wave was blocked.
+   const decision = criticDecision(report)
+-  assert.equal(decision.approve, false,
+-    'the completeness brake must refuse a run with a red integrated Run: proof')
+-  assert.ok(String(decision.reason).includes(CMD),
+-    'the refusal names the command: ' + decision.reason)
++  assert.equal(decision.approve, true,
++    'a red integrated Run: must not refuse the run: ' + decision.reason)
++  assert.deepEqual(report.blockedWaves, [],
++    'and it blocks no wave: ' + JSON.stringify(report.blockedWaves))
+ 
+   // [M2] and the critic read the red run before filing anything.
+   const block = blockOf(prompts['integration'])
+@@ -479,24 +508,29 @@ async function pinRun(engine, tasks) {
+ }
+ 
+ // ── leg (d): a task that never merged contributes nothing [M4] ───────────────
++// Three tasks meet in `shared.txt`; B's review refuses it and its fix round is
++// blocked, so the join is computed over what LANDED — A and C — and B's own
++// command never runs on a tree that never took B's work.
+ {
+   const repo = makeRepo(path.join(tmp, 'repo-d1'))
+   const runDir = path.join(tmp, 'run-d1')
+   const waves = [[
+     mkTask('A', 'a.txt', { proofRuns: ['test -e a.txt'] }),
+     mkTask('B', 'b.txt', { proofRuns: ['test -e b.txt'] }),
++    mkTask('C', 'c.txt', { proofRuns: ['test -e c.txt'] }),
+   ]]
+   const stub = (prompt, opts, cwd) => {
+     const kind = opts.label.split(':')[0]
+     const id = opts.label.split(':')[1]
+     if (kind === 'impl') {
+-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
++      implWrite(cwd, id)
+       return doneImpl(cwd)
+     }
+     if (kind === 'fix') return { status: 'BLOCKED', summary: 'sim: B cannot be repaired' }
+     if (kind === 'review') {
+-      return id === 'A' ? passReview()
+-        : { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'B is not ready' }] }
++      return id === 'B'
++        ? { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'B is not ready' }] }
++        : passReview()
+     }
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+@@ -506,20 +540,30 @@ async function pinRun(engine, tasks) {
+   const rowB = report.tasks.find((r) => r.task === 'B')
+   assert.equal(rowB.status, 'failed', 'sim precondition: B never merged')
+   assert.equal(rowB.reviewVerdict, 'blocked-after-fix', 'sim precondition: B is blocked after its fix round')
+-  assert.equal(report.waveMerges[0].status, 'MERGED', 'sim precondition: A\'s wave was adopted')
+-
+-  // [M4] only the merged task's commands ran.
+-  assert.deepEqual(report.integratedRuns.map((r) => ({ task: r.task, cmd: r.cmd, exit: r.exit })),
+-    [{ task: 'A', cmd: 'test -e a.txt', exit: 0 }],
+-    'a task that did not merge contributes no integrated run')
++  assert.equal(report.waveMerges[0].status, 'MERGED', 'sim precondition: A and C\'s wave was adopted')
++  assert.deepEqual(report.waveMerges[0].joined, [SHARED],
++    'sim precondition: the two tasks that landed meet in ' + SHARED + ': ' +
++    JSON.stringify(report.waveMerges[0]))
++
++  // [M4] only the merged tasks' commands ran, and each names only the OTHER
++  // merged task as its partner.
++  assert.deepEqual(report.integratedRuns.map(
++    (r) => ({ task: r.task, cmd: r.cmd, exit: r.exit, with: r.with })), [
++    { task: 'A', cmd: 'test -e a.txt', exit: 0, with: ['C'] },
++    { task: 'C', cmd: 'test -e c.txt', exit: 0, with: ['A'] },
++  ], 'a task that did not merge contributes no integrated run and is named by none: ' +
++     JSON.stringify(report.integratedRuns))
+   assert.ok(!report.integratedRuns.some((r) => r.task === 'B' || r.cmd === 'test -e b.txt'),
+     'B\'s command must not run on a tree that never took B\'s work')
+-  assert.deepEqual(integratedEvents(runDir).map(eventShape),
+-    [{ task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 }],
+-    'and no event names B')
++  assert.deepEqual(integratedEvents(runDir).map(eventShape), [
++    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 },
++    { task: 'C', cmd: 'test -e c.txt', exit: 0, wave: 1 },
++  ], 'and no event names B')
+ }
+ 
+ // ── leg (d): a wave whose candidate was never adopted [M4] ──────────────────
++// Both tasks write `shared.txt`, so the join is there and the ONLY reason
++// nothing ran is that no tree was ever adopted.
+ {
+   const repo = makeRepo(path.join(tmp, 'repo-d2'))
+   const runDir = path.join(tmp, 'run-d2')
+@@ -533,6 +577,7 @@ async function pinRun(engine, tasks) {
+     const id = opts.label.split(':')[1]
+     if (kind === 'impl') {
+       fs.writeFileSync(path.join(cwd, id === 'A' ? 'a.txt' : 'BROKEN'), contentOf(id))
++      fs.writeFileSync(path.join(cwd, SHARED), SHARED_CONTENT)
+       return doneImpl(cwd)
+     }
+     if (kind === 'review') return passReview()
+diff --git a/fleet/tests/test_run_engine_joined_proofs.mjs b/fleet/tests/test_run_engine_joined_proofs.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..cb66b32650de04425d7bec378b05b2b274b8f085
+--- /dev/null
++++ b/fleet/tests/test_run_engine_joined_proofs.mjs
+@@ -0,0 +1,464 @@
++// fleet/tests/test_run_engine_joined_proofs.mjs — the integrated pass re-runs a
++// task's `Run:` lines only when one of that task's Files appears in the fold's
++// joined paths (#887; #871 decision 1).
++//
++// At BASE the integrated pass re-runs EVERY merged task's `Run:` commands on the
++// adopted tree and parks the run on any red. That is two separate mistakes: a
++// task whose files nobody else in the wave touched is being re-measured against
++// a tree that cannot have changed its answer, and a red that the fold — not the
++// task — produced is minted as a blocking completeness finding, which is a gate
++// the #871 decision says an unattributed red does not get. This sim pins the
++// rule that replaces it: compute the wave's JOINED paths, re-run only the tasks
++// standing on one, and report a red there with the pair named.
++//
++// Everything below the agent seam is real (git, clones, capture, the fold
++// kernel, the real `sh`); only the judgments are canned, so every command
++// execution the assertions observe is the driver's own — the same rig
++// test_run_engine_integrated_runs.mjs uses.
++//
++// Machine clauses under test (verbatim from the task):
++//   M1 — after a wave is adopted, the engine computes `joined` = every path that
++//        appears in the touch set of at least two of the wave's merged tasks,
++//        where a task's touch set is its declared `files` united with the paths
++//        its captured patch changes (the `diff --git a/<p> b/<p>` headers), and
++//        records it as `waveMerges[w].joined` (an array, `[]` when none).
++//   M2 — a merged task's `proofRuns` are executed on the integrated tree if and
++//        only if its touch set intersects `joined`; a single-task wave and a
++//        wave whose tasks' touch sets are pairwise disjoint execute none, and
++//        `report.integratedRuns` and the `driver:integrated-run` events carry
++//        exactly the executed commands.
++//   M3 — each `driver:integrated-run` event and each `integratedRuns` item
++//        carries `joined` (the paths of the task's touch set that are in
++//        `joined`) and `with` (the ids of the other tasks whose touch sets share
++//        them, in plan order).
++//   M4 — a non-zero integrated `Run:` exit pushes no blocking finding and does
++//        not block the run: the run's report has no completeness finding whose
++//        detail begins `integrated Run:`, and `judgmentCalls` carries one line
++//        `task <id>'s proof <cmd> went red on the fold of <path> with task
++//        <other>` (paths and other ids comma-joined when several).
++//   M5 — `Check:` commands still run on the integrated tree for every adopted
++//        wave with the blocking behaviour they have today, and the per-task
++//        pre-review `Run:` pass is unchanged.
++//   M6 — `skills/ultrapowers/references/report-format.md`'s `integratedRuns` row
++//        and `fleet/roles/critic.md`'s INTEGRATED RUN EVIDENCE paragraph say a
++//        red integrated run is reported with the pair named and is not a
++//        blocking finding.
++//
++// Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M5, (f) M6.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-joined-proofs-'))
++// Removed on exit, red or green.
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++const REPORT_FORMAT = fileURLToPath(
++  new URL('../../skills/ultrapowers/references/report-format.md', import.meta.url))
++const CRITIC_ROLE = fileURLToPath(new URL('../roles/critic.md', import.meta.url))
++
++const mkTask = (id, files, over = {}) => ({
++  id, title: id.toLowerCase(), files, tier: 'standard', review: 'lean',
++  writes: files, commutes: [], proofTests: [], proofRuns: [],
++  body: 'task ' + id + ' body', ...over,
++})
++
++// The run's own record. An absent file reads as no records, so an engine that
++// writes none fails a count assertion rather than an ENOENT.
++const eventsOf = (runDir) => {
++  const file = path.join(runDir, 'events.jsonl')
++  if (!fs.existsSync(file)) return []
++  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
++    .map((l) => { try { return JSON.parse(l) } catch { return null } })
++    .filter(Boolean)
++}
++const integratedEvents = (runDir) =>
++  eventsOf(runDir).filter((e) => e.kind === 'driver:integrated-run')
++// The four fields the shipped event already carried, so an event that also
++// carries M3's two (and appendEvent's id/ts stamp) still compares equal here.
++const eventShape = (e) => ({ task: e.task, cmd: e.cmd, exit: e.exit, wave: e.wave })
++const runShape = (r) => ({ task: r.task, cmd: r.cmd, exit: r.exit })
++
++// One wave, canned judgments, real everything else. `writes` is
++// { <task id>: { <relative path>: <contents> } } — what that task's implementer
++// stub leaves in its own clone, which is what `withPatchCapture` then captures
++// as the task's patch.
++function fixture({ name, tasks, writes, constraintChecks = null }) {
++  const repo = makeRepo(path.join(tmp, 'repo-' + name))
++  const runDir = path.join(tmp, 'run-' + name)
++  const dispatched = []
++  const prompts = {}
++  const { run: inner, ...rest } = rig({
++    repo, runDir, waves: [tasks], stamp: name,
++    ...(constraintChecks ? { extraArgs: { constraintChecks } } : {}),
++    stub: (prompt, opts, cwd) => {
++      dispatched.push(opts.label)
++      prompts[opts.label] = prompt
++      // The rig stubs the agent, so run-worker's own `worker:start` line never
++      // reaches this run's event log. The stub stands in for the worker and
++      // writes the line the worker would, which is what lets leg (e) ask its
++      // ordering question of `events.jsonl` itself rather than of a side channel.
++      fs.appendFileSync(path.join(runDir, 'events.jsonl'),
++        JSON.stringify({ kind: 'worker:start', label: opts.label }) + '\n')
++      const kind = opts.label.split(':')[0]
++      if (kind === 'impl') {
++        const id = opts.label.split(':')[1]
++        for (const [rel, body] of Object.entries(writes[id] || {})) {
++          fs.writeFileSync(path.join(cwd, rel), body)
++        }
++        return doneImpl(cwd)
++      }
++      if (kind === 'review') return passReview()
++      // Never expected in these fixtures — every proof below is green in its own
++      // clone. Answered rather than thrown so the leg's precondition names it.
++      if (kind === 'fix') return doneImpl(cwd)
++      if (opts.label === 'integration') return cleanCritic()
++      throw new Error('unexpected dispatch: ' + opts.label)
++    },
++  })
++  return { run: inner, runDir, dispatched, prompts, ...rest }
++}
++
++// Every fixture's precondition: nothing went red in a clone, so whatever the
++// integrated pass does below is the integrated pass's own doing.
++function assertClean(name, report, dispatched, planned) {
++  assert.ok(!dispatched.some((l) => l.startsWith('fix:')),
++    name + ': sim precondition — every proof is green in its own clone, so no ' +
++    'fix round is dispatched: ' + dispatched.join(','))
++  assert.equal(report.coverage.complete, true,
++    name + ': sim precondition — all ' + planned + ' tasks merged: ' +
++    JSON.stringify(report.tasks.map((t) => ({ task: t.task, status: t.status }))))
++  assert.equal(report.waveMerges[0].status, 'MERGED',
++    name + ': sim precondition — the wave was adopted: ' +
++    JSON.stringify(report.waveMerges[0]))
++}
++
++// ── the fixtures ─────────────────────────────────────────────────────────────
++// JOINED: A and B both write `shared.txt` (identical bytes, so the fold takes
++// both), A also `a.txt`, B also `b.txt`. Neither declares `shared.txt`, so the
++// join here can only come from the captured patches. A carries two `Run:`
++// proofs, B one — leg (b)'s three.
++const joined = fixture({
++  name: 'jp-join',
++  tasks: [
++    mkTask('A', ['a.txt'], { proofRuns: ['test -e a.txt', 'test -e shared.txt'] }),
++    mkTask('B', ['b.txt'], { proofRuns: ['test -e b.txt'] }),
++  ],
++  writes: {
++    A: { 'a.txt': 'from-A\n', 'shared.txt': 'shared\n' },
++    B: { 'b.txt': 'from-B\n', 'shared.txt': 'shared\n' },
++  },
++})
++// DISJOINT: the same wave without the shared path — pairwise disjoint touch sets.
++const disjoint = fixture({
++  name: 'jp-disj',
++  tasks: [
++    mkTask('A', ['a.txt'], { proofRuns: ['test -e a.txt'] }),
++    mkTask('B', ['b.txt'], { proofRuns: ['test -e b.txt'] }),
++  ],
++  writes: { A: { 'a.txt': 'from-A\n' }, B: { 'b.txt': 'from-B\n' } },
++})
++// DECLARED: A's `files` lists `shared.txt` but A's stub never writes it; B's
++// stub does. A `joined` read off the patches alone is `[]` here.
++const declared = fixture({
++  name: 'jp-decl',
++  tasks: [
++    mkTask('A', ['a.txt', 'shared.txt'], { proofRuns: ['test -e a.txt'] }),
++    mkTask('B', ['b.txt', 'shared.txt'], { proofRuns: ['test -e b.txt'] }),
++  ],
++  writes: {
++    A: { 'a.txt': 'from-A\n' },
++    B: { 'b.txt': 'from-B\n', 'shared.txt': 'shared\n' },
++  },
++})
++// SOLO: one task, one `Run:` proof — nothing to join with.
++const solo = fixture({
++  name: 'jp-solo',
++  tasks: [mkTask('A', ['a.txt'], { proofRuns: ['test -e a.txt'] })],
++  writes: { A: { 'a.txt': 'from-A\n' } },
++})
++// TRIO: A and B share `shared.txt`; C stands alone on `c.txt`.
++const trio = fixture({
++  name: 'jp-trio',
++  tasks: [
++    mkTask('A', ['a.txt'], { proofRuns: ['test -e a.txt'] }),
++    mkTask('B', ['b.txt'], { proofRuns: ['test -e b.txt'] }),
++    mkTask('C', ['c.txt'], { proofRuns: ['test -e c.txt'] }),
++  ],
++  writes: {
++    A: { 'a.txt': 'from-A\n', 'shared.txt': 'shared\n' },
++    B: { 'b.txt': 'from-B\n', 'shared.txt': 'shared\n' },
++    C: { 'c.txt': 'from-C\n' },
++  },
++})
++
++const joinedReport = await joined.run()
++const disjointReport = await disjoint.run()
++const declaredReport = await declared.run()
++const soloReport = await solo.run()
++const trioReport = await trio.run()
++
++assertClean('joined', joinedReport, joined.dispatched, 2)
++assertClean('disjoint', disjointReport, disjoint.dispatched, 2)
++assertClean('declared', declaredReport, declared.dispatched, 2)
++assertClean('solo', soloReport, solo.dispatched, 1)
++assertClean('trio', trioReport, trio.dispatched, 3)
++
++// ── leg (a): the wave's joined paths, on the waveMerges row [M1] ─────────────
++{
++  // [M1] the join computed from what the patches changed.
++  assert.deepEqual(joinedReport.waveMerges[0].joined, ['shared.txt'],
++    '[M1] a wave whose two implementers both wrote `shared.txt` must record ' +
++    '`waveMerges[0].joined` = ["shared.txt"]; got ' +
++    JSON.stringify(joinedReport.waveMerges[0].joined) + ' on the row ' +
++    JSON.stringify(joinedReport.waveMerges[0]))
++
++  // [M1] no path in two touch sets ⇒ the array is present and empty, never absent.
++  assert.deepEqual(disjointReport.waveMerges[0].joined, [],
++    '[M1] a wave writing only `a.txt` and `b.txt` must record `joined` = [] — ' +
++    'an array, not an absent key: ' + JSON.stringify(disjointReport.waveMerges[0]))
++
++  // [M1] the declared half of the touch set: A never wrote `shared.txt`, it only
++  // declared it. A `joined` computed from the patches alone leaves this [].
++  assert.deepEqual(declaredReport.waveMerges[0].joined, ['shared.txt'],
++    '[M1] a task\'s touch set is its declared `files` UNITED with the paths its ' +
++    'patch changed: A declares `shared.txt` and writes only `a.txt`, B writes ' +
++    '`shared.txt`, so `joined` = ["shared.txt"]; got ' +
++    JSON.stringify(declaredReport.waveMerges[0].joined))
++
++  // [M1] a single-task wave has no second touch set to intersect with.
++  assert.deepEqual(soloReport.waveMerges[0].joined, [],
++    '[M1] a single-task wave joins nothing: ' + JSON.stringify(soloReport.waveMerges[0]))
++
++  // [M1] three tasks, one shared path — C's `c.txt` is nobody else's.
++  assert.deepEqual(trioReport.waveMerges[0].joined, ['shared.txt'],
++    '[M1] only the path in at least two touch sets is joined; `c.txt` is in one: ' +
++    JSON.stringify(trioReport.waveMerges[0].joined))
++}
++
++// ── leg (b): executed if and only if the touch set meets `joined` [M2] ───────
++{
++  // [M2] the joined wave: A's two commands then B's one, in plan order, and
++  // exactly one event per executed command.
++  assert.deepEqual(joinedReport.integratedRuns.map(runShape), [
++    { task: 'A', cmd: 'test -e a.txt', exit: 0 },
++    { task: 'A', cmd: 'test -e shared.txt', exit: 0 },
++    { task: 'B', cmd: 'test -e b.txt', exit: 0 },
++  ], '[M2] both tasks stand on `shared.txt`, so all three commands run on the ' +
++     'integrated tree, in plan order: ' + JSON.stringify(joinedReport.integratedRuns.map(runShape)))
++  assert.deepEqual(integratedEvents(joined.runDir).map(eventShape), [
++    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 },
++    { task: 'A', cmd: 'test -e shared.txt', exit: 0, wave: 1 },
++    { task: 'B', cmd: 'test -e b.txt', exit: 0, wave: 1 },
++  ], '[M2] three `driver:integrated-run` events, one per executed command')
++
++  // [M2] pairwise-disjoint touch sets execute none.
++  assert.deepEqual(disjointReport.integratedRuns, [],
++    '[M2] a wave whose tasks\' touch sets are pairwise disjoint re-runs no ' +
++    '`Run:` line on the integrated tree: ' + JSON.stringify(disjointReport.integratedRuns))
++  assert.deepEqual(integratedEvents(disjoint.runDir), [],
++    '[M2] and writes no `driver:integrated-run` event at all')
++
++  // [M2] a single-task wave executes none.
++  assert.deepEqual(soloReport.integratedRuns, [],
++    '[M2] a single-task wave re-runs nothing on the integrated tree: ' +
++    JSON.stringify(soloReport.integratedRuns))
++  assert.deepEqual(integratedEvents(solo.runDir), [],
++    '[M2] and writes no `driver:integrated-run` event at all')
++
++  // [M2] the unjoined task of a joined wave: C's proof is not executed, A's and
++  // B's are. `exactly the executed commands` is the whole clause, so this is an
++  // equality on the list, not a `does not include C`.
++  assert.deepEqual(trioReport.integratedRuns.map(runShape), [
++    { task: 'A', cmd: 'test -e a.txt', exit: 0 },
++    { task: 'B', cmd: 'test -e b.txt', exit: 0 },
++  ], '[M2] C touches only `c.txt`, which is in no other touch set, so C\'s proof ' +
++     'is not re-run while A\'s and B\'s are: ' +
++     JSON.stringify(trioReport.integratedRuns.map(runShape)))
++  assert.deepEqual(integratedEvents(trio.runDir).map(eventShape), [
++    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 },
++    { task: 'B', cmd: 'test -e b.txt', exit: 0, wave: 1 },
++  ], '[M2] and the events carry exactly the executed commands — none of C\'s')
++}
++
++// ── leg (c): every item and every event names the join and the partner [M3] ──
++{
++  const items = joinedReport.integratedRuns
++  const evs = integratedEvents(joined.runDir)
++  const partner = { A: ['B'], B: ['A'] }
++  for (const [what, rows] of [['integratedRuns item', items], ['driver:integrated-run event', evs]]) {
++    for (const r of rows) {
++      assert.deepEqual(r.joined, ['shared.txt'],
++        '[M3] each ' + what + ' carries `joined` — the paths of THIS task\'s touch ' +
++        'set that are in the wave\'s joined set: want ["shared.txt"], got ' +
++        JSON.stringify(r.joined) + ' on ' + JSON.stringify(runShape(r)))
++      assert.deepEqual(r.with, partner[r.task],
++        '[M3] each ' + what + ' carries `with` — the ids of the other tasks whose ' +
++        'touch sets share those paths, in plan order: want ' +
++        JSON.stringify(partner[r.task]) + ', got ' + JSON.stringify(r.with) +
++        ' on ' + JSON.stringify(runShape(r)))
++    }
++  }
++}
++
++// ── leg (d): a red on the fold is reported, not a gate [M4] ─────────────────
++// A writes `marker` into `shared.txt`; B declares `shared.txt` and carries the
++// proof `! grep -q marker shared.txt`. In B's own clone `shared.txt` does not
++// exist, so the proof is green there and no fix round is dispatched; on the fold
++// A's marker is present and the proof is red. That difference is what the
++// integrated pass exists to find — and what #871 decision 1 says is reported
++// with the pair named rather than parked.
++{
++  const CMD = '! grep -q marker shared.txt'
++  const SENTENCE = 'task B\'s proof ' + CMD + ' went red on the fold of shared.txt with task A'
++  const red = fixture({
++    name: 'jp-red',
++    tasks: [
++      mkTask('A', ['a.txt', 'shared.txt']),
++      mkTask('B', ['b.txt', 'shared.txt'], { proofRuns: [CMD] }),
++    ],
++    writes: {
++      A: { 'a.txt': 'from-A\n', 'shared.txt': 'marker\n' },
++      B: { 'b.txt': 'from-B\n' },
++    },
++  })
++  const report = await red.run()
++  assertClean('red-on-fold', report, red.dispatched, 2)
++  assert.deepEqual(report.waveMerges[0].joined, ['shared.txt'],
++    '[M1] sim precondition — A and B are joined on `shared.txt`: ' +
++    JSON.stringify(report.waveMerges[0]))
++
++  // The red is recorded: reported, not suppressed.
++  assert.deepEqual(report.integratedRuns.map(runShape),
++    [{ task: 'B', cmd: CMD, exit: 1 }],
++    '[M2] B stands on the join, so its proof is re-run and records exit 1 on ' +
++    'the fold: ' + JSON.stringify(report.integratedRuns.map(runShape)))
++
++  // [M4] no blocking finding — and no completeness finding of any severity whose
++  // detail begins with the old prefix.
++  const integratedRunFindings = (report.completenessFindings || [])
++    .filter((f) => f && typeof f === 'object' && String(f.detail || '').startsWith('integrated Run:'))
++  assert.deepEqual(integratedRunFindings, [],
++    '[M4] a non-zero integrated `Run:` exit must push NO completeness finding ' +
++    'whose detail begins `integrated Run:`: ' + JSON.stringify(report.completenessFindings))
++
++  // [M4] and it does not block the run: the critic was reached and no wave parked.
++  assert.equal(typeof red.prompts['integration'], 'string',
++    '[M4] the run must reach the completeness critic — the red integrated run ' +
++    'is not a gate: dispatched ' + red.dispatched.join(','))
++  assert.deepEqual(report.blockedWaves, [],
++    '[M4] the red integrated run parks no wave: ' + JSON.stringify(report.blockedWaves))
++
++  // [M4] the judgment call, verbatim — one line, equal to the ticket's sentence.
++  const matching = report.judgmentCalls.filter((j) => String(j) === SENTENCE)
++  assert.equal(matching.length, 1,
++    '[M4] `judgmentCalls` must carry exactly one line equal to:\n  ' + SENTENCE +
++    '\ngot:\n' + JSON.stringify(report.judgmentCalls, null, 2))
++}
++
++// ── leg (e): `Check:` still blocks, and the per-task pass is unchanged [M5] ──
++// A separate run from leg (d): the constraint is green in each clone taken
++// alone (each holds one of the two files) and red on the fold, which is the only
++// place it can be caught.
++{
++  const CHECK = '! ( test -e x.txt && test -e y.txt )'
++  const DETAIL_PREFIX = 'integrated Check:'
++  const checked = fixture({
++    name: 'jp-check',
++    tasks: [
++      mkTask('A', ['x.txt'], { proofRuns: ['test -e x.txt'] }),
++      mkTask('B', ['y.txt'], { proofRuns: ['test -e y.txt'] }),
++    ],
++    writes: {
++      A: { 'x.txt': 'from-A\n', 'shared.txt': 'shared\n' },
++      B: { 'y.txt': 'from-B\n', 'shared.txt': 'shared\n' },
++    },
++    constraintChecks: [{ cmd: CHECK, minor: false }],
++  })
++  const report = await checked.run()
++  assertClean('check', report, checked.dispatched, 2)
++
++  // [M5] the Check: ran on the integrated tree and blocked, exactly as today.
++  assert.deepEqual(report.integratedChecks.map((c) => ({ cmd: c.cmd, exit: c.exit })),
++    [{ cmd: CHECK, exit: 1 }],
++    '[M5] the Global Constraints `Check:` still runs on the adopted tree: ' +
++    JSON.stringify(report.integratedChecks))
++  const checkFindings = (report.completenessFindings || [])
++    .filter((f) => f && typeof f === 'object' && String(f.detail || '').startsWith(DETAIL_PREFIX))
++  assert.equal(checkFindings.length, 1,
++    '[M5] exactly one blocking finding beginning `' + DETAIL_PREFIX + '`: ' +
++    JSON.stringify(report.completenessFindings))
++  assert.equal(checkFindings[0].severity, 'blocking',
++    '[M5] a red integrated `Check:` keeps the blocking behaviour it has today: ' +
++    JSON.stringify(checkFindings[0]))
++
++  // [M5] the per-task pre-review `Run:` pass is unchanged: in leg (b)'s joined
++  // wave each task's `driver:proof-run` events are one per `proofRuns` command,
++  // and every one of them precedes that task's first `review:` dispatch.
++  const evs = eventsOf(joined.runDir)
++  for (const [id, cmds] of [['A', ['test -e a.txt', 'test -e shared.txt']], ['B', ['test -e b.txt']]]) {
++    const firstReview = evs.findIndex(
++      (e) => e.kind === 'worker:start' && String(e.label || '').startsWith('review:' + id + ':'))
++    assert.ok(firstReview >= 0,
++      '[M5] sim precondition — task ' + id + ' was dispatched to a reviewer: ' +
++      joined.dispatched.join(','))
++    const mine = evs
++      .map((e, i) => ({ e, i }))
++      .filter(({ e }) => e.kind === 'driver:proof-run' && e.task === id)
++    assert.deepEqual(mine.map(({ e }) => e.cmd), cmds,
++      '[M5] task ' + id + '\'s pre-review `Run:` pass is one execution per ' +
++      '`proofRuns` command, in Proof order: ' + JSON.stringify(mine.map(({ e }) => e.cmd)))
++    for (const { e, i } of mine) {
++      assert.ok(i < firstReview,
++        '[M5] the pre-review execution of `' + e.cmd + '` must precede task ' + id +
++        '\'s first `review:` worker:start (index ' + i + ' vs ' + firstReview + ')')
++    }
++  }
++}
++
++// ── leg (f): what the two documents say [M6] ────────────────────────────────
++{
++  // The `integratedRuns` row of the report-format table.
++  const rows = fs.readFileSync(REPORT_FORMAT, 'utf8').split('\n')
++    .filter((l) => l.startsWith('| `integratedRuns` |'))
++  assert.equal(rows.length, 1,
++    '[M6] skills/ultrapowers/references/report-format.md must carry exactly one ' +
++    'table line beginning "| `integratedRuns` |"; found ' + rows.length)
++  const row = rows[0]
++  const GONE = 'blocking completeness finding'
++  assert.ok(!row.includes(GONE),
++    '[M6] the `integratedRuns` row still calls a non-zero exit a "' + GONE + '" — ' +
++    'that is the rule #887 replaced:\n' + row)
++  for (const lit of ['joined', 'with', 'reported', 'pair', 'not a blocking']) {
++    assert.ok(row.includes(lit),
++      '[M6] the `integratedRuns` row does not contain "' + lit + '" — the row must ' +
++      'describe the `joined`/`with` fields and say a red is reported with the pair ' +
++      'named and is not a blocking finding:\n' + row)
++  }
++
++  // The INTEGRATED RUN EVIDENCE section of the critic's role: from the paragraph
++  // that names it up to the INTEGRATED CHECK EVIDENCE paragraph, which is a
++  // different block and answers for the constraints, not the proofs.
++  const critic = fs.readFileSync(CRITIC_ROLE, 'utf8')
++  const start = critic.indexOf('INTEGRATED RUN EVIDENCE')
++  assert.ok(start >= 0,
++    '[M6] fleet/roles/critic.md no longer names INTEGRATED RUN EVIDENCE at all')
++  const after = critic.indexOf('INTEGRATED CHECK EVIDENCE', start)
++  const section = after === -1 ? critic.slice(start) : critic.slice(start, after)
++  // The sentence the task says to keep: the block is authoritative for the
++  // commands it lists.
++  assert.ok(section.includes('authoritative'),
++    '[M6] the INTEGRATED RUN EVIDENCE paragraph must still say the block is ' +
++    'authoritative for the commands it lists:\n' + section)
++  for (const lit of ['reported', 'not a blocking']) {
++    assert.ok(section.includes(lit),
++      '[M6] the INTEGRATED RUN EVIDENCE paragraph does not contain "' + lit + '" — ' +
++      'it must say a red there is reported, with the pair named, and is not a ' +
++      'blocking finding:\n' + section)
++  }
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_pre_review.mjs b/fleet/tests/test_run_engine_pre_review.mjs
+index 9b0667516af6725210ae9cf68b0c612c15b4f400..a80429107db0d9e39276111a2aa0ad64061e7a87 100644
+--- a/fleet/tests/test_run_engine_pre_review.mjs
++++ b/fleet/tests/test_run_engine_pre_review.mjs
+@@ -654,9 +654,13 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
+   const DETAIL = 'integrated Check: ' + CMD + ' exited 1 on the adopted tree'
+   const repo = bareRepo(path.join(tmp, 'repo-d2'))
+   const runDir = path.join(tmp, 'run-d2')
++  // Both tasks also DECLARE `shared.txt` and neither writes it: that is enough
++  // to join their touch sets (#887), which is what gives A an integrated `Run:`
++  // execution for the critic prompt to carry below. The patches stay exactly
++  // what they were, so every `Check:` reading here is unchanged.
+   const waves = [[
+-    mkTask('A', ['a.txt'], { proofRuns: ['test -e a.txt'] }),
+-    mkTask('B', ['b.txt']),
++    mkTask('A', ['a.txt', 'shared.txt'], { proofRuns: ['test -e a.txt'] }),
++    mkTask('B', ['b.txt', 'shared.txt']),
+   ]]
+   const calls = []
+   const prompts = {}
+@@ -747,7 +751,13 @@ const segmentOf = (block, cmd) => {
+   const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
+   const repo = makeRepo(path.join(tmp, 'repo-ub1'))
+   const runDir = path.join(tmp, 'run-ub1')
+-  const waves = [[mkTask('T1', ['a.txt'], { proofRuns: [ECHO] })]]
++  // T2 exists for the join (#887): it DECLARES `a.txt` without writing it, so
++  // T1's touch set meets another task's and T1's `Run:` is re-executed on the
++  // adopted tree — which is the value leg (f) reads below. The patches stay
++  // disjoint (T1 rewrites `a.txt`, T2 adds `b.txt`), so every `Check:` reading
++  // here is the same one this leg always made.
++  const waves = [[mkTask('T1', ['a.txt'], { proofRuns: [ECHO] }),
++                  mkTask('T2', ['a.txt', 'b.txt'], { writes: ['b.txt'] })]]
+   const CHECKS = [{ cmd: CHECK_UNTOUCHED, minor: false }, { cmd: CHECK_EDITED, minor: true }]
+   const calls = []
+   const prompts = {}
+@@ -755,7 +765,11 @@ const segmentOf = (block, cmd) => {
+     calls.push(opts.label)
+     prompts[opts.label] = prompt
+     const kind = opts.label.split(':')[0]
+-    if (kind === 'impl') { write(cwd, 'a.txt', 'rewritten by the implementer\n'); return doneImpl(cwd) }
++    if (kind === 'impl') {
++      if (opts.label.split(':')[1] === 'T2') write(cwd, 'b.txt', 'from T2\n')
++      else write(cwd, 'a.txt', 'rewritten by the implementer\n')
++      return doneImpl(cwd)
++    }
+     if (kind === 'review') return passReview()
+     if (opts.label === 'integration') return cleanCritic()
+     throw new Error('unexpected dispatch: ' + opts.label)
+@@ -769,7 +783,8 @@ const segmentOf = (block, cmd) => {
+   // for the one it edited. With ULTRA_BASE unset, `git diff --quiet -- <path>`
+   // is a working-tree-vs-index diff — and the capture already staged the edit —
+   // so both would read 0 and the second assertion is the discriminator.
+-  const zero = ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0)
++  const zero = ofKind(runDir, 'driver:check-run')
++    .filter((e) => e.iter === 0 && e.task === 'T1')
+   const untouched = zero.filter((e) => e.cmd === CHECK_UNTOUCHED)
+   const edited = zero.filter((e) => e.cmd === CHECK_EDITED)
+   assert.deepEqual(untouched.map(checkShape), [
+diff --git a/fleet/tests/test_run_engine_proof_runs.mjs b/fleet/tests/test_run_engine_proof_runs.mjs
+index 816adebb8ab0fcef162bb0d8b4002def8494ca62..9b107186e93b6b1c9f89f9b3d219031302f7be5b 100644
+--- a/fleet/tests/test_run_engine_proof_runs.mjs
++++ b/fleet/tests/test_run_engine_proof_runs.mjs
+@@ -154,20 +154,18 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
+   // [M1] after the implementer returned, before the reviewer was called.
+   // (the wave's own critic dispatch, `integration`, is not part of the task's
+   // own order and is dropped.)
+-  // The trailing `proof-run` is the DRIVER's own second execution on the
+-  // adopted tree (#604 (b)+(c), test_run_engine_integrated_runs.mjs owns it):
+-  // T1 merges, so the same command runs once more in the integration clone
+-  // after the whole task pipeline. It is pinned here because this file's order
+-  // log cannot tell the two executions apart, and dropping it would let the
+-  // integrated pass move without any pin noticing.
++  // There is no trailing `proof-run`: the integrated pass is #887's, and it
++  // re-runs a task's commands only when another task of the same wave touched
++  // one of its paths. This is a ONE-task wave, so it joins nothing and the
++  // driver executes nothing on the adopted tree —
++  // `test_run_engine_joined_proofs.mjs` pins that rule in its own sim, and
++  // `test_run_engine_integrated_runs.mjs` the pass itself.
+   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
+     .filter(Boolean).filter((l) => l !== 'integration')
+-  // The single `proof-run` before the review is the driver's own pre-review
+-  // pass, whose evidence round 1 reads (#713); the last is the integrated pass
+-  // on the adopted tree.
+-  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
+-    'the Run: command executes ONCE between the implementer and the first review, ' +
+-    'and again on the adopted tree after it')
++  // The single `proof-run` is the driver's own pre-review pass, whose evidence
++  // round 1 reads (#713).
++  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
++    'the Run: command executes ONCE, between the implementer and the first review')
+ 
+   // [M1, M5] one record per execution, exit 0, the command verbatim.
+   assert.equal(events.length, 1, 'the one pre-review execution recorded: ' + JSON.stringify(events))
+@@ -560,21 +558,28 @@ const segmentOf = (block, cmd) => {
+ // The two shas differ only from wave 2 onward, which is why this leg is
+ // two-wave: in wave 1 `waveBaseSha` and `baseSha` coincide and any confusion
+ // between them is invisible.
++//
++// T3 rides in wave 2 for the join (#887): the integrated pass re-runs T2's
++// command only because another task of that wave touches one of T2's paths.
++// T3 declares `two.txt` in its Files and writes `three.txt`, so the two touch
++// sets meet in `two.txt` while the patches stay disjoint.
+ {
+   const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
+   const repo = makeRepo(path.join(tmp, 'repo-ub2'))
+   const runDir = path.join(tmp, 'run-ub2')
+   const waves = [
+     [entry({ id: 'T1', files: ['one.txt'], writes: ['one.txt'] })],
+-    [entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] })],
++    [entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] }),
++     entry({ id: 'T3', files: ['two.txt', 'three.txt'], writes: ['three.txt'] })],
+   ]
++  const fileOf = (id) => (id === 'T1' ? 'one.txt' : id === 'T2' ? 'two.txt' : 'three.txt')
+   const prompts = {}
+   const stub = (prompt, opts, cwd) => {
+     prompts[opts.label] = prompt
+     const kind = opts.label.split(':')[0]
+     const id = opts.label.split(':')[1]
+     if (kind === 'impl' || kind === 'fix') {
+-      fs.writeFileSync(path.join(cwd, id === 'T1' ? 'one.txt' : 'two.txt'), 'from ' + id + '\n')
++      fs.writeFileSync(path.join(cwd, fileOf(id)), 'from ' + id + '\n')
+       return doneImpl(cwd)
+     }
+     if (kind === 'review') return passReview()
+@@ -586,6 +591,9 @@ const segmentOf = (block, cmd) => {
+ 
+   assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
+   assert.equal(report.waveMerges.length, 2, 'sim precondition: two folded waves')
++  assert.deepEqual(report.waveMerges[1].joined, ['two.txt'],
++    'sim precondition: wave 2\'s two tasks meet in two.txt, which is what gives T2 an ' +
++    'integrated execution at all (#887): ' + JSON.stringify(report.waveMerges[1]))
+   const w1 = report.waveMerges[0].headSha
+   const w2 = report.waveMerges[1].headSha
+   assert.match(String(w1), /^[0-9a-f]{40}$/, 'sim precondition: wave 1 adopted a head')
+@@ -750,10 +758,11 @@ const segmentOf = (block, cmd) => {
+   })
+   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
+     .filter(Boolean).filter((l) => l !== 'integration')
+-  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
+-    'the implementer, ONE pre-review execution, the first review, and the integrated pass ' +
+-    'on the adopted tree — a BASE engine records a second execution before the review: ' +
+-    JSON.stringify(order))
++  // No trailing `proof-run`: a one-task wave joins nothing, so the #887
++  // integrated pass executes nothing on the adopted tree.
++  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
++    'the implementer, ONE pre-review execution, then the first review — a BASE engine ' +
++    'records a second execution before the review: ' + JSON.stringify(order))
+   assert.deepEqual(events.map((e) => e.iter), [0], JSON.stringify(events))
+   // [M4] the row is BASE's for the same canned judgments.
+   assert.equal(row.status, 'done', JSON.stringify(row))
+diff --git a/fleet/tests/test_run_engine_state_exams.mjs b/fleet/tests/test_run_engine_state_exams.mjs
+index 692c2b17d6ddb1b3ada993d928a8b95ed84bbfb9..02c881614cceaf46fdf59e3dac9eac390a410964 100644
+--- a/fleet/tests/test_run_engine_state_exams.mjs
++++ b/fleet/tests/test_run_engine_state_exams.mjs
+@@ -259,7 +259,17 @@ async function scenario({ tasks, exams, review = () => passReview(), markers = {
+ const SUITE_ENV_FILE = path.join(tmp, 'suite-env.txt')
+ {
+   const A = await scenario({
+-    tasks: [entry({ proofRuns: [ENV_CMD] })],
++    // T2 is here for the join (#887): the integrated `Run:` pass re-runs a
++    // task's commands only when another task of the same wave touches one of
++    // its paths, and T1's one path is `out.txt`. T2 declares it in its Files and
++    // writes `two.txt`, so the touch sets meet in `out.txt` without two patches
++    // contending for it — leg (d) then has an integrated execution to read. T2
++    // carries no `proofTests`, so no second examiner is dispatched.
++    tasks: [entry({ proofRuns: [ENV_CMD] }),
++            entry({ id: 'T2', title: 'create two', files: ['out.txt', 'two.txt'],
++                    writes: ['two.txt'], proofTests: [], proofRuns: [],
++                    body: bodyFor('two.txt') })],
++    markers: { T2: 'two.txt' },
+     exams: {
+       T1: examScript({ records: { base: baseRecord, 0: pass0Record() } }),
+     },
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index e8574610925268355603bb4a1e5b216499f7d0c2..01a538ec9853352f4cb47737534f05254a6b4683 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -99,7 +99,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].examEdited` | no | Present on every row returned after the implementer when the wave-0 examiner recorded an exam (#553): the `proofTests` paths whose blob no longer matches what the examiner left — edited by a fix round (since #653 the implementer never holds the exam while it works, so only a fix round can move it) — `[]` when none moved. The driver never refuses the edit: it names the paths to the reviewer as `EXAM EDITED` and pushes one matching `judgmentCalls` entry; the reviewer decides whether the exam was wrong (reviewer.md rule 8). Absent when no exam was recorded. |
+ | `tasks[].baseCorrected` | no | The #314 provisioning-drift record. `null` when the implementer's reported `startHead` (its pre-work `git rev-parse HEAD`, a required implementer-schema field) equalled the dispatched `BASE`; `{ from, to }` when it differed and the implementer reset to `BASE` (`from` = the sha the worktree was provisioned at, `to` = `BASE`); absent when no implementer reply was received (`agent-error`, infra-park). Engine-derived, never model-typed; the predicate is exact equality, not ancestry. Every correction also pushes an `autonomy` judgment call naming both shas; a reply with no `startHead` (engine-bypass class — the schema requires it) pushes a `degradation` call `BASE anchoring unverified` instead. Fix-round replies are not compared: their `BASE` is the prior implementation HEAD by design. |
+ | `tests` | yes | Result of the suite run on the integration branch: `{ command, passed, output, unattributed }`. `unattributed` is the run's **unattributed reds** (#871) — every test path a wave adopted red because no task of that wave named it, in wave order and once each; `[]` when there was none, on a green run, and on a run that merged nothing (the key is always present). A path is attributed when it equals an entry of some wave task's `files` or `proofTests` — string equality on the path the plan spelled, no globbing and no resolving — and a candidate takes the unattributed route only when its failing paths are non-empty and every one of them is unattributed: one attributed path, or an output that named no path at all, sends the candidate down the `reconcile:` route and on to `TEST_FAILED` as before. An unattributed candidate is adopted exactly as a green one is (same `MERGED` `waveMerges` row, whose `suite` reads `{ passed: false, unattributed, output }`), no `reconcile:` agent is dispatched at it, and each path draws one `judgmentCalls` line `unattributed red: <path> went red on wave <n>'s fold; no task names it`. The gate reads this field: a `passed: false` with a non-empty `unattributed` passes rather than blocks, and the gate receipt's `suite` carries the list |
+-| `integratedRuns` | no | The driver's own execution of every merged task's Proof `Run:` commands, re-run on the adopted integration tree — the evidence the completeness critic reads as INTEGRATED RUN EVIDENCE. One item per command, `{ task, cmd, exit, stdout }`: the task id, the command verbatim, its exit code, and its combined stdout/stderr tail. `[]` when no merged task declared a `Run:` proof and when no tree was adopted — the two cases are indistinguishable here, so read it beside `waveMerges`. A non-zero `exit` is a blocking completeness finding: a task's Proof passed against its own clone but does not hold on the integrated tree, which is precisely what the per-task reviews cannot see. Because the driver ran these itself, they are settled — a cannot-verify item asking for their re-execution is answered by this field, not deferred |
++| `integratedRuns` | no | The driver's own execution of the Proof `Run:` commands of every merged task the fold JOINED (#887), re-run on the adopted integration tree — the evidence the completeness critic reads as INTEGRATED RUN EVIDENCE. A task is joined when its touch set (declared `files` ∪ the paths its captured patch changed) meets another merged task's, which is the only case where the fold can break a proof its own clone already passed; a single-task wave and a wave of pairwise-disjoint tasks re-run nothing. One item per executed command, `{ task, cmd, exit, stdout, joined, with }`: the task id, the command verbatim, its exit code, its combined stdout/stderr tail, the joined paths this task shares (`waveMerges[w].joined` ∩ its touch set) and the ids of the tasks it shares them with, in plan order. `[]` when no joined task declared a `Run:` proof, when the wave joined nothing and when no tree was adopted — the cases are indistinguishable here, so read it beside `waveMerges` and its `joined`. A non-zero `exit` is **reported, not gated** (#871 decision 1): the run carries one `judgmentCalls` line naming the command, the joined path and the pair it went red on, and nothing blocks — a red on the fold of two tasks is a finding about the join, not a finding against either task, so it is not a blocking one. Because the driver ran these itself, they are settled — a cannot-verify item asking for their re-execution is answered by this field, not deferred |
+ | `integratedChecks` | no | The driver's own execution of every Global Constraints `Check:` command on the adopted integration tree — the evidence the completeness critic reads as INTEGRATED CHECK EVIDENCE. One item per command, `{ cmd, exit, stdout, minor }`: the command verbatim, its exit code, its combined stdout/stderr tail, and whether the run declared it minor. `[]` when the run declared no checks and when no tree was adopted — the two cases are indistinguishable here, so read it beside `waveMerges`. A non-zero `exit` on a non-minor check is a blocking completeness finding (`integrated Check: <cmd> exited <n> on the adopted tree`): the constraint held in every task's own clone, where each reviewer was right about the tree it read, and the fold broke it — which is precisely what no per-task review can see. A non-zero minor check is a judgment call and nothing more |
+ | `reviewEconomy` | no | What a reviewer-minute bought. `reviewerMs` — the summed wall clock of every `review:` agent call, each timed INDIVIDUALLY, so a concurrent pair contributes both durations (both were paid for; a per-round maximum would report a pair as costing what one reviewer cost). `blockingFindings` — how many blocking issues the REVIEWERS returned, de-duplicated by `severity|detail` across the run; the driver's own `Run:`/`Check:` reds are excluded, because charging the driver's findings to the reviewers flatters the ratio. `blockingPerReviewerMinute` — `blockingFindings / (reviewerMs / 60000)`, and `0` when no reviewer ran. `pairRounds` — how many review rounds dispatched a pair. `r2MarginalBlocking` — across those rounds, how many blocking issues the second reviewer returned that the first did not: the number that says whether the pair profile earned its second bill. `refereeFindings` — every finding the driver's mechanical referee returned across the run (all severities, all rounds). `refereeBlocking` — how many of those were blocking. `refereeSkippedPairs` — how many rounds a `peer` task dispatched one reviewer rather than a pair because a blocking referee finding had just been repaired |
+ | `baseline` | no | Result of the suite run on BASE's tree in a clone of its own, `<runDir>/clones/baseline` — started during **Setup**, concurrently with wave 1 and never ahead of its dispatch, and run **exactly once per run** whatever the waves do. `{ passed, output }` on every run that completed Setup — never `null` there; `null` only on a run that never got that far. `passed: false` means BASE itself was red, and the run PARKS on it: that wave is `TEST_FAILED` with a `detail` beginning `baseline: the suite is RED on BASE`, every later wave is `SKIPPED`, no `reconcile:` agent is ever dispatched (there is no red for one to repair that the run did not inherit), and the integration branch is left where the wave found it. A red baseline also draws a `baseline:` judgment call. A green one is what makes every later candidate red attributable to the wave |
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 6ae1d27de003b15234edc7d79e28e3e3999339d3..7d3b0441bd58670a6ecd2a295cb480ace137e4cd 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -24,6 +24,14 @@ said it to you and `(quoted from #NNN)` when an issue already carries that sente
+ verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
+ and `## Global Constraints`.
+ 
++Directly under that `**Claim:**` line — the next line, no blank between — the plan carries
++one `**Summary:**` paragraph: three sentences in the operator's register saying what this
++is, why it exists and how it benefits the user. The author writes those sentences and the
++operator confirms them in the same touch as the Claim, never a second one, and the pull
++request the run opens quotes them verbatim, so what a reader meets is what the operator
++signed. It is one paragraph running to the next blank line, no markdown inside; like
++`**Closes:**` it is free prose to the compiler — nothing parses it.
++
+ Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
+ tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
+ Proof `Test:` paths (`npx vitest run {paths}`). Without it the compiler derives each task's
+@@ -185,6 +193,13 @@ rejects it. Quote the sentence that says what should be true instead.
+ that you couldn't before?"* — offering 2–3 pre-chewed do:/see: options via
+ AskUserQuestion. The operator's pick plus their edits is the claim.
+ 
++**The summary rides with the claim.** Draft the three `**Summary:**` sentences yourself —
++what this is, why it exists, how it benefits them — in the operator's register, off the
++issue or the conversation, and put that draft to the operator inside the *same*
++AskUserQuestion that carries the Claim: one touch, not two. The operator adjudicates and
++never authors: their edits are the summary. A summary written in the technical register —
++a file name, a function name, a sha — is a defect you fix before the gate.
++
+ Aim claims where the suite is structurally blind: integration seams, visual states, CLI
+ output, error-path wording. A claim that only restates what a test already asserts buys
+ nothing.
+@@ -421,6 +436,8 @@ author's own to check — nothing prints it.
+   issue. Every task Claim is either the operator's words with a provenance tag or
+   `(derived)` under the plan-level Claim, paired with a machine restatement at the same
+   layer, and its gate verdict is recorded and fresh.
++- The plan carries one `**Summary:**` paragraph of three sentences directly under that
++  Claim, in the operator's register — what this is, why it exists, how it benefits them.
+ - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
+   task's own writes; every fence sits in Proof.
+ - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
+diff --git a/tests/test_roles_run_evidence.py b/tests/test_roles_run_evidence.py
+index e7f663eaf1106e4af9fca5015f29ae5e7a0206d2..2e019cd40259a3a5df7dda8d0c9ce7bd5ab63a55 100644
+--- a/tests/test_roles_run_evidence.py
++++ b/tests/test_roles_run_evidence.py
+@@ -97,33 +97,35 @@ def test_critic_keeps_the_four_deferred_verification_reasons():
+ # ── leg (d) [M4]: the report reference documents the integrated evidence ────
+ 
+ def test_report_format_documents_the_integrated_runs_row():
+-    """The `integratedRuns` row names its item shape, when it is `[]`, and the
+-    blocking rule; the `deferredVerification` row states the negation."""
++    """The `integratedRuns` row names its item shape — now carrying the join's
++    `joined` and `with` (#887) — when it is `[]`, and the reported-not-gated
++    rule; the `deferredVerification` row states the negation."""
+     p = sh(
+         "grep -q '`integratedRuns`' "
+         "skills/ultrapowers/references/report-format.md && "
+         "awk '/`integratedRuns`/' "
+         "skills/ultrapowers/references/report-format.md "
+-        "| grep -q '{ task, cmd, exit, stdout }' && "
++        "| grep -q '{ task, cmd, exit, stdout, joined, with }' && "
+         "awk '/`integratedRuns`/' "
+         "skills/ultrapowers/references/report-format.md "
+         r"""| grep -q '`\[\]`' && """
+         "awk '/`integratedRuns`/' "
+         "skills/ultrapowers/references/report-format.md "
+-        "| grep -qi 'blocking completeness finding' && "
++        "| grep -qi 'not a blocking' && "
+         "awk '/`deferredVerification`/' "
+         "skills/ultrapowers/references/report-format.md "
+         "| grep -qiE 'command the driver executed is never .manual.'")
+     assert p.returncode == 0, (
+         "report-format.md does not document `integratedRuns` with its item "
+-        "shape `{ task, cmd, exit, stdout }`, its empty case `[]` and the "
+-        "blocking-completeness-finding rule, or its `deferredVerification` "
++        "shape `{ task, cmd, exit, stdout, joined, with }`, its empty case "
++        "`[]` and the reported-not-blocking rule, or its `deferredVerification` "
+         "row does not say a command the driver executed is never `manual`")
+ 
+ 
+ def test_the_integrated_runs_row_is_one_row():
+     """The awk selects that row alone: the phrases are stated together in the
+-    field reference, not gathered from lines scattered through the file."""
++    field reference, not gathered from lines scattered through the file. Since
++    #887 the row must also NOT call a red integrated run blocking."""
+     rows = [line for line in REPORT_FORMAT.read_text().splitlines()
+             if "`integratedRuns`" in line]
+     assert len(rows) == 1, (
+@@ -131,6 +133,9 @@ def test_the_integrated_runs_row_is_one_row():
+         "got %d: %r" % (len(rows), rows))
+     row = rows[0]
+     assert row.startswith("| `integratedRuns` |"), row
+-    for phrase in ("{ task, cmd, exit, stdout }", "`[]`",
+-                   "blocking completeness finding"):
++    for phrase in ("{ task, cmd, exit, stdout, joined, with }", "`[]`",
++                   "joined", "with", "reported", "pair", "not a blocking"):
+         assert phrase in row, "the integratedRuns row omits %r: %s" % (phrase, row)
++    assert "blocking completeness finding" not in row, (
++        "a red integrated run is reported with its pair named, not a blocking "
++        "completeness finding (#887): %s" % row)

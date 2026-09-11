@@ -1,0 +1,164 @@
+{
+  "integrationBranch": "ultra/integration-run-93",
+  "baseSha": "0e1a4f00b71083503641452bf7cbe1484a27f2d5",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "358c6a186c3f5544c38ce1345713242d7c2ec6ec",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-93/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Coverage gap between the Claim and the Machine clauses: `foldWave` has a third terminal outcome, `{status:'CONFLICT', detail}` (fleet/run-engine.mjs:2458, via `blocked(reason)` when the fold path is blocked), and the caller also pushes `SKIPPED` rows when a wave has no mergeable results (fleet/run-engine.mjs:2896, :2899). Both are waves that were blocked in the Claim's plain sense (\"when a wave was blocked, naming the tasks each time\"), and neither emits `driver:wave-blocked` \u2014 the diff gates only on `merge.status === 'TEST_FAILED'` plus `parkOnRedBaseline`. The implementer is faithful here: M2 names exactly \"reconcile exhaustion or on a red baseline\", M3 counts one event per `waveMerges` row with status `TEST_FAILED`, and the Context enumerates the same two exits and says \"one place per status\", so emitting more would exceed the exam. Recording it because the consequence is downstream: task 2's projection maps `failed` off `driver:wave-blocked`, so a CONFLICT wave's tasks will read as whatever their last worker event said rather than failed. Whether the record should cover CONFLICT/SKIPPED waves is the plan's call, not a fix this task can make on its own terms.; Exam does not pin the one place the adopted event's `tasks` differs from the whole wave. M1 reads \"the ids the wave merged in plan order\" and the diff correctly uses `waveTasks` (fleet/run-engine.mjs:2908 \u2014 `WAVES[w]` narrowed to the mergeable rows) rather than the `waveIds(w)` helper it uses for the blocked events. But every green leg in fleet/tests/test_run_engine_wave_events.mjs has all of the wave's tasks merging, so a regression from `waveTasks.map(...)` to `waveIds(w)` would still pass the exam. A leg with one task merging and one failing (stub returns a BLOCKED impl for task 2), asserting `adopted[0].tasks` is `['1']` while the row's `branches` is `['1']`, would make the narrowing observable. Not blocking: the legs the Proof names are all present and green, and the implementer disclosed the choice in the comment at the call site.; fleet/tests/test_run_engine_wave_events.mjs imports `gitSync` from `./_engine_helpers.mjs` and never uses it; `base`, `clonesDir`, `integ` and `logs` are likewise returned by `rigWithEvents` and never read by any leg. Harmless, but it is leftover rig surface copied from the sibling sims.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "M4's time bound fires early: `phase_refresher` (fleet/sandbox-boot.sh:930, :944, :947) stamps both `committed_at` and `now` with `date +%s`, which TRUNCATES to the second, and then tests `now - committed_at -ge COMMIT_SECONDS`. A `committed_at` read at t=10.99 and a `now` read at t=13.01 differ by 3 with 2.02 s of wall between them, so a window of N seconds can fire after as little as N-1 s of real time. That is exactly what the exam caught: `fleet/tests/test_sandbox_boot_viz.mjs` leg (d) 'one line then silence' (FLEET_COMMIT_SECONDS=3) measured 2303 ms between the `engine starting` commit and the time-gated one and failed `elapsed >= 3000`, so the exam exits 1 and M4's second half is not established. The contract text this diff itself writes says the gate is 'FLEET_COMMIT_SECONDS (default 120) seconds have passed since the last commit' \u2014 'at least N', which the floor of a truncated difference does not give. Requiring a strictly greater difference makes the real elapsed provably > N (floor(t1) >= floor(t0)+N+1 implies t1 > t0+N) and costs at most one extra second, well inside the exam's own 6000 ms ceiling; it changes none of the sibling cases in fleet/tests/test_sandbox_boot.mjs, since (a)/(b)/(f)/(g) gate on FLEET_COMMIT_EVENTS=1, (c)/(d) never reach the time bound at all, and (e)'s one `gate` line still commits once inside its six-second engine.; M4's time bound fires early: the gate in `phase_refresher` (fleet/sandbox-boot.sh:930,944,947) stamps both ends with whole-second `date +%s`, so `[ \"$(( now - committed_at ))\" -ge \"$COMMIT_SECONDS\" ]` becomes true after as little as COMMIT_SECONDS\u22121+\u03b5 of real time \u2014 a stamp taken at x.999 floors to x, one taken at x+N.000 floors to x+N, and the difference reads N after N\u22120.001 real seconds. Each tick costs more than a second of wall (sleep + two python3 spawns in `project_sub_phase` and `write_status`), so the tick that trips the floor is routinely one short of the window. That is what the exam's red leg measures: EXAM EVIDENCE shows `(d) one line then silence` failing with `the commit came 2303 ms after the one before it \u2014 less than the 3000 ms FLEET_COMMIT_SECONDS asks for`. The exam is not at fault \u2014 the task's own leg (d) asks for a commit \"between 3 and 6 seconds\" and M4 says \"at least 120 seconds have elapsed since it\"; a correct implementation satisfies it with a sub-second clock. Read the gate's two stamps in milliseconds from one clock and compare against `COMMIT_SECONDS * 1000`. Note the rig's `date` stub (`fleet/tests/_sandbox_boot_helpers.mjs:669-677`) intercepts exactly the argv `+%s`, so `+%s%3N` falls through to `/bin/date`; the fold-clock offset it adds is only advanced by the `systemd-run` stub once folds begin, which is after `run_engine` has killed the refresher, so the gate loses nothing by not seeing it. This also keeps the upper bound tight (the commit lands within one tick of the window rather than up to a second past it), which is what leg (d)'s 6000 ms ceiling allows for.; the Proof's exam failed: node fleet/tests/test_sandbox_boot_viz.mjs \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 1,
+      "proposedPatches": 2,
+      "proofFixes": 0,
+      "examEdited": [
+        "fleet/tests/test_sandbox_boot_viz.mjs"
+      ],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-93/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1619 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n...................................                                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1619 passed, 5 warnings in 411.06s (0:06:51) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_baseline.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_run_engine_reconcile.mjs | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": ""
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "node --check fleet/run-engine.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 1230325,
+    "blockingFindings": 4,
+    "blockingPerReviewerMinute": 0.1950704082254689,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 2,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": ".................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n......................................................................... [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.................................                                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 393.07s (0:06:33) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "de909d40cab78bb45490c05be97c1fc00d5f5551",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-93/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-93/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.8350000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "2",
+      "files": [
+        "CLAUDE.md",
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md",
+        "fleet/sandbox-boot.sh",
+        "fleet/tests/_sandbox_boot_helpers.mjs",
+        "fleet/tests/test_sandbox_boot.mjs",
+        "fleet/tests/test_sandbox_boot_viz.mjs"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: plan-defect: leg (b) of the Proof replays task 1's `driver:wave-adopted` / `driver:wave-blocked`, but neither kind exists at BASE (`fleet/run-engine.mjs` has neither), so the field naming the decided ids is task 1's to choose. The projector therefore reads the list under `tasks`, `ids`, `taskIds` or `task_ids` (and a bare `task` as a list of one), rather than guessing one spelling and silently folding nothing. If task 1 lands a different key again, that tolerance is the line to extend (`listed()` in fleet/sandbox-boot.sh).",
+    "task 2: fleet/CONTRACT.md is in both my FILES and the SIBLING FILES list; my edits touch the served-files clause, the `ultra/evidence-run-<N>` bullet and the `**status.json:**` literal, so a textual conflict with task 1's contract edit is possible at fold time.",
+    "task 2: The #877 timing legs are wall-clock sims. One full `-n 3` run had two of them (the shared four-phase run) fail on a loaded box before the engine's post-append margin was raised from 3 s to 6 s; the two full runs since are clean, but these legs remain the most load-sensitive in the sim.",
+    "task 2: the fix round edited the exam \u2014 fleet/tests/test_sandbox_boot_viz.mjs no longer matches the blob recorded at BASE; the review reads the patch, exam hunks included",
+    "task 2: the Proof's exam `node fleet/tests/test_sandbox_boot_viz.mjs` exited 1 in review round 2 \u2014 blocking, whatever the reviewer returned"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Task 2 (\"The page shows the fleet turning, and the record keeps up\") did not land: every deliverable in its Files slot is absent or untouched in the integrated tree, so its Claim (\"While a wave runs, the run's page names what each task is doing and its last proof, serves the live event log, and the record on the evidence branch catches up within two minutes or ten events\") is wholly unmet. Specifically: (1) `fleet/tests/test_sandbox_boot_viz.mjs` \u2014 the task's Proof `Test:`/`Guard:` file \u2014 does not exist anywhere in the tree (glob over `fleet/tests/test_sandbox_boot*.mjs` returns 13 files, none of them `_viz`). (2) `fleet/sandbox-boot.sh` carries no M1 serving of the event log: the only `events.jsonl` references are the pre-existing ones at :609, :805, :1734, :1781 (evidence collection and `appendEvent`); there is no copy of `$(run_dir_path)/events.jsonl` into `$WWW_DIR`. (3) No M2 `tasks` cell: `write_status()` at `fleet/sandbox-boot.sh:281-301` still emits the old heredoc at :297 with cells `run,state,phase,pr,prAuthor,merged,branch,vm,startedAt,updatedAt,error` and no `tasks`; there is no `project_events` python reader, no `lastProof`, and none of the eight state strings. (4) No M3 sub-phase: `phase_refresher()` at :639-651 still calls `write_status running \"$p\"` with the bare `engine:phase` text. (5) No M4 commit gate: `fleet/sandbox-boot.sh:646` is still `if [ \"$p\" != \"$last\" ] && commit_phase_evidence \"$p\"` \u2014 the phase-string gate the task exists to remove \u2014 and `FLEET_COMMIT_EVENTS` / `FLEET_COMMIT_SECONDS` appear nowhere in the file. (6) No M5 docs: `fleet/CONTRACT.md:186` still lists only `status.json` + `engine.log` as served, `:298` is still the status.json literal with no `tasks` cell or `\u00b7 <sub>` form, `:300` still says commits happen \"at every transition\"; `fleet/RUNBOOK.md` contains neither `sub-step` nor `two minutes` (zero matches). (7) `CLAUDE.md:151` still reads `#876 *The Orrery*`, not `#876 *Viz*`. (8) `fleet/tests/test_sandbox_boot.mjs:837-1016` still pins the superseded #723 rule \"one evidence commit per relayed phase\" (`commitPhases`, `PHASE_COMMIT_STATES`) that M4 was to rewrite. The blocked-waves record handed to me is `[]` and `launch.json` puts tasks \"1\" and \"2\" in a single wave, so nothing in the run's own record accounts for this absence; correspondingly, task 2's two Proof `Run:` commands (`node fleet/tests/test_sandbox_boot.mjs | grep -q 'ALL TESTS PASSED'` and `python3 -m pytest -q tests/test_docs_agree_with_code.py`) are the only ones missing from the INTEGRATED RUN EVIDENCE block. The driver's green suite does not contradict this: the tree is byte-identical to BASE for task 2's surface, so the suite is green precisely because nothing changed."
+    },
+    {
+      "severity": "blocking",
+      "detail": "The submission's own operator Claim is unmet by the integrated tree. The plan's elicited Claim (/home/exedev/plans/run-93.md:5) is \"open a run's page while a wave is running. see: what each task is doing right now, the last proof that ran and how it went, and the live event log; and the evidence branch is never more than two minutes or a handful of events behind the machine.\" None of those four things is true of the adopted tree: `fleet/sandbox-boot.sh`'s `write_status()` (:297) serves no per-task cell and no last-proof cell, `$WWW_DIR` still holds only `status.json` and `engine.log` so there is no live event log to open, and `phase_refresher()` (:646) still commits evidence only when the `engine:phase` string changes \u2014 the exact whole-wave lag Shelley measured on fleet-r84/fleet-r87 and that this plan was chartered to remove. The run's HEAD commit is titled \"Viz's sensor \u2014 the fleet turns where I can see it\", which asserts the operator sentence the tree does not deliver. What did land (task 1) is the record-side half only: the engine now emits the two wave events, but nothing in the tree projects them onto the page an operator reads."
+    },
+    {
+      "severity": "minor",
+      "detail": "Context cross-check, whole-tree: the shared event literal `{\"kind\":\"driver:wave-adopted\",\"wave\":<n>,\"tasks\":[<ids>],\"headSha\":\"<40-hex>\"}` / `{\"kind\":\"driver:wave-blocked\",\"wave\":<n>,\"tasks\":[<ids>],\"detail\":\"<text>\"}` is carried in both tasks' Context slots, but only the producer side exists in the tree. `fleet/run-engine.mjs:2950-2951` and `:2744` emit exactly that shape (and `fleet/CONTRACT.md:49-52` spells both kinds with `headSha`, satisfying the global constraint that every added kind be named there), so there is no disagreement to report \u2014 but the two kinds have no reader anywhere in the tree, since task 2's projector was to be their only consumer. This is a consequence of the finding above rather than a defect in task 1; it is worth an issue only so the orphaned producer is not mistaken for finished work if task 2 is re-run separately."
+    }
+  ],
+  "blockedWaves": []
+}

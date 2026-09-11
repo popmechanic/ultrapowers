@@ -1,0 +1,33 @@
+{
+  "engineHead": "de909d40cab78bb45490c05be97c1fc00d5f5551",
+  "attempts": {
+    "1": {
+      "tip": "4b295c9ce783d4bbcd5f792f0647272bdd5a0697",
+      "candidate": "03d90821f6e3ca875362574f06aaa2de19c24d10",
+      "disposition": "folded",
+      "pathsJoined": 1,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_joined_proofs.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_run_engine_wave_events.mjs",
+          "path": "fleet/run-engine.mjs",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
