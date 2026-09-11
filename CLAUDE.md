@@ -58,7 +58,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   only as `.ultrapowers/plan.md`, one commit on the run's base that `fleet/launch.mjs` pushes to
   the TARGET repository as `ultra/plan-run-<N>` before any VM exists (#597/#598); the run answers
   on two more branches of that same repository, `ultra/evidence-run-<N>` (the record, under
-  `.ultrapowers/runs/<N>/`) and `ultra/integration-run-<N>` (the work, and the PR's head).
+  `.ultrapowers/runs/<N>/`; at publish it becomes the tag `ultra/evidence/run-<N>`, and a finished
+  run is read by that tag — the branch is gone) and `ultra/integration-run-<N>` (the work, and the PR's head).
   A plan may not ask a worker to read a spec path — the sandbox has
   none. `docs/superpowers/intents/` is two historical 2026-08-28 docs from the pre-#390
   seven-slot shape — nothing writes there now.
@@ -83,12 +84,12 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   edge-injected Claude OAuth token (`claude-max` is an `http-proxy` that injects the bearer and
   nothing else — an injected header replaces the client's), serves status on port 8000, commits
   evidence to the target's `ultra/evidence-run-<N>` under `.ultrapowers/runs/<N>/` at every
-  transition, and pushes `ultra/integration-run-<N>` and opens its own PR over REST with
+  transition (tagged `ultra/evidence/run-<N>` at publish), and pushes `ultra/integration-run-<N>` and opens its own PR over REST with
   `prAuthor` recorded. The PR is the gate; there is no grant step. `claude-token.mjs` owns the
   credential (loom-style OAuth on the laptop, refresh token in the keychain, refreshed before every
   launch, single-flight — #602); `janitor.mjs` reads each fleet VM's comment and the target's
   evidence branch through `gh api`, never a VM's disk; `target.mjs` creates the per-target
-  integration; `doctor.mjs` says which of its five rows is missing. The engine itself is untouched
+  integration; `doctor.mjs` says which of its eight rows is missing. The engine itself is untouched
   by the lift (#402): `run-main.mjs` (entry) →
   `run-engine.mjs` (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),
   `run-waves.mjs` (clones-at-BASE + `withPatchCapture`), `confine-hook.mjs` (the implementer's
@@ -130,8 +131,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   enforced elsewhere: **cap what an agent is MADE to read, never what a file stores** — and
   every refusing word ceiling is now gone: the SKILL.md ceilings at #492 (three observed harms,
   zero observed saves) and the last role-file ceiling at #496 (closed 2026-09-01). Prose sizes
-  are *reported* (CI's *Report skill prose sizes* step, `wc -w`, release
-  commit bodies) and gate nothing; the one surviving role-file pin is stylistic (no shouted
+  are *reported* (`wc -w`, the release plan's `Run:`) and gate nothing; the one surviving role-file pin is stylistic (no shouted
   imperatives). A budget a task cannot meet is a demolition order.
   Also standing: **deletion is owed
   per guard** — ballast goes behind a measurement gate, never on an incident narrative. Its
@@ -152,7 +152,15 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   tuple space of facts, never commands; row = evidence, cell = status, readiness = a fold at read
   time; the record as the scheduler; tickets #811 grilling first, #812 interface-handshake
   prototype, #813 readiness-fold research gated on an order-shuffled fold sim, #814 = #485's
-  live-record question); #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
+  live-record question; **re-chartered 2026-09-11: kata — kenn-io/kata, a local-first tracker
+  daemon with an append-only event stream — is the substrate, not a build of our own; prototype
+  #913: a hub daemon reached through a peer integration by `tag:fleet`, the compiler writes each
+  task's fact sheet at launch, the engine reads it, `kata export` rides the tag; the plan stays the
+  signed input and GitHub stays the public record); #727 *The Determinism Ratchet* (chartered
+  2026-09-07: a prose rule violated twice becomes a check; the referee reading of 2026-09-11 on
+  #911 — reviewers never escalated a referee finding, 3 of 3 terminal verdicts false — decided the
+  referee's deletion whole, plan in authoring; rule 4 cuts both ways: a check is kept only if the
+  record shows it raises what a model would not); #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
   operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
   #553 examiner / #554 clause-to-leg / #555 BASE-facts Context / #556 collaborative review all
   shipped; live tickets #232 #526 #572 #582; #599 (should exams be sealed again?) closed
@@ -182,7 +190,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
 - **One merge, one writer.** Manyana merges file *content* at the fold, and that is the only
   merge in the system. Run STATE has exactly one writer per run — the sandbox — and its record
   is git: `.ultrapowers/runs/<N>/status.json` plus the receipts, on the target's
-  `ultra/evidence-run-<N>` branch, committed at every transition,
+  `ultra/evidence-run-<N>` branch, committed at every transition and tagged
+  `ultra/evidence/run-<N>` at publish,
   `pull --rebase` on a non-fast-forward. The pre-0.3.5 "row axis / cell axis" store rule
   (TinyBase MergeableStore, HLC-stamped per slot, *status is a register, evidence is a set,
   totals are folds*) is history with the store; whether the live multi-run record wants a CRDT
@@ -284,6 +293,10 @@ structural dozen).
   the contract's literals (the unit, the engine directory, the VM name) are the ones taught, and
   the retired vocabulary of the pre-lift fleet appears nowhere. Reword freely; do not name a
   script that is not there.
+- **Refresh before every launch.** `node fleet/claude-token.mjs refresh --force --account <acct>`
+  first: a `usage` read rotates an expired account with `install: false`, which revokes the bearer
+  the edge holds, and a launch inside the four-hour window then logs "nothing to do" and runs on
+  the revoked token (run-100, 2026-09-11, `401 OAuth access token has been revoked`).
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script. On the fleet the
