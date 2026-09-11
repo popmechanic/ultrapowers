@@ -259,7 +259,17 @@ async function scenario({ tasks, exams, review = () => passReview(), markers = {
 const SUITE_ENV_FILE = path.join(tmp, 'suite-env.txt')
 {
   const A = await scenario({
-    tasks: [entry({ proofRuns: [ENV_CMD] })],
+    // T2 is here for the join (#887): the integrated `Run:` pass re-runs a
+    // task's commands only when another task of the same wave touches one of
+    // its paths, and T1's one path is `out.txt`. T2 declares it in its Files and
+    // writes `two.txt`, so the touch sets meet in `out.txt` without two patches
+    // contending for it — leg (d) then has an integrated execution to read. T2
+    // carries no `proofTests`, so no second examiner is dispatched.
+    tasks: [entry({ proofRuns: [ENV_CMD] }),
+            entry({ id: 'T2', title: 'create two', files: ['out.txt', 'two.txt'],
+                    writes: ['two.txt'], proofTests: [], proofRuns: [],
+                    body: bodyFor('two.txt') })],
+    markers: { T2: 'two.txt' },
     exams: {
       T1: examScript({ records: { base: baseRecord, 0: pass0Record() } }),
     },

@@ -479,6 +479,59 @@ export const stateExamBlock = (rows) => {
     rows.map((r) => '\n- ' + r.exam + ': mutant ' +
       String((r.mutant_path || r.path || '')) + ' killed: true').join('')
 }
+// ── #887 — the join: which paths two of a wave's tasks both touched ──────────
+//
+// Re-running every merged task's `Run:` on the fold asks most tasks a question
+// whose answer is already in hand: a task whose paths no other task of the wave
+// went near reads the same tree it read in its own clone, and its proof can
+// only repeat itself there. What the fold actually raises is a question about
+// PAIRS — two tasks whose work met in one file — so the pass is narrowed to the
+// tasks that have one.
+//
+// A task's TOUCH SET is its declared `files` united with the paths its captured
+// patch changed, and both halves are load-bearing. The patch alone misses a
+// file the plan handed two tasks that only one of them edited — the other wrote
+// its code against that file and is just as exposed to the other's edit. The
+// declared list alone misses whatever an implementer touched outside its Files,
+// which is precisely the overlap nobody planned for.
+//
+// The paths a patch changed are the `b/<p>` halves of its `diff --git a/<p>
+// b/<p>` headers — the `b` half because a DELETED file still carries one, and a
+// task that removed a path contends for it exactly as a task that wrote it does.
+export const patchPaths = (patchFile) => {
+  let text = ''
+  try { text = fs.readFileSync(String(patchFile || ''), 'utf8') } catch { return [] }
+  const out = []
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('diff --git ')) continue
+    const m = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
+    if (m && m[2] && !out.includes(m[2])) out.push(m[2])
+  }
+  return out
+}
+// Declared first, then whatever the capture adds to them — de-duped, order
+// stable, so a reader sees the plan's spelling ahead of the capture's.
+export const touchSetOf = (task, patchFile) => {
+  const out = []
+  const declared = (task && Array.isArray(task.files)) ? task.files : []
+  for (const p of declared.concat(patchPaths(patchFile))) {
+    const s = String(p == null ? '' : p).trim()
+    if (s && !out.includes(s)) out.push(s)
+  }
+  return out
+}
+// The wave's joined set: every path at least TWO of its touch sets carry,
+// sorted. A one-task wave joins nothing to itself and a wave whose tasks are
+// pairwise disjoint joins nothing either — both answer `[]`. Computed from the
+// wave's own rows every wave: no cache, no hashing, nothing the compiler has to
+// know.
+export const joinedPathsOf = (touchSets) => {
+  const counts = new Map()
+  for (const set of (Array.isArray(touchSets) ? touchSets : [])) {
+    for (const p of new Set(Array.isArray(set) ? set : [])) counts.set(p, (counts.get(p) || 0) + 1)
+  }
+  return [...counts.entries()].filter(([, n]) => n >= 2).map(([p]) => p).sort()
+}
 // #604 (b)+(c) — the INTEGRATED `Run:` proofs. The per-task execution above
 // answers "does this command pass on the patch its author wrote"; it cannot
 // answer "does it still pass on the tree the wave actually adopted", and the
@@ -1089,8 +1142,9 @@ export async function runEngine({
   const judgmentCalls = []
   const unfinished = []
   const frontier = []
-  // #604 — one record per merged task's `Run:` command, executed on the tree
-  // its wave adopted, and the blocking findings a non-zero exit mints.
+  // #604 — one record per JOINED merged task's `Run:` command (#887), executed
+  // on the tree its wave adopted, and the blocking findings a non-zero
+  // `Check:` mints. A red `Run:` mints none: it is reported with its pair.
   const integratedRuns = []
   const integratedChecks = []
   const integratedFindings = []
@@ -2908,6 +2962,20 @@ export async function runEngine({
     const waveTasks = (Array.isArray(WAVES[w]) ? WAVES[w] : [])
       .filter((t) => t && mergeable.some((r) => r.task === t.id))
     compositionRows(w + 1, waveTasks)
+    // #887 — the wave's join, computed right here from the rows the barrier
+    // folded: every patch is already captured and every declared Files list is
+    // the plan's own, so this needs no kernel read and no tree read. Only the
+    // MERGEABLE rows contribute — a task that never landed put nothing on the
+    // tree for another task to meet.
+    const touchSets = new Map(waveTasks.map((t) =>
+      [t.id, touchSetOf(t, (mergeable.find((r) => r.task === t.id) || {}).patch)]))
+    const joined = joinedPathsOf([...touchSets.values()])
+    // What this task shares, and who with: the task's own joined paths (in the
+    // wave's sorted order) and the other tasks that carry them, in plan order.
+    const joinedFor = (id) => joined.filter((p) => (touchSets.get(id) || []).includes(p))
+    const sharersOf = (id, paths) => waveTasks
+      .filter((t) => t.id !== id && paths.some((p) => (touchSets.get(t.id) || []).includes(p)))
+      .map((t) => t.id)
     const merge = await foldWave(mergeable, w, waveTasks, waveBaseSha)
     waveMerges.push({
       wave: w + 1,
@@ -2915,6 +2983,11 @@ export async function runEngine({
       headSha: merge.headSha,
       detail: merge.detail,
       branches: mergeable.map((r) => r.task),
+      // #887 — the paths this wave's tasks met on, `[]` when they met on none.
+      // The row the adoption pushes is where a reader looks for what the fold
+      // actually put at risk, so the set that selected the integrated pass
+      // travels with it.
+      joined,
       // #871 — the adopted-red row carries the suite that made it one. A
       // `MERGED` row whose suite is `passed: false` is a reading no other row
       // has, so the paths that bought the adoption travel with it. Green rows
@@ -2942,6 +3015,13 @@ export async function runEngine({
       // contribute — `waveTasks` is already WAVES[w] narrowed to the mergeable
       // rows, in Proof order within each task.
       for (const t of waveTasks) {
+        // #887 — and only the JOINED ones. A task whose touch set meets no
+        // other task's in this wave would be re-asked its proof about the tree
+        // it already answered for; the pass exists for the pairs, so a task
+        // with no partner here runs nothing at all.
+        const shared = joinedFor(t.id)
+        if (shared.length === 0) continue
+        const withIds = sharersOf(t.id, shared)
         const cmds = Array.isArray(t.proofRuns)
           ? t.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
           : []
@@ -2957,20 +3037,26 @@ export async function runEngine({
           // nothing without a run directory, so the absence IS the instruction.
           const r = await sh(cmd, integ,
             examEnv({ base: baseSha, task: t.id, pass: 'integrated' }))
-          integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
-          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1 })
+          // Every record names the join that bought it: the shared paths, and
+          // the tasks on the other side of them. A reader of a red line needs
+          // the PAIR, not only the command.
+          integratedRuns.push({ task: t.id, cmd, exit: r.code, stdout: tail(r.stdout + r.stderr),
+                                joined: shared.slice(), with: withIds.slice() })
+          appendEvent({ kind: 'driver:integrated-run', task: t.id, cmd, exit: r.code, wave: w + 1,
+                        joined: shared.slice(), with: withIds.slice() })
           if (r.code === 0) continue
-          // A red integrated run is never a deferral: the driver has the
-          // answer and it is a defect in the INTEGRATED tree, which is the
-          // completeness critic's subject. So it is minted as a typed #474
-          // finding and joins review.findings before the report is built —
-          // the existing brake then refuses the run with no second code path.
-          const detail = 'integrated Run: ' + cmd + ' (task ' + t.id + ') exited ' + r.code +
-            ' on the adopted tree'
-          integratedFindings.push({ severity: 'blocking', detail })
-          judgmentCalls.push(detail + ' — it passed in the task\'s own clone; the fold changed ' +
-            'the answer, so the run is BLOCKED whatever the critic returns')
-          log('wave ' + (w + 1) + ': ' + detail)
+          // #871 decision 1, applied to the join (#887): a red here is REPORTED
+          // with the pair named, not gated. The proof passed in the task's own
+          // clone and the only new fact is that two tasks met in a file — which
+          // of them is wrong is a question this run cannot answer, and blocking
+          // the whole run on it spends a park on an unattributed red. So no
+          // completeness finding is minted: the judgment call carries the
+          // reading, the critic reads the same bytes as INTEGRATED RUN
+          // EVIDENCE, and the `Check:` pass below keeps the brake it has.
+          const call = 'task ' + t.id + '\'s proof ' + cmd + ' went red on the fold of ' +
+            shared.join(', ') + ' with task ' + withIds.join(', ')
+          judgmentCalls.push(call)
+          log('wave ' + (w + 1) + ': ' + call)
         }
       }
       // The run's standing `Check:` commands on the same adopted tree. A
@@ -3076,9 +3162,11 @@ export async function runEngine({
   await runCritic()
   judgmentCalls.push(...criticCalls)
 
-  // A red integrated `Run:` proof outranks whatever the critic returned, and it
-  // is folded into the SAME list the #474 brake already reads — appended after
-  // the critic so it survives a critic that died and was replaced above.
+  // A red integrated `Check:` outranks whatever the critic returned, and it is
+  // folded into the SAME list the #474 brake already reads — appended after
+  // the critic so it survives a critic that died and was replaced above. A red
+  // integrated `Run:` is not here: since #887 it is reported with the pair it
+  // names and blocks nothing (the judgment call carries it).
   if (integratedFindings.length) {
     review.findings = (Array.isArray(review.findings) ? review.findings : []).concat(integratedFindings)
   }

@@ -14,6 +14,11 @@
 // execution the assertions observe is the driver's own — the same rig the
 // existing integrated-runs sim uses.
 //
+// Since #887 the integrated pass runs only a JOINED task's commands, so this
+// fixture's three tasks all write `shared.txt`: the sweep's subject is the
+// tree the first integrated run reads, and a wave with no join has no first
+// integrated run to sweep for.
+//
 // Machine clauses under test:
 //   M1 — before the first integrated `Run:` command of a wave executes in the
 //        integration clone, every directory named `__pycache__` or
@@ -57,6 +62,11 @@ const CMD_B = 'test ! -e pkg/__pycache__'
 // touches, `check.sh` a file the rig commits at BASE.
 const CMD_C = 'test -e notes.txt && test -e check.sh'
 
+// The path the wave's three tasks MEET in (#887), written with identical bytes
+// by each of them: the join is what selects the integrated `Run:` pass at all.
+const SHARED = 'shared.txt'
+const SHARED_CONTENT = 'shared-by-every-task\n'
+
 const mkTask = (id, file, over = {}) => ({
   id, title: id.toLowerCase(), files: [file], tier: 'standard', review: 'lean',
   writes: [file], commutes: [], proofTests: [], proofRuns: [],
@@ -97,6 +107,12 @@ const stub = (prompt, opts, cwd) => {
   if (kind === 'impl') {
     const id = opts.label.split(':')[1]
     fs.writeFileSync(path.join(cwd, fileOf(id)), 'from-' + id + '\n')
+    // #887 — the integrated pass is the JOIN's: every task here writes
+    // `shared.txt` with the same bytes, so the three touch sets meet in it (and
+    // the fold still applies all three patches cleanly). Without the join this
+    // wave re-runs nothing and the sweep would have no first integrated run to
+    // precede.
+    fs.writeFileSync(path.join(cwd, SHARED), SHARED_CONTENT)
     // The driver's pre-review pass executes each task's `Run:` in the task's
     // OWN clone, where the suite command never ran. A's proof asks for
     // `.git/__pycache__` and C's for `notes.txt`; both are planted here so the
@@ -120,6 +136,9 @@ assert.equal(report.coverage.complete, true,
 assert.equal(report.waveMerges[0].status, 'MERGED',
   'sim precondition: wave 1 was adopted: ' + JSON.stringify(report.waveMerges))
 assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
+assert.deepEqual(report.waveMerges[0].joined, [SHARED],
+  'sim precondition: the wave\'s tasks meet in ' + SHARED + ', which is what makes this a ' +
+  'wave with integrated runs at all (#887): ' + JSON.stringify(report.waveMerges[0]))
 assert.ok(Array.isArray(report.integratedRuns) && report.integratedRuns.length === 3,
   'sim precondition: one integrated run per merged task: ' +
   JSON.stringify(report.integratedRuns))

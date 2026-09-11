@@ -11,21 +11,28 @@
 // kernel, the real `sh`); only the judgments are canned, so every command
 // execution the assertions observe is the driver's own.
 //
+// Since #887 the pass is the JOIN's: a task's commands are re-run only when one
+// of its touched paths is also touched by another task of the same wave, which
+// is the only way the fold can have changed the answer. Every fixture here that
+// expects an integrated execution therefore has its tasks meet in `shared.txt`;
+// `test_run_engine_joined_proofs.mjs` owns the join rule itself.
+//
 // Machine clauses under test:
-//   M1 — after adopt and before the critic, each `done` task's `proofRuns` runs
-//        in Proof order in the integration clone through the same `sh` seam,
-//        recorded as { task, cmd, exit, stdout } (stdout+stderr, last 4,000
-//        characters) under `report.integratedRuns`, plus one
-//        `driver:integrated-run` event per command carrying task, cmd, exit, wave.
+//   M1 — after adopt and before the critic, each joined `done` task's
+//        `proofRuns` runs in Proof order in the integration clone through the
+//        same `sh` seam, recorded as { task, cmd, exit, stdout, joined, with }
+//        (stdout+stderr, last 4,000 characters) under `report.integratedRuns`,
+//        plus one `driver:integrated-run` event per command carrying task, cmd,
+//        exit, wave — and the join it was selected by.
 //   M2 — the critic's prompt carries the block after the `SUITE (driver-run,
 //        post-fold)` section: the opening sentence verbatim, then per command
 //        `$ <cmd>`, `exit <n>`, the recorded output. No merged task with
 //        `proofRuns` ⇒ no block, and a critic prompt byte-identical to BASE's.
-//   M3 — a non-zero integrated exit appends the typed completeness finding
-//        { severity: 'blocking', detail: 'integrated Run: <cmd> (task <id>)
-//        exited <n> on the adopted tree' } to `completenessFindings` and
-//        `judgmentCalls`, so the #474 brake refuses the run; never a
-//        `deferredVerification` item.
+//   M3 — a non-zero integrated exit is REPORTED, not gated (#871 decision 1):
+//        no completeness finding whose detail begins `integrated Run:`, nothing
+//        refused at the #474 brake, and one `judgmentCalls` line naming the
+//        task, the command, the fold's path and the task on the other side of
+//        it; never a `deferredVerification` item.
 //   M4 — unmerged tasks and unadopted waves contribute nothing; a run with no
 //        `proofRuns` anywhere leaves `integratedRuns` as [] and every captured
 //        prompt of every role byte-identical to the same run on BASE's engine.
@@ -71,8 +78,21 @@ const mkTask = (id, file, over = {}) => ({
   writes: [file], commutes: [], proofTests: [], proofRuns: [],
   body: 'task ' + id + ' body', ...over,
 })
-const fileOf = (id) => (id === 'A' ? 'a.txt' : id === 'B' ? 'b.txt' : id)
-const contentOf = (id) => (id === 'A' ? 'from-A\n' : B_CONTENT)
+const fileOf = (id) => (id === 'A' ? 'a.txt' : id === 'B' ? 'b.txt' : id === 'C' ? 'c.txt' : id)
+const contentOf = (id) =>
+  (id === 'A' ? 'from-A\n' : id === 'B' ? B_CONTENT : 'from-' + id + '\n')
+
+// The path the wave's tasks MEET in (#887). Every implementer stub below writes
+// it with the same bytes, so the touch sets join on it and the fold still
+// applies both patches cleanly — the join is what selects the integrated pass,
+// and without it a wave of disjoint tasks re-runs nothing.
+const SHARED = 'shared.txt'
+const SHARED_CONTENT = 'shared-by-every-task\n'
+// One implementer's whole footprint: its own file, and the shared one.
+const implWrite = (cwd, id) => {
+  fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
+  fs.writeFileSync(path.join(cwd, SHARED), SHARED_CONTENT)
+}
 
 // The run's own record. An absent file reads as no records, so a BASE engine
 // that writes none fails a count assertion rather than an ENOENT.
@@ -136,8 +156,7 @@ const blockOf = (prompt) => {
   const stub = (prompt, opts, cwd) => {
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') {
-      const id = opts.label.split(':')[1]
-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
+      implWrite(cwd, opts.label.split(':')[1])
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
@@ -148,6 +167,9 @@ const blockOf = (prompt) => {
   const report = await run()
   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
   assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
+  assert.deepEqual(report.waveMerges[0].joined, [SHARED],
+    'sim precondition: the wave\'s tasks meet in ' + SHARED + ', which is what selects ' +
+    'the integrated pass at all: ' + JSON.stringify(report.waveMerges[0]))
 
   // [M1] the report key, its contents and their order.
   assert.ok(Array.isArray(report.integratedRuns),
@@ -161,9 +183,14 @@ const blockOf = (prompt) => {
     { task: 'B', cmd: 'cat b.txt', exit: 0 },
   ], 'the integrated runs are A\'s command then B\'s two, in Proof order')
   for (const r of report.integratedRuns) {
-    assert.deepEqual(Object.keys(r).sort(), ['cmd', 'exit', 'stdout', 'task'],
-      'each record is exactly { task, cmd, exit, stdout }: ' + JSON.stringify(r))
+    assert.deepEqual(Object.keys(r).sort(), ['cmd', 'exit', 'joined', 'stdout', 'task', 'with'],
+      'each record is exactly { task, cmd, exit, stdout, joined, with }: ' + JSON.stringify(r))
     assert.equal(typeof r.stdout, 'string', 'stdout is a string: ' + JSON.stringify(r))
+    // [M1] the join each record was selected by: the shared path, and the other
+    // task that carries it.
+    assert.deepEqual(r.joined, [SHARED], 'the record names the fold\'s path: ' + JSON.stringify(r))
+    assert.deepEqual(r.with, [r.task === 'A' ? 'B' : 'A'],
+      'and the task on the other side of it: ' + JSON.stringify(r))
   }
   assert.equal(report.integratedRuns[2].stdout, B_CONTENT,
     '`cat b.txt` records what the file actually holds')
@@ -204,8 +231,7 @@ const blockOf = (prompt) => {
     prompts[opts.label] = prompt
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') {
-      const id = opts.label.split(':')[1]
-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
+      implWrite(cwd, opts.label.split(':')[1])
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
@@ -402,13 +428,16 @@ async function pinRun(engine, tasks) {
   }
 }
 
-// ── leg (c): green in the clone, red on the adopted tree [M3] ────────────────
+// ── leg (c): green in the clone, red on the adopted tree — REPORTED [M3] ─────
 // A's proof asserts b.txt is ABSENT: true in A's own clone (so #589 dispatches
 // no fix round), false once B's b.txt is folded in. That difference is the whole
-// point of running the proofs a second time.
+// point of running the proofs a second time — and since #887 it is the JOIN's
+// finding, named with its pair and blocking nothing (#871 decision 1): which of
+// the two tasks is wrong is not a question this run can answer, so it reports
+// rather than parks.
 {
   const CMD = 'test ! -e b.txt'
-  const DETAIL = 'integrated Run: ' + CMD + ' (task A) exited 1 on the adopted tree'
+  const CALL = 'task A\'s proof ' + CMD + ' went red on the fold of ' + SHARED + ' with task B'
   const repo = makeRepo(path.join(tmp, 'repo-c'))
   const runDir = path.join(tmp, 'run-c')
   const waves = [[
@@ -422,8 +451,7 @@ async function pinRun(engine, tasks) {
     prompts[opts.label] = prompt
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') {
-      const id = opts.label.split(':')[1]
-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
+      implWrite(cwd, opts.label.split(':')[1])
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
@@ -438,39 +466,40 @@ async function pinRun(engine, tasks) {
   assert.equal(report.coverage.complete, true, 'sim precondition: both tasks merged')
   assert.equal(report.tests.passed, true, 'sim precondition: the adopted tree is green')
 
-  // [M3] the integrated execution disagrees with the clone-local one.
-  assert.deepEqual(report.integratedRuns.map((r) => ({ task: r.task, cmd: r.cmd, exit: r.exit })),
-    [{ task: 'A', cmd: CMD, exit: 1 }],
-    'the integrated run records exit 1 on the folded tree')
+  // [M3] the integrated execution disagrees with the clone-local one — and
+  // carries the join it was selected by.
+  assert.deepEqual(report.integratedRuns.map(
+    (r) => ({ task: r.task, cmd: r.cmd, exit: r.exit, joined: r.joined, with: r.with })),
+    [{ task: 'A', cmd: CMD, exit: 1, joined: [SHARED], with: ['B'] }],
+    'the integrated run records exit 1 on the folded tree, with the shared path and the ' +
+    'other task named: ' + JSON.stringify(report.integratedRuns))
   assert.deepEqual(integratedEvents(runDir).map(eventShape),
     [{ task: 'A', cmd: CMD, exit: 1, wave: 1 }],
     'and the event carries the non-zero exit')
 
-  // [M3] the typed completeness finding, verbatim.
-  const blocking = report.completenessFindings
-    .filter((f) => f && typeof f === 'object' && f.severity === 'blocking')
-  assert.equal(blocking.length, 1,
-    'exactly one blocking completeness finding: ' + JSON.stringify(report.completenessFindings))
-  assert.deepEqual(Object.keys(blocking[0]).sort(), ['detail', 'severity'],
-    'the finding is the same {severity, detail} shape a critic returns')
-  assert.equal(blocking[0].detail, DETAIL,
-    'the finding\'s detail is fixed by the Machine clause, verbatim')
+  // [M3] no completeness finding at all — this red is not one.
+  assert.deepEqual(report.completenessFindings.filter(
+    (f) => String((f && f.detail) || f).startsWith('integrated Run:')), [],
+    'a red integrated `Run:` must mint no completeness finding: ' +
+    JSON.stringify(report.completenessFindings))
 
-  // [M3] the run's judgment calls name it too.
-  assert.ok(report.judgmentCalls.some((j) => String(j).includes(DETAIL)),
-    'the judgment calls do not name the failed integrated run: ' +
+  // [M3] the judgment call is the whole record, and it names the pair.
+  const red = report.judgmentCalls.filter((j) => String(j).includes('went red on the fold'))
+  assert.deepEqual(red, [CALL],
+    'exactly one judgment call, the ticket\'s sentence verbatim: ' +
     JSON.stringify(report.judgmentCalls))
 
   // [M3] never a deferral — the driver has the answer, so nothing is deferred.
   assert.deepEqual(report.deferredVerification, [],
-    'a red integrated run is a blocking finding, never a deferredVerification item')
+    'a red integrated run is reported, never a deferredVerification item')
 
-  // [M3] the #474 brake: the gate refuses the run.
+  // [M3] and the run is not refused for it: the #474 brake has nothing to read,
+  // and no wave was blocked.
   const decision = criticDecision(report)
-  assert.equal(decision.approve, false,
-    'the completeness brake must refuse a run with a red integrated Run: proof')
-  assert.ok(String(decision.reason).includes(CMD),
-    'the refusal names the command: ' + decision.reason)
+  assert.equal(decision.approve, true,
+    'a red integrated Run: must not refuse the run: ' + decision.reason)
+  assert.deepEqual(report.blockedWaves, [],
+    'and it blocks no wave: ' + JSON.stringify(report.blockedWaves))
 
   // [M2] and the critic read the red run before filing anything.
   const block = blockOf(prompts['integration'])
@@ -479,24 +508,29 @@ async function pinRun(engine, tasks) {
 }
 
 // ── leg (d): a task that never merged contributes nothing [M4] ───────────────
+// Three tasks meet in `shared.txt`; B's review refuses it and its fix round is
+// blocked, so the join is computed over what LANDED — A and C — and B's own
+// command never runs on a tree that never took B's work.
 {
   const repo = makeRepo(path.join(tmp, 'repo-d1'))
   const runDir = path.join(tmp, 'run-d1')
   const waves = [[
     mkTask('A', 'a.txt', { proofRuns: ['test -e a.txt'] }),
     mkTask('B', 'b.txt', { proofRuns: ['test -e b.txt'] }),
+    mkTask('C', 'c.txt', { proofRuns: ['test -e c.txt'] }),
   ]]
   const stub = (prompt, opts, cwd) => {
     const kind = opts.label.split(':')[0]
     const id = opts.label.split(':')[1]
     if (kind === 'impl') {
-      fs.writeFileSync(path.join(cwd, fileOf(id)), contentOf(id))
+      implWrite(cwd, id)
       return doneImpl(cwd)
     }
     if (kind === 'fix') return { status: 'BLOCKED', summary: 'sim: B cannot be repaired' }
     if (kind === 'review') {
-      return id === 'A' ? passReview()
-        : { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'B is not ready' }] }
+      return id === 'B'
+        ? { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'B is not ready' }] }
+        : passReview()
     }
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
@@ -506,20 +540,30 @@ async function pinRun(engine, tasks) {
   const rowB = report.tasks.find((r) => r.task === 'B')
   assert.equal(rowB.status, 'failed', 'sim precondition: B never merged')
   assert.equal(rowB.reviewVerdict, 'blocked-after-fix', 'sim precondition: B is blocked after its fix round')
-  assert.equal(report.waveMerges[0].status, 'MERGED', 'sim precondition: A\'s wave was adopted')
+  assert.equal(report.waveMerges[0].status, 'MERGED', 'sim precondition: A and C\'s wave was adopted')
+  assert.deepEqual(report.waveMerges[0].joined, [SHARED],
+    'sim precondition: the two tasks that landed meet in ' + SHARED + ': ' +
+    JSON.stringify(report.waveMerges[0]))
 
-  // [M4] only the merged task's commands ran.
-  assert.deepEqual(report.integratedRuns.map((r) => ({ task: r.task, cmd: r.cmd, exit: r.exit })),
-    [{ task: 'A', cmd: 'test -e a.txt', exit: 0 }],
-    'a task that did not merge contributes no integrated run')
+  // [M4] only the merged tasks' commands ran, and each names only the OTHER
+  // merged task as its partner.
+  assert.deepEqual(report.integratedRuns.map(
+    (r) => ({ task: r.task, cmd: r.cmd, exit: r.exit, with: r.with })), [
+    { task: 'A', cmd: 'test -e a.txt', exit: 0, with: ['C'] },
+    { task: 'C', cmd: 'test -e c.txt', exit: 0, with: ['A'] },
+  ], 'a task that did not merge contributes no integrated run and is named by none: ' +
+     JSON.stringify(report.integratedRuns))
   assert.ok(!report.integratedRuns.some((r) => r.task === 'B' || r.cmd === 'test -e b.txt'),
     'B\'s command must not run on a tree that never took B\'s work')
-  assert.deepEqual(integratedEvents(runDir).map(eventShape),
-    [{ task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 }],
-    'and no event names B')
+  assert.deepEqual(integratedEvents(runDir).map(eventShape), [
+    { task: 'A', cmd: 'test -e a.txt', exit: 0, wave: 1 },
+    { task: 'C', cmd: 'test -e c.txt', exit: 0, wave: 1 },
+  ], 'and no event names B')
 }
 
 // ── leg (d): a wave whose candidate was never adopted [M4] ──────────────────
+// Both tasks write `shared.txt`, so the join is there and the ONLY reason
+// nothing ran is that no tree was ever adopted.
 {
   const repo = makeRepo(path.join(tmp, 'repo-d2'))
   const runDir = path.join(tmp, 'run-d2')
@@ -533,6 +577,7 @@ async function pinRun(engine, tasks) {
     const id = opts.label.split(':')[1]
     if (kind === 'impl') {
       fs.writeFileSync(path.join(cwd, id === 'A' ? 'a.txt' : 'BROKEN'), contentOf(id))
+      fs.writeFileSync(path.join(cwd, SHARED), SHARED_CONTENT)
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()

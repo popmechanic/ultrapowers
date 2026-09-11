@@ -97,33 +97,35 @@ def test_critic_keeps_the_four_deferred_verification_reasons():
 # ── leg (d) [M4]: the report reference documents the integrated evidence ────
 
 def test_report_format_documents_the_integrated_runs_row():
-    """The `integratedRuns` row names its item shape, when it is `[]`, and the
-    blocking rule; the `deferredVerification` row states the negation."""
+    """The `integratedRuns` row names its item shape — now carrying the join's
+    `joined` and `with` (#887) — when it is `[]`, and the reported-not-gated
+    rule; the `deferredVerification` row states the negation."""
     p = sh(
         "grep -q '`integratedRuns`' "
         "skills/ultrapowers/references/report-format.md && "
         "awk '/`integratedRuns`/' "
         "skills/ultrapowers/references/report-format.md "
-        "| grep -q '{ task, cmd, exit, stdout }' && "
+        "| grep -q '{ task, cmd, exit, stdout, joined, with }' && "
         "awk '/`integratedRuns`/' "
         "skills/ultrapowers/references/report-format.md "
         r"""| grep -q '`\[\]`' && """
         "awk '/`integratedRuns`/' "
         "skills/ultrapowers/references/report-format.md "
-        "| grep -qi 'blocking completeness finding' && "
+        "| grep -qi 'not a blocking' && "
         "awk '/`deferredVerification`/' "
         "skills/ultrapowers/references/report-format.md "
         "| grep -qiE 'command the driver executed is never .manual.'")
     assert p.returncode == 0, (
         "report-format.md does not document `integratedRuns` with its item "
-        "shape `{ task, cmd, exit, stdout }`, its empty case `[]` and the "
-        "blocking-completeness-finding rule, or its `deferredVerification` "
+        "shape `{ task, cmd, exit, stdout, joined, with }`, its empty case "
+        "`[]` and the reported-not-blocking rule, or its `deferredVerification` "
         "row does not say a command the driver executed is never `manual`")
 
 
 def test_the_integrated_runs_row_is_one_row():
     """The awk selects that row alone: the phrases are stated together in the
-    field reference, not gathered from lines scattered through the file."""
+    field reference, not gathered from lines scattered through the file. Since
+    #887 the row must also NOT call a red integrated run blocking."""
     rows = [line for line in REPORT_FORMAT.read_text().splitlines()
             if "`integratedRuns`" in line]
     assert len(rows) == 1, (
@@ -131,6 +133,9 @@ def test_the_integrated_runs_row_is_one_row():
         "got %d: %r" % (len(rows), rows))
     row = rows[0]
     assert row.startswith("| `integratedRuns` |"), row
-    for phrase in ("{ task, cmd, exit, stdout }", "`[]`",
-                   "blocking completeness finding"):
+    for phrase in ("{ task, cmd, exit, stdout, joined, with }", "`[]`",
+                   "joined", "with", "reported", "pair", "not a blocking"):
         assert phrase in row, "the integratedRuns row omits %r: %s" % (phrase, row)
+    assert "blocking completeness finding" not in row, (
+        "a red integrated run is reported with its pair named, not a blocking "
+        "completeness finding (#887): %s" % row)
