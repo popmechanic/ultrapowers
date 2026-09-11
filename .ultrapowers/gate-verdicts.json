@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "edf947ba7f631ebd8b862c98e923797826e9db6e4ba806334ac6528a5bf66ba8",
+      "verdict": "pass",
+      "reason": "round 1: walking M2 over leg (b)'s fourteen-line log yields exactly the stated states, roles, lastProofs, parks and waves (including the wave-blocked, BLOCKED-end, no-args and reverse-order variants) and leg (c)'s five sub readings; legs (d)/(e) trace M4's counters correctly (3<4 no commit, 4th line commits, five-in-one-write is one commit, 1800<3600 no commit, 7200 with no new line no commit, next line commits); M1, M3, M5, M6 and M7 each have a leg with a named failing shape, and every pinned literal is satisfiable under the clauses' own rules"
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": {
+      "1": {
+        "pass": 1,
+        "fail": 0
+      }
+    }
+  }
+}
