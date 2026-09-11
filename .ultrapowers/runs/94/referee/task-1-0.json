@@ -1,0 +1,53 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_pre_review.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `tests/test_roles_run_evidence.py`"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "the exam exited 1 — already red as the exam, so an absent Test: path is not a second finding"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +0 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/run-engine.mjs": "mjs",
+    "fleet/tests/test_run_engine_integrated_clean.mjs": "mjs",
+    "fleet/tests/test_run_engine_integrated_runs.mjs": "mjs",
+    "fleet/tests/test_run_engine_joined_proofs.mjs": "mjs",
+    "fleet/tests/test_run_engine_proof_runs.mjs": "mjs",
+    "fleet/tests/test_run_engine_state_exams.mjs": "mjs"
+  },
+  "ms": 6
+}
