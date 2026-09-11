@@ -1,0 +1,21 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "009267a9ef39b762b3e7854deb304457bda28382d104501bb170c9d058ed4443",
+      "verdict": "pass",
+      "reason": "round 2: every clause has a falsifying leg with computed literals that hold (committer 09-05 vs rows 09-04 -> 0 / 09-06 -> 1 with a decoy author date, untracked -> epoch -> 1, k=1 note after max touching runs and after the --n 1 listing with a k=0 negative, last-row-wins by reversed order, the runner excluded from curve and listing with grep -c pinned to 1, doc literals with a removal control)"
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "rounds": {
+      "1": {"pass": 0, "fail": 1},
+      "2": {"pass": 1, "fail": 0}
+    },
+    "history": [
+      {"round": 1, "hash": "675762126de9fe98eebab2a471b1dd796b5b7d8a1eaac869a590e84fc8200aad", "verdict": "fail", "reason": "M5's leg only checked that the bare words landed and recount occur; the tmp tree's coinciding author and committer dates would not catch %aI read for %cI"},
+      {"round": 2, "hash": "009267a9ef39b762b3e7854deb304457bda28382d104501bb170c9d058ed4443", "verdict": "pass"}
+    ]
+  }
+}
