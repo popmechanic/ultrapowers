@@ -293,10 +293,14 @@ structural dozen).
   the contract's literals (the unit, the engine directory, the VM name) are the ones taught, and
   the retired vocabulary of the pre-lift fleet appears nowhere. Reword freely; do not name a
   script that is not there.
-- **Refresh before every launch.** `node fleet/claude-token.mjs refresh --force --account <acct>`
-  first: a `usage` read rotates an expired account with `install: false`, which revokes the bearer
-  the edge holds, and a launch inside the four-hour window then logs "nothing to do" and runs on
-  the revoked token (run-100, 2026-09-11, `401 OAuth access token has been revoked`).
+- **Never force-rotate the Claude token while a run is live.** A refresh grant revokes the old
+  access token at once, and every in-flight run dies on its next API call with
+  `401 OAuth access token has been revoked` before the edge carries the new one (run-103 was
+  killed by a `refresh --force` for run-104's launch, 2026-09-11; run-92 the same way). The
+  launcher's own refresh rotates only inside the four-hour window and is safe; run `refresh
+  --force` only when `ssh exe.dev ls` shows no `fleet-r*` VM running. The sibling trap: a
+  `usage` read rotates an expired account with `install: false` and leaves the edge holding a
+  revoked bearer (run-100) — the credential-seam plan makes every launch install the token it holds.
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script. On the fleet the
