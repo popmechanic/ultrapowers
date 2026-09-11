@@ -654,9 +654,13 @@ const checkShape = (e) => ({ kind: e.kind, task: e.task, cmd: e.cmd, exit: e.exi
   const DETAIL = 'integrated Check: ' + CMD + ' exited 1 on the adopted tree'
   const repo = bareRepo(path.join(tmp, 'repo-d2'))
   const runDir = path.join(tmp, 'run-d2')
+  // Both tasks also DECLARE `shared.txt` and neither writes it: that is enough
+  // to join their touch sets (#887), which is what gives A an integrated `Run:`
+  // execution for the critic prompt to carry below. The patches stay exactly
+  // what they were, so every `Check:` reading here is unchanged.
   const waves = [[
-    mkTask('A', ['a.txt'], { proofRuns: ['test -e a.txt'] }),
-    mkTask('B', ['b.txt']),
+    mkTask('A', ['a.txt', 'shared.txt'], { proofRuns: ['test -e a.txt'] }),
+    mkTask('B', ['b.txt', 'shared.txt']),
   ]]
   const calls = []
   const prompts = {}
@@ -747,7 +751,13 @@ const segmentOf = (block, cmd) => {
   const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
   const repo = makeRepo(path.join(tmp, 'repo-ub1'))
   const runDir = path.join(tmp, 'run-ub1')
-  const waves = [[mkTask('T1', ['a.txt'], { proofRuns: [ECHO] })]]
+  // T2 exists for the join (#887): it DECLARES `a.txt` without writing it, so
+  // T1's touch set meets another task's and T1's `Run:` is re-executed on the
+  // adopted tree — which is the value leg (f) reads below. The patches stay
+  // disjoint (T1 rewrites `a.txt`, T2 adds `b.txt`), so every `Check:` reading
+  // here is the same one this leg always made.
+  const waves = [[mkTask('T1', ['a.txt'], { proofRuns: [ECHO] }),
+                  mkTask('T2', ['a.txt', 'b.txt'], { writes: ['b.txt'] })]]
   const CHECKS = [{ cmd: CHECK_UNTOUCHED, minor: false }, { cmd: CHECK_EDITED, minor: true }]
   const calls = []
   const prompts = {}
@@ -755,7 +765,11 @@ const segmentOf = (block, cmd) => {
     calls.push(opts.label)
     prompts[opts.label] = prompt
     const kind = opts.label.split(':')[0]
-    if (kind === 'impl') { write(cwd, 'a.txt', 'rewritten by the implementer\n'); return doneImpl(cwd) }
+    if (kind === 'impl') {
+      if (opts.label.split(':')[1] === 'T2') write(cwd, 'b.txt', 'from T2\n')
+      else write(cwd, 'a.txt', 'rewritten by the implementer\n')
+      return doneImpl(cwd)
+    }
     if (kind === 'review') return passReview()
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
@@ -769,7 +783,8 @@ const segmentOf = (block, cmd) => {
   // for the one it edited. With ULTRA_BASE unset, `git diff --quiet -- <path>`
   // is a working-tree-vs-index diff — and the capture already staged the edit —
   // so both would read 0 and the second assertion is the discriminator.
-  const zero = ofKind(runDir, 'driver:check-run').filter((e) => e.iter === 0)
+  const zero = ofKind(runDir, 'driver:check-run')
+    .filter((e) => e.iter === 0 && e.task === 'T1')
   const untouched = zero.filter((e) => e.cmd === CHECK_UNTOUCHED)
   const edited = zero.filter((e) => e.cmd === CHECK_EDITED)
   assert.deepEqual(untouched.map(checkShape), [

@@ -33,7 +33,12 @@ for human judgment (aesthetic, product-fit), not for a command the driver ran.
 When that evidence settles the presence of a deliverable and only the judgment
 is left, the `manual` item's `why` quotes the settling command verbatim, as the
 `$ <cmd>` line of the block gives it; a paraphrase is not a citation, and an
-item that carries one parks at the gate as it does today.
+item that carries one parks at the gate as it does today. The block lists only
+the commands of tasks the fold JOINED — each one shares a path with another
+merged task — so a red there is a finding about the join itself, not against
+either task: it is reported with the pair named (a judgment call quoting the
+command, the shared path and the other task), and it is not a blocking finding.
+Do not spend one on it.
 
 The INTEGRATED CHECK EVIDENCE block is the same for the global constraints that
 carry a `Check:` command: the driver ran each one itself on the adopted

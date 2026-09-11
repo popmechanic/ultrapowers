@@ -154,20 +154,18 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
   // [M1] after the implementer returned, before the reviewer was called.
   // (the wave's own critic dispatch, `integration`, is not part of the task's
   // own order and is dropped.)
-  // The trailing `proof-run` is the DRIVER's own second execution on the
-  // adopted tree (#604 (b)+(c), test_run_engine_integrated_runs.mjs owns it):
-  // T1 merges, so the same command runs once more in the integration clone
-  // after the whole task pipeline. It is pinned here because this file's order
-  // log cannot tell the two executions apart, and dropping it would let the
-  // integrated pass move without any pin noticing.
+  // There is no trailing `proof-run`: the integrated pass is #887's, and it
+  // re-runs a task's commands only when another task of the same wave touched
+  // one of its paths. This is a ONE-task wave, so it joins nothing and the
+  // driver executes nothing on the adopted tree —
+  // `test_run_engine_joined_proofs.mjs` pins that rule in its own sim, and
+  // `test_run_engine_integrated_runs.mjs` the pass itself.
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
     .filter(Boolean).filter((l) => l !== 'integration')
-  // The single `proof-run` before the review is the driver's own pre-review
-  // pass, whose evidence round 1 reads (#713); the last is the integrated pass
-  // on the adopted tree.
-  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
-    'the Run: command executes ONCE between the implementer and the first review, ' +
-    'and again on the adopted tree after it')
+  // The single `proof-run` is the driver's own pre-review pass, whose evidence
+  // round 1 reads (#713).
+  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
+    'the Run: command executes ONCE, between the implementer and the first review')
 
   // [M1, M5] one record per execution, exit 0, the command verbatim.
   assert.equal(events.length, 1, 'the one pre-review execution recorded: ' + JSON.stringify(events))
@@ -560,21 +558,28 @@ const segmentOf = (block, cmd) => {
 // The two shas differ only from wave 2 onward, which is why this leg is
 // two-wave: in wave 1 `waveBaseSha` and `baseSha` coincide and any confusion
 // between them is invisible.
+//
+// T3 rides in wave 2 for the join (#887): the integrated pass re-runs T2's
+// command only because another task of that wave touches one of T2's paths.
+// T3 declares `two.txt` in its Files and writes `three.txt`, so the two touch
+// sets meet in `two.txt` while the patches stay disjoint.
 {
   const ECHO = "sh -c 'echo base=$ULTRA_BASE'"
   const repo = makeRepo(path.join(tmp, 'repo-ub2'))
   const runDir = path.join(tmp, 'run-ub2')
   const waves = [
     [entry({ id: 'T1', files: ['one.txt'], writes: ['one.txt'] })],
-    [entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] })],
+    [entry({ id: 'T2', files: ['two.txt'], writes: ['two.txt'], proofRuns: [ECHO] }),
+     entry({ id: 'T3', files: ['two.txt', 'three.txt'], writes: ['three.txt'] })],
   ]
+  const fileOf = (id) => (id === 'T1' ? 'one.txt' : id === 'T2' ? 'two.txt' : 'three.txt')
   const prompts = {}
   const stub = (prompt, opts, cwd) => {
     prompts[opts.label] = prompt
     const kind = opts.label.split(':')[0]
     const id = opts.label.split(':')[1]
     if (kind === 'impl' || kind === 'fix') {
-      fs.writeFileSync(path.join(cwd, id === 'T1' ? 'one.txt' : 'two.txt'), 'from ' + id + '\n')
+      fs.writeFileSync(path.join(cwd, fileOf(id)), 'from ' + id + '\n')
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
@@ -586,6 +591,9 @@ const segmentOf = (block, cmd) => {
 
   assert.equal(report.coverage.complete, true, 'sim precondition: both waves adopted')
   assert.equal(report.waveMerges.length, 2, 'sim precondition: two folded waves')
+  assert.deepEqual(report.waveMerges[1].joined, ['two.txt'],
+    'sim precondition: wave 2\'s two tasks meet in two.txt, which is what gives T2 an ' +
+    'integrated execution at all (#887): ' + JSON.stringify(report.waveMerges[1]))
   const w1 = report.waveMerges[0].headSha
   const w2 = report.waveMerges[1].headSha
   assert.match(String(w1), /^[0-9a-f]{40}$/, 'sim precondition: wave 1 adopted a head')
@@ -750,10 +758,11 @@ const segmentOf = (block, cmd) => {
   })
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
     .filter(Boolean).filter((l) => l !== 'integration')
-  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1', 'proof-run'],
-    'the implementer, ONE pre-review execution, the first review, and the integrated pass ' +
-    'on the adopted tree — a BASE engine records a second execution before the review: ' +
-    JSON.stringify(order))
+  // No trailing `proof-run`: a one-task wave joins nothing, so the #887
+  // integrated pass executes nothing on the adopted tree.
+  assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
+    'the implementer, ONE pre-review execution, then the first review — a BASE engine ' +
+    'records a second execution before the review: ' + JSON.stringify(order))
   assert.deepEqual(events.map((e) => e.iter), [0], JSON.stringify(events))
   // [M4] the row is BASE's for the same canned judgments.
   assert.equal(row.status, 'done', JSON.stringify(row))
