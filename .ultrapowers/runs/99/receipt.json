@@ -1,0 +1,161 @@
+{
+  "ok": true,
+  "stamp": "run-99",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-99"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The counter's window starts when the test lands, and runners are never candidates",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/SKILL.md",
+          "skills/ultralearn/scripts/catch_counter.py",
+          "skills/ultralearn/scripts/catch_report.py",
+          "tests/test_fleet_suite.py",
+          "tests/test_ultralearn_catch_report.py",
+          "tests/test_ultralearn_catches.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`catch_table(rows, tree_tests, landed=None, runners=None)`",
+            "`landing_dates(tree, paths)`",
+            "`runner_files(tree, paths)`",
+            "`unstamped(rows)`"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The counter's window starts when the test lands, and runners are never candidates",
+          "files": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/catch_counter.py",
+            "skills/ultralearn/scripts/catch_report.py",
+            "tests/test_catch_report_window.py",
+            "tests/test_fleet_suite.py",
+            "tests/test_ultralearn_catch_report.py",
+            "tests/test_ultralearn_catches.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`catch_table(rows, tree_tests, landed=None, runners=None)`",
+              "`landing_dates(tree, paths)`",
+              "`runner_files(tree, paths)`",
+              "`unstamped(rows)`"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/catch_counter.py",
+            "skills/ultralearn/scripts/catch_report.py",
+            "tests/test_fleet_suite.py",
+            "tests/test_ultralearn_catch_report.py",
+            "tests/test_ultralearn_catches.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_catch_report_window.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_catch_report_window.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_ultralearn_catch_report.py",
+            "python3 -m pytest -q tests/test_ultralearn_catches.py",
+            "python3 -m pytest -q tests/test_ultralearn_docs.py"
+          ],
+          "proofGuards": [
+            "tests/test_catch_report_window.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The counter's window starts when the test lands, and ru\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The ledger is read, never rewritten: a recount is an appended row, and no existing line of the file changes bytes.\n- The report's existing lines keep their exact text: the header, the delimiter, `N=<n>: <c> file(s)`, `max touching runs: <max>`, `## Zero-catch curve` and `## Zero catches over <N> runs` are printed as they are at BASE.",
+    "constraintChecks": [
+      {
+        "cmd": "python3 -m pytest -q tests/test_ultralearn_docs.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-99/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-99/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-99/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-99/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
