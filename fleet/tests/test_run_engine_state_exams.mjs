@@ -38,11 +38,11 @@
 //        in the schema's `tasks[]` properties and in the field-reference table,
 //        naming the six element keys and the highest-pass rule.
 //
-// M4 and leg (h) both say the reviewer prompt ENDS with the block, and the
-// prompt's last block today is `REFEREE:` — so the assertions below read the
-// prompt's final `\n\n`-separated block, and check separately that it follows
-// the CHECK EVIDENCE block. An implementation that appends the block last
-// satisfies both that clause and the seam the task's Context describes.
+// M4 and leg (h) both say the reviewer prompt ENDS with the block — so the
+// assertions below read the prompt's final `\n\n`-separated block, and check
+// separately that it follows the CHECK EVIDENCE block. An implementation that
+// appends the block last satisfies both that clause and the seam the task's
+// Context describes.
 //
 // Everything below the agent seam is real (git, clones, capture, the fold
 // kernel, the real `sh`): the exam script `printenv`s the four names into the
@@ -185,7 +185,7 @@ const readEnvFile = (runDir, pass) => {
 
 // The prompt's evidence blocks, each from its own header to the next one, so a
 // line found in one came from that block and not from a neighbour.
-const HEADERS = ['RUN EVIDENCE:', 'EXAM EVIDENCE:', 'CHECK EVIDENCE:', 'REFEREE:', 'STATE EXAM:']
+const HEADERS = ['RUN EVIDENCE:', 'EXAM EVIDENCE:', 'CHECK EVIDENCE:', 'STATE EXAM:']
 const blockOf = (prompt, header) => {
   const text = String(prompt || '')
   const i = text.indexOf(header)
@@ -211,9 +211,11 @@ const segmentOf = (block, cmd) => {
 const ultraLinesOf = (text) =>
   String(text || '').split('\n').filter((l) => l.startsWith('ULTRA_'))
 // The prompt's LAST block — blocks are joined with `\n\n` and none of them
-// carries a blank line of its own.
+// carries a blank line of its own. A block whose last line already ends in a
+// newline (a check's stdout) makes the join three newlines, so the separator
+// is any run of blank lines.
 const lastBlockOf = (prompt) => {
-  const parts = String(prompt || '').trimEnd().split('\n\n')
+  const parts = String(prompt || '').trimEnd().split(/\n{2,}/)
   return parts[parts.length - 1]
 }
 

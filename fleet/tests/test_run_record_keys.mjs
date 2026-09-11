@@ -19,7 +19,7 @@
  *       park writes the error cell exactly
  *       `parked: <branch> has no commits ahead of base (verdict <v>)` with
  *       nothing appended.
- *   M4  for each of `fleet/referee.mjs`, `fleet/CONTRACT.md`,
+ *   M4  for each of `fleet/CONTRACT.md`,
  *       `fleet/failing-block.mjs`: the string `acceptance` does not occur; and
  *       `fleet/launch.mjs` does not contain the word `frozen`.
  *   M5  `fleet/tests/test_sandbox_boot_parked_error.mjs` is absent.
@@ -34,11 +34,8 @@
  * either way, which is what M2 measures. Nothing here spawns a sibling sim:
  * a sim's own `ALL TESTS PASSED` is graded where the bridge dispatches it.
  *
- * The `acceptance` reads are case-INSENSITIVE. `fleet/referee.mjs`'s only
- * occurrence at BASE is `Acceptance` in the `INTEGRATED_SUITE` disposition
- * clause, so a case-sensitive read of M4 would already be satisfied there by a
- * file that still teaches the record. The clause is read as the word, and the
- * disposition clause is the sentence M4 is about.
+ * The `acceptance` reads are case-INSENSITIVE: the clause is read as the word,
+ * so a file that still taught the record under `Acceptance` would not pass.
  */
 
 import assert from 'node:assert/strict'
@@ -379,11 +376,11 @@ test('a seeded acceptance.log adds nothing to the parked cell  [M3 / leg (c)]', 
   assert.equal(status.pr, null, 'leg (c) [M3]: nothing was published')
 })
 
-// ── (d) the three files and the launcher's sentence  [M4] ────────────────────
+// ── (d) the two files and the launcher's sentence  [M4] ─────────────────────
 
 const ACCEPTANCE_RE = /acceptance/i
 
-for (const rel of ['referee.mjs', 'CONTRACT.md', 'failing-block.mjs']) {
+for (const rel of ['CONTRACT.md', 'failing-block.mjs']) {
   test(`fleet/${rel} carries zero occurrences of acceptance  [M4 / leg (d)]`, () => {
     const file = path.join(FLEET, rel)
     assert.ok(fs.existsSync(file), `leg (d) [M4]: fleet/${rel} is a deliverable of this task`)

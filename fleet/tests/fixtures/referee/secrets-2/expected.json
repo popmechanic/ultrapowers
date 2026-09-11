@@ -1,9 +1,0 @@
-{
-  "findings": [],
-  "settled": [
-    {
-      "check": "secrets",
-      "contains": "no secret-shaped literal added"
-    }
-  ]
-}

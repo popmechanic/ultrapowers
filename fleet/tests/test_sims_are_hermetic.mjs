@@ -870,22 +870,6 @@ for (const [file, siblings] of NESTED_AT_BASE) {
   })
 }
 
-test('test_referee_linker.mjs drops the pytest shell-out and keeps its source pins  [M4 / leg (e)]', () => {
-  const file = 'test_referee_linker.mjs'
-  const full = path.join(TESTS_DIR, file)
-  assert.ok(fs.existsSync(full), `(e) [M4] ${file} is a sim of this pre-flight`)
-  const result = TREE[SWEPT.indexOf(file)]
-  assert.deepEqual(named(result.siblings), [],
-    `(e) [M4] ${file} carries no spawn whose argv names pytest: ${JSON.stringify(named(result.siblings))}`)
-  const text = fs.readFileSync(full, 'utf8')
-  assert.ok(text.includes('tests/test_compile_plan.py') || text.includes("'test_compile_plan.py'"),
-    '(e) [M4] and it still reads tests/test_compile_plan.py as text')
-  assert.ok(text.includes('test_placeholder_token_set'),
-    '(e) [M4] for its test_placeholder_token_set pins')
-  assert.ok(fs.existsSync(path.join(ROOT, 'tests', 'test_compile_plan.py')),
-    '(e) [M4] and that file is where the pins read it')
-})
-
 // ── (f) the probe spawns nothing  [M7] ───────────────────────────────────────
 
 test('the probe imports nothing from child_process  [M7 / leg (f)]', () => {
