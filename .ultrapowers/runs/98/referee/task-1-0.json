@@ -1,0 +1,112 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/run-engine.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/README.md`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_blind_sensor.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_proof_runs.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_red_suite_record.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_referee.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_state_exams.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_engine_wave_events.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_run_main_engine_dir.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_sandbox_boot_state_exams.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/test_sims_are_hermetic.mjs`"
+    },
+    {
+      "check": "test-count",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "top-level tests +0 / −12 across the patch: net drop of 12, removing `the three sims the Proof runs are still there for the bridge  [M5 / leg (e)]`, `the boot script parses  [rig]`, `the approve receipt reaches the evidence worktree byte for byte  [M1 / leg (a)]`, `the standing approval reaches the evidence worktree byte for byte  [M1 / leg (a)]`, `a PASS run that wrote neither approval commits neither  [M1 / leg (b)]`, `the PASS run\\`, `the approved NEEDS_ACK run\\`, `CONTRACT.md\\`, `every worker slice reaches the evidence worktree byte for byte  [#702 Task 2 / M1 / leg (a)]`, `the copied transcripts directory holds the two names and nothing nested  [#702 Task 2 / M1 / leg (a)]`, `a run whose engine wrote no transcripts commits none  [#702 Task 2 / M1 / leg (a)]`, `CONTRACT.md\\` with no removal declared in the task"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "no exam ran (exam: null); the task proceeds unexamined by driver decision"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/test_publish_fold.mjs": "mjs",
+    "fleet/tests/test_run_engine.mjs": "mjs",
+    "fleet/tests/test_run_engine_baseline.mjs": "mjs",
+    "fleet/tests/test_run_engine_exam_evidence.mjs": "mjs",
+    "fleet/tests/test_run_engine_suite_passes.mjs": "mjs",
+    "fleet/tests/test_run_main.mjs": "mjs",
+    "fleet/tests/test_run_record_keys.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_approval_evidence.mjs": "mjs",
+    "tests/test_fleet_suite.py": "py"
+  },
+  "ms": 10
+}
