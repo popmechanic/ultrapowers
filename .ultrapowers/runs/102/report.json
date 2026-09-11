@@ -1,0 +1,101 @@
+{
+  "integrationBranch": "ultra/integration-run-102",
+  "baseSha": "00a431193fe97368e5ba5ae5829ef996889959e7",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "b8f4b44dffd9100eb4c525c26fffd9b3f81fcd14",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-102/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Exam soft spot (advisory only \u2014 this run's exam evidence shows 8 passed, 0 skipped, so every leg actually ran). In tests/exams/run_102/test_release_0_3_25.py, `_read_base` returns None whenever `git show <base>:<path>` fails, and the two \"changed nothing but the version\" tests (`test_leg_a_plugin_json_changed_nothing_but_the_version`, `test_leg_a_marketplace_json_changed_nothing_but_the_version`) then `pytest.skip`. On any clone where the BASE object is not reachable \u2014 a shallow checkout, or the evidence tag fetched without history \u2014 the strongest half of leg (a) [M1] (\"no other key in either file changes\") turns green by vanishing rather than by being checked. Since the first `Run:` command already carries the same deep-equal assertion and exited 0 here, M1 is settled for this submission; the note is for anyone re-running the exam elsewhere. If it is ever re-run, prefer failing the test when BASE is unreachable (`pytest.fail`) over skipping it.; Recorded, not a defect: the driver's footprint arithmetic flags `tests/exams/run_102/__init__.py` and `tests/exams/run_102/test_release_0_3_25.py` as paths outside FILES (which names the exam as `tests/test_release_0_3_25.py`). The task's own Context authorizes exactly this relocation \u2014 \"it is unguarded (a one-run fact), so the examiner writes it under `tests/exams/<run>/` and it stays on the evidence tag\" \u2014 and the driver's exam-files line confirms `tests/test_release_0_3_25.py at tests/exams/run_102/test_release_0_3_25.py exists; exam ran, exit 0`. The `__init__.py` is the package marker that placement requires. No edit is needed; this entry exists so the operator reading the run report does not re-open the footprint line.; Exam hygiene (advisory, no change required): the two \"changed nothing but the version\" legs in tests/exams/run_102/test_release_0_3_25.py (test_leg_a_plugin_json_changed_nothing_but_the_version, test_leg_a_marketplace_json_changed_nothing_but_the_version) call pytest.skip when `git show <BASE_SHA>:<path>` fails, and BASE_SHA is hard-coded to 00a43119 with only $ULTRA_BASE overriding it. On a clone where that object is unreachable (shallow fetch, evidence tag without the base commit) both legs degrade to a silent skip rather than a failure, so M1's \"no other key in either file changes\" half would be vacuously green there. In this run it did not bite \u2014 EXAM EVIDENCE shows 8 passed / 0 skipped, and the Proof's first `Run:` independently deep-equals both BASE documents against the tree at exit 0 \u2014 so M1 is settled on this tree. Recorded only because the exam file rides the evidence tag.; path outside FILES: `tests/exams/run_102/__init__.py`; path outside FILES: `tests/exams/run_102/test_release_0_3_25.py`",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-102/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1632 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................................                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1632 passed, 5 warnings in 385.81s (0:06:25) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b, (a,b)\"",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 92771,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 2,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n........................................                                 [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1624 passed, 5 warnings in 367.81s (0:06:07) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "8d89efa1dcf6ca1e8df0d0a58343f1c883f9dea1",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-102/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-102/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.588,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "The plan-level Claim's ceremony: \"a PR that bumps the plugin to 0.3.25 in both manifests, opened and merged by the sandbox itself with no CI and no hand merge; then I tag v0.3.25\" (run-102.md:5), plus the Goal's post-merge `gh release create v0.3.25`.",
+      "reason": "external",
+      "why": "The tree half of this Claim is met and verified above, but whether the PR is opened and squash-merged by the sandbox with no CI and no hand on the button \u2014 and the operator's subsequent tag and release \u2014 are acts that happen after this read, against GitHub, and cannot be observed from the integrated tree."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

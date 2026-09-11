@@ -31,3 +31,15 @@
 {"kind":"driver:integrated-check","cmd":"python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b, (a,b)\"","exit":0,"minor":false,"wave":1,"id":"01M28T0NGX00009FYQMFE02HWX","ts":1789149599261}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M28T0NGY00006XQ277M9DM7W","ts":1789149599262}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"f1bd14fd-3129-4004-bd7c-af50442987b3","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-102/clones/integration","model":"opus","id":"01M28T0NGZ00009HXDTCM1SXQD","ts":1789149599263}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"f1bd14fd-3129-4004-bd7c-af50442987b3","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3009,"output":4038,"cacheRead":240146,"cacheCreation":44705,"costUsd":0.683118,"models":["claude-opus-5"]},"id":"01M28T29CK00001TZ7JCPB6G74","ts":1789149652371}
+{"kind":"transcript:slice","label":"integration","sessionId":"f1bd14fd-3129-4004-bd7c-af50442987b3","bytes":11625,"id":"01M28T29CN00004C13YRDDQH3X","ts":1789149652373}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M28T29CY0000T2YKB9H3BF8E","ts":1789149652382}
+{"kind":"driver:stage","stage":"finalize","id":"01M28T29DX0000Y2DR4NPDVKHS","ts":1789149652413}
+{"kind":"driver:stage","stage":"gate","id":"01M28T29FP0000DTRPPHZMXJRY","ts":1789149652470}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M28T29M00000EQHQZDX8XDK1","ts":1789149652608}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M28T29M00001DQZRH31NV1KQ","ts":1789149652608}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M28T29M00002WRRWDB5A8JWE","ts":1789149652608}
+{"kind":"driver:stage","stage":"approve","id":"01M28T29M10000V44G9HJJ9K7M","ts":1789149652609}
+{"kind":"driver:approved","stamp":"run-102","integrationBranch":"ultra/integration-run-102","id":"01M28T29PB0000XABCYJZ56TN3","ts":1789149652683}
+{"kind":"run:open","runId":"run-102","base":"00a431193fe97368e5ba5ae5829ef996889959e7","source":"fleet/publish-fold.mjs","id":"01M28T29Z70000TDVFNHJYCDX9","ts":1789149652967}
+{"kind":"driver:publish-fold","run":"102","attempt":"1","base":"00a431193fe97368e5ba5ae5829ef996889959e7","tip":"00a431193fe97368e5ba5ae5829ef996889959e7","candidate":"8d89efa1dcf6ca1e8df0d0a58343f1c883f9dea1","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M28T2AH20000S76W1Z0WT6N7","ts":1789149653538}

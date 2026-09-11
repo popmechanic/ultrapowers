@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-102.md run-102 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "The plan-level Claim's ceremony: \"a PR that bumps the plugin to 0.3.25 in both manifests, opened and merged by the sandbox itself with no CI and no hand merge; then I tag v0.3.25\" (run-102.md:5), plus the Goal's post-merge `gh release create v0.3.25`. — The tree half of this Claim is met and verified above, but whether the PR is opened and squash-merged by the sandbox with no CI and no hand on the button — and the operator's subsequent tag and release — are acts that happen after this read, against GitHub, and cannot be observed from the integrated tree. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

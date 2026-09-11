@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-102",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-102/report.json",
+  "branch": "ultra/integration-run-102",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "The plan-level Claim's ceremony: \"a PR that bumps the plugin to 0.3.25 in both manifests, opened and merged by the sandbox itself with no CI and no hand merge; then I tag v0.3.25\" (run-102.md:5), plus the Goal's post-merge `gh release create v0.3.25`. \u2014 The tree half of this Claim is met and verified above, but whether the PR is opened and squash-merged by the sandbox with no CI and no hand on the button \u2014 and the operator's subsequent tag and release \u2014 are acts that happen after this read, against GitHub, and cannot be observed from the integrated tree. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-102/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1632 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 30%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 57%]\n........................................................................ [ 61%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n................................................                         [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1632 passed, 5 warnings in 385.81s (0:06:25) =================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
