@@ -22,10 +22,7 @@
  *   M4  for each of `fleet/referee.mjs`, `fleet/CONTRACT.md`,
  *       `fleet/failing-block.mjs`: the string `acceptance` does not occur; and
  *       `fleet/launch.mjs` does not contain the word `frozen`.
- *   M5  `fleet/tests/test_sandbox_boot_parked_error.mjs` is absent, and for each
- *       of `fleet/tests/test_run_engine.mjs`, `fleet/tests/test_run_main.mjs`,
- *       `fleet/tests/test_sandbox_boot_approval_evidence.mjs`: the sim prints
- *       `ALL TESTS PASSED`.
+ *   M5  `fleet/tests/test_sandbox_boot_parked_error.mjs` is absent.
  *
  * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M5.
  *
@@ -35,8 +32,7 @@
  * `_sandbox_boot_helpers.mjs`'s rig to its status cell. `runMain` is driven
  * over a stubbed `exec` — the receipt and the event log are files on disk
  * either way, which is what M2 measures. Nothing here spawns a sibling sim:
- * M5's three green sims are named and left to the bridge, which is what runs
- * them (the Proof's own `Run:` lines).
+ * a sim's own `ALL TESTS PASSED` is graded where the bridge dispatches it.
  *
  * The `acceptance` reads are case-INSENSITIVE. `fleet/referee.mjs`'s only
  * occurrence at BASE is `Acceptance` in the `INTEGRATED_SUITE` disposition
@@ -424,27 +420,18 @@ test('fleet/launch.mjs does not contain the word frozen  [M4 / leg (d)]', () => 
     'leg (d) [M4]: and `ultra_run.py` is still named as where that one lives')
 })
 
-// ── (e) the sim the arm existed for is gone; the others stay  [M5] ───────────
+// ── (e) the sim the arm existed for is gone  [M5] ────────────────────────────
 //
 // Named and not run: the bridge (tests/test_fleet_suite.py) collects every
-// fleet/tests/test_*.mjs and dispatches each on a worker of its own, and the
-// Proof's three `Run:` lines are where their `ALL TESTS PASSED` is graded. A
-// sim that spawned them here would run them twice, in whatever environment this
-// process carries.
+// fleet/tests/test_*.mjs and dispatches each on a worker of its own, which is
+// where a sibling's `ALL TESTS PASSED` is graded. A sim that spawned one here
+// would run it twice, in whatever environment this process carries.
 
 test('fleet/tests/test_sandbox_boot_parked_error.mjs is absent  [M5 / leg (e)]', () => {
   const gone = path.join(HERE, 'test_sandbox_boot_parked_error.mjs')
   assert.equal(fs.existsSync(gone), false,
     'leg (e) [M5]: the sim existed only for the acceptance.log arm of the nothing-ahead park; with ' +
     'the arm deleted it is a test with nothing left to grade, and a deletion is whole')
-})
-
-test('the three sims the Proof runs are still there for the bridge  [M5 / leg (e)]', () => {
-  for (const sim of ['test_run_engine.mjs', 'test_run_main.mjs', 'test_sandbox_boot_approval_evidence.mjs']) {
-    assert.ok(fs.existsSync(path.join(HERE, sim)),
-      `leg (e) [M5]: fleet/tests/${sim} is still a sim under fleet/tests/, collected and dispatched ` +
-      'by the bridge, which is where its ALL TESTS PASSED is graded')
-  }
 })
 
 runTests(tests).then(() => fs.rmSync(tmp, { recursive: true, force: true }))

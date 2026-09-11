@@ -28,8 +28,8 @@
 // M2 is about and the arm M1's two readers are written on.
 //
 // The exact prefix is spelled ONCE here and used by every leg: `RED_PREFIX` is
-// the byte-for-byte opening two sibling sims already pin with `startsWith`
-// (`test_run_engine_early_baseline.mjs`, `test_run_engine_baseline.mjs`), and
+// the byte-for-byte opening a sibling sim already pins with `startsWith`
+// (`test_run_engine_early_baseline.mjs`), and
 // `BLIND` is the continuation M1 adds after it.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'

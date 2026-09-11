@@ -130,7 +130,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   enforced elsewhere: **cap what an agent is MADE to read, never what a file stores** — and
   every refusing word ceiling is now gone: the SKILL.md ceilings at #492 (three observed harms,
   zero observed saves) and the last role-file ceiling at #496 (closed 2026-09-01). Prose sizes
-  are *reported* (CI's *Report skill prose sizes* step, `test_run_engine.mjs`'s stderr, release
+  are *reported* (CI's *Report skill prose sizes* step, `wc -w`, release
   commit bodies) and gate nothing; the one surviving role-file pin is stylistic (no shouted
   imperatives). A budget a task cannot meet is a demolition order.
   Also standing: **deletion is owed

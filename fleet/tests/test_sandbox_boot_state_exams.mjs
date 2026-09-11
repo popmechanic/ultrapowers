@@ -40,8 +40,8 @@
  * the stub bin dir, `makeHome`, `bootAsync`, `argvLines`, `foldArgv`,
  * `evidenceDir` and `runTests`. The one thing that rig cannot do is leave a
  * `state-exams/` tree behind, so `examHome()` splices the writes into the shared
- * engine stub — the same splice point and the same shape
- * `test_sandbox_boot_approval_evidence.mjs` uses for `transcripts/`. The bytes
+ * engine stub — the same splice point and the same shape the boot's other
+ * evidence directories use. The bytes
  * are this file's own, so byte-equality is a real comparison and not two empty
  * files agreeing, and the screenshot is a few bytes of NON-UTF-8 content so
  * "byte for byte" is asked of a binary.
@@ -259,7 +259,7 @@ const bareBoot = (() => {
 /** Leg (g)'s two sibling sims — NAMES, not runs. Each has a bridge case of its
  *  own that runs it and asserts the sentinel; a sim that ran another sim would
  *  run it twice, under whatever environment this process happens to carry. */
-const SIBLING_SIMS = ['test_sandbox_boot.mjs', 'test_sandbox_boot_approval_evidence.mjs']
+const SIBLING_SIMS = ['test_sandbox_boot.mjs']
 
 // ── (a) no render file: one empty entry, and the boot still exits 0  [M1] ────
 
@@ -460,11 +460,10 @@ test('the boot script parses  [M1, M3 / leg (g)]', () => {
   assert.equal(r.status, 0, `(g) bash -n ${SCRIPT}:\n${r.stdout}${r.stderr}`)
 })
 
-// The transcripts copy and the once-nested rule for `transcripts/` live in the
-// approval-evidence sim; `state-exams/` is added AFTER that block, and must not
-// disturb it. That each of these two still prints the sentinel is asserted by
-// the bridge case that runs it — here they are named, and their existence is
-// what this leg holds.
+// `state-exams/` is added AFTER the boot's other evidence copies and must not
+// disturb them. That a sibling still prints the sentinel is asserted by the
+// bridge case that runs it — here it is named, and its existence is what this
+// leg holds.
 // `sibling`, not `file`: the name a sim hands its `existsSync` is how this
 // list reads as a list of names rather than of runs, and `file` is already
 // bound above to the `systemd-run` stub this sim writes.

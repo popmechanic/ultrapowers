@@ -140,7 +140,7 @@ const WAVES = [[
 ]]
 
 // The recording seam: every call keeps its cwd, because cwd is half of what
-// M3 asserts. python3 is played by basename (as test_run_main.mjs does), so
+// M3 asserts. python3 is played by basename, so
 // the stub is blind to WHERE the scripts live — the flow stays green at BASE
 // and the assertions below are what read the path.
 const calls = []

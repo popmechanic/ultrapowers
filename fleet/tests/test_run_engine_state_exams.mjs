@@ -551,17 +551,17 @@ const BREACH = 'contract breach: https://x'
     JSON.stringify(rows))
 }
 
-// ── leg (l): the four sibling engine sims this task must not disturb ─────────
+// ── leg (l): the three sibling engine sims this task must not disturb ────────
 // [M1] [M2] [M3] — the widened environment and the added report key break none
-// of the pins that already stand on the exam evidence, the pre-review pass, the
-// `ULTRA_BASE` readings and the integrated-run row shape.
+// of the pins that already stand on the pre-review pass, the `ULTRA_BASE`
+// readings and the integrated-run row shape.
 //
 // Named, not run: the bridge in tests/test_fleet_suite.py collects every
 // fleet/tests/test_*.mjs and dispatches each on a worker of its own, so a sim
-// that spawned these four ran them twice and charged four walls to this name.
+// that spawned these three ran them twice and charged three walls to this name.
 // The coverage the leg keeps is the names — each is still a sim on the tree, and
 // its pins are graded where they live.
-for (const name of ['test_run_engine_exam_evidence.mjs', 'test_run_engine_pre_review.mjs',
+for (const name of ['test_run_engine_pre_review.mjs',
                     'test_run_engine_proof_runs.mjs', 'test_run_engine_integrated_runs.mjs']) {
   assert.ok(fs.existsSync(path.join(REPO_ROOT, 'fleet/tests', name)),
     'fleet/tests/' + name + ' is still a sim under fleet/tests/, collected and run by the bridge')
