@@ -7,7 +7,7 @@
 //                                         the same, with no question at the terminal:
 //                                         the process polls the clipboard until the
 //                                         copied `code#state` carries THIS login's state
-//   node fleet/claude-token.mjs refresh   rotate before a run when < 30 min remain
+//   node fleet/claude-token.mjs refresh   rotate before a run when < 4 h remain
 //   node fleet/claude-token.mjs status    when the current access token expires
 //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
 //                                         its access token is still fresh (`--json`)
@@ -59,7 +59,16 @@ export const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', acc
 export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 export const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
 export const LOCK_STALE_MS = 2 * 60 * 1000
-export const REFRESH_AHEAD_MS = 30 * 60 * 1000
+// A launch rotates the access token when fewer than this remain. Four hours,
+// not thirty minutes: the token lives eight hours and nothing refreshes it
+// mid-run, so a run launched with thirty-one minutes left dies at minute
+// thirty-one with a 401 to whichever worker is mid-call. Run-92
+// (2026-09-11 00:28 UTC) did exactly that on the token run-88's launch had
+// minted at 16:28; the five launches between them each found more than
+// thirty minutes remaining and rotated nothing. Four hours is the longest
+// run on record (about ninety minutes) with room to spare, and a rotation is
+// one refresh grant behind the single-flight lock — cheap.
+export const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
 // `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
 export const CLIPBOARD_POLL_MS = 2 * 1000
 export const CLIPBOARD_WAIT_MS = 10 * 60 * 1000

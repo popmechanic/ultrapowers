@@ -223,7 +223,7 @@ await leg('login: a failed exchange quotes the status and writes nothing', async
   assert.equal(h.calls.lobby.filter((c) => !c.verb.startsWith('integrations list')).length, 0)
 })
 
-await leg('refresh: fresh for more than 30 min → nothing touched', async () => {
+await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → nothing touched', async () => {
   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
   const r = await refresh(h.deps)
   assert.equal(r.refreshed, false)
@@ -231,7 +231,7 @@ await leg('refresh: fresh for more than 30 min → nothing touched', async () =>
   assert.equal(h.calls.lobby.length, 0)
 })
 
-await leg('refresh: inside 30 min → rotate, store the NEW triple before the edge, then edit', async () => {
+await leg('refresh: inside REFRESH_AHEAD_MS (4 h) → rotate, store the NEW triple before the edge, then edit', async () => {
   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
   const order = []
   const origWrite = h.deps.keychainWrite; h.deps.keychainWrite = (name, v) => { order.push('keychain'); return origWrite(name, v) }
@@ -273,7 +273,10 @@ await leg('installBearer: a failing lobby verb surfaces the lobby\'s own words w
 })
 
 await leg('refresh is single-flight: the record is read under the lock, so a queued sibling finds the rotated triple and does nothing', async () => {
-  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
+  // The minted token lives eight hours here, as the real one does: with a
+  // four-hour refresh-ahead window, a one-hour fake would still be "inside
+  // the window" after the first rotation and the sibling would rotate again.
+  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 }, expiresIn: 8 * 3600 })
   let held = 0; const trace = []
   h.deps.lock = () => { held += 1; trace.push('lock'); return () => { held -= 1; trace.push('unlock') } }
   const origRead = h.deps.keychainRead
@@ -281,7 +284,7 @@ await leg('refresh is single-flight: the record is read under the lock, so a que
   const first = await refresh(h.deps)
   const second = await refresh(h.deps)
   assert.equal(first.refreshed, true)
-  assert.equal(second.refreshed, false, 'the sibling sees the rotated triple (fresh for 60 min) and does nothing')
+  assert.equal(second.refreshed, false, 'the sibling sees the rotated triple (fresh for 8 h) and does nothing')
   assert.equal(h.calls.fetch.length, 1, 'one refresh grant, not two')
   assert.deepEqual(trace, ['lock', 'unlock', 'lock', 'unlock'])
   assert.equal(held, 0)
@@ -310,7 +313,7 @@ await leg('the real lock: two processes, one refresh grant', async () => {
     deps.keychainRead = () => fs.readFileSync(${JSON.stringify(rec)}, 'utf8')
     deps.keychainWrite = (name, v) => { fs.writeFileSync(${JSON.stringify(rec)}, v); return true }
     deps.lobby = (verb) => ({ code: 0, out: verb.startsWith('integrations list') ? JSON.stringify({ integrations: [{ name: 'claude-max' }] }) : 'ok' })
-    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 3600 }) } }
+    deps.fetch = async () => { fs.appendFileSync(${JSON.stringify(grants)}, 'grant' + String.fromCharCode(10)); await new Promise(r => setTimeout(r, 300)); return { ok: true, status: 200, text: async () => '', json: async () => ({ access_token: 'a', refresh_token: 'r1', expires_in: 8 * 3600 }) } }
     deps.log = () => {}
     const r = await refresh(deps); process.stdout.write(JSON.stringify(r))
   `
