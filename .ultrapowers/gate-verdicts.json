@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "18e40309aabbc02a9b534d807cbdc3f7afd65ae52d069f56248bbd321ac253e6",
+      "verdict": "pass",
+      "reason": "round 2: BASE-vs-tree deep-equal after substituting only the version; ordered literals and both negations on the bullet; the named test run"
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "rounds": {
+      "1": {
+        "pass": 0,
+        "fail": 1
+      },
+      "2": {
+        "pass": 1,
+        "fail": 0
+      }
+    }
+  }
+}
