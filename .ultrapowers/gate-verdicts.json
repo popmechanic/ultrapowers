@@ -1,0 +1,146 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "759afdf8dff18d36a82edf8ca510648d3211d50d1457915a5eb6a3094b342e6b",
+      "verdict": "pass",
+      "reason": "revision round: leg (a) pins the kept row against the measured ls --json row shape, the exact single rm, the absent /runs/8/ read and dry-run parity; leg (b) line order and both nothing-to-do cases; the M3 grep scoped to the Janitor bullet."
+    },
+    "2": {
+      "hash": "b483176547e75080f4f95d5a53924ba4606cf4dc94cb76ebba7ecbdcc5aa5fa9",
+      "verdict": "pass",
+      "reason": "policy round: three verbs deep-equalled with the token absent from argv, two ls reads bracketing the new, two sleep(5) calls matching the fixtures, config then env delivered over ssh after .setup-done, bearer rotated on a rebuilt-VM resume, the doctor row on policy get's selector with five absences and the --permanent --if-revision repair, and the narrowing proven by a --policy 'tag:fleet' add line the BASE pin refuses standing green beside the docs test."
+    },
+    "3": {
+      "hash": "59a1af11ba4ac382c8b99f244df91567388a65633fa2266bd512b2fd980fdc90",
+      "verdict": "pass",
+      "reason": "round 1: every literal the legs pin is what the clauses' own rules yield for the fixture (sorted unions, run_7 landings, the two __init__.py for the .py landing and none for the .mjs, wave-1 sibling sets, placeholder-stripped interfaces, no-stamp identity landing), each clause has a falsifying leg."
+    },
+    "4": {
+      "hash": "4d42c3fd6fcba587691ed4ad3dce0a52f8030ce131f3842e08864d1bc6f23502",
+      "verdict": "pass",
+      "reason": "revision round: every clause M1-M6 falsified \u2014 production row over sshTransport with the token absent from argv, ping ordering, the create/link/getIssue sequence before push and new (with the absent-Closes row), purge on a bumped run, revisions from the post-link getIssue (9/4/2), Refusal vs LobbyError."
+    },
+    "5": {
+      "hash": "d0069dd100d36a7561f61fd4e5f1a2c35bf502ecf17fcbb1d522f53bd1eb7784",
+      "verdict": "pass",
+      "reason": "revision round: both transports pinned (no auth header over http; the ssh remote sourcing $KATA_AUTH_TOKEN on the hub), the sheet diverging from the args entry in files, proofTests and guards with the no-tests/exams/sim/ check, body-for-body comment equality and ordering before close, the two close shapes."
+    },
+    "6": {
+      "hash": "9b073f40c8f41d7e97f4e030b0c7391cd10cfc4c7edcff886b6a7e6b333e1e6c",
+      "verdict": "pass",
+      "reason": "revision round: the retrying ping's argv, the park's exact error/subject/phase/exit 0 with no engine and no PR, the four-line kata.jsonl paged 0 then 2 against a URL-keyed stub with the failed-export keep, and the five contract literals one grep each."
+    }
+  },
+  "tally": {
+    "dispatched": 22,
+    "rejected": 12,
+    "note": "round-1 through round-4 of the first authoring, then the Shelley revision rounds; every verdict keyed on the hash it read"
+  },
+  "history": [
+    {
+      "round": 1,
+      "task": "2",
+      "hash": "59da68a98af45a7dbea4c695ec5932ada1d004e47444d0146f4f1654a66064ea",
+      "verdict": "fail",
+      "reason": "M7 under-falsified (doctor-table kata row, the runbook step literal and the integration-bullet sentence unpinned); M6's which-of-the-four detail never checked."
+    },
+    {
+      "round": 1,
+      "task": "4",
+      "hash": "30ee5819588ba1ee69fe48cf7b3dd2fa26796e9cac5889f24e7e58133d5f0a52",
+      "verdict": "fail",
+      "reason": "M1's production row (neither kata nor config injected) had no leg."
+    },
+    {
+      "round": 1,
+      "task": "6",
+      "hash": "5460298182490e11a41ccaee8ade93b4f92fdcebf33ec64084331d045af6b03b",
+      "verdict": "fail",
+      "reason": "M2's evidence commit subject and exit 0 were not read by any leg."
+    },
+    {
+      "round": 2,
+      "task": "2",
+      "hash": "16677a8f52dff596ff9706bd60125c18498dcb235f86279c5f5ed115e9481315",
+      "verdict": "fail",
+      "reason": "M7's docs-pin narrowing and its positive requirement were proven only by a green pytest, which an unnarrowed pin also satisfies."
+    },
+    {
+      "round": 2,
+      "task": "6",
+      "hash": "6f68bf8791b7241886c22fa9fbce981b397bccd9e18fb8d5464ab743cf2d1b38",
+      "verdict": "fail",
+      "reason": "M4's pagination could not yield leg (d)'s four lines against a stub the leg did not describe as stateful (the reader never sees Context)."
+    },
+    {
+      "round": 3,
+      "task": "2",
+      "hash": "fa19e3f8bc2ba4085ba0e84d27c6578e9253fd0b5bcf245e39449c431919c243",
+      "verdict": "fail",
+      "reason": "M7's positive-pin sentence was checked only by greps a comment could satisfy, and the narrowing greps were not tied to one command line."
+    },
+    {
+      "round": "shelley-1",
+      "task": "2",
+      "hash": "5c4cc1fa34ae983c4009a3807c52d2242685240b33b45a51b1aaf9add6df263d",
+      "verdict": "fail",
+      "reason": "sleep count pinned three where the fixtures yield two; public_origin needed the https_url only readable after new."
+    },
+    {
+      "round": "shelley-1",
+      "task": "4",
+      "hash": "786b6400eb362ae6a2307e1e3af6491f9b44d9e7ba4b2aeab27ce1aad318401d",
+      "verdict": "fail",
+      "reason": "M4 assumed which side of a blocks link kata re-revisions; leg (f) contradicted it."
+    },
+    {
+      "round": "shelley-1",
+      "task": "5",
+      "hash": "36aa8c234e89714d602982b7b565aaed2fc32799fcd189fc889038fe82045579",
+      "verdict": "fail",
+      "reason": "leg (c) never falsified proofTests/guards from the sheet."
+    },
+    {
+      "round": "shelley-2",
+      "task": "2",
+      "hash": "19ea42bb85fc154c24ce75d96df815da5ad13331a6e88ecafea35b9139a4e16f",
+      "verdict": "fail",
+      "reason": "superseded before dispatch (M1 wording)."
+    },
+    {
+      "round": "shelley-2",
+      "task": "4",
+      "hash": "cbbeedfe37add977153e6a77ea11a05b14d8fb1756d20cda7e34def85ccc0bc0",
+      "verdict": "fail",
+      "reason": "the absent-Closes row of M3 had no leg."
+    },
+    {
+      "round": "shelley-2",
+      "task": "5",
+      "hash": "9dcdd067b210afcb6212d4a60022598c167865cf957ffacca1832d60196b106b",
+      "verdict": "fail",
+      "reason": "the operator sentence promised a time bound (within the same second) no sim measures."
+    },
+    {
+      "round": "shelley-3",
+      "task": "2",
+      "hash": "dca2a9fb16c295a1155e618ee996e0c5e7584ea33eeccf26c57153bf6fa37526",
+      "verdict": "fail",
+      "reason": "M4's kata-listed/no-VM resume had no leg; M1's read-set restriction unasserted."
+    },
+    {
+      "round": "shelley-4",
+      "task": "2",
+      "hash": "9663e4ac744f9f8a987fe8d67df3b0b87a96b290e030961aec239f53e835def5",
+      "verdict": "fail",
+      "reason": "a rebuilt VM behind an existing integration would leave a stale bearer at the edge."
+    },
+    {
+      "round": "shelley-5",
+      "task": "2",
+      "hash": "6b217ac099fa99a5a20c54e762306b3e2f7af34aaac3aa023cca103209957311",
+      "verdict": "n/a",
+      "reason": "reader lost to a rate limit; superseded by the policy revision."
+    }
+  ]
+}
