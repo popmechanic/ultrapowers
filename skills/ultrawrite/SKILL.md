@@ -24,6 +24,14 @@ said it to you and `(quoted from #NNN)` when an issue already carries that sente
 verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
 and `## Global Constraints`.
 
+Directly under that `**Claim:**` line — the next line, no blank between — the plan carries
+one `**Summary:**` paragraph: three sentences in the operator's register saying what this
+is, why it exists and how it benefits the user. The author writes those sentences and the
+operator confirms them in the same touch as the Claim, never a second one, and the pull
+request the run opens quotes them verbatim, so what a reader meets is what the operator
+signed. It is one paragraph running to the next blank line, no markdown inside; like
+`**Closes:**` it is free prose to the compiler — nothing parses it.
+
 Beside `**Tech Stack:**`, an optional `**Exam command:**` line names how this project's
 tests are run, as a template whose `{paths}` token — exactly one — stands for a task's own
 Proof `Test:` paths (`npx vitest run {paths}`). Without it the compiler derives each task's
@@ -184,6 +192,13 @@ rejects it. Quote the sentence that says what should be true instead.
 **From a bare idea:** ask scenario questions — *"after this run, what can you see or do
 that you couldn't before?"* — offering 2–3 pre-chewed do:/see: options via
 AskUserQuestion. The operator's pick plus their edits is the claim.
+
+**The summary rides with the claim.** Draft the three `**Summary:**` sentences yourself —
+what this is, why it exists, how it benefits them — in the operator's register, off the
+issue or the conversation, and put that draft to the operator inside the *same*
+AskUserQuestion that carries the Claim: one touch, not two. The operator adjudicates and
+never authors: their edits are the summary. A summary written in the technical register —
+a file name, a function name, a sha — is a defect you fix before the gate.
 
 Aim claims where the suite is structurally blind: integration seams, visual states, CLI
 output, error-path wording. A claim that only restates what a test already asserts buys
@@ -421,6 +436,8 @@ author's own to check — nothing prints it.
   issue. Every task Claim is either the operator's words with a provenance tag or
   `(derived)` under the plan-level Claim, paired with a machine restatement at the same
   layer, and its gate verdict is recorded and fresh.
+- The plan carries one `**Summary:**` paragraph of three sentences directly under that
+  Claim, in the operator's register — what this is, why it exists, how it benefits them.
 - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
   task's own writes; every fence sits in Proof.
 - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
