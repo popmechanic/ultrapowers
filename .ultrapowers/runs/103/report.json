@@ -1,0 +1,90 @@
+{
+  "integrationBranch": "ultra/integration-run-103",
+  "baseSha": "e99ff63c1b65b03d416c9413e2e793c609b50454",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "RUN_FATAL: refusing to dispatch impl:1 \u2014 the run already failed at fix:1:0: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 3,
+    "refereeBlocking": 2,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": ".................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n......................................................................... [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.......................................                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1624 passed, 5 warnings in 385.11s (0:06:25) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "tests/test_compile_plan.py",
+        "tests/test_compile_plan_check_constraints.py",
+        "tests/test_plan_level_claim.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: M4's upper bound (<=70) is tighter than the subject rule alone yields. Applying only the Context's stated subject test (delete marker-edge / Depends-on / text-dependency / cycle-from-markers / marker-placement / near-miss-marker / heuristic-classification tests plus the Commutes: section, keep everything the 'stays' list names) leaves 82 collected cases, which fails M4. To land at 68 I additionally dropped 14 cases that are near-duplicate coverage inside a kept subject, keeping the stronger pin of each pair: test_mixed_case_attr_ref_still_dropped_from_files and test_dotted_attribute_ref_is_not_a_write (test_extensionless_real_files_are_kept_identifiers_dropped already pins `schema.User` is dropped), test_bare_none_files_entry_is_silent (test_bulleted_none_in_files_is_not_a_conflict), test_canonical_files_block_compiles_clean, test_placeholder_interfaces_emit_no_undeclared_dependency and test_all_three_tasks_share_wave_one (same PLACEHOLDER_PLAN family as the M3-named test), test_symbol_lead_with_prose_tail_still_tokens (test_placeholder_token_set), test_emit_launch_is_opt_in, test_v5_plan_compiles_clean_with_empty_interface_defaults, test_unmarked_task_emits_lean_review_slot, test_implementation_files_noise_still_blocks_compile, test_section_titles_with_task_word_stay_legal (test_prose_section_heading_with_task_word_and_colon_compiles), plus test_files_less_heuristic_task_is_exempt and test_markerless_files_noise_still_blocks_compile, whose subject is the markerless/heuristic branch the claims-v1 grammar has no tasks for. The Context's own estimate was 45-60 survivors, so this is the direction it expected; naming it here because it is a judgment cull rather than a pure subject cull.",
+    "task 1: test_interface_edge_with_file_overlap_suppresses_undeclared_finding kept its subject but changed two assertions: with `**Depends-on:** none` removed there is no overridden-marker inference, so the conflict lists are now [] and ['undeclared-dependency'] instead of ['inference'] and ['inference','undeclared-dependency']. The suppression the test exists to pin (no undeclared-dependency finding when the pair already overlaps) is unchanged.",
+    "task 1: test_conflicting_type_markers_first_wins lost its `heuristic is False` assertion (banned vocabulary under M2); the disposition == 'gate' first-wins assertion, which is the test's point, stays.",
+    "task 1: referee footprint \u2014 deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES",
+    "task 1: referee footprint \u2014 deleted BASE file `tests/test_plan_check.py` absent from FILES",
+    "task 1: the driver's pre-review pass was red (deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES; deleted BASE file `tests/test_plan_check.py` absent from FILES) \u2014 one repair round before any reviewer read the patch",
+    "task 1: agent error at mostCapable \u2014 retrying once at mostCapable (same tier): RUN_FATAL: API refused with 401 (credential or config) \u2014 the run cannot proceed (label fix:1:0)",
+    "task 1: agent error after same-tier retry at mostCapable \u2014 RUN_FATAL: refusing to dispatch impl:1 \u2014 the run already failed at fix:1:0: API refused with 401 (credential or config) \u2014 the run cannot proceed"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}
