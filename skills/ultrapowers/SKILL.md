@@ -46,7 +46,8 @@ cache path itself differs by version and by host, so derive it rather than
 naming it.
 
 The doctor answers with one row per piece, and its row ids are `exe-dev`,
-`capacity`, `claude`, `github`, `integrations`, in that order. Each row carries
+`capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `render`, in that
+order. Each row carries
 a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
 section of `references/first-run.md` that repairs it. Read the rows back to the
 user as a short list before touching anything. Configuration lives in
