@@ -1,9 +1,0 @@
-{
-  "findings": [],
-  "settled": [
-    {
-      "check": "test-count",
-      "contains": "−1"
-    }
-  ]
-}

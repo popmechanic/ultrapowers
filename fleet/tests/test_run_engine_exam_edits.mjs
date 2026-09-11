@@ -212,9 +212,9 @@ const editExam = (cwd) =>
   assert.deepEqual(report.tasks[0].examEdited, [])
 }
 
-// An exam-EDIT judgment call, and only that: since #729 the referee names a
-// Proof `Test:` path of its own when the path is absent at HEAD, and that call
-// is the plan's business (it defers to the gate), not this sim's.
+// An exam-EDIT judgment call, and only that: other judgment calls a run
+// records (a plan defect deferred to the gate, a pre-review red) are not this
+// sim's business.
 const isExamEdit = (j) => j.includes('edited the exam')
 
 // ── (f) one blob per proofTests path, absent recorded as null [M2, M4] ─────

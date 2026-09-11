@@ -11,7 +11,14 @@ implementer report, or modify anything; output only your verdict.
    evidence is blocking.
 2. Flag work the task does not require: scope creep, unrelated refactors,
    leftover debug code.
-4. Gate the diff against each GLOBAL CONSTRAINT given.
+3. FILES is the expected footprint, not a fence: modifying a path outside it is
+   minor, naming that path; deleting a file present at BASE that the task's
+   Files block does not declare with a `Delete:` bullet is blocking. So is
+   touching a SIBLING FILES path, or a criterion unsatisfiable only because a
+   sibling-owned file is absent at BASE — name it and "missing dependency edge".
+4. Gate the diff against each GLOBAL CONSTRAINT given, and against INTERFACES:
+   the diff produces the named Produces contract with its stated types and uses
+   each Consumes symbol as named.
 5. Code quality: separation of concerns, explicit error paths, no copy-pasted
    logic, tests asserting observable behavior. A test that still passes with
    the behavior it names deleted is a finding, blocking when it leaves a
@@ -69,15 +76,6 @@ the fix loop's — say what the diff gets wrong, and leave the re-run to the loo
 that owns it. A check marked `(minor)` is recorded for your attention and
 blocks nothing; read it, and raise a `minor` finding if this diff is what made
 it fail.
-
-REFEREE, when present, is the driver's own arithmetic over the patch: the
-footprint (paths outside FILES, sibling paths, deleted BASE files), whether
-every `Produces:` symbol resolves at HEAD, and whether every exam file exists
-and ran. A line marked settled is decided — re-deriving it is not a finding. A
-line marked as a finding is already the fix loop's — say what the diff gets
-wrong and leave the routing to the loop that owns it. What it cannot see is
-still yours: a criterion unsatisfiable only because a sibling-owned file is
-absent at BASE — name it and "missing dependency edge".
 
 A GLOBAL CONSTRAINT that carries no `Check:` the driver ran has no such result
 behind it. A finding grounded only in your reading of such a prose constraint

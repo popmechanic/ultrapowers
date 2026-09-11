@@ -52,9 +52,6 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `{wave, tasks, detail}`, the same wave and ids with the `waveMerges` row's own `detail`.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
-    `referee/task-<id>-<n>.json` — one per patch the driver's referee graded, `n` the number of fix
-    rounds that preceded that patch (`-0` the pre-pass tree, `-1` after the first fix round) — is
-    there on the same terms, present when the engine wrote them.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
     contents are the exam's own output copied file by file — is there on the same terms, present
     when the exams wrote it.

@@ -1,7 +1,0 @@
-diff --git a/src/x.ts b/src/x.ts
-index a9a9e28c19d9e5617d60caa327a9b71e8124a0aa..df8da6a39599048d8320674fc47b9f13880c0894 100644
---- a/src/x.ts
-+++ b/src/x.ts
-@@ -1 +1 @@
--export const x = (n: number): number => n + 1
-+export const x = (n: number): number => n + 2
