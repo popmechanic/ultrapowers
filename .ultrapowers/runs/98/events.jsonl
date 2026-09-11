@@ -37,3 +37,8 @@
 {"kind":"driver:exam-run","task":"2","cmd":"python3 -m pytest -q tests/test_catch_report_window.py","exit":1,"iter":0,"id":"01M27NNPHA00001KHY20A9EFH9","ts":1789111491114}
 {"kind":"driver:check-run","task":"2","cmd":"python3 -m pytest -q tests/test_fleet_suite_collection.py","exit":0,"minor":false,"iter":0,"id":"01M27NNR200000CKB3HDYM69EV","ts":1789111492672}
 {"kind":"engine:log","line":"task 2 proof-red after the pre-review repair round","id":"01M27NNR2200003AKMW2S3A4DY","ts":1789111492674}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"5b6cb54c6c842f8d5ebb6f8f66acfefab5e7169e","id":"01M27P1GC50000T2KX0KD7EA65","ts":1789111878021}
+{"kind":"driver:integrated-clean","wave":1,"removed":10,"id":"01M27P1GCH0000BAAD208ZGKSE","ts":1789111878033}
+{"kind":"driver:integrated-check","cmd":"python3 -m pytest -q tests/test_fleet_suite_collection.py","exit":0,"minor":false,"wave":1,"id":"01M27P1HXW00004T2QTEG0D82K","ts":1789111879612}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M27P1HXX000028GQEBGD9K13","ts":1789111879613}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"f193460c-d512-4582-b6b2-55be503d917c","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-98/clones/integration","model":"opus","id":"01M27P1HXY0000HYGT3YSYXAC4","ts":1789111879614}
