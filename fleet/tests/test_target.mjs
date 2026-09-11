@@ -72,8 +72,8 @@ const rules = (integrations = [], {
   const exec = makeExec({ rules: rules([{ name: GH, attachments: ['tag:fleet'] }]) })
   const result = await target({ argv: [TARGET], exec })
   assert.deepEqual(
-    exec.lobby(), ['integrations list --json', policyGetCommand(GH)],
-    '(2) an existing object on the policy issues the one policy read and no write'
+    exec.lobby(), ['integrations list --json'],
+    '(2) an existing object the listing attaches by tag:fleet needs no policy read and no write'
   )
   assert.deepEqual(exec.mutating(), [], '(2) nothing mutates when the policy is already tag:fleet')
   assert.deepEqual(result.results.map((r) => [r.action, r.policy]), [['skipped', 'kept']], '(2) skipped, policy kept')

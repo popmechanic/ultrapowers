@@ -65,6 +65,11 @@ export const FLEET_POLICY = 'tag:fleet'
 export const addCommand = (target) =>
   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --policy '${FLEET_POLICY}'`
 
+/** The same creation on the attach-model lobby, and the attach verb for an existing object. */
+export const addCommandAttach = (target) =>
+  `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
+export const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
+
 /** The read and the write that bring an existing object onto the policy. */
 export const policyGetCommand = (name) => `integrations policy get ${name} --json`
 export const policySetCommand = (name, revision) =>
@@ -89,8 +94,24 @@ export function parsePolicy (stdout) {
 
 /** Read the object's policy and, unless it already is `tag:fleet`, replace it
  *  under the revision the read answered. Answers `kept` or `set`. */
-async function ensurePolicy ({ exec, name }) {
-  const res = await lobby(exec, policyGetCommand(name))
+async function ensurePolicy ({ exec, name, rows = null }) {
+  // The listing answers first: it is served by both lobby models (the policy
+  // model exe.dev shipped 2026-09-11 and rolled back the same afternoon), and an
+  // attachment `tag:fleet` there is the grant whichever verb wrote it.
+  const listed = rows ?? await listIntegrations(exec)
+  const row = listed.find((r) => r.name === name)
+  if (row && row.attachments.some((a) => a.kind === 'tag' && a.value === 'fleet')) {
+    return { policy: 'kept', command: null }
+  }
+  let res
+  try {
+    res = await lobby(exec, policyGetCommand(name))
+  } catch (error) {
+    // No `policy` subcommand: the lobby is on the attach model — attach by tag.
+    const command = attachCommand(name)
+    await lobby(exec, command)
+    return { policy: 'set', command }
+  }
   const policy = parsePolicy(res.stdout)
   if (policy === null) {
     throw new LobbyError(`exe.dev integrations policy get ${name} --json answered no policy and revision:\n${res.stdout}`)
@@ -103,13 +124,20 @@ async function ensurePolicy ({ exec, name }) {
 
 async function add ({ exec, target }) {
   const name = githubIntegrationFor(target)
-  const existing = new Set((await listIntegrations(exec)).map((row) => row.name))
+  const rows = await listIntegrations(exec)
+  const existing = new Set(rows.map((row) => row.name))
   if (existing.has(name)) {
-    const ensured = await ensurePolicy({ exec, name })
+    const ensured = await ensurePolicy({ exec, name, rows })
     return { verb: 'add', target, results: [{ name, action: 'skipped', command: ensured.command, policy: ensured.policy }] }
   }
-  const command = addCommand(target)
-  await lobby(exec, command)
+  let command = addCommand(target)
+  try {
+    await lobby(exec, command)
+  } catch (error) {
+    // The attach-model lobby knows no `--policy`: create with `--attach tag:fleet`.
+    command = addCommandAttach(target)
+    await lobby(exec, command)
+  }
   return { verb: 'add', target, results: [{ name, action: 'created', command, policy: 'set' }] }
 }
 

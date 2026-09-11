@@ -475,8 +475,9 @@ function attachedTags (entry) {
 /** The fix for a policy that is not `tag:fleet`: the read, then the write
  *  under the revision the read answered. */
 const policyFix = (name) =>
+  `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}" (or, when the lobby serves the policy model: ` +
   `ssh exe.dev "integrations policy get ${name} --json" then ` +
-  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>"`
+  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>")`
 
 /**
  * `integrations policy get <name> --json` read defensively: `policy.selector`
@@ -769,6 +770,10 @@ function integrationsRow (found, target, render, policies) {
   const names = policyNames(target, render)
   for (const name of names) {
     if (!found.has(name)) continue // the claude and render rows name a missing object
+    // The listing is served by both lobby models (2026-09-11 exe.dev shipped a
+    // policy model at noon and rolled it back by 3 PM): an attachment `tag:fleet`
+    // in `integrations list --json` is the grant whichever verb set the edge has.
+    if (found.get(name).tags.has('fleet')) continue
     const res = policies.get(name)
     const policy = res && res.code === 0 ? parsePolicy(res.stdout) : null
     if (policy === null) {
