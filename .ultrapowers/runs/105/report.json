@@ -1,0 +1,98 @@
+{
+  "integrationBranch": "ultra/integration-run-105",
+  "baseSha": "091caedaa0fd8aff8243bd69895a1055387ff7ca",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": null,
+      "reviewVerdict": "referee-red",
+      "notes": "deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES; deleted BASE file `tests/test_plan_check.py` absent from FILES",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 6,
+    "refereeBlocking": 4,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 70%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.......................................                                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1624 passed, 5 warnings in 383.16s (0:06:23) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "tests/test_compile_plan.py",
+        "tests/test_compile_plan_check_constraints.py",
+        "tests/test_plan_level_claim.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: plan-defect: the Context puts the Commutes section at \"lines 2181-2365\", i.e. running to EOF, but 2267-2365 hold test_uppercase_extension_path_stays_in_write_set, test_line_range_suffix_is_stripped_from_write_set and test_interface_edge_with_file_overlap_suppresses_undeclared_finding, whose subject is write-set normalisation and interface-overlap suppression - shared machinery the launcher depends on. Kept them, per the task's own governing rule that only the SUBJECT decides.",
+    "task 1: plan-defect: the Context's \"roughly 45-60 survivors\" is not reachable alongside its own stay-list; the second half of the file alone collects ~56 cases. Landed at 67 (inside M4's 35-70) by trimming lines 46-1042 down to five load-bearing pins (test_duplicate_task_ids_are_a_loud_error, test_tilde_fenced_heading_is_content_not_a_task, test_wave_labels_are_derived_per_wave, test_blank_line_closes_the_files_block, test_bad_task_heading_diagnostics). That drops some unique-but-twinned coverage: lowercase Files label, Remove-label end-to-end, indented/wrong-level heading diagnostics, inline **Files:** header parsing.",
+    "task 1: plan-defect: two survivors could not keep their assertions verbatim once **Depends-on:** left their plan templates. test_interface_edge_with_file_overlap_suppresses_undeclared_finding expected an \"inference\" conflict that compile_plan.py:2091 only emits when a `Depends-on: none` marker is overridden by a file edge; it now asserts [] for the overlap plan and [\"undeclared-dependency\"] for the no-overlap twin, which is the behaviour the test's own name describes. LAUNCH_PLAN's payload[\"edges\"] == [[\"1\",\"2\"]] came from **Depends-on:** 1; Task 2 now declares `- Modify: `apistub/schema.py`` so the same edge is produced by the write-after-create tier, with a comment saying so.",
+    "task 1: out-of-FILES: the driver's FILES line listed only the three modify paths, but the authoritative task body's Files block and launch.json's `writes` both name tests/test_plan_check.py and tests/test_compile_plan_acceptance_line.py as Delete targets, and M1 grades their absence. Deleted both with `git rm`; flagging because they fall outside the FILES line as given.",
+    "task 1: referee footprint \u2014 deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES",
+    "task 1: referee footprint \u2014 deleted BASE file `tests/test_plan_check.py` absent from FILES",
+    "task 1: the driver's pre-review pass was red (deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES; deleted BASE file `tests/test_plan_check.py` absent from FILES) \u2014 one repair round before any reviewer read the patch",
+    "task 1: out-of-FILES: the cumulative diff deletes tests/test_plan_check.py and tests/test_compile_plan_acceptance_line.py, neither of which appears in the FILES line handed to me. The deletions are mandated by the task body's Files block (`- Delete:` for both), by M1, and by Proof Run leg 1, and both paths are present in task 1's `writes` array in launch.json. They are absent from FILES because the compiler's `_files_for` (skills/ultrapowers/scripts/compile_plan.py:2818-2819) builds that key from `creates | modifies | reads` and excludes `deletes` by construction.",
+    "task 1: plan-defect: the task's declared FILES can never cover a `Delete:` path, so any deletion task will read as out-of-FILES to a referee that checks the diff against FILES alone. The check that matches the compiler's own data model is against `writes` (compile_plan.py:1402), which does contain both deleted files. No tree change can satisfy the finding as written without breaking M1 and Proof Run leg 1.",
+    "task 1: referee footprint \u2014 deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES",
+    "task 1: referee footprint \u2014 deleted BASE file `tests/test_plan_check.py` absent from FILES",
+    "task 1: still red after the pre-review repair round (deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES; deleted BASE file `tests/test_plan_check.py` absent from FILES) \u2014 no reviewer was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}

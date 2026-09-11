@@ -1,0 +1,52 @@
+{
+  "task": "1",
+  "n": 1,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `tests/test_compile_plan_acceptance_line.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `tests/test_plan_check.py` absent from FILES"
+    },
+    {
+      "check": "test-count",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "top-level tests +2 / −81 across the patch: net drop of 79, removing `test_marked_fixture_compiles_to_documented_waves`, `test_unmarked_fixture_heuristics_and_conflict`, `test_manual_step_classifies_by_heuristic`, `test_cycle_is_a_loud_error`, `test_small_plan_degrades_to_sequential`, `test_marker_edge_orders_two_tasks_topologically`, `test_depends_on_outside_impl_set_surfaces_conflict`, `test_text_dependency_creates_edge`, `test_backward_write_after_create_compiles_without_cycle`, `test_marker_edge_beats_doc_order_write_after_write`, `test_text_edge_beats_document_order`, `test_genuine_cycle_still_errors`, `test_fenced_release_evidence_does_not_reclassify`, `test_fenced_text_dependency_creates_no_edge`, `test_unbackticked_path_drops_trailing_prose`, `test_zero_implementation_plan_warns_loudly`, `test_doc_order_edge_yields_to_transitive_marker_path`, `test_nested_fence_with_info_string_stays_content`, `test_checkbox_step_shaped_like_files_line_adds_no_writes`, `test_text_dependency_outside_impl_set_surfaces_conflict`, `test_tilde_wrapper_with_backtick_inner_keeps_following_task`, `test_duplicate_conflict_entries_are_deduped`, `test_zero_impl_plan_is_not_sequential_mode`, `test_task_title_does_not_create_text_edge`, `test_multiple_depends_on_lines_accumulate`, `test_depends_none_plus_ids_ids_win`, `test_marker_outside_header_block_is_ignored_and_surfaced`, `test_self_referential_depends_on_surfaces_conflict`, `test_prose_only_task_does_not_trust_late_markers`, `test_marker_after_description_paragraph_is_demoted`, `test_conflicting_type_markers_first_wins`, `test_near_miss_marker_spelling_degrades_to_heuristics`, `test_fenced_block_after_heading_ends_the_header`, `test_colon_outside_bold_marker_is_not_trusted`, `test_late_near_miss_marker_also_surfaces`, `test_empty_and_second_unrecognized_type_values_ignored`, `test_override_conflict_edge_field_carries_why_label`, `test_blank_after_files_header_does_not_discard_entries`, `test_trusted_type_wins_alongside_typod_dep_marker`, `test_indented_valid_heading_is_a_real_task`, `test_lowercase_files_label_is_a_loud_violation`, `test_section_titles_with_task_word_stay_legal`, `test_asterisk_bullet_files_entry_keeps_block_open`, `test_unbackticked_comma_paths_lose_no_overlap`, `test_unparsed_bullets_in_files_block_surface_and_keep_block_open`, `test_depends_space_variant_text_rule_tolerates_punctuation`, `test_plural_text_dependency_parses_each_listed_id`, `test_plural_text_dependency_comma_list`, `test_prosey_unbackticked_value_is_not_a_phantom_path`, `test_all_wrong_level_plan_gets_the_heading_diagnostic`, `test_cycle_error_names_one_concrete_edge_path`, `test_inline_files_header_backticked_paths_parse`, `test_inline_files_header_prose_value_has_no_writes`, `test_conflicts_carry_kind_and_inferences_are_separated`, `test_launch_waves_is_light_and_grouped`, `test_interfaces_consumes_line_is_not_a_files_near_miss`, `test_interface_edge_covered_by_marker_emits_no_finding`, `test_files_less_heuristic_task_is_exempt`, `test_commutes_marker_parses_and_emits`, `test_commutes_path_outside_own_files_is_a_rendered_conflict`, `test_commutes_marker_accumulates_across_repeated_lines`, `test_undeclared_task_emits_empty_commutes`, `test_commutes_is_marker_ish`, `test_emit_launch_task_dicts_carry_writes_and_commutes`, `test_check_exits_zero_with_plan_ok_for_every_acceptance_variant`, `test_all_four_acceptance_variants_compile_to_the_same_waves`, `test_dead_key_is_absent_from_the_compiled_json`, `test_surviving_key_is_present_in_the_compiled_json`, `test_retired_identifier_is_gone_from_the_compiler_source`, `test_check_passes_a_canonical_plan`, `test_check_reports_every_violation_with_fixes`, `test_check_validates_review_marker_values`, `test_check_is_exclusive_with_emit`, `test_check_is_exclusive_with_run_dir`, `test_pure_prose_interfaces_pass_check_and_pair_no_edge`, `test_cycle_plans_pass_check_self_application`, `test_check_ignores_files_grammar_on_gate_tasks`, `test_check_still_flags_files_grammar_on_implementation_tasks`, `test_check_still_flags_files_grammar_on_markerless_tasks`, `test_check_refuses_a_commutes_marker_placed_after_files`, `test_check_accepts_a_commutes_marker_in_the_header` with no removal declared in the task"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "no exam ran (exam: null); the task proceeds unexamined by driver decision"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "tests/test_compile_plan.py": "py",
+    "tests/test_compile_plan_check_constraints.py": "py",
+    "tests/test_plan_level_claim.py": "py"
+  },
+  "ms": 3
+}
