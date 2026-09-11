@@ -1,0 +1,27 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "e024863db82c314081523d5ce02e833f5169dee88987ec4b2a767a6cef7b704b",
+      "verdict": "pass",
+      "reason": "round 1: every clause M1–M7 has a leg or Run: line that would fail on its specific violation (five per-file absences plus a negated grep for M1, the sibling-file/no-fix/both-reviewer/no-referee-dir/no-REFEREE drive for M2, a sorted-key deep-equal for M3, a one-fix-round drive for M4, the concatenated-numbering and sed-scoped ordered-word pins plus the negated ^REFEREE grep for M5, a zero case-insensitive count plus an in-order five-name pin and an exact-five count for M6, and one sentinel-grepped Run: per sim plus the pytest line for M7), so a passing exam makes the Claim's three assertions true at the engine, role-file and report-format layers"
+    },
+    "2": {
+      "hash": "382ca5a83d4526f72171a7384f9d0969df34b67e230f2105dde9846b0ea00111",
+      "verdict": "pass",
+      "reason": "round 1: every clause has its own falsifying leg — M1's two Run: lines cover both the tracked-file count and the directory's absence, M2's two lines cover the string's absence (negated grep) and the sentinel, and M3's pytest line is red on a collection failure — and every literal is jointly satisfiable"
+    },
+    "3": {
+      "hash": "695ec298df75aca18b780d089457b1a29acb2a414e08d2f44b92f10424df6576",
+      "verdict": "pass",
+      "reason": "round 2 (round 1 failed: the Claim was about the evidence branch while every clause pinned only text, so the task gained a boot-rig exam that plants a referee/ directory and reads the evidence copy back): every clause has a leg that falsifies it — M1's two negated greps plus the section-scoped ordered match, M2's planted-referee positive control (the run-dir referee/ must exist while the evidence walk finds none), M3's three Run lines, M4's pytest exit"
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 1,
+    "rounds": { "1": { "pass": 2, "fail": 1 }, "2": { "pass": 1, "fail": 0 } }
+  },
+  "history": [
+    { "round": 1, "task": "3", "hash": "d9f065d80cae9c8b35b639779247299869265ab3554c10ffd377c333fd6a69b8", "verdict": "fail", "reason": "the claim's sentence is about what the evidence branch carries, but every Machine clause pins only text and none exercises the thing that writes transcripts/ or could write referee/ into the evidence tree" }
+  ]
+}
