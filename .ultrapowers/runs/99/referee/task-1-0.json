@@ -1,0 +1,44 @@
+{
+  "task": "1",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: `catch_table(rows, tree_tests, landed=None, runners=None)` skills/ultralearn/scripts/catch_report.py defines catch_table/2; Produces: `landing_dates(tree, paths)` skills/ultralearn/scripts/catch_report.py defines landing_dates/2; Produces: `runner_files(tree, paths)` skills/ultralearn/scripts/catch_report.py defines runner_files/2; Produces: `unstamped(rows)` skills/ultralearn/scripts/catch_report.py defines unstamped/1"
+    },
+    {
+      "check": "exam-files",
+      "detail": "the exam exited 1 — already red as the exam, so an absent Test: path is not a second finding"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +25 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/catch_counter.py": "py",
+    "skills/ultralearn/scripts/catch_report.py": "py",
+    "tests/test_catch_report_window.py": "py",
+    "tests/test_fleet_suite.py": "py",
+    "tests/test_ultralearn_catch_report.py": "py",
+    "tests/test_ultralearn_catches.py": "py"
+  },
+  "ms": 199
+}
