@@ -1602,6 +1602,253 @@ open(sys.argv[2], "w").write(text if text.endswith("\n") else text + "\n")
   return 0
 }
 
+# WHAT A PERSON READS FIRST, above the record and before any sha.
+#
+# The card used to open on `## fleet run-N — gate-green` and a table of hashes:
+# a reviewer's index, and nothing a person could act on without opening it. So
+# the four things a reader of a fleet PR actually came for go above it, in the
+# order they are asked —
+#
+#   the summary the OPERATOR signed with the plan, verbatim, because what a
+#   reader meets should be what a person wrote;
+#   the answer: merged, ready, held, or parked, one line;
+#   the Claim that plan was approved against; and
+#   one row per task saying what was promised and how it was proved.
+#
+# Then `Residuals: <n> from review` — the count, and only the items a person
+# must act on themselves. Everything else the run knows is folded into the
+# `<details>` record below.
+#
+# ONE READER, in `python3` with the paths in argv, exactly as `residual_read`
+# is written: the plan and the report are the two documents every part of this
+# is read out of, `json` is the only parser, and a document that is absent,
+# unparsable or oddly shaped answers `—` rather than taking down a `set -e`
+# script. Nothing here is narrated: every cell comes off the plan, the report
+# or the status page.
+#
+# The residual checklist arrives on stdin — `residual_read` is the one reader
+# of the residuals and this is its second rendering, not a second parse.
+card_head() { # $1 = outcome, $2 = the residual checklist; stdin is not read
+  local dest merged
+  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+  # The page is written from `MERGED_SHA`, and `do_boot` loads that cell back
+  # off the page on a re-entry — so the variable is the page's value or fresher,
+  # and a body patched after the merge says `**Merged**` on the first render.
+  merged="$MERGED_SHA"
+  [ -n "$merged" ] || merged="$(read_status_field merged)"
+  printf '%s' "$2" | python3 -c '
+import json, re, sys
+
+PLAN, REPORT, OUTCOME, MERGED, ERROR, NOTE = sys.argv[1:7]
+
+EM = "—"
+DASH = " — "
+NO_SUMMARY = "_No summary was signed with this plan._"
+HELD = "left open: "
+
+# The provenance tag a Claim closes with: the plan-level pair `compile_plan.py`
+# spells in `PLAN_CLAIM_PROVENANCE_RE`, and the `(derived)` a task Claim takes
+# when it descends from the plan-level one. Stripped, because the tag is how
+# the sentence was signed and not part of what it says.
+TAG = re.compile(r"\s*\((?:elicited|derived|quoted from #[0-9]+)\)\s*$", re.I)
+TASK_HEAD = re.compile(r"^### Task ([^:]+):")
+
+
+def plan_lines():
+    try:
+        with open(PLAN, encoding="utf-8", errors="replace") as fh:
+            return fh.read().split("\n")
+    except Exception:
+        return []
+
+
+def load(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception:
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def listing(doc, key):
+    got = doc.get(key)
+    return got if isinstance(got, list) else []
+
+
+LINES = plan_lines()
+# The header is everything above the first task heading, the same bound
+# `plan_closes` reads its one `**Closes:**` line within.
+HEADER = []
+for line in LINES:
+    if line.startswith("### "):
+        break
+    HEADER.append(line)
+
+
+def header_value(label):
+    """One bold header value, wrapped lines joined on a single space.
+
+    The value runs to the next blank line, the next bold marker or the end of
+    the header — `_plan_header_value` in `compile_plan.py`, which is what makes
+    a summary that wraps in the plan ONE line on the card."""
+    got = None
+    for line in HEADER:
+        text = line.strip()
+        if got is None:
+            if text.startswith(label):
+                got = [text[len(label):].strip()]
+            continue
+        if not text or text.startswith("**"):
+            break
+        got.append(text)
+    return re.sub(r"\s+", " ", " ".join(got)).strip() if got is not None else ""
+
+
+def task_claims():
+    """`(id, claim)` per `### Task <id>:` heading, in plan order.
+
+    ONE line, never the wrap `header_value` allows: the `Machine:` restatement
+    sits directly under a task Claim and is not part of the sentence."""
+    out = []
+    heading = None
+    claim = ""
+    for line in LINES:
+        found = TASK_HEAD.match(line)
+        if found:
+            if heading is not None:
+                out.append((heading, claim))
+            heading, claim = found.group(1).strip(), ""
+            continue
+        if heading is None or claim:
+            continue
+        text = line.strip()
+        if text.startswith("**Claim:**"):
+            claim = TAG.sub("", text[len("**Claim:**"):].strip()).strip()
+    if heading is not None:
+        out.append((heading, claim))
+    return out
+
+
+report = load(REPORT)
+
+rows = {}
+for row in listing(report, "tasks"):
+    if isinstance(row, dict) and row.get("task") is not None:
+        rows.setdefault(str(row.get("task")), row)
+
+# The wave of a task is the index of the list holding its id, 1-based — the
+# same number a `waveMerges` row carries.
+wave_of = {}
+for n, wave in enumerate(listing(report, "waves"), 1):
+    if isinstance(wave, list):
+        for task in wave:
+            wave_of.setdefault(str(task), n)
+
+merges = {}
+for row in listing(report, "waveMerges"):
+    if isinstance(row, dict):
+        merges.setdefault(row.get("wave"), row)
+
+probes = {}
+for run in listing(report, "integratedRuns"):
+    if isinstance(run, dict):
+        got = probes.setdefault(str(run.get("task")), [0, 0])
+        got[1] += 1
+        if run.get("exit") == 0:
+            got[0] += 1
+
+
+def exam_cell(row):
+    exam = row.get("exam")
+    if exam is None:
+        return "none"
+    if exam == "green-at-base":
+        return "green at BASE"
+    if exam == "blocked":
+        return "blocked"
+    if exam == "red":
+        status = row.get("status")
+        if status == "done":
+            return "red at BASE → green"
+        if status == "failed":
+            return "red at BASE, task failed"
+        return "red at BASE"
+    return str(exam)
+
+
+def probes_cell(task):
+    got = probes.get(task)
+    return "%d/%d" % (got[0], got[1]) if got else EM
+
+
+def mutant_cell(row):
+    exams = row.get("stateExams")
+    if not isinstance(exams, list) or not exams:
+        return EM
+    killed = [e.get("mutant_killed") for e in exams if isinstance(e, dict)]
+    if any(k is False for k in killed) or len(killed) != len(exams):
+        return "SURVIVED"
+    return "killed" if all(k is True for k in killed) else EM
+
+
+def suite_cell(task):
+    row = merges.get(wave_of.get(task))
+    suite = row.get("suite") if isinstance(row, dict) else None
+    if not isinstance(suite, dict):
+        return EM
+    if suite.get("passed") is True:
+        return "green"
+    if suite.get("passed") is False:
+        loose = suite.get("unattributed")
+        return "red, unattributed" if isinstance(loose, list) and loose else "red"
+    return EM
+
+
+# THE ANSWER LINE. Right at the time it is rendered, and no later: a run that
+# merges after its only POST keeps the body that POST carried, and that body
+# said `**Merge-ready**`, which is what it was.
+if MERGED:
+    answer = "**Merged** " + MERGED
+elif OUTCOME != "gate-green":
+    answer = ("**Parked:** " + ERROR).rstrip()
+elif NOTE.startswith(HELD):
+    answer = "**Held:** " + NOTE[len(HELD):]
+else:
+    answer = "**Merge-ready**"
+
+out = [header_value("**Summary:**") or NO_SUMMARY, "", answer, "",
+       ("> " + TAG.sub("", header_value("**Claim:**")).strip()).rstrip(), "",
+       "| task | claim | exam | probes | mutant | suite |",
+       "|---|---|---|---|---|---|"]
+for task, claim in task_claims():
+    row = rows.get(task)
+    cells = [task, claim or EM]
+    cells += [exam_cell(row), probes_cell(task), mutant_cell(row), suite_cell(task)] \
+        if row is not None else [EM, EM, EM, EM]
+    out.append("| " + " | ".join(cells) + " |")
+
+# THE RESIDUALS, as a count and then as an errand list. Every checklist item is
+# counted; only the ones nobody else will do are printed here — an external
+# deferral the sandbox could not execute, and the notes of a task the plan
+# itself had to answer for. A reviewer nit is in the record, not above it.
+items = [line[len("- [ ] "):] for line in sys.stdin.read().split("\n")
+         if line.startswith("- [ ] ")]
+actors = set(task for task, row in rows.items() if row.get("actor") == "plan")
+out += ["", "Residuals: %d from review" % len(items) if items else "Residuals: none"]
+errands = []
+for item in items:
+    name = item.split(DASH, 1)[0]
+    owner = re.match(r"^task (\S+) reviewer$", name)
+    if name == "deferred:external" or (owner and owner.group(1) in actors):
+        errands.append("- " + item)
+if errands:
+    out += [""] + errands
+out.append("")
+sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
+' "$PLAN_FILE" "$dest/report.json" "$1" "$merged" "$(read_status_field error)" "$MERGE_NOTE"
+}
+
 render_card() { # $1 = outcome; prints the body file's path
   local body dest verdict receipt residuals
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
@@ -1614,6 +1861,10 @@ render_card() { # $1 = outcome; prints the body file's path
   # all — no heading, no blank line — and its card is the card it always was.
   residuals="$(residual_items || true)"
   {
+    # What a person reads, and then the record they can unfold. A blank line
+    # after `<summary>` or GitHub renders the markdown inside it as one blob.
+    card_head "$1" "$residuals"
+    printf '<details><summary>Record</summary>\n\n'
     printf '## fleet %s — %s\n\n' "$RUN_ID" "$1"
     printf '| | |\n|---|---|\n'
     printf '| verdict | `%s` |\n' "${verdict:-<no gate receipt>}"
@@ -1649,8 +1900,12 @@ render_card() { # $1 = outcome; prints the body file's path
     # issues it closes: a reader who is about to close #660 sees first what
     # closing it does not finish.
     if [ -n "$residuals" ]; then
-      printf '\n### Residuals\n\n%s\n\n' "$residuals"
+      printf '\n### Residuals\n\n%s\n' "$residuals"
     fi
+    # The record closes AFTER the checklist and BEFORE the issues: the `Closes`
+    # lines are the body's last lines, and a `</details>` between `### Plan`'s
+    # link and `### Residuals` would land inside a section a reader slices.
+    printf '\n</details>\n\n'
     # Last of all, so the self-merge closes what the plan named.
     plan_closes
   } >"$body"
@@ -2286,6 +2541,11 @@ $(engine_tail)"
     approval=", $approved_how"
   else
     outcome="parked"
+    # HERE, and not after the publish: the card's answer line reads the page's
+    # `error`, and a parked run whose PR is the only place a person looks needs
+    # that sentence on the page BEFORE the body quoting it is rendered. The
+    # value is the one the terminal `parked` write carries either way.
+    ERROR="parked: gate verdict ${verdict:-none}"
   fi
   log "outcome: $outcome (verdict=${verdict:-none}$approval)"
   await_engine_inactive "fleet-engine-$RUN_N" \
@@ -2403,7 +2663,7 @@ $(engine_tail)"
     # gate receipt — and last what became of it at the merge button.
     write_status done "$PR_URL — $approved_how$fold_tail${MERGE_NOTE:+ — $MERGE_NOTE}"
   else
-    ERROR="parked: gate verdict ${verdict:-none}"
+    # `ERROR` was set with the outcome, above, so the card could quote it.
     write_status parked "$PR_URL$fold_tail"
   fi
   collect_evidence

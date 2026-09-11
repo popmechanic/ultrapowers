@@ -24,6 +24,7 @@ import {
   PLAN_SHA, BASE_SHA, ENGINE_SHA, HEAD_SHA, OTHER_SHA, TARGET, VM_NAME, PR_URL, PR_AUTHOR,
   PLAN_BRANCH, EVIDENCE_BRANCH, INTEGRATION_BRANCH, RUN_PATH, PLAN_PATH,
   EVIDENCE_LINK, PLAN_LINK, PLAN_ROW, RETIRED_NAMES, PLAN_H1, PLAN_BYTES,
+  PLAN_HEAD, PLAN_TASKS,
   makeHome, boot, green,
   readLog, argvLines, stream, statusOf, states, indexOf, lastIndexOf, notifies,
   committed, commitStates, unitsRun, engineRuns, directCalls, prPosts, prArgv,
@@ -406,8 +407,11 @@ test('the plan\'s `**Closes:**` line becomes the body\'s last lines, one per iss
   // <plan>:.ultrapowers/plan.md` answer, which `prepare_plan` writes to
   // `$PLAN_FILE` — so a `render_card` reading any other source sees no
   // `**Closes:**` line at all.  [leg (a)]
+  // The extra is a HEADER block and lands where one belongs — between the
+  // plan's header and its first `### Task` heading, which is the only place
+  // `plan_closes` reads a `**Closes:**` line from.
   const plan = path.join(ctx.home, 'plans', 'run-7.md')
-  assert.equal(fs.readFileSync(plan, 'utf8'), `${PLAN_BYTES}${CLOSES_EXTRA}\n`,
+  assert.equal(fs.readFileSync(plan, 'utf8'), `${PLAN_HEAD}${CLOSES_EXTRA}\n${PLAN_TASKS}`,
     `${plan} must be the git show answer byte for byte, extra and all`)
 
   const body = prPosts(ctx)[0].body

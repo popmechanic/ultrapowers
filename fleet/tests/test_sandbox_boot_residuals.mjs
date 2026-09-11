@@ -53,7 +53,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  BASE_SHA, PLAN_LINK, RUN_DIR_PATH, RUN_PATH,
+  BASE_SHA, DEFAULT_REPORT, PLAN_LINK, RUN_DIR_PATH, RUN_PATH,
   makeHome, boot, prPosts, evidenceDir, targetDir,
   argvLines, statusOf, stream,
   runTests,
@@ -122,9 +122,10 @@ const NEWLINE_LINE = '- [ ] deferred:external — line one line two'
 const KNOB_GATE_RECEIPT = '{"verdict":"PASS","gateCheck":{"acks":[]},"marker":"knob-receipt-alpha"}'
 const KNOB_REPORT = '{"stamp":"run-7","marker":"knob-report-alpha"}'
 
-/** The rig's defaults, as the engine stub writes them at BASE. */
+/** The rig's defaults, as the engine stub writes them at BASE. The report is
+ *  the rig's own constant, so this leg reads whatever the rig writes and not a
+ *  second copy of it. */
 const DEFAULT_GATE_RECEIPT = '{"verdict":"PASS"}'
-const DEFAULT_REPORT = '{"stamp":"run-7"}'
 
 /** A plan carrying a `**Closes:**` line, for the legs that read the body's end. */
 const CLOSES_EXTRA = '**Goal:** x\n**Closes:** #660 #668'

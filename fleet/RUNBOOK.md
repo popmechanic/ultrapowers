@@ -190,7 +190,10 @@ engine service is inactive and the branch is ahead of base, the sandbox pushes
 through the edge (`POST /api/v3/repos/<owner>/<repo>/pulls`, never `gh`):
 ready on PASS or on the two-move rule's approval, a draft carrying the gate
 receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so
-the PR is the whole index of the run. `pr` and `prAuthor` on the status page are
+the PR is the whole index of the run. It opens with the summary the operator
+signed, the answer line, the plan's Claim and one table row per task saying what
+was promised and how it was proved, with the record — receipt, shas, evidence
+listing and residuals checklist — folded away below. `pr` and `prAuthor` on the status page are
 the answer's `html_url` and `user.login`.
 A ready PR merges itself, on the run's own evidence and nobody else's: the
 publish fold rebased the branch onto the default branch's tip and the gate then
