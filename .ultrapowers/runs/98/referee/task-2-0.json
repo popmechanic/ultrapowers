@@ -1,0 +1,46 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "path owned by a wave sibling and absent from FILES: `tests/test_fleet_suite.py`"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "tests/test_catch_report_window.py exists; exam ran, exit 0"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +20 / −1 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/catch_counter.py": "py",
+    "skills/ultralearn/scripts/catch_report.py": "py",
+    "tests/test_catch_report_window.py": "py",
+    "tests/test_ultralearn_catch_report.py": "py",
+    "tests/test_ultralearn_catches.py": "py"
+  },
+  "ms": 2
+}

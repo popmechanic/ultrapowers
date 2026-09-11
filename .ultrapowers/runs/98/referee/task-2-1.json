@@ -1,0 +1,43 @@
+{
+  "task": "2",
+  "n": 1,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "the exam exited 1 — already red as the exam, so an absent Test: path is not a second finding"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +20 / −1 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "skills/ultralearn/scripts/catch_counter.py": "py",
+    "skills/ultralearn/scripts/catch_report.py": "py",
+    "tests/test_catch_report_window.py": "py",
+    "tests/test_ultralearn_catch_report.py": "py",
+    "tests/test_ultralearn_catches.py": "py"
+  },
+  "ms": 1
+}
