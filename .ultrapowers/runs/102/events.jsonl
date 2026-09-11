@@ -26,3 +26,8 @@
 {"kind":"transcript:slice","label":"review:1:1:2","sessionId":"e3de95f7-8c84-4b87-b8be-cb5313f710a3","bytes":7035,"id":"01M28SMK62000034BNH38FQJXG","ts":1789149203650}
 {"kind":"worker:end","label":"review:1:1:1","role":"reviewer","sessionId":"b51e7783-52b3-472e-917a-608e4052d309","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5126,"output":3743,"cacheRead":118846,"cacheCreation":46568,"costUsd":0.644308,"models":["claude-opus-5"]},"id":"01M28SMVVK0000TWGYZ3VR2X2R","ts":1789149212531}
 {"kind":"transcript:slice","label":"review:1:1:1","sessionId":"b51e7783-52b3-472e-917a-608e4052d309","bytes":8335,"id":"01M28SMVVN0000W62CWJ0JQVEB","ts":1789149212533}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"8d89efa1dcf6ca1e8df0d0a58343f1c883f9dea1","id":"01M28T0NF40000V7RDCHRRV75S","ts":1789149599204}
+{"kind":"driver:integrated-clean","wave":1,"removed":11,"id":"01M28T0NFH0000HR72589002Z1","ts":1789149599217}
+{"kind":"driver:integrated-check","cmd":"python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b, (a,b)\"","exit":0,"minor":false,"wave":1,"id":"01M28T0NGX00009FYQMFE02HWX","ts":1789149599261}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M28T0NGY00006XQ277M9DM7W","ts":1789149599262}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"f1bd14fd-3129-4004-bd7c-af50442987b3","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-102/clones/integration","model":"opus","id":"01M28T0NGZ00009HXDTCM1SXQD","ts":1789149599263}
