@@ -1,0 +1,5 @@
+Running as unit: fleet-engine-109.service; invocation ID: 95a3aea65561439189ae3a07be93e399
+run-main: preflight
+run-main: tiers — 6 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE f5735a3aa6be17a684a917373b36c2e40dd65b48; 6 task clone(s) + integration
+run-main: engine — waves 5/1, width bound 12, patch input armed
