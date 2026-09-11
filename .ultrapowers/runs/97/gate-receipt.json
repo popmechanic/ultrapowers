@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-97",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-97/report.json",
+  "branch": "ultra/integration-run-97",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/sandbox-boot.sh \u2014 the refresher's served `events.jsonl` (M1) and evidence-commit window (M4) under a real engine unit \u2014 Every leg of these two clauses ran against the sim rig in fleet/tests/_sandbox_boot_helpers.mjs: a stubbed `systemd-run` engine held by `STUB_ENGINE_HOLD`, a stubbed `date` that answers `+%s` from `$FLEET_HOME/stub/clock`, and a stubbed `git`/`gh`. The real path \u2014 busybox httpd serving `/events.jsonl` at https://<vm>.exe.xyz, a real `fleet-engine-<N>` unit appending the log, real wall-clock seconds, and real evidence pushes to the target's `ultra/evidence-run-<N>` \u2014 is not executable in this environment, so the two-minute/ten-event lag is verified as a rule, never as a measurement on a live box. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-97/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1622 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n......................................                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1622 passed, 5 warnings in 411.00s (0:06:50) =================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}

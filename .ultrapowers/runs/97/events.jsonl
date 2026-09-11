@@ -41,3 +41,15 @@
 {"kind":"driver:integrated-check","cmd":"bash -n fleet/sandbox-boot.sh","exit":0,"minor":false,"wave":1,"id":"01M27HB7MW0000F42ATWQTZVMT","ts":1789106953884}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M27HB7MX0000613G0RWKXQBB","ts":1789106953885}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"6e716c7b-3ba6-48a4-ab8c-50259c9daa29","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-97/clones/integration","model":"opus","id":"01M27HB7MX00013VG41M08XDSW","ts":1789106953885}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"6e716c7b-3ba6-48a4-ab8c-50259c9daa29","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2978,"output":23347,"cacheRead":1927644,"cacheCreation":92508,"costUsd":2.4874669999999997,"models":["claude-opus-5"]},"id":"01M27HMTFQ0000PGHAVZ2HYCWN","ts":1789107268087}
+{"kind":"transcript:slice","label":"integration","sessionId":"6e716c7b-3ba6-48a4-ab8c-50259c9daa29","bytes":11527,"id":"01M27HMTG30000RS1VT8GNME5T","ts":1789107268099}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M27HMTGN000019W3E3RFH4PH","ts":1789107268117}
+{"kind":"driver:stage","stage":"finalize","id":"01M27HMTJG000053FMNCKSW3X6","ts":1789107268176}
+{"kind":"driver:stage","stage":"gate","id":"01M27HMTMZ000040QAV3EM6B4T","ts":1789107268255}
+{"kind":"driver:critic-decision","approve":true,"reason":"1 completeness finding(s), none blocking","id":"01M27HMTS40000SA68K88Y0JKJ","ts":1789107268388}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M27HMTS40001TK3FD0K4M82E","ts":1789107268388}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M27HMTS50000RW7NFYGCJHPB","ts":1789107268389}
+{"kind":"driver:stage","stage":"approve","id":"01M27HMTS50001WXJBVBP8T6BZ","ts":1789107268389}
+{"kind":"driver:approved","stamp":"run-97","integrationBranch":"ultra/integration-run-97","id":"01M27HMTVT0000WBR9254WH24C","ts":1789107268474}
+{"kind":"run:open","runId":"run-97","base":"aad494c4496d104d036dd24652944c9cd618a2e9","source":"fleet/publish-fold.mjs","id":"01M27HMV4B0000Z6802SSR6GRX","ts":1789107268747}
+{"kind":"driver:publish-fold","run":"97","attempt":"1","base":"aad494c4496d104d036dd24652944c9cd618a2e9","tip":"aad494c4496d104d036dd24652944c9cd618a2e9","candidate":"a5881f313aad0e00749507a1d26e68279ec861cb","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M27HMW970000CF6G4WY87AQZ","ts":1789107269927}

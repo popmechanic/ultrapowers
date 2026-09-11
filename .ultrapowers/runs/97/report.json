@@ -1,0 +1,108 @@
+{
+  "integrationBranch": "ultra/integration-run-97",
+  "baseSha": "aad494c4496d104d036dd24652944c9cd618a2e9",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "2401d5a3970992f7da5939be2ea7e276d86c788b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-97/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale in-file narration: two comment blocks in `fleet/sandbox-boot.sh` still state the removed #723 gate as the current rule, while the code beneath them now commits on the event window. `:99-101` (the `EVIDENCE_LOCK` block) says the refresher \"commits the page at every `engine:phase` it relays (#723)\", and `:865` (the `push_evidence` block) opens \"ONE COMMIT PER TRANSITION and one per relayed phase (#723)\". The contract and the `commit_phase_evidence`/`phase_refresher` comments were updated (M5, and the diff's own new blocks), so these two are the only places left in this task's own FILES that describe the gate the patch deleted \u2014 in a script whose comments are how the rule is carried. Nothing about behaviour; fix is wording.; `fleet/CONTRACT.md`'s new `**status.json:**` prose is imprecise about the two new cells, in the one document a reader trusts for the page's shape. (1) The sub-phase sentence reads \"the run's last phase event alone when no worker is open, and `<phase> \u00b7 <sub>` \u2026 otherwise\", but per M2/M3 \u2014 and per what the implementation does and exam leg (c) pins \u2014 a log with no open worker whose last line sorts after its last phase event still renders `<phase> \u00b7 <kind>` (leg (c) asserts `sub` is `driver:wave-adopted` for exactly that prefix). The clause that selects the bare phase is \"the last phase event is the log's last line\", not \"no worker is open\". (2) The `tasks` literal types two cells as strings that the page emits unquoted: `\"wave\":\"<n or null>\"` is a JSON number (the projector writes `\"wave\":1`) and `\"lastProof\":\"{cmd, exit, ts} or null\"` is an object. The house convention quotes placeholders for string cells (`pr`, `merged`, `error`), so quoting these two reads as a type claim. M5's greps and `tests/test_docs_agree_with_code.py` are satisfied either way \u2014 this is accuracy, not a failing pin.; fleet/sandbox-boot.sh phase_refresher: the window commit now sits OUTSIDE the `if [ -n \"$p\" ]` branch (lines ~895-911), so on a tick where no `engine:phase` has been relayed yet the refresher commits without having written a page first \u2014 `collect_evidence` then snapshots the page left by the last transition (e.g. `engine starting`, whose `tasks` cell is `{}`), and both counters are reset, so the content that earned the commit only reaches the branch a window later. M4 does mandate the commit on that tick, so this is not a clause violation, but it weakens the Claim (\"the record ... catches up\") in exactly the pre-first-phase stretch where the engine can emit ten events before its first `engine:phase`. Narrow fix: write the page before deciding the commit (or keep the commit in the relay branch), e.g. `[ -n \"$p\" ] || page=\"$PHASE\"` plus an unconditional `write_status running \"$page\"` \u2014 weigh that against #723 case (g), which asserts a run that relays nothing commits per transition only.; fleet/sandbox-boot.sh: each refresher tick parses the log TWICE \u2014 `project_read sub \"$f\" \u2026` at line ~899 and, inside `write_status`, `status_tasks` \u2192 `project_read tasks \u2026` at line ~512. The header comment over `project_read` says \"THREE MODES, ONE WALK \u2026 a second parser for any of them would be a second answer to the same question\", but two successive reads of a file the engine is appending to can disagree: one page can carry `phase` = `gate \u00b7 impl:2` from the earlier read while its `tasks` cell comes from a later one where `impl:2` is already closed. One `project_read all` per tick, with the `tasks` object passed into `write_status` (extra optional arg, defaulting to `status_tasks` for the transition callers), would make one page one answer and halve the python spawns. The exam does not catch this because leg (c) polls until both cells agree.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-97/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1622 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 39%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n......................................                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1622 passed, 5 warnings in 411.00s (0:06:50) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 852325,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 0,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n.....................................                                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1621 passed, 5 warnings in 398.39s (0:06:38) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "a5881f313aad0e00749507a1d26e68279ec861cb",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-97/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-97/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.1270000000000002,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 the refresher's served `events.jsonl` (M1) and evidence-commit window (M4) under a real engine unit",
+      "reason": "runtime",
+      "why": "Every leg of these two clauses ran against the sim rig in fleet/tests/_sandbox_boot_helpers.mjs: a stubbed `systemd-run` engine held by `STUB_ENGINE_HOLD`, a stubbed `date` that answers `+%s` from `$FLEET_HOME/stub/clock`, and a stubbed `git`/`gh`. The real path \u2014 busybox httpd serving `/events.jsonl` at https://<vm>.exe.xyz, a real `fleet-engine-<N>` unit appending the log, real wall-clock seconds, and real evidence pushes to the target's `ultra/evidence-run-<N>` \u2014 is not executable in this environment, so the two-minute/ten-event lag is verified as a rule, never as a measurement on a live box."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_sandbox_boot_viz.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "fleet/CONTRACT.md:309-311 (the `- **status.json:**` bullet, Task 1 slot M5 / Global Constraint 1) contradicts itself in one sentence: it says the `\"tasks\":` cell \"is a projection of `events.jsonl` and nothing else\" and then, in the same clause, \"one key per task id the plan's waves or the log names\". The plan's waves are read from `$(run_dir_path)/args.json`, not from `events.jsonl` \u2014 see `project_read`'s `ARGS` arm at fleet/sandbox-boot.sh:371-384 and `status_tasks` at :480-484, which is what supplies a `queued` cell and a `wave` number for a task no event has yet named. The implementation is what M2 mandates; the contract's \"and nothing else\" is the wrong half of the sentence and also overstates Global Constraint 1 (\"nothing on the page is a fact the log does not carry\") for exactly those not-yet-started tasks. Worth an issue against the wording, not a reason to hold the merge: the projector still writes nothing and invents no event kind."
+    }
+  ],
+  "blockedWaves": []
+}

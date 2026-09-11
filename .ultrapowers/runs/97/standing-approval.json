@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-97.md run-97 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "fleet/sandbox-boot.sh — the refresher's served `events.jsonl` (M1) and evidence-commit window (M4) under a real engine unit — Every leg of these two clauses ran against the sim rig in fleet/tests/_sandbox_boot_helpers.mjs: a stubbed `systemd-run` engine held by `STUB_ENGINE_HOLD`, a stubbed `date` that answers `+%s` from `$FLEET_HOME/stub/clock`, and a stubbed `git`/`gh`. The real path — busybox httpd serving `/events.jsonl` at https://<vm>.exe.xyz, a real `fleet-engine-<N>` unit appending the log, real wall-clock seconds, and real evidence pushes to the target's `ultra/evidence-run-<N>` — is not executable in this environment, so the two-minute/ten-event lag is verified as a rule, never as a measurement on a live box. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
