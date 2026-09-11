@@ -1,0 +1,169 @@
+{
+  "integrationBranch": "ultra/integration-run-92",
+  "baseSha": "0e1a4f00b71083503641452bf7cbe1484a27f2d5",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "b3f13fee345745d170e3c8774df1809132684a85",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-92/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim's second half \u2014 \"those sentences ride the plan into the run\" \u2014 cannot be settled by this diff. This patch only documents the plan-side shape in `skills/ultrawrite/SKILL.md`; the mechanism that carries a signed `**Summary:**` paragraph into the pull request body lives in `fleet/sandbox-boot.sh` (`plan_summary`), which is sibling task 2's file and is untouched here. All five Machine clauses M1\u2013M5 are evidenced (each Proof `Run:` exited 0, including the `compile_plan.py --check` fixture printing `PLAN OK` and `validate_skill.py skills/ultrawrite`), so the task's own exam is satisfied; what remains open is the cross-task agreement. What would settle it: task 2's `fleet/tests/test_sandbox_boot_card.mjs` leg (a), which asserts the rendered `pr-body.md`'s first non-empty line is the stub plan's summary paragraph with the `**Summary:** ` label stripped \u2014 i.e. that task 2's reader consumes exactly the shape this paragraph documents (a line beginning `**Summary:** ` directly under the `**Claim:**` line, running to the next blank line, no markdown inside).; unverified: the two GLOBAL CONSTRAINTS both govern the published card (nothing above the collapsed record is a hash/JSON fence/file listing/reviewer sentence; every card value is read from the plan file, `report.json`, `gate-receipt.json` or the status page). Neither carries a `Check:` the driver ran against this diff, and this diff touches no card-rendering code. Reading them against what it does add: the documented summary is authored and operator-confirmed at plan time and quoted verbatim at publish, which is a read of the plan file rather than a model narration at publish time, and the paragraph is explicitly prose-only (\"no markdown inside\"), so nothing here introduces a hash or fence above the record. Confirming this end-to-end is task 2's `fleet/tests/test_sandbox_boot_card.mjs`, not this patch.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "status": "failed",
+      "reviewVerdict": "agent-error",
+      "notes": "RUN_FATAL: refusing to dispatch impl:2 \u2014 the run already failed at fix:2:0: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-92/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1618 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 413.44s (0:06:53) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## The document/,/^## Task shape/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q '\\*\\*Summary:\\*\\*.*what this is.*why it exists.*how it benefits.*same touch.*verbatim'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Elicit the claim/,/^## Authoring a queue/p' skills/ultrawrite/SKILL.md | tr '\\n' ' ' | grep -q '\\*\\*Summary:\\*\\*.*AskUserQuestion'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "sed -n '/^## Self-review/,$p' skills/ultrawrite/SKILL.md | grep '^- ' | grep '\\*\\*Summary:\\*\\*' | grep -q 'three sentences'",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "d=$(mktemp -d) && awk 'BEGIN{d=0} {print} !d && /^\\*\\*Grammar:\\*\\*/ {print \"\"; print \"**Claim:** do: open a widget. see: its size printed. (elicited)\"; print \"**Summary:** One. Two. Three.\"; d=1}' evals/fixtures/claims/plan.md > \"$d/plan.md\" && cp evals/fixtures/claims/plan.gate-verdicts.json \"$d/plan.gate-verdicts.json\" && python3 skills/ultrapowers/scripts/compile_plan.py --check \"$d/plan.md\" > \"$d/out.txt\" && test \"$(head -1 \"$d/out.txt\")\" = \"PLAN OK\"",
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "task": "1",
+      "cmd": "python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrawrite",
+      "exit": 0,
+      "stdout": "skill ok\n"
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "bash -n fleet/sandbox-boot.sh",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 122853,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 1,
+    "refereeBlocking": 0,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n..................................                                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1618 passed, 5 warnings in 372.56s (0:06:12) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "795c9aa5664593d95cce5b29d59f381bbe52b299",
+      "branches": [
+        "1"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-92/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-92/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.42800000000000005,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "2",
+      "files": [
+        "README.md",
+        "fleet/CONTRACT.md",
+        "fleet/RUNBOOK.md",
+        "fleet/sandbox-boot.sh",
+        "fleet/tests/_sandbox_boot_helpers.mjs",
+        "fleet/tests/test_sandbox_boot.mjs",
+        "fleet/tests/test_sandbox_boot_card.mjs",
+        "fleet/tests/test_sandbox_boot_join.mjs",
+        "fleet/tests/test_sandbox_boot_publish_fold.mjs",
+        "fleet/tests/test_sandbox_boot_residuals.mjs",
+        "fleet/tests/test_sandbox_boot_selfmerge.mjs",
+        "skills/ultrapowers/SKILL.md",
+        "tests/test_docs_agree_with_code.py"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: out-of-FILES: fleet/tests/test_sandbox_boot_edges.mjs \u2014 its PLAN_ANSWER constant was a copy of the old stub plan bytes and its two premise assertions pinned the plan answer's tail; both now derive from the helpers' PLAN_HEAD/PLAN_TASKS exports. No behaviour of that exam changed.",
+    "task 2: The Claim says 'every sha and receipt is folded away below' while M2 requires the answer line '**Merged** <sha>' above the fold. M2 is the specific machine clause, so the sha is rendered there; the tension is the plan's, not a workaround.",
+    "task 2: A one-attempt run that merges keeps the body it POSTed (an existing pin, test_sandbox_boot_publish_fold.mjs leg (h), forbids a PATCH there), so its card reads **Merge-ready** even though status.json carries the squash sha. '**Merged** <sha>' renders on any run whose body is re-patched after the merge (a fold-again run) \u2014 verified in the sim rig. Changing that would break the pinned no-PATCH contract.",
+    "task 2: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_sandbox_boot_card.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 2: agent error at mostCapable \u2014 retrying once at mostCapable (same tier): RUN_FATAL: API refused with 401 (credential or config) \u2014 the run cannot proceed (label fix:2:0)",
+    "task 2: agent error after same-tier retry at mostCapable \u2014 RUN_FATAL: refusing to dispatch impl:2 \u2014 the run already failed at fix:2:0: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+    "integration review failed to run: RUN_FATAL: refusing to dispatch integration \u2014 the run already failed at fix:2:0: API refused with 401 (credential or config) \u2014 the run cannot proceed",
+    "integration review returned no result \u2014 the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "integration review did not run \u2014 completeness unverified; check the tree before merging"
+    }
+  ],
+  "blockedWaves": []
+}
