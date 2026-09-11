@@ -385,6 +385,20 @@ export const examEvidenceBlock = (exam) => {
     'stderr combined, last 4,000 characters.' +
     '\n\n$ ' + exam.cmd + '\nexit ' + exam.exit + '\n' + exam.stdout
 }
+// #908 — what the fix round SAID about that red. `fleet/roles/fix.md` tells a
+// round that finds a Proof `Test:` file red for a reason other than the missing
+// implementation to report it as a `concerns` entry prefixed `exam:` rather
+// than edit around it; when the exam is still red on the second pre-review pass
+// and such an entry is on the reply, the driver spends a review round on it
+// instead of parking `proof-red`. These lines are how the claim reaches the
+// referee — one per entry, verbatim, rendered AFTER the EXAM EVIDENCE block so
+// the referee reads the driver's own red output first and the claim about it
+// second. No entries renders nothing at all, which keeps the prompt of every
+// other task byte-identical to the one it had before this existed.
+export const examConcernBlock = (concerns) => {
+  if (!Array.isArray(concerns) || concerns.length === 0) return ''
+  return '\n\n' + concerns.map((c) => 'EXAM CONCERN: ' + String(c)).join('\n')
+}
 // ── the state-exam record (spec 2026-09-09 §3.5, §3.6) ──────────────────────
 // A state exam is an exam that measures a running app's STATE — the store diff
 // it produced, whether the render happened, whether a mutant of the expected
@@ -1950,6 +1964,10 @@ export async function runEngine({
       }
       return reds
     }
+    // The fix round's `exam:` entries, when they bought the review round below
+    // (#908). Empty on every other task, which is what keeps their review
+    // prompts unchanged.
+    let examConcerns = []
     let reds = await prePass()
     if (reds.length) {
       // ── the implementer's own plan-defect against a Proof leg (#722) ────
@@ -2015,14 +2033,45 @@ export async function runEngine({
       }
       reds = await prePass()
       if (reds.length) {
-        const notes = reds.map((r) => r.line).join('; ')
-        judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
-          notes + ') — no reviewer was dispatched')
-        log('task ' + task.id + ' proof-red after the pre-review repair round')
-        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                 reviewVerdict: 'proof-red', notes,
-                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
-                 ...examEditedField() }
+        // ── the fix round's `exam:` concern beside a still-red exam (#908) ──
+        // The park above assumes a red proof is the patch's own failure, which
+        // is the honest reading of a red `Run:` or `Check:` — those the graded
+        // party can always clear. A red exam is the one red it may not: since
+        // #653 the exam arrives over the Proof `Test:` paths from a peer, and a
+        // case no output can satisfy stays red however good the implementation
+        // is. The fix round is the round that holds those bytes, so it is the
+        // one party that can say so, and `fix.md` already tells it to say so as
+        // a `concerns` entry prefixed `exam:` rather than edit around it. That
+        // entry beside the same pass's red exam buys a reviewer instead of a
+        // park: the referee reads the exam in PATCH against the driver's own
+        // red output, and either proposes the patch that fixes the case or
+        // names what the claim gets wrong (reviewer.md rule 8). Nothing merges
+        // on the implementer's word — round 1 re-appends the red exam as a
+        // blocking issue whatever the reviewer returned, so a reviewer that
+        // waves it through still ends at `fix-loop-exhausted`.
+        const examStillRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
+        const examStillRed = Boolean(examStillRedLine) &&
+          reds.some((r) => r.line === examStillRedLine)
+        const entries = (examStillRed && impl.status === 'DONE_WITH_CONCERNS' &&
+          Array.isArray(impl.concerns))
+          ? impl.concerns.map(String).filter((c) => /^exam:/.test(c))
+          : []
+        if (!entries.length) {
+          const notes = reds.map((r) => r.line).join('; ')
+          judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
+            notes + ') — no reviewer was dispatched')
+          log('task ' + task.id + ' proof-red after the pre-review repair round')
+          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+                   reviewVerdict: 'proof-red', notes,
+                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+                   ...examEditedField() }
+        }
+        examConcerns = entries
+        judgmentCalls.push('task ' + task.id + ': exam concern from the fix round beside a ' +
+          'still-red exam (' + entries.join('; ') + ') — review round 1 dispatched to judge ' +
+          'the exam instead of parking proof-red')
+        log('task ' + task.id + ' exam concern after the pre-review repair round — ' +
+          'the reviewer reads it')
       }
     }
 
@@ -2058,6 +2107,10 @@ export async function runEngine({
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
         examEditedDiffBlock(editedDiffs) +
         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
+        // After the exam's own output, never before it (#908): the red bytes
+        // are the driver's fact and the concern is the graded party's claim
+        // about them.
+        examConcernBlock(examConcerns) +
         checkEvidenceBlock(checkEvidence) +
         // Read HERE, not at the pre-review pass: round 2 grades the tree the
         // fix round left, so it must read the record that round's own exam
