@@ -147,8 +147,52 @@ export const PR_JSON = JSON.stringify({
   base: { ref: 'main', user: { login: 'not-the-author-either' } }
 })
 export const PLAN_H1 = 'Smoke: the fleet proves itself'
+/** The plan-level Claim of the stub plan, as the card quotes it — the `(elicited)`
+ *  tag stripped. */
+export const PLAN_CLAIM = 'I open one PR and read what the fleet promised and proved.'
+/** The `**Summary:**` paragraph the operator signed, as the card quotes it. */
+export const PLAN_SUMMARY =
+  'This is the fleet proving itself on a smoke target. It exists so a person can'
+  + ' read one pull request instead of a run directory. It benefits them by putting'
+  + ' the answer above the record.'
+/** The one task of the stub plan, and its Claim with the `(derived)` tag stripped. */
+export const PLAN_TASK_ID = '1'
+export const PLAN_TASK_CLAIM = 'The smoke target grows the one file the plan names.'
+/**
+ * The stub plan in THREE pieces, because `STUB_PLAN_EXTRA` is read two ways:
+ *
+ *   - an extra that signs NO `**Claim:**` of its own is a HEADER BLOCK, and
+ *     goes between `PLAN_HEAD` and `PLAN_TASKS` — `plan_closes` stops reading
+ *     at the first `### ` heading, so a case that adds a `**Closes:**` line
+ *     adds it above the task the card's table is built from;
+ *   - an extra that DOES sign a `**Claim:**` is a WHOLE PLAN: it follows
+ *     `PLAN_STEM` — the `# <H1>` and `body` lines — and replaces the stub's
+ *     signed header and its task, so a case that writes its own Claim,
+ *     Summary and `### Task` headings reads none of this fixture's.
+ */
+export const PLAN_STEM = `# ${PLAN_H1}\n\nbody\n`
+export const PLAN_HEAD = PLAN_STEM
+  + `**Claim:** ${PLAN_CLAIM} (elicited)\n`
+  + `**Summary:** ${PLAN_SUMMARY}\n\n`
+export const PLAN_TASKS =
+  `### Task ${PLAN_TASK_ID}: The smoke target grows a file\n\n`
+  + `**Claim:** ${PLAN_TASK_CLAIM} (derived)\n`
+  + 'Machine: M1. The file is present at the head this run pushed.\n'
 /** Exactly what `git show <plan>:.ultrapowers/plan.md` hands back. */
-export const PLAN_BYTES = `# ${PLAN_H1}\n\nbody\n`
+export const PLAN_BYTES = `${PLAN_HEAD}${PLAN_TASKS}`
+
+/**
+ * The `report.json` the engine stub writes when no case asks for another —
+ * ONE wave, ONE task, and one of each record the card's task table reads, so
+ * the green boot every sim memoizes renders a whole row rather than six
+ * dashes. `STUB_REPORT` replaces it; an EMPTY `STUB_REPORT` removes the file.
+ */
+export const DEFAULT_REPORT = '{"stamp":"run-7"'
+  + ',"waves":[["1"]]'
+  + ',"tasks":[{"task":"1","status":"done","exam":"red","reviewVerdict":"approve"'
+  + ',"stateExams":[{"exam":"state","mutant_killed":true}]}]'
+  + ',"integratedRuns":[{"task":"1","cmd":"node fleet/tests/test_smoke.mjs","exit":0,"stdout":"ok"}]'
+  + ',"waveMerges":[{"wave":1,"status":"MERGED","suite":{"passed":true,"output":"ok"}}]}'
 export const ASSIGNMENT =
   `run=7 plan=${PLAN_SHA} target=${TARGET} base=${BASE_SHA} engine=${ENGINE_SHA} ` +
   'overlap=fold tier=mostCapable'
@@ -342,10 +386,27 @@ case "$verb" in
     case "$a1" in
       *:.ultrapowers/plan.md)
         # The plan text, and — only when a case asks for one — the header
-        # lines that case needs appended to it. This is the ONLY way plan text
+        # lines that case needs added to it. This is the ONLY way plan text
         # reaches the boot, so a reader of any other source sees none of it.
-        printf '# %s\\n\\nbody\\n' "$STUB_PLAN_H1"
-        if [ -n "\${STUB_PLAN_EXTRA:-}" ]; then printf '%s\\n' "$STUB_PLAN_EXTRA"; fi
+        #
+        # A header-block extra goes BETWEEN the header and the tasks, where a
+        # plan header line belongs: \`plan_closes\` stops at the first \`### \`
+        # heading, so a \`**Closes:**\` line appended after the task would be
+        # read by nothing. An extra that signs a \`**Claim:**\` of its own is a
+        # WHOLE PLAN instead: it follows the \`# <H1>\` and \`body\` lines and
+        # replaces the stub's signed header and its task, so the case reads its
+        # own Claim, Summary and \`### Task\` headings and none of the stub's.
+        case "\${STUB_PLAN_EXTRA:-}" in
+          *'**Claim:**'*)
+            printf '%s' "$STUB_PLAN_STEM"
+            printf '%s\\n' "$STUB_PLAN_EXTRA" ;;
+          '')
+            printf '%s%s' "$STUB_PLAN_HEAD" "$STUB_PLAN_TASKS" ;;
+          *)
+            printf '%s' "$STUB_PLAN_HEAD"
+            printf '%s\\n' "$STUB_PLAN_EXTRA"
+            printf '%s' "$STUB_PLAN_TASKS" ;;
+        esac
         # Linux refuses an environment string past 128 KiB, so plan text big
         # enough to outrun a pipe plus a reader's first read comes from a FILE
         # beside the stub's counters, not from STUB_PLAN_EXTRA.
@@ -595,7 +656,7 @@ if [ -z "\${STUB_NO_RECEIPT:-}" ]; then
       printf '%s\\n' "$STUB_REPORT" >"$run_dir/report.json"
     fi
   else
-    printf '{"stamp":"run-7"}\\n' >"$run_dir/report.json"
+    printf '%s\\n' '${DEFAULT_REPORT}' >"$run_dir/report.json"
   fi
   printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
 fi
@@ -767,7 +828,9 @@ const bootEnv = (ctx, env) => ({
       STUB_COMMENT: ASSIGNMENT,
       STUB_VERDICT: 'PASS',
       STUB_PR_BODY: PR_JSON,
-      STUB_PLAN_H1: PLAN_H1,
+      STUB_PLAN_STEM: PLAN_STEM,
+      STUB_PLAN_HEAD: PLAN_HEAD,
+      STUB_PLAN_TASKS: PLAN_TASKS,
       STUB_PLAN_SHA: PLAN_SHA,
       STUB_HEAD_SHA: HEAD_SHA,
       STUB_MERGE_SHA: MERGE_SHA,

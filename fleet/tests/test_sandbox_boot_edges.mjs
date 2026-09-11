@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url'
 
 import {
   SCRIPT, BASE_SHA, ENGINE_SHA, TARGET, VM_NAME, PR_URL, PR_AUTHOR, RUN_PATH,
-  RETIRED_NAMES, ASSIGNMENT, PLAN_SHA, HEAD_SHA, OTHER_SHA, PLAN_H1,
+  RETIRED_NAMES, ASSIGNMENT, PLAN_SHA, HEAD_SHA, OTHER_SHA,
+  PLAN_BYTES, PLAN_HEAD, PLAN_TASKS,
   makeHome, boot, green,
   readLog, argvLines, stream, statusOf, states, notifies, committed, commitStates,
   engineRuns, prPosts, indexOf,
@@ -705,7 +706,8 @@ const stubGit = (ctx, args, env = {}) => {
   const r = spawnSync(path.join(ctx.bin, 'git'), args, {
     encoding: 'utf8',
     env: simEnv({ bin: ctx.bin, home: ctx.home, env: {
-      STUB_PLAN_H1: PLAN_H1,
+      STUB_PLAN_HEAD: PLAN_HEAD,
+      STUB_PLAN_TASKS: PLAN_TASKS,
       STUB_PLAN_SHA: PLAN_SHA,
       STUB_HEAD_SHA: HEAD_SHA,
       ...env,
@@ -717,7 +719,9 @@ const stubGit = (ctx, args, env = {}) => {
   return r.stdout
 }
 
-const PLAN_ANSWER = `# ${PLAN_H1}\n\nbody\n`
+/** The stub plan, whole — the two halves the git stub prints `STUB_PLAN_EXTRA`
+ *  between, so this constant is derived from the rig and never a copy of it. */
+const PLAN_ANSWER = PLAN_BYTES
 const TAGS_ANSWER =
   `${PLAN_SHA}\trefs/tags/ultra/plan/run-7\n${HEAD_SHA}\trefs/tags/ultra/evidence/run-7\n`
 
@@ -815,9 +819,11 @@ test('the git stub appends its two injection files, and answers as it always did
 
   // And the file goes AFTER `STUB_PLAN_EXTRA`, which is the knob every other
   // case in this exam reaches the plan through.
+  // The knob is a HEADER line: it lands between the plan's header and its
+  // tasks, above the first `### ` heading, and the file follows both.
   assert.equal(stubGit(ctx, show, { STUB_PLAN_EXTRA: '**Goal:** x' }),
-    `${PLAN_ANSWER}**Goal:** x\n${planExtra}`,
-    'the environment knob still answers first, and the file follows it')
+    `${PLAN_HEAD}**Goal:** x\n${PLAN_TASKS}${planExtra}`,
+    'the environment knob still answers inside the header, and the file follows it')
 })
 
 runTests(tests)

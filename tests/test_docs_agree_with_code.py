@@ -416,13 +416,15 @@ def publish_bullet():
 
 
 def test_the_publish_bullet_puts_the_residuals_section_before_the_closes_lines():
-    """Leg (a) [M1]: `### Residuals`, then `deferred:external`, then `Closes #`."""
+    """Leg (a) [M1]: `Residuals:`, `<details>`, `### Residuals`, `deferred:external`, `Closes #`."""
     bullet = publish_bullet()
-    assert re.search(r"### Residuals.*deferred:external.*Closes #", bullet), (
+    assert re.search(
+        r"Residuals:.*<details>.*### Residuals.*deferred:external.*Closes #", bullet), (
         f"{CONTRACT}'s `{PUBLISH_BULLET_FIRST}` bullet does not read "
-        "`### Residuals` … `deferred:external` … `Closes #` in that order — the "
-        "body's residuals checklist, one line per `deferred:external` ack, sits "
-        "before the `Closes #<n>` lines, and the bullet is where that is said\n"
+        "`Residuals:` … `<details>` … `### Residuals` … `deferred:external` … "
+        "`Closes #` in that order — the residuals COUNT is what a person reads, the "
+        "checklist itself is folded into the record below it, and the `Closes #<n>` "
+        "lines close the body under that record\n"
         "bullet:\n" + bullet
     )
 

@@ -220,7 +220,8 @@ folds, the suite. Watch it or walk away.
 
 At the end you get the finished result: the sandbox opens the pull request on that repository —
 ultrapowers itself is just one such repository. Its body carries the gate receipt and links the
-evidence branch. Once its checks are green the run merges it itself. Launch with `--hold` and the
+evidence branch. The pull request merges itself on the run's own evidence — once its own gate is
+green and main has not moved off the tip it folded onto. Launch with `--hold` and the
 pull request stays open instead — your second checkpoint, yours to merge or close. Either way the
 run is over and the sandbox is gone.
 

@@ -310,6 +310,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   never a fixed number. `parked` and `failed` are terminal wherever they are reached.
 - **Publish:** the sandbox's own act, at the end of the boot script above — there is no grant tool and no
   operator step between the gate and the PR.
+  The card is written for a PERSON, and nothing above its folded record is a hash, a JSON fence, a
+  file listing or a reviewer's sentence. The body opens with the plan's `**Summary:**` paragraph
+  verbatim, its label stripped — `_No summary was signed with this plan._` when the plan signed
+  none; then the answer line, exactly one of `**Merged** <sha>` (the status page's `merged` cell),
+  `**Merge-ready**`, `**Held:** <text>` (the merge note less its `left open: ` prefix) or
+  `**Parked:** <error>` (the status page's `error` cell); then `> ` and the plan's `**Claim:**`
+  sentence with its provenance tag stripped; then one table,
+  `| task | claim | exam | probes | mutant | suite |`, one row per task in the plan's order, whose
+  cells are read off the plan, `report.json`, `gate-receipt.json` and the status page and are never
+  narrated at publish time; then `Residuals: <n> from review` — `Residuals: none` at zero — and, as
+  `- ` lines, only the items nobody else will do. Everything the run knows beyond that is folded
+  into a `<details><summary>Record</summary>` block: the `## fleet <run> — <outcome>` heading, the
+  metadata table, `### Checks`, `## Publish fold`, `## Held`, `### Evidence`, `### Plan` and
+  `### Residuals`, in that order.
   The PR is ready on PASS or on the two-move rule's approval, a draft otherwise; the
   sandbox merges its own ready PR once its gate is green and the default branch's tip is the one it
   folded onto — it asks the target for no verdict of its own — unless the assignment carries
@@ -319,16 +333,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `PUBLISH_BRANCH_WAIT` s, default 60), because a PR opened before GitHub has indexed its branch gets no
   `pull_request` CI run (#595); on timeout the PR is opened anyway and the log says so. NO GitHub
   integration is attached to `tag:fleet`, ever.
-  The publish fold is the run's last edit and the PR's first section: the body carries a
+  The publish fold is the run's last edit and the record's first section: the body carries a
   `## Publish fold` section before `### Evidence`, and a fold that ends `suite red`, `conflict parked`
   or `cannot fold` opens the PR held — non-draft on a green verdict, merge skipped,
   `left open: publish fold — <disposition text>`. The fold's record is that section, the
   `publish-fold/` receipts directory and the `driver:publish-fold` event; `status.json` gains no cell
   for it.
-  After `### Plan`, the body carries a `### Residuals` checklist — one `- [ ]` line per
+  Inside the record, after `### Plan`, comes a `### Residuals` checklist — one `- [ ]` line per
   `deferred:external` ack of the gate receipt and per non-blocking reviewer/critic finding of
-  `report.json`, each with its evidence sentence — before the `Closes #<n>` lines, and no section at
-  all when there is none. The same items are also rows of `residuals.jsonl` on the run's record,
+  `report.json`, each with its evidence sentence — and no section at all when there is none; the
+  record closes after it, so the `Closes #<n>` lines are still the body's last lines. The count
+  above the record is every one of those items; the `- ` lines above it are the `deferred:external`
+  ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer or
+  critic sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
   written with the evidence and not at publish — the checklist closes with the PR that carries it,
   the rows do not — and the sandbox files no issue for them, against this target or any other.
   The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's

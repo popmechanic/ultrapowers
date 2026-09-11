@@ -177,7 +177,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    `prAuthor` in `status.json` are the PR's URL and who GitHub says opened it —
    read both back to the user, and say so when the author is the installation
    bot rather than them (their GitHub account is not yet linked on exe.dev's
-   Integrations page). A ready PR merges itself once its checks are green —
+   Integrations page). A ready PR merges itself on the run's own evidence: the
+   sandbox asks GitHub for no check runs, it merges once its own gate is green
+   and main has not moved off the tip it folded onto —
    `status.json`'s `merged` cell is the squash commit — and `--hold`
    on the launch line keeps it open for the operator; a draft PR is the
    operator's to merge or close; a parked run is
