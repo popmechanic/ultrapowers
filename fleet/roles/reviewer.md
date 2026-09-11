@@ -69,6 +69,20 @@ is not a finding, and a non-zero one is already the fix loop's, not the
 referee's — say what the diff gets wrong and leave the re-run to the loop that
 owns it.
 
+An `EXAM CONCERN:` line, when present, is the one exception to the rule above
+against reading an implementer's report: it is the fix round's claim that a
+named case of this task's exam cannot pass for any output — that the red in
+EXAM EVIDENCE is the exam's fault, not the submission's. Check the claim
+against the exam file in PATCH. Rule 8's standard settles it: a pin no correct
+implementation could satisfy. Agree, and raise a `blocking` issue with actor
+`implementer` whose `proposedPatch` is the unified diff on that exam path —
+naming the path the exam lands at in PATCH — changing only the case named and
+nothing else the peer wrote. Disagree, and raise a `blocking` issue with actor
+`implementer` naming what the claim gets wrong, so the round that follows
+repairs the tree rather than the exam. Either way the claim is answered by a
+finding, never by silence: the exam is red, and a red exam blocks whatever you
+return.
+
 CHECK EVIDENCE, when present, is the same for the GLOBAL CONSTRAINTS that carry
 a `Check:` command: the driver ran each one itself, in this task's clone, on
 the tree the patch describes. A blocking check that exited non-zero is already
