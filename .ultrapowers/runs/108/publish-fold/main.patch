@@ -1,0 +1,152 @@
+diff --git a/fleet/doctor.mjs b/fleet/doctor.mjs
+index 0c033ebe3a7acfacad5ff1a983bb77c7a747df98..c33e43d2800c48148ae8abd837940296fe345a93 100644
+--- a/fleet/doctor.mjs
++++ b/fleet/doctor.mjs
+@@ -475,8 +475,9 @@ function attachedTags (entry) {
+ /** The fix for a policy that is not `tag:fleet`: the read, then the write
+  *  under the revision the read answered. */
+ const policyFix = (name) =>
++  `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}" (or, when the lobby serves the policy model: ` +
+   `ssh exe.dev "integrations policy get ${name} --json" then ` +
+-  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>"`
++  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>")`
+ 
+ /**
+  * `integrations policy get <name> --json` read defensively: `policy.selector`
+@@ -769,6 +770,10 @@ function integrationsRow (found, target, render, policies) {
+   const names = policyNames(target, render)
+   for (const name of names) {
+     if (!found.has(name)) continue // the claude and render rows name a missing object
++    // The listing is served by both lobby models (2026-09-11 exe.dev shipped a
++    // policy model at noon and rolled it back by 3 PM): an attachment `tag:fleet`
++    // in `integrations list --json` is the grant whichever verb set the edge has.
++    if (found.get(name).tags.has('fleet')) continue
+     const res = policies.get(name)
+     const policy = res && res.code === 0 ? parsePolicy(res.stdout) : null
+     if (policy === null) {
+diff --git a/fleet/target.mjs b/fleet/target.mjs
+index 2973272bf27432a704e3c8d564fb86decd81f0ac..441e704ab1f79c61c01f399884881dde604d6631 100644
+--- a/fleet/target.mjs
++++ b/fleet/target.mjs
+@@ -65,6 +65,11 @@ export const FLEET_POLICY = 'tag:fleet'
+ export const addCommand = (target) =>
+   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --policy '${FLEET_POLICY}'`
+ 
++/** The same creation on the attach-model lobby, and the attach verb for an existing object. */
++export const addCommandAttach = (target) =>
++  `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
++export const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
++
+ /** The read and the write that bring an existing object onto the policy. */
+ export const policyGetCommand = (name) => `integrations policy get ${name} --json`
+ export const policySetCommand = (name, revision) =>
+@@ -89,8 +94,24 @@ export function parsePolicy (stdout) {
+ 
+ /** Read the object's policy and, unless it already is `tag:fleet`, replace it
+  *  under the revision the read answered. Answers `kept` or `set`. */
+-async function ensurePolicy ({ exec, name }) {
+-  const res = await lobby(exec, policyGetCommand(name))
++async function ensurePolicy ({ exec, name, rows = null }) {
++  // The listing answers first: it is served by both lobby models (the policy
++  // model exe.dev shipped 2026-09-11 and rolled back the same afternoon), and an
++  // attachment `tag:fleet` there is the grant whichever verb wrote it.
++  const listed = rows ?? await listIntegrations(exec)
++  const row = listed.find((r) => r.name === name)
++  if (row && row.attachments.some((a) => a.kind === 'tag' && a.value === 'fleet')) {
++    return { policy: 'kept', command: null }
++  }
++  let res
++  try {
++    res = await lobby(exec, policyGetCommand(name))
++  } catch (error) {
++    // No `policy` subcommand: the lobby is on the attach model — attach by tag.
++    const command = attachCommand(name)
++    await lobby(exec, command)
++    return { policy: 'set', command }
++  }
+   const policy = parsePolicy(res.stdout)
+   if (policy === null) {
+     throw new LobbyError(`exe.dev integrations policy get ${name} --json answered no policy and revision:\n${res.stdout}`)
+@@ -103,13 +124,20 @@ async function ensurePolicy ({ exec, name }) {
+ 
+ async function add ({ exec, target }) {
+   const name = githubIntegrationFor(target)
+-  const existing = new Set((await listIntegrations(exec)).map((row) => row.name))
++  const rows = await listIntegrations(exec)
++  const existing = new Set(rows.map((row) => row.name))
+   if (existing.has(name)) {
+-    const ensured = await ensurePolicy({ exec, name })
++    const ensured = await ensurePolicy({ exec, name, rows })
+     return { verb: 'add', target, results: [{ name, action: 'skipped', command: ensured.command, policy: ensured.policy }] }
+   }
+-  const command = addCommand(target)
+-  await lobby(exec, command)
++  let command = addCommand(target)
++  try {
++    await lobby(exec, command)
++  } catch (error) {
++    // The attach-model lobby knows no `--policy`: create with `--attach tag:fleet`.
++    command = addCommandAttach(target)
++    await lobby(exec, command)
++  }
+   return { verb: 'add', target, results: [{ name, action: 'created', command, policy: 'set' }] }
+ }
+ 
+diff --git a/fleet/tests/test_doctor.mjs b/fleet/tests/test_doctor.mjs
+index 183d8e95a04dbe692ec3b0da45fa781e763377c9..45016e9acf9236f1fc324963fcc6c96177460744 100644
+--- a/fleet/tests/test_doctor.mjs
++++ b/fleet/tests/test_doctor.mjs
+@@ -609,21 +609,28 @@ for (const [label, answer] of [
+ }
+ 
+ {
+-  // The policy read is the truth, not the listing's attachments: an object the
+-  // listing shows on no attachment at all is green when its policy says
+-  // tag:fleet, and one the listing shows on tag:fleet is red when its policy
+-  // says otherwise.
++  // The listing's `tag:fleet` attachment is the grant under either lobby model
++  // (exe.dev shipped a policy model 2026-09-11 and rolled it back the same
++  // afternoon): an object the listing shows on tag:fleet is green whatever a
++  // policy read says, and only an object the listing shows unattached is judged
++  // by its policy.
+   const listed = [claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET, { attachments: ['tag:fleet'] })]
+-  const { result: offPolicy } = await run({
++  const { result: attached } = await run({
+     [CMD.list]: { code: 0, stdout: listing(listed) },
+     [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
+   }, { target: TARGET })
+-  const row = rowById(offPolicy, 'integrations')
+-  assert.equal(row.status, 'missing', "5 the target's object off the policy is red whatever the listing shows")
+-  assert.ok(row.detail.includes(GH), `5 the detail names the object; got ${row.detail}`)
+-  assert.ok(row.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${row.detail}`)
++  const row = rowById(attached, 'integrations')
++  assert.equal(row.status, 'ok', "5 an object the listing attaches by tag:fleet is green whatever the policy read says")
++  const { result: offPolicy } = await run({
++    [CMD.list]: { code: 0, stdout: listing([claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET)]) },
++    [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
++  }, { target: TARGET })
++  const off = rowById(offPolicy, 'integrations')
++  assert.equal(off.status, 'missing', "5 an unattached object whose policy is not tag:fleet is red")
++  assert.ok(off.detail.includes(GH), `5 the detail names the object; got ${off.detail}`)
++  assert.ok(off.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${off.detail}`)
+   for (const step of policyFix(GH)) {
+-    assert.ok(row.detail.includes(step), `5 the detail names \`${step}\`; got ${row.detail}`)
++    assert.ok(off.detail.includes(step), `5 the detail names \`${step}\`; got ${off.detail}`)
+   }
+ }
+ 
+diff --git a/fleet/tests/test_target.mjs b/fleet/tests/test_target.mjs
+index c622b7e3bcf059a6268742dbd766c088693c6ca3..0785dfcf25f5c5a567d42d311e4c67bd7cffe8be 100644
+--- a/fleet/tests/test_target.mjs
++++ b/fleet/tests/test_target.mjs
+@@ -72,8 +72,8 @@ const rules = (integrations = [], {
+   const exec = makeExec({ rules: rules([{ name: GH, attachments: ['tag:fleet'] }]) })
+   const result = await target({ argv: [TARGET], exec })
+   assert.deepEqual(
+-    exec.lobby(), ['integrations list --json', policyGetCommand(GH)],
+-    '(2) an existing object on the policy issues the one policy read and no write'
++    exec.lobby(), ['integrations list --json'],
++    '(2) an existing object the listing attaches by tag:fleet needs no policy read and no write'
+   )
+   assert.deepEqual(exec.mutating(), [], '(2) nothing mutates when the policy is already tag:fleet')
+   assert.deepEqual(result.results.map((r) => [r.action, r.policy]), [['skipped', 'kept']], '(2) skipped, policy kept')
