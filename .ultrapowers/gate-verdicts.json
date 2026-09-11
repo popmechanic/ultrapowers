@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "4f745de89c298868aa9b327bf09926551aadac2190e11e4820796da6672d1af0",
+      "verdict": "pass",
+      "reason": "Each machine clause has a leg that would fail on its negation — (a) pins zero fetches, stdin-only carriage, the exact result and the log literal for both edit and add shapes; (b) the grant, the keychain-before-edge order and the new token; (c) zero verbs on install:false and the run-100 sequence ending on the usage-rotated token; (d) the missing-accessToken rotation; (e)/(f) the three sentinel pipes and a sed-scoped ordered grep plus a negated grep that prints the survivor — and every pinned literal is satisfiable under the clauses' own rules."
+    },
+    "2": {
+      "hash": "29c6f8bd66fc3ee413e6446aa828fb6bc1ade24a917893fc397283d4ee54343d",
+      "verdict": "pass",
+      "reason": "Every clause has a leg that names what fails it — the 401, JSON-403 and edge-403 rows each pin the exact cell text and engineRuns === 0, the two inconclusive rows forbid a park while requiring the engine start, the curl-argv and ordering leg pins M1's literals, the sed-scoped greps and sentinel-piped sims close M5/M6 — and no pinned literal contradicts its own rules."
+    }
+  },
+  "tally": {"dispatched": 3, "rejected": 1, "rounds": {"1": {"pass": 1, "fail": 1}, "2": {"pass": 1}}},
+  "history": [
+    {"round": 1, "task": "1", "verdict": "pass", "hash": "4f745de89c298868aa9b327bf09926551aadac2190e11e4820796da6672d1af0"},
+    {"round": 1, "task": "2", "verdict": "fail", "hash": "476a19de3806bd11386db74784f7ef236a15e19982e69ae067f27415decd9853", "reason": "M2 enumerates 401 or 403 JSON-error bodies but the only M2 leg was a 401, so a JSON 403 — the row the script must tell from the edge's plain-text 403 by body shape — had no leg; and M2 pinned two record tags while leg (b) asserted one."},
+    {"round": 2, "task": "2", "verdict": "pass", "hash": "29c6f8bd66fc3ee413e6446aa828fb6bc1ade24a917893fc397283d4ee54343d"}
+  ]
+}
