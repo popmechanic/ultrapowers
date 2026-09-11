@@ -877,7 +877,9 @@ export async function doctor ({
   const billing = await run(READS.billing)
   const list = await run(READS.list)
   const github = await run(READS.github)
-  const token = await run(READS.token)
+  // The status read names the configured account (`fleet.json` `account`), never
+  // the code's default: the keychain entries are named by email since 2026-09-11.
+  const token = await run(wantAccount ? `${READS.token} --account ${wantAccount}` : READS.token)
   const accounts = await run(READS.accounts)
   const policies = new Map()
   for (const name of policyNames(want, renderer)) {
