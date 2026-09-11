@@ -81,3 +81,4 @@
 {"kind":"publish:merge","sha":null,"left":"base moved","detail":"tip a4f8aad50c3927b8b1657d6fc094d9e2ac0afd41 → 0f305df05a4c30ed6eb54a0f3c6359eb63c4aaf2","id":"01M28YJTTY00008V7BRNZTDXXQ","ts":1789154388830}
 {"kind":"run:open","runId":"run-104","base":"091caedaa0fd8aff8243bd69895a1055387ff7ca","source":"fleet/publish-fold.mjs","id":"01M28YJW8600005RDKFBWEACWF","ts":1789154390278}
 {"kind":"driver:publish-fold","run":"104","attempt":"2","base":"091caedaa0fd8aff8243bd69895a1055387ff7ca","tip":"0f305df05a4c30ed6eb54a0f3c6359eb63c4aaf2","candidate":"ae3779f4f12347e026b6c8c771145182a02cbd12","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M28YYHWX0000Q17YM5G4C1NM","ts":1789154772893}
+{"kind":"publish:merge","sha":"d1476865f47aaa2af68bffa04685829934ef3f28","id":"01M28YYVYM00006MJA59V2AK82","ts":1789154783188}
