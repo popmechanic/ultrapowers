@@ -97,8 +97,8 @@ FENCED_SECTION = ("- The suite is green.\n"
 
 # The `--emit-args` top-level keys before this task (no `--run-dir`), plus the
 # one key it adds. `acceptance` is not among them: the `**Acceptance:**` line
-# left the grammar in the same wave, and the key left the payload with it —
-# see tests/test_compile_plan_acceptance_line.py.
+# left the grammar in the same wave, and the key left the payload with it;
+# the key is simply absent (run-88, 2026-09-10).
 BASE_ARGS_KEYS = {"waves", "wavesPath", "edges", "dependencyEdges",
                   "waveLabels", "globalConstraints", "planPath", "planClaim"}
 

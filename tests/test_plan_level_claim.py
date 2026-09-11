@@ -335,7 +335,7 @@ def test_extract_gate_input_task_is_unchanged(tmp_path):
 # ---------------------------------------------------------------------------
 
 # No `acceptance`: the `**Acceptance:**` line left the grammar and the key left
-# this payload with it — see tests/test_compile_plan_acceptance_line.py.
+# this payload with it (run-88, 2026-09-10).
 ARGS_KEYS = ["waves", "wavesPath", "edges", "dependencyEdges",
              "waveLabels", "globalConstraints", "constraintChecks", "planPath"]
 
