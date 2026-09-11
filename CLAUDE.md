@@ -160,24 +160,15 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   2026-09-07: a prose rule violated twice becomes a check; the referee reading of 2026-09-11 on
   #911 — reviewers never escalated a referee finding, 3 of 3 terminal verdicts false — decided the
   referee's deletion whole, plan in authoring; rule 4 cuts both ways: a check is kept only if the
-  record shows it raises what a model would not); #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
-  operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
-  #553 examiner / #554 clause-to-leg / #555 BASE-facts Context / #556 collaborative review all
-  shipped; live tickets #232 #526 #572 #582; #599 (should exams be sealed again?) closed
-  2026-09-04 — exams stay recorded-and-reviewed, sealing returns only on a run that shows a
-  gaming shape. Its rules: the exam is written by a peer, never the submitter or the editor;
-  the plan names nothing it does not Produce/Consume outside a tool-generated BASE-facts block;
-  one signature per plan; review is collaborative and independence is authorship, not secrecy —
-  the implementer runs the peer's exam; an edit to it is recorded as `examEdited`, named to the
-  referee, and reviewed — never refused by the driver, since 2026-09-02); #525 *The Verification
+  record shows it raises what a model would not); #551 *Peer Review* — **CLOSED 2026-09-11 as reached** (#552–#556, #638, #642, #644 shipped; exams
+  recorded-and-reviewed, sealing retired; the pair question answered on #232: the second reviewer
+  earns its keep; #526 stays an enhancement); #525 *The Verification
   Frontier* (review finds truth it cannot enforce — three generations of
   blocking-findings-that-could-not-block; tickets #518/#519/#232, experiment queue
   #511→#522→#462→#516, single novelty per run window; run-57 was the first run that did block,
   on a real defect); #414 *Experience Compiler* (run = event log, ledger = wiki, learning =
-  fold); #485 *The Record* (re-chartered 2026-09-04: the TinyBase store's deletion at 0.3.5 was
-  approved inside #589 but never argued on its own, so the destination is now *what is the
-  live multi-run record — git, a hub (#601 prototype), or a CRDT again — and what does each
-  delete?*); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
+  fold); #485 *The Record* — **CLOSED 2026-09-11 as superseded** by #810/#913 (finished record = the
+  two tags; live record = the kata daemon on the hub VM, #814 shape 3); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
   licenses** (tier 2, the cross-run fold, shipped at #715; tier 1 shipped as shadow seeding only;
   every kernel-seen join after run-44 was line-disjoint; re-charter on the first publish fold with a
   conflict; #359 #665 #832 #728 keep the `merge-frontier` label). Its standing rules: read its
