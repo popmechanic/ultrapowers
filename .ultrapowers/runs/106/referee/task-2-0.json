@@ -1,0 +1,845 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [
+    {
+      "check": "footprint",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "path outside FILES: `fleet/tests/exams/run_106/test_sim_inventory.mjs`"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-1/base/src/z.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-1/base/tests/z.test.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-2/base/docs/a.md` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/clean-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/deps-1/base/package.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/deps-1/base/src/a.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/deps-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/deps-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/deps-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-1/base/src/x.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-2/base/src/x.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-3/base/src/x.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-3/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-3/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-3/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-4/base/src/x.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-4/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-4/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/exam-4/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-1/base/README.md` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-1/base/src/snake.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-1/base/tests/snake.test.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-2/base/fleet/run-engine.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-2/base/fleet/tests/test_run_engine_exam_fix_edit.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-3/base/skills/ultrapowers/scripts/compile_plan.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-3/base/tests/test_compile_plan_engine_self_change.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-3/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-3/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-3/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-4/base/fleet/sandbox-boot.sh` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-4/base/fleet/tests/test_sandbox_boot_merge.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-4/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-4/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-4/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-5/base/README.md` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-5/base/src/kebab.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-5/base/tests/kebab.test.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-5/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-5/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-5/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/SKILL.md` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-6/base/skills/ultrapowers/references/first-run.md` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-6/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-6/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-6/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-7/base/fleet/janitor.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-7/base/fleet/retire.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-7/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-7/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/footprint-7/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-1/base/src/foo.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-2/base/src/foo.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-3/base/src/foo.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-3/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-3/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-3/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-4/base/src/boom.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-4/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-4/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-mjs-4/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-1/base/pkg/mod.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-2/base/pkg/mod.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-3/base/pkg/mod.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-3/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-3/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-py-3/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-1/base/src/foo.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-2/base/src/foo.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-3/base/src/foo.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-3/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-3/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-ts-3/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-1/base/fleet/run-engine.mjs` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-2/base/fleet/sandbox-boot.sh` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/linker-unlinked-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-1/base/src/config.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-2/base/tests/config.test.ts` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/secrets-2/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-1/base/src/a.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-1/base/tests/test_a.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-1/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-1/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-1/task.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-2/base/src/a.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-2/base/tests/test_a.py` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-2/expected.json` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-2/patch.diff` absent from FILES"
+    },
+    {
+      "check": "footprint",
+      "severity": "blocking",
+      "actor": "implementer",
+      "detail": "deleted BASE file `fleet/tests/fixtures/referee/testcount-2/task.json` absent from FILES"
+    },
+    {
+      "check": "test-count",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "top-level tests +7 / −10 across the patch: net drop of 3, removing `z doubles`, `snake joins words with an underscore`, `test_one_task`, `kebab joins words with a hyphen`, `the endpoint is read`, `test_one`, `test_two`, `test_one`, `test_two`, `test_referee_linker.mjs drops the pytest shell-out and keeps its source pins  [M4 / leg (e)]` with no removal declared in the task"
+    },
+    {
+      "check": "dependencies",
+      "severity": "minor",
+      "actor": "implementer",
+      "detail": "dependency manifest changed: `fleet/tests/fixtures/referee/deps-1/base/package.json` (name, private, dependencies)"
+    }
+  ],
+  "settled": [
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "fleet/tests/test_sim_inventory.mjs at fleet/tests/exams/run_106/test_sim_inventory.mjs exists; exam ran, exit 0"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/test_sim_inventory.mjs": "mjs",
+    "fleet/tests/test_sims_are_hermetic.mjs": "mjs"
+  },
+  "ms": 7
+}
