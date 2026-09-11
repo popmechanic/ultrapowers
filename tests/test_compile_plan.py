@@ -1366,3 +1366,41 @@ def test_line_range_suffix_is_stripped_from_write_set():
     assert [(e["from"], e["to"], e["why"]) for e in ser["dag_edges"]] == [("1", "2", "write-after-write")]
 
 
+# Restored 2026-09-11 after the cut: Files-parsing tolerances the claims-v1 grammar
+# still relies on (unbackticked paths, comma lists) and the placeholder wave fact.
+
+
+def test_unbackticked_path_drops_trailing_prose(tmp_path):
+    plan = tmp_path / "plainpath.md"
+    plan.write_text(
+        "# Plan: Plain path\n\n"
+        "### Task A: creator\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: src/app.py — the new module\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: modifier\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "write-after-create"} in out["dag_edges"]
+
+
+
+def test_unbackticked_comma_paths_lose_no_overlap(tmp_path):
+    # An unbackticked comma list keeps the first path in the write set, so the
+    # write-after-create overlap edge is not lost.
+    plan = tmp_path / "commapaths.md"
+    plan.write_text(
+        "# Plan: Comma paths\n\n"
+        "### Task 1: creator\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: src/app.py, src/other.py\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: modifier\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "2", "why": "write-after-create"} in out["dag_edges"]
+
+
+
+def test_all_three_tasks_share_wave_one():
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    assert sorted(out["waves"][0]) == ["1", "2", "3"]
+
