@@ -5,8 +5,8 @@
  * assertion names its leg and the clause it comes from:
  *
  *   (0) [M6] the two shim files are gone, nothing under `fleet/` names them, the
- *       banned-string grep matches nothing, and `target.mjs` says that no GitHub
- *       integration rides the tag; [M5] the usage string's flags;
+ *       banned-string grep matches nothing, and `target.mjs` says that every
+ *       GitHub integration rides the tag by policy; [M5] the usage string's flags;
  *   (a) [M1] a green launch's mutating lobby verbs are exactly one `new …` line,
  *       with the rendered setup script on that call's stdin, and no `cp`, no
  *       `integrations attach`, no `comment` and no ssh into a VM;
@@ -85,7 +85,7 @@ import {
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'popmechanic/smoke'
-/** The target's one GitHub integration — the `--integration` half M1 spells. */
+/** The target's one GitHub integration — the object the launcher requires to exist. */
 const GH = 'gh-popmechanic-smoke'
 /** How a real target's `origin` is spelled; three other spellings are checked below. */
 const ORIGIN_URL = `https://github.com/${TARGET}.git`
@@ -114,7 +114,7 @@ const VERBS = JSON.parse(fs.readFileSync(VERBS_PATH, 'utf8'))
 const VERB_NAMES = Object.keys(VERBS.verbs)
 /** The two lines a launch with no `--account` adds, verbatim. */
 const ACCOUNT_LINE = 'account=ultrapowers'
-const DRIFT_LINE = 'verb-drift: 12 verbs match fleet/exe-verbs.json (captured 2026-09-05)'
+const DRIFT_LINE = 'verb-drift: 14 verbs match fleet/exe-verbs.json (captured 2026-09-11)'
 
 // ── The seam's rules ────────────────────────────────────────────────────────
 
@@ -333,8 +333,8 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
 
   const targetSource = fs.readFileSync(path.join(FLEET_DIR, 'target.mjs'), 'utf8')
   assert.ok(
-    targetSource.includes('No GitHub integration rides `tag:fleet`'),
-    '(0) [M6] target.mjs says that no GitHub integration rides `tag:fleet` — deleting the old sentence is not enough'
+    targetSource.includes('Every GitHub integration rides `tag:fleet` by policy'),
+    '(0) [M6] target.mjs says that every GitHub integration rides `tag:fleet` by policy — deleting the old sentence is not enough'
   )
 
   for (const flag of ['--repo', '--cpu', '--memory']) {
@@ -352,9 +352,9 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
   )
 
   // The fixture the two rendered lines are pinned against: the shipped record's
-  // twelve verbs, captured the day the account landed.
-  assert.equal(VERB_NAMES.length, 12, '(d) [M4 drift] fleet/exe-verbs.json records twelve verbs')
-  assert.equal(VERBS.capturedAt, '2026-09-05', '(d) [M4 drift] captured 2026-09-05')
+  // fourteen verbs, recaptured the day exe.dev added the policy verbs.
+  assert.equal(VERB_NAMES.length, 14, '(d) [M4 drift] fleet/exe-verbs.json records fourteen verbs')
+  assert.equal(VERBS.capturedAt, '2026-09-11', '(d) [M4 drift] captured 2026-09-11')
 }
 
 // ── a. [M1] one mutating verb: the `new` line, with the script on its stdin ──
@@ -369,11 +369,15 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
   const expectedComment =
     `run=1 plan=${result.plan} target=${TARGET} base=${ws.repo.base} engine=${ENGINE}`
   const expectedNew = `new --name ${result.vm} --tag fleet --comment '${expectedComment}'` +
-    ` --integration claude-max,${GH} --cpu 8 --memory 16GB --setup-script /dev/stdin --json`
+    ' --cpu 8 --memory 16GB --setup-script /dev/stdin --json'
 
   assert.deepEqual(
     exec.mutating(), [expectedNew],
     '(a) [M1] exactly one mutating lobby verb, and it is the `new` line M1 spells'
+  )
+  assert.ok(
+    !/--integration/.test(newLines(exec)[0]),
+    '(a) [M1] the `new` line carries no --integration — exe.dev refuses it since 2026-09-11; the credentials reach the VM by the policy tag:fleet'
   )
   assert.equal(result.comment, expectedComment, '(a) [M1] the assignment the `new` line carries')
   assert.equal(
@@ -393,8 +397,8 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
     '(a) [M1] no `cp` — the run is a plain `new` on the default image'
   )
   assert.deepEqual(
-    exec.lobby().filter((l) => l.startsWith('integrations attach')), [],
-    '(a) [M1] no `integrations attach` — the integrations ride the `new` line'
+    exec.lobby().filter((l) => /^integrations (attach|policy set)/.test(l)), [],
+    '(a) [M1] no `integrations attach` and no `policy set` — the credentials are already on the policy tag:fleet'
   )
   assert.deepEqual(
     exec.lobby().filter((l) => l.startsWith('comment ')), [],
@@ -1073,7 +1077,7 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
   assert.ok(driftExec.mutating()[0].startsWith('new '), '(d) [M4 drift] that one line being the `new`')
   assert.equal(
     renderLaunch(driftResult).split('\n').find((line) => line.startsWith('verb-drift: ')),
-    'verb-drift: drift since 2026-09-05: rm: --json vanished',
+    'verb-drift: drift since 2026-09-11: rm: --json vanished',
     '(d) [M4 drift] the rendered line names the verb and the flag that went'
   )
   drifted.cleanup()

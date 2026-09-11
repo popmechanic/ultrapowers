@@ -84,6 +84,20 @@ const CMD = {
   accounts: `node ${CLAUDE_TOKEN} accounts --json`
 }
 
+/** The policy read for one integration, and what it answers (measured 2026-09-11):
+ *  `policy.selector` is the complete attachment expression, `revision` the
+ *  opaque string `policy set --if-revision` echoes back. */
+const policyCmd = (name) => `ssh exe.dev "integrations policy get ${name} --json"`
+const REVISION = 'ar1_0123456789abcdef'
+const policyJson = (name, selector = 'tag:fleet') => `${JSON.stringify({
+  integration: { name, team: false },
+  scope: 'personal',
+  revision: REVISION,
+  valid: true,
+  policy: { selector, wire: selector, expiresAt: null, simpleSelectors: [selector] }
+})}\n`
+const policyAnswer = (name, selector) => ({ code: 0, stdout: policyJson(name, selector) })
+
 const TARGET = 'popmechanic/ultrapowers'
 const ghName = (target) => `gh-${String(target).replace(/\//g, '-')}`
 
@@ -143,6 +157,7 @@ const GREEN = () => ({
   [CMD.github]: { code: 0, stdout: GITHUB_LISTING },
   [CMD.token]: { code: 0, stdout: `${STATUS_LINE}\n` },
   [CMD.accounts]: { code: 0, stdout: `${ACCOUNTS_JSON}\n` },
+  [policyCmd('claude-max')]: policyAnswer('claude-max'),
   ...Object.fromEntries(
     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
   )
@@ -427,6 +442,7 @@ case "$*" in
   *whoami*) echo marcus ;;
   *"billing plan"*) echo '${BILLING_JSON}' ;;
   *"integrations list"*) echo '${CATALOG_JSON}' ;;
+  *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
   *) exit 1 ;;
 esac

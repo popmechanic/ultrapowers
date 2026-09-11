@@ -27,10 +27,14 @@
  *   5. issues exactly one mutating lobby verb:
  *
  *        new --name <vm> --tag fleet --comment '<assignment>'
- *            --integration claude-max,gh-<owner>-<repo>
  *            --cpu <cpu> --memory <memory> --setup-script /dev/stdin --json
  *
- *      with the rendered setup script on that call's stdin.
+ *      with the rendered setup script on that call's stdin. The verb carries
+ *      no `--integration`: exe.dev refuses that flag since 2026-09-11 ("new
+ *      --integration cannot safely rewrite a singular attachment policy"), and
+ *      the run's credentials reach the VM by policy instead — each integration
+ *      (`claude-max`, `gh-<owner>-<repo>`, the renderer's) carries the
+ *      attachment policy `tag:fleet`, so `--tag fleet` is what grants them.
  *
  * Nothing schedules the janitor, so the launcher runs it: one `janitor()` pass
  * between the pool read and the run number, whose reaped VMs the result carries
@@ -54,8 +58,8 @@
  * push its branch or open its PR, and a run that cannot publish is a run nobody
  * asked for. `node fleet/target.mjs <owner>/<repo>` builds the object once.
  *
- * The renderer, when the config file names one, rides the same `new` line: its
- * integration is appended to `--integration` and the setup script drops the
+ * The renderer, when the config file names one, reaches the box the same way:
+ * its integration rides the `tag:fleet` policy, and the setup script drops the
  * proxy address under /etc/fleet. It is read from `~/.ultrapowers/fleet.json`
  * and never from a flag — an address the whole fleet shares is not a per-launch
  * choice. A `render` the laptop can see is malformed is refused before anything
@@ -76,7 +80,6 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import {
-  CLAUDE_INTEGRATION,
   COMMENT_MAX_BYTES,
   ENGINE_URL,
   EXE_HOST,
@@ -146,11 +149,15 @@ const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
  * `fleet/setup-script.mjs`'s own two rules, copied rather than imported for the
  * reason `ACCOUNT_NAME` is: the laptop refuses on the laptop what the renderer
  * would have thrown on, before a VM exists to throw it. The integration is an
- * exe.dev object name and reaches an `--integration` value; the account is a
+ * exe.dev object name and reaches a proxy hostname; the account is a
  * Cloudflare account id and reaches a URL path segment.
  */
 const RENDER_INTEGRATION_NAME = /^[a-z][a-z0-9-]*$/
 const RENDER_ACCOUNT_ID = /^[A-Za-z0-9_-]+$/
+
+/** The flag `new` may never carry: exe.dev refuses it, and the policy
+ *  `tag:fleet` on each integration is what grants a fleet VM its credentials. */
+const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 
 /** The lobby-verb record the preflight compares the live lobby against. */
 const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
@@ -779,10 +786,9 @@ export async function launch ({
     )
   }
   // A renderer the account has no object for is refused here, before the plan
-  // is pushed and before any VM exists: the `new` line would name an
-  // integration exe.dev cannot attach, and the run would come up with an
-  // address pointing at nothing. The fix is the first-run walk, which is where
-  // the proxy object is built once per account.
+  // is pushed and before any VM exists: the run would come up with an address
+  // pointing at a proxy the edge does not have. The fix is the first-run walk,
+  // which is where the proxy object is built once per account.
   if (render !== null && !integrations.some((row) => row.name === render.integration)) {
     throw new Refusal(
       `launch: ~/.ultrapowers/fleet.json names render.integration ${render.integration} but integrations list --json has no ${render.integration} — build it once per account: references/first-run.md §render`
@@ -881,15 +887,20 @@ export async function launch ({
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   const script = renderSetupScript({ run: String(run), ...readFleetFiles(), render })
-  // The renderer rides the `new` line beside the other two: nothing is attached
-  // afterwards, so a box either comes up with its integrations or does not come
-  // up. A launch with no renderer names two, exactly as it always has.
-  const integrationValue = `${CLAUDE_INTEGRATION},${githubName}` +
-    (render === null ? '' : `,${render.integration}`)
-  const remoteFor = (vm) =>
-    `new --name ${vm} --tag ${FLEET_TAG} --comment '${comment}'` +
-    ` --integration ${integrationValue}` +
-    ` --cpu ${cpu} --memory ${memory} --setup-script /dev/stdin --json`
+  // No `--integration` on the verb: the run's credentials — `claude-max`, the
+  // target's object and, when named, the renderer's — reach the box by the
+  // attachment policy `tag:fleet` each of them carries, so `--tag fleet` is the
+  // grant. exe.dev refuses the flag outright since 2026-09-11, and a line that
+  // carried it would fail every launch at `new`; hence the guard, which
+  // refuses before the verb is issued rather than after the lobby does.
+  const remoteFor = (vm) => {
+    const remote = `new --name ${vm} --tag ${FLEET_TAG} --comment '${comment}'` +
+      ` --cpu ${cpu} --memory ${memory} --setup-script /dev/stdin --json`
+    if (NEW_INTEGRATION_FLAG.test(remote)) {
+      throw new Refusal(`launch: the \`new\` verb must not carry --integration — exe.dev refuses it since 2026-09-11; integrations reach a fleet VM by the policy tag:${FLEET_TAG}`)
+    }
+    return remote
+  }
 
   const minted = new Set()
   const failures = []

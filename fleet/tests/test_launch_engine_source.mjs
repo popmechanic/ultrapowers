@@ -89,7 +89,7 @@ const mainTipLine = (sha) => `engine=${sha} (main tip; pass --engine <40-hex> to
 const VERBS = JSON.parse(fs.readFileSync(new URL('../exe-verbs.json', import.meta.url), 'utf8'))
 /** The two lines a launch with no `--account` adds, verbatim. */
 const ACCOUNT_LINE = 'account=ultrapowers'
-const DRIFT_LINE = 'verb-drift: 12 verbs match fleet/exe-verbs.json (captured 2026-09-05)'
+const DRIFT_LINE = 'verb-drift: 14 verbs match fleet/exe-verbs.json (captured 2026-09-11)'
 
 // ── The seam's rules ────────────────────────────────────────────────────────
 

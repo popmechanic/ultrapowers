@@ -22,10 +22,11 @@
 # publish time produced a bot-authored PR).
 #
 # No orchestrator, no control VM, no token on this box, and no waiting for an
-# assignment: the launcher writes the comment and attaches the integrations
-# BEFORE it starts the unit. Amendment 10 holds: every git command and every
-# GitHub call below is this script's, never a model's, and the push happens
-# only after systemd says the engine service is inactive.
+# assignment: the launcher writes the comment, and the integrations reach this
+# box by the policy tag:fleet, BEFORE it starts the unit. Amendment 10 holds:
+# every git command and every GitHub call below is this script's, never a
+# model's, and the push happens only after systemd says the engine service is
+# inactive.
 #
 # THREE TRANSIENT BRANCHES AND TWO TAGS, all on the TARGET repository and none
 # of them anywhere else (#598). What a run leaves behind is the two tags:

@@ -24,6 +24,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 /** exe.dev's ceiling for a `--setup-script` payload. */
 export const SETUP_SCRIPT_MAX_BYTES = 10240
+/** The fleet's own, tighter budget for the same payload: headroom under the
+ *  platform's ceiling, so a growing bootstrap is noticed on the laptop before
+ *  the lobby refuses it. */
+export const SETUP_SCRIPT_BUDGET_BYTES = 8192
 export const NODE_VERSION = '24.20.0'
 export const BUN_VERSION = '1.4.0'
 
@@ -178,6 +182,13 @@ git config --global user.email fleet@exe.dev
 
 
 systemctl --user daemon-reload
+# Credentials reach this box by the policy tag:fleet, with no documented order
+# against this script; wait, bounded, until Reflection lists claude-max.
+status booting "setup: integrations"
+for i in $(seq 1 30); do
+  curl -fsS https://reflection.int.exe.xyz/integrations | grep -q '"claude-max"' && break
+  sleep 2
+done
 status booting "setup: starting the run"
 systemctl --user start "fleet-run@$RUN.service"
 sudo -n rm -f -- "$0"
@@ -186,6 +197,9 @@ sudo -n rm -f -- "$0"
   const bytes = Buffer.byteLength(script, 'utf8')
   if (bytes > SETUP_SCRIPT_MAX_BYTES) {
     throw new Error(`setup script is ${bytes} bytes; the ceiling is ${SETUP_SCRIPT_MAX_BYTES}`)
+  }
+  if (bytes > SETUP_SCRIPT_BUDGET_BYTES) {
+    throw new Error(`setup script is ${bytes} bytes; the fleet's budget is ${SETUP_SCRIPT_BUDGET_BYTES}`)
   }
   return script
 }

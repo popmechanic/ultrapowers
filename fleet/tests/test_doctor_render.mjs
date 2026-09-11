@@ -81,6 +81,20 @@ const CMD = {
   accounts: `node ${CLAUDE_TOKEN} accounts --json`
 }
 
+/** The policy read for one integration, and what it answers (measured 2026-09-11):
+ *  `policy.selector` is the complete attachment expression, `revision` the
+ *  opaque string `policy set --if-revision` echoes back. */
+const policyCmd = (name) => `ssh exe.dev "integrations policy get ${name} --json"`
+const REVISION = 'ar1_0123456789abcdef'
+const policyJson = (name, selector = 'tag:fleet') => `${JSON.stringify({
+  integration: { name, team: false },
+  scope: 'personal',
+  revision: REVISION,
+  valid: true,
+  policy: { selector, wire: selector, expiresAt: null, simpleSelectors: [selector] }
+})}\n`
+const policyAnswer = (name, selector) => ({ code: 0, stdout: policyJson(name, selector) })
+
 const TARGET = 'popmechanic/ultrapowers'
 const ghName = (target) => `gh-${String(target).replace(/\//g, '-')}`
 
@@ -156,6 +170,8 @@ const GREEN = () => ({
   [CMD.github]: { code: 0, stdout: GITHUB_LISTING },
   [CMD.token]: { code: 0, stdout: `${STATUS_LINE}\n` },
   [CMD.accounts]: { code: 0, stdout: `${ACCOUNTS_JSON}\n` },
+  [policyCmd('claude-max')]: policyAnswer('claude-max'),
+  [policyCmd(RENDER_NAME)]: policyAnswer(RENDER_NAME),
   ...Object.fromEntries(
     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
   )
@@ -402,15 +418,40 @@ for (const [label, answer] of [
 
 {
   // Context/M2: presence by name in the listing already parsed for the `claude`
-  // and `integrations` rows is the whole check — the render option issues no
-  // read of its own, so a run with it asks exactly the commands a run without it
-  // asks. (An http-proxy answers nothing useful to `integrations test`.)
+  // and `integrations` rows is the whole of this row's check — the render row
+  // issues no read of its own. (An http-proxy answers nothing useful to
+  // `integrations test`.) The one command a configured renderer adds is the
+  // `integrations` row's policy read of the renderer's object, which has to be
+  // on tag:fleet like the other two: a run with it asks exactly the commands a
+  // run without it asks, plus that one read.
   const { calls: bare } = await run()
   const { calls: configured } = await withRenderListing({ render: { ...RENDER_KEY } })
+  const added = configured.filter((cmd) => !bare.includes(cmd))
   assert.deepEqual(
-    configured,
+    added,
+    [policyCmd(RENDER_NAME)],
+    `2 [M2] a configured renderer adds exactly its policy read; got ${JSON.stringify(configured)}`
+  )
+  assert.deepEqual(
+    configured.filter((cmd) => cmd !== policyCmd(RENDER_NAME)),
     bare,
-    `2 [M2] the render row adds no command; got ${JSON.stringify(configured)}`
+    '2 [M2] and every other command is the same, in the same order'
+  )
+
+  // The renderer's object off the policy is the `integrations` row's red, and
+  // the `render` row stays green: it answers presence, not reachability.
+  const { result: offPolicy } = await withRenderListing({
+    render: { ...RENDER_KEY },
+    overrides: {
+      [CMD.list]: { code: 0, stdout: listing(RENDER_CATALOG()) },
+      [policyCmd(RENDER_NAME)]: policyAnswer(RENDER_NAME, 'vm:fleet-r7-2609032215-a1b2')
+    }
+  })
+  assert.equal(rowById(offPolicy, 'render').status, 'ok', '2 [M2] the render row answers presence alone')
+  assert.equal(rowById(offPolicy, 'integrations').status, 'missing', "2 [M2] the renderer's object off tag:fleet reddens integrations")
+  assert.ok(
+    rowById(offPolicy, 'integrations').detail.includes(`integrations policy set ${RENDER_NAME} 'tag:fleet' --permanent --if-revision=<revision>`),
+    `2 [M2] naming the set for the renderer's object; got ${rowById(offPolicy, 'integrations').detail}`
   )
 }
 
@@ -630,6 +671,8 @@ case "$*" in
   *whoami*) echo marcus ;;
   *"billing plan"*) echo '${BILLING_JSON}' ;;
   *"integrations list"*) echo '${CATALOG_JSON}' ;;
+  *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
+  *"integrations policy get ${RENDER_NAME}"*) echo '${policyJson(RENDER_NAME).trim()}' ;;
   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
   *) exit 1 ;;
 esac

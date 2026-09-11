@@ -191,13 +191,17 @@ RUNS_SENTENCE = "The agent runs every command in this section itself."
 # "here, you type this"; the setup path runs the command itself now.
 OFFER_FORMS = ("you run", "in your terminal", "! node", "! ssh")
 
-# The five commands the setup path is built from, exactly as the task names them.
+# The commands the setup path is built from, exactly as the task names them. The
+# off-policy repair is the get/set two-step: exe.dev refuses `integrations
+# attach`/`detach` since 2026-09-11, and a policy is replaced whole under the
+# revision the get answered.
 COMMANDS = (
     "node <plugin-root>/fleet/doctor.mjs --json",
     "node <plugin-root>/fleet/claude-token.mjs login --code-from-clipboard",
     "node <plugin-root>/fleet/target.mjs <owner>/<repo>",
     "ssh exe.dev integrations setup github",
-    'ssh exe.dev "integrations detach <name> tag:fleet"',
+    'ssh exe.dev "integrations policy get <name> --json"',
+    "ssh exe.dev \"integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>\"",
 )
 
 # The three steps only a human can take, and the question that follows each.
