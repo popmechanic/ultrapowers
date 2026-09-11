@@ -1,0 +1,230 @@
+{
+  "ok": true,
+  "stamp": "run-98",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-98"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "Seven sims that caught nothing are gone",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "CLAUDE.md",
+          "fleet/roles/README.md",
+          "fleet/tests/test_publish_fold.mjs",
+          "fleet/tests/test_run_engine.mjs",
+          "fleet/tests/test_run_engine_baseline.mjs",
+          "fleet/tests/test_run_engine_exam_evidence.mjs",
+          "fleet/tests/test_run_engine_suite_passes.mjs",
+          "fleet/tests/test_run_main.mjs",
+          "fleet/tests/test_run_record_keys.mjs",
+          "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+          "tests/test_fleet_suite.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The counter's window starts when the test lands, and runners are never candidates",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "skills/ultralearn/SKILL.md",
+          "skills/ultralearn/scripts/catch_counter.py",
+          "skills/ultralearn/scripts/catch_report.py",
+          "tests/test_ultralearn_catch_report.py",
+          "tests/test_ultralearn_catches.py"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "Seven sims that caught nothing are gone",
+          "files": [
+            "CLAUDE.md",
+            "fleet/roles/README.md",
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_run_engine.mjs",
+            "fleet/tests/test_run_engine_baseline.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "fleet/tests/test_run_record_keys.mjs",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "tests/test_fleet_suite.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "CLAUDE.md",
+            "fleet/roles/README.md",
+            "fleet/tests/test_publish_fold.mjs",
+            "fleet/tests/test_run_engine.mjs",
+            "fleet/tests/test_run_engine_baseline.mjs",
+            "fleet/tests/test_run_engine_exam_evidence.mjs",
+            "fleet/tests/test_run_engine_suite_passes.mjs",
+            "fleet/tests/test_run_main.mjs",
+            "fleet/tests/test_run_record_keys.mjs",
+            "fleet/tests/test_sandbox_boot_approval_evidence.mjs",
+            "tests/test_fleet_suite.py"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "for f in test_publish_fold.mjs test_run_engine.mjs test_run_engine_baseline.mjs test_run_engine_exam_evidence.mjs test_run_engine_suite_passes.mjs test_run_main.mjs test_sandbox_boot_approval_evidence.mjs; do test ! -e \"fleet/tests/$f\" || { echo \"survives: $f\"; exit 1; }; done",
+            "for f in test_publish_fold.mjs test_run_engine.mjs test_run_engine_baseline.mjs test_run_engine_exam_evidence.mjs test_run_engine_suite_passes.mjs test_run_main.mjs test_sandbox_boot_approval_evidence.mjs; do test \"$(grep -c \"$f\" tests/test_fleet_suite.py)\" = 0 || { echo \"bridge names: $f\"; exit 1; }; done; test \"$(sed -n '1,/^## Doctrine/p' CLAUDE.md | grep -c 'test_run_engine\\.mjs')\" = 0 && test \"$(sed -n '/^## How features are built/,$p' CLAUDE.md | grep -c 'test_run_engine\\.mjs')\" = 0",
+            "python3 -m pytest -q tests/test_fleet_suite_collection.py && python3 -c \"import sys, os; sys.path.insert(0,'tests'); import test_fleet_suite as b; names={os.path.basename(p) for p in b.collect_sims('fleet')}; bad=[n for n in ('test_publish_fold.mjs','test_run_engine.mjs','test_run_engine_baseline.mjs','test_run_engine_exam_evidence.mjs','test_run_engine_suite_passes.mjs','test_run_main.mjs','test_sandbox_boot_approval_evidence.mjs') if n in names]; assert not bad, bad; assert len(names) > 50, len(names); print('bridge collects none of the seven')\""
+          ],
+          "proofGuards": []
+        },
+        {
+          "id": "2",
+          "title": "The counter's window starts when the test lands, and runners are never candidates",
+          "files": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/catch_counter.py",
+            "skills/ultralearn/scripts/catch_report.py",
+            "tests/test_catch_report_window.py",
+            "tests/test_ultralearn_catch_report.py",
+            "tests/test_ultralearn_catches.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "skills/ultralearn/SKILL.md",
+            "skills/ultralearn/scripts/catch_counter.py",
+            "skills/ultralearn/scripts/catch_report.py",
+            "tests/test_ultralearn_catch_report.py",
+            "tests/test_ultralearn_catches.py"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_catch_report_window.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_catch_report_window.py",
+          "proofRuns": [
+            "python3 -m pytest -q tests/test_ultralearn_catch_report.py",
+            "python3 -m pytest -q tests/test_ultralearn_catches.py"
+          ],
+          "proofGuards": [
+            "tests/test_catch_report_window.py"
+          ]
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Ares"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- A deletion is whole: no test, mention or bridge entry survives that names a deleted file, except history (a past run's reading in CLAUDE.md's Doctrine section, a fixture plan under `tests/fixtures/`, or a plan under `docs/`).\n\n**Acceptance:** suite \u2014 the committed suite is the verification.",
+    "constraintChecks": [
+      {
+        "cmd": "python3 -m pytest -q tests/test_fleet_suite_collection.py",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-98/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-98/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-98/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-98/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
