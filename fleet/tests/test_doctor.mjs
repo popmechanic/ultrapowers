@@ -76,6 +76,20 @@ const CMD = {
   accounts: `node ${CLAUDE_TOKEN} accounts --json`
 }
 
+/** The policy read for one integration, and what it answers (measured 2026-09-11):
+ *  `policy.selector` is the complete attachment expression, `revision` the
+ *  opaque string `policy set --if-revision` echoes back. */
+const policyCmd = (name) => `ssh exe.dev "integrations policy get ${name} --json"`
+const REVISION = 'ar1_0123456789abcdef'
+const policyJson = (name, selector = 'tag:fleet') => `${JSON.stringify({
+  integration: { name, team: false },
+  scope: 'personal',
+  revision: REVISION,
+  valid: true,
+  policy: { selector, wire: selector, expiresAt: null, simpleSelectors: [selector] }
+})}\n`
+const policyAnswer = (name, selector) => ({ code: 0, stdout: policyJson(name, selector) })
+
 /** The five BASE reads, in BASE's order — M1 keeps them first and unchanged. */
 const BASE_READS = [CMD.whoami, CMD.billing, CMD.list, CMD.github, CMD.token]
 
@@ -101,8 +115,11 @@ const RECORD = recordFixture('two-verb.json', { capturedAt: FIXTURE_CAPTURED, ve
 const HELP_READS = FIXTURE_NAMES.map(helpCmd)
 
 /** M1 leg (a): the whole ordered list of reads a green run over the fixture
- *  record issues, and the only commands it ever runs. (BASE's `FIVE_READS`.) */
-const ALL_READS = [...BASE_READS, CMD.accounts, ...HELP_READS]
+ *  record issues, and the only commands it ever runs. (BASE's `FIVE_READS`.)
+ *  The policy read of `claude-max` follows the accounts read; `--target` adds
+ *  the target object's own policy read after it. */
+const ALL_READS = [...BASE_READS, CMD.accounts, policyCmd('claude-max'), ...HELP_READS]
+const TARGETED_READS = (gh) => [...BASE_READS, CMD.accounts, policyCmd('claude-max'), policyCmd(gh), ...HELP_READS]
 
 /** M4: what `help <verb>` prints — a `Command:` line, a description, an
  *  `Options:` block whose lines are two spaces, the flag, spaces, its
@@ -180,6 +197,8 @@ const GREEN = () => ({
   [CMD.github]: { code: 0, stdout: GITHUB_LISTING },
   [CMD.token]: { code: 0, stdout: `${STATUS_LINE}\n` },
   [CMD.accounts]: { code: 0, stdout: accountsJson(ACCOUNTS_ONE) },
+  [policyCmd('claude-max')]: policyAnswer('claude-max'),
+  [policyCmd(GH)]: policyAnswer(GH),
   ...Object.fromEntries(
     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
   )
@@ -273,7 +292,7 @@ const allOkBut = (id) => ({ ...ALL_OK, [id]: 'missing' })
   }
 
   const { calls: targeted } = await run({}, { target: TARGET })
-  assert.deepEqual(targeted, ALL_READS, '1 [M1 leg a] --target adds no read')
+  assert.deepEqual(targeted, TARGETED_READS(GH), "1 [M1 leg a] --target adds exactly the target object's policy read")
 
   // Nothing in a run creates, copies or removes anything: twice over is the
   // same list again.
@@ -507,16 +526,13 @@ for (const [label, catalog] of [
 }
 
 {
-  // claude-max on tag:fleet is the subscription handed to every fleet VM for as
-  // long as the object lives — red, naming the detach.
+  // claude-max listed as attached to tag:fleet is how a policy-attached object
+  // shows in the listing (measured 2026-09-11) — the row is green; whether the
+  // object reaches a fleet VM is the `integrations` row's question.
   const catalog = [claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET)]
   const { result } = await run({ [CMD.list]: { code: 0, stdout: listing(catalog) } })
   const claude = rowById(result, 'claude')
-  assert.equal(claude.status, 'missing', '3 claude-max on tag:fleet turns claude red')
-  assert.ok(
-    claude.detail.includes('integrations detach claude-max tag:fleet'),
-    `3 the detail names the detach; got ${claude.detail}`
-  )
+  assert.equal(claude.status, 'ok', `3 claude-max on the listing's tag:fleet is ok; got ${claude.detail}`)
 }
 
 // ── 4. github ────────────────────────────────────────────────────────────────
@@ -548,29 +564,66 @@ for (const [label, answer] of [
 
 // ── 5. integrations, and the verdict ─────────────────────────────────────────
 
-for (const [label, extra, named] of [
-  // Recognised by its declared type…
-  [`${LEGACY_RUNS} on the tag`, { name: LEGACY_RUNS, type: 'github', attachments: ['tag:fleet'] }, LEGACY_RUNS],
-  // …by the fleet's own naming when the listing says nothing else…
-  ['a gh-x-y on the tag', { name: 'gh-x-y', attachments: ['tag:fleet'] }, 'gh-x-y'],
-  // …or by its type under a name that says nothing.
-  ['a github-typed themis on the tag', { name: 'themis', type: 'github', attachments: ['tag:fleet'] }, 'themis']
+/** The get/set two-step the row names as its fix, for one integration. */
+const policyFix = (name) => [
+  `integrations policy get ${name} --json`,
+  `integrations policy set ${name} 'tag:fleet' --permanent --if-revision=<revision>`
+]
+
+for (const [label, selector] of [
+  // An object built before the policy change, still on a per-VM grant…
+  ['claude-max on a vm: atom', 'vm:fleet-r7-2609032215-a1b2'],
+  // …one narrowed to another tag…
+  ['claude-max on another tag', 'tag:themis'],
+  // …or one with no policy at all.
+  ['claude-max on no policy', null]
 ]) {
-  // A tag attachment lands on every fleet VM, so any GitHub object on the tag
-  // is red — with or without --target — and names the detach.
-  const catalog = [...GREEN_CATALOG(), extra]
-  const answer = { [CMD.list]: { code: 0, stdout: listing(catalog) } }
+  // A credential reaches a fleet VM by the policy `tag:fleet` and by nothing
+  // else, so a bearer object whose selector is anything else is red — with or
+  // without --target — and names the get/set that replaces it.
+  const answer = { [policyCmd('claude-max')]: policyAnswer('claude-max', selector) }
 
   for (const target of [null, TARGET]) {
     const { result } = await run(answer, { target })
     const row = rowById(result, 'integrations')
     const where = target === null ? 'without --target' : 'with --target'
     assert.equal(row.status, 'missing', `5 ${label} turns integrations red ${where}`)
-    assert.ok(
-      row.detail.includes(`integrations detach ${named} tag:fleet`),
-      `5 the detail names the detach ${where}; got ${row.detail}`
-    )
+    for (const step of policyFix('claude-max')) {
+      assert.ok(row.detail.includes(step), `5 the detail names \`${step}\` ${where}; got ${row.detail}`)
+    }
     assert.equal(result.verdict, 'not-ready', `5 ${label} is not a ready fleet ${where}`)
+  }
+}
+
+for (const [label, answer] of [
+  ['a policy read that exits 1', { code: 1, stdout: '' }],
+  ['a policy read that is not JSON', { code: 0, stdout: 'integrations: no such integration\n' }],
+  ['a policy read with no policy and no revision', { code: 0, stdout: '{"valid":true}\n' }]
+]) {
+  // A policy the doctor cannot read is red as well: it cannot say the fleet is
+  // granted the object, and the fix is the same two-step.
+  const { result } = await run({ [policyCmd('claude-max')]: answer })
+  const row = rowById(result, 'integrations')
+  assert.equal(row.status, 'missing', `5 ${label} turns integrations red`)
+  assert.ok(row.detail.includes('integrations policy get claude-max --json'), `5 the detail names the read; got ${row.detail}`)
+}
+
+{
+  // The policy read is the truth, not the listing's attachments: an object the
+  // listing shows on no attachment at all is green when its policy says
+  // tag:fleet, and one the listing shows on tag:fleet is red when its policy
+  // says otherwise.
+  const listed = [claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET, { attachments: ['tag:fleet'] })]
+  const { result: offPolicy } = await run({
+    [CMD.list]: { code: 0, stdout: listing(listed) },
+    [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
+  }, { target: TARGET })
+  const row = rowById(offPolicy, 'integrations')
+  assert.equal(row.status, 'missing', "5 the target's object off the policy is red whatever the listing shows")
+  assert.ok(row.detail.includes(GH), `5 the detail names the object; got ${row.detail}`)
+  assert.ok(row.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${row.detail}`)
+  for (const step of policyFix(GH)) {
+    assert.ok(row.detail.includes(step), `5 the detail names \`${step}\`; got ${row.detail}`)
   }
 }
 
@@ -591,26 +644,23 @@ for (const [label, extra, named] of [
 }
 
 {
-  // The target's own object on the tag is red as well.
-  const catalog = [claudeMax(), ghObject(TARGET, { attachments: ['tag:fleet'] })]
-  const { result } = await run({ [CMD.list]: { code: 0, stdout: listing(catalog) } }, { target: TARGET })
+  // A missing target object is asked before its policy is: the row names the
+  // command that builds it, and no policy read of the absent name is judged.
+  const { result, calls } = await run({}, { target: 'popmechanic/smoke' })
   const row = rowById(result, 'integrations')
-  assert.equal(row.status, 'missing', "5 the target's own object on the tag turns the row red")
-  assert.ok(
-    row.detail.includes(`integrations detach ${GH} tag:fleet`),
-    `5 the detail names the detach; got ${row.detail}`
-  )
+  assert.equal(row.status, 'missing', '5 a missing object is red before any policy question')
+  assert.ok(!row.detail.includes('policy'), `5 the detail is about the object, not its policy; got ${row.detail}`)
+  assert.ok(calls.includes(policyCmd('gh-popmechanic-smoke')), '5 the read is still issued — the doctor is a fixed list of reads')
 }
 
 {
-  // No GitHub object on the tag and the target's object unattached is ok — and
-  // so is a fleet with no targets yet.
+  // Both on the policy with --target is ok and names both; a fleet with no
+  // targets yet is ok on the bearer's policy alone.
   const { result: targeted } = await run({}, { target: TARGET })
-  assert.equal(
-    rowById(targeted, 'integrations').status,
-    'ok',
-    `5 an unattached target object is ok; got ${rowById(targeted, 'integrations').detail}`
-  )
+  const row = rowById(targeted, 'integrations')
+  assert.equal(row.status, 'ok', `5 both objects on tag:fleet is ok; got ${row.detail}`)
+  assert.ok(row.detail.includes('claude-max') && row.detail.includes(GH), `5 the detail names both; got ${row.detail}`)
+  assert.ok(row.detail.includes('tag:fleet'), `5 and the policy; got ${row.detail}`)
   const { result: bare } = await run()
   assert.equal(rowById(bare, 'integrations').status, 'ok', '5 no --target asks for no target object')
 }
@@ -631,12 +681,7 @@ for (const [label, extra, named] of [
     // M2: an accounts read the doctor cannot believe.
     accounts: { [CMD.accounts]: { code: 1, stdout: '' } },
     github: { [CMD.github]: { code: 1, stdout: '' } },
-    integrations: {
-      [CMD.list]: {
-        code: 0,
-        stdout: listing([...GREEN_CATALOG(), { name: 'themis', type: 'github', attachments: ['tag:fleet'] }])
-      }
-    }
+    integrations: { [policyCmd('claude-max')]: policyAnswer('claude-max', 'vm:fleet-r7-2609032215-a1b2') }
   }
   for (const [id, overrides] of Object.entries(scenarios)) {
     const { result } = await run(overrides)
@@ -752,6 +797,7 @@ ${HELP_CASES}
   *whoami*) echo marcus ;;
   *"billing plan"*) echo '${BILLING_JSON}' ;;
   *"integrations list"*) echo '${CATALOG_JSON}' ;;
+  *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
   *) exit 1 ;;
 esac
@@ -799,8 +845,8 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
   assert.equal(drift.status, 'ok', `6b [leg g] verb-drift is ok against the real record; got ${drift.detail}`)
   assert.equal(
     drift.detail,
-    '12 verbs match fleet/exe-verbs.json (captured 2026-09-05)',
-    `6b [M4 leg g] the green CLI run's verb-drift detail is the twelve-verb match sentence; got ${drift.detail}`
+    '14 verbs match fleet/exe-verbs.json (captured 2026-09-11)',
+    `6b [M4 leg g] the green CLI run's verb-drift detail is the fourteen-verb match sentence; got ${drift.detail}`
   )
 
   const accounts = parsed.rows.find((r) => r.id === 'accounts')
@@ -1374,19 +1420,21 @@ for (const [label, fixtureName, body] of [
   // M1: an unreadable record issues no help read at all.
   assert.deepEqual(
     calls,
-    [...BASE_READS, CMD.accounts],
+    [...BASE_READS, CMD.accounts, policyCmd('claude-max')],
     `9 [M1] an unreadable record issues the reads before it and no help read; got ${JSON.stringify(calls)}`
   )
 }
 
 // ── 10. M6 / leg (f) — fleet/exe-verbs.json ──────────────────────────────────
 
-/** M6: the record's content, captured from the live lobby on 2026-09-05. The
- *  copy verb is absent on purpose: it left the fleet with the golden image, and
- *  its tag-copying flag is a string banned under `fleet/` by the sweep in
- *  fleet/tests/test_launch.mjs. */
+/** M6: the record's content, captured from the live lobby on 2026-09-05 and
+ *  recaptured 2026-09-11, the day exe.dev added `integrations policy get/set`
+ *  and `--policy` on `add` (and began refusing `new --integration`, which its
+ *  help still lists). The copy verb is absent on purpose: it left the fleet
+ *  with the golden image, and its tag-copying flag is a string banned under
+ *  `fleet/` by the sweep in fleet/tests/test_launch.mjs. */
 const RECORDED = {
-  capturedAt: '2026-09-05',
+  capturedAt: '2026-09-11',
   verbs: {
     new: [
       '--comment', '--cpu', '--disk', '--env', '--image', '--integration', '--json', '--memory',
@@ -1398,7 +1446,8 @@ const RECORDED = {
     tag: ['--d', '--json'],
     'integrations add': [
       '--act-as-user', '--attach', '--bearer', '--comment', '--fields', '--for', '--header',
-      '--name', '--no-auth', '--peer', '--readonly', '--repository', '--strip-prefix', '--target', '--team'
+      '--name', '--no-auth', '--peer', '--policy', '--readonly', '--repository', '--strip-prefix',
+      '--target', '--team', '--until'
     ],
     'integrations attach': ['--for', '--team', '--until'],
     'integrations detach': ['--team'],
@@ -1407,22 +1456,24 @@ const RECORDED = {
       '--act-as-user', '--bearer', '--clear-header', '--comment', '--fields', '--header', '--no-auth',
       '--readonly', '--repository', '--strip-prefix', '--target', '--team', '--webhook-url'
     ],
+    'integrations policy get': ['--json', '--team'],
+    'integrations policy set': ['--for', '--if-revision', '--permanent', '--team', '--until'],
     'ssh-key generate-api-key': ['--cmds', '--exp', '--json', '--label', '--vm'],
     'billing plan': ['--json']
   }
 }
 
 {
-  // leg (f): the file on disk deep-equals the twelve-verb literal, with its
-  // keys in that order and `capturedAt` 2026-09-05.
+  // leg (f): the file on disk deep-equals the fourteen-verb literal, with its
+  // keys in that order and `capturedAt` 2026-09-11.
   assert.deepEqual(REAL_RECORD, RECORDED, '10 [M6 leg f] fleet/exe-verbs.json is the recorded literal')
   assert.deepEqual(
     Object.keys(REAL_RECORD.verbs),
     Object.keys(RECORDED.verbs),
-    '10 [M6 leg f] the verbs keys are exactly the twelve, in that order'
+    '10 [M6 leg f] the verbs keys are exactly the fourteen, in that order'
   )
-  assert.equal(REAL_RECORD.capturedAt, '2026-09-05', '10 [M6 leg f] capturedAt is 2026-09-05')
-  assert.equal(REAL_VERBS.length, 12, '10 [M6 leg f] the record holds twelve verbs')
+  assert.equal(REAL_RECORD.capturedAt, '2026-09-11', '10 [M6 leg f] capturedAt is 2026-09-11')
+  assert.equal(REAL_VERBS.length, 14, '10 [M6 leg f] the record holds fourteen verbs')
 
   // The copy verb is not recorded: its tag-copying flag is banned under fleet/.
   assert.equal(

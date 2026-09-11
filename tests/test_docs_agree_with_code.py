@@ -511,24 +511,27 @@ def test_the_publish_bullet_keeps_the_literals_it_already_declared():
 # ── the one-integration rule ─────────────────────────────────────────────────
 #
 # One GitHub integration per target, `gh-<owner>-<repo>`, acting as the user,
-# created attached to nothing; the launcher binds it to the run's VM at
-# creation. NOTHING rides `tag:fleet` any more — a tagged object is a standing
-# grant on every fleet VM for as long as it lives. Two integrations naming one
+# created on the complete attachment policy `tag:fleet` — the one way a
+# credential reaches a fleet VM since exe.dev began refusing `new --integration`
+# and `integrations attach`/`detach` (2026-09-11). Two integrations naming one
 # repo on a VM have no documented tie-break (measured 2026-09-03), so a document
-# showing a read-only twin, or an add that attaches, teaches the fault back in.
+# showing a read-only twin, an add that `--attach`es, or an attach/detach verb
+# teaches a fault (or a refused verb) back in.
 
 # Backslash-continued shell lines are one command.
 CONTINUATION_RE = re.compile(r"\\\n\s*")
 ADD_GITHUB_RE = re.compile(r"integrations add github[^\n]*")
 INTEGRATION_VERB_RE = re.compile(r"integrations (?:add|attach)[^\n]*")
+REFUSED_VERB_RE = re.compile(r"integrations (?:attach|detach)\b|new [^\n]*--integration\b")
 NAME_RE = re.compile(r"--name\s+([\w<>-]+)")
+FLEET_POLICY = "--policy 'tag:fleet'"
 
 
 def github_add_commands(path):
     return ADD_GITHUB_RE.findall(CONTINUATION_RE.sub(" ", read(path)))
 
 
-def test_documents_create_github_integrations_attached_to_nothing():
+def test_documents_create_github_integrations_on_the_fleet_policy():
     commands = []
     for document in DOCUMENTS:
         commands.extend(github_add_commands(document))
@@ -538,6 +541,9 @@ def test_documents_create_github_integrations_attached_to_nothing():
         assert name, f"an `integrations add github` command carries no --name: {command}"
         assert "--attach" not in command, (
             f"a document attaches a GitHub integration at creation: {command}"
+        )
+        assert FLEET_POLICY in command, (
+            f"a document creates a GitHub integration off the fleet policy: {command}"
         )
         assert "--readonly" not in command, (
             f"a document creates a read-only GitHub integration: {command}"
@@ -561,14 +567,34 @@ def test_the_documents_show_the_per_target_add():
     )
 
 
-def test_no_document_binds_an_integration_to_the_shared_tag():
+def test_no_document_attaches_an_integration_incrementally():
+    """`integrations attach`/`detach` and `new --integration` are refused by
+    exe.dev; a document teaching one teaches a launch that fails at `new`."""
     commands = []
     for document in DOCUMENTS:
         for command in INTEGRATION_VERB_RE.findall(CONTINUATION_RE.sub(" ", read(document))):
             commands.append((document.name, command))
-    assert commands, "no document shows an `integrations add|attach` command at all"
-    bound = [f"{name}: {command}" for name, command in commands if "tag:fleet" in command]
-    assert not bound, f"a document names tag:fleet on an add/attach: {bound!r}"
+    assert commands, "no document shows an `integrations add` command at all"
+    # Prose may name the refused verbs to say they are refused; a command line
+    # (one an operator would paste) may not carry one.
+    refused = []
+    for document in DOCUMENTS:
+        for line in read(document).split("\n"):
+            match = REFUSED_VERB_RE.search(line)
+            # A sentence saying the verb is refused may name it; a command may not.
+            if match and (line.lstrip().startswith(("ssh exe.dev", "ssh exe.dev \"")) or line.lstrip().startswith("new ")):
+                refused.append(f"{document.name}: {line.strip()}")
+    assert not refused, f"a document shows a verb exe.dev refuses since 2026-09-11: {refused!r}"
+
+
+def test_the_launcher_never_passes_integration_to_new():
+    """The launcher's `new` line names no integration; the only `--integration`
+    in launch.mjs is the guard that refuses one."""
+    text = read(LAUNCH)
+    lines = [line for line in text.split("\n") if "--integration" in line and "policy" not in line and "refuses" not in line]
+    for line in lines:
+        assert "` --integration" not in line, f"launch.mjs still appends --integration to the new line: {line.strip()}"
+    assert "NEW_INTEGRATION_FLAG" in text, "launch.mjs carries no guard against --integration on `new`"
 
 
 # ── retired vocabulary ───────────────────────────────────────────────────────

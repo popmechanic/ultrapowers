@@ -100,7 +100,7 @@ export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
   exec.vm = () => calls.filter((c) => isVmSsh(c.cmd, c.argv)).map((c) => vmCall(c.argv))
   /** The mutating lobby verbs only — what a refusal must never have issued. */
   exec.mutating = () => exec.lobby().filter((line) =>
-    /^(cp|rm|comment|rename|new|tag) /.test(line) || /^integrations (add|attach|detach|edit) /.test(line)
+    /^(cp|rm|comment|rename|new|tag) /.test(line) || /^integrations (add|attach|detach|edit|policy set) /.test(line)
   )
   return exec
 }

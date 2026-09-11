@@ -13,15 +13,20 @@
  *   exe-dev       `ssh exe.dev whoami` names an account.
  *   capacity      `billing plan --json` names the pool, beside the size one
  *                 run asks for. The row reports; it limits nothing.
- *   claude        the `claude-max` integration carries the bearer at the edge
- *                 and rides no tag; claude-token's status line rides along.
+ *   claude        the `claude-max` integration carries the bearer at the edge;
+ *                 claude-token's status line rides along.
  *   accounts      `claude-token.mjs accounts --json` lists every keychain
  *                 entry with its expiry, and the row says which account the
  *                 edge carries and whether the config names one the keychain
  *                 does not hold.
  *   github        `integrations setup github --list` lists an account.
- *   integrations  no GitHub integration is attached to `tag:fleet`, and with
- *                 `--target` the target's own object exists, unattached.
+ *   integrations  every integration a run needs — `claude-max`, with
+ *                 `--target` the target's own `gh-<owner>-<repo>`, and the
+ *                 renderer's when the config names one — carries the
+ *                 attachment policy `tag:fleet` (`integrations policy get
+ *                 <name> --json`, `policy.selector`). That policy is the one
+ *                 way a credential reaches a fleet VM: exe.dev refuses `new
+ *                 --integration` and `integrations attach` since 2026-09-11.
  *   verb-drift    `help <verb>` for every verb in fleet/exe-verbs.json, and
  *                 the diff against the flags recorded there. A flag that
  *                 appeared or vanished is a finding in a green row; only a
@@ -86,9 +91,10 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
  *  drives the row from a fixture rather than from the committed record. */
 const DEFAULT_VERBS_PATH = () => path.join(HERE, 'exe-verbs.json')
 
-/** The six standing reads, in the order the doctor issues them. The `help`
- *  reads of the verb-drift row follow, one per verb of the record; together
- *  they are the only commands the doctor ever runs. */
+/** The six standing reads, in the order the doctor issues them. One policy
+ *  read per integration the `integrations` row asks about follows them, then
+ *  the `help` reads of the verb-drift row, one per verb of the record;
+ *  together they are the only commands the doctor ever runs. */
 const READS = Object.freeze({
   whoami: 'ssh exe.dev whoami',
   billing: 'ssh exe.dev "billing plan --json"',
@@ -98,8 +104,13 @@ const READS = Object.freeze({
   accounts: `node ${CLAUDE_TOKEN} accounts --json`
 })
 
-/** The tag a fleet VM inherits, and the integration that carries the bearer. */
+/** The policy read for one integration — the only read of a name. */
+export const policyRead = (name) => `ssh exe.dev "integrations policy get ${name} --json"`
+
+/** The tag a fleet VM is created with, the policy every fleet integration
+ *  carries, and the integration that carries the bearer. */
 const TAG = 'fleet'
+const FLEET_POLICY = `tag:${TAG}`
 const OAUTH_INTEGRATION = 'claude-max'
 
 /** The legacy per-account runs integration, still recognised by name so a fleet
@@ -461,14 +472,32 @@ function attachedTags (entry) {
   return tags
 }
 
-const detach = (name) => `ssh exe.dev "integrations detach ${name} tag:${TAG}"`
+/** The fix for a policy that is not `tag:fleet`: the read, then the write
+ *  under the revision the read answered. */
+const policyFix = (name) =>
+  `ssh exe.dev "integrations policy get ${name} --json" then ` +
+  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>"`
+
+/**
+ * `integrations policy get <name> --json` read defensively: `policy.selector`
+ * (or `policy.wire`) and `revision`. Null when the stdout is not that shape.
+ */
+export function parsePolicy (stdout) {
+  const parsed = readJson(stdout)
+  const policy = parsed?.policy
+  const selector = typeof policy?.selector === 'string'
+    ? policy.selector
+    : (typeof policy?.wire === 'string' ? policy.wire : null)
+  const revision = typeof parsed?.revision === 'string' ? parsed.revision : null
+  if (selector === null && revision === null) return null
+  return { selector, revision }
+}
 
 // ── claude ───────────────────────────────────────────────────────────────────
 
 /**
- * The bearer has to exist at the edge, and it has to ride no tag: an attached
- * `claude-max` is the operator's own subscription handed to every fleet VM for
- * as long as the object lives, rather than for the run's window.
+ * The bearer has to exist at the edge. Whether the object reaches a fleet VM
+ * is the `integrations` row's question (its policy), not this one's.
  *
  * claude-token's status line only decorates the row. Either outcome leaves the
  * status alone — the bearer is injected at the edge whether or not this laptop
@@ -484,13 +513,6 @@ function claudeRow (found, tokenRes) {
       ? `no ${OAUTH_INTEGRATION} integration at the edge`
       : `${OAUTH_INTEGRATION} carries no ${BEARER} header`
     return row('claude', 'missing', `${why} — node fleet/claude-token.mjs login`)
-  }
-  if (have.tags.has(TAG)) {
-    return row(
-      'claude',
-      'missing',
-      `${OAUTH_INTEGRATION} is attached to tag:${TAG}, which grants the subscription to every fleet VM — ${detach(OAUTH_INTEGRATION)}`
-    )
   }
   const status = tokenRes.code === 0 && firstLine(tokenRes.stdout) !== ''
     ? firstLine(tokenRes.stdout)
@@ -709,36 +731,62 @@ function githubRow (res) {
 // ── integrations ─────────────────────────────────────────────────────────────
 
 /**
- * A tag attachment lands on every fleet VM, so ANY GitHub integration on
- * `tag:fleet` is red: two GitHub integrations naming one repo on one VM leave
- * the edge to pick a credential by no documented rule (measured 2026-09-03).
- * The launcher attaches the target's object per VM, for the run's window.
+ * The names the row asks about: the bearer's object always, the target's with
+ * `--target`, the renderer's when the config names one. Each is read once with
+ * `integrations policy get <name> --json`, in this order.
+ */
+function policyNames (target, render) {
+  const names = [OAUTH_INTEGRATION]
+  if (target !== null) names.push(targetIntegration(target))
+  if (render !== null) names.push(render.integration)
+  return names
+}
+
+/**
+ * A credential reaches a fleet VM by the attachment policy on its integration
+ * and by nothing else: exe.dev refuses `new --integration` and `integrations
+ * attach` since 2026-09-11, so every integration a run needs has to carry the
+ * policy `tag:fleet` — the tag `new --tag fleet` creates the VM with. The row
+ * is red for the FIRST name whose `policy.selector` is anything else, naming
+ * the get/set two-step that fixes it, because a stranger reading several
+ * failures at once cannot tell which one to run first.
  *
  * With `--target`, the target's one object `gh-<owner>-<repo>` also has to
- * exist. The detail names the FIRST thing wrong, because a stranger reading
- * several failures at once cannot tell which one to run first.
+ * exist, and that is asked before its policy is. The listing's `attachments`
+ * (which spells a policy-attached object as `tag:fleet` too) is not consulted:
+ * the policy read is the edge's own answer, revision included.
  */
-function integrationsRow (found, target) {
+function integrationsRow (found, target, render, policies) {
   if (found === null) {
     return row('integrations', 'missing', 'integrations list printed no readable JSON')
-  }
-  for (const [name, have] of found) {
-    if (have.github && have.tags.has(TAG)) {
-      return row(
-        'integrations',
-        'missing',
-        `${name} is attached to tag:${TAG}, which grants it to every fleet VM — ${detach(name)}`
-      )
-    }
   }
   if (target !== null) {
     const want = targetIntegration(target)
     if (!found.has(want)) {
       return row('integrations', 'missing', `no ${want} integration for ${target} — node fleet/target.mjs ${target}`)
     }
-    return row('integrations', 'ok', `${want} exists and rides no tag`)
   }
-  return row('integrations', 'ok', `no GitHub integration rides tag:${TAG}`)
+  const names = policyNames(target, render)
+  for (const name of names) {
+    if (!found.has(name)) continue // the claude and render rows name a missing object
+    const res = policies.get(name)
+    const policy = res && res.code === 0 ? parsePolicy(res.stdout) : null
+    if (policy === null) {
+      return row(
+        'integrations',
+        'missing',
+        `integrations policy get ${name} --json printed no readable policy — ${policyFix(name)}`
+      )
+    }
+    if (policy.selector !== FLEET_POLICY) {
+      return row(
+        'integrations',
+        'missing',
+        `${name} carries the attachment policy ${policy.selector === null ? 'none' : JSON.stringify(policy.selector)} rather than ${FLEET_POLICY}, so no fleet VM is granted it — ${policyFix(name)}`
+      )
+    }
+  }
+  return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} on the policy ${FLEET_POLICY}`)
 }
 
 // ── render ───────────────────────────────────────────────────────────────────
@@ -831,6 +879,10 @@ export async function doctor ({
   const github = await run(READS.github)
   const token = await run(READS.token)
   const accounts = await run(READS.accounts)
+  const policies = new Map()
+  for (const name of policyNames(want, renderer)) {
+    policies.set(name, await run(policyRead(name)))
+  }
   const drift = await verbDrift({
     help: (verb) => run(`ssh exe.dev "help ${verb}"`),
     recordPath: verbsPath
@@ -843,7 +895,7 @@ export async function doctor ({
     claudeRow(found, token),
     accountsRow(accounts, found, wantAccount),
     githubRow(github),
-    integrationsRow(found, want),
+    integrationsRow(found, want, renderer, policies),
     verbDriftRow(drift),
     rendererRow(found, renderer)
   ]

@@ -89,7 +89,8 @@ Two things a newcomer would not know:
 The Claude subscription reaches a sandbox as an exe.dev integration named
 `claude-max`: an http-proxy whose bearer is injected at the network edge. The
 VM never holds the token, never sees it, and cannot read it back. This row is
-`ok` when the object carries the bearer header **and** rides no tag.
+`ok` when the object carries the bearer header; whether it is on the fleet's
+policy is the `integrations` row's question.
 
 **In a browser:** claude.ai shows a consent page and then a code. Approve, and
 copy the code.
@@ -119,9 +120,11 @@ Three things this command hides:
   and any `integrations edit claude-max` should pass `--bearer=-` again in the
   same command; read the result from `integrations list --json`, never from a
   request made seconds after the edit.
-- **`claude-max` on `tag:fleet` is red.** A tag binding is a standing
-  credential on every fleet VM for as long as the object lives; the launcher
-  binds it to one VM, at creation, for the run's window. The doctor's detail
+- **`claude-max` reaches a run by the policy `tag:fleet`.** That is the
+  `integrations` row's check, not this one's: since 2026-09-11 exe.dev refuses
+  `new --integration`, so the one way a credential reaches a fleet VM is the
+  attachment policy on the object, and every fleet VM is created with that
+  tag. The doctor's detail
   carries `claude-token`'s own status line too — a laptop with no refresh token
   in its keychain is a warning inside a green row, because the bearer already
   lives at the edge and only the next refresh needs the keychain.
@@ -217,31 +220,36 @@ Three things a newcomer would not know:
 
 An exe.dev integration is a credential injected at the network edge: the VM
 sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
-the secret on the way out. Bindings are per VM or per tag, and time-boxed.
-This row is the GitHub half of that: one object per repository you drive,
-`gh-<owner>-<repo>`, created attached to nothing, and no GitHub integration
-riding the shared tag.
+the secret on the way out. Each integration carries one complete attachment
+policy — an expression over VM names and tags — and a VM that matches it is
+granted the credential. This row checks that every integration a run needs is
+on the fleet's policy, `tag:fleet`: `claude-max`, one GitHub object per
+repository you drive, `gh-<owner>-<repo>`, and the renderer's when you have
+one. A fleet VM is created with that tag, and that is the whole grant.
 
 **In a browser:** nothing.
 
-**The agent runs** this for each repository you drive, which skips an object
-that already exists:
+**The agent runs** this for each repository you drive, which creates the object
+on the policy, or reads an existing object's policy and replaces it only when
+it is not `tag:fleet`:
 
 ```bash
 node <plugin-root>/fleet/target.mjs <owner>/<repo>
 ```
 
-and, when something is riding the shared tag, the detach the doctor names:
+and, for any other object the doctor names as off the policy, the two-step it
+prints — the read first, because the write must echo the revision it answered:
 
 ```bash
-ssh exe.dev "integrations detach <name> tag:fleet"
+ssh exe.dev "integrations policy get <name> --json"
+ssh exe.dev "integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>"
 ```
 
-`target.mjs` is one call underneath:
+`target.mjs` is one call underneath for a fresh object:
 
 ```bash
 ssh exe.dev "integrations add github --name gh-<owner>-<repo> \
-  --repository <owner>/<repo> --act-as-user"
+  --repository <owner>/<repo> --act-as-user --policy 'tag:fleet'"
 ```
 
 The doctor only asks about a target's object when you pass
@@ -249,11 +257,14 @@ The doctor only asks about a target's object when you pass
 
 Three things this command hides:
 
-- **Nothing rides the tag.** A GitHub object on `tag:fleet` is granted to every
-  fleet VM, standing, for as long as the object lives — including the
-  account-wide object a pre-lift fleet was built with. The doctor turns this
-  row red for any of them. The launcher binds `gh-<owner>-<repo>` to one VM, at
-  creation, for the run's window.
+- **The policy is the only grant.** Since 2026-09-11 exe.dev refuses
+  `new --integration`, `integrations attach` and `integrations detach` — one
+  singular policy per integration, replaced whole and revision-checked — so
+  nothing is attached per VM, and the launcher's `new` names no integration.
+  `--if-revision` takes the `revision` the get printed; `--permanent` because
+  an older object's grants may carry mixed expiries, which the set otherwise
+  refuses to inherit. The policy is live: it reaches VMs already running with
+  the tag, and leaves them when it changes.
 - **Never two GitHub integrations naming one repository on one VM.** exe.dev's
   GitHub edge routes by repo path and documents no tie-break between them
   (measured 2026-09-03), so the sandbox refuses to boot into that.
@@ -338,11 +349,13 @@ Three things a newcomer would not know:
   rather than typed: it never appears in an argv, in a shell history, or in
   this conversation. Rotation is one `integrations edit browser-run --bearer=-`
   with a fresh token on stdin.
-- **The object is created attached to nothing, once per account.** The launcher
-  binds it to the run's own VM at `new`, beside the other two —
-  `--integration claude-max,gh-<owner>-<repo>,browser-run` — for the run's
-  window only. Nothing rides `tag:fleet`, here or anywhere else: a tagged object
-  is a standing grant on every fleet VM for as long as it lives.
+- **The object is created once per account, and put on the policy.** Like
+  `claude-max` and the target's object it reaches a run's VM by the attachment
+  policy `tag:fleet` — `integrations policy get browser-run --json`, then
+  `integrations policy set browser-run 'tag:fleet' --permanent
+  --if-revision=<revision>` if the selector is anything else; the doctor's
+  `integrations` row reads it and names that two-step when it is off. The
+  launcher's `new` names no integration at all.
 - **The sandbox calls the proxy address, never Cloudflare's own host.** The one
   URL a run uses is
   `https://browser-run.int.exe.xyz/client/v4/accounts/<id>/browser-rendering`,

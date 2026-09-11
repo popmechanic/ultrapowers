@@ -93,13 +93,19 @@ Keep that integration personal: `--act-as-user` is unavailable on team
 integrations, so a team account's PRs are authored by the installation bot
 rather than by the user.
 
-`integrations` — the target's own object. The agent runs
+`integrations` — every object a run needs, on the fleet's policy. The agent runs
 `node <plugin-root>/fleet/target.mjs <owner>/<repo>` for the repository being
-built, which creates the one object that repository needs, attached to nothing;
-the command is idempotent, so an object already there is left alone. When the
-doctor also reports a GitHub object carrying the fleet tag, the agent asks with
-AskUserQuestion: **Detach the stray GitHub object?** — `Yes, detach it (Recommended)` / `No, leave it and I will look`,
-and on yes it runs `ssh exe.dev "integrations detach <name> tag:fleet"`.
+built, which creates the one object that repository needs on the attachment
+policy `tag:fleet`; the command is idempotent, so an object already there is
+left alone, its policy read and replaced only when it is not `tag:fleet`. When
+the doctor reports another object — `claude-max`, or the renderer's — as off
+that policy, the agent asks with
+AskUserQuestion: **Put `<name>` on the fleet policy?** — `Yes, set its policy to tag:fleet (Recommended)` / `No, leave it and I will look`,
+and on yes it runs `ssh exe.dev "integrations policy get <name> --json"`, reads
+the `revision` it prints, then runs
+`ssh exe.dev "integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>"`
+with that revision. (exe.dev refuses `integrations attach`/`detach` and
+`new --integration` since 2026-09-11; the policy is the only grant.)
 
 The agent re-runs the doctor after each fix, and the row that turned `ok` is
 read back to the user in one line before the next red row is touched. A row
@@ -142,8 +148,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    `fleet-r<N>-…`, and its status page is `https://<vm>.exe.xyz/status.json`.
    Nothing else needs staging — the launcher commits the plan to the target's
    `ultra/plan-run-<N>` branch, then creates the VM in one lobby call with
-   both integrations attached, the assignment as its comment, and a setup
-   script that starts the run's unit. No ssh, no second step.
+   `--tag fleet` (the tag every fleet integration's policy grants), the
+   assignment as its comment, and a setup script that starts the run's unit.
+   No ssh, no second step.
 
    Add `--hold` to that line when the PR should stay open for a person — a
    measurement run; the sandbox then publishes and does not merge.

@@ -133,6 +133,7 @@ for _a in "$@"; do
 done
 case "$_url" in
   *SHASUMS256.txt) _body="$STUB_SHASUMS" ;;
+  *reflection.int.exe.xyz/integrations*) _body='[{"name":"claude-max","type":"http-proxy"}]' ;;
   *) _body="fixture bytes for $_url" ;;
 esac
 if [ -n "$_out" ] && [ "$_out" != "-" ]; then

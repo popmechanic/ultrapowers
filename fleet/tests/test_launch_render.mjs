@@ -6,7 +6,8 @@
  * assertion names its leg and the clause it comes from:
  *
  *   (a) [M1] a green launch whose config names `render` issues exactly one
- *       mutating verb — the `new` line whose `--integration` value is
+ *       mutating verb — the `new` line, carrying no `--integration` (the
+ *       renderer reaches the VM by the policy tag:fleet), whose stdin script is
  *       `claude-max,gh-popmechanic-smoke,browser-run`, whose stdin is
  *       `renderSetupScript({run:'1', ...readFleetFiles(), render})` byte for
  *       byte and carries /etc/fleet/render.env, and whose result's `render` is
@@ -46,7 +47,7 @@ import {
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'popmechanic/smoke'
-/** The target's one GitHub integration — the `--integration` half M1 spells. */
+/** The target's one GitHub integration — the object the launcher requires to exist. */
 const GH = 'gh-popmechanic-smoke'
 /** The renderer this exam's fleet.json names, and the account its address carries. */
 const RENDER = Object.freeze({ integration: 'browser-run', account: 'abc123' })
@@ -216,8 +217,8 @@ async function launchWith (ws, { extra = [], rules = {}, config = CONFIG } = {})
 }
 
 const newLines = (exec) => exec.lobby().filter((line) => line.startsWith('new '))
-/** The one `--integration` value a `new` line carries, and nothing after it. */
-const integrationValue = (line) => /--integration (\S+)/.exec(line)?.[1] ?? null
+/** Does a `new` line carry an `--integration` at all? It never may. */
+const carriesIntegration = (line) => /(^|\s)--integration(=|\s|$)/.test(line)
 const newCallOf = (exec) =>
   exec.calls.find((c) => c.cmd === 'ssh' && String(c.argv[1] ?? '').startsWith('new '))
 const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations list --json')
@@ -232,17 +233,15 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
   const expectedComment =
     `run=1 plan=${result.plan} target=${TARGET} base=${ws.repo.base} engine=${ENGINE}`
   const expectedNew = `new --name ${result.vm} --tag fleet --comment '${expectedComment}'` +
-    ` --integration claude-max,${GH},${RENDER.integration}` +
-    ` --cpu 8 --memory 16GB --setup-script /dev/stdin --json`
+    ' --cpu 8 --memory 16GB --setup-script /dev/stdin --json'
 
   assert.deepEqual(
     exec.mutating(), [expectedNew],
-    '(a) [M1] exactly one mutating lobby verb, and the `new` line carries --integration claude-max,<gh>,<render.integration>'
+    '(a) [M1] exactly one mutating lobby verb, and the `new` line names no integration — the renderer rides the policy tag:fleet'
   )
-  assert.equal(
-    integrationValue(newLines(exec)[0]),
-    `claude-max,${GH},${RENDER.integration}`,
-    '(a) [M1] the --integration value is the three names, comma-joined, in that order'
+  assert.ok(
+    !carriesIntegration(newLines(exec)[0]),
+    '(a) [M1] the `new` line carries no --integration, renderer or not'
   )
 
   const newCall = newCallOf(exec)
@@ -269,9 +268,9 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
   const ws = workspace()
   const { result, exec } = await launchWith(ws, { config: { ...CONFIG } })
 
-  assert.equal(
-    integrationValue(newLines(exec)[0]), `claude-max,${GH}`,
-    '(b) [M1] with no renderer the --integration value is exactly claude-max,<gh> — nothing after it'
+  assert.ok(
+    !carriesIntegration(newLines(exec)[0]),
+    '(b) [M1] with no renderer the `new` line still carries no --integration'
   )
   assert.equal(
     newCallOf(exec).options?.input,
@@ -293,8 +292,8 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
     extra: ['--config', withRender],
     config: { ...CONFIG }
   })
-  assert.equal(
-    integrationValue(newLines(injectedExec)[0]), `claude-max,${GH}`,
+  assert.ok(
+    !String(newCallOf(injectedExec).options?.input ?? '').includes('render.env'),
     '(b) [M1] a config object was injected, so `render` is config.render ?? null and the file is not read for one'
   )
   assert.equal(
@@ -311,14 +310,9 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
     extra: ['--config', file],
     config: null
   })
-  const fileValue = integrationValue(newLines(fileExec)[0])
   assert.ok(
-    String(fileValue).endsWith(`,${RENDER.integration}`),
-    `(b) [M1] a launch reading its own --config file ends the --integration value with ,${RENDER.integration}; got ${JSON.stringify(fileValue)}`
-  )
-  assert.equal(
-    fileValue, `claude-max,${GH},${RENDER.integration}`,
-    '(b) [M1] and the whole value is the three names M1 spells'
+    !carriesIntegration(newLines(fileExec)[0]),
+    '(b) [M1] a launch reading its own --config file still names no integration on the `new` line'
   )
   assert.deepEqual(
     fileResult.render, { ...RENDER },

@@ -13,8 +13,11 @@ account pool, computes N from the target's own `ultra/*-run-*` branches and its
 refreshes the Claude bearer, and pushes the plan as one commit on `base` to
 `ultra/plan-run-<N>` — that commit's tree is base plus `.ultrapowers/plan.md`.
 Then it issues one lobby verb, `new`, which creates a fresh VM named
-`fleet-r<N>-<yymmddHHMM>-<4 hex>` carrying the run's two integrations, the
-assignment as its comment, and the generated setup script on stdin.
+`fleet-r<N>-<yymmddHHMM>-<4 hex>` with `--tag fleet`, the assignment as its
+comment, and the generated setup script on stdin. The tag is what grants the
+run its credentials: every fleet integration carries the attachment policy
+`tag:fleet`, and `new` names no integration — exe.dev refuses `--integration`
+since 2026-09-11.
 
 The setup script installs the toolchain, the immutable bootstrap at
 `/usr/local/lib/fleet/bootstrap.sh` and the unit template, then starts
@@ -106,8 +109,8 @@ VM exists, and the bearer a run starts on always has the whole run ahead of it;
 `status` shows the expiry.
 
 Rotate the token with `integrations edit claude-max --bearer=-` and a fresh
-token on stdin. `claude-max` rides the run's VM from creation, `--for` the run's
-window, never a tag.
+token on stdin. `claude-max` reaches a run's VM by its attachment policy,
+`tag:fleet`, which the `integrations` row below checks.
 
 **4. `github` — the account link.** `ssh exe.dev "integrations setup github
 --list"` prints the GitHub accounts this exe.dev account has linked. No account
@@ -124,28 +127,45 @@ you, and `prAuthor` on the status page says which one you got. On an exe.dev
 TEAM account `--act-as-user` is unavailable, so the GitHub integration must stay
 personal.
 
-**5. `integrations` — one object per target.** Attached to nothing; the launcher
-binds it to the run's VM at creation:
+**5. `integrations` — one object per target, every object on the policy.** A
+credential reaches a fleet VM by the attachment policy on its integration and by
+nothing else: since 2026-09-11 exe.dev refuses `new --integration` and
+`integrations attach`/`detach` ("cannot safely rewrite a singular attachment
+policy"), so `claude-max`, the target's object and the renderer's each carry the
+complete policy `tag:fleet`, and `new --tag fleet` is the grant. The row reads
+each one's policy and is red for the first whose selector is anything else.
 
 ```bash
 node fleet/target.mjs <owner>/<repo>
 ```
 
-which runs, once, skipping an object that exists:
+which runs, once, creating the object on the policy:
 
 ```bash
-ssh exe.dev "integrations add github --name gh-<owner>-<repo> --repository <owner>/<repo> --act-as-user"
+ssh exe.dev "integrations add github --name gh-<owner>-<repo> --repository <owner>/<repo> --act-as-user --policy 'tag:fleet'"
 ```
 
+and, for an object that already exists, reads its policy and replaces it only
+when the selector is not `tag:fleet` — the same two-step the doctor names for
+any of the three:
+
+```bash
+ssh exe.dev "integrations policy get <name> --json"
+ssh exe.dev "integrations policy set <name> 'tag:fleet' --permanent --if-revision=<revision>"
+```
+
+`--if-revision` is required and is the `revision` the get just answered, so a
+policy something else changed in between is refused rather than overwritten;
+`--permanent` because a legacy object's grants may carry mixed expiries, which
+the set otherwise refuses to inherit.
+
 That is the whole of the target's credential: the sandbox clones, pushes and
-opens the PR through it, and the PR is the gate. No GitHub integration ever
-rides the shared tag — a tagged object is a standing grant on every fleet VM for
-as long as it lives, and the doctor turns the row red for any of them. Never two
-GitHub integrations naming one repository on a VM: the edge routes by repo path
-and documents no tie-break between them, so the sandbox refuses to boot into
-that (see §Traps). A target with no `gh-<owner>-<repo>` object is a launch
-refusal, public or not — a public repo would clone from github.com but could not
-publish.
+opens the PR through it, and the PR is the gate. Never two GitHub integrations
+naming one repository on a VM: the edge routes by repo path and documents no
+tie-break between them, so the sandbox refuses to boot into that (see §Traps);
+two targets' objects on one VM name two repositories, which the edge routes
+apart. A target with no `gh-<owner>-<repo>` object is a launch refusal, public
+or not — a public repo would clone from github.com but could not publish.
 
 ## Per run
 
@@ -160,8 +180,9 @@ reads the pool; computes N from the target's `ultra/*-run-*` branches and its
 `ultra/{plan,evidence}/run-<N>` tags; refuses when `gh-<owner>-<repo>` does not
 exist; refreshes the Claude bearer; pushes the
 plan as one commit on `<sha>` to `ultra/plan-run-<N>`; then issues one `new`
-with the run's name, `--tag fleet`, the assignment as `--comment`, both
-integrations, `--cpu`/`--memory` from the config, and the generated setup script
+with the run's name, `--tag fleet` (which grants every integration on the
+policy `tag:fleet` — the line names none), the assignment as `--comment`,
+`--cpu`/`--memory` from the config, and the generated setup script
 on stdin. It prints the run number, the VM name and the status URL. A refusal
 exits before the plan branch is pushed and before any lobby verb runs.
 
@@ -387,8 +408,19 @@ on the next one, ask her before editing a script.
 
 - `integrations edit` on a GitHub integration serves the cached installation
   token for 30–60 s afterwards: a `gh pr create` twenty seconds after a binding
-  produced a bot-authored PR. Bind the integration when the VM is created, never
-  just-in-time, and wait a minute after any edit before a write.
+  produced a bot-authored PR. The grant is a standing policy the VM matches from
+  creation, never something bound just-in-time; wait a minute after any edit
+  before a write.
+- `new --integration`, `integrations attach` and `integrations detach` are
+  refused by exe.dev since 2026-09-11: one complete attachment policy per
+  integration, replaced whole with `integrations policy set … --if-revision`.
+  A fleet VM is granted an integration by matching that policy (`tag:fleet`),
+  and by nothing the launcher does per VM. The setup script waits, bounded,
+  for Reflection to list `claude-max` before starting the run, since no order
+  between the policy and first boot is documented.
+- `cp` of a fleet VM copies its tags by default, so the copy inherits every
+  credential on the policy and the janitor's reap; take a forensic copy with
+  tag copying off and re-tag deliberately.
 - `--act-as-user` is unavailable on TEAM integrations. On an exe.dev team
   account every PR is authored by `exe-dev-github-integration[bot]`, so the
   GitHub integration has to stay personal.
