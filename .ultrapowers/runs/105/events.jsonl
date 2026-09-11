@@ -8,3 +8,4 @@
 {"kind":"engine:log","line":"setup: branch ultra/integration-run-105 at 091caedaa0fd8aff8243bd69895a1055387ff7ca","id":"01M28WJ57Q0000Z9NP0S665HG1","ts":1789152269559}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M28WJ57R00004FC811YVZPBF","ts":1789152269560}
 {"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"cbca59ab-97ee-4fed-906e-5113ca1e5e7e","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-105/clones/task-1","model":"opus","id":"01M28WJ5QM0000DPFDDRH9PKGZ","ts":1789152270068}
+{"kind":"engine:log","line":"baseline: green on 091caedaa0fd8aff8243bd69895a1055387ff7ca","id":"01M28WXVK40000P5F7TTMN8W6H","ts":1789152652900}
