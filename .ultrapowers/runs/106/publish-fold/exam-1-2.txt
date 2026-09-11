@@ -1,0 +1,11 @@
+ok (1 ms) — fleet/CONTRACT.md carries no line with `referee/task-`  [M1 / leg (a)]
+ok (2 ms) — fleet/CONTRACT.md carries no line with `driver's referee`  [M1 / leg (a)]
+ok (0 ms) — §Literals still lists transcripts before state-exams  [M1 / leg (a)]
+ok (1861 ms) — the planted boot exits 0 and the engine left all three directories  [M2 / leg (b)]
+ok (1 ms) — the transcript and the state exam reach the record byte for byte  [M2 / leg (b)]
+ok (1 ms) — no referee entry at any depth of the committed record  [M2 / leg (b)]
+ok (4 ms) — fleet/sandbox-boot.sh carries no occurrence of referee, in any case  [M3 / leg (c)]
+ok (9 ms) — the boot script parses  [M3 / leg (c)]
+ok (1639 ms) — test_sandbox_boot_state_exams.mjs still prints ALL TESTS PASSED  [M3 / leg (c)]
+ok (237 ms) — tests/test_docs_agree_with_code.py passes  [M4 / leg (d)]
+ALL TESTS PASSED

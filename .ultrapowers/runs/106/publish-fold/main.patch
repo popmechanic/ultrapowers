@@ -1,0 +1,1256 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 2e566bb45b533defefbc57e0ebde01b2390a5ddd..972447d27efcc898bc8acf74fc06d57e53aeb4e2 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -160,26 +160,20 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
+   2026-09-07: a prose rule violated twice becomes a check; the referee reading of 2026-09-11 on
+   #911 — reviewers never escalated a referee finding, 3 of 3 terminal verdicts false — decided the
+   referee's deletion whole, plan in authoring; rule 4 cuts both ways: a check is kept only if the
+-  record shows it raises what a model would not); #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
+-  operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
+-  #553 examiner / #554 clause-to-leg / #555 BASE-facts Context / #556 collaborative review all
+-  shipped; live tickets #232 #526 #572 #582; #599 (should exams be sealed again?) closed
+-  2026-09-04 — exams stay recorded-and-reviewed, sealing returns only on a run that shows a
+-  gaming shape. Its rules: the exam is written by a peer, never the submitter or the editor;
+-  the plan names nothing it does not Produce/Consume outside a tool-generated BASE-facts block;
+-  one signature per plan; review is collaborative and independence is authorship, not secrecy —
+-  the implementer runs the peer's exam; an edit to it is recorded as `examEdited`, named to the
+-  referee, and reviewed — never refused by the driver, since 2026-09-02); #525 *The Verification
++  record shows it raises what a model would not); #551 *Peer Review* — **CLOSED 2026-09-11 as reached** (#552–#556, #638, #642, #644 shipped; exams
++  recorded-and-reviewed, sealing retired; the pair question answered on #232: the second reviewer
++  earns its keep; #526 stays an enhancement); #525 *The Verification
+   Frontier* (review finds truth it cannot enforce — three generations of
+   blocking-findings-that-could-not-block; tickets #518/#519/#232, experiment queue
+   #511→#522→#462→#516, single novelty per run window; run-57 was the first run that did block,
+   on a real defect); #414 *Experience Compiler* (run = event log, ledger = wiki, learning =
+-  fold); #485 *The Record* (re-chartered 2026-09-04: the TinyBase store's deletion at 0.3.5 was
+-  approved inside #589 but never argued on its own, so the destination is now *what is the
+-  live multi-run record — git, a hub (#601 prototype), or a CRDT again — and what does each
+-  delete?*); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and
+-  §Rules before any kernel work; never patch `skills/ultrapowers/kernel/vendor/manyana.py`, it
+-  is sha-pinned on purpose). **One piece moved out of #360 by One Driver Amendment 9
++  fold); #485 *The Record* — **CLOSED 2026-09-11 as superseded** by #810/#913 (finished record = the
++  two tags; live record = the kata daemon on the hub VM, #814 shape 3); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
++  licenses** (tier 2, the cross-run fold, shipped at #715; tier 1 shipped as shadow seeding only;
++  every kernel-seen join after run-44 was line-disjoint; re-charter on the first publish fold with a
++  conflict; #359 #665 #832 #728 keep the `merge-frontier` label). Its standing rules: read its
++  §Ground truth and §Rules before any kernel work; never patch
++  `skills/ultrapowers/kernel/vendor/manyana.py`, it is sha-pinned on purpose. **One piece moved out of #360 by One Driver Amendment 9
+   (2026-08-29): the kernel's INPUT SHAPE** — it takes patches against BASE instead of
+   `--branch <task>=<branch>:<sha>`, so no worker needs shared refs and the worktree-vs-clone
+   question dissolves. Semantics, layering and the sha-pin are untouched and still #360's.
+@@ -223,7 +217,8 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
+   `skills/ultrawrite/SKILL.md`, `test_publish_fold.mjs`, `CONTRACT.md` + `compile_plan.py`) all folded
+   green with zero conflicts, which met the pre-registered condition and retired the earlier rule
+   ("run in parallel wherever file sets are disjoint"). Caveat on the record: every one of those
+-  joins was line-disjoint, so the resolver's only real fold is still run-36 (2 misses, 2026-09-07);
++  joins was line-disjoint; the resolver's only real folds are run-36 (2 resolvers, merged) and run-44
++  (4 resolvers, 2 misses, suite red, caught), both 2026-09-07 — 6 dispatches, 2 misses, both caught;
+   the next drain that produces a conflict is the resolver's measurement, not a reason to serialize.
+   Allocated vCPU stays over-committable (48 on a 16-vCPU plan during that drain), so contention, not
+   allocation, bounds concurrent runs.
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 63c0408f84a7b4e7c02046ca08f0dddc32297daf..af86d5ea007f51fa458808996a03db476ad271b6 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -208,6 +208,20 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+     service's (`--wait`). The render entry passes the boot's render address through to the engine and
+     is empty when the run carries no render integration — a value, never a bearer.
+     `claude auth status` must show `oauth_token` — logged before the engine starts.
++    Beside it, once, the bearer probe: one `GET https://claude-max.int.exe.xyz/api/oauth/usage`
++    through the proxy carrying `-sS`, `--max-time 20` and the header
++    `authorization: Bearer placeholder` (the edge replaces that header with the real token, so the
++    answer is about the token and not about the script), with the status riding as the answer's last
++    line. A 200 logs `bearer probe: alive` and the unit starts. A 401 or 403 whose body is a JSON
++    error document (`"type":"error"`) parks the run right there, before any engine, exam or
++    implementer has spent a token: state `parked`, phase `credential`, `error` exactly
++    `parked: credential bearer <status> — <the body's error.message>`, evidence committed and pushed,
++    both record tags pushed, a `run-<N> parked` notify, exit 0. exe.dev's own plain-text 403 parks
++    the same way as `parked: credential edge 403 — integration not found or not attached to this VM
++    (trace: <32 hex>)`, the trace id verbatim — that is the id support resolves. Anything else — curl
++    non-zero, or a status outside {200, 401, 403} — logs `bearer probe: inconclusive (…)` and starts
++    the unit: a probe never manufactures a park out of a flake, and a credential that really is dead
++    is still stopped by the engine's own credential row at its first worker.
+     No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
+   - publish fold: the target's default branch may have moved while the run worked, so before the PR is
+     opened the boot script folds that tip into the run's branch — under state `running` with phase
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index dfae1a2ab2b716f975f0bf431a365da7ce100308..c9ad330c2198d703cffb76fe0db1b1322293a2aa 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -98,9 +98,12 @@ That opens claude.ai for consent (the same OAuth flow Claude Code uses, with
+ PKCE), reads the code you copy from the callback page off the clipboard,
+ exchanges it, keeps the refresh token in your login keychain, and puts the
+ access token on `claude-max` on stdin. Nothing is printed. The launcher runs
+-`node fleet/claude-token.mjs refresh` before every launch, so the bearer at the
+-edge is never within 30 minutes of expiry when a run starts; `status` shows the
+-expiry.
++`node fleet/claude-token.mjs refresh` before every launch, which installs the
++keychain's access token on `claude-max` at every launch and rotates it first when
++fewer than four hours remain — so a token something else rotated (a `usage` read
++meters an account by rotating it, and never installs) is on the edge before the
++VM exists, and the bearer a run starts on always has the whole run ahead of it;
++`status` shows the expiry.
+ 
+ Rotate the token with `integrations edit claude-max --bearer=-` and a fresh
+ token on stdin. `claude-max` rides the run's VM from creation, `--for` the run's
+@@ -319,7 +322,16 @@ Four logs, in the order a run writes them:
+ 3. `/home/exedev/www/engine.log` — the engine's stdout and stderr, also served
+    at `https://<vm>.exe.xyz/engine.log` and committed to the evidence branch.
+    The `claude auth status` line before the engine starts has to show
+-   `oauth_token`.
++   `oauth_token`, and the line after it is the bearer probe: `bearer probe:
++   alive` is the credential answering and the engine unit starting, `bearer
++   probe: inconclusive (…)` is an answer the probe could not classify (curl
++   failed, or a status that is neither 200 nor 401/403) and the run went ahead
++   anyway. A page whose `error` begins `parked: credential` is a run that never
++   started its engine at all: the class word says which side refused.
++   `bearer` is the token itself — relaunch after
++   `node fleet/claude-token.mjs refresh --force --account <acct>` on the box
++   that holds it. `edge` is exe.dev's proxy refusing this VM, and the cell
++   carries the 32-hex trace id that goes to support@exe.dev with the VM name.
+ 4. `journalctl --user -u fleet-engine-<N>` — the service's own view: OOM kills
+    (`MemoryMax=40G`), the exit code, the timing.
+ 
+diff --git a/fleet/claude-token.mjs b/fleet/claude-token.mjs
+index a4e73fca863f198ae32cdfd0fb975fad2c52a5d9..e5f03b32bff7e6b222b9f61097efbf51fad8e02e 100644
+--- a/fleet/claude-token.mjs
++++ b/fleet/claude-token.mjs
+@@ -7,7 +7,9 @@
+ //                                         the same, with no question at the terminal:
+ //                                         the process polls the clipboard until the
+ //                                         copied `code#state` carries THIS login's state
+-//   node fleet/claude-token.mjs refresh   rotate before a run when < 4 h remain
++//   node fleet/claude-token.mjs refresh   install the keychain's access token at the
++//                                         edge before a run, rotating it first when
++//                                         < 4 h remain
+ //   node fleet/claude-token.mjs status    when the current access token expires
+ //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
+ //                                         its access token is still fresh (`--json`)
+@@ -33,6 +35,12 @@
+ // usage would switch every live sandbox to that account mid-run (the prompt
+ // cache is per account). So rotation and installation are separate — `refresh`
+ // installs unless `--no-install`, and `usage` rotates with `install: false`.
++// Installation is unconditional, rotation is not: `refresh` installs the record's
++// access token even when the record is fresh and nothing rotates, because a
++// `usage` read minutes earlier may have rotated that account with
++// `install: false` and left the edge carrying a revoked bearer (run-100,
++// 2026-09-11). One idempotent `integrations edit … --bearer -` per launch is the
++// price of a launch line that is honest about what the edge carries.
+ //
+ // The flow, constants and request shapes are popmechanic/loom's
+ // (skills/loom/references/oauth-reference.md), measured there against claude.ai.
+@@ -347,9 +355,17 @@ export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT,
+     const rec = readRecord(deps, account)
+     if (!rec) throw new Error('no refresh token in the keychain — run `node fleet/claude-token.mjs login` first')
+     const remaining = rec.expiresAt - deps.now()
+-    if (!force && remaining > REFRESH_AHEAD_MS) {
+-      deps.log(`${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
+-      return { refreshed: false, expiresAt: rec.expiresAt }
++    // A record with no `accessToken` is the pre-`usage` shape (`readRecord` asks
++    // only for `refreshToken` and `expiresAt`): there is nothing to install, so
++    // it rotates as if it were inside the window.
++    if (!force && remaining > REFRESH_AHEAD_MS && typeof rec.accessToken === 'string') {
++      // Fresh, so no grant is spent — but the bearer still goes on, because the
++      // edge may be carrying a token something else rotated away (see the header).
++      const how = install ? installBearer(deps, rec.accessToken, account) : null
++      deps.log(how
++        ? `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — bearer ${how} for ${account}`
++        : `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
++      return { refreshed: false, installed: install, expiresAt: rec.expiresAt }
+     }
+     const tokens = await refreshGrant(deps, rec.refreshToken)
+     // The rotated pair replaces the old one BEFORE the edge is touched: a consumed
+@@ -358,7 +374,7 @@ export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT,
+     writeRecord(deps, tokens, account)
+     if (install) installBearer(deps, tokens.accessToken, account)
+     deps.log(`${INTEGRATION}: refreshed ${account}; fresh until ${iso(tokens.expiresAt)}`)
+-    return { refreshed: true, expiresAt: tokens.expiresAt }
++    return { refreshed: true, installed: install, expiresAt: tokens.expiresAt }
+   } finally {
+     release()
+   }
+diff --git a/fleet/sandbox-boot.sh b/fleet/sandbox-boot.sh
+index 3eaa34c915a1f368995dd6eb52268a4005d1da13..d3c182252575cd4a7622749163620de05a11997a 100755
+--- a/fleet/sandbox-boot.sh
++++ b/fleet/sandbox-boot.sh
+@@ -940,6 +940,110 @@ log_auth_status() {
+   printf '%s\n' "$version" >"$CLAUDE_VERSION_FILE"
+ }
+ 
++# --- the bearer probe --------------------------------------------------------
++#
++# ONE REQUEST, BEFORE THE WAVE. `claude auth status` proves the box is holding
++# an oauth_token; it does not prove that token still works. A revoked bearer
++# (run-100) or an integration the VM lost (run-95) is found today by the first
++# worker to be refused — after the exams and the implementers have been
++# launched and their tokens spent. This asks the cheapest question there is,
++# once, and parks the run at boot when the answer is a refusal.
++#
++# WHY `/api/oauth/usage`: the edge injects its own bearer on every request to
++# the proxy and an injected header REPLACES the client's same-named one
++# (measured 2026-09-03, memory `exe-http-proxy-header-semantics`), so the
++# placeholder below is swapped for the real token and the answer is about that
++# token and not about this script. The endpoint costs no tokens — it is the one
++# `fleet/claude-token.mjs usage` already reads.
++#
++# TWO REFUSALS, TOLD APART BY THE BODY'S SHAPE, because they send an operator to
++# two different places:
++#
++#   * the BEARER itself — 401/403 with a JSON body carrying `"type":"error"`;
++#     the token is dead or the account is not permitted, and the fix is a
++#     refresh. The message is the document's own, verbatim.
++#   * the EDGE — a 403 whose body is exe.dev's plain-text
++#     `integration not found or not attached to this VM (trace: <32 hex>)`,
++#     byte-identical for an integration that was detached and one that never
++#     existed. The trace id is what exe.dev support resolves, so the whole line
++#     rides into the cell.
++#
++# ANYTHING ELSE IS INCONCLUSIVE AND PROCEEDS. A probe that manufactured a park
++# out of a flake — curl that could not connect, a 500 from the proxy — would
++# cost more runs than it saved, and a run whose credential really is dead is
++# still stopped by the engine's own `CREDENTIAL_STATUSES` row at its first
++# worker. The probe's job is to make the common case cheap, not to be the only
++# guard.
++bearer_probe() {
++  local answer code body trimmed compact class="" message="" edge_line
++  # `await_branch_visible`'s shape: no `-f`, the status riding as the answer's
++  # last line, so a refusal is an ANSWER to be classified rather than an error
++  # that takes down a `set -e` script. `--max-time` bounds a proxy that hangs:
++  # a boot must not wait on this longer than it would take to find out the hard
++  # way.
++  answer="$(fleet_curl -sS --max-time 20 \
++    -H 'authorization: Bearer placeholder' \
++    "$ANTHROPIC_PROXY_URL/api/oauth/usage" -w '\n%{http_code}' 2>/dev/null || true)"
++  code="$(printf '%s' "$answer" | tail -n 1)"
++  body="$(printf '%s' "$answer" | sed '$d')"
++
++  if [ "$code" = 200 ]; then
++    log "bearer probe: alive"
++    return 0
++  fi
++  case "$code" in
++    401|403) : ;;
++    *) log "bearer probe: inconclusive (${code:-no answer})"; return 0 ;;
++  esac
++
++  # A JSON error document: the first non-space byte is `{` and the document
++  # says so. `json_field message` answers the FIRST `"message": "…"` in it,
++  # which in this body is `error.message`.
++  trimmed="$(printf '%s' "$body" | sed -e 's/^[[:space:]]*//')"
++  compact="$(printf '%s' "$body" | tr -d ' \t\n')"
++  case "$trimmed" in
++    '{'*)
++      case "$compact" in
++        *'"type":"error"'*)
++          class=bearer
++          message="$(printf '%s' "$body" | json_field message)"
++          [ -n "$message" ] || message="no message" ;;
++      esac ;;
++  esac
++
++  # The edge's own refusal, matched on the sentence it is, with the trace id
++  # kept verbatim. The `grep` is guarded exactly as `json_field`'s is: a match
++  # that found nothing is an answer, and the `head` below closes early over it.
++  if [ -z "$class" ] && [ "$code" = 403 ]; then
++    edge_line="$(printf '%s' "$body" | { grep -Eo 'integration not found or not attached to this VM \(trace: [0-9a-f]{32}\)' || true; } | head -n 1)"
++    if [ -n "$edge_line" ]; then
++      class=edge
++      message="$edge_line"
++    fi
++  fi
++
++  # A 401/403 of some third shape is still the bearer being refused — the class
++  # a reader can act on — with as much of the body as a status cell can carry.
++  if [ -z "$class" ]; then
++    class=bearer
++    message="$(printf '%s' "$body" | tr '\n' ' ' | cut -c1-200)"
++    [ -n "$message" ] || message="no message"
++  fi
++
++  # The park, in `do_boot`'s nothing-to-publish shape exactly: the page, the
++  # evidence commit and its push, both record tags, one notify, exit 0. The run
++  # never started an engine, so there is nothing to wait for and nothing to
++  # publish — what it leaves is the record of why.
++  ERROR="parked: credential $class $code — $message"
++  log "bearer probe: refused — $ERROR"
++  write_status parked "credential"
++  collect_evidence
++  push_evidence "$RUN_ID: parked — credential"
++  record_tags
++  notify "run-$RUN_N parked" "$TARGET_REPO — $ERROR"
++  exit 0
++}
++
+ # A transient SERVICE, not a scope: `--wait` hands back the engine's exit code
+ # and is refused for a scope, `--collect` unloads the unit when it stops so the
+ # is-active check below reads `inactive` rather than a lingering `failed`, and
+@@ -956,6 +1060,9 @@ run_engine() {
+   [ -n "$EFFORT" ] && knobs+=(--implementer-effort "$EFFORT")
+   :
+   log_auth_status
++  # AFTER the token is proven present and BEFORE anything is started: the whole
++  # value of this probe is that it happens while nothing has been spent.
++  bearer_probe
+ 
+   # The renderer address, when this box has one. An `if` and not a trailing
+   # `&& .`: a bare `&&` as a function's last command makes the function's exit
+diff --git a/fleet/tests/_sandbox_boot_helpers.mjs b/fleet/tests/_sandbox_boot_helpers.mjs
+index 15c2c2cf39cfe4ce41cda32c149036c1d507d2ae..c038f7c5c1719ace5f490e5001c69a2405561d17 100644
+--- a/fleet/tests/_sandbox_boot_helpers.mjs
++++ b/fleet/tests/_sandbox_boot_helpers.mjs
+@@ -307,6 +307,28 @@ case "$url" in
+       "${FOLLOWUP_URL}" "\${STUB_ISSUE_CODE:-201}" ;;
+   *notify.int.exe.xyz*)
+     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
++  *claude-max.int.exe.xyz/api/oauth/usage)
++    # THE BEARER PROBE, answered by \`STUB_BEARER\` — the one knob every boot sim
++    # shares, because the probe runs on the way to the engine in ALL of them.
++    # UNSET or empty is the live bearer (the usage document, then 200); the
++    # named rows are the two refusals the boot script must tell apart, plus the
++    # two answers it must refuse to classify. The body and the status ride as
++    # two lines, the shape \`-w '\\n%{http_code}'\` makes real curl print.
++    say "curl bearer"
++    case "\${STUB_BEARER:-}" in
++      revoked)
++        printf '{"type":"error","error":{"type":"authentication_error","message":"OAuth access token has been revoked"}}\\n401\\n' ;;
++      forbidden)
++        printf '{"type":"error","error":{"type":"permission_error","message":"This account is not permitted"}}\\n403\\n' ;;
++      edge)
++        printf 'integration not found or not attached to this VM (trace: 53af9083708deefaa364aa37e112695d)\\n403\\n' ;;
++      down)
++        exit 7 ;;
++      500)
++        printf 'upstream error\\n500\\n' ;;
++      *)
++        printf '{"five_hour":{"utilization":1,"resets_at":"x"},"seven_day":{"utilization":1,"resets_at":"x"}}\\n200\\n' ;;
++    esac ;;
+   *) say "curl UNKNOWN $url"; exit 22 ;;
+ esac
+ `,
+diff --git a/fleet/tests/test_claude_token.mjs b/fleet/tests/test_claude_token.mjs
+index de9b3e4a1e1c5284cc0a3c945a9197473faa9de4..d51f899c750cdc0a07954008c123af7ed3855de1 100644
+--- a/fleet/tests/test_claude_token.mjs
++++ b/fleet/tests/test_claude_token.mjs
+@@ -223,12 +223,24 @@ await leg('login: a failed exchange quotes the status and writes nothing', async
+   assert.equal(h.calls.lobby.filter((c) => !c.verb.startsWith('integrations list')).length, 0)
+ })
+ 
+-await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → nothing touched', async () => {
++// Fresh no longer means untouched: no grant is spent, but the record's access
++// token is installed anyway, because a `usage` read may have rotated it away
++// from under the edge (run-100). The verbs are one `integrations list` and one
++// `integrations edit`; the token rides stdin, as everywhere else.
++await leg('refresh: fresh for more than REFRESH_AHEAD_MS (4 h) → no grant, but the bearer is installed', async () => {
+   const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
+   const r = await refresh(h.deps)
+-  assert.equal(r.refreshed, false)
+-  assert.equal(h.calls.fetch.length, 0)
+-  assert.equal(h.calls.lobby.length, 0)
++  assert.deepEqual(r, { refreshed: false, installed: true, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
++  assert.equal(h.calls.fetch.length, 0, 'a fresh record spends no refresh grant')
++  assert.deepEqual(h.calls.lobby.map((c) => c.verb), [
++    'integrations list --json',
++    `integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}`
++  ])
++  assert.equal(h.calls.lobby[1].input, 'a0', 'the record\'s own token, on stdin')
++  assert.ok(!h.calls.lobby.some((c) => c.verb.includes('a0')), 'and in no verb')
++  const last = h.calls.logs[h.calls.logs.length - 1]
++  assert.match(last, /bearer edited/)
++  assert.doesNotMatch(last, /nothing to do/)
+ })
+ 
+ await leg('refresh: inside REFRESH_AHEAD_MS (4 h) → rotate, store the NEW triple before the edge, then edit', async () => {
+@@ -450,13 +462,13 @@ await leg('[M4 leg (d)] main([\'login\']) without the flag prompts once and read
+   assert.equal(r.how, 'edited')
+ })
+ 
+-await leg('[M4 leg (d)] main refresh/status behave as at BASE', async () => {
++await leg('[M4 leg (d)] main refresh/status route as at BASE — now answering `installed` too', async () => {
+   const fresh = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } })
+-  assert.deepEqual(await main(['refresh'], fresh.deps), { refreshed: false, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
++  assert.deepEqual(await main(['refresh'], fresh.deps), { refreshed: false, installed: true, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
+   assert.equal(fresh.calls.fetch.length, 0)
+ 
+   const forced = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 10 * REFRESH_AHEAD_MS } })
+-  assert.deepEqual(await main(['refresh', '--force'], forced.deps), { refreshed: true, expiresAt: T0 + 3600 * 1000 })
++  assert.deepEqual(await main(['refresh', '--force'], forced.deps), { refreshed: true, installed: true, expiresAt: T0 + 3600 * 1000 })
+   assert.equal(forced.calls.fetch[0].body.grant_type, 'refresh_token')
+ 
+   const st = harness({ record: { refreshToken: 'SECRET', accessToken: 'SECRET-ACCESS', expiresAt: T0 + 90 * 60_000 } })
+diff --git a/fleet/tests/test_claude_token_install.mjs b/fleet/tests/test_claude_token_install.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..670777b53831d1b86c85500cec2838f32f1ac7ab
+--- /dev/null
++++ b/fleet/tests/test_claude_token_install.mjs
+@@ -0,0 +1,406 @@
++/**
++ * fleet/tests/test_claude_token_install.mjs — the exam for
++ * "A launch installs the token it holds, whether or not it rotated it".
++ *
++ * The Claim: when I launch, the token my laptop holds for that account is the
++ * one the edge carries — even when a usage read rotated it minutes before — and
++ * the launch line says the bearer was installed, never "nothing to do".
++ *
++ * Every assertion below names the Proof leg it belongs to and the Machine
++ * clause it comes from, so a reader can map this file back to the contract:
++ *
++ *   M1  `refresh(deps, { account })` on a record whose `expiresAt` is more than
++ *       `REFRESH_AHEAD_MS` away makes no token request, issues exactly one
++ *       `integrations edit claude-max --bearer - --comment account=<account>`
++ *       lobby verb (or the `integrations add http-proxy …` form when
++ *       `integrations list --json` lists no `claude-max`) with the record's
++ *       `accessToken` on that verb's stdin and in no verb's argv, resolves
++ *       `{ refreshed: false, installed: true, expiresAt }`, and its log line
++ *       contains `bearer edited` (or `bearer added`) and does not contain
++ *       `nothing to do`.
++ *   M2  `refresh` on a record inside `REFRESH_AHEAD_MS` rotates as today (one
++ *       `refresh_token` grant, the rotated triple written to the keychain
++ *       before the edge is touched) and installs the NEW `accessToken`,
++ *       resolving `{ refreshed: true, installed: true, expiresAt }`.
++ *   M3  `refresh(deps, { install: false })` — the `--no-install` flag and
++ *       `usage`'s own rotation — issues no lobby verb at all and resolves with
++ *       `installed: false`; and `usage(deps)` on an expired account followed by
++ *       `refresh(deps, { account })` ends with the lobby verb carrying the token
++ *       `usage` rotated to, not the one the record held before.
++ *   M4  `refresh` on a fresh record that carries no `accessToken` field rotates
++ *       it (one grant) and installs the new token, resolving
++ *       `{ refreshed: true, installed: true, expiresAt }`.
++ *   M5  `node fleet/tests/test_claude_token.mjs`, `node fleet/tests/test_launch.mjs`
++ *       and `node fleet/tests/test_sims_are_hermetic.mjs` each print
++ *       `ALL TESTS PASSED` — the Proof's first three `Run:` lines, which the
++ *       driver runs. A sim may not spawn another sim (that is
++ *       `test_sims_are_hermetic.mjs`'s own M4), so what this file can hold is
++ *       the structural half: each of the three is a file under `fleet/tests/`
++ *       and each prints that sentinel. The running of them is the `Run:` line's.
++ *   M6  `fleet/RUNBOOK.md`'s §3 (from the line beginning ``**3. `claude``` to
++ *       the line beginning ``**4. `github```) says the launcher installs the
++ *       keychain's access token on `claude-max` at every launch and rotates it
++ *       when fewer than four hours remain — the section's text contains, in
++ *       order, `every launch` and `four hours` — and no line of
++ *       `fleet/RUNBOOK.md` contains `30 minutes of expiry`.
++ *
++ * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M5, (f) M6.
++ *
++ * The harness is this file's own — the seams `refresh`, `usage` and `main`
++ * touch, and nothing else. It deliberately does not import
++ * `fleet/tests/test_claude_token.mjs`: that file is a sim, not a rig. Nothing
++ * here starts a process, opens a socket or reads a path outside the checkout.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import {
++  INTEGRATION, TARGET, DEFAULT_ACCOUNT, REFRESH_AHEAD_MS,
++  OAUTH, refresh, usage, main
++} from '../claude-token.mjs'
++
++const T0 = 1_800_000_000_000
++const DEFAULT = 'ultrapowers'
++/** The usage endpoint, so a `usage` read is told apart from a refresh grant. */
++const USAGE_ENDPOINT = 'https://api.anthropic.com/api/oauth/usage'
++const USAGE_BODY = Object.freeze({
++  five_hour: { utilization: 50.0, resets_at: '2027-01-15T13:00:00.000Z' },
++  seven_day: { utilization: 10.0, resets_at: '2027-01-20T13:00:00.000Z' }
++})
++
++/**
++ * Every seam stubbed: no network, no keychain, no lock on disk (`refresh` falls
++ * to its own no-op when `deps.lock` is absent). `record` seeds the
++ * `ultrapowers` item, `records` seeds any set; `calls.lobby` records every verb
++ * as `{ verb, input }` and `calls.fetch` records every token request.
++ */
++function harness ({ hasIntegration = true, record = null, records = null, expiresIn = 3600 } = {}) {
++  const calls = { fetch: [], usage: [], lobby: [], keychainReads: [], keychainWrites: [], logs: [], order: [] }
++  const store = new Map()
++  if (record) store.set(DEFAULT, JSON.stringify(record))
++  if (records) for (const [name, rec] of Object.entries(records)) store.set(name, JSON.stringify(rec))
++  let n = 0
++  const deps = {
++    now: () => T0,
++    keychainRead: (name) => {
++      calls.keychainReads.push(name)
++      return store.has(name) ? store.get(name) : null
++    },
++    keychainWrite: (name, value) => {
++      calls.keychainWrites.push({ name, value })
++      calls.order.push('keychain')
++      store.set(name, value)
++      return true
++    },
++    keychainList: () => [...store.keys()],
++    lobby: (verb, input) => {
++      calls.lobby.push({ verb, input })
++      if (verb.startsWith('integrations list')) {
++        return { code: 0, out: JSON.stringify({ integrations: hasIntegration ? [{ name: INTEGRATION }] : [] }) }
++      }
++      calls.order.push('edge')
++      return { code: 0, out: 'Updated integration\n' }
++    },
++    fetch: async (url, init = {}) => {
++      if (String(url) === USAGE_ENDPOINT) {
++        const headers = init.headers ?? {}
++        calls.usage.push({ url: String(url), authorization: headers.Authorization ?? headers.authorization ?? '' })
++        return {
++          ok: true,
++          status: 200,
++          text: async () => '',
++          json: async () => JSON.parse(JSON.stringify(USAGE_BODY))
++        }
++      }
++      n += 1
++      const body = JSON.parse(init.body)
++      calls.fetch.push({ url: String(url), body })
++      return {
++        ok: true,
++        status: 200,
++        text: async () => '',
++        json: async () => ({ access_token: `access-${n}`, refresh_token: `refresh-${n}`, expires_in: expiresIn })
++      }
++    },
++    log: (line) => calls.logs.push(line)
++  }
++  return { deps, calls, store, stored: (name = DEFAULT) => (store.has(name) ? JSON.parse(store.get(name)) : null) }
++}
++
++const bearerVerbs = (calls) => calls.lobby.filter((c) => c.verb.includes('--bearer -'))
++const lastLog = (calls) => calls.logs[calls.logs.length - 1] ?? ''
++/** The expiry a stub `expires_in` of `seconds` mints against the frozen clock. */
++const expiresMs = (seconds) => seconds * 1000
++
++// ── the runner ───────────────────────────────────────────────────────────────
++
++const legs = []
++const leg = (name, fn) => { legs.push([name, fn]) }
++
++// ── (a) the fresh path installs, and says so  [M1] ───────────────────────────
++
++const FRESH = Object.freeze({ refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 })
++
++leg('a fresh record (> REFRESH_AHEAD_MS) installs its own access token with one edit verb and logs `bearer edited`  [M1 / leg (a)]', async () => {
++  const h = harness({ record: { ...FRESH } })
++  const r = await refresh(h.deps, { account: DEFAULT })
++
++  assert.equal(h.calls.fetch.length, 0,
++    '(a) [M1] a record fresh for more than REFRESH_AHEAD_MS makes no token request')
++
++  const edits = h.calls.lobby.filter((c) => c.verb.startsWith(`integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}`))
++  assert.equal(edits.length, 1,
++    `(a) [M1] exactly one lobby verb starts \`integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}\` — ` +
++    `got ${JSON.stringify(h.calls.lobby.map((c) => c.verb))}`)
++  assert.equal(edits[0].verb, `integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}`,
++    '(a) [M1] and that verb is exactly it')
++  assert.equal(edits[0].input, 'a0',
++    "(a) [M1] the record's accessToken rides that verb's stdin")
++  assert.equal(bearerVerbs(h.calls).length, 1,
++    `(a) [M1] and it is the only --bearer - verb: ${JSON.stringify(bearerVerbs(h.calls).map((c) => c.verb))}`)
++  assert.deepEqual(h.calls.lobby.filter((c) => c.verb.includes('a0')).map((c) => c.verb), [],
++    '(a) [M1] and no verb carries the token in its argv (global constraint: the token reaches the edge on stdin only)')
++
++  assert.deepEqual(r, { refreshed: false, installed: true, expiresAt: FRESH.expiresAt },
++    '(a) [M1] refresh resolves { refreshed: false, installed: true, expiresAt }')
++
++  assert.match(lastLog(h.calls), /bearer edited/,
++    `(a) [M1] the last log line says the bearer was edited: ${JSON.stringify(lastLog(h.calls))}`)
++  assert.deepEqual(h.calls.logs.filter((l) => l.includes('nothing to do')), [],
++    `(a) [M1 / Claim] and no log line says "nothing to do": ${JSON.stringify(h.calls.logs)}`)
++  assert.deepEqual(h.calls.logs.filter((l) => l.includes('a0') || l.includes('r0')), [],
++    '(a) [global constraint] and no log line carries a token')
++
++  assert.equal(h.calls.keychainWrites.length, 0,
++    '(a) [M1] the fresh path rotates nothing, so the keychain is untouched')
++})
++
++leg('the same seed with no `claude-max` at the edge adds the http-proxy instead and logs `bearer added`  [M1 / leg (a)]', async () => {
++  const h = harness({ record: { ...FRESH }, hasIntegration: false })
++  const r = await refresh(h.deps, { account: DEFAULT })
++
++  assert.equal(h.calls.fetch.length, 0, '(a) [M1] still no token request')
++  const adds = h.calls.lobby.filter((c) => c.verb.startsWith('integrations add http-proxy'))
++  assert.equal(adds.length, 1,
++    `(a) [M1] exactly one \`integrations add http-proxy …\` verb when integrations list --json lists no ${INTEGRATION} — ` +
++    `got ${JSON.stringify(h.calls.lobby.map((c) => c.verb))}`)
++  assert.match(adds[0].verb, new RegExp(`^integrations add http-proxy --name ${INTEGRATION} .*--bearer - --comment account=${DEFAULT}$`),
++    `(a) [M1] the add verb names ${INTEGRATION} and ends --bearer - --comment account=${DEFAULT}: ${JSON.stringify(adds[0].verb)}`)
++  assert.ok(adds[0].verb.includes(`--target ${TARGET}`),
++    `(a) [M1] at the target the module names: ${JSON.stringify(adds[0].verb)}`)
++  assert.equal(adds[0].input, 'a0', "(a) [M1] with the record's accessToken on stdin")
++  assert.deepEqual(h.calls.lobby.filter((c) => c.verb.includes('a0')).map((c) => c.verb), [],
++    '(a) [M1] and no verb carries it in argv')
++
++  assert.deepEqual(r, { refreshed: false, installed: true, expiresAt: FRESH.expiresAt },
++    '(a) [M1] the add form resolves the same { refreshed: false, installed: true, expiresAt }')
++  assert.match(lastLog(h.calls), /bearer added/,
++    `(a) [M1] and the last log line says the bearer was added: ${JSON.stringify(lastLog(h.calls))}`)
++  assert.deepEqual(h.calls.logs.filter((l) => l.includes('nothing to do')), [],
++    '(a) [M1 / Claim] never "nothing to do"')
++})
++
++leg('a fresh record under --account b installs for `b`, and the comment names it  [M1 / leg (a)]', async () => {
++  const h = harness({ records: { b: { refreshToken: 'r-b', accessToken: 'a-b', expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 } } })
++  const r = await refresh(h.deps, { account: 'b' })
++  const edits = h.calls.lobby.filter((c) => c.verb.includes('--bearer -'))
++  assert.equal(edits.length, 1, '(a) [M1] one bearer verb for the named account')
++  assert.equal(edits[0].verb, `integrations edit ${INTEGRATION} --bearer - --comment account=b`,
++    '(a) [M1] `refresh(deps, { account })` installs with --comment account=<account>')
++  assert.equal(edits[0].input, 'a-b', "(a) [M1] carrying that account's own stored access token")
++  assert.deepEqual(r, { refreshed: false, installed: true, expiresAt: T0 + REFRESH_AHEAD_MS + 60_000 },
++    '(a) [M1] and resolves { refreshed: false, installed: true, expiresAt }')
++})
++
++// ── (b) the rotation path installs the NEW token  [M2] ───────────────────────
++
++leg('a record inside REFRESH_AHEAD_MS rotates, writes the keychain before the edge, and installs the NEW access token  [M2 / leg (b)]', async () => {
++  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
++  const r = await refresh(h.deps, { account: DEFAULT })
++
++  assert.equal(h.calls.fetch.length, 1,
++    '(b) [M2] one token request')
++  assert.equal(h.calls.fetch[0].url, OAUTH.tokenUrl, '(b) [M2] to the token endpoint')
++  assert.equal(h.calls.fetch[0].body.grant_type, 'refresh_token',
++    "(b) [M2] whose body is a `refresh_token` grant")
++  assert.equal(h.calls.fetch[0].body.refresh_token, 'r0',
++    "(b) [M2] spending the record's refresh token")
++
++  assert.deepEqual(h.stored(), { refreshToken: 'refresh-1', accessToken: 'access-1', expiresAt: T0 + expiresMs(3600) },
++    '(b) [M2] the rotated triple replaces the consumed one in the keychain')
++  assert.deepEqual(h.calls.order, ['keychain', 'edge'],
++    `(b) [M2] and it is written BEFORE the edge is touched: ${JSON.stringify(h.calls.order)}`)
++
++  const edits = bearerVerbs(h.calls)
++  assert.equal(edits.length, 1, '(b) [M2] exactly one --bearer - verb')
++  assert.equal(edits[0].verb, `integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}`,
++    '(b) [M2] the edit verb')
++  assert.equal(edits[0].input, 'access-1',
++    "(b) [M2] whose stdin is the FETCHED access token, not the record's old one")
++  assert.deepEqual(h.calls.lobby.filter((c) => c.verb.includes('access-1') || c.verb.includes('a0')).map((c) => c.verb), [],
++    '(b) [global constraint] and no verb carries a token in argv')
++
++  assert.deepEqual(r, { refreshed: true, installed: true, expiresAt: T0 + expiresMs(3600) },
++    '(b) [M2] refresh resolves { refreshed: true, installed: true, expiresAt: <the fetched expiry> }')
++  assert.deepEqual(h.calls.logs.filter((l) => l.includes('access-1') || l.includes('refresh-1') || l.includes('r0')), [],
++    '(b) [global constraint] and no log line carries a token')
++})
++
++// ── (c) metering never moves the edge, and the launch installs what it left  [M3] ──
++
++leg('refresh(deps, { install: false }) on that same fresh record issues no lobby verb at all and resolves installed: false  [M3 / leg (c)]', async () => {
++  const h = harness({ record: { ...FRESH } })
++  const r = await refresh(h.deps, { install: false })
++  assert.equal(h.calls.lobby.length, 0,
++    `(c) [M3] --no-install issues no lobby verb at all — not even \`integrations list\`: ${JSON.stringify(h.calls.lobby.map((c) => c.verb))}`)
++  assert.equal(h.calls.fetch.length, 0, '(c) [M3] and the fresh path still makes no token request')
++  assert.deepEqual(r, { refreshed: false, installed: false, expiresAt: FRESH.expiresAt },
++    '(c) [M3] it resolves { refreshed: false, installed: false, expiresAt }')
++})
++
++leg('main([\'refresh\', \'--no-install\']) routes the flag: no lobby verb, installed: false  [M3 / leg (c)]', async () => {
++  const h = harness({ record: { ...FRESH } })
++  const r = await main(['refresh', '--no-install'], h.deps)
++  assert.equal(h.calls.lobby.length, 0,
++    '(c) [M3] the --no-install flag reaches refresh — zero lobby verbs')
++  assert.deepEqual(r, { refreshed: false, installed: false, expiresAt: FRESH.expiresAt },
++    '(c) [M3] and the result carries installed: false')
++})
++
++leg('refresh --no-install inside the window still rotates, writes the keychain and issues no lobby verb  [M3 / leg (c)]', async () => {
++  const h = harness({ record: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 + 60_000 } })
++  const r = await refresh(h.deps, { install: false })
++  assert.equal(h.calls.fetch.length, 1, '(c) [M3] one refresh grant')
++  assert.deepEqual(h.stored(), { refreshToken: 'refresh-1', accessToken: 'access-1', expiresAt: T0 + expiresMs(3600) },
++    '(c) [M3] the rotated triple is stored')
++  assert.equal(h.calls.lobby.length, 0,
++    '(c) [M3] and the rotation without install moves the edge not at all')
++  assert.deepEqual(r, { refreshed: true, installed: false, expiresAt: T0 + expiresMs(3600) },
++    '(c) [M3] resolving { refreshed: true, installed: false, expiresAt }')
++})
++
++leg('the run-100 sequence: usage rotates an expired account with zero lobby verbs, and the next refresh installs the token usage rotated TO  [M3 / leg (c)]', async () => {
++  // The minted token lives eight hours, as the real one does, so the record
++  // `usage` leaves behind is outside REFRESH_AHEAD_MS and the launch that
++  // follows takes the fresh path — which is exactly the run-100 shape.
++  const h = harness({ records: { [DEFAULT]: { refreshToken: 'r0', accessToken: 'a0', expiresAt: T0 - 1 } }, expiresIn: 8 * 3600 })
++
++  const rows = await usage(h.deps)
++  assert.equal(rows.length, 1, '(c) [M3] one usage row for the one account')
++  assert.equal(h.calls.lobby.length, 0,
++    `(c) [M3] usage issues no integrations verb — metering must not move the edge: ${JSON.stringify(h.calls.lobby.map((c) => c.verb))}`)
++  assert.equal(h.calls.fetch.length, 1, '(c) [M3] and exactly one refresh grant for the expired account')
++  assert.equal(h.calls.fetch[0].body.grant_type, 'refresh_token', '(c) [M3] a refresh_token grant')
++  assert.equal(h.stored().accessToken, 'access-1',
++    "(c) [M3] after which the record holds the token usage rotated to")
++  assert.deepEqual(h.calls.usage.map((u) => u.authorization), ['Bearer access-1'],
++    '(c) [M3] and the usage read used it')
++
++  const r = await refresh(h.deps, { account: DEFAULT })
++  const bearers = bearerVerbs(h.calls)
++  assert.equal(bearers.length, 1,
++    `(c) [M3] the launch that follows issues exactly one --bearer - verb: ${JSON.stringify(bearers.map((b) => b.verb))}`)
++  assert.equal(bearers[0].input, 'access-1',
++    '(c) [M3 / Claim] carrying the token usage rotated to — the edge ends the sequence holding what the keychain holds')
++  assert.deepEqual(h.calls.lobby.filter((c) => c.input === 'a0').map((c) => c.verb), [],
++    '(c) [M3] and no verb carries the pre-usage token')
++  assert.equal(h.calls.fetch.length, 1,
++    '(c) [M3] the launch spends no second grant — the record was already fresh')
++  assert.deepEqual(r, { refreshed: false, installed: true, expiresAt: T0 + expiresMs(8 * 3600) },
++    '(c) [M3 / M1] resolving { refreshed: false, installed: true, expiresAt }')
++})
++
++// ── (d) a record with no accessToken rotates and installs  [M4] ──────────────
++
++leg('a fresh record carrying no accessToken rotates once and installs the new token  [M4 / leg (d)]', async () => {
++  const h = harness({ record: { refreshToken: 'r0', expiresAt: T0 + 10 * REFRESH_AHEAD_MS } })
++  const r = await refresh(h.deps, { account: DEFAULT })
++
++  assert.equal(h.calls.fetch.length, 1,
++    '(d) [M4] the pre-usage record shape falls through to the rotation: one grant')
++  assert.equal(h.calls.fetch[0].body.grant_type, 'refresh_token', '(d) [M4] a refresh_token grant')
++  assert.equal(h.calls.fetch[0].body.refresh_token, 'r0', '(d) [M4] spending the stored refresh token')
++
++  const edits = bearerVerbs(h.calls)
++  assert.equal(edits.length, 1, '(d) [M4] one --bearer - verb')
++  assert.equal(edits[0].verb, `integrations edit ${INTEGRATION} --bearer - --comment account=${DEFAULT}`,
++    '(d) [M4] the edit verb')
++  assert.equal(edits[0].input, 'access-1', '(d) [M4] carrying the newly minted access token on stdin')
++  assert.deepEqual(h.stored(), { refreshToken: 'refresh-1', accessToken: 'access-1', expiresAt: T0 + expiresMs(3600) },
++    '(d) [M4] and the keychain now holds the whole triple')
++  assert.deepEqual(r, { refreshed: true, installed: true, expiresAt: T0 + expiresMs(3600) },
++    '(d) [M4] resolving { refreshed: true, installed: true, expiresAt: <the fetched expiry> }')
++})
++
++// ── (e) the three sims the Run: lines drive  [M5] ────────────────────────────
++
++leg('the three sims the Run: lines name are files under fleet/tests/ that print the sentinel  [M5 / leg (e)]', () => {
++  // `fleet/tests/test_sims_are_hermetic.mjs`'s own M4 forbids a sim from
++  // spawning another sim, so this exam names them and never runs them; the
++  // Proof's first three `Run:` lines are what pipe each into the grep.
++  for (const name of ['test_claude_token.mjs', 'test_launch.mjs', 'test_sims_are_hermetic.mjs']) {
++    const url = new URL(`./${name}`, import.meta.url)
++    assert.ok(fs.existsSync(url),
++      `(e) [M5] ${name} is a sim under fleet/tests/ for the Run: line to drive`)
++    const text = fs.readFileSync(url, 'utf8')
++    assert.match(text, /ALL TESTS PASSED/,
++      `(e) [M5] and it prints the sentinel the Run: line greps for: ${name}`)
++  }
++})
++
++// ── (f) the RUNBOOK says what the launcher now does  [M6] ────────────────────
++
++const RUNBOOK = new URL('../RUNBOOK.md', import.meta.url)
++
++leg('RUNBOOK §3 carries `every launch` before `four hours`  [M6 / leg (f)]', () => {
++  assert.ok(fs.existsSync(RUNBOOK), '(f) [M6] fleet/RUNBOOK.md is the runbook this leg reads')
++  const lines = fs.readFileSync(RUNBOOK, 'utf8').split('\n')
++  const from = lines.findIndex((l) => /^\*\*3\. .claude. /.test(l))
++  assert.notEqual(from, -1, '(f) [M6] §3 opens with the line beginning `**3. `claude``')
++  const to = lines.findIndex((l, i) => i > from && /^\*\*4\. .github. /.test(l))
++  assert.notEqual(to, -1, '(f) [M6] and §4 opens with the line beginning `**4. `github``')
++
++  // The JS twin of the Proof's
++  //   sed -n '/^\*\*3\. .claude. /,/^\*\*4\. .github. /p' fleet/RUNBOOK.md
++  //     | tr '\n' ' ' | grep -q 'every launch.*four hours'
++  const section = lines.slice(from, to + 1).join(' ')
++  assert.ok(section.includes('every launch'),
++    '(f) [M6] §3 says the launcher installs the keychain\'s access token at `every launch`')
++  assert.ok(section.includes('four hours'),
++    '(f) [M6] §3 says it rotates when fewer than `four hours` remain')
++  assert.match(section, /every launch.*four hours/,
++    '(f) [M6] and the two read in that order — installation every launch first, the rotation window second')
++  assert.ok(section.includes(INTEGRATION),
++    `(f) [M6] the section names the integration the bearer is installed on (${INTEGRATION})`)
++})
++
++leg('no line of fleet/RUNBOOK.md says `30 minutes of expiry`  [M6 / leg (f)]', () => {
++  const lines = fs.readFileSync(RUNBOOK, 'utf8').split('\n')
++  const surviving = lines
++    .map((l, i) => [i + 1, l])
++    .filter(([, l]) => l.includes('30 minutes of expiry'))
++    .map(([i, l]) => `${i}:${l}`)
++  assert.deepEqual(surviving, [],
++    '(f) [M6] the retired sentence is gone — the window is four hours, not thirty minutes:\n  ' +
++    surviving.join('\n  '))
++})
++
++// ── the sentinel ─────────────────────────────────────────────────────────────
++
++let failures = 0
++for (const [name, fn] of legs) {
++  try {
++    await fn()
++    console.log(`ok — ${name}`)
++  } catch (error) {
++    failures += 1
++    console.log(`FAIL — ${name}`)
++    console.log(String(error && error.stack ? error.stack : error))
++  }
++}
++if (failures) {
++  console.log(`${failures} FAILED of ${legs.length} legs`)
++  process.exit(1)
++}
++console.log(`${legs.length} legs`)
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_sandbox_boot_bearer.mjs b/fleet/tests/test_sandbox_boot_bearer.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b64de111cfb931133f986ab1bbd92d39f0017782
+--- /dev/null
++++ b/fleet/tests/test_sandbox_boot_bearer.mjs
+@@ -0,0 +1,444 @@
++/**
++ * fleet/tests/test_sandbox_boot_bearer.mjs — THE SANDBOX PROVES ITS BEARER
++ * BEFORE THE ENGINE STARTS.
++ *
++ * The claim: a run whose bearer is dead parks at boot, before any exam or
++ * implementer spends a token, and the parked page says which side refused —
++ * the bearer itself or exe.dev's edge — with the trace id when the edge
++ * answered.
++ *
++ * The clauses this file pins, in the Machine's own words, leg by leg:
++ *
++ *   M1 / leg (a)  after the `claude auth status` read shows `oauth_token` and
++ *                 before the `fleet-engine-<N>` unit is started, the boot
++ *                 script makes EXACTLY ONE `curl` request whose URL is
++ *                 `https://claude-max.int.exe.xyz/api/oauth/usage`, carrying
++ *                 `-sS`, a `--max-time` argument, a header whose value is
++ *                 `Bearer placeholder`, and `-w '\n%{http_code}'`; on a 200 it
++ *                 logs a line beginning `bearer probe: alive` and the engine
++ *                 unit is started as today.
++ *   M2 / leg (b)  on a 401 or 403 whose body parses as JSON carrying
++ *                 `"type":"error"`, the run ends `parked` with phase
++ *                 `credential` and an `error` cell exactly
++ *                 `parked: credential bearer <status> — <the body's
++ *                 error.message>`; no `--unit=fleet-engine-<N>` is ever issued;
++ *                 the parked page is committed and pushed to the evidence
++ *                 branch as the last committed state; the two record tags are
++ *                 pushed; a notify is posted whose title is `run-<N> parked`;
++ *                 and the script exits 0. Two rows: `revoked` (a JSON 401) and
++ *                 `forbidden` (a JSON 403 — the row the script must tell from
++ *                 the edge's plain-text 403 by BODY SHAPE, not by status).
++ *   M3 / leg (c)  on a 403 whose body is the edge's plain text, the run parks
++ *                 the same way with class `edge` and the 32-hex trace id
++ *                 verbatim in the cell.
++ *   M4 / legs (d) and (e)  a `curl` that exited non-zero with no status line,
++ *                 and a status that is none of 200/401/403, each log a line
++ *                 beginning `bearer probe: inconclusive` and START THE ENGINE:
++ *                 the run is never parked on an answer the probe cannot
++ *                 classify.
++ *   M5 / leg (f)  `fleet/CONTRACT.md`'s `- engine:` bullet names the probe —
++ *                 six literals, in order — and `fleet/RUNBOOK.md`'s debugging
++ *                 item 3 carries `bearer probe:` and `parked: credential`.
++ *                 Read here through the SAME scoping the Proof's two `Run:`
++ *                 lines use: the sed range, its newlines turned to spaces.
++ *   M6 / leg (g)  the three sibling sims and the docs pin are each a real path
++ *                 the Proof's last four `Run:` lines name, and the rig's `curl`
++ *                 stub answers `/api/oauth/usage` ABOVE its catch-all — which
++ *                 is what keeps those sims green once the probe exists.
++ *
++ * Two things about how this file is written.
++ *
++ * NO SIM RUNS ANOTHER SIM. Leg (g)'s three sims and its pytest file are NAMED
++ * here and never spawned — `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids
++ * it, and the running of them is the Proof's own `Run:` lines' business. The
++ * same goes for the two doc `Run:` lines: leg (f) reads the two documents in
++ * process, with the scoping those lines spell.
++ *
++ * And a boot is ~40 forks of stub shell, so the five knob boots are started
++ * side by side at load and each leg awaits its own; the green path is the
++ * rig's one memoised `greenAsync()` run, shared with nothing else in this
++ * process.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import {
++  TARGET,
++  STUBS,
++  makeHome, bootAsync, greenAsync,
++  argvLines, stream, statusOf, states, commitStates, notifies,
++  engineRuns, indexOf, gitLog, verbOf, evidenceDir, evidenceDisciplineProblem,
++  runTests,
++} from './_sandbox_boot_helpers.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const REPO_ROOT = path.join(HERE, '..', '..')
++const CONTRACT = path.join(HERE, '..', 'CONTRACT.md')
++const RUNBOOK = path.join(HERE, '..', 'RUNBOOK.md')
++
++const tests = []
++const test = (name, fn) => tests.push([name, fn])
++
++// ── the literals the contract spells ─────────────────────────────────────────
++
++/** M1's URL, whole — the proxy literal the script already carries plus the
++ *  endpoint `fleet/claude-token.mjs usage` already reads. */
++const PROBE_URL = 'https://claude-max.int.exe.xyz/api/oauth/usage'
++/** The path fragment a probe request is FOUND by, in the Context's own words. */
++const PROBE_PATH = '/api/oauth/usage'
++/** M1's header value. The header's NAME is not pinned by the clause; its value
++ *  is, to the byte — the edge replaces it with the real bearer on the way out,
++ *  which is the whole reason a sandbox may carry a placeholder here. */
++const PROBE_BEARER = 'Bearer placeholder'
++/** The Context's upper bound on `--max-time`: "any value at most 30". */
++const MAX_TIME_CEILING = 30
++
++/** The edge's trace id, as the rig's `edge` row answers it. */
++const TRACE_ID = '53af9083708deefaa364aa37e112695d'
++/** The edge's refusal, byte for byte — the whole line rides into the cell. */
++const EDGE_BODY = `integration not found or not attached to this VM (trace: ${TRACE_ID})`
++
++/** M2's cell for the rig's `revoked` row: a JSON 401. */
++const ERR_REVOKED = 'parked: credential bearer 401 — OAuth access token has been revoked'
++/** M2's cell for the rig's `forbidden` row: a JSON 403. */
++const ERR_FORBIDDEN = 'parked: credential bearer 403 — This account is not permitted'
++/** M3's cell for the rig's `edge` row: a plain-text 403. */
++const ERR_EDGE = `parked: credential edge 403 — ${EDGE_BODY}`
++
++/** M5's six literals, in the order the CONTRACT bullet must carry them. */
++const CONTRACT_LITERALS = [
++  'claude auth status',
++  '/api/oauth/usage',
++  'parked: credential',
++  'bearer',
++  'edge',
++  'trace',
++]
++/** M5's two literals for the RUNBOOK's debugging item 3. */
++const RUNBOOK_LITERALS = ['bearer probe:', 'parked: credential']
++
++/** M6's three sims and its docs pin — NAMED, never run (see the header). */
++const SIBLING_SIMS = [
++  'fleet/tests/test_sandbox_boot.mjs',
++  'fleet/tests/test_sandbox_boot_edges.mjs',
++  'fleet/tests/test_sims_are_hermetic.mjs',
++]
++const DOCS_PIN = 'tests/test_docs_agree_with_code.py'
++
++// ── the rig, driven by the shared `STUB_BEARER` knob ─────────────────────────
++//
++// One home and one boot per knob, started at load and awaited by the leg that
++// owns it. The knob is the rig's, not this file's: `STUBS.curl` answers
++// `*claude-max.int.exe.xyz/api/oauth/usage)` by it, and the implementation is
++// written against the same six rows.
++
++const BOOTS = new Map()
++const bearerBoot = (knob) => {
++  if (!BOOTS.has(knob)) {
++    const ctx = makeHome()
++    BOOTS.set(knob, bootAsync(ctx, ['boot'], { STUB_BEARER: knob }).then((r) => ({ ctx, r })))
++  }
++  return BOOTS.get(knob)
++}
++for (const knob of ['revoked', 'forbidden', 'edge', 'down', '500']) bearerBoot(knob)
++greenAsync()
++
++/** Every `curl` argv of this run whose words name the probe endpoint. */
++const probeArgvs = (ctx) =>
++  argvLines(ctx, 'curl').filter((a) => a.some((s) => s.includes(PROBE_PATH)))
++
++/** The word after `flag` in an argv, or undefined. */
++const flagValue = (argv, flag) => {
++  const at = argv.indexOf(flag)
++  return at >= 0 && at + 1 < argv.length ? argv[at + 1] : undefined
++}
++
++/** Every `-H`/`--header` of an argv, split into its name and its value. */
++const headers = (argv) => {
++  const out = []
++  for (let i = 0; i + 1 < argv.length; i += 1) {
++    if (argv[i] !== '-H' && argv[i] !== '--header') continue
++    const raw = argv[i + 1]
++    const at = raw.indexOf(':')
++    if (at < 0) continue
++    out.push({ name: raw.slice(0, at).trim(), value: raw.slice(at + 1).trim() })
++  }
++  return out
++}
++
++/** The stream's lines that BEGIN with `prefix` — a probe verdict is a line of
++ *  its own, so a prefix match is the reading, never a containment. */
++const probeLines = (ctx, prefix) => stream(ctx).filter((l) => l.startsWith(prefix))
++
++/** Every `git push` argv of this run. */
++const pushes = (ctx) => gitLog(ctx).filter((a) => verbOf(a) === 'push')
++
++/**
++ * The park M2 and M3 share, asserted once: the page, the unit that never
++ * started, the evidence commit and its push, the two record tags, the notify
++ * and the exit. `err` is the leg's own cell, which is the only thing that
++ * differs between the three refused rows.
++ */
++function assertParkedOnCredential({ ctx, r }, err, leg, clause) {
++  const where = `${leg} [${clause}]`
++  assert.equal(r.status, 0,
++    `${where} the script exits 0 on a refused bearer — a park is an outcome, not a crash\n` +
++      r.stdout + r.stderr)
++
++  const status = statusOf(ctx)
++  assert.equal(status.state, 'parked', `${where} the page ends \`parked\``)
++  assert.equal(status.phase, 'credential', `${where} the parked page's phase is \`credential\``)
++  assert.equal(status.error, err,
++    `${where} the \`error\` cell is exactly '${err}' — the class word and the refusing side's ` +
++      'own words, and nothing else')
++
++  assert.equal(engineRuns(ctx), 0,
++    `${where} no \`--unit=fleet-engine-7\` is ever issued on a refused bearer`)
++  assert.ok(!states(ctx).includes('publishing'),
++    `${where} a run parked at boot never reaches \`publishing\` — it parked before the engine`)
++  assert.equal(states(ctx)[states(ctx).length - 1], 'parked',
++    `${where} \`parked\` is the last state the script claimed; it claimed ${JSON.stringify(states(ctx))}`)
++
++  const committed = commitStates(ctx)
++  assert.equal(committed[committed.length - 1], 'parked',
++    `${where} the parked page is the LAST committed state on the evidence branch; the branch ` +
++      `took ${JSON.stringify(committed)}`)
++  assert.equal(evidenceDisciplineProblem(gitLog(ctx), evidenceDir(ctx)), null,
++    `${where} every evidence push follows an add and a commit in the evidence worktree — the ` +
++      'parked page is pushed, not merely written')
++
++  const planTag = pushes(ctx).filter((a) => a.some((s) => s.includes('refs/tags/ultra/plan/run-7')))
++  const evidenceTag = pushes(ctx).filter((a) => a.some((s) => s.includes('refs/tags/ultra/evidence/run-7')))
++  assert.ok(planTag.length >= 1,
++    `${where} one git push argv carries \`refs/tags/ultra/plan/run-7\` — a parked run's record ` +
++      "is worth as much as a green one's")
++  assert.ok(evidenceTag.length >= 1,
++    `${where} another git push argv carries \`refs/tags/ultra/evidence/run-7\``)
++
++  const parked = notifies(ctx).filter((n) => n.title === 'run-7 parked')
++  assert.equal(parked.length, 1,
++    `${where} exactly one notify is posted whose title is \`run-7 parked\`; the run posted ` +
++      JSON.stringify(notifies(ctx)))
++  assert.equal(parked[0].message, `${TARGET} — ${err}`,
++    `${where} the park mirrors do_boot's: \`notify "run-$RUN_N parked" "$TARGET_REPO — $ERROR"\``)
++
++  assert.equal(probeArgvs(ctx).length, 1,
++    `${where} the boot parks on ONE refused answer — no retry, no second probe`)
++}
++
++// ── (a) the green probe: one request, in its place, and the engine starts ────
++
++test('a green boot probes the bearer once, between the auth read and the engine  [M1 / leg (a)]', async () => {
++  const ctx = await greenAsync()
++  const probes = probeArgvs(ctx)
++  assert.equal(probes.length, 1,
++    `(a) [M1] exactly one curl request names ${PROBE_PATH}; this run made ${probes.length}`)
++  const argv = probes[0]
++
++  const urls = argv.filter((s) => s.startsWith('https://'))
++  assert.deepEqual(urls, [PROBE_URL],
++    `(a) [M1] the probe's URL is exactly '${PROBE_URL}' — \`$ANTHROPIC_PROXY_URL/api/oauth/usage\``)
++
++  assert.ok(argv.includes('-sS'), `(a) [M1] the probe carries \`-sS\`; its argv was ${argv.join(' ')}`)
++
++  const maxTime = flagValue(argv, '--max-time')
++  assert.ok(maxTime !== undefined,
++    `(a) [M1] the probe carries a \`--max-time\` argument — a dead edge must not hold the boot; ` +
++      `its argv was ${argv.join(' ')}`)
++  const seconds = Number(maxTime)
++  assert.ok(Number.isFinite(seconds) && seconds > 0 && seconds <= MAX_TIME_CEILING,
++    `(a) [M1] \`--max-time\` is a positive number of seconds, at most ${MAX_TIME_CEILING}; ` +
++      `it was '${maxTime}'`)
++
++  const bearers = headers(argv).filter((h) => h.value === PROBE_BEARER)
++  assert.equal(bearers.length, 1,
++    `(a) [M1] the probe carries a header whose value is exactly '${PROBE_BEARER}' — the edge ` +
++      'replaces it with the real bearer, so the sandbox never holds one; the headers were ' +
++      JSON.stringify(headers(argv)))
++
++  const w = flagValue(argv, '-w')
++  assert.ok(w !== undefined && w.endsWith('%{http_code}'),
++    `(a) [M1] the probe carries a \`-w\` value ending \`%{http_code}\`, so the HTTP status rides ` +
++      `as the answer's last line; it was '${w}'`)
++})
++
++test('the probe sits after the auth status read and before the engine unit  [M1 / leg (a)]', async () => {
++  const ctx = await greenAsync()
++  const auth = indexOf(ctx, 'claude auth status:')
++  const probe = indexOf(ctx, 'curl bearer')
++  const engine = indexOf(ctx, 'systemd-run engine')
++
++  assert.ok(auth >= 0, "(a) [M1] the boot logs its `claude auth status:` line")
++  assert.ok(probe >= 0,
++    '(a) [M1] the rig\'s curl stub logs `curl bearer` when the probe is made — no line means no ' +
++      'probe request reached the stub at all')
++  assert.ok(engine >= 0, '(a) [M1] the engine unit is started on a green boot')
++  assert.ok(auth < probe,
++    `(a) [M1] the probe is made AFTER the \`claude auth status\` read shows \`oauth_token\` ` +
++      `(auth at ${auth}, probe at ${probe})`)
++  assert.ok(probe < engine,
++    `(a) [M1] the probe is made BEFORE the \`fleet-engine-7\` unit is started (probe at ` +
++      `${probe}, engine at ${engine}) — a dead bearer must cost no tokens`)
++})
++
++test('a 200 logs `bearer probe: alive` and the engine unit is started as today  [M1 / leg (a)]', async () => {
++  const ctx = await greenAsync()
++  assert.equal(probeLines(ctx, 'bearer probe: alive').length, 1,
++    '(a) [M1] a 200 logs exactly one line beginning `bearer probe: alive`; the stream carried ' +
++      JSON.stringify(probeLines(ctx, 'bearer probe:')))
++  assert.equal(probeLines(ctx, 'bearer probe: inconclusive').length, 0,
++    '(a) [M1] a 200 is a classified answer, never an inconclusive one')
++  assert.equal(engineRuns(ctx), 1,
++    '(a) [M1] the green run starts its `fleet-engine-7` unit exactly once')
++  assert.notEqual(statusOf(ctx).state, 'parked',
++    '(a) [M1] a live bearer parks nothing')
++})
++
++// ── (b) a JSON refusal parks the run against the BEARER ──────────────────────
++
++test('a JSON 401 parks the run: `parked: credential bearer 401 — …`  [M2 / leg (b)]', async () => {
++  const boot = await bearerBoot('revoked')
++  assertParkedOnCredential(boot, ERR_REVOKED, '(b)', 'M2')
++})
++
++test('a JSON 403 parks against the bearer, not the edge  [M2 / leg (b)]', async () => {
++  const boot = await bearerBoot('forbidden')
++  assertParkedOnCredential(boot, ERR_FORBIDDEN, '(b)', 'M2')
++
++  const { ctx } = boot
++  // The row the script must tell from the edge's plain-text 403 by BODY SHAPE:
++  // a cell reading `edge`, or a stream reading `inconclusive`, is a probe that
++  // classified a 403 by its status alone.
++  assert.ok(!statusOf(ctx).error.includes('edge'),
++    '(b) [M2] a 403 whose body is JSON carrying `"type":"error"` is the BEARER refusing, not ' +
++      `the edge; the cell read '${statusOf(ctx).error}'`)
++  assert.deepEqual(probeLines(ctx, 'bearer probe: inconclusive'), [],
++    '(b) [M2] a JSON 403 is a classified answer — nothing inconclusive is logged')
++})
++
++// ── (c) the edge's plain-text 403 parks against the EDGE, with its trace ─────
++
++test("the edge's plain-text 403 parks with class `edge` and the trace verbatim  [M3 / leg (c)]", async () => {
++  const boot = await bearerBoot('edge')
++  assertParkedOnCredential(boot, ERR_EDGE, '(c)', 'M3')
++
++  const { ctx } = boot
++  const cell = statusOf(ctx).error
++  // Named on its own: the 32-hex is what exe.dev support resolves, so a cell
++  // that carries the class word but drops the trace id is not this leg.
++  assert.ok(cell.includes(TRACE_ID),
++    `(c) [M3] the cell carries the 32-hex trace id '${TRACE_ID}' verbatim; it read '${cell}'`)
++  assert.match(cell, /\(trace: [0-9a-f]{32}\)$/,
++    `(c) [M3] the whole edge line rides into the cell, trace id and all; it read '${cell}'`)
++})
++
++// ── (d) and (e) an answer the probe cannot classify never parks a run ────────
++
++for (const [knob, leg, what] of [
++  ['down', '(d)', '`curl` exiting non-zero with no status line'],
++  ['500', '(e)', 'a status that is none of 200, 401, 403'],
++]) {
++  test(`${what} logs \`bearer probe: inconclusive\` and starts the engine  [M4 / leg ${leg}]`, async () => {
++    const { ctx, r } = await bearerBoot(knob)
++    assert.equal(r.status, 0,
++      `${leg} [M4] an inconclusive probe leaves the run exactly as it was\n` + r.stdout + r.stderr)
++
++    assert.equal(probeLines(ctx, 'bearer probe: inconclusive').length, 1,
++      `${leg} [M4] ${what} logs exactly one line beginning \`bearer probe: inconclusive\`; the ` +
++        `stream carried ${JSON.stringify(probeLines(ctx, 'bearer probe:'))}`)
++    assert.equal(probeLines(ctx, 'bearer probe: alive').length, 0,
++      `${leg} [M4] an answer the probe cannot classify is not an alive one`)
++
++    assert.equal(engineRuns(ctx), 1,
++      `${leg} [M4] the engine unit is started — a probe must never manufacture a park on a flake`)
++    assert.notEqual(statusOf(ctx).state, 'parked',
++      `${leg} [M4] the page does not read \`parked\`; it read '${statusOf(ctx).state}'`)
++    assert.ok(!states(ctx).includes('parked'),
++      `${leg} [M4] NO page this run wrote ever read \`parked\`; the states were ` +
++        JSON.stringify(states(ctx)))
++    assert.ok(!commitStates(ctx).includes('parked'),
++      `${leg} [M4] no page this run COMMITTED ever read \`parked\`; the branch took ` +
++        JSON.stringify(commitStates(ctx)))
++  })
++}
++
++// ── (f) the two operator documents name the probe  [M5] ──────────────────────
++
++/** One `sed -n '/start/,/end/p'` range of a file, inclusive of both matches —
++ *  the same scoping the Proof's two doc `Run:` lines use. `null` when the file
++ *  carries no start line at all. */
++function sedRange(file, start, end) {
++  const all = fs.readFileSync(file, 'utf8').split('\n')
++  const from = all.findIndex((l) => start.test(l))
++  if (from < 0) return null
++  const after = all.slice(from + 1).findIndex((l) => end.test(l))
++  const to = after < 0 ? all.length - 1 : from + 1 + after
++  return all.slice(from, to + 1)
++}
++
++/** The range as one line, which is what `tr '\n' ' '` hands the grep. */
++const joined = (range) => range.join(' ')
++
++const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
++
++test("CONTRACT.md's `- engine:` bullet names the probe, six literals in order  [M5 / leg (f)]", () => {
++  const range = sedRange(CONTRACT, /^ {2}- engine: /, /^ {2}- publish fold:/)
++  assert.ok(range && range.length > 0,
++    '(f) [M5] `fleet/CONTRACT.md` carries a `  - engine:` bullet and a `  - publish fold:` bullet ' +
++      'below it — the range the Proof\'s sed scopes')
++  const text = joined(range)
++  const inOrder = new RegExp(CONTRACT_LITERALS.map(escapeRe).join('.*'))
++  assert.match(text, inOrder,
++    '(f) [M5] the engine bullet carries, IN ORDER, ' +
++      CONTRACT_LITERALS.map((s) => `\`${s}\``).join(', ') +
++      ' — the read that gates the probe, the endpoint, the park prefix, and the two class words ' +
++      `with the trace. The bullet reads: ${text}`)
++})
++
++test("RUNBOOK.md's debugging item 3 names the probe line and the park  [M5 / leg (f)]", () => {
++  const range = sedRange(RUNBOOK, /^3\. .\/home\/exedev\/www\/engine\.log./, /^4\. .journalctl/)
++  assert.ok(range && range.length > 0,
++    '(f) [M5] `fleet/RUNBOOK.md` carries the `engine.log` debugging item 3 and a `journalctl` ' +
++      "item 4 below it — the range the Proof's sed scopes")
++  const text = joined(range)
++  for (const literal of RUNBOOK_LITERALS) {
++    assert.ok(text.includes(literal),
++      `(f) [M5] debugging item 3 carries \`${literal}\` — the next line after the auth status ` +
++        'line, and what a page whose `error` begins that way means. The item reads: ' + text)
++  }
++})
++
++// ── (g) the sims the Proof's last four `Run:` lines name  [M6] ───────────────
++//
++// NAMED, never run: `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids a
++// `test_*.mjs` that spawns another one or `pytest`, and whether each prints
++// `ALL TESTS PASSED` is its own `Run:` line's business.
++
++for (const sim of [...SIBLING_SIMS, DOCS_PIN]) {
++  test(`${sim} is a path the Proof's Run lines name  [M6 / leg (g)]`, () => {
++    assert.ok(fs.existsSync(path.join(REPO_ROOT, sim)),
++      `(g) [M6] \`${sim}\` must exist — the probe rides in a rig those lines run against, and a ` +
++        'Run line naming a path that is gone proves nothing. This leg names it; it does not run it.')
++  })
++}
++
++test("the rig's curl stub answers the probe endpoint above its catch-all  [M6 / leg (g)]", () => {
++  const body = STUBS.curl
++  const arm = body.indexOf(PROBE_PATH)
++  const unknown = body.indexOf('curl UNKNOWN')
++  assert.ok(unknown >= 0,
++    "(g) [M6] the rig's curl stub still ends in a catch-all that says `curl UNKNOWN` — this " +
++      "leg's ordering read is stale otherwise")
++  assert.ok(arm >= 0,
++    `(g) [M6] the rig's curl stub answers \`${PROBE_PATH}\` by the shared \`STUB_BEARER\` knob; ` +
++      'without that arm every `test_sandbox_boot*.mjs` sim falls through to the catch-all and ' +
++      'exits 22 the moment the probe exists')
++  assert.ok(arm < unknown,
++    '(g) [M6] the probe arm sits BEFORE the catch-all, so the probe is answered rather than ' +
++      `refused (arm at ${arm}, catch-all at ${unknown})`)
++})
++
++runTests(tests)
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index f330ce662b7d372c47b6ab3f7d52483fd252ee95..dc6ded80101251569a659caa1d510df4d208a8e3 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -46,7 +46,8 @@ cache path itself differs by version and by host, so derive it rather than
+ naming it.
+ 
+ The doctor answers with one row per piece, and its row ids are `exe-dev`,
+-`capacity`, `claude`, `github`, `integrations`, in that order. Each row carries
++`capacity`, `claude`, `accounts`, `github`, `integrations`, `verb-drift`, `render`, in that
++order. Each row carries
+ a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
+ section of `references/first-run.md` that repairs it. Read the rows back to the
+ user as a short list before touching anything. Configuration lives in

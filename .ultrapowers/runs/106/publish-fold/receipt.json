@@ -1,0 +1,33 @@
+{
+  "engineHead": "82b7d91126dbb2331f7b1c7342719cfe60d2fa7f",
+  "attempts": {
+    "1": {
+      "tip": "d1476865f47aaa2af68bffa04685829934ef3f28",
+      "candidate": "ee09db8b987d3950985ed9b5a25392d19d97be26",
+      "disposition": "folded",
+      "pathsJoined": 2,
+      "resolversDispatched": 0,
+      "suite": "pass",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/sandbox-boot.sh",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/test_sandbox_boot_bearer.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/exams/run_106/test_sandbox_boot_evidence_copy.mjs",
+          "path": "fleet/CONTRACT.md",
+          "result": "pass"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}
