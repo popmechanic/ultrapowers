@@ -1,0 +1,28 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "0faa3855270ca7dd26bae65631f593ba9fa9664d295bf74fb1c8736394e15001",
+      "verdict": "pass",
+      "reason": "round 2: absence per path, bridge and CLAUDE.md scans with the Doctrine window bracketed, the bridge's own collector with >50 and none of the seven"
+    },
+    "2": {
+      "hash": "c9321fdae8ff599ef44a173ceeed7351856cdd2f5c2c821a184def8900700a45",
+      "verdict": "pass",
+      "reason": "round 2: three startedAt shapes, a landing bracketed by rows on either side plus the epoch and the note line both ways, duplicate runIds ordered both ways, the runner excluded from curve and --n with the real bridge pinned, the SKILL section scoped"
+    }
+  },
+  "tally": {
+    "dispatched": 4,
+    "rejected": 2,
+    "rounds": {
+      "1": {
+        "pass": 0,
+        "fail": 2
+      },
+      "2": {
+        "pass": 2,
+        "fail": 0
+      }
+    }
+  }
+}
