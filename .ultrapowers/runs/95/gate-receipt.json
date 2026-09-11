@@ -1,0 +1,60 @@
+{
+  "mode": "gate",
+  "stamp": "run-95",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-95/report.json",
+  "branch": "ultra/integration-run-95",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"2\", \"files\": [\"README.md\", \"fleet/CONTRACT.md\", \"fleet/RUNBOOK.md\", \"fleet/sandbox-boot.sh\", \"fleet/tests/_sandbox_boot_helpers.mjs\", \"fleet/tests/test_sandbox_boot.mjs\", \"fleet/tests/test_sandbox_boot_card.mjs\", \"fleet/tests/test_sandbox_boot_edges.mjs\", \"fleet/tests/test_sandbox_boot_join.mjs\", \"fleet/tests/test_sandbox_boot_publish_fold.mjs\", \"fleet/tests/test_sandbox_boot_residuals.mjs\", \"fleet/tests/test_sandbox_boot_selfmerge.mjs\", \"skills/ultrapowers/SKILL.md\", \"tests/test_docs_agree_with_code.py\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 0/1 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "suite": {
+    "passed": false,
+    "unattributed": [],
+    "output": "not run \u2014 no wave merged"
+  },
+  "verdict": "BLOCKED"
+}

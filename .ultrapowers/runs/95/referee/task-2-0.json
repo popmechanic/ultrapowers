@@ -1,0 +1,47 @@
+{
+  "task": "2",
+  "n": 0,
+  "findings": [],
+  "settled": [
+    {
+      "check": "footprint",
+      "detail": "every touched path is in FILES"
+    },
+    {
+      "check": "interface",
+      "detail": "Produces: none `none` is a placeholder — no symbol promised; no file was read"
+    },
+    {
+      "check": "exam-files",
+      "detail": "the exam exited 1 — already red as the exam, so an absent Test: path is not a second finding"
+    },
+    {
+      "check": "test-count",
+      "detail": "top-level tests +27 / −0 across the patch"
+    },
+    {
+      "check": "dependencies",
+      "detail": "no manifest changed"
+    },
+    {
+      "check": "secrets",
+      "detail": "no secret-shaped literal added"
+    },
+    {
+      "check": "integrated-suite",
+      "detail": "the driver runs the integrated suite on the adopted tree, not this review"
+    }
+  ],
+  "linker": {
+    "fleet/tests/_sandbox_boot_helpers.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_card.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_edges.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_join.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_publish_fold.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_residuals.mjs": "mjs",
+    "fleet/tests/test_sandbox_boot_selfmerge.mjs": "mjs",
+    "tests/test_docs_agree_with_code.py": "py"
+  },
+  "ms": 8
+}

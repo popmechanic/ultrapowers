@@ -3,3 +3,13 @@ run-main: preflight
 run-main: tiers — 1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 782dda69c7b935bf2b5e996a5462dc33fb0c33b8; 1 task clone(s) + integration
 run-main: engine — waves 1, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: gate-blocked — ultra_gate exited 1 — gate receipt is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 48min 41.488s
+CPU time consumed: 39min 55.831s
+Memory peak: 4.2M
+Memory swap peak: 0B
