@@ -56,6 +56,9 @@ def _row(row_id, run_id, catches, touched, exercises):
         "kind": "catch-count",
         "id": row_id,
         "runId": run_id,
+        # Stamped after every fixture test's landing (the tmp trees below are
+        # untracked, so they land at the epoch): every row counts.
+        "startedAt": "2026-09-05T00:00:00+00:00",
         "driverRuns": 3,
         "catches": catches,
         "reds": [],
