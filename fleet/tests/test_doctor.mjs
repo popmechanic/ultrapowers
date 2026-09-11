@@ -609,21 +609,28 @@ for (const [label, answer] of [
 }
 
 {
-  // The policy read is the truth, not the listing's attachments: an object the
-  // listing shows on no attachment at all is green when its policy says
-  // tag:fleet, and one the listing shows on tag:fleet is red when its policy
-  // says otherwise.
+  // The listing's `tag:fleet` attachment is the grant under either lobby model
+  // (exe.dev shipped a policy model 2026-09-11 and rolled it back the same
+  // afternoon): an object the listing shows on tag:fleet is green whatever a
+  // policy read says, and only an object the listing shows unattached is judged
+  // by its policy.
   const listed = [claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET, { attachments: ['tag:fleet'] })]
-  const { result: offPolicy } = await run({
+  const { result: attached } = await run({
     [CMD.list]: { code: 0, stdout: listing(listed) },
     [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
   }, { target: TARGET })
-  const row = rowById(offPolicy, 'integrations')
-  assert.equal(row.status, 'missing', "5 the target's object off the policy is red whatever the listing shows")
-  assert.ok(row.detail.includes(GH), `5 the detail names the object; got ${row.detail}`)
-  assert.ok(row.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${row.detail}`)
+  const row = rowById(attached, 'integrations')
+  assert.equal(row.status, 'ok', "5 an object the listing attaches by tag:fleet is green whatever the policy read says")
+  const { result: offPolicy } = await run({
+    [CMD.list]: { code: 0, stdout: listing([claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET)]) },
+    [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
+  }, { target: TARGET })
+  const off = rowById(offPolicy, 'integrations')
+  assert.equal(off.status, 'missing', "5 an unattached object whose policy is not tag:fleet is red")
+  assert.ok(off.detail.includes(GH), `5 the detail names the object; got ${off.detail}`)
+  assert.ok(off.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${off.detail}`)
   for (const step of policyFix(GH)) {
-    assert.ok(row.detail.includes(step), `5 the detail names \`${step}\`; got ${row.detail}`)
+    assert.ok(off.detail.includes(step), `5 the detail names \`${step}\`; got ${off.detail}`)
   }
 }
 
