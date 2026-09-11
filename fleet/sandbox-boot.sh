@@ -1184,16 +1184,6 @@ collect_evidence() {
     mkdir -p "$dest/transcripts"
     cp "$run_dir/transcripts/"*.jsonl "$dest/transcripts/" 2>/dev/null || true
   fi
-  # The driver's referee writes one file per graded patch —
-  # `referee/task-<id>-<n>.json`, `n` the number of fix rounds that preceded that
-  # patch. Copied by the same loop, for the same reason as the transcripts: this
-  # function runs again at every later transition, and `cp -R` would nest a
-  # second `referee/` inside the first. A run whose engine wrote none commits
-  # none.
-  if [ -d "$run_dir/referee" ]; then
-    mkdir -p "$dest/referee"
-    cp "$run_dir/referee/"*.json "$dest/referee/" 2>/dev/null || true
-  fi
   # The state exams' own records — `task-<id>/<stem>-<pass>/<file>`, a tree of
   # arbitrary depth rather than one flat directory, so the copy WALKS THE
   # REGULAR FILES and rebuilds each one's relative path under the destination.
