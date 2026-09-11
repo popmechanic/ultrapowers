@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-104.md run-104 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — fleet/claude-token.mjs `refresh` installing the held access token at the edge (`integrations edit claude-max --bearer - --comment account=<acct>` over `ssh exe.dev`, token on stdin) — Every leg of fleet/tests/test_claude_token_install.mjs and fleet/tests/test_claude_token.mjs drives a stubbed `lobby`/`fetch` seam; the real exe.dev lobby verb and the real OAuth token endpoint are unreachable from this sandbox, so that the edge actually ends up carrying the installed bearer is structurally proven but not executed here. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "Task 2 — the bearer probe's real HTTP behaviour against https://claude-max.int.exe.xyz/api/oauth/usage (fleet/sandbox-boot.sh:977-1045) — The three classified answers (the edge replacing `authorization: Bearer placeholder` with the real token, the JSON 401/403 error document, and exe.dev's plain-text 403 carrying the 32-hex trace) are supplied by the rig's `STUB_BEARER` knob in fleet/tests/_sandbox_boot_helpers.mjs. The proxy itself is not reachable from this environment, so the classification logic is exercised only against the recorded response shapes, not against the live edge. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
