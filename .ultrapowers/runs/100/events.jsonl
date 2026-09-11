@@ -1,0 +1,21 @@
+{"kind":"run:open","runId":"run-100","base":"","source":"fleet/run-main.mjs","id":"01M28H8KV600002X90P1FEN592","ts":1789140422502}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M28H8KV800000MF2VJWS6P7Q","ts":1789140422504}
+{"kind":"driver:stage","stage":"provision","detail":"BASE e2ce29b5e34745c3a771cf9f1cd9f66ab22576b1; 1 task clone(s) + integration","id":"01M28H8MB70000T0C13NQVE39B","ts":1789140423015}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M28H8MQ10000RTXAM3M9K9P3","ts":1789140423393}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M28H8MQ10001GDFN5K6W2E85","ts":1789140423393}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 6","id":"01M28H8MQ500005MS2SKGH9P2D","ts":1789140423397}
+{"kind":"engine:phase","phase":"Setup","id":"01M28H8MQ60000ZJ5YVFC2BA71","ts":1789140423398}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-100 at e2ce29b5e34745c3a771cf9f1cd9f66ab22576b1","id":"01M28H8MVF0000NYXP1YNTMEM7","ts":1789140423535}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M28H8MVH0000YX4W5PY28SHG","ts":1789140423537}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"24a2e004-3843-4992-b1af-b80e0766fc97","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-100/clones/exam-1","model":"opus","id":"01M28H8NFH00005MQDS0GV5S41","ts":1789140424177}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"ea609d8f-56ec-4a40-a73e-7ea1439e7115","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-100/clones/task-1","model":"opus","id":"01M28H8NFJ000026KRXA83QM8Q","ts":1789140424178}
+{"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"24a2e004-3843-4992-b1af-b80e0766fc97","exitCode":1,"timedOut":false,"outcome":"fail-run","class":"credential","status":401,"meter":{"input":0,"output":0,"cacheRead":0,"cacheCreation":0,"costUsd":0,"models":[]},"id":"01M28H8RCM0000TJTVFHX5FBTM","ts":1789140427156}
+{"kind":"transcript:slice","label":"exam:1","sessionId":"24a2e004-3843-4992-b1af-b80e0766fc97","bytes":2648,"id":"01M28H8RCM0001G5MFDMKZR1V5","ts":1789140427156}
+{"kind":"run:fatal","label":"exam:1","detail":"API refused with 401 (credential or config) — the run cannot proceed","status":401,"id":"01M28H8RCM0002PZRXHSWHPQFB","ts":1789140427156}
+{"kind":"worker:end","label":"impl:1","role":"implementer","sessionId":"ea609d8f-56ec-4a40-a73e-7ea1439e7115","exitCode":1,"timedOut":false,"outcome":"fail-run","class":"credential","status":401,"meter":{"input":0,"output":0,"cacheRead":0,"cacheCreation":0,"costUsd":0,"models":[]},"id":"01M28H8RF10000KQT4XRVRXXBC","ts":1789140427233}
+{"kind":"transcript:slice","label":"impl:1","sessionId":"ea609d8f-56ec-4a40-a73e-7ea1439e7115","bytes":2659,"id":"01M28H8RF20000K4GHEKGACSGF","ts":1789140427234}
+{"kind":"run:fatal","label":"impl:1","detail":"API refused with 401 (credential or config) — the run cannot proceed","status":401,"id":"01M28H8RF200013JHV88KJ5ZP9","ts":1789140427234}
+{"kind":"engine:log","line":"task 1 agent error — retrying at mostCapable","id":"01M28H8RF20002HKNSXKGKSSGN","ts":1789140427234}
+{"kind":"worker:refused","label":"exam:1","why":"run-fatal","detail":"API refused with 401 (credential or config) — the run cannot proceed","id":"01M28H8RM30000QP9XGQRH7AEZ","ts":1789140427395}
+{"kind":"worker:refused","label":"impl:1","why":"run-fatal","detail":"API refused with 401 (credential or config) — the run cannot proceed","id":"01M28H8RM30001VNY5RX5RQTMH","ts":1789140427395}
+{"kind":"engine:log","line":"task 1 FAILED after retry: RUN_FATAL: refusing to dispatch impl:1 — the run already failed at exam:1: API refused with 401 (credential or config) — the run cannot proceed","id":"01M28H8RM400005BGQZSF262M3","ts":1789140427396}
