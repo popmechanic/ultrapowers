@@ -42,3 +42,11 @@
 {"kind":"driver:integrated-check","cmd":"python3 -m pytest -q tests/test_fleet_suite_collection.py","exit":0,"minor":false,"wave":1,"id":"01M27P1HXW00004T2QTEG0D82K","ts":1789111879612}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M27P1HXX000028GQEBGD9K13","ts":1789111879613}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"f193460c-d512-4582-b6b2-55be503d917c","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-98/clones/integration","model":"opus","id":"01M27P1HXY0000HYGT3YSYXAC4","ts":1789111879614}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"f193460c-d512-4582-b6b2-55be503d917c","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3112,"output":11380,"cacheRead":554265,"cacheCreation":75365,"costUsd":1.3308425,"models":["claude-opus-5"]},"id":"01M27P5YPH0000HE7PEG1JKJ42","ts":1789112023761}
+{"kind":"transcript:slice","label":"integration","sessionId":"f193460c-d512-4582-b6b2-55be503d917c","bytes":11353,"id":"01M27P5YPP0000ZXBXDTZ1S1HS","ts":1789112023766}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M27P5YQ10000TCFMHADKH2SR","ts":1789112023777}
+{"kind":"driver:stage","stage":"finalize","id":"01M27P5YRW00009DDDSWMZV5PX","ts":1789112023836}
+{"kind":"driver:stage","stage":"gate","id":"01M27P5YTJ00005SHBXC2KD4SE","ts":1789112023890}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M27P5YYF0000KKQXBCBF707G","ts":1789112024015}
+{"kind":"run:open","runId":"run-98","base":"eefdffe4bc1a6d581e6f3309771421e8c9cdcbf4","source":"fleet/publish-fold.mjs","id":"01M27P5Z7R00006X00VMQQYQW2","ts":1789112024312}
+{"kind":"driver:publish-fold","run":"98","attempt":"1","base":"eefdffe4bc1a6d581e6f3309771421e8c9cdcbf4","tip":"eefdffe4bc1a6d581e6f3309771421e8c9cdcbf4","candidate":"5b6cb54c6c842f8d5ebb6f8f66acfefab5e7169e","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M27P60C900006CQ6TMKACWZ1","ts":1789112025481}

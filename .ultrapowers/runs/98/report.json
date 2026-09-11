@@ -1,0 +1,148 @@
+{
+  "integrationBranch": "ultra/integration-run-98",
+  "baseSha": "eefdffe4bc1a6d581e6f3309771421e8c9cdcbf4",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "c20a32655daead4ddacd15eea2e1cd9beee3f9ae",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-98/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "FILES under-declares the paths the task's own Context requires. The Context says \"Every remaining reference to any of the seven basenames under `fleet/`, `skills/`, `tests/` (outside `tests/fixtures/`) is an error to fix here\", and the global constraint (\"a deletion is whole\") forces the same, but FILES names only 11 paths while 11 further paths had to be edited to carry it: `fleet/run-engine.mjs`, `fleet/tests/README.md`, `test_run_engine_blind_sensor.mjs`, `test_run_engine_proof_runs.mjs`, `test_run_engine_red_suite_record.mjs`, `test_run_engine_referee.mjs`, `test_run_engine_state_exams.mjs`, `test_run_engine_wave_events.mjs`, `test_run_main_engine_dir.mjs`, `test_sandbox_boot_state_exams.mjs`, `test_sims_are_hermetic.mjs`. I read each of those hunks: all are comment rewrites or the removal of a list entry/leg whose only subject was a deleted sim (leg (g) of `test_run_engine_proof_runs.mjs`, the `test_run_engine_exam_evidence.mjs` entry in `NESTED_AT_BASE`, the `test_sandbox_boot_approval_evidence.mjs` sibling names). No unrelated refactor, no debug code, and none of the 11 collides with task 2's SIBLING FILES. The defect is the task text's scope list, not the diff, and no edit inside this tree answers it.; Three present-tense mentions of a deleted sim survive, which the global constraint's exception list does not cover. The constraint exempts history only in \"CLAUDE.md's Doctrine section, a fixture plan under `tests/fixtures/`, or a plan under `docs/`\"; the Context instead rules that `fleet/tests/test_roles_peer.mjs:37,77` and `fleet/tests/test_weave_emit.mjs:6` \"mention `test_run_engine.mjs` as history and stay\". Two of the three do not read as history: `test_roles_peer.mjs:37` says \"The first two are the expressions `fleet/tests/test_run_engine.mjs` pins\" and `:77` says \"Held here as well as in test_run_engine.mjs so a role-file edit fails against its own test file\" \u2014 both assert a co-holder that no longer exists, so a reader is told a second pin backs these rules when none does. (`test_weave_emit.mjs:6`, \"Same seams as test_run_engine.mjs\", is genuinely retrospective.) The constraint's `Check:` (`tests/test_fleet_suite_collection.py`) ran and exited 0; it does not grade mentions, so this rests on my reading of the prose, and the fix lies in two files outside FILES. Worth a follow-up reword of those two comments to past tense (\"the expressions the deleted `test_run_engine.mjs` pinned (#344, #441)\", \"held here alone since that sim was deleted\").; `tests/test_fleet_suite.py`: the comment above `SLOW_FIRST` is now stale against the tuple it documents. The list went from seven names to five, but lines 55-58 still read \"40.9 s, 33.3 s, 30.7 s, 17.0 s, 13.3 s, 12.6 s, 10.6 s\" (seven walls \u2014 the trailing 12.6 s and 10.6 s were `test_run_engine_exam_evidence.mjs` and `test_publish_fold.mjs`, in list order) and \"so the seven longest go out first\". Nothing asserts on the comment, and the same block already says \"A name that leaves fleet/tests/ simply drops out of the list\", so this is accuracy only \u2014 but this file is in FILES and the diff edits the tuple three lines below.; `fleet/tests/test_run_engine_proof_runs.mjs:860-862`: the diff removes leg (g) (the `test_run_engine_exam_evidence.mjs` probe) from the loop table but leaves the header describing the old shape \u2014 \"#713 Task 1 legs (f)-(j): the five re-scoped sims\" and \"the driver executes those five commands\". Four legs remain: (f), (h), (i), (j). No assertion reads the comment, and the loop itself is correct (each surviving entry names a sim that still exists), so this is accuracy only; the diff already edits this file, so it can carry the fix.; path outside FILES: `fleet/run-engine.mjs`; path outside FILES: `fleet/tests/README.md`; path outside FILES: `fleet/tests/test_run_engine_blind_sensor.mjs`; path outside FILES: `fleet/tests/test_run_engine_proof_runs.mjs`; path outside FILES: `fleet/tests/test_run_engine_red_suite_record.mjs`; path outside FILES: `fleet/tests/test_run_engine_referee.mjs`; path outside FILES: `fleet/tests/test_run_engine_state_exams.mjs`; path outside FILES: `fleet/tests/test_run_engine_wave_events.mjs`; path outside FILES: `fleet/tests/test_run_main_engine_dir.mjs`; path outside FILES: `fleet/tests/test_sandbox_boot_state_exams.mjs`; path outside FILES: `fleet/tests/test_sims_are_hermetic.mjs`; top-level tests +0 / \u221212 across the patch: net drop of 12, removing `the three sims the Proof runs are still there for the bridge  [M5 / leg (e)]`, `the boot script parses  [rig]`, `the approve receipt reaches the evidence worktree byte for byte  [M1 / leg (a)]`, `the standing approval reaches the evidence worktree byte for byte  [M1 / leg (a)]`, `a PASS run that wrote neither approval commits neither  [M1 / leg (b)]`, `the PASS run\\`, `the approved NEEDS_ACK run\\`, `CONTRACT.md\\`, `every worker slice reaches the evidence worktree byte for byte  [#702 Task 2 / M1 / leg (a)]`, `the copied transcripts directory holds the two names and nothing nested  [#702 Task 2 / M1 / leg (a)]`, `a run whose engine wrote no transcripts commits none  [#702 Task 2 / M1 / leg (a)]`, `CONTRACT.md\\` with no removal declared in the task; concern: plan-defect: the Context asserts \"no surviving sim names one of the seven that way (checked at BASE)\" for existsSync pins, and that only test_run_record_keys.mjs and fleet/roles/README.md must move with the deletions. That is wrong at BASE eefdffe4 \u2014 four surviving sims pin a deleted file and go red on deletion: fleet/tests/test_run_engine_state_exams.mjs:564 (existsSync on test_run_engine_exam_evidence.mjs), fleet/tests/test_sandbox_boot_state_exams.mjs:262 SIBLING_SIMS (existsSync on test_sandbox_boot_approval_evidence.mjs), fleet/tests/test_sims_are_hermetic.mjs:846,850,851 (NESTED_AT_BASE asserts both the file and its siblings exist), and fleet/tests/test_run_engine_proof_runs.mjs:963 leg (g), which readFileSync's test_run_engine_exam_evidence.mjs to splice a probe copy. Fixed task-locally by dropping the deleted names from those name-read lists and removing leg (g) whole; leg (g)'s pin (two post-patch driver:exam-run events) has no home left now that the sim it re-scoped is gone, and its nearest survivor is leg (h). Declared FILES could not have covered this.; concern: out-of-FILES: fleet/tests/test_run_engine_state_exams.mjs \u2014 dropped test_run_engine_exam_evidence.mjs from leg (l)'s existsSync list (four siblings to three) and reworded the leg header. Required: the assertion fails on the deleted path.; concern: out-of-FILES: fleet/tests/test_sandbox_boot_state_exams.mjs \u2014 SIBLING_SIMS narrowed to ['test_sandbox_boot.mjs'], plus its header and leg (g) comments reworded. Required: leg (g)'s existsSync fails on the deleted path.; concern: out-of-FILES: fleet/tests/test_sims_are_hermetic.mjs \u2014 removed the test_run_engine_exam_evidence.mjs NESTED_AT_BASE entry and its two sibling-list occurrences; site-count prose nine->eight. Required: leg (e) asserts each named file and sibling exists.; concern: out-of-FILES: fleet/tests/test_run_engine_proof_runs.mjs \u2014 removed leg (g), whose copyWithProbe read the deleted test_run_engine_exam_evidence.mjs. Required: readFileSync throws on the deleted path.; concern: out-of-FILES: six stale prose mentions reworded so no mention names a deleted file (global constraint): fleet/run-engine.mjs:586, fleet/tests/test_run_engine_referee.mjs:32, fleet/tests/test_run_engine_wave_events.mjs:27, fleet/tests/test_run_engine_red_suite_record.mjs:25, fleet/tests/test_run_engine_blind_sensor.mjs:32, fleet/tests/test_run_main_engine_dir.mjs:143; and fleet/tests/README.md dropped its test_run_main.mjs bullet.; concern: Three mentions survive because the task's Context explicitly rules them history that stays: fleet/tests/test_roles_peer.mjs:37 and :77, and fleet/tests/test_weave_emit.mjs:6. Worth flagging that :77 reads present-tense \u2014 \"Held here as well as in test_run_engine.mjs so a role-file edit fails against its own test file\" \u2014 which is no longer true now that the file is gone. I left it as the task directs rather than reword against explicit instruction; the roles/README.md rewording already redirects the shouted-imperative pin to test_roles_peer.mjs itself.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "proof-red",
+      "notes": "the Proof's exam failed: python3 -m pytest -q tests/test_catch_report_window.py \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-98/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1615 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 13%]\n........................................................................ [ 17%]\n........................................................................ [ 22%]\n........................................................................ [ 26%]\n........................................................................ [ 31%]\n........................................................................ [ 35%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 49%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 89%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n...............................                                          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1615 passed, 5 warnings in 383.08s (0:06:23) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "python3 -m pytest -q tests/test_fleet_suite_collection.py",
+      "exit": 0,
+      "stdout": "........                                                                 [100%]\n8 passed in 1.39s\n",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 267544,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0,
+    "refereeFindings": 13,
+    "refereeBlocking": 1,
+    "refereeSkippedPairs": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 53%]\n........................................................................ [ 57%]\n........................................................................ [ 62%]\n........................................................................ [ 66%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n......................................                                   [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1622 passed, 5 warnings in 389.50s (0:06:29) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5b6cb54c6c842f8d5ebb6f8f66acfefab5e7169e",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-98/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-98/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 2.013,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "2",
+      "files": [
+        "skills/ultralearn/SKILL.md",
+        "skills/ultralearn/scripts/catch_counter.py",
+        "skills/ultralearn/scripts/catch_report.py",
+        "tests/test_catch_report_window.py",
+        "tests/test_ultralearn_catch_report.py",
+        "tests/test_ultralearn_catches.py"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: plan-defect: the Context asserts \"no surviving sim names one of the seven that way (checked at BASE)\" for existsSync pins, and that only test_run_record_keys.mjs and fleet/roles/README.md must move with the deletions. That is wrong at BASE eefdffe4 \u2014 four surviving sims pin a deleted file and go red on deletion: fleet/tests/test_run_engine_state_exams.mjs:564 (existsSync on test_run_engine_exam_evidence.mjs), fleet/tests/test_sandbox_boot_state_exams.mjs:262 SIBLING_SIMS (existsSync on test_sandbox_boot_approval_evidence.mjs), fleet/tests/test_sims_are_hermetic.mjs:846,850,851 (NESTED_AT_BASE asserts both the file and its siblings exist), and fleet/tests/test_run_engine_proof_runs.mjs:963 leg (g), which readFileSync's test_run_engine_exam_evidence.mjs to splice a probe copy. Fixed task-locally by dropping the deleted names from those name-read lists and removing leg (g) whole; leg (g)'s pin (two post-patch driver:exam-run events) has no home left now that the sim it re-scoped is gone, and its nearest survivor is leg (h). Declared FILES could not have covered this.",
+    "task 1: out-of-FILES: fleet/tests/test_run_engine_state_exams.mjs \u2014 dropped test_run_engine_exam_evidence.mjs from leg (l)'s existsSync list (four siblings to three) and reworded the leg header. Required: the assertion fails on the deleted path.",
+    "task 1: out-of-FILES: fleet/tests/test_sandbox_boot_state_exams.mjs \u2014 SIBLING_SIMS narrowed to ['test_sandbox_boot.mjs'], plus its header and leg (g) comments reworded. Required: leg (g)'s existsSync fails on the deleted path.",
+    "task 1: out-of-FILES: fleet/tests/test_sims_are_hermetic.mjs \u2014 removed the test_run_engine_exam_evidence.mjs NESTED_AT_BASE entry and its two sibling-list occurrences; site-count prose nine->eight. Required: leg (e) asserts each named file and sibling exists.",
+    "task 1: out-of-FILES: fleet/tests/test_run_engine_proof_runs.mjs \u2014 removed leg (g), whose copyWithProbe read the deleted test_run_engine_exam_evidence.mjs. Required: readFileSync throws on the deleted path.",
+    "task 1: out-of-FILES: six stale prose mentions reworded so no mention names a deleted file (global constraint): fleet/run-engine.mjs:586, fleet/tests/test_run_engine_referee.mjs:32, fleet/tests/test_run_engine_wave_events.mjs:27, fleet/tests/test_run_engine_red_suite_record.mjs:25, fleet/tests/test_run_engine_blind_sensor.mjs:32, fleet/tests/test_run_main_engine_dir.mjs:143; and fleet/tests/README.md dropped its test_run_main.mjs bullet.",
+    "task 1: Three mentions survive because the task's Context explicitly rules them history that stays: fleet/tests/test_roles_peer.mjs:37 and :77, and fleet/tests/test_weave_emit.mjs:6. Worth flagging that :77 reads present-tense \u2014 \"Held here as well as in test_run_engine.mjs so a role-file edit fails against its own test file\" \u2014 which is no longer true now that the file is gone. I left it as the task directs rather than reword against explicit instruction; the roles/README.md rewording already redirects the shouted-imperative pin to test_roles_peer.mjs itself.",
+    "task 2: out-of-FILES: tests/test_fleet_suite.py \u2014 M4 and Proof leg (d) require that file to carry the line `# catch-counter: runner` (leg (d) greps it for exactly one match), but it is not in my FILES and is listed as a SIBLING FILE owned by task 1. It exists at BASE, so this is not a missing dependency; I added the marker as its first line (one line added above `import fcntl`), well away from task 1's edits at its lines 72-73, so the two diffs should fold cleanly. Task 1's own body never mentions the marker, so if I had left it out no one would have added it.",
+    "task 2: plan-defect: the note's position under `--n` is under-specified. M2 says \"the report ends with one line `<k> row(s) carry no startedAt \u2014 recount them`\" while the Context says \"The report's last line today is `max touching runs: N`; the `startedAt` note goes after it\" \u2014 under `--n` those disagree, since the deletion section already follows the curve (and `tests/test_ultralearn_catch_report.py`'s existing leg (i) pins the last line as the candidate path). I implemented the M2 reading: the note is the last line of the whole report, after the optional deletion section. Without `--n` \u2014 the way leg (b) reads \u2014 both readings coincide.",
+    "task 2: Proof leg (a) asks for three run directories to yield three rows. Row identity is still M9's sha256 of `runId + \"\\n\" + \"catch-count\"` (untouched, and pinned by `tests/test_ultralearn_catches.py`), so three run directories whose `events.jsonl` carries no `run:open` would all hash to the same id and only one row would be appended. The exam's run directories need distinct `run:open` runIds; I verified the leg passes with them.",
+    "task 2: referee footprint \u2014 path owned by a wave sibling and absent from FILES: `tests/test_fleet_suite.py`",
+    "task 2: the driver's pre-review pass was red (path owned by a wave sibling and absent from FILES: `tests/test_fleet_suite.py`) \u2014 one repair round before any reviewer read the patch",
+    "task 2: plan-defect: the task body's M4 requires `tests/test_fleet_suite.py` to carry the line `# catch-counter: runner` (Context: \"gains the marker as its second line\"), but that path is not in this task's FILES or `writes` \u2014 it belongs to wave sibling 1, whose own task (deleting seven sims) does not add the marker either. The requirement is therefore unsatisfiable from inside this tree without writing a sibling-owned path, which is exactly what the referee blocked. I left the file at BASE. Whoever merges the wave should add the one marker line to `tests/test_fleet_suite.py` under sibling 1's ownership; the report code already recognises it (any test file containing the exact line, or the same text after `//` for a `.mjs`).",
+    "task 2: exam: `tests/test_catch_report_window.py::test_leg_d_the_fleet_suite_bridge_carries_the_marker` is red for a reason other than missing implementation \u2014 it reads `tests/test_fleet_suite.py` out of the repository and asserts exactly one `# catch-counter: runner` line. The exam is a faithful reading of M4; it is the plan's file assignment, not the exam, that is wrong. I did not edit the exam. The other 19 cases, covering legs (a), (b), (c), (e) and the three in-tmp_path parts of leg (d) (runner status, the curve point, the `--n` listing), all pass.",
+    "task 2: still red after the pre-review repair round (the Proof's exam failed: python3 -m pytest -q tests/test_catch_report_window.py \u2014 exit 1) \u2014 no reviewer was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Task 2 (\"The counter's window starts when the test lands, and runners are never candidates\") \u2014 Claim slot unmet: none of its deliverables are in the integrated tree. Its Claim reads \"The counter's report counts a test's window only from the run after it landed and never lists the bridge that runs the sims\"; the tree does neither. (1) `skills/ultralearn/scripts/catch_counter.py` \u2014 `derive_catches` (lines 209-272) returns the row `{kind, runId, driverRuns, catches, reds, touched, exercises}` with no `startedAt` key, and the file never opens `status.json` (M1 unmet; `startedAt` does not occur anywhere in the file). (2) `skills/ultralearn/scripts/catch_report.py` \u2014 the signature is still `catch_table(rows, tree_tests)` (line 90) with no `landed` parameter; there is no `landing_dates()`, no `runner_files()`, no `git log --diff-filter=A` call, no `startedAt` comparison, and `_catch_rows` (line 56) does no de-duplication by `runId`; `curve_lines` (lines 189-194) still ends at `max touching runs: N` with no `<k> row(s) carry no startedAt \u2014 recount them` line, and `_status` (line 82) returns only `caught`/`unobserved`/`zero`, never `runner` (M2, M3, M4 unmet). (3) `skills/ultralearn/SKILL.md` \u2014 the section `## The catch counter` (lines 79-108) contains none of `landed`, `recount` or `catch-counter: runner` (M5 unmet). (4) `tests/test_fleet_suite.py` \u2014 does not carry the line `# catch-counter: runner` anywhere (M4's second half unmet). (5) The Proof slot's `Test:`/`Guard:` file `tests/test_catch_report_window.py` does not exist, which is why the driver's green suite does not detect any of this. Compounding (3): `catch_counter.py`'s `row_id`/`append_rows` (lines 277-337) key the ledger on `runId + kind` and *skip* a second row for the same run, which is the opposite of M3's last-row-wins rule \u2014 so the operator's planned recount of runs 60-89 would append nothing. The plan-level Claim (`/home/exedev/plans/run-98.md:5`) therefore also fails on its second half: task 1's seven deletions landed on the strength of a meter whose two known misreadings (window judged against runs predating the test, and the bridge `tests/test_fleet_suite.py` itself listed as a zero-catch candidate) are still in the tree."
+    },
+    {
+      "severity": "minor",
+      "detail": "Global Constraint (\"A deletion is whole: no test, mention or bridge entry survives that names a deleted file, except history\u2026\") \u2014 three surviving mentions of deleted `fleet/tests/test_run_engine.mjs` sit outside the constraint's enumerated history exceptions (CLAUDE.md's Doctrine section, `tests/fixtures/`, `docs/`), and two of them read in the present tense rather than as history: `fleet/tests/test_roles_peer.mjs:37` (\"The first two are the expressions `fleet/tests/test_run_engine.mjs` pins\") and `fleet/tests/test_roles_peer.mjs:77` (\"Held here as well as in test_run_engine.mjs so a role-file edit fails against its own test file\") \u2014 with that sim gone, those pins are now held only in test_roles_peer.mjs, so the comment misstates the tree; `fleet/tests/test_weave_emit.mjs:6` (\"Same seams as test_run_engine.mjs\") points at a file a reader cannot open. Task 1's Context does explicitly bless all three as history and stay, and the constraint's `Check:` command exits 0, so this is a wording shortfall rather than a broken deletion \u2014 but the two test_roles_peer.mjs comments should be reworded to the past tense."
+    }
+  ],
+  "blockedWaves": []
+}
