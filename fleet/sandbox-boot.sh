@@ -140,6 +140,15 @@ RESIDUALS_FILE="residuals.jsonl"
 # whole state machine runs in a second.
 POLL_SECONDS="${FLEET_POLL_SECONDS:-2}"
 STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
+# How far the evidence branch is allowed to fall behind the engine's event log.
+# The refresher commits on the first tick that has seen EITHER this many new
+# lines in `events.jsonl` since its last commit OR this many seconds since it —
+# so a watcher of the record is never more than ten events or two minutes
+# behind the page, and a wave that emits nothing costs the branch nothing. The
+# per-relayed-phase gate these replace (#723) lagged by a WHOLE WAVE, because a
+# wave writes its phase once and then works for an hour.
+COMMIT_EVENTS="${FLEET_COMMIT_EVENTS:-10}"                   # new lines that earn a commit
+COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-120}"                # seconds that earn one
 ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
 PUBLISH_BRANCH_WAIT="${PUBLISH_BRANCH_WAIT:-60}"             # for the pushed branch to show at the edge
 MERGE_CHECK_WAIT="${FLEET_MERGE_CHECK_WAIT:-1800}"           # 30 min for GitHub to recompute mergeability
@@ -271,6 +280,209 @@ engine_tail() {
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# --- the projection of the event log -----------------------------------------
+#
+# WHAT EACH TASK IS DOING, read off the engine's own `events.jsonl` and nothing
+# else. The log is the record; this is a projection of it, never a writer, and
+# it invents no event kind — every rule below names a kind the engine already
+# writes (`fleet/run-worker.mjs`, `fleet/run-engine.mjs`, `fleet/run-waves.mjs`).
+#
+# ONE READER, in `python3` with the paths in argv, in `residual_read`'s shape: a
+# per-task cell cannot be built by a `sed` that answers the FIRST match, and the
+# ids live inside a worker label and inside two arrays. An absent, unparsable or
+# oddly-shaped log answers the empty projection rather than failing a `set -e`
+# script — a page is owed at every write, including the writes that happen
+# before the clone, when there is no run directory at all.
+#
+# THREE MODES, ONE WALK. `all` is the `project` verb's object, `tasks` is the
+# page's cell and `sub` is the page's sub-phase; a second parser for any of them
+# would be a second answer to the same question.
+project_read() { # $1 = all|tasks|sub, $2 = events.jsonl, $3 = args.json or ''
+  python3 -c '
+import json, re, sys
+
+MODE, EVENTS, ARGS = sys.argv[1], sys.argv[2], sys.argv[3]
+
+# The three kinds a proof run is written under. `lastProof` is the last of them
+# for the task, whatever its exit: a red proof is what a reader most wants.
+PROOF = ("driver:proof-run", "driver:check-run", "driver:exam-run")
+
+# The worker labels that BELONG TO A TASK. `reconcile:wave<n>:<attempt>` and
+# `integration` are labels of work no single task owns — they match none of
+# these, so they name no task, and they still count for the sub-phase.
+EXAM = re.compile(r"^exam:([^:]+)$")
+IMPL = re.compile(r"^impl:([^:]+)$")
+REVIEW = re.compile(r"^review:([^:]+):")
+FIX = re.compile(r"^fix:([^:]+):")
+STATE_OF = ((EXAM, "examining"), (IMPL, "implementing"),
+            (REVIEW, "reviewing"), (FIX, "fixing"))
+
+
+def owner(label):
+    """The task id a worker label names, or None."""
+    for rx, _ in STATE_OF:
+        found = rx.match(label)
+        if found:
+            return found.group(1)
+    return None
+
+
+def listed(doc, key):
+    got = doc.get(key)
+    return got if isinstance(got, list) else []
+
+
+def named(doc):
+    """Every task id one event names, through its `task` field or `tasks` list."""
+    out = []
+    one = doc.get("task")
+    if one is not None and not isinstance(one, (dict, list)):
+        out.append(str(one))
+    for other in listed(doc, "tasks"):
+        if not isinstance(other, (dict, list)):
+            out.append(str(other))
+    return out
+
+
+# IN `id` ORDER, and a STABLE sort: an id is a ULID, so lexical order is time
+# order however the lines were appended, and two events that carry the same id
+# keep the order the file gave them.
+rows = []
+try:
+    with open(EVENTS, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                doc = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(doc, dict):
+                rows.append((str(doc.get("id") or ""), doc))
+except Exception:
+    rows = []
+rows.sort(key=lambda row: row[0])
+events = [doc for _, doc in rows]
+
+# The plan the launcher wrote beside the log, when there is one: it is the only
+# place a task that has not been started yet is named at all.
+waves = {}
+if ARGS:
+    try:
+        with open(ARGS, encoding="utf-8") as fh:
+            plan = json.load(fh)
+    except Exception:
+        plan = {}
+    if isinstance(plan, dict):
+        for n, wave in enumerate(listed(plan, "waves")):
+            if not isinstance(wave, list):
+                continue
+            for item in wave:
+                tid = item.get("id") if isinstance(item, dict) else item
+                if tid is not None and not isinstance(tid, (dict, list)):
+                    waves.setdefault(str(tid), n + 1)
+
+ids = set(waves)
+for doc in events:
+    if doc.get("kind") in ("worker:start", "worker:end"):
+        tid = owner(str(doc.get("label") or ""))
+        if tid:
+            ids.add(tid)
+    ids.update(named(doc))
+
+state = dict.fromkeys(ids, "queued")
+wave = dict(waves)
+proof, park = {}, {}
+# Every `worker:start`, and the positions each label was closed at: a role is
+# the last start of the task that no later end of the SAME label answered.
+opens, closes = [], {}
+
+for at, doc in enumerate(events):
+    kind = doc.get("kind")
+    label = str(doc.get("label") or "")
+    tid = owner(label)
+    if kind == "worker:start":
+        opens.append((at, label, tid))
+        for rx, reached in STATE_OF:
+            if rx.match(label) and tid:
+                state[tid] = reached
+    elif kind == "worker:end":
+        closes.setdefault(label, []).append(at)
+        if tid and IMPL.match(label) and doc.get("status") == "BLOCKED":
+            state[tid] = "failed"
+    elif kind in PROOF:
+        for tid in named(doc):
+            if tid in state:
+                state[tid] = "proving"
+                proof[tid] = {"cmd": doc.get("cmd"), "exit": doc.get("exit"),
+                              "ts": doc.get("ts")}
+    elif kind in ("driver:wave-adopted", "driver:wave-blocked"):
+        blocked = kind == "driver:wave-blocked"
+        for tid in [str(t) for t in listed(doc, "tasks")
+                    if not isinstance(t, (dict, list))]:
+            state[tid] = "failed" if blocked else "folded"
+            if blocked:
+                park[tid] = doc.get("detail")
+            if tid not in waves:
+                wave[tid] = doc.get("wave")
+
+
+def open_at(at, label):
+    """True when no `worker:end` of `label` came after the start at `at`."""
+    return not any(shut > at for shut in closes.get(label, ()))
+
+
+def role_of(tid):
+    for at, label, owns in reversed(opens):
+        if owns == tid:
+            return label if open_at(at, label) else None
+    return None
+
+
+# The sub-phase: the label of the most recent worker still running, else the
+# kind of the last event when the log has moved past its last `engine:phase`.
+sub = None
+for at, label, _ in reversed(opens):
+    if open_at(at, label):
+        sub = label
+        break
+if sub is None and events:
+    last = len(events) - 1
+    phase_at = max([at for at, doc in enumerate(events)
+                    if doc.get("kind") == "engine:phase"] or [-1])
+    if phase_at < last:
+        sub = str(events[last].get("kind") or "") or None
+
+
+def key(tid):
+    return (0, int(tid), "") if tid.isdigit() else (1, 0, tid)
+
+
+cells = {}
+for tid in sorted(ids, key=key):
+    cells[tid] = {"wave": wave.get(tid), "state": state[tid], "role": role_of(tid),
+                  "lastProof": proof.get(tid), "park": park.get(tid)}
+
+if MODE == "sub":
+    out = (sub or "") + "\n"
+elif MODE == "tasks":
+    out = json.dumps(cells, separators=(",", ":")) + "\n"
+else:
+    out = json.dumps({"sub": sub, "tasks": cells}, separators=(",", ":")) + "\n"
+sys.stdout.write(out)
+' "$1" "$2" "${3:-}" 2>/dev/null || return 1
+}
+
+# The projection of THIS run, for the page: the run directory holds both the log
+# and the plan the launcher wrote beside it. Before the clone `RUN_ID` is empty
+# and neither path exists, which is the empty projection and not an error.
+status_tasks() {
+  local dir
+  dir="$(run_dir_path)"
+  project_read tasks "$dir/events.jsonl" "$dir/args.json"
+}
+
 # --- status page -------------------------------------------------------------
 #
 # One writer, written atomically, and every write is also a log line — which is
@@ -291,10 +503,17 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
   # without opening GitHub.
   [ -n "$MERGED_SHA" ] && merged_cell="\"$(json_escape "$MERGED_SHA")\""
   [ -n "$ERROR" ] && err_cell="\"$(json_escape "$ERROR")\""
-  :
+  # THE LAST CELL ON THE PAGE, always, and never anywhere else: `json_field`
+  # answers the FIRST `"name": "value"` match in the file, so a task cell's own
+  # `"state":"folded"` would be read as the page's state the moment it sat above
+  # it. Written at EVERY write, so a reader of the record sees what each task
+  # was doing at that commit and not only what the run was.
+  local tasks_cell
+  tasks_cell="$(status_tasks || true)"
+  [ -n "$tasks_cell" ] || tasks_cell="{}"
   tmp="$STATUS_FILE.tmp.$$"
   cat >"$tmp" <<EOF
-{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
+{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"merged":$merged_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell,"tasks":$tasks_cell}
 EOF
   mv "$tmp" "$STATUS_FILE"
   log "status: state=$STATE phase=$PHASE"
@@ -612,20 +831,22 @@ last_phase() {
     sed -n 's/.*"phase":"\([^"]*\)".*/\1/p'
 }
 
-# ONE EVIDENCE COMMIT PER RELAYED PHASE (#723), made through the same
-# `collect_evidence`/`push_evidence` pair a state transition makes — so a reader
-# of `ultra/evidence-run-<N>` sees one commit per wave, per integration review
-# and per gate, not one per state. The page is still rewritten EVERY poll
-# (`updatedAt` is the heartbeat a watcher reads); only a phase the page did not
-# carry before earns a commit, which is what keeps the branch one commit per
-# phase instead of one per tick.
+# THE EVIDENCE BRANCH KEEPS UP WITH THE LOG, made through the same
+# `collect_evidence`/`push_evidence` pair a state transition makes. The gate is
+# `FLEET_COMMIT_EVENTS` new lines OR `FLEET_COMMIT_SECONDS` seconds since the
+# last commit, never the phase: one commit per relayed `engine:phase` (#723)
+# meant a wave that writes its phase once and then works for an hour left the
+# record an hour behind the page, which is what Shelley measured on fleet-r84
+# and fleet-r87. The page is still rewritten EVERY poll (`updatedAt` is the
+# heartbeat a watcher reads); a tick that saw no new line never commits,
+# whatever the clock says, so an idle run costs the branch nothing.
 #
 # The commit runs under `EVIDENCE_LOCK` so `run_engine`'s kill cannot land
 # inside it, and under `EVIDENCE_PUSH_SOFT` so a refused push leaves the commit
 # local instead of ending the run: this is a background subshell, and a `fail`
 # reached in here would write a `failed` page and notify for a run whose engine
-# is still working. `last` is committed only once the commit was actually made,
-# so a phase the lock cost us this poll is committed on the next one.
+# is still working. The counters move only once the commit was actually made,
+# so a window the lock cost us this poll is committed on the next one.
 commit_phase_evidence() { # $1 = the phase just relayed to the page
   evidence_lock || return 1
   EVIDENCE_PUSH_SOFT=1
@@ -636,15 +857,56 @@ commit_phase_evidence() { # $1 = the phase just relayed to the page
   return 0
 }
 
+# THE LIVE LOG, beside the live page: a `cp` into `$WWW_DIR` and a `mv` over the
+# served name, so the rename is atomic on the one filesystem and a browser that
+# asked mid-copy reads a whole file rather than half of one. The temp name
+# carries this shell's pid because the refresher is a subshell of a script that
+# can be started again on the same box.
+serve_events() { # $1 = the run directory's events.jsonl
+  local tmp
+  [ -f "$1" ] || return 0
+  mkdir -p "$WWW_DIR"
+  tmp="$WWW_DIR/events.jsonl.tmp.$$"
+  cp "$1" "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
+  mv "$tmp" "$WWW_DIR/events.jsonl" 2>/dev/null || rm -f "$tmp"
+  return 0
+}
+
+# THE LINE COUNT AND THE CLOCK ARE READ BEFORE THE PAGE IS WRITTEN, and the
+# commit is decided after it: the page a tick writes is the page that tick may
+# commit, and a line appended while this tick was writing belongs to the next
+# one. The clock is `date +%s` and nothing longer — whole seconds, so a window
+# may be met with up to one real second less, and no reader of this measures
+# wall time.
 phase_refresher() {
-  local p last=""
+  local f p s page lines now last_lines=0 last_at
+  f="$(run_dir_path)/events.jsonl"
+  last_at="$(date +%s)"
   while :; do
     sleep "$STATUS_INTERVAL"
+    serve_events "$f"
+    lines=0
+    if [ -f "$f" ]; then
+      lines="$({ wc -l <"$f" 2>/dev/null || true; } | tr -dc '0-9')"
+      [ -n "$lines" ] || lines=0
+    fi
+    now="$(date +%s)"
     p="$(last_phase || true)"
     if [ -n "$p" ]; then
-      write_status running "$p"
-      if [ "$p" != "$last" ] && commit_phase_evidence "$p"; then
-        last="$p"
+      # The sub-phase: what the run is doing INSIDE the phase, which is the
+      # whole difference between a page that says `Wave 1` for an hour and one
+      # that names the worker the wave is waiting on.
+      s="$(project_read sub "$f" "$(run_dir_path)/args.json" || true)"
+      page="$p"
+      [ -n "$s" ] && page="$p · $s"
+      write_status running "$page"
+    fi
+    if [ "$lines" -gt "$last_lines" ] &&
+       { [ "$(( lines - last_lines ))" -ge "$COMMIT_EVENTS" ] ||
+         [ "$(( now - last_at ))" -ge "$COMMIT_SECONDS" ]; }; then
+      if commit_phase_evidence "${page:-$STATE}"; then
+        last_lines="$lines"
+        last_at="$now"
       fi
     fi
   done
@@ -2731,9 +2993,26 @@ do_deadman() {
   exit 0
 }
 
+# The event log as a run's watcher reads it: one JSON object on one line, the
+# open worker and a cell per task. A READER and nothing else — it starts no
+# unit, touches no branch and writes no page, which is what lets a person, the
+# page's own writer and a later tool all ask the same question of the same file
+# and get the same answer. The preamble above is side-effect free (`deadman`
+# already relies on it), so this verb is safe to run on a live box.
+do_project() { # $1 = events.jsonl, $2 = args.json (optional)
+  [ "$#" -ge 1 ] || {
+    printf 'usage: sandbox-boot.sh project <events.jsonl> [<args.json>]\n' >&2
+    exit 2
+  }
+  project_read all "$1" "${2:-}" || printf '{"sub":null,"tasks":{}}\n'
+  exit 0
+}
+
 MODE="${1:-boot}"
 case "$MODE" in
   boot)    do_boot ;;
   deadman) do_deadman ;;
-  *) printf 'usage: sandbox-boot.sh [boot|deadman]\n' >&2; exit 2 ;;
+  project) shift; do_project "$@" ;;
+  *) printf 'usage: sandbox-boot.sh [boot|deadman|project <events.jsonl> [<args.json>]]\n' >&2
+     exit 2 ;;
 esac

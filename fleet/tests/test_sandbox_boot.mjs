@@ -844,6 +844,12 @@ test('leg (c) rejects a log whose integration push precedes any evidence push  [
 // `engine:phase` event it already relays to the live page (wave N, integration
 // review, gate), not only on `running → publishing → done`.
 //
+// The refresher's gate is no longer the phase but the event window (#877) —
+// `FLEET_COMMIT_EVENTS` new lines or `FLEET_COMMIT_SECONDS` seconds since the
+// last commit — so every case below sets a window of ONE line and reads the
+// same counts it always did: a relayed phase is one line in the log, and one
+// line is one commit. What the window itself proves is its own sim's business.
+//
 // The engine's event log is READ, never changed: every case below drives the
 // script through the same `phase_refresher` that exists at BASE, and asserts on
 // what it committed. `commitPhases` and `relayedPhases` are the two readers the
@@ -876,9 +882,15 @@ const PHASES = ['Wave 1', 'Wave 2', 'Integration Review', 'gate']
  *  cases four seconds each for nothing they read. What they read is the ORDER
  *  of the commits, which a faster poll only reaches sooner.
  *  `STUB_ENGINE_SLEEP` is untouched — it is the margin the last phase's commit
- *  has to land in before the unit exits, which legs (b) and (f) assert on. */
+ *  has to land in before the unit exits, which legs (b) and (f) assert on.
+ *
+ *  `FLEET_COMMIT_EVENTS` is 1 because the refresher's gate is now the EVENT
+ *  WINDOW (#877), not the phase: a window of one line makes each relayed
+ *  `engine:phase` — one line, written and then waited on by the stub's
+ *  handshake — earn exactly the one commit these cases have always counted. */
 const PHASE_ENV = {
   FLEET_STATUS_INTERVAL: '0.25',
+  FLEET_COMMIT_EVENTS: '1',
   STUB_ENGINE_PHASES: PHASES.join('|'),
   STUB_ENGINE_SLEEP: '3',
 }
@@ -953,7 +965,9 @@ test('#723 (c) a phase the page already carries produces no further commit  [M2]
   // the heartbeat — while the branch takes one commit for that phase. The count
   // below asks for three rewrites; this clock leaves room for about eight.
   const ctx = makeHome()
-  const r = boot(ctx, ['boot'], { FLEET_STATUS_INTERVAL: '0.25', STUB_ENGINE_SLEEP: '2' })
+  const r = boot(ctx, ['boot'], {
+    FLEET_STATUS_INTERVAL: '0.25', FLEET_COMMIT_EVENTS: '1', STUB_ENGINE_SLEEP: '2',
+  })
   assert.equal(r.status, 0, r.stdout + r.stderr)
 
   const relays = stream(ctx).filter((l) => l === 'status: state=running phase=gate')
@@ -1052,14 +1066,18 @@ test('#723 (g) the transition-only control: a run that relays nothing still comm
     'one evidence commit per transition when no phase was relayed')
 })
 
-test('#723 (h) the contract declares the phase commits in both bullets  [M5]', () => {
+test('#723 (h) the contract declares the commit window in both bullets  [M5]', () => {
+  // The rule the two bullets carry is the EVENT WINDOW (#877): the branch is at
+  // most `FLEET_COMMIT_EVENTS` events or `FLEET_COMMIT_SECONDS` seconds behind
+  // the page. The phase gate this replaces lagged by a whole wave, so the
+  // literal these greps read is the knob, not `engine:phase`.
   const ROOT = path.resolve(SCRIPT, '..', '..')
   const runs = [
     // The `**status.json:**` bullet under §Literals.
-    "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+    "sed -n '/^- \\*\\*status\\.json:\\*\\*/,/^- \\*\\*Publish:\\*\\*/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'FLEET_COMMIT_EVENTS'",
     // The `ultra/evidence-run-<N>` bullet, from its own line to the
     // `ultra/integration-run-<N>` one.
-    "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
+    "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'FLEET_COMMIT_EVENTS'",
   ]
   for (const cmd of runs) {
     const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000, env: ENV })

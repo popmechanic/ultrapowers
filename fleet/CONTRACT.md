@@ -77,10 +77,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `resolver-brief-<i>-<attempt>.txt`, `resolver-brief-<i>-<attempt>-retry.txt` (the re-brief a red
     check earned), `exam-<attempt>-<n>.txt` (one per exam run, `n` from 1 in the order they ran),
     `suite-<attempt>.txt` and `publish-fold-<attempt>.log`.
-    Committed from a detached worktree at every transition **and at every `engine:phase` the boot
-    script relays to the page while the engine runs** — one commit per relayed phase, so the
-    branch's history reads wave by wave; append-only paths, `pull --rebase` and retry on
-    non-fast-forward.
+    Committed from a detached worktree at every transition **and, while the engine runs, on the
+    first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines in that
+    `events.jsonl` (default 10) or `FLEET_COMMIT_SECONDS` seconds (default 120) since the last
+    commit** — so the record is never more than ten events or two minutes behind the live page,
+    and a poll that saw no new line commits nothing however long it has been; append-only paths,
+    `pull --rebase` and retry on non-fast-forward.
   - `ultra/integration-run-<N>` — the work. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
@@ -183,8 +185,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `FLEET_ASSIGNMENT` (one Reflection read as fallback; no polling loop). Paths: engine
   `/home/exedev/engines/<sha>` (`ENGINE_REPO_DIR`), target `/home/exedev/target` (clone at `base=`
   through `https://github.int.exe.xyz/<owner>/<repo>.git`, public fallback `https://github.com/...`),
-  evidence worktree `/home/exedev/evidence`, status `/home/exedev/www/status.json` + `engine.log`, boot
-  log `/home/exedev/fleet-boot.log`. Engine deps: `npm ci` (or `npm install` without a lockfile) in
+  evidence worktree `/home/exedev/evidence`, boot log `/home/exedev/fleet-boot.log`, served
+  `/home/exedev/www/status.json` + `events.jsonl` + `engine.log` — where `events.jsonl` is the run's
+  own log, copied over on every refresher poll, so the page and the log are the same facts.
+  Engine deps: `npm ci` (or `npm install` without a lockfile) in
   `fleet/` ONLY when `fleet/package.json` declares dependencies.
   - preflight, right after the assignment is parsed and before any clone: ONE read of Reflection
     `/integrations`; every github integration's repository is read out of its `help` string
@@ -295,12 +299,23 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
     both branches and logs `record: … kept` — the record step never leaves a run with neither a tag
     nor a branch.
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>"}`
+- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>"}}}`
   — the SAME bytes are served at `/status.json` and committed to
-  `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and at every
-  `engine:phase` the boot script relays to the page while the engine runs**. A phase the page
-  already carries is a heartbeat (`updatedAt` moves, the page is rewritten every poll) and earns no
-  second commit.
+  `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
+  the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
+  in the run's `events.jsonl` (default 10) or `FLEET_COMMIT_SECONDS` seconds (default 120) since the
+  last commit**. A poll that saw no new line is a heartbeat (`updatedAt` moves, the page is
+  rewritten every poll) and earns no commit.
+  `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
+  task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
+  nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
+  belongs to, one of the eight states above, the label of the worker open for it, its last proof run
+  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`) and the detail it was parked with.
+  The same projection is printed for any log by
+  `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
+  `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
+  is open, and `<phase> · <sub>` — that phase, a space, `·`, a space, and either the label of the
+  most recent worker still running or the kind of the last event — otherwise.
   The `state` cell is a sequence, not a set: a run that published reads
   `booting → running → publishing → done`, and a run whose merge PUT answered a base-moved 405 folds
   again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase

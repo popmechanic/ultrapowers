@@ -171,9 +171,21 @@ and does not merge it (a measurement run).
 **Watch.** The same bytes are in two places:
 
 - `https://<vm>.exe.xyz/status.json` — the VM's own page, port 8000 behind
-  exe.dev's proxy; a browser logged in to exe.dev reads it.
+  exe.dev's proxy; a browser logged in to exe.dev reads it. Its `phase` names
+  the sub-step the run is on — `Wave 2 · impl:3`, the phase and the worker the
+  wave is waiting on — and its `tasks` cell says what each task is doing right
+  now: the wave it is in, one of `queued`, `examining`, `implementing`,
+  `proving`, `reviewing`, `fixing`, `folded`, `failed`, the worker open for it,
+  its last proof run and why it was parked.
+- `https://<vm>.exe.xyz/events.jsonl` — the live event log, the same file the
+  engine is appending to, recopied on every poll. It is what the page above is
+  a projection of; `bash fleet/sandbox-boot.sh project <events.jsonl>` prints
+  that projection for a log you have in your hand.
 - `.ultrapowers/runs/<N>/status.json` on the target — committed at every
-  transition, next to `receipt.json`, `gate-receipt.json`, `report.json`,
+  transition and, while the engine runs, whenever the log has grown by
+  `FLEET_COMMIT_EVENTS` events (default 10) or `FLEET_COMMIT_SECONDS` seconds
+  have passed (default 120), so the branch is at most ten events or two minutes
+  behind the page. Next to `receipt.json`, `gate-receipt.json`, `report.json`,
   `events.jsonl`, `engine.log` and `claude-version.txt`. Read it by tag, which
   is the one spelling that keeps working after the run's branches are gone:
 
