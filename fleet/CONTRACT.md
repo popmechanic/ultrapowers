@@ -46,6 +46,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
     `approve-receipt.json` and `standing-approval.json`, present when the engine wrote them.
+    The engine's own wave record is two kinds in that `events.jsonl`, one per wave that folded:
+    `driver:wave-adopted` `{wave, tasks, headSha}` — the 1-based wave, the ids it merged in plan
+    order, the head it left on the integration branch — and `driver:wave-blocked`
+    `{wave, tasks, detail}`, the same wave and ids with the `waveMerges` row's own `detail`.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
     `referee/task-<id>-<n>.json` — one per patch the driver's referee graded, `n` the number of fix

@@ -2742,6 +2742,9 @@ export async function runEngine({
   // would record the run entering every phase at t=0 — review finding 6. Each
   // phase is announced once, when it actually starts.)
   const waveLabel = (w) => 'Wave ' + (w + 1)
+  // The wave's task ids in plan order — the order the plan wrote them, which is
+  // the order every record of the wave names them in.
+  const waveIds = (w) => (Array.isArray(WAVES[w]) ? WAVES[w] : []).map((t) => t.id)
 
   let waveBaseSha = baseSha
   const compositionRows = (waveNumber, tasks) => {
@@ -2788,6 +2791,11 @@ export async function runEngine({
     await git(['reset', '--hard', prevHead], integ)
     await exec('git', ['clean', '-fd'], { cwd: integ })
     waveMerges.push({ wave: w + 1, status: 'TEST_FAILED', detail, branches })
+    // #877 — the block is a RECORD (see the barrier's own pair below). The ids
+    // are the WAVE's, in plan order, not the mergeable ones: a run that parks
+    // before its first dispatch has no results at all, and an event naming no
+    // task says nothing about which work this red held up.
+    appendEvent({ kind: 'driver:wave-blocked', wave: w + 1, tasks: waveIds(w), detail })
     blockedWaves.push({ wave: w + 1, detail })
     log('wave ' + (w + 1) + ' parked: the suite was already RED on BASE when the run opened')
     for (const t of WAVES[w]) {
@@ -2996,7 +3004,24 @@ export async function runEngine({
       ...(merge.suite && Array.isArray(merge.suite.unattributed)
         ? { suite: merge.suite } : {}),
     })
+    // #877 — what the wave did to the integration branch is a RECORD, not
+    // narration: one event per wave that folded something, appended HERE, beside
+    // the `waveMerges` row it mirrors, so the row and the log can never say
+    // different things. `driver:wave-adopted` names the head the wave put on the
+    // branch (the green candidate's or the reconciled one's — the barrier has
+    // already chosen by the time it returns) and the tasks that went into it, in
+    // plan order; `driver:wave-blocked` names the wave the barrier could not make
+    // green and repeats the row's own `detail` verbatim. A `SKIPPED` wave folded
+    // nothing and gets neither. The place is after the adoption and before the
+    // integrated `Run:` proofs — so the event sorts after every worker of this
+    // wave and before the next `engine:phase`.
+    if (merge.status === 'TEST_FAILED') {
+      appendEvent({ kind: 'driver:wave-blocked', wave: w + 1,
+        tasks: waveIds(w), detail: merge.detail })
+    }
     if (merge.status === 'MERGED') {
+      appendEvent({ kind: 'driver:wave-adopted', wave: w + 1,
+        tasks: waveTasks.map((t) => t.id), headSha: merge.headSha })
       waveBaseSha = merge.headSha
       lastSuite = merge.suite
       for (const p of ((merge.suite && merge.suite.unattributed) || [])) {
