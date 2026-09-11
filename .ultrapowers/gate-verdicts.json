@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "72b651b9190eebcc5cfbdf07e37974b885ec20fcf7a6632e2fd07e6a34a4166b",
+      "verdict": "pass",
+      "reason": "round 3: id-ordered placement and sha equality, a two-wave green case, blocked detail by equality on both paths, counting legs for both universals, CONTRACT grep with headSha co-occurrence"
+    },
+    "2": {
+      "hash": "24a8af8a9a116831e8dabc0388ac2feafc1b6bb242059da7fcf0bd216d176187",
+      "verdict": "pass",
+      "reason": "round 3 (provisional until the reader answers): served copy grows across two appends; every state incl. fixing and all three proof kinds via prefixes; sub-phase literals computed under M3's rule; commit gate with three timing cases; CONTRACT/RUNBOOK greps"
+    }
+  },
+  "tally": {
+    "dispatched": 6,
+    "rejected": 4,
+    "rounds": {
+      "1": {
+        "pass": 0,
+        "fail": 2
+      },
+      "2": {
+        "pass": 0,
+        "fail": 2
+      },
+      "3": {
+        "pass": 2,
+        "fail": 0
+      }
+    }
+  }
+}
