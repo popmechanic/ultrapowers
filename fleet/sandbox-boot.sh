@@ -1483,12 +1483,18 @@ collect_evidence() {
   # function runs again at every later transition, and a directory copy onto a
   # destination that already holds `state-exams/` nests a second one inside the
   # first. A run whose engine wrote none commits none — nothing here creates
-  # `$dest/state-exams` until there is a file to put in it.
+  # `$dest/state-exams` until there is a file to put in it. Every copy in the
+  # walk is tolerant (#859): the loop body runs under `set -euo pipefail` in
+  # the pipeline's subshell, so one artifact an exam left unreadable would
+  # otherwise end the walk, the commit and the transition with it — and the
+  # record is evidence, never control flow. The file that could not be copied
+  # is named in the log and the rest of the tree still lands.
   if [ -d "$run_dir/state-exams" ]; then
     find "$run_dir/state-exams" -type f -print | while IFS= read -r f; do
       rel="${f#"$run_dir/state-exams/"}"
-      mkdir -p "$dest/state-exams/$(dirname "$rel")"
-      cp "$f" "$dest/state-exams/$rel"
+      mkdir -p "$dest/state-exams/$(dirname "$rel")" 2>/dev/null || true
+      cp "$f" "$dest/state-exams/$rel" 2>/dev/null \
+        || log "evidence: state-exams/$rel could not be copied — skipped"
     done
   fi
   # The engine's combined output rides along: it is the only evidence a run that

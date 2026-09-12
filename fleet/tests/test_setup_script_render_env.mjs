@@ -39,7 +39,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { renderSetupScript, readFleetFiles, SETUP_SCRIPT_MAX_BYTES } from '../setup-script.mjs'
-import { simEnv } from './_helpers.mjs'
+import { RENDER_SHAPES, simEnv } from './_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..', '..')
@@ -312,8 +312,10 @@ test('(d) [M3] a bad account throws with a message naming `account`', () => {
 })
 
 test('(d) [M3] every other value outside the two shapes is refused too', () => {
-  const badIntegrations = ['Browser-Run', 'browser_run', '9lead', '-lead', '', 'a b']
-  const badAccounts = ['abc def', 'abc.def', '', 'a/b']
+  // The empty string is not among these: an empty slot is half a renderer,
+  // which `renderOf` reads as none — leg (d2) below, on the shared fixtures.
+  const badIntegrations = ['Browser-Run', 'browser_run', '9lead', '-lead', 'a b']
+  const badAccounts = ['abc def', 'abc.def', 'a/b']
   for (const integration of badIntegrations) {
     assert.throws(
       () => attempt({ integration, account: 'abc123' }),
@@ -339,6 +341,28 @@ test('(d) [M3] the refusals came before any script text, so no bad value is in o
   const built = returned.join('\n')
   assert.ok(!built.includes(BAD_INTEGRATION), `${BAD_INTEGRATION} reached a render`)
   assert.ok(!built.includes(BAD_ACCOUNT), `${BAD_ACCOUNT} reached a render`)
+})
+
+// ── (d2) [#859] the shared fixture set: half a renderer is no renderer ───────
+
+test('(d2) [#859] every RENDER_SHAPES entry renders as the doctor and launcher read it', () => {
+  // The same six shapes `test_doctor_render.mjs` and `test_launch_render.mjs`
+  // loop: a shape `renderOf` answers null for renders the render-less script,
+  // byte for byte — never an address ending in `accounts/undefined` — and the
+  // one well-formed pair renders its address.
+  const none = renderSetupScript({ run: RUN, bootstrap: files.bootstrap, unit: files.unit })
+  for (const { label, value, answer } of RENDER_SHAPES) {
+    const out = renderSetupScript({ run: RUN, bootstrap: files.bootstrap, unit: files.unit, render: value })
+    if (answer === null) {
+      assert.equal(out, none, `${label} must render the render-less script byte for byte`)
+      assert.ok(!out.includes('accounts/undefined'), `${label} must never render accounts/undefined`)
+    } else {
+      assert.ok(
+        out.includes(`TINYAPP_RENDER_URL=https://${answer.integration}.int.exe.xyz/client/v4/accounts/${answer.account}/browser-rendering`),
+        `${label} must render its address`,
+      )
+    }
+  }
 })
 
 // ── (e) [M1, M2] the script it already was ───────────────────────────────────
