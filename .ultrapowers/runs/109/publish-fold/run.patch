@@ -1,0 +1,3909 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 972447d27efcc898bc8acf74fc06d57e53aeb4e2..e0f59d79214c3450238b306e8fc2ce4f7d6266b7 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -89,7 +89,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one
+   credential (loom-style OAuth on the laptop, refresh token in the keychain, refreshed before every
+   launch, single-flight — #602); `janitor.mjs` reads each fleet VM's comment and the target's
+   evidence branch through `gh api`, never a VM's disk; `target.mjs` creates the per-target
+-  integration; `doctor.mjs` says which of its eight rows is missing. The engine itself is untouched
++  integration; `doctor.mjs` says which of its nine rows is missing. The engine itself is untouched
+   by the lift (#402): `run-main.mjs` (entry) →
+   `run-engine.mjs` (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),
+   `run-waves.mjs` (clones-at-BASE + `withPatchCapture`), `confine-hook.mjs` (the implementer's
+diff --git a/fleet/CONTRACT.md b/fleet/CONTRACT.md
+index 1871957024ac878ec510024f5a2aa20d7db6d3be..18e336884bbd304e67d57bac2057195343ebd5bf 100644
+--- a/fleet/CONTRACT.md
++++ b/fleet/CONTRACT.md
+@@ -406,7 +406,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   by that policy and by nothing else: no `--integration` on `new`, no `attach`, no per-VM grant.
+   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
+   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
+-- **Doctor (`fleet/doctor.mjs`) — eight rows, this order, `ROW_IDS`:**
++  The pre-2026-09-11 rule that **no GitHub object rides** `tag:fleet` was superseded by that
++  migration: with `attach` refused there is no per-VM grant left to ride, so every object reaches a
++  fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy**, which is
++  created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
++  the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
++- **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
+   | id | what it reads | green when |
+   |---|---|---|
+   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
+@@ -417,6 +422,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   | `integrations` | `integrations list --json` + `integrations policy get <name> --json` for `claude-max`, `gh-<owner>-<repo>` (with `--target`) and `render.integration` (when configured) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects' `policy.selector` is `tag:fleet` — the red names the first that is not and the get/set two-step that fixes it |
+   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
+   | `render` | `integrations list --json` against `fleet.json`'s `render` | `not configured` when the file names none; otherwise `render.integration` is a name in the listing |
++  | `kata` | `integrations list --json` + `ssh exe.dev "integrations policy get kata --json"` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists and carries a bearer, its `policy.selector` is exactly `tag:fleet` (the listing's `attachments` are never consulted for this row), and `.vms[]` has a `kata-hub` row; the red says which of the four is absent, and names `node fleet/kata-hub.mjs` — or, for a wrong policy, the get/set two-step |
+ 
+   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
+   `## ` heading in `skills/ultrapowers/references/first-run.md`.
+@@ -427,9 +433,31 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
+   the evidence tag `ultra/evidence/run-<N>` first, and at the branch `ultra/evidence-run-<N>`
+   only while the run is in flight or its sweep is pending; a run with no page at either ref is aged
+   from the plan tag `ultra/plan/run-<N>`'s commit and then the plan branch `ultra/plan-run-<N>`, and
+-  the ref it read is named in the line it prints. A VM whose run has had
++  the ref it read is named in the line it prints. A VM whose `comment` carries the substring
++  `do not reap` is never removed: the guard is decided on the raw comment before the assignment is
++  parsed, so no page is read for that row at all, and it is reported as `kept` instead. A VM whose run has had
+   no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone. Run by
+   `fleet/launch.mjs` before every launch and by hand after a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
++- **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
++  --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's
++  `fleet-r*` never lists it, and the comment is the second lock. Its port is pinned by
++  `share port kata-hub 8000`. One integration fronts it: `kata`, an `http-proxy --peer` created with
++  `--target <https_url> --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'`,
++  where `<https_url>` is read off the `kata-hub` row of `ls kata-hub --json` and never guessed from
++  the VM name; a wrong policy is repaired with `integrations policy get kata --json` then
++  `integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>`, never an attach.
++  A sandbox reaches it at `http://kata.int.exe.xyz` and holds no token — the edge injects the
++  bearer, and the `peer-kata` key `--peer` generates is server-side and is never pruned. The laptop
++  reaches it as `ssh <ssh_dest>` + `curl` against `localhost:8000`, sourcing the token from
++  `/etc/kata/kata.env` on the hub so no bearer ever rides an argv on the laptop. On the hub:
++  `/etc/kata/kata.env` (`root:exedev`, 0640, `KATA_AUTH_TOKEN`, `KATA_TRUST_PRIVATE_NETWORK=1`,
++  `KATA_HOME=/var/lib/kata`, `PORT=8000`) delivered over ssh after first boot and never in the setup
++  script; `fleet/kata.service` at `/etc/systemd/system/kata.service`; `/var/lib/kata` as `KATA_HOME`
++  with `config.toml` carrying `[web] public_origin`; the binary from
++  `https://github.com/kenn-io/kata/releases/download/v0.17.2/kata_0.17.2_linux_amd64.tar.gz`,
++  checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
++  script writes last and the laptop polls for. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
++  0600, exactly `KATA_URL` and `KATA_TOKEN`, written only after the daemon answers `active`.
+ - **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory`, `account` and `render` (an object
+   of `integration` and `account`), every one of them optional, an unknown key ignored and a missing
+   file meaning the defaults:
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 0148bf85f5102910878de2cf17e5df2751fe2cf6..b874e79b7490ff997a79a417f44645fc1d2ead50 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -167,6 +167,38 @@ two targets' objects on one VM name two repositories, which the edge routes
+ apart. A target with no `gh-<owner>-<repo>` object is a launch refusal, public
+ or not — a public repo would clone from github.com but could not publish.
+ 
++**6. `kata` — the hub.** One persistent VM, `kata-hub`, running the kata issue
++daemon, plus the one `http-proxy --peer` integration every sandbox reaches it
++through. Built by one command, which is idempotent — on a built hub it prints
++`kata-hub already built` and issues no verb, and on a half-built one it resumes:
++
++```bash
++node fleet/kata-hub.mjs
++```
++
++It issues three mutating verbs and nothing else: `new --name kata-hub --cpu 1
++--memory 2GB --disk 20GB` with the rendered setup script on stdin and no tag at
++all, `share port kata-hub 8000`, and
++
++```bash
++ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
++```
++
++with a freshly minted 32-byte bearer on stdin. `<https_url>` is read off the
++`kata-hub` row of `ls kata-hub --json`, never guessed from the VM name. It then
++waits for first boot, delivers `/var/lib/kata/config.toml` and
++`/etc/kata/kata.env` (`root:exedev`, 0640) over ssh, restarts the unit, waits
++for `systemctl is-active kata.service` to answer `active`, and only then writes
++`~/.ultrapowers/kata-hub.env` at mode 0600 with `KATA_URL` and `KATA_TOKEN`.
++The hub carries no tag, so the janitor's `fleet-r*` never lists it; its comment
++says so a second time. Its 1 vCPU and 2 GB come out of the same pool step 2
++measures. Never `cp` the hub, or any fleet VM, without `--copy-tags=false`:
++`cp --copy-tags` is on by default, so the copy inherits `tag:fleet` and with it
++every credential the policy grants. Never prune the `peer-kata` ssh key
++`--peer` generates: it is how a sandbox reaches the hub, and it goes when the
++integration goes. A wrong policy is repaired by the same two-step as step 5,
++never by `integrations attach`.
++
+ ## Per run
+ 
+ ```bash
+diff --git a/fleet/doctor.mjs b/fleet/doctor.mjs
+index 0c033ebe3a7acfacad5ff1a983bb77c7a747df98..e5f8fad5c7beb3ef31eb0a1870d9890bf2f5dae2 100644
+--- a/fleet/doctor.mjs
++++ b/fleet/doctor.mjs
+@@ -7,7 +7,7 @@
+  * ever existed. Hence the built-ins-only rule: every specifier here is
+  * `node:`-prefixed, and the doctor imports no other fleet module.
+  *
+- * Eight rows, all reads, every one of them answered by exe.dev's own truth or
++ * Nine rows, all reads, every one of them answered by exe.dev's own truth or
+  * by this laptop's own keychain:
+  *
+  *   exe-dev       `ssh exe.dev whoami` names an account.
+@@ -35,6 +35,12 @@
+  *                 the http-proxy integration it names exists at the edge. A
+  *                 fleet that names none is green and says so: the renderer is
+  *                 optional, and a run without it records the move as skipped.
++ *   kata          the hub is there: the `kata` http-proxy carries a bearer at
++ *                 the edge, its attachment policy is `tag:fleet` (`integrations
++ *                 policy get kata --json`, `policy.selector` — never the
++ *                 listing's `attachments`, which name the VMs the policy
++ *                 currently resolves to), and `ls kata-hub --json` answers a
++ *                 `kata-hub` row. All three, or the row says which is absent.
+  *
+  * Running the doctor twice is the same as running it once: nothing here
+  * creates, copies or removes a VM, and nothing writes a file. A red row names
+@@ -70,10 +76,11 @@ const execFileAsync = promisify(execFile)
+  *  would certify a fleet the launcher never looks at. */
+ export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
+ 
+-/** The eight rows, in the order the doctor reports them. Each id is also a
++/** The nine rows, in the order the doctor reports them. Each id is also a
+  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
+ export const ROW_IDS = Object.freeze([
+-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render'
++  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render',
++  'kata'
+ ])
+ 
+ /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
+@@ -91,17 +98,25 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
+  *  drives the row from a fixture rather than from the committed record. */
+ const DEFAULT_VERBS_PATH = () => path.join(HERE, 'exe-verbs.json')
+ 
+-/** The six standing reads, in the order the doctor issues them. One policy
++/** The eight standing reads, in the order the doctor issues them. One policy
+  *  read per integration the `integrations` row asks about follows them, then
+  *  the `help` reads of the verb-drift row, one per verb of the record;
+- *  together they are the only commands the doctor ever runs. */
++ *  together they are the only commands the doctor ever runs.
++ *
++ *  The last two are the `kata` row's. Its policy read is spelled out rather
++ *  than taken from `policyRead`, because it is a standing read of a fixed name
++ *  and not one of the names the `integrations` row computes; and the hub is the
++ *  one thing the doctor asks `ls` about, every other row reading edge-side
++ *  objects the listing already carries. */
+ const READS = Object.freeze({
+   whoami: 'ssh exe.dev whoami',
+   billing: 'ssh exe.dev "billing plan --json"',
+   list: 'ssh exe.dev "integrations list --json"',
+   github: 'ssh exe.dev "integrations setup github --list"',
+   token: `node ${CLAUDE_TOKEN} status`,
+-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
++  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
++  kataPolicy: 'ssh exe.dev "integrations policy get kata --json"',
++  kataVm: 'ssh exe.dev "ls kata-hub --json"'
+ })
+ 
+ /** The policy read for one integration — the only read of a name. */
+@@ -842,6 +857,68 @@ function wantRender (render) {
+   return { integration, account: typeof account === 'string' ? account : '' }
+ }
+ 
++// ── kata ─────────────────────────────────────────────────────────────────────
++
++/** The hub's VM, the integration that fronts it, and the one command that
++ *  builds either. */
++const KATA_INTEGRATION = 'kata'
++const KATA_VM = 'kata-hub'
++const KATA_FIX = 'node fleet/kata-hub.mjs'
++
++/** `ssh exe.dev "ls kata-hub --json"` → the `kata-hub` row of `.vms[]`, or null.
++ *  `.vms[]` only: `.shared_vms[]` are other people's machines. */
++function kataVmRow (res) {
++  if (!res || res.code !== 0) return null
++  const parsed = readJson(res.stdout)
++  const rows = Array.isArray(parsed?.vms) ? parsed.vms : []
++  return rows.find((entry) => entry?.vm_name === KATA_VM) ?? null
++}
++
++/**
++ * The hub, in three questions asked in the order an operator fixes them: the
++ * object, its bearer, its policy, and then the VM behind it.
++ *
++ * The policy question is asked of `integrations policy get kata --json` and
++ * never of the listing's `attachments`: an attachment array names the VMs a
++ * live selector currently resolves to, so a hub whose policy is right reads as
++ * a list of today's fleet VMs, and a hub attached to one VM by hand reads as a
++ * plausible one. Only the selector says which.
++ */
++function kataRow (found, policyRes, vmsRes) {
++  const have = found === null ? undefined : found.get(KATA_INTEGRATION)
++  if (have === undefined) {
++    return row('kata', 'missing', `no ${KATA_INTEGRATION} http-proxy at the edge — ${KATA_FIX}`)
++  }
++  if (!have.bearer) {
++    return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
++  }
++  const readable = Boolean(policyRes) && policyRes.code === 0
++  const policy = readable ? parsePolicy(policyRes.stdout) : null
++  if (policy === null || policy.selector !== FLEET_POLICY) {
++    const seen = !readable
++      ? `the read exited ${policyRes?.code ?? 1}`
++      : policy === null
++        ? 'it printed no readable policy'
++        : JSON.stringify(policy.selector)
++    return row(
++      'kata',
++      'missing',
++      `${KATA_INTEGRATION}'s policy is not ${FLEET_POLICY} (${seen}), so no fleet VM is granted it — ` +
++      policyFix(KATA_INTEGRATION)
++    )
++  }
++  const vm = kataVmRow(vmsRes)
++  if (vm === null) {
++    return row('kata', 'missing', `no ${KATA_VM} VM — ${KATA_FIX}`)
++  }
++  const status = typeof vm.status === 'string' && vm.status !== '' ? vm.status : 'unknown'
++  return row(
++    'kata',
++    'ok',
++    `${KATA_INTEGRATION} carries the bearer on the policy ${FLEET_POLICY}, and ${KATA_VM} is ${status}`
++  )
++}
++
+ // ── the doctor ───────────────────────────────────────────────────────────────
+ 
+ /**
+@@ -881,6 +958,9 @@ export async function doctor ({
+   // the code's default: the keychain entries are named by email since 2026-09-11.
+   const token = await run(wantAccount ? `${READS.token} --account ${wantAccount}` : READS.token)
+   const accounts = await run(READS.accounts)
++  // The hub's two reads: the policy that grants it, then the VM behind it.
++  const kataPolicy = await run(READS.kataPolicy)
++  const kataVms = await run(READS.kataVm)
+   const policies = new Map()
+   for (const name of policyNames(want, renderer)) {
+     policies.set(name, await run(policyRead(name)))
+@@ -899,7 +979,8 @@ export async function doctor ({
+     githubRow(github),
+     integrationsRow(found, want, renderer, policies),
+     verbDriftRow(drift),
+-    rendererRow(found, renderer)
++    rendererRow(found, renderer),
++    kataRow(found, kataPolicy, kataVms)
+   ]
+   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
+   return { config: cfg, rows, verdict }
+diff --git a/fleet/janitor.mjs b/fleet/janitor.mjs
+index c8d82580e8b33f8ef0b17ce8384df61d2d176bb2..969c093d25b9a88c664562dfb42ec9f3f0b7dd7f 100644
+--- a/fleet/janitor.mjs
++++ b/fleet/janitor.mjs
+@@ -28,6 +28,10 @@
+  *
+  * Three things are never removed and reported instead:
+  *
++ *   kept    — a row whose `comment` carries `do not reap`. It is decided on the
++ *             raw comment string, before the assignment is parsed, so a comment
++ *             that also reads as an assignment is still kept; the row is then
++ *             skipped whole, so not one `gh api` read is issued about it.
+  *   unknown — a row with no comment, or a comment carrying no `target=`: there
+  *             is nothing to read, so there is nothing to decide on.
+  *   stale   — a live run silent for six hours, and a run with no evidence at
+@@ -127,6 +131,13 @@ export const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
+ export const DEFAULT_AGE = '1h'
+ /** No status update for this long is a stale run, reported and left alone. */
+ export const STALE_MS = 6 * 60 * 60 * 1000
++/**
++ * The comment that takes a VM out of the reap. The hub's own comment is
++ * `kata hub — persistent service, do not reap`, and `fleet/kata-hub.mjs` writes
++ * it; the guard matches this substring, case-sensitively, so any row someone
++ * marks by hand is kept the same way.
++ */
++export const NEVER_REAP = 'do not reap'
+ 
+ /**
+  * One `gh api <path>` on the laptop, through the exec seam. An absent file is
+@@ -235,6 +246,13 @@ function assignmentOf (row) {
+   return { run, target }
+ }
+ 
++/**
++ * Is this row's comment the operator's "leave it alone"? The raw string is
++ * read, not the parsed fields: the sentence is prose a person wrote, and a row
++ * that also carries `run=` and `target=` is kept all the same.
++ */
++const saysNeverReap = (row) => String(row?.comment ?? '').includes(NEVER_REAP)
++
+ // ── The one VM read: is the run's unit still there? ─────────────────────────
+ 
+ /** The systemd user unit one run is, on its own VM. */
+@@ -444,11 +462,19 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
+   const stale = []
+   const unknown = []
+   const deaths = []
++  const kept = []
+   // The only targets there are: a row's assignment comment is where the
+   // janitor learns of one, so a target no row names is nobody's here.
+   const targets = new Set()
+   const nowIso = new Date(nowMs).toISOString()
+   for (const row of rows) {
++    // Before anything is parsed and before a single read is issued: a comment
++    // that says do not reap ends this row's pass. Nothing is read about it, so
++    // it cannot be aged, cannot be probed, and cannot be removed.
++    if (saysNeverReap(row)) {
++      kept.push({ vm: row.name, comment: row.comment })
++      continue
++    }
+     const assignment = assignmentOf(row)
+     if (assignment === null) {
+       unknown.push({ vm: row.name, comment: row.comment })
+@@ -529,7 +555,7 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
+     for (const action of actions) await lobby(exec, action.command)
+   }
+ 
+-  return { dryRun, age, actions, stale, unknown, deaths, branches }
++  return { dryRun, age, actions, stale, unknown, deaths, branches, kept }
+ }
+ 
+ const renderAction = (a, dryRun) =>
+@@ -547,10 +573,16 @@ const renderBranch = (b) =>
+   `branch ${b.branch}  target=${b.target} PR #${b.pr} closed, not merged — ` +
+   `node fleet/retire.mjs --target ${b.target}`
+ 
++/** A row the reap never touches, and why — the comment itself said so. */
++const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never removed`
++
+ export const renderJanitor = (result) => {
+   const lines = [
+     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),
+     ...(result.actions ?? []).map((a) => renderAction(a, result.dryRun)),
++    // After every rm and before every stale line: what was removed, then what
++    // never will be, then what wants a look.
++    ...(result.kept ?? []).map(renderKept),
+     ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
+     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
+     // Last, after every rm, stale and unknown line: the reap is the pass's
+diff --git a/fleet/kata-hub-setup.sh b/fleet/kata-hub-setup.sh
+new file mode 100644
+index 0000000000000000000000000000000000000000..d99cc1a891667ad64364ca7b150a0c883c8f75bb
+--- /dev/null
++++ b/fleet/kata-hub-setup.sh
+@@ -0,0 +1,46 @@
++#!/usr/bin/env bash
++# fleet/kata-hub-setup.sh — the kata hub's first-boot setup script, as a template.
++#
++# `renderHubSetupScript` in fleet/kata-hub.mjs replaces the one `__KATA_UNIT__`
++# line below with the bytes of fleet/kata.service and hands the result to
++# `new --setup-script /dev/stdin` on that call's stdin. exe.dev stores a
++# rendered setup script as a property of the VM, so this file carries NO
++# secret — and no origin either: the `https_url` does not exist until `new` has
++# answered. The bearer, the daemon's `config.toml` and the restart that picks
++# them up are delivered over ssh afterwards; until then `ExecStartPre` fails
++# fast and the unit parks.
++set -euo pipefail
++exec >>"$HOME/kata-setup.log" 2>&1
++KATA_VERSION=0.17.2
++ASSET=kata_0.17.2_linux_amd64.tar.gz
++BASE=https://github.com/kenn-io/kata/releases/download/v0.17.2/
++printf 'installing kata %s\n' "$KATA_VERSION"
++work="$(mktemp -d)"
++cd "$work"
++
++# The binary, and only once the release's own sums agree.
++curl -fsSL -o SHA256SUMS "${BASE}SHA256SUMS"
++curl -fsSL -o "$ASSET" "${BASE}${ASSET}"
++grep " $ASSET$" SHA256SUMS | sha256sum -c -
++bin="$(tar -tzf "$ASSET" | grep -E '(^|/)kata$' | head -n 1)"
++tar -xzf "$ASSET"
++sudo -n install -m 0755 "$bin" /usr/local/bin/kata
++
++# KATA_HOME, owned by the user the unit runs as.
++sudo -n install -d -m 0750 -o exedev -g exedev /var/lib/kata
++
++# The unit, verbatim, in a quoted heredoc: the bytes arrive unexpanded.
++cat <<'KATA_UNIT_EOF' >kata.service
++__KATA_UNIT__
++KATA_UNIT_EOF
++sudo -n install -m 0644 kata.service /etc/systemd/system/kata.service
++sudo -n systemctl daemon-reload
++# The env file is not here yet, so `ExecStartPre` fails and the start does too.
++# That is the design — enabling is what matters, and the laptop's own
++# `systemctl restart kata.service` after it delivers the env is what brings the
++# daemon up. A failed start must not take this script down with it.
++sudo -n systemctl enable --now kata.service || true
++
++# The last two acts: the flag the laptop polls for, then this script itself.
++sudo -n touch /var/lib/kata/.setup-done
++sudo -n rm -f -- "$0"
+diff --git a/fleet/kata-hub.mjs b/fleet/kata-hub.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d4912a436f68351f89fcf840c6fa66717d453c85
+--- /dev/null
++++ b/fleet/kata-hub.mjs
+@@ -0,0 +1,365 @@
++#!/usr/bin/env node
++/**
++ * fleet/kata-hub.mjs — build the fleet's one kata hub, once.
++ *
++ *   node fleet/kata-hub.mjs [--dry-run] [--json]
++ *
++ * The hub is a single persistent VM named `kata-hub` running the kata issue
++ * daemon, reachable from every sandbox through one `http-proxy --peer`
++ * integration named `kata` and from the laptop over ssh. It is NOT part of a
++ * run: it carries no tag, so the janitor's `fleet-r*` glob never lists it, and
++ * its comment says so a second time.
++ *
++ * Three mutating verbs build it, in this order:
++ *
++ *   new --name kata-hub --cpu 1 --memory 2GB --disk 20GB --comment '…'
++ *       --setup-script /dev/stdin --json      (the rendered script on stdin)
++ *   share port kata-hub 8000                  (`docs/proxy.md` picks a port
++ *                                              heuristically; this pins it)
++ *   integrations add http-proxy --name kata --target <https_url> --peer
++ *       --bearer - --comment '…' --policy 'tag:fleet'   (bearer on stdin)
++ *
++ * `<https_url>` is read off the `kata-hub` row of one `ls kata-hub --json`
++ * issued directly after the `new`: a team VM's host is not necessarily
++ * `<name>.exe.xyz`, so nothing here guesses a host. The same row's `ssh_dest`
++ * is where every ssh goes.
++ *
++ * Nothing secret rides an argv. The bearer is 32 random bytes of hex, minted
++ * here, handed to `integrations add` on stdin, written to the hub's own
++ * `/etc/kata/kata.env` (root:exedev 0640) on stdin, and kept on the laptop in
++ * `~/.ultrapowers/kata-hub.env` at mode 0600. The setup script carries neither
++ * it nor the origin — exe.dev stores a rendered setup script as a property of
++ * the VM, and the `https_url` does not exist until `new` has answered — so the
++ * unit waits, via `ExecStartPre`, for an env file this tool delivers over ssh
++ * once the VM's first boot is done.
++ *
++ * `new` answers long before first boot finishes, hence the bounded wait:
++ * `.setup-done`, then the config, then the env and a restart, then
++ * `is-active`. Only after the daemon answers `active` does the laptop's env
++ * file appear, so the file's existence means the hub works.
++ *
++ * The build resumes. Every step is skipped when its object already exists, and
++ * a `kata` integration in front of a rebuilt VM has its bearer rotated with
++ * `integrations edit kata --bearer=-` rather than being added twice.
++ */
++
++import { randomBytes } from 'node:crypto'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import {
++  LobbyError,
++  defaultExec,
++  listIntegrations,
++  lobby,
++  output,
++  parseArgs,
++  parseJson,
++  runCli
++} from './lobby.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++
++export const USAGE = 'usage: node fleet/kata-hub.mjs [--dry-run] [--json]'
++export const usage = () => USAGE
++
++/** The hub's VM name, and the integration that fronts it. */
++export const HUB_VM = 'kata-hub'
++export const HUB_INTEGRATION = 'kata'
++/** The port the daemon binds and the one verb that pins it. */
++export const HUB_PORT = 8000
++/** The policy every fleet integration rides, this one included. */
++export const FLEET_POLICY = 'tag:fleet'
++/** Two locks against the janitor: no tag at all, and a comment that says why. */
++export const HUB_COMMENT = 'kata hub — persistent service, do not reap'
++export const INTEGRATION_COMMENT = 'kata issue daemon on kata-hub'
++
++/** The laptop's copy of the hub's address and bearer. */
++export const ENV_FILE = ['.ultrapowers', 'kata-hub.env']
++
++/** exe.dev's `--setup-script` cap is 10 KiB; this is the fleet's own budget. */
++export const HUB_SETUP_BUDGET_BYTES = 8192
++/** The quoted heredoc the unit's bytes ride in, and the line they replace. */
++const UNIT_TAG = 'KATA_UNIT_EOF'
++const UNIT_PLACEHOLDER = '__KATA_UNIT__'
++
++/** How long between polls, and how long in all, both overridable. */
++export const DEFAULT_POLL_SECONDS = 5
++export const DEFAULT_WAIT_SECONDS = 600
++
++// ── The setup script ────────────────────────────────────────────────────────
++
++/** The two files this tool carries, as they sit beside this module. */
++export function readHubFiles () {
++  return {
++    template: fs.readFileSync(path.join(HERE, 'kata-hub-setup.sh'), 'utf8'),
++    unit: fs.readFileSync(path.join(HERE, 'kata.service'), 'utf8')
++  }
++}
++
++/**
++ * The template with its one `__KATA_UNIT__` line replaced by the unit's bytes.
++ *
++ * The unit rides a quoted heredoc, so the only thing that can go wrong is the
++ * delimiter appearing inside it — say so rather than truncate, exactly as
++ * `heredocBody` in `fleet/setup-script.mjs` does. The budget is checked here
++ * because a two-byte overrun would otherwise surface at `new`, after the
++ * operator has waited for a VM.
++ */
++export function renderHubSetupScript ({ template, unit }) {
++  const lines = String(template ?? '').split('\n')
++  const at = lines.indexOf(UNIT_PLACEHOLDER)
++  if (at === -1) {
++    throw new Error(`the hub setup template carries no ${UNIT_PLACEHOLDER} line`)
++  }
++  const body = String(unit ?? '')
++  if (body.split('\n').includes(UNIT_TAG)) {
++    throw new Error(`the unit carries the heredoc delimiter ${UNIT_TAG} on a line of its own`)
++  }
++  lines.splice(at, 1, ...body.replace(/\n$/, '').split('\n'))
++  const script = lines.join('\n')
++  const bytes = Buffer.byteLength(script, 'utf8')
++  if (bytes > HUB_SETUP_BUDGET_BYTES) {
++    throw new Error(`hub setup script is ${bytes} bytes; the fleet's budget is ${HUB_SETUP_BUDGET_BYTES}`)
++  }
++  return script
++}
++
++// ── The three verbs, as strings ─────────────────────────────────────────────
++
++export const newVerb = () =>
++  `new --name ${HUB_VM} --cpu 1 --memory 2GB --disk 20GB ` +
++  `--comment '${HUB_COMMENT}' --setup-script /dev/stdin --json`
++
++export const sharePortVerb = () => `share port ${HUB_VM} ${HUB_PORT}`
++
++export const addVerb = (httpsUrl) =>
++  `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
++  `--bearer - --comment '${INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
++
++export const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
++
++// ── Reads ───────────────────────────────────────────────────────────────────
++
++/**
++ * The `kata-hub` row of `ls kata-hub --json`, or null.
++ *
++ * `listVms` in `fleet/lobby.mjs` maps a row to name/sshDest/sshHost/status/
++ * comment/tags and drops `https_url`, which is the one field this tool cannot
++ * do without — so the raw payload is read here instead of widening a helper
++ * three other CLIs share.
++ */
++export async function readHubRow (exec) {
++  const res = await lobby(exec, `ls ${HUB_VM} --json`)
++  const payload = parseJson(res.stdout)
++  const rows = Array.isArray(payload?.vms) ? payload.vms : []
++  const row = rows.find((entry) => entry?.vm_name === HUB_VM)
++  if (!row) return null
++  return {
++    name: row.vm_name,
++    httpsUrl: typeof row.https_url === 'string' ? row.https_url : null,
++    sshDest: typeof row.ssh_dest === 'string' ? row.ssh_dest : null,
++    status: typeof row.status === 'string' ? row.status : null
++  }
++}
++
++// ── One command on the hub ──────────────────────────────────────────────────
++
++/**
++ * `BatchMode` refuses to ask for a password and `ConnectTimeout` bounds a dark
++ * VM at fifteen seconds — the same shape the janitor's `onVm` uses. `input`,
++ * when given, is the only way a secret reaches the hub.
++ */
++const onVm = (exec, dest, command, options) => {
++  const argv = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', dest, command]
++  return options === undefined ? exec('ssh', argv) : exec('ssh', argv, options)
++}
++
++export const DONE_FLAG = '/var/lib/kata/.setup-done'
++
++export const configCommand = () =>
++  'sudo -n tee /var/lib/kata/config.toml >/dev/null && ' +
++  'sudo -n chown exedev:exedev /var/lib/kata/config.toml && ' +
++  'sudo -n chmod 0644 /var/lib/kata/config.toml'
++
++export const envCommand = () =>
++  'sudo -n install -d -m 0755 /etc/kata && ' +
++  'sudo -n tee /etc/kata/kata.env >/dev/null && ' +
++  'sudo -n chown root:exedev /etc/kata/kata.env && ' +
++  'sudo -n chmod 0640 /etc/kata/kata.env && ' +
++  'sudo -n systemctl restart kata.service'
++
++/** What the daemon validates the request `Host` against. */
++export const configText = (httpsUrl) => `[web]\npublic_origin = "${httpsUrl}"\n`
++
++/** What the unit sources. `PORT` is what makes the daemon bind 0.0.0.0. */
++export const envText = (bearer) =>
++  `KATA_AUTH_TOKEN=${bearer}\nKATA_TRUST_PRIVATE_NETWORK=1\nKATA_HOME=/var/lib/kata\nPORT=${HUB_PORT}\n`
++
++// ── The bounded wait ────────────────────────────────────────────────────────
++
++/**
++ * Poll `attempt` until it answers done, sleeping `poll` seconds between tries
++ * and spending from a budget shared by every wait in one build. An exhausted
++ * budget is a `LobbyError` naming the hub and the last answer seen — the last
++ * answer is the whole diagnosis, so it is carried verbatim.
++ */
++async function waitFor (attempt, { sleep, poll, budget, what }) {
++  let last = ''
++  for (;;) {
++    const seen = await attempt()
++    if (seen.done) return
++    last = seen.answer
++    if (budget.spent + poll > budget.total) break
++    await sleep(poll)
++    budget.spent += poll
++  }
++  throw new LobbyError(
++    `${HUB_VM} is not ready after ${budget.total}s: ${what} last answered "${last}"`
++  )
++}
++
++const answerOf = (res) => {
++  const text = output(res)
++  return text === '' ? `exit ${res.code}` : text
++}
++
++// ── The build ───────────────────────────────────────────────────────────────
++
++const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000))
++
++/**
++ * 32 random bytes as lower-case hex. `rand` is the seam a sim replaces, so a
++ * substitute answering hex already is taken at its word rather than encoded
++ * twice.
++ */
++export function mintBearer (rand) {
++  const minted = rand(32)
++  if (typeof minted === 'string') {
++    return /^[0-9a-f]{64}$/.test(minted) ? minted : Buffer.from(minted, 'utf8').toString('hex')
++  }
++  return Buffer.from(minted).toString('hex')
++}
++
++const positive = (value, fallback) => {
++  const n = Number(value)
++  return Number.isFinite(n) && n > 0 ? n : fallback
++}
++
++/**
++ * Build the hub, or resume a half-built one, and answer what was done.
++ *
++ * The reads come first, because what is already there decides every verb
++ * below; the bearer is minted before the first mutation, because a rebuilt VM
++ * needs a fresh one at the edge whether the integration is added or edited.
++ */
++export async function kataHub ({
++  argv = [],
++  exec = defaultExec,
++  rand = randomBytes,
++  sleep = defaultSleep,
++  home = os.homedir(),
++  env = process.env,
++  files = null
++} = {}) {
++  const { opts } = parseArgs(argv, { flags: ['dry-run', 'json'] })
++  const dryRun = opts['dry-run'] === true
++  const json = opts.json === true
++  // The usage is the answer to `--help`, and it is plain text whatever else
++  // was asked for.
++  if (opts.help === true) return reported({ help: true, json: false })
++  const poll = positive(env.KATA_HUB_POLL_SECONDS, DEFAULT_POLL_SECONDS)
++  const budget = { spent: 0, total: positive(env.KATA_HUB_WAIT_SECONDS, DEFAULT_WAIT_SECONDS) }
++  const envPath = path.join(home, ...ENV_FILE)
++
++  const integrations = await listIntegrations(exec)
++  const listed = integrations.some((entry) => entry.name === HUB_INTEGRATION)
++  let row = await readHubRow(exec)
++
++  if (dryRun) {
++    return reported({
++      dryRun: true,
++      json,
++      verbs: [newVerb(), sharePortVerb(), addVerb(row?.httpsUrl ?? '<https_url>')]
++    })
++  }
++  if (listed && row && fs.existsSync(envPath)) {
++    return reported({ alreadyBuilt: true, json, vm: HUB_VM, url: row.httpsUrl })
++  }
++
++  const bearer = mintBearer(rand)
++  // A `kata` in the listing with no VM behind it is a hub that was rebuilt:
++  // the edge still injects the bearer the old daemon held, so it is rotated.
++  const rebuilt = listed && !row
++
++  if (!row) {
++    const { template, unit } = files ?? readHubFiles()
++    await lobby(exec, newVerb(), { input: renderHubSetupScript({ template, unit }) })
++    row = await readHubRow(exec)
++    if (!row) throw new LobbyError(`exe.dev new answered, but no ${HUB_VM} row followed it`)
++    await lobby(exec, sharePortVerb())
++  }
++  if (!row.httpsUrl) throw new LobbyError(`the ${HUB_VM} row carries no https_url`)
++  if (!row.sshDest) throw new LobbyError(`the ${HUB_VM} row carries no ssh_dest`)
++
++  if (!listed) await lobby(exec, addVerb(row.httpsUrl), { input: bearer })
++  else if (rebuilt) await lobby(exec, editVerb(), { input: bearer })
++
++  // First boot: the setup script's last act before it deletes itself.
++  await waitFor(async () => {
++    const res = await onVm(exec, row.sshDest, `test -f ${DONE_FLAG}`)
++    return { done: res.code === 0, answer: answerOf(res) }
++  }, { sleep, poll, budget, what: `test -f ${DONE_FLAG}` })
++
++  // The origin first — the daemon reads it at start — then the bearer and the
++  // restart that picks both up.
++  const config = await onVm(exec, row.sshDest, configCommand(), { input: configText(row.httpsUrl) })
++  if (config.code !== 0) throw new LobbyError(`${HUB_VM}: writing config.toml failed:\n${output(config)}`)
++  const delivered = await onVm(exec, row.sshDest, envCommand(), { input: envText(bearer) })
++  if (delivered.code !== 0) throw new LobbyError(`${HUB_VM}: writing kata.env failed:\n${output(delivered)}`)
++
++  await waitFor(async () => {
++    const res = await onVm(exec, row.sshDest, 'systemctl is-active kata.service')
++    return { done: String(res.stdout ?? '').trim() === 'active', answer: answerOf(res) }
++  }, { sleep, poll, budget, what: 'systemctl is-active kata.service' })
++
++  // Last: the file whose existence means the hub answers.
++  fs.mkdirSync(path.dirname(envPath), { recursive: true })
++  fs.writeFileSync(envPath, `KATA_URL=${row.httpsUrl}\nKATA_TOKEN=${bearer}\n`, { mode: 0o600 })
++  fs.chmodSync(envPath, 0o600)
++
++  return reported({
++    built: true,
++    json,
++    vm: HUB_VM,
++    url: row.httpsUrl,
++    envFile: envPath,
++    integration: HUB_INTEGRATION
++  })
++}
++
++export const renderKataHub = (result) => {
++  if (result.help) return USAGE
++  if (result.dryRun) return result.verbs.join('\n')
++  if (result.alreadyBuilt) return `${HUB_VM} already built`
++  return `${HUB_VM} is up at ${result.url} — ${result.integration} at the edge, ${result.envFile} on the laptop`
++}
++
++/**
++ * Every answer carries the line the operator reads, so what the tool has to
++ * say survives the trip back to `main` — one place decides the wording, and a
++ * caller holding the result holds the report too.
++ */
++const reported = (result) => ({ ...result, report: renderKataHub(result) })
++
++async function main (argv) {
++  const result = await kataHub({ argv })
++  process.stdout.write(result.json ? `${JSON.stringify(result)}\n` : `${result.report}\n`)
++}
++
++const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
++if (invokedPath === fileURLToPath(import.meta.url)) {
++  await runCli(main, process.argv.slice(2))
++}
+diff --git a/fleet/kata.service b/fleet/kata.service
+new file mode 100644
+index 0000000000000000000000000000000000000000..c89449478a35d74b16008b5f1e24d12b62330ea1
+--- /dev/null
++++ b/fleet/kata.service
+@@ -0,0 +1,16 @@
++[Unit]
++Description=kata issue daemon (the fleet hub)
++After=network-online.target
++Wants=network-online.target
++
++[Service]
++Type=simple
++User=exedev
++EnvironmentFile=-/etc/kata/kata.env
++ExecStartPre=/usr/bin/test -f /etc/kata/kata.env
++ExecStart=/usr/local/bin/kata daemon start --foreground
++Restart=on-failure
++RestartSec=2
++
++[Install]
++WantedBy=multi-user.target
+diff --git a/fleet/tests/exams/run_109/test_doctor_kata.mjs b/fleet/tests/exams/run_109/test_doctor_kata.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8fb535ea236444db5bc9bf77d0a56aae53d28a5
+--- /dev/null
++++ b/fleet/tests/exams/run_109/test_doctor_kata.mjs
+@@ -0,0 +1,402 @@
++/**
++ * Exam for the doctor's ninth row and the documents that carry it — "the
++ * operator's own check says whether the hub is there".
++ *
++ * Every group below names the Machine clause and the Proof leg it encodes, so a
++ * reader can map an assertion back to the contract it came from:
++ *
++ *   1  M6 / leg (g) — `ROW_IDS` is the eight BASE ids followed by `kata`, and
++ *      the reported rows come back in that order.
++ *   2  M6 / leg (g) — the two new reads, exactly once each, in that order,
++ *      directly after the accounts read and before the first `help` read.
++ *   3  M6 / leg (g) — the green `kata` row: the listing's entry with a bearer,
++ *      the policy read's own `policy.selector`, and the `ls` answer's row. Its
++ *      `attachments` array names no `tag:` atom, so a row that read
++ *      attachments instead of the policy is red here.
++ *   4  M6 / leg (g) — the five absences, one assertion per opening phrase, per
++ *      fix, per `fix` id and per verdict, and `integrations attach` in none of
++ *      them.
++ *   5  M7 / leg (h) — first-run.md's headings against `ROW_IDS`, the runbook's
++ *      sixth step, the contract's doctor table and integration bullet, the one
++ *      `integrations add http-proxy --name kata … --policy 'tag:fleet'` line
++ *      the narrowed docs pin has to permit, and `integrations attach kata` in
++ *      no document.
++ *
++ * Every read the doctor makes is driven through the `exec` seam with a stub
++ * table, and an unstubbed command answers code 127 so a read this exam did not
++ * expect surfaces as a red row rather than as a socket. The `verb-drift` row
++ * reads a two-verb fixture record, never the committed `fleet/exe-verbs.json`.
++ * Nothing here writes a file and nothing here reaches exe.dev.
++ *
++ * One reading this file fixes, because leg (g)'s words admit one shape: the
++ * `accounts` read is `node <dir>/claude-token.mjs accounts --json` (the doctor
++ * runs the credential tool rather than sshing for it), and "directly after
++ * `… accounts --json`" is read against that command.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import { ROW_IDS, doctor } from '../../../doctor.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const FLEET_DIR = path.resolve(HERE, '..', '..', '..')
++const REPO = path.resolve(FLEET_DIR, '..')
++const REFERENCES = path.join(REPO, 'skills', 'ultrapowers', 'references')
++const FIRST_RUN = path.join(REFERENCES, 'first-run.md')
++const RUNBOOK = path.join(FLEET_DIR, 'RUNBOOK.md')
++const CONTRACT = path.join(FLEET_DIR, 'CONTRACT.md')
++
++const ROOT = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'doctor-kata-exam-'))
++
++// ── Shared literals ──────────────────────────────────────────────────────────
++
++/** M6: the eight BASE rows, then the hub's. */
++const EXPECTED_IDS = [
++  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render', 'kata'
++]
++
++const CLAUDE_TOKEN = path.join(FLEET_DIR, 'claude-token.mjs')
++const helpCmd = (verb) => `ssh exe.dev "help ${verb}"`
++
++const CMD = {
++  whoami: 'ssh exe.dev whoami',
++  billing: 'ssh exe.dev "billing plan --json"',
++  list: 'ssh exe.dev "integrations list --json"',
++  github: 'ssh exe.dev "integrations setup github --list"',
++  token: `node ${CLAUDE_TOKEN} status`,
++  accounts: `node ${CLAUDE_TOKEN} accounts --json`
++}
++
++const policyCmd = (name) => `ssh exe.dev "integrations policy get ${name} --json"`
++
++/** M6: the two new reads. */
++const KATA_POLICY_READ = policyCmd('kata')
++const KATA_VM_READ = 'ssh exe.dev "ls kata-hub --json"'
++
++/** M6: the policy every fleet integration carries, and the repair for one that
++ *  does not. `integrations attach` is refused at the edge since 2026-09-11, so
++ *  no detail may name it. */
++const FLEET_POLICY = 'tag:fleet'
++const POLICY_GET = `integrations policy get kata --json`
++const POLICY_SET = `integrations policy set kata 'tag:fleet' --permanent --if-revision=`
++const BUILD_FIX = 'node fleet/kata-hub.mjs'
++
++/** leg (g): the off-policy selector the fourth absence answers and the detail
++ *  quotes. */
++const OFF_POLICY = 'vm:fleet-r7-2609030900-a1b2'
++
++/** M6: the four red openings, in the order M6 lists them. */
++const NO_INTEGRATION = 'no kata http-proxy at the edge'
++const NO_BEARER = 'kata carries no Authorization:Bearer header'
++const NO_POLICY = "kata's policy is not tag:fleet"
++const NO_VM = 'no kata-hub VM'
++
++// ── The fixture ──────────────────────────────────────────────────────────────
++
++const FIXTURE_VERBS = { new: ['--json', '--name', '--pool'], rm: ['--force', '--json'] }
++const FIXTURE_NAMES = Object.keys(FIXTURE_VERBS)
++const RECORD = path.join(ROOT, 'two-verb.json')
++fs.writeFileSync(RECORD, JSON.stringify({ capturedAt: '2026-09-05', verbs: FIXTURE_VERBS }))
++
++const optionsBlock = (verb, flags) =>
++  `Command: ${verb}\n` +
++  `Does the ${verb} thing.\n` +
++  'Options:\n' +
++  `${flags.map((f) => `  ${f}  what it does`).join('\n')}\n`
++
++const ok = (stdout) => ({ code: 0, stdout })
++
++const policyJson = (name, selector) => `${JSON.stringify({
++  integration: { name, team: false },
++  scope: 'personal',
++  revision: 'ar1_0123456789abcdef',
++  valid: true,
++  policy: { selector, wire: selector, expiresAt: null, simpleSelectors: [selector] }
++})}\n`
++
++/** leg (g): the policy read's answer for `kata`, as the leg spells it. */
++const KATA_POLICY_JSON =
++  '{"revision":"ar1_x","valid":true,"policy":{"selector":"tag:fleet","simpleSelectors":["tag:fleet"],"expiresAt":null}}\n'
++
++/** leg (g): the listing entry for `kata`. Its `attachments` array names a VM,
++ *  not a `tag:` atom — the policy read is the only thing that may make the row
++ *  green. */
++const KATA_ENTRY = {
++  name: 'kata',
++  type: 'http-proxy',
++  attachments: [OFF_POLICY],
++  config_summary: 'Authorization:Bearer ***'
++}
++
++const CLAUDE_MAX = {
++  name: 'claude-max',
++  type: 'http-proxy',
++  attachments: ['tag:fleet'],
++  config_summary: 'Authorization:Bearer ***',
++  comment: 'account=ops@example.com'
++}
++
++const listing = (entries) => ok(`${JSON.stringify(entries)}\n`)
++
++/** The green table: every read answered, the hub healthy. */
++const GREEN = () => ({
++  [CMD.whoami]: ok('exedev\n'),
++  [CMD.billing]: ok(`${JSON.stringify({ max_cpus: 16, max_memory_gb: 64, tier: 'pro' })}\n`),
++  [CMD.list]: listing([CLAUDE_MAX, KATA_ENTRY]),
++  [CMD.github]: ok('GitHub accounts:\n  popmechanic\n'),
++  [CMD.token]: ok('claude-max fresh until 2026-09-12T00:00:00Z\n'),
++  [CMD.accounts]: ok(`${JSON.stringify([{ name: 'ops@example.com', expiresAt: '2026-09-12T00:00:00Z', fresh: true }])}\n`),
++  [policyCmd('claude-max')]: ok(policyJson('claude-max', FLEET_POLICY)),
++  [KATA_POLICY_READ]: ok(KATA_POLICY_JSON),
++  [KATA_VM_READ]: ok(`${JSON.stringify({ vms: [{ vm_name: 'kata-hub', status: 'running' }] })}\n`),
++  [helpCmd('new')]: ok(optionsBlock('new', FIXTURE_VERBS.new)),
++  [helpCmd('rm')]: ok(optionsBlock('rm', FIXTURE_VERBS.rm))
++})
++
++/** One run over the green table with `overrides` applied. A command the table
++ *  does not carry answers 127, so an unexpected read is a red row, never a
++ *  socket. */
++async function run (overrides = {}) {
++  const table = { ...GREEN(), ...overrides }
++  const commands = []
++  const exec = async (cmd) => {
++    commands.push(cmd)
++    return table[cmd] ?? { code: 127, stdout: `no stub for: ${cmd}\n` }
++  }
++  const result = await doctor({
++    config: { cpu: '8', memory: '16GB' },
++    exec,
++    verbsPath: RECORD
++  })
++  return { ...result, commands }
++}
++
++const rowOf = (result, id) => result.rows.find((r) => r.id === id)
++const statusOf = (result, id) => rowOf(result, id)?.status
++const detailOf = (result, id) => String(rowOf(result, id)?.detail ?? '')
++
++/** Every row but `kata` is `ok` — so a red verdict is the hub's doing alone. */
++const allOkBut = (result, id) =>
++  result.rows.filter((r) => r.id !== id).map((r) => [r.id, r.status])
++const EVERY_OTHER_OK = EXPECTED_IDS.filter((id) => id !== 'kata').map((id) => [id, 'ok'])
++
++// ── 1. M6 / leg (g) — the ninth row ─────────────────────────────────────────
++
++const green = await run()
++
++{
++  assert.deepEqual(
++    [...ROW_IDS], EXPECTED_IDS,
++    '1 [M6 leg g] ROW_IDS is the eight BASE ids followed by kata'
++  )
++  assert.deepEqual(
++    green.rows.map((r) => r.id), EXPECTED_IDS,
++    '1 [M6 leg g] and the doctor reports its rows in that order'
++  )
++}
++
++// ── 2. M6 / leg (g) — where the two new reads sit ────────────────────────────
++
++{
++  const at = (cmd) => green.commands.filter((c) => c === cmd).length
++  assert.equal(at(KATA_POLICY_READ), 1, `2 [M6 leg g] ${KATA_POLICY_READ} is issued exactly once`)
++  assert.equal(at(KATA_VM_READ), 1, `2 [M6 leg g] ${KATA_VM_READ} is issued exactly once`)
++
++  const accounts = green.commands.indexOf(CMD.accounts)
++  assert.notEqual(accounts, -1, '2 [M6 leg g] the accounts read is issued')
++  assert.equal(
++    green.commands[accounts + 1], KATA_POLICY_READ,
++    "2 [M6 leg g] the kata policy read is issued directly after the accounts read"
++  )
++  assert.equal(
++    green.commands[accounts + 2], KATA_VM_READ,
++    '2 [M6 leg g] and the ls kata-hub read directly after it, in that order'
++  )
++
++  const firstHelp = green.commands.findIndex((c) => c.startsWith('ssh exe.dev "help '))
++  assert.notEqual(firstHelp, -1, '2 [M6 leg g] the verb-drift row still issues its help reads')
++  assert.ok(
++    firstHelp > accounts + 2,
++    '2 [M6 leg g] both new reads come before the first help read'
++  )
++  assert.deepEqual(
++    green.commands.filter((c) => c.startsWith('ssh exe.dev "help ')),
++    FIXTURE_NAMES.map(helpCmd),
++    "2 [M6 leg g] and the help reads are the fixture record's, unchanged"
++  )
++}
++
++// ── 3. M6 / leg (g) — the green row ─────────────────────────────────────────
++
++{
++  assert.equal(statusOf(green, 'kata'), 'ok', `3 [M6 leg g] the kata row is ok; detail: ${detailOf(green, 'kata')}`)
++  assert.equal(rowOf(green, 'kata').fix, 'kata', '3 [M6 leg g] its fix is the kata section of first-run.md')
++  for (const needle of ['kata', FLEET_POLICY, 'running']) {
++    assert.ok(
++      detailOf(green, 'kata').includes(needle),
++      `3 [M6 leg g] the green detail names ${JSON.stringify(needle)}; got ${detailOf(green, 'kata')}`
++    )
++  }
++  assert.equal(green.verdict, 'ready', '3 [M6 leg g] and a whole fleet with a hub is ready')
++
++  // The entry's attachments name a VM, never `tag:fleet`, so a row that read
++  // the listing's attachments rather than the policy read would be red above.
++  assert.deepEqual(
++    KATA_ENTRY.attachments.filter((a) => String(a).startsWith('tag:')), [],
++    '3 [M6 leg g] the fixture entry names no tag: atom, so only the policy read can green the row'
++  )
++}
++
++// ── 4. M6 / leg (g) — the five absences ─────────────────────────────────────
++
++const ABSENCES = [
++  {
++    what: 'no kata entry in the listing',
++    overrides: { [CMD.list]: listing([CLAUDE_MAX]) },
++    begins: NO_INTEGRATION,
++    names: [BUILD_FIX]
++  },
++  {
++    what: 'a kata entry with no bearer',
++    overrides: { [CMD.list]: listing([CLAUDE_MAX, { name: 'kata', type: 'http-proxy', attachments: [OFF_POLICY] }]) },
++    begins: NO_BEARER,
++    names: [BUILD_FIX]
++  },
++  {
++    what: 'a policy read exiting 1',
++    overrides: { [KATA_POLICY_READ]: { code: 1, stdout: 'integration not found\n' } },
++    begins: NO_POLICY,
++    names: [POLICY_GET, POLICY_SET]
++  },
++  {
++    what: 'a policy read answering an off-policy selector',
++    overrides: { [KATA_POLICY_READ]: ok(policyJson('kata', OFF_POLICY)) },
++    begins: NO_POLICY,
++    names: [POLICY_GET, POLICY_SET, OFF_POLICY]
++  },
++  {
++    what: 'an ls answering no VM',
++    overrides: { [KATA_VM_READ]: ok(`${JSON.stringify({ vms: [] })}\n`) },
++    begins: NO_VM,
++    names: [BUILD_FIX]
++  }
++]
++
++for (const absence of ABSENCES) {
++  const result = await run(absence.overrides)
++  const detail = detailOf(result, 'kata')
++
++  assert.equal(statusOf(result, 'kata'), 'missing', `4 [M6 leg g] ${absence.what}: the kata row is missing`)
++  assert.ok(
++    detail.startsWith(absence.begins),
++    `4 [M6 leg g] ${absence.what}: the detail begins ${JSON.stringify(absence.begins)}; got ${JSON.stringify(detail)}`
++  )
++  assert.ok(
++    detail.includes(' — '),
++    `4 [M6 leg g] ${absence.what}: the detail carries the em dash before its fix; got ${JSON.stringify(detail)}`
++  )
++  for (const needle of absence.names) {
++    assert.ok(
++      detail.includes(needle),
++      `4 [M6 leg g] ${absence.what}: the detail names ${JSON.stringify(needle)}; got ${JSON.stringify(detail)}`
++    )
++  }
++  assert.equal(
++    detail.includes('integrations attach'), false,
++    `4 [M6 leg g] ${absence.what}: no detail names integrations attach — the edge refuses it; got ${JSON.stringify(detail)}`
++  )
++  assert.equal(rowOf(result, 'kata').fix, 'kata', `4 [M6 leg g] ${absence.what}: the row's fix is kata`)
++  assert.deepEqual(
++    allOkBut(result, 'kata'), EVERY_OTHER_OK,
++    `4 [M6 leg g] ${absence.what}: every other row is still ok`
++  )
++  assert.equal(result.verdict, 'not-ready', `4 [M6 leg g] ${absence.what}: a red kata row alone is not-ready`)
++}
++
++// ── 5. M7 / leg (h) — the documents ─────────────────────────────────────────
++
++const readDoc = (file) => fs.readFileSync(file, 'utf8')
++
++{
++  // first-run.md's sections are the doctor's rows, in order, ending with the hub.
++  const headings = readDoc(FIRST_RUN)
++    .split('\n')
++    .filter((line) => line.startsWith('## '))
++    .map((line) => line.slice(3).trim())
++  assert.deepEqual(
++    headings, EXPECTED_IDS,
++    '5 [M7 leg h] first-run.md\'s ## headings are ROW_IDS in order, ending ## kata'
++  )
++
++  // The one-line add command the narrowed docs pin has to permit: an
++  // http-proxy named kata, on the fleet policy, on a single line.
++  const kataAdds = readDoc(FIRST_RUN)
++    .split('\n')
++    .filter((line) => /integrations add http-proxy --name kata .*--policy 'tag:fleet'/.test(line))
++  assert.equal(
++    kataAdds.length, 1,
++    `5 [M7 leg h] first-run.md carries one line adding the kata http-proxy on --policy 'tag:fleet'; got ${kataAdds.length}`
++  )
++
++  // The runbook's sixth one-time step.
++  const runbook = readDoc(RUNBOOK)
++    .split('\n## ')
++    .find((section) => section.startsWith('One-time setup') || section.startsWith('# One-time setup'))
++  assert.ok(runbook, '5 [M7 leg h] fleet/RUNBOOK.md has a One-time setup section')
++  for (const needle of ['**6. `kata` — the hub.**', 'node fleet/kata-hub.mjs', '--copy-tags=false']) {
++    assert.ok(
++      runbook.includes(needle),
++      `5 [M7 leg h] the One-time setup section carries ${JSON.stringify(needle)}`
++    )
++  }
++
++  // The contract's doctor table, and its integration-naming bullet.
++  const contract = readDoc(CONTRACT)
++  const table = contract.slice(
++    contract.indexOf('- **Doctor ('),
++    contract.indexOf('- **Janitor (')
++  )
++  assert.ok(table.length > 0, '5 [M7 leg h] fleet/CONTRACT.md carries a doctor bullet before the janitor one')
++  const kataRows = table.split('\n').filter((line) => /^\s*\|\s*`kata`\s*\|/.test(line))
++  assert.equal(
++    kataRows.length, 1,
++    `5 [M7 leg h] the contract's doctor table carries one | \`kata\` | row; got ${kataRows.length}`
++  )
++
++  const naming = contract.slice(
++    contract.indexOf('- **Integration naming:**'),
++    contract.indexOf('- **Doctor (')
++  )
++  assert.ok(naming.length > 0, '5 [M7 leg h] fleet/CONTRACT.md carries an Integration naming bullet')
++  assert.ok(
++    naming.includes('no GitHub object rides'),
++    '5 [M7 leg h] the integration bullet says no GitHub object rides the shared tag'
++  )
++  assert.ok(
++    /kata[\s\S]*http-proxy|http-proxy[\s\S]*kata/.test(naming),
++    '5 [M7 leg h] and that the kata http-proxy does'
++  )
++
++  // Nothing anywhere tells an operator to attach: the verb is refused at the edge.
++  const docs = []
++  const walk = (dir) => {
++    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
++      const full = path.join(dir, entry.name)
++      if (entry.isDirectory()) walk(full)
++      else if (entry.name.endsWith('.md')) docs.push(full)
++    }
++  }
++  walk(FLEET_DIR)
++  walk(REFERENCES)
++  const attaching = docs.filter((file) => readDoc(file).includes('integrations attach kata'))
++  assert.deepEqual(
++    attaching.map((f) => path.relative(REPO, f)), [],
++    '5 [M7 leg h] no document under fleet/ or references/ names an attach of the kata integration'
++  )
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/exams/run_109/test_kata_hub.mjs b/fleet/tests/exams/run_109/test_kata_hub.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a11b58f6ccae0ff686418b5b642d4ff1ce1688fa
+--- /dev/null
++++ b/fleet/tests/exams/run_109/test_kata_hub.mjs
+@@ -0,0 +1,633 @@
++/**
++ * Exam for `fleet/kata-hub.mjs`, `fleet/kata-hub-setup.sh` and
++ * `fleet/kata.service` — "an operator runs one command and has a kata hub".
++ *
++ * Every group below names the Machine clause and the Proof leg it encodes, so a
++ * reader can map an assertion back to the contract it came from:
++ *
++ *   1  M2 / leg (b) — `renderHubSetupScript({ template, unit })`: the 8192-byte
++ *      ceiling, `bash -n`, no token / no `KATA_AUTH_TOKEN` / `ANTHROPIC` /
++ *      `public_origin` line, and the nine literals, one assertion each.
++ *   2  M2 / leg (c) — the unit's bytes verbatim inside the quoted heredoc, the
++ *      unit's own six literals and its absent `Environment=` line, and the two
++ *      renders that must throw.
++ *   3  M1 / leg (a) — a fresh build: exactly three mutating lobby verbs in
++ *      order, the two lobby reads and no others, the rendered script on the
++ *      `new`'s stdin, the bearer on the `integrations add`'s stdin and in no
++ *      argv, and every VM ssh at the row's own `ssh_dest`.
++ *   4  M3 / leg (d) — the bounded wait and the two deliveries, in order, with
++ *      their exact stdin texts, the `sleep` spy's two `5`s, and the env file
++ *      written 0600 with its two lines only after the last `is-active`.
++ *   5  M4 / leg (e) — already built, the two partial builds (including the
++ *      bearer rotation behind a rebuilt VM), and `--dry-run`.
++ *   6  M5 / leg (f) — a `new` that fails, and a wait that exhausts
++ *      `KATA_HUB_WAIT_SECONDS`.
++ *
++ * Nothing here opens a socket: every exe.dev verb and every VM command is
++ * answered by `fleet/tests/_lobby_helpers.mjs`'s recording seam, the one child
++ * process is `bash -n` over a rendered script in a temp directory under
++ * `simEnv`, and the env file the tool writes lands under a per-case `home`.
++ *
++ * Two readings this file fixes, because the task's words admit one shape each:
++ *
++ *   - "no `ssh`" in M4 and M5 is read as no command on a VM (`ssh <ssh_dest> …`):
++ *     the two lobby reads are `ssh exe.dev …` calls and M4 still lets a resume
++ *     read the listing and the row.
++ *   - what the tool "prints" is read as what it wrote to stdout during the call
++ *     plus its own return value, so a report carried back to `main` counts.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { spawnSync } from 'node:child_process'
++import { fileURLToPath } from 'node:url'
++
++import { simEnv } from '../../_helpers.mjs'
++import { answer, makeExec, sshRule, vmRule, vmsPayload } from '../../_lobby_helpers.mjs'
++import { LobbyError } from '../../../lobby.mjs'
++import * as hubModule from '../../../kata-hub.mjs'
++
++const HERE = path.dirname(fileURLToPath(import.meta.url))
++const FLEET = path.resolve(HERE, '..', '..', '..')
++const TEMPLATE_FILE = path.join(FLEET, 'kata-hub-setup.sh')
++const UNIT_FILE = path.join(FLEET, 'kata.service')
++const HUB_MODULE = new URL('../../../kata-hub.mjs', import.meta.url)
++
++const ROOT = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'kata-hub-exam-'))
++
++// ── the module's two entry points ────────────────────────────────────────────
++
++/** The file-named main, as `fleet/target.mjs` exports `target()`. */
++const kataHub = hubModule.kataHub ?? hubModule.default
++assert.equal(
++  typeof kataHub,
++  'function',
++  '0 fleet/kata-hub.mjs exports kataHub({ argv, exec, rand, sleep, home }) — the file-named main, as target.mjs exports target()'
++)
++
++const { renderHubSetupScript } = hubModule
++assert.equal(
++  typeof renderHubSetupScript,
++  'function',
++  '0 [Produces] fleet/kata-hub.mjs exports renderHubSetupScript({ template, unit }) -> string'
++)
++
++// ── the contract's literals ──────────────────────────────────────────────────
++
++/** M1 leg (a): the `ls kata-hub --json` row the fixture answers after the `new`. */
++const HTTPS_URL = 'https://kata-hub.example.exe.xyz'
++const SSH_DEST = 'exedev@h1'
++const KATA_ROW = { vm_name: 'kata-hub', status: 'running', https_url: HTTPS_URL, ssh_dest: SSH_DEST }
++
++/** M1: the three mutating lobby verbs, verbatim. */
++const NEW_VERB =
++  "new --name kata-hub --cpu 1 --memory 2GB --disk 20GB " +
++  "--comment 'kata hub — persistent service, do not reap' --setup-script /dev/stdin --json"
++const SHARE_VERB = 'share port kata-hub 8000'
++const ADD_VERB =
++  `integrations add http-proxy --name kata --target ${HTTPS_URL} --peer --bearer - ` +
++  "--comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
++/** M4: the rotation a rebuilt hub behind an existing integration gets instead. */
++const EDIT_VERB = 'integrations edit kata --bearer=-'
++
++/** M1: the only two lobby reads the tool may issue. */
++const LIST_READ = 'integrations list --json'
++const LS_READ = 'ls kata-hub --json'
++
++/** M3: the two deliveries, verbatim, and the two polls. */
++const DONE_POLL = 'test -f /var/lib/kata/.setup-done'
++const ACTIVE_POLL = 'systemctl is-active kata.service'
++const CONFIG_DELIVERY =
++  'sudo -n tee /var/lib/kata/config.toml >/dev/null && ' +
++  'sudo -n chown exedev:exedev /var/lib/kata/config.toml && ' +
++  'sudo -n chmod 0644 /var/lib/kata/config.toml'
++const ENV_DELIVERY =
++  'sudo -n install -d -m 0755 /etc/kata && ' +
++  'sudo -n tee /etc/kata/kata.env >/dev/null && ' +
++  'sudo -n chown root:exedev /etc/kata/kata.env && ' +
++  'sudo -n chmod 0640 /etc/kata/kata.env && ' +
++  'sudo -n systemctl restart kata.service'
++const CONFIG_TEXT = `[web]\npublic_origin = "${HTTPS_URL}"\n`
++
++/** M1: the bearer is 32 random bytes from the injectable `rand`, in lower-case
++ *  hex. The fixture's bytes are 0x01…0x20, so the token is a fixed 64 hex
++ *  characters this exam can look for in an argv. */
++const TOKEN_BYTES = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1))
++const TOKEN = TOKEN_BYTES.toString('hex')
++
++const envText = (token) =>
++  `KATA_AUTH_TOKEN=${token}\nKATA_TRUST_PRIVATE_NETWORK=1\nKATA_HOME=/var/lib/kata\nPORT=8000\n`
++const hubEnvText = (token) => `KATA_URL=${HTTPS_URL}\nKATA_TOKEN=${token}\n`
++
++/** M2: the nine literals the rendered setup script carries. */
++const SCRIPT_LITERALS = [
++  'KATA_VERSION=0.17.2',
++  'kata_0.17.2_linux_amd64.tar.gz',
++  'https://github.com/kenn-io/kata/releases/download/v0.17.2/',
++  'SHA256SUMS',
++  'sha256sum -c',
++  '/usr/local/bin/kata',
++  '/etc/systemd/system/kata.service',
++  'systemctl enable --now kata.service',
++  '/var/lib/kata/.setup-done'
++]
++
++/** M2: what no line of the rendered script may name. The origin is not known
++ *  until the VM exists, so it rides the env file and never the script. */
++const SCRIPT_FORBIDDEN = ['KATA_AUTH_TOKEN', 'ANTHROPIC', 'public_origin']
++
++/** M2: the unit's six literals. */
++const UNIT_LITERALS = [
++  'User=exedev',
++  'EnvironmentFile=-/etc/kata/kata.env',
++  'ExecStartPre=/usr/bin/test -f /etc/kata/kata.env',
++  'ExecStart=/usr/local/bin/kata daemon start --foreground',
++  'Restart=on-failure',
++  'WantedBy=multi-user.target'
++]
++
++const UNIT_TAG = 'KATA_UNIT_EOF'
++const UNIT_PLACEHOLDER = '__KATA_UNIT__'
++const SETUP_SCRIPT_CEILING = 8192
++
++// ── reading the seam ─────────────────────────────────────────────────────────
++
++/**
++ * The mutating lobby verbs, as M1 counts them. `_lobby_helpers.mjs`'s own
++ * `exec.mutating()` does not count `share port` (its regex predates this verb,
++ * and that file is outside this task's Files), so the count M1 asks for is
++ * taken here: this predicate is a superset of the helper's.
++ */
++const MUTATING = /^(?:new|share|cp|rm|comment|rename|tag) |^integrations (?:add|attach|detach|edit|policy set) /
++const mutating = (exec) => exec.lobby().filter((line) => MUTATING.test(line))
++const reads = (exec) => exec.lobby().filter((line) => !MUTATING.test(line))
++
++/** Every `ssh <ssh_dest> …` — a command on a VM — with its stdin. The `-o`
++ *  pairs are stripped, so the destination is read where M1 puts it. */
++const vmCalls = (exec) => exec.calls
++  .filter((c) => c.cmd === 'ssh' && c.argv[0] !== 'exe.dev')
++  .map((c) => {
++    const rest = []
++    for (let i = 0; i < c.argv.length; i += 1) {
++      if (c.argv[i] === '-o') { i += 1; continue }
++      rest.push(c.argv[i])
++    }
++    return { dest: rest[0], command: rest.slice(1).join(' ').trim(), input: c.options?.input }
++  })
++
++const lobbyCall = (exec, remote) => exec.calls.find((c) => c.cmd === 'ssh' && c.argv[0] === 'exe.dev' && c.argv[1] === remote)
++
++/** What the tool said: stdout written during the call, plus its own answer. */
++const said = ({ out, result }) =>
++  `${out}\n${typeof result === 'string' ? result : JSON.stringify(result ?? null)}`
++
++async function capture (body) {
++  const chunks = []
++  const original = process.stdout.write
++  process.stdout.write = (chunk) => { chunks.push(String(chunk)); return true }
++  let result
++  let error = null
++  try {
++    result = await body()
++  } catch (caught) {
++    error = caught
++  } finally {
++    process.stdout.write = original
++  }
++  return { result, error, out: chunks.join('') }
++}
++
++// ── the fixture ──────────────────────────────────────────────────────────────
++
++let caseNumber = 0
++
++/**
++ * One build, against a canned lobby and a canned VM.
++ *
++ *   `integrations`  what `integrations list --json` answers
++ *   `rowsBefore`    what `ls kata-hub --json` answers before the `new`
++ *   `rowsAfter`     what it answers after it
++ *   `newAnswer`     the `new` verb's answer
++ *   `setupDone`     the exit codes `test -f …/.setup-done` answers, in order
++ *   `isActive`      the stdouts `systemctl is-active` answers, in order; the
++ *                   last one repeats forever
++ *   `envFile`       text to pre-write at `<home>/.ultrapowers/kata-hub.env`
++ */
++function makeCase ({
++  integrations = [],
++  rowsBefore = [],
++  rowsAfter = [KATA_ROW],
++  newAnswer = answer('{}'),
++  setupDone = [1, 0],
++  isActive = ['activating', 'active'],
++  envFile = null
++} = {}) {
++  caseNumber += 1
++  const home = fs.mkdtempSync(path.join(ROOT, `home-${caseNumber}-`))
++  const envPath = path.join(home, '.ultrapowers', 'kata-hub.env')
++  if (envFile !== null) {
++    fs.mkdirSync(path.dirname(envPath), { recursive: true })
++    fs.writeFileSync(envPath, envFile)
++  }
++
++  let created = false
++  const doneQueue = [...setupDone]
++  const activeQueue = [...isActive]
++
++  const onVm = (cmd, argv) => {
++    const command = String(argv[argv.length - 1] ?? '')
++    if (command.includes('/var/lib/kata/.setup-done') && command.includes('test ')) {
++      const code = doneQueue.length > 1 ? doneQueue.shift() : (doneQueue[0] ?? 0)
++      return answer('', { code })
++    }
++    if (command.includes('tee /var/lib/kata/config.toml')) return answer('')
++    if (command.includes('tee /etc/kata/kata.env')) return answer('')
++    if (command.includes('is-active')) {
++      const text = activeQueue.length > 1 ? activeQueue.shift() : (activeQueue[0] ?? 'active')
++      return answer(`${text}\n`)
++    }
++    return answer(`no rule for a VM command: ${command}\n`, { code: 127 })
++  }
++
++  const exec = makeExec({
++    passthrough: [],
++    rules: [
++      sshRule(LIST_READ, answer(integrations)),
++      sshRule('ls kata-hub', () => vmsPayload(created ? rowsAfter : rowsBefore)),
++      sshRule('new ', () => { created = true; return newAnswer }),
++      sshRule('share port ', answer('')),
++      sshRule('integrations add ', answer('{}')),
++      sshRule('integrations edit ', answer('')),
++      vmRule(onVm)
++    ]
++  })
++
++  // Was the env file already on disk when each command ran? M3 writes it only
++  // after the last `is-active`, so every one of these must be false.
++  const existedAtCall = []
++  const spy = (cmd, argv, options) => {
++    existedAtCall.push(fs.existsSync(envPath))
++    return exec(cmd, argv, options)
++  }
++  spy.calls = exec.calls
++  spy.lobby = exec.lobby
++  spy.vm = exec.vm
++  spy.mutating = exec.mutating
++
++  const randCalls = []
++  const rand = (n) => { randCalls.push(n); return Buffer.from(TOKEN_BYTES) }
++
++  const sleeps = []
++  const sleep = async (seconds) => {
++    sleeps.push(seconds)
++    if (sleeps.length > 50) {
++      throw new Error('sleep was called 50 times: the wait is not bounded by KATA_HUB_WAIT_SECONDS')
++    }
++  }
++
++  return { home, envPath, exec: spy, rand, randCalls, sleep, sleeps, existedAtCall }
++}
++
++const build = async (fixture, argv = [], main = kataHub) =>
++  capture(() => main({ argv, exec: fixture.exec, rand: fixture.rand, sleep: fixture.sleep, home: fixture.home }))
++
++// ── 1. M2 / leg (b) — the rendered setup script ──────────────────────────────
++
++const TEMPLATE = fs.readFileSync(TEMPLATE_FILE, 'utf8')
++const UNIT = fs.readFileSync(UNIT_FILE, 'utf8')
++const SCRIPT = renderHubSetupScript({ template: TEMPLATE, unit: UNIT })
++
++{
++  assert.equal(typeof SCRIPT, 'string', '1 [M2 leg b] renderHubSetupScript answers a string')
++
++  // The ceiling: exe.dev's `--setup-script` cap is 10 KiB and a two-byte
++  // overrun would surface only at `new`.
++  assert.ok(
++    Buffer.byteLength(SCRIPT) <= SETUP_SCRIPT_CEILING,
++    `1 [M2 leg b] the rendered script is at most ${SETUP_SCRIPT_CEILING} bytes; got ${Buffer.byteLength(SCRIPT)}`
++  )
++
++  const file = path.join(ROOT, 'rendered-setup.sh')
++  fs.writeFileSync(file, SCRIPT)
++  const syntax = spawnSync('bash', ['-n', file], { encoding: 'utf8', env: simEnv() })
++  assert.equal(syntax.status, 0, `1 [M2 leg b] the rendered script passes bash -n; got ${syntax.stderr}`)
++
++  // The template itself is a bash script before anything is substituted into it.
++  const raw = path.join(ROOT, 'template-setup.sh')
++  fs.writeFileSync(raw, TEMPLATE)
++  const rawSyntax = spawnSync('bash', ['-n', raw], { encoding: 'utf8', env: simEnv() })
++  assert.equal(
++    rawSyntax.status, 0,
++    `1 [M2 leg b] fleet/kata-hub-setup.sh passes bash -n unrendered; got ${rawSyntax.stderr}`
++  )
++
++  const lines = SCRIPT.split('\n')
++  for (const needle of SCRIPT_FORBIDDEN) {
++    const carrying = lines.filter((line) => line.includes(needle))
++    assert.deepEqual(
++      carrying, [],
++      `1 [M2 leg b] no line of the rendered script names ${needle}; got ${JSON.stringify(carrying)}`
++    )
++  }
++
++  // No token: the script is stored as a VM property server-side, so nothing
++  // that could be a bearer may be in it.
++  assert.equal(
++    /[0-9a-f]{32,}/.test(SCRIPT), false,
++    '1 [M2 leg b] the rendered script carries no hex string long enough to be a token'
++  )
++  assert.equal(SCRIPT.includes(TOKEN), false, '1 [M2 leg b] the rendered script carries no bearer')
++
++  // The nine literals, one assertion each.
++  for (const literal of SCRIPT_LITERALS) {
++    assert.ok(
++      SCRIPT.includes(literal),
++      `1 [M2 leg b] the rendered script carries ${JSON.stringify(literal)}`
++    )
++  }
++}
++
++// ── 2. M2 / leg (c) — the unit, carried verbatim, and the two refusals ───────
++
++{
++  // The unit's bytes sit verbatim between the quoted heredoc's two delimiters.
++  const lines = SCRIPT.split('\n')
++  const open = lines.findIndex((line) => line.includes(`<<'${UNIT_TAG}'`))
++  assert.notEqual(open, -1, `2 [M2 leg c] the rendered script opens a quoted heredoc <<'${UNIT_TAG}'`)
++  const close = lines.indexOf(UNIT_TAG, open + 1)
++  assert.notEqual(close, -1, `2 [M2 leg c] the heredoc is closed by a ${UNIT_TAG} line of its own`)
++  const body = `${lines.slice(open + 1, close).join('\n')}\n`
++  const want = UNIT.endsWith('\n') ? UNIT : `${UNIT}\n`
++  assert.equal(body, want, "2 [M2 leg c] the unit's bytes are inside the heredoc verbatim")
++
++  // The unit's own six literals, one assertion each, and no `Environment=`:
++  // the env file is delivered over ssh, never baked into the unit.
++  for (const literal of UNIT_LITERALS) {
++    assert.ok(UNIT.includes(literal), `2 [M2] fleet/kata.service carries ${JSON.stringify(literal)}`)
++  }
++  const envLines = UNIT.split('\n').filter((line) => line.startsWith('Environment='))
++  assert.deepEqual(envLines, [], `2 [M2] no line of fleet/kata.service begins Environment=; got ${JSON.stringify(envLines)}`)
++
++  // The template carries the one placeholder line the renderer replaces…
++  const placeholder = TEMPLATE.split('\n').filter((line) => line.trim() === UNIT_PLACEHOLDER)
++  assert.equal(
++    placeholder.length, 1,
++    `2 [M2 leg c] fleet/kata-hub-setup.sh carries one ${UNIT_PLACEHOLDER} line; got ${placeholder.length}`
++  )
++
++  // …and a template without it, or a unit carrying the delimiter on a line of
++  // its own, is a throw rather than a silent truncation.
++  const stripped = TEMPLATE.split('\n').filter((line) => line.trim() !== UNIT_PLACEHOLDER).join('\n')
++  assert.throws(
++    () => renderHubSetupScript({ template: stripped, unit: UNIT }),
++    `2 [M2 leg c] a template with no ${UNIT_PLACEHOLDER} line throws`
++  )
++  assert.throws(
++    () => renderHubSetupScript({ template: TEMPLATE, unit: `${want}${UNIT_TAG}\n` }),
++    `2 [M2 leg c] a unit carrying ${UNIT_TAG} on a line of its own throws`
++  )
++}
++
++// ── 3. M1 / leg (a) — a fresh build ─────────────────────────────────────────
++
++const green = makeCase()
++const greenRun = await build(green)
++
++{
++  assert.equal(greenRun.error, null, `3 [M1 leg a] a green build does not fail; got ${greenRun.error?.message}`)
++
++  // The three mutating verbs, in order, with the target read off the row.
++  assert.deepEqual(
++    mutating(green.exec), [NEW_VERB, SHARE_VERB, ADD_VERB],
++    '3 [M1 leg a] exactly three mutating lobby verbs, in M1\'s order, with --target the row\'s https_url'
++  )
++
++  // The whole lobby conversation: the `ls` read sits between the `new` and the
++  // `share port`, and the non-mutating calls are those two reads and no others.
++  assert.deepEqual(
++    green.exec.lobby(), [LIST_READ, LS_READ, NEW_VERB, LS_READ, SHARE_VERB, ADD_VERB],
++    '3 [M1 leg a] the ls read sits directly after the new and before the share port'
++  )
++  assert.deepEqual(
++    reads(green.exec), [LIST_READ, LS_READ, LS_READ],
++    '3 [M1 leg a] the lobby reads are one integrations list --json and two ls kata-hub --json, and nothing else'
++  )
++
++  // The `new` carries the size and no tag: the janitor's `fleet-r*` glob never
++  // lists the hub, and the comment is the second lock.
++  const newCall = lobbyCall(green.exec, NEW_VERB)
++  assert.ok(newCall, '3 [M1 leg a] the new verb was issued through lobby()')
++  assert.ok(NEW_VERB.includes('--cpu 1 --memory 2GB --disk 20GB'), '3 [M1 leg a] the new is 1 vCPU / 2GB / 20GB')
++  assert.equal(NEW_VERB.includes('--tag'), false, '3 [M1 leg a] no --tag anywhere in the new')
++  for (const line of green.exec.lobby()) {
++    assert.equal(line.includes('--tag'), false, `3 [M1 leg a] no lobby verb tags the hub; got ${line}`)
++  }
++
++  // The rendered script rides the `new`'s stdin, never an argv.
++  assert.equal(newCall.options?.input, SCRIPT, "3 [M1 leg a] the rendered setup script is on the new's stdin")
++
++  // The bearer rides the `integrations add`'s stdin, is 32 bytes of lower-case
++  // hex from the injectable `rand`, and is in no argv of any call.
++  const addCall = lobbyCall(green.exec, ADD_VERB)
++  assert.ok(addCall, '3 [M1 leg a] the integrations add verb was issued through lobby()')
++  assert.equal(addCall.options?.input, TOKEN, "3 [M1 leg a] the bearer is on the integrations add's stdin")
++  assert.match(String(addCall.options?.input), /^[0-9a-f]{64}$/, '3 [M1] the bearer is 32 random bytes in lower-case hex')
++  assert.equal(green.randCalls.length, 1, '3 [M1] the bearer is minted once, from the injectable rand')
++  for (const asked of green.randCalls) {
++    if (asked !== undefined) assert.equal(asked, 32, `3 [M1] rand is asked for 32 bytes; got ${asked}`)
++  }
++  assert.equal(
++    JSON.stringify(green.exec.calls.map((c) => c.argv)).includes(TOKEN), false,
++    '3 [M1 leg a] the bearer appears in the argv of no call the tool makes'
++  )
++
++  // Every command the tool runs is an ssh, and every VM ssh goes to the row's
++  // own ssh_dest — never a host guessed from the name.
++  for (const call of green.exec.calls) {
++    assert.equal(call.cmd, 'ssh', `3 [M1 leg a] the tool runs ssh and nothing else; got ${call.cmd}`)
++  }
++  const vm = vmCalls(green.exec)
++  assert.ok(vm.length > 0, '3 [M1 leg a] the tool talks to the VM')
++  for (const call of vm) {
++    assert.equal(call.dest, SSH_DEST, `3 [M1 leg a] every VM ssh goes to the row's ssh_dest; got ${call.dest}`)
++  }
++}
++
++// ── 4. M3 / leg (d) — the bounded wait, the two deliveries, the env file ─────
++
++{
++  const vm = vmCalls(green.exec)
++  assert.deepEqual(
++    vm.map((c) => c.command),
++    [DONE_POLL, DONE_POLL, CONFIG_DELIVERY, ENV_DELIVERY, ACTIVE_POLL, ACTIVE_POLL],
++    '4 [M3 leg d] the VM commands in order: the two .setup-done polls, the config, the env, the two is-active polls'
++  )
++
++  // The leg's own containment checks, so a reader sees which half each command is.
++  assert.ok(vm[2].command.includes('sudo -n tee /var/lib/kata/config.toml'), '4 [M3 leg d] the third VM command tees config.toml')
++  for (const needle of ['sudo -n tee /etc/kata/kata.env', 'chown root:exedev', 'chmod 0640', 'systemctl restart kata.service']) {
++    assert.ok(vm[3].command.includes(needle), `4 [M3 leg d] the env delivery carries ${JSON.stringify(needle)}`)
++  }
++
++  // The two texts, exactly, on the stdin of their own delivery.
++  assert.equal(vm[2].input, CONFIG_TEXT, '4 [M3 leg d] the config text is delivered verbatim on stdin')
++  assert.equal(vm[3].input, envText(TOKEN), '4 [M3 leg d] the env text is delivered verbatim on stdin')
++
++  // One poll apart, at the default of five seconds: once after the first
++  // `.setup-done` answer and once after `activating`.
++  assert.deepEqual(green.sleeps, [5, 5], '4 [M3 leg d] the sleep spy was called with 5 exactly twice')
++
++  // The env file: 0600, exactly two lines, and written after the last command.
++  assert.ok(fs.existsSync(green.envPath), `4 [M3 leg d] ${green.envPath} was written`)
++  assert.equal(
++    fs.readFileSync(green.envPath, 'utf8'), hubEnvText(TOKEN),
++    '4 [M3 leg d] the env file is exactly KATA_URL and KATA_TOKEN'
++  )
++  assert.equal(
++    fs.statSync(green.envPath).mode & 0o777, 0o600,
++    `4 [M3 leg d] the env file is mode 0600; got ${(fs.statSync(green.envPath).mode & 0o777).toString(8)}`
++  )
++  assert.deepEqual(
++    green.existedAtCall.filter(Boolean), [],
++    '4 [M3 leg d] the env file existed during no command — it is written after the last is-active'
++  )
++}
++
++// ── 5. M4 / leg (e) — already built, the two resumes, and --dry-run ─────────
++
++const KATA_LISTED = [{
++  name: 'kata',
++  type: 'http-proxy',
++  attachments: ['vm:fleet-r7-2609030900-a1b2'],
++  config_summary: 'Authorization:Bearer ***'
++}]
++
++{
++  // Already built: the listing names `kata`, the row is there and the env file
++  // exists. Nothing mutates, nothing reaches the VM, nothing is written.
++  const SENTINEL = 'KATA_URL=https://already.example.exe.xyz\nKATA_TOKEN=deadbeef\n'
++  const done = makeCase({ integrations: KATA_LISTED, rowsBefore: [KATA_ROW], envFile: SENTINEL })
++  const run = await build(done)
++  assert.equal(run.error, null, `5 [M4 leg e] an already-built hub exits 0; got ${run.error?.message}`)
++  assert.deepEqual(mutating(done.exec), [], '5 [M4 leg e] an already-built hub issues no mutating verb')
++  assert.deepEqual(done.exec.mutating(), [], '5 [M4 leg e] and none the shared helper counts either')
++  assert.deepEqual(vmCalls(done.exec), [], '5 [M4 leg e] and no command on the VM')
++  assert.equal(fs.readFileSync(done.envPath, 'utf8'), SENTINEL, "5 [M4 leg e] the env file's bytes are unchanged")
++  assert.ok(
++    said(run).includes('kata-hub already built'),
++    `5 [M4 leg e] it says "kata-hub already built"; got ${said(run)}`
++  )
++}
++
++{
++  // The row exists, the listing does not name `kata`, there is no env file:
++  // the `new` and the `share port` are skipped, the add is issued, and M3's
++  // wait and delivery still run before the env file is written.
++  const resume = makeCase({ integrations: [], rowsBefore: [KATA_ROW] })
++  const run = await build(resume)
++  assert.equal(run.error, null, `5 [M4 leg e] a resume past the VM does not fail; got ${run.error?.message}`)
++  assert.deepEqual(
++    mutating(resume.exec), [ADD_VERB],
++    '5 [M4 leg e] a hub whose VM exists issues exactly the integrations add'
++  )
++  assert.deepEqual(
++    vmCalls(resume.exec).map((c) => c.command),
++    [DONE_POLL, DONE_POLL, CONFIG_DELIVERY, ENV_DELIVERY, ACTIVE_POLL, ACTIVE_POLL],
++    "5 [M4 leg e] M3's wait and delivery run on a resume too"
++  )
++  assert.equal(fs.readFileSync(resume.envPath, 'utf8'), hubEnvText(TOKEN), '5 [M4 leg e] and the env file is written')
++}
++
++{
++  // `kata` is listed but the VM was rebuilt behind it: the `new` and the
++  // `share port` are issued, and the edge's bearer is rotated to the one the
++  // rebuilt hub holds — never a second `integrations add`.
++  const rebuilt = makeCase({ integrations: KATA_LISTED, rowsBefore: [] })
++  const run = await build(rebuilt)
++  assert.equal(run.error, null, `5 [M4 leg e] a rebuilt hub does not fail; got ${run.error?.message}`)
++  assert.deepEqual(
++    mutating(rebuilt.exec), [NEW_VERB, SHARE_VERB, EDIT_VERB],
++    '5 [M4 leg e] a rebuilt VM behind an existing integration rotates the bearer with integrations edit'
++  )
++  const edit = lobbyCall(rebuilt.exec, EDIT_VERB)
++  assert.equal(edit?.options?.input, TOKEN, "5 [M4 leg e] the freshly minted bearer is on the edit's stdin")
++  assert.match(String(edit?.options?.input), /^[0-9a-f]{64}$/, '5 [M4 leg e] and it is 64 lower-case hex characters')
++  assert.deepEqual(
++    vmCalls(rebuilt.exec).map((c) => c.command),
++    [DONE_POLL, DONE_POLL, CONFIG_DELIVERY, ENV_DELIVERY, ACTIVE_POLL, ACTIVE_POLL],
++    "5 [M4 leg e] M3's wait and delivery run behind the rotation"
++  )
++  assert.equal(
++    vmCalls(rebuilt.exec)[3].input, envText(TOKEN),
++    '5 [M4 leg e] the hub is given the same bearer the edge now injects'
++  )
++  assert.equal(fs.readFileSync(rebuilt.envPath, 'utf8'), hubEnvText(TOKEN), '5 [M4 leg e] and the env file carries it')
++}
++
++{
++  // --dry-run over the fresh build's own fixtures: nothing mutates, nothing
++  // reaches the VM, nothing is written, and the three verbs are printed.
++  const dry = makeCase()
++  const run = await build(dry, ['--dry-run'])
++  assert.equal(run.error, null, `5 [M4 leg e] --dry-run does not fail; got ${run.error?.message}`)
++  assert.deepEqual(mutating(dry.exec), [], '5 [M4 leg e] --dry-run issues no mutating verb')
++  assert.deepEqual(vmCalls(dry.exec), [], '5 [M4 leg e] --dry-run runs no command on the VM')
++  assert.equal(fs.existsSync(dry.envPath), false, '5 [M4 leg e] --dry-run writes nothing')
++  const text = said(run)
++  for (const verb of [
++    'new --name kata-hub --cpu 1 --memory 2GB --disk 20GB',
++    SHARE_VERB,
++    'integrations add http-proxy --name kata',
++    "--policy 'tag:fleet'"
++  ]) {
++    assert.ok(text.includes(verb), `5 [M4 leg e] --dry-run prints ${JSON.stringify(verb)}; got ${text}`)
++  }
++}
++
++// ── 6. M5 / leg (f) — a failed `new`, and a wait that runs out ───────────────
++
++{
++  const failed = makeCase({ newAnswer: answer('boom', { code: 1 }) })
++  const run = await build(failed)
++  assert.ok(run.error instanceof LobbyError, `6 [M5 leg f] a new that fails is a LobbyError; got ${run.error}`)
++  assert.match(String(run.error?.message), /boom/, "6 [M5 leg f] carrying the lobby's own words")
++  assert.deepEqual(mutating(failed.exec), [NEW_VERB], '6 [M5 leg f] no share port and no integrations add follow a failed new')
++  assert.deepEqual(vmCalls(failed.exec), [], '6 [M5 leg f] and no command on the VM')
++  assert.equal(fs.existsSync(failed.envPath), false, '6 [M5 leg f] and no env file')
++}
++
++{
++  // A daemon that never comes up: the wait is bounded by KATA_HUB_WAIT_SECONDS,
++  // and what it gives up on is a LobbyError naming the VM and the last answer
++  // it saw. The module is re-imported under the bound, so a tool that reads the
++  // variable once at load sees it too.
++  const previous = process.env.KATA_HUB_WAIT_SECONDS
++  process.env.KATA_HUB_WAIT_SECONDS = '20'
++  let bounded
++  try {
++    const fresh = await import(`${HUB_MODULE.href}?kata-hub-wait=20`)
++    const main = fresh.kataHub ?? fresh.default
++    bounded = makeCase({ isActive: ['activating'] })
++    const run = await build(bounded, [], main)
++    assert.ok(
++      run.error instanceof LobbyError,
++      `6 [M5 leg f] a wait that exhausts KATA_HUB_WAIT_SECONDS is a LobbyError; got ${run.error}`
++    )
++    assert.match(String(run.error?.message), /kata-hub/, '6 [M5 leg f] naming kata-hub')
++    assert.match(String(run.error?.message), /activating/, '6 [M5 leg f] and the last answer it saw')
++  } finally {
++    if (previous === undefined) delete process.env.KATA_HUB_WAIT_SECONDS
++    else process.env.KATA_HUB_WAIT_SECONDS = previous
++  }
++
++  const polls = vmCalls(bounded.exec).filter((c) => c.command === ACTIVE_POLL)
++  assert.ok(
++    polls.length >= 1 && polls.length <= 5,
++    `6 [M5 leg f] at most five is-active calls under a 20 second bound; got ${polls.length}`
++  )
++  assert.equal(fs.existsSync(bounded.envPath), false, '6 [M5 leg f] and no env file follows an exhausted wait')
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_doctor.mjs b/fleet/tests/test_doctor.mjs
+index 183d8e95a04dbe692ec3b0da45fa781e763377c9..9a20caeaee6deb7e1bf36aaa93c5ffaa271b07a9 100644
+--- a/fleet/tests/test_doctor.mjs
++++ b/fleet/tests/test_doctor.mjs
+@@ -1,5 +1,5 @@
+ /**
+- * Exam for fleet/doctor.mjs — "do you have a fleet?", eight rows read off
++ * Exam for fleet/doctor.mjs — "do you have a fleet?", nine rows read off
+  * exe.dev's own truth.
+  *
+  * Every group below names the Machine clause and the Proof leg it encodes, so a
+@@ -56,8 +56,8 @@ const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-'))
+ 
+ // ── Shared literals ──────────────────────────────────────────────────────────
+ 
+-/** M1: the eight rows, in the order the doctor reports them. */
+-const EXPECTED_IDS = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render']
++/** M1: the nine rows, in the order the doctor reports them. */
++const EXPECTED_IDS = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render', 'kata']
+ 
+ /** M1: the reads, in the order M1 lists them — the five BASE reads, then the
+  *  accounts read, then one `help <verb>` per verb of the record in the record's
+@@ -73,7 +73,8 @@ const CMD = {
+   list: 'ssh exe.dev "integrations list --json"',
+   github: 'ssh exe.dev "integrations setup github --list"',
+   token: `node ${CLAUDE_TOKEN} status`,
+-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
++  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
++  kataVm: 'ssh exe.dev "ls kata-hub --json"'
+ }
+ 
+ /** The policy read for one integration, and what it answers (measured 2026-09-11):
+@@ -93,6 +94,9 @@ const policyAnswer = (name, selector) => ({ code: 0, stdout: policyJson(name, se
+ /** The five BASE reads, in BASE's order — M1 keeps them first and unchanged. */
+ const BASE_READS = [CMD.whoami, CMD.billing, CMD.list, CMD.github, CMD.token]
+ 
++/** The `kata` row's two reads, which follow the accounts read. */
++const KATA_READS = [policyCmd('kata'), CMD.kataVm]
++
+ // ── the fixture record the unit legs read ────────────────────────────────────
+ //
+ // M1/M4: two verbs, not the twelve, so the stub table stays small. The real
+@@ -118,8 +122,9 @@ const HELP_READS = FIXTURE_NAMES.map(helpCmd)
+  *  record issues, and the only commands it ever runs. (BASE's `FIVE_READS`.)
+  *  The policy read of `claude-max` follows the accounts read; `--target` adds
+  *  the target object's own policy read after it. */
+-const ALL_READS = [...BASE_READS, CMD.accounts, policyCmd('claude-max'), ...HELP_READS]
+-const TARGETED_READS = (gh) => [...BASE_READS, CMD.accounts, policyCmd('claude-max'), policyCmd(gh), ...HELP_READS]
++const ALL_READS = [...BASE_READS, CMD.accounts, ...KATA_READS, policyCmd('claude-max'), ...HELP_READS]
++const TARGETED_READS = (gh) =>
++  [...BASE_READS, CMD.accounts, ...KATA_READS, policyCmd('claude-max'), policyCmd(gh), ...HELP_READS]
+ 
+ /** M4: what `help <verb>` prints — a `Command:` line, a description, an
+  *  `Options:` block whose lines are two spaces, the flag, spaces, its
+@@ -182,8 +187,23 @@ const ghObject = (target, over = {}) => ({
+   ...over
+ })
+ 
+-/** A healthy account: the bearer, and one target object on no tag. */
+-const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET)]
++/** The hub's http-proxy. Its `attachments` name a VM and no tag at all — the
++ *  policy read, never this array, is what the `kata` row asks about. */
++const kataObject = (over = {}) => ({
++  name: 'kata',
++  type: 'http-proxy',
++  attachments: ['vm:fleet-r7-2609030900-a1b2'],
++  comment: 'kata issue daemon on kata-hub',
++  config_summary: 'target=https://kata-hub.example.exe.xyz header=Authorization:Bearer ***',
++  ...over
++})
++
++/** The hub's row, as `ls kata-hub --json` answers it. */
++const kataVms = (rows = [{ vm_name: 'kata-hub', status: 'running' }]) =>
++  `${JSON.stringify({ vms: rows })}\n`
++
++/** A healthy account: the bearer, one target object on no tag, and the hub. */
++const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET), kataObject()]
+ 
+ const billing = (over = {}) =>
+   `${JSON.stringify({ max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'team', ...over })}\n`
+@@ -199,6 +219,8 @@ const GREEN = () => ({
+   [CMD.accounts]: { code: 0, stdout: accountsJson(ACCOUNTS_ONE) },
+   [policyCmd('claude-max')]: policyAnswer('claude-max'),
+   [policyCmd(GH)]: policyAnswer(GH),
++  [policyCmd('kata')]: policyAnswer('kata'),
++  [CMD.kataVm]: { code: 0, stdout: kataVms() },
+   ...Object.fromEntries(
+     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
+   )
+@@ -237,7 +259,7 @@ async function run (overrides = {}, opts = {}) {
+ 
+ const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
+ 
+-/** The eight-row status map of a healthy fleet — the green fixture passes no
++/** The nine-row status map of a healthy fleet — the green fixture passes no
+  *  `render`, which is the "not configured" green. */
+ const ALL_OK = Object.freeze({
+   'exe-dev': 'ok',
+@@ -247,7 +269,8 @@ const ALL_OK = Object.freeze({
+   github: 'ok',
+   integrations: 'ok',
+   'verb-drift': 'ok',
+-  render: 'ok'
++  render: 'ok',
++  kata: 'ok'
+ })
+ 
+ /** ALL_OK with one row reddened. */
+@@ -256,8 +279,8 @@ const allOkBut = (id) => ({ ...ALL_OK, [id]: 'missing' })
+ // ── 1. M1 — the rows, the defaults, the reads, the exports ───────────────────
+ 
+ {
+-  // leg (a): ROW_IDS deep-equals the eight ids in order.
+-  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the eight ids in order')
++  // leg (a): ROW_IDS deep-equals the nine ids in order.
++  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the nine ids in order')
+ 
+   // leg (a): DOCTOR_DEFAULTS deep-equals the config literal. lobby.mjs's
+   // FLEET_DEFAULTS is byte-identical to it; two readers of one config file that
+@@ -666,18 +689,18 @@ for (const [label, answer] of [
+ }
+ 
+ {
+-  // The verdict is `ready` exactly when all eight rows are ok. Each scenario
++  // The verdict is `ready` exactly when all nine rows are ok. Each scenario
+   // below reddens exactly one row, and each is not-ready.
+   const { result: green } = await run()
+-  assert.deepEqual(statusOf(green), ALL_OK, '5 the green account is eight ok rows')
+-  assert.equal(green.verdict, 'ready', '5 eight ok rows is a ready verdict')
++  assert.deepEqual(statusOf(green), ALL_OK, '5 the green account is nine ok rows')
++  assert.equal(green.verdict, 'ready', '5 nine ok rows is a ready verdict')
+ 
+   const scenarios = {
+     'exe-dev': { [CMD.whoami]: { code: 1, stdout: '' } },
+     // A pool smaller than the run is green now (group 2), so the one thing that
+     // still reddens this row is a billing read the doctor cannot believe.
+     capacity: { [CMD.billing]: { code: 1, stdout: '' } },
+-    claude: { [CMD.list]: { code: 0, stdout: listing([ghObject(TARGET)]) } },
++    claude: { [CMD.list]: { code: 0, stdout: listing([ghObject(TARGET), kataObject()]) } },
+     // M2: an accounts read the doctor cannot believe.
+     accounts: { [CMD.accounts]: { code: 1, stdout: '' } },
+     github: { [CMD.github]: { code: 1, stdout: '' } },
+@@ -798,6 +821,8 @@ ${HELP_CASES}
+   *"billing plan"*) echo '${BILLING_JSON}' ;;
+   *"integrations list"*) echo '${CATALOG_JSON}' ;;
+   *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
++  *"integrations policy get kata"*) echo '${policyJson('kata').trim()}' ;;
++  *"ls kata-hub"*) echo '${kataVms().trim()}' ;;
+   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
+   *) exit 1 ;;
+ esac
+@@ -832,13 +857,13 @@ const absentConfig = path.join(cliRoot, 'absent.json')
+ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config path starts absent')
+ 
+ {
+-  // leg (g): the green shim exits 0 with the eight rows in order, and the
++  // leg (g): the green shim exits 0 with the nine rows in order, and the
+   // verb-drift detail is the real record's own match sentence.
+   const res = runCli(['--json', '--config', absentConfig], { dir: GREEN_DIR })
+   assert.equal(res.status, 0, `6b [leg g] a ready run exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
+   const parsed = JSON.parse(res.stdout)
+   assert.equal(parsed.verdict, 'ready', '6b [leg g] an all-green CLI run is ready')
+-  assert.deepEqual(parsed.rows.map((r) => r.id), EXPECTED_IDS, '6b [leg g] the envelope carries the eight rows in order')
++  assert.deepEqual(parsed.rows.map((r) => r.id), EXPECTED_IDS, '6b [leg g] the envelope carries the nine rows in order')
+   assert.deepEqual(parsed.config, { cpu: '8', memory: '16GB' }, '6b an absent config file means the defaults')
+ 
+   const drift = parsed.rows.find((r) => r.id === 'verb-drift')
+@@ -908,21 +933,26 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
+     red.length * 2 + GREEN_UNDER_RED.length,
+     `6b [leg g] the human form is two lines per red row and one per green row; got:\n${human.stdout}`
+   )
+-  for (const [i, id] of red.entries()) {
+-    assert.ok(lines[i * 2].includes(id), `6b the human form names ${id}; got ${lines[i * 2]}`)
+-    assert.ok(
+-      lines[i * 2 + 1].includes(`references/first-run.md §${id}`),
+-      `6b a red ${id} points at its first-run.md heading; got ${lines[i * 2 + 1]}`
+-    )
+-  }
+-  const tail = lines.slice(-GREEN_UNDER_RED.length)
+-  for (const [i, id] of GREEN_UNDER_RED.entries()) {
+-    assert.ok(tail[i].includes(id), `6b [leg g] the human form's tail line ${i} is ${id}'s; got ${tail[i]}`)
++  // Row order, not red-then-green: `kata` is the last row and is red under this
++  // shim, so a red row is no longer a prefix of the report.
++  let at = 0
++  for (const r of parsed.rows) {
++    assert.ok(lines[at].includes(r.id), `6b the human form names ${r.id}; got ${lines[at]}`)
++    if (r.status === 'missing') {
++      assert.ok(
++        lines[at + 1].includes(`references/first-run.md §${r.id}`),
++        `6b a red ${r.id} points at its first-run.md heading; got ${lines[at + 1]}`
++      )
++      at += 2
++      continue
++    }
+     assert.ok(
+-      !tail[i].includes('references/first-run.md'),
+-      `6b [leg g] a green ${id} row prints no fix line; got ${tail[i]}`
++      !lines[at].includes('references/first-run.md'),
++      `6b [leg g] a green ${r.id} row prints no fix line; got ${lines[at]}`
+     )
++    at += 1
+   }
++  assert.equal(at, lines.length, '6b [leg g] every line of the human form belongs to a row')
+ }
+ 
+ {
+@@ -1032,7 +1062,9 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
+ /** Run the doctor with an accounts read of `entries` and a `claude-max` whose
+  *  comment is `comment`, and answer the accounts row. */
+ async function accountsRow ({ entries, comment = EDGE_COMMENT, answer, account = null } = {}) {
+-  const catalog = [claudeMax(comment === null ? { comment: null } : { comment }), ghObject(TARGET)]
++  const catalog = [
++    claudeMax(comment === null ? { comment: null } : { comment }), ghObject(TARGET), kataObject()
++  ]
+   const overrides = {
+     [CMD.list]: { code: 0, stdout: listing(catalog) },
+     [CMD.accounts]: answer ?? { code: 0, stdout: accountsJson(entries) }
+@@ -1420,7 +1452,7 @@ for (const [label, fixtureName, body] of [
+   // M1: an unreadable record issues no help read at all.
+   assert.deepEqual(
+     calls,
+-    [...BASE_READS, CMD.accounts, policyCmd('claude-max')],
++    [...BASE_READS, CMD.accounts, ...KATA_READS, policyCmd('claude-max')],
+     `9 [M1] an unreadable record issues the reads before it and no help read; got ${JSON.stringify(calls)}`
+   )
+ }
+@@ -1529,13 +1561,21 @@ const GREPS = [
+   },
+   {
+     name: '## render',
+-    cut: (lines) => span(lines, /^## render/, null),
++    cut: (lines) => span(lines, /^## render/, /^## kata/),
+     words: ['http-proxy', '--bearer -', 'fleet.json', 'browser-run.int.exe.xyz', 'skipped']
+   },
++  {
++    name: '## kata',
++    cut: (lines) => span(lines, /^## kata/, null),
++    words: [
++      'node <plugin-root>/fleet/kata-hub.mjs', 'peer-kata', '--copy-tags=false',
++      "--policy 'tag:fleet'", 'kata-hub.env', '--permanent --if-revision='
++    ]
++  },
+   {
+     name: 'the text before ## exe-dev',
+     cut: (lines) => span(lines, null, /^## exe-dev/),
+-    words: ['eight rows']
++    words: ['nine rows']
+   }
+ ]
+ 
+@@ -1583,9 +1623,10 @@ for (const { name, cut, words } of GREPS) {
+   assert.equal(headings[headings.indexOf('accounts') - 1], 'claude', '11 [M7] ## accounts follows ## claude')
+   assert.equal(headings[headings.indexOf('accounts') + 1], 'github', '11 [M7] ## accounts precedes ## github')
+   assert.equal(headings[headings.indexOf('render') - 1], 'verb-drift', '11 ## render follows ## verb-drift')
+-  assert.equal(headings[headings.length - 1], 'render', '11 ## render is the last section')
++  assert.equal(headings[headings.indexOf('kata') - 1], 'render', '11 [M7] ## kata follows ## render')
++  assert.equal(headings[headings.length - 1], 'kata', '11 [M7] ## kata is the last section')
+ 
+-  // M7: the opening paragraph says eight rows, and no longer five.
++  // M7: the opening paragraph says nine rows, and no longer five.
+   const head = textOf(FIRST_RUN_LINES, span(FIRST_RUN_LINES, null, /^## exe-dev/))
+   assert.equal(head.includes('five rows'), false, `11 [M7] the opening no longer says five rows; got:\n${head}`)
+ }
+diff --git a/fleet/tests/test_doctor_config_keys.mjs b/fleet/tests/test_doctor_config_keys.mjs
+index a263c2323011510a040e093bac74413ab1474e2d..158880be90168ea1700803f605b18aeb9fb57aae 100644
+--- a/fleet/tests/test_doctor_config_keys.mjs
++++ b/fleet/tests/test_doctor_config_keys.mjs
+@@ -81,7 +81,8 @@ const CMD = {
+   list: 'ssh exe.dev "integrations list --json"',
+   github: 'ssh exe.dev "integrations setup github --list"',
+   token: `node ${CLAUDE_TOKEN} status`,
+-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
++  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
++  kataVm: 'ssh exe.dev "ls kata-hub --json"'
+ }
+ 
+ /** The policy read for one integration, and what it answers (measured 2026-09-11):
+@@ -130,8 +131,29 @@ const ghObject = (target) => ({
+   config: { repositories: [target], installation_id: 4711, act_as_user: true }
+ })
+ 
+-/** A healthy account: the bearer, and one target object on no tag. */
+-const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET)]
++/** The hub's own http-proxy, as the listing carries it: a bearer in the
++ *  summary, and the policy — not the attachments — is what grants it. */
++const kataObject = () => ({
++  name: 'kata',
++  type: 'http-proxy',
++  attachments: ['vm:fleet-r7-2609030900-a1b2'],
++  comment: 'kata issue daemon on kata-hub',
++  config_summary: 'target=https://kata-hub.example.exe.xyz header=Authorization:Bearer ***'
++})
++
++/** What `ls kata-hub --json` answers once the hub is built. */
++const kataVms = () => `${JSON.stringify({
++  vms: [{
++    vm_name: 'kata-hub',
++    status: 'running',
++    https_url: 'https://kata-hub.example.exe.xyz',
++    ssh_dest: 'kata-hub@exe.dev'
++  }]
++})}\n`
++
++/** A healthy account: the bearer, one target object on no tag, and the hub's
++ *  own proxy. */
++const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET), kataObject()]
+ 
+ const BILLING = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'team' }
+ const GITHUB_LISTING = 'GitHub accounts:\n  popmechanic\n'
+@@ -158,6 +180,8 @@ const GREEN = () => ({
+   [CMD.token]: { code: 0, stdout: `${STATUS_LINE}\n` },
+   [CMD.accounts]: { code: 0, stdout: `${ACCOUNTS_JSON}\n` },
+   [policyCmd('claude-max')]: policyAnswer('claude-max'),
++  [policyCmd('kata')]: policyAnswer('kata'),
++  [CMD.kataVm]: { code: 0, stdout: kataVms() },
+   ...Object.fromEntries(
+     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
+   )
+@@ -185,8 +209,8 @@ const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB; a run asks 8 vCPU / 16GB'
+ const rowById = (result, id) => result.rows.find((r) => r.id === id)
+ const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
+ 
+-/** The eight-row status map of a healthy fleet. The runs below pass no `render`
+- *  option, which is the `render` row's "not configured" green. */
++/** The status map of a healthy fleet. The runs below pass no `render` option,
++ *  which is the `render` row's "not configured" green. */
+ const ALL_OK = Object.freeze({
+   'exe-dev': 'ok',
+   capacity: 'ok',
+@@ -195,7 +219,8 @@ const ALL_OK = Object.freeze({
+   github: 'ok',
+   integrations: 'ok',
+   'verb-drift': 'ok',
+-  render: 'ok'
++  render: 'ok',
++  kata: 'ok'
+ })
+ 
+ /** Run the doctor over the green account with `opts` spread onto it, and answer
+@@ -443,6 +468,8 @@ case "$*" in
+   *"billing plan"*) echo '${BILLING_JSON}' ;;
+   *"integrations list"*) echo '${CATALOG_JSON}' ;;
+   *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
++  *"integrations policy get kata"*) echo '${policyJson('kata').trim()}' ;;
++  *"ls kata-hub"*) echo '${kataVms().trim()}' ;;
+   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
+   *) exit 1 ;;
+ esac
+diff --git a/fleet/tests/test_doctor_render.mjs b/fleet/tests/test_doctor_render.mjs
+index 8e2a4696deb58763fc493586eb5247279461c756..8cc16f1cef532797c75b3e28baa6f681309324e5 100644
+--- a/fleet/tests/test_doctor_render.mjs
++++ b/fleet/tests/test_doctor_render.mjs
+@@ -11,20 +11,21 @@
+  * Every group below names the Machine clause and the Proof leg it encodes, so a
+  * reader can map an assertion back to the contract it came from.
+  *
+- *   1  M1 / leg (a) — `ROW_IDS` is the eight ids in order, and a green
+- *      doctor's rows are that list.
++ *   1  M1 / leg (a) — `ROW_IDS` carries `render` eighth, after `verb-drift`,
++ *      and a green doctor's rows are that list. (The hub's `kata` row was
++ *      later appended after it, so `render` is eighth rather than last.)
+  *   2  M2 / leg (b) — the `render` row: absent, null, present-and-found,
+  *      present-and-absent, and an unreadable listing.
+  *   3  M3 / leg (c) — `fleetConfigRender({ path })`, and `render` staying out
+  *      of `result.config`.
+  *   4  M4 / leg (d) — `CONFIG_KEYS` accepting `render`, and the reworded red
+  *      detail.
+- *   5  M5 / leg (e) — `renderRows` printing the eighth row last, with its
+- *      first-run.md pointer under a red one.
++ *   5  M5 / leg (e) — `renderRows` printing the eighth row after the seventh,
++ *      with its first-run.md pointer under a red one.
+  *   6  M5 / leg (f) — the CLI, against a PATH shim: `node fleet/doctor.mjs
+  *      --json --config <fixture>` reads the file's `render` key.
+- *   7  M1, M2 / leg (g) — `skills/ultrapowers/references/first-run.md`: eight
+- *      `## ` headings, `ROW_IDS` in order, and the `## render` section last.
++ *   7  M1, M2 / leg (g) — `skills/ultrapowers/references/first-run.md`: one
++ *      `## ` heading per row, `ROW_IDS` in order, `## render` the eighth.
+  *
+  * Every read the doctor makes is driven through the `exec` seam with a stub, and
+  * group 6 drives it against a PATH shim. That rig is copied from
+@@ -78,7 +79,8 @@ const CMD = {
+   list: 'ssh exe.dev "integrations list --json"',
+   github: 'ssh exe.dev "integrations setup github --list"',
+   token: `node ${CLAUDE_TOKEN} status`,
+-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
++  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
++  kataVm: 'ssh exe.dev "ls kata-hub --json"'
+ }
+ 
+ /** The policy read for one integration, and what it answers (measured 2026-09-11):
+@@ -139,9 +141,29 @@ const renderObject = () => ({
+   comment: null
+ })
+ 
+-/** A healthy account with no renderer at the edge: the bearer, and one target
+- *  object on no tag. */
+-const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET)]
++/** The hub's own http-proxy, as the listing carries it: a bearer in the
++ *  summary, and the policy — not the attachments — is what grants it. */
++const kataObject = () => ({
++  name: 'kata',
++  type: 'http-proxy',
++  attachments: ['vm:fleet-r7-2609030900-a1b2'],
++  comment: 'kata issue daemon on kata-hub',
++  config_summary: 'target=https://kata-hub.example.exe.xyz header=Authorization:Bearer ***'
++})
++
++/** What `ls kata-hub --json` answers once the hub is built. */
++const kataVms = () => `${JSON.stringify({
++  vms: [{
++    vm_name: 'kata-hub',
++    status: 'running',
++    https_url: 'https://kata-hub.example.exe.xyz',
++    ssh_dest: 'kata-hub@exe.dev'
++  }]
++})}\n`
++
++/** A healthy account with no renderer at the edge: the bearer, one target
++ *  object on no tag, and the hub's own proxy. */
++const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET), kataObject()]
+ 
+ /** The same account, with the renderer's own object beside them. */
+ const RENDER_CATALOG = () => [...GREEN_CATALOG(), renderObject()]
+@@ -172,6 +194,8 @@ const GREEN = () => ({
+   [CMD.accounts]: { code: 0, stdout: `${ACCOUNTS_JSON}\n` },
+   [policyCmd('claude-max')]: policyAnswer('claude-max'),
+   [policyCmd(RENDER_NAME)]: policyAnswer(RENDER_NAME),
++  [policyCmd('kata')]: policyAnswer('kata'),
++  [CMD.kataVm]: { code: 0, stdout: kataVms() },
+   ...Object.fromEntries(
+     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
+   )
+@@ -208,16 +232,21 @@ const withRenderListing = (opts = {}) =>
+   run({ overrides: { [CMD.list]: { code: 0, stdout: listing(RENDER_CATALOG()) } }, ...opts })
+ 
+ const rowById = (result, id) => result.rows.find((r) => r.id === id)
+-const lastRow = (result) => result.rows[result.rows.length - 1]
++// `render` was the last row until the hub's `kata` row was appended after it,
++// so the row this file is about is fetched by id rather than by position.
++const renderRow = (result) => rowById(result, 'render')
+ const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
+ 
+-/** M1: the eight rows, in the order the doctor reports them. */
++/** M1: the rows, in the order the doctor reports them. `render` is the eighth,
++ *  and the hub's `kata` row was appended after it. */
+ const EXPECTED_IDS = [
+-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render'
++  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render',
++  'kata'
+ ]
++const RENDER_AT = EXPECTED_IDS.indexOf('render')
+ 
+-/** M2: the eight-row status map of a healthy fleet — the green fixture passes
+- *  no `render`, which is the "not configured" green. */
++/** M2: the status map of a healthy fleet — the green fixture passes no
++ *  `render`, which is the "not configured" green. */
+ const ALL_OK = Object.freeze({
+   'exe-dev': 'ok',
+   capacity: 'ok',
+@@ -226,7 +255,8 @@ const ALL_OK = Object.freeze({
+   github: 'ok',
+   integrations: 'ok',
+   'verb-drift': 'ok',
+-  render: 'ok'
++  render: 'ok',
++  kata: 'ok'
+ })
+ 
+ /** ALL_OK with one row reddened. */
+@@ -257,18 +287,18 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
+ // ── 1. M1 / leg (a) — the eight ids, in order ────────────────────────────────
+ 
+ {
+-  // leg (a): `[...ROW_IDS]` deep-equals the eight ids in order — `render` last,
++  // leg (a): `[...ROW_IDS]` deep-equals the ids in order — `render` eighth,
+   // after `verb-drift`.
+-  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the eight ids in order')
+-  assert.equal(ROW_IDS.length, 8, '1 [M1 leg a] ROW_IDS holds eight ids and no ninth')
+-  assert.equal(ROW_IDS[ROW_IDS.length - 1], 'render', '1 [M1 leg a] render is the last id')
++  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the ids in order')
++  assert.equal(ROW_IDS[RENDER_AT], 'render', '1 [M1 leg a] render is the eighth id')
++  assert.equal(ROW_IDS[RENDER_AT - 1], 'verb-drift', '1 [M1 leg a] and it follows verb-drift')
+ 
+   // leg (a): a green doctor's `result.rows.map(id)` is that same list.
+   const { result } = await run()
+   assert.deepEqual(
+     result.rows.map((r) => r.id),
+     EXPECTED_IDS,
+-    '1 [M1 leg a] a green doctor answers the eight rows in ROW_IDS order'
++    '1 [M1 leg a] a green doctor answers the rows in ROW_IDS order'
+   )
+ 
+   // `FIXES` derives from `ROW_IDS`, so the new row's fix is its own `## `
+@@ -289,7 +319,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
+   // renderer is green, because the doctor has two row states and `verdict` is
+   // every row `ok`.
+   const { result } = await run()
+-  const render = lastRow(result)
++  const render = renderRow(result)
+   assert.equal(render.id, 'render', '2 [M2 leg b] the render row is answered last')
+   assert.equal(
+     render.status,
+@@ -310,7 +340,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
+   // option — same status, same detail.
+   const { result: absent } = await run()
+   const { result } = await run({ render: null })
+-  const render = lastRow(result)
++  const render = renderRow(result)
+   assert.equal(render.id, 'render', '2 [M2 leg b] render: null still answers the render row last')
+   assert.equal(
+     render.status,
+@@ -323,7 +353,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
+   )
+   assert.equal(
+     render.detail,
+-    lastRow(absent).detail,
++    renderRow(absent).detail,
+     `2 [M2 leg b] render: null answers the same detail as the absent option; got ${render.detail}`
+   )
+   assert.equal(result.verdict, 'ready', '2 [M2 leg b] render: null is a ready fleet')
+@@ -334,7 +364,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
+   // listing carrying an entry named `browser-run` is `ok`, and the detail names
+   // the integration.
+   const { result } = await withRenderListing({ render: { ...RENDER_KEY } })
+-  const render = lastRow(result)
++  const render = renderRow(result)
+   assert.equal(render.id, 'render', '2 [M2 leg b] the render row is still last')
+   assert.equal(
+     render.status,
+@@ -359,7 +389,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
+   // catalog — is `missing`, its `fix` is `render`, and the detail names both the
+   // integration and the file that named it.
+   const { result } = await run({ render: { ...RENDER_KEY } })
+-  const render = lastRow(result)
++  const render = renderRow(result)
+   assert.equal(render.id, 'render', '2 [M2 leg b] the red render row is still last')
+   assert.equal(
+     render.status,
+@@ -389,7 +419,7 @@ for (const [label, answer] of [
+     overrides: { [CMD.list]: answer },
+     render: { ...RENDER_KEY }
+   })
+-  const render = lastRow(result)
++  const render = renderRow(result)
+   assert.equal(render.id, 'render', `2 [M2 leg b] ${label} still answers the render row last`)
+   assert.equal(
+     render.status,
+@@ -404,7 +434,7 @@ for (const [label, answer] of [
+   // M2: an unreadable listing with NO `render` option is still the green
+   // "not configured" row — the row reads the config first.
+   const { result } = await run({ overrides: { [CMD.list]: { code: 0, stdout: 'not json at all\n' } } })
+-  const render = lastRow(result)
++  const render = renderRow(result)
+   assert.equal(
+     render.status,
+     'ok',
+@@ -587,29 +617,29 @@ const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB; a run asks 8 vCPU / 16GB'
+ assert.equal(typeof renderRows, 'function', '5 [M5] fleet/doctor.mjs exports renderRows')
+ 
+ {
+-  // leg (e): `renderRows` of a result whose rows are the eight ids prints
+-  // `render` on the LAST line. A green run prints one line per row and no fix
+-  // line, so the last line is the render row's own.
++  // leg (e): `renderRows` of a result whose rows are ROW_IDS prints `render` on
++  // the EIGHTH line. A green run prints one line per row and no fix line, so
++  // that line is the render row's own.
+   const { result } = await run()
+-  assert.deepEqual(result.rows.map((r) => r.id), EXPECTED_IDS, '5 [M5 leg e] the result carries the eight rows')
++  assert.deepEqual(result.rows.map((r) => r.id), EXPECTED_IDS, '5 [M5 leg e] the result carries the rows')
+   const lines = renderRows(result.rows).split('\n')
+   assert.equal(lines.length, EXPECTED_IDS.length, `5 [M5 leg e] a green run prints one line per row; got:\n${lines.join('\n')}`)
+-  const last = lines[lines.length - 1]
++  const line = lines[RENDER_AT]
+   assert.equal(
+-    last.trim().split(/\s+/)[1],
++    line.trim().split(/\s+/)[1],
+     'render',
+-    `5 [M5 leg e] the last printed line is the render row's; got ${last}`
++    `5 [M5 leg e] the eighth printed line is the render row's; got ${line}`
+   )
+-  assert.ok(last.startsWith('ok'), `5 [M5 leg e] the green render line opens with its status; got ${last}`)
++  assert.ok(line.startsWith('ok'), `5 [M5 leg e] the green render line opens with its status; got ${line}`)
+   assert.ok(
+-    last.includes('not configured'),
+-    `5 [M5 leg e] the green render line carries its detail; got ${last}`
++    line.includes('not configured'),
++    `5 [M5 leg e] the green render line carries its detail; got ${line}`
+   )
+   // The row before it is verb-drift's: the eighth row prints after the seventh.
+   assert.equal(
+-    lines[lines.length - 2].trim().split(/\s+/)[1],
++    lines[RENDER_AT - 1].trim().split(/\s+/)[1],
+     'verb-drift',
+-    `5 [M5 leg e] render prints after verb-drift; got ${lines[lines.length - 2]}`
++    `5 [M5 leg e] render prints after verb-drift; got ${lines[RENDER_AT - 1]}`
+   )
+ }
+ 
+@@ -617,17 +647,17 @@ assert.equal(typeof renderRows, 'function', '5 [M5] fleet/doctor.mjs exports ren
+   // leg (e): a `missing` render row prints the
+   // `→ references/first-run.md §render` pointer on the line under it.
+   const { result } = await run({ render: { ...RENDER_KEY } })
+-  assert.equal(lastRow(result).status, 'missing', '5 [M5 leg e] the fixture\'s render row is red')
++  assert.equal(renderRow(result).status, 'missing', '5 [M5 leg e] the fixture\'s render row is red')
+   const lines = renderRows(result.rows).split('\n')
+-  const last = lines[lines.length - 1]
++  const pointer = lines[RENDER_AT + 1]
+   assert.ok(
+-    last.includes('→ references/first-run.md §render'),
+-    `5 [M5 leg e] a red render row points at its first-run.md heading; got ${last}`
++    pointer.includes('→ references/first-run.md §render'),
++    `5 [M5 leg e] a red render row points at its first-run.md heading; got ${pointer}`
+   )
+   assert.equal(
+-    lines[lines.length - 2].trim().split(/\s+/)[1],
++    lines[RENDER_AT].trim().split(/\s+/)[1],
+     'render',
+-    `5 [M5 leg e] the pointer sits under the render row; got ${lines[lines.length - 2]}`
++    `5 [M5 leg e] the pointer sits under the render row; got ${lines[RENDER_AT]}`
+   )
+   assert.equal(
+     lines.length,
+@@ -673,6 +703,8 @@ case "$*" in
+   *"integrations list"*) echo '${CATALOG_JSON}' ;;
+   *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
+   *"integrations policy get ${RENDER_NAME}"*) echo '${policyJson(RENDER_NAME).trim()}' ;;
++  *"integrations policy get kata"*) echo '${policyJson('kata').trim()}' ;;
++  *"ls kata-hub"*) echo '${kataVms().trim()}' ;;
+   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
+   *) exit 1 ;;
+ esac
+@@ -709,10 +741,10 @@ const runCli = (args, { dir }) => {
+   assert.deepEqual(
+     parsed.rows.map((r) => r.id),
+     EXPECTED_IDS,
+-    `6 [M5 leg f] the printed envelope carries the eight rows in order; got ${res.stdout}`
++    `6 [M5 leg f] the printed envelope carries the rows in order; got ${res.stdout}`
+   )
+-  const render = parsed.rows[parsed.rows.length - 1]
+-  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows end with the render row; got ${res.stdout}`)
++  const render = parsed.rows[RENDER_AT]
++  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows carry the render row eighth; got ${res.stdout}`)
+   assert.equal(
+     render.status,
+     'ok',
+@@ -751,8 +783,8 @@ const runCli = (args, { dir }) => {
+     `6 [M5 leg f] a fleet.json naming no renderer exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`
+   )
+   const parsed = JSON.parse(res.stdout)
+-  const render = parsed.rows[parsed.rows.length - 1]
+-  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows end with the render row; got ${res.stdout}`)
++  const render = parsed.rows[RENDER_AT]
++  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows carry the render row eighth; got ${res.stdout}`)
+   assert.equal(
+     render.status,
+     'ok',
+@@ -787,23 +819,23 @@ const FIRST_RUN_LINES = fs.readFileSync(FIRST_RUN, 'utf8').split('\n')
+ 
+ {
+   // leg (g) [M1]: the walk's `## ` headings are exactly ROW_IDS, in that order —
+-  // eight of them, `render` last. This is the agreement
++  // `render` the eighth of them. This is the agreement
+   // tests/test_docs_agree_with_code.py reads.
+   const headings = FIRST_RUN_LINES
+     .filter((line) => /^## /.test(line))
+     .map((line) => line.slice(3).trim())
+   assert.equal(
+     headings.length,
+-    8,
+-    `7 [M1 leg g] first-run.md has exactly eight ## headings; got ${JSON.stringify(headings)}`
++    ROW_IDS.length,
++    `7 [M1 leg g] first-run.md has one ## heading per row; got ${JSON.stringify(headings)}`
+   )
+   assert.deepEqual(
+     headings,
+     [...ROW_IDS],
+     `7 [M1 leg g] first-run.md's ## headings are ROW_IDS, in order; got ${JSON.stringify(headings)}`
+   )
+-  assert.equal(headings[headings.length - 1], 'render', '7 [M1 leg g] ## render is the last section')
+-  assert.equal(headings[headings.length - 2], 'verb-drift', '7 [M1 leg g] and it follows ## verb-drift')
++  assert.equal(headings[RENDER_AT], 'render', '7 [M1 leg g] ## render is the eighth section')
++  assert.equal(headings[RENDER_AT - 1], 'verb-drift', '7 [M1 leg g] and it follows ## verb-drift')
+ 
+   // The opening paragraph no longer says the doctor answers seven rows.
+   const head = textOf(FIRST_RUN_LINES, span(FIRST_RUN_LINES, null, /^## exe-dev/))
+diff --git a/fleet/tests/test_janitor.mjs b/fleet/tests/test_janitor.mjs
+index 67031004a885edc8a0151528a03b627749580c84..b33c8053c698df60b6f081459f0f43c7f6b5edea 100644
+--- a/fleet/tests/test_janitor.mjs
++++ b/fleet/tests/test_janitor.mjs
+@@ -323,15 +323,20 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
+     '(a)/M1 every row here has a readable assignment')
+   // #724 Task 2 re-scopes this pin: the result gains one key and one only,
+   // `branches`, and a fleet whose targets answer no integration head may carry
+-  // it empty or not at all — the six BASE fields stand either way.
++  // it empty or not at all — the six BASE fields stand either way. #913 adds
++  // the second and last such key, `kept`: the rows whose comment says do not
++  // reap, empty here because no row in this fleet carries one.
+   const BASE_KEYS = ['dryRun', 'age', 'actions', 'stale', 'unknown', 'deaths']
++  const ADDED_KEYS = ['branches', 'kept']
+   for (const key of BASE_KEYS) {
+     assert.equal(Object.hasOwn(result, key), true,
+       `(a)/M1 the result carries its six fields { dryRun, age, actions, stale, unknown, deaths } — ${key} is missing`)
+   }
++  assert.deepEqual(result.kept ?? [], [],
++    '(a)/M1 and no row in this fleet says do not reap, so `kept` is empty')
+   assert.deepEqual(
+-    sorted(Object.keys(result).filter((k) => !BASE_KEYS.includes(k) && k !== 'branches')), [],
+-    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2')
++    sorted(Object.keys(result).filter((k) => !BASE_KEYS.includes(k) && !ADDED_KEYS.includes(k))), [],
++    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2 and the `kept` of #913')
+ 
+   // ── (a)/M4 the unit read fires for a live page whichever ref served it ────
+   assert.deepEqual(
+diff --git a/fleet/tests/test_janitor_reap_only.mjs b/fleet/tests/test_janitor_reap_only.mjs
+index 39c6d2aee03b0a1ba9b420805bd8734623ea5915..7395af57233ec62f9c92e4d8a3aad9e5e8ff2b14 100644
+--- a/fleet/tests/test_janitor_reap_only.mjs
++++ b/fleet/tests/test_janitor_reap_only.mjs
+@@ -34,6 +34,24 @@
+  *       that nothing schedules it, and the word `cron` is in none of the three
+  *       operator documents;
+  *   (d) the sentinel [M1].
++ *
++ * #913 Task 1 — "the janitor keeps a VM whose comment says do not reap" — adds
++ * its own three legs below, named (1a), (1b) and (1c) so they do not collide
++ * with the four above, which stay exactly as they were:
++ *
++ *   (1a) [M1] over a fleet of three `ls` rows in the shape exe.dev answers
++ *        them, one of which carries the comment `kata hub — persistent
++ *        service, do not reap`: that row draws no action, no `rm` lobby verb,
++ *        and no `gh api` read naming its run, and comes back in a new `kept`
++ *        array as `{vm, comment}`; the other two rows are judged as they are at
++ *        BASE — the one done two hours ago is reaped, the one done ten minutes
++ *        ago is not — and `--dry-run` keeps the row the same way;
++ *   (1b) [M2] `renderJanitor` prints `kept <vm>  comment says do not reap —
++ *        never removed` once per kept row, after every `rm` line and before
++ *        every `stale` line, and prints `nothing to do` only when every array
++ *        — `kept` included — is empty;
++ *   (1c) [M3] `fleet/CONTRACT.md`'s `- **Janitor (` bullet, up to the
++ *        `- **Laptop config` bullet, says `do not reap`.
+  */
+ 
+ import assert from 'node:assert/strict'
+@@ -45,7 +63,7 @@ import { evidenceTagFor } from '../lobby.mjs'
+ import * as janitorModule from '../janitor.mjs'
+ import { janitor, renderJanitor } from '../janitor.mjs'
+ import {
+-  answer, cmdRule, makeExec, sshRule, vmRow, vmsPayload
++  answer, cmdRule, makeExec, sshRule, vmRow, vmRule, vmsPayload
+ } from './_lobby_helpers.mjs'
+ 
+ const HERE = path.dirname(fileURLToPath(import.meta.url))
+@@ -237,5 +255,199 @@ assert.equal(fs.existsSync(path.join(HERE, 'test_janitor_automerge.mjs')), false
+   }
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// #913 Task 1: the janitor keeps a VM whose comment says do not reap
++// ════════════════════════════════════════════════════════════════════════════
++
++/**
++ * The contract literal, as Shelley gave it and as `fleet/kata-hub.mjs` writes
++ * it. The guard is the substring `do not reap`, case-sensitive; this whole
++ * string is what a real hub row carries, so it is what the fleet below says.
++ */
++const DO_NOT_REAP_COMMENT = 'kata hub — persistent service, do not reap'
++
++/**
++ * One `ls --json` row in the shape exe.dev really answers (measured
++ * 2026-09-11): `{vm_name, status, https_url, comment, tags, proxy_port,
++ * allocated_cpus, memory_capacity_bytes, ssh_dest, ssh_host}` inside
++ * `{"vms":[…]}` — `comment` a string on the row itself and `tags` an array, so
++ * no `-l` is needed to see either.
++ */
++const exeRow = (name, extra = {}) => vmRow(name, {
++  https_url: `https://${name}.exe.xyz`,
++  comment: '',
++  tags: ['fleet'],
++  proxy_port: 8080,
++  allocated_cpus: 8,
++  memory_capacity_bytes: 17179869184,
++  ...extra
++})
++
++/** A row the launcher assigned: the measured shape, carrying `run=`/`target=`. */
++const assignedRow = (n, extra = {}) => exeRow(vm(n), { comment: comment(n), ...extra })
++
++const R7 = 7 // done two hours ago: an hour past done, so its VM is reaped
++const R8 = 8 // the row whose comment says do not reap
++const R9 = 9 // done ten minutes ago: still inside the hour
++const R7_UPDATED = hoursAgo(2)
++const R9_UPDATED = minutesAgo(10)
++
++/** The kept row: the hub's comment, and `tags` empty — it is untagged. */
++const KEPT_ROW = exeRow(vm(R8), { comment: DO_NOT_REAP_COMMENT, tags: [] })
++/** What `kept` answers for it, per M1: `{vm, comment}` and nothing else. */
++const KEPT_ENTRY = { vm: vm(R8), comment: DO_NOT_REAP_COMMENT }
++/** M2's line, verbatim — two spaces after the VM name, an em dash before `never`. */
++const KEPT_LINE = `kept ${vm(R8)}  comment says do not reap — never removed`
++
++const FLEET_1A = [assignedRow(R7), KEPT_ROW, assignedRow(R9)]
++const PAGES_1A = {
++  [evidencePath(R7)]: donePage(R7, R7_UPDATED),
++  [evidencePath(R9)]: donePage(R9, R9_UPDATED)
++}
++
++/** The same canned seam every leg here uses: `ls`, `rm`, `gh api`, nothing real. */
++const execFor = (fleet, pages, extra = []) => makeExec({
++  rules: [...lsRules(fleet), ghApiRule(pages), ...extra],
++  passthrough: []
++})
++
++/** Every `gh` call as one string, so a leg can ask what a path names. */
++const ghLines = (exec) => ghArgvs(exec).map((argv) => argv.join(' '))
++
++// ── (1a) the row with the comment is kept, and the fleet around it is not ───
++{
++  const exec = execFor(FLEET_1A, PAGES_1A)
++  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
++
++  assert.deepEqual(result.kept, [KEPT_ENTRY],
++    `(1a)/M1 the row whose comment contains \`do not reap\` is answered in a new \`kept\` array as { vm, comment }: ${JSON.stringify([KEPT_ENTRY])}`)
++
++  assert.deepEqual(result.actions.map((a) => [a.kind, a.vm]), [['rm', vm(R7)]],
++    '(1a)/M1 the result\'s actions are exactly one rm, for the run done two hours ago — the kept row draws none, and the run done ten minutes ago is still inside the hour')
++  assert.equal(result.actions.some((a) => a.vm === vm(R8)), false,
++    '(1a)/M1 no action names the kept VM')
++
++  assert.deepEqual(exec.mutating(), [`rm ${vm(R7)} --json`],
++    `(1a)/M1 the mutating lobby verbs are exactly \`rm ${vm(R7)} --json\`: no rm names the kept VM`)
++
++  assert.deepEqual(
++    ghLines(exec).filter((line) => line.includes(`/runs/${R8}/`)),
++    [],
++    `(1a)/M1 no gh api read's path contains /runs/${R8}/ — the kept row is skipped before its page is ever read`
++  )
++
++  assert.equal(result.unknown.some((u) => u.vm === vm(R8)), false,
++    '(1a)/M1 and it is answered in `kept`, not in `unknown`: the guard is decided on the raw comment before `assignmentOf` ever runs')
++
++  // Every other row judged exactly as at BASE: one evidence read each, and
++  // #724's one matching-refs read for the one target those two rows name.
++  assert.deepEqual(
++    sortedJson(ghArgvs(exec)),
++    sortedJson([
++      ['api', evidencePath(R7)],
++      ['api', evidencePath(R9)],
++      ['api', `repos/${TARGET}/git/matching-refs/heads/ultra/integration-run-`]
++    ]),
++    '(1a)/M1 every other row is judged exactly as at BASE — one evidence read apiece, plus #724\'s one matching-refs read per target — and the kept row adds no read of its own'
++  )
++
++  // --dry-run keeps the row the same way, and still removes nothing.
++  const dry = execFor(FLEET_1A, PAGES_1A)
++  const dryResult = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
++
++  assert.deepEqual(dryResult.kept, [KEPT_ENTRY],
++    '(1a)/M1 --dry-run over the same fleet answers the same `kept`')
++  assert.deepEqual(dry.mutating(), [],
++    '(1a)/M1 and issues no rm at all')
++  assert.deepEqual(
++    ghLines(dry).filter((line) => line.includes(`/runs/${R8}/`)),
++    [],
++    `(1a)/M1 nor any gh api read whose path contains /runs/${R8}/`
++  )
++  assert.deepEqual(dryResult.actions.map((a) => a.vm), [vm(R7)],
++    '(1a)/M1 while still reporting the one row it would have removed')
++}
++
++// ── (1b) what `renderJanitor` prints for a kept row [M2] ────────────────────
++{
++  const exec = execFor(FLEET_1A, PAGES_1A)
++  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
++
++  const lines = renderJanitor(result).split('\n')
++  assert.equal(lines.length, 2,
++    `(1b)/M2 that result renders two lines — the reap and the kept row, got ${JSON.stringify(lines)}`)
++  assert.equal(lines[0].startsWith(`rm ${vm(R7)}`), true,
++    `(1b)/M2 the rm line for ${vm(R7)} comes first, got ${JSON.stringify(lines[0])}`)
++  assert.equal(lines[1], KEPT_LINE,
++    `(1b)/M2 then, verbatim, ${JSON.stringify(KEPT_LINE)}`)
++
++  // A stale row added to the fleet: the kept line still sits after every rm
++  // line and before every stale line. Run 5's page says `running` seven hours
++  // on, and its VM answers nothing — an unreadable unit is left alone, so the
++  // row is reported stale rather than touched.
++  const R5 = 5
++  const R5_UPDATED = hoursAgo(7)
++  const stalePage = {
++    run: R5,
++    state: 'running',
++    phase: 'x',
++    branch: `ultra/integration-run-${R5}`,
++    vm: vm(R5),
++    updatedAt: R5_UPDATED
++  }
++  const staleExec = execFor(
++    [assignedRow(R7), KEPT_ROW, assignedRow(R9), assignedRow(R5)],
++    { ...PAGES_1A, [evidencePath(R5)]: stalePage },
++    [vmRule(answer('', { code: 255, stderr: 'ssh: connect to host: Connection timed out' }))]
++  )
++  const staleResult = await janitor({ argv: [], exec: staleExec, config: CONFIG, now: () => NOW })
++
++  assert.deepEqual(staleResult.kept, [KEPT_ENTRY],
++    '(1b)/M2 the kept row is kept in this fleet too')
++  assert.deepEqual(staleResult.stale.map((s) => s.vm), [vm(R5)],
++    '(1b)/M2 and the row silent for seven hours is the one stale row')
++
++  const staleLines = renderJanitor(staleResult).split('\n')
++  const keptAt = staleLines.indexOf(KEPT_LINE)
++  assert.notEqual(keptAt, -1,
++    `(1b)/M2 ${JSON.stringify(KEPT_LINE)} is among the lines, got ${JSON.stringify(staleLines)}`)
++  assert.equal(staleLines.filter((line) => line === KEPT_LINE).length, 1,
++    '(1b)/M2 one such line per kept row, and there is one kept row')
++
++  const rmAt = staleLines.map((line, i) => [line, i]).filter(([line]) => line.startsWith('rm ')).map(([, i]) => i)
++  const staleAt = staleLines.map((line, i) => [line, i]).filter(([line]) => line.startsWith('stale ')).map(([, i]) => i)
++  assert.deepEqual(rmAt.length > 0 && staleAt.length > 0, true,
++    `(1b)/M2 this fleet renders an rm line and a stale line, got ${JSON.stringify(staleLines)}`)
++  assert.equal(rmAt.every((i) => i < keptAt), true,
++    `(1b)/M2 the kept line is placed after every rm line, got ${JSON.stringify(staleLines)}`)
++  assert.equal(staleAt.every((i) => i > keptAt), true,
++    `(1b)/M2 and before every stale line, got ${JSON.stringify(staleLines)}`)
++
++  // `nothing to do` is for a pass that found nothing — `kept` counts.
++  const EMPTY = {
++    dryRun: false, age: '1h', actions: [], stale: [], unknown: [], deaths: [], branches: [], kept: []
++  }
++  assert.equal(renderJanitor(EMPTY), 'nothing to do',
++    '(1b)/M2 a result whose deaths, actions, stale, unknown, branches and kept are all empty renders `nothing to do`')
++  assert.equal(renderJanitor({ ...EMPTY, kept: [KEPT_ENTRY] }), KEPT_LINE,
++    '(1b)/M2 and one whose only non-empty array is `kept` does not — it renders that row\'s kept line')
++}
++
++// ── (1c) what the contract's janitor bullet says [M3] ───────────────────────
++{
++  const contract = fs.readFileSync(path.join(REPO_ROOT, 'fleet/CONTRACT.md'), 'utf8').split('\n')
++  const from = contract.findIndex((line) => line.startsWith('- **Janitor ('))
++  assert.notEqual(from, -1, '(1c)/M3 fleet/CONTRACT.md has a line beginning `- **Janitor (`')
++  const to = contract.findIndex((line, i) => i > from && line.startsWith('- **Laptop config'))
++  assert.notEqual(to, -1, '(1c)/M3 and, below it, one beginning `- **Laptop config`')
++
++  // The Proof's own `sed -n '/^- \*\*Janitor (/,/^- \*\*Laptop config/p' … |
++  // tr '\n' ' '`: the bullet, its continuation lines, and the bullet that ends
++  // it, joined into one string — so a sentence broken over two lines reads as one.
++  const bullet = contract.slice(from, to + 1).join(' ')
++  assert.equal(bullet.includes('do not reap'), true,
++    `(1c)/M3 fleet/CONTRACT.md's janitor bullet says a VM whose comment carries \`do not reap\` is never removed, got ${JSON.stringify(bullet)}`)
++}
++
+ // ── (d) the sentinel [M1] ───────────────────────────────────────────────────
+ console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_launch.mjs b/fleet/tests/test_launch.mjs
+index 6fef839d8cd3b95a2566d062ef0758795d37217a..d8092e8497682b040cdf938e6948566c0b78253a 100644
+--- a/fleet/tests/test_launch.mjs
++++ b/fleet/tests/test_launch.mjs
+@@ -313,7 +313,9 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
+     `${'fleet'}${HY}${'golden'}`,
+     `${'golden'}${HY}${'setup'}`,
+     `${'golden'}\\.${'sh'}`,
+-    `${HY}${HY}${'copy'}${HY}${'tags'}`,
++    // Not the copy flag: the golden-image `cp` flow is gone, but `cp` itself
++    // still copies tags by default, so `fleet/RUNBOOK.md`'s `kata` step has to
++    // be able to say `--copy-tags=false`.
+     `${'vm'}${'TokenPath'}`
+   ]
+   const banned = new RegExp(bannedSpellings.join('|'))
+diff --git a/skills/ultrapowers/references/first-run.md b/skills/ultrapowers/references/first-run.md
+index 9f4c0e75b95a6a4b61701db12d03822a93a97398..1324da859d360af919fac56ac6fd6a8c9e76c0a7 100644
+--- a/skills/ultrapowers/references/first-run.md
++++ b/skills/ultrapowers/references/first-run.md
+@@ -1,6 +1,6 @@
+ # First run — one section per doctor row
+ 
+-`node <plugin-root>/fleet/doctor.mjs --json` answers with eight rows in a fixed
++`node <plugin-root>/fleet/doctor.mjs --json` answers with nine rows in a fixed
+ order. Each row that is not `ok` has a section here, named for the row's `id`.
+ A section says what the piece is, what the agent runs for you, what you do in a
+ browser, and the two or three things a newcomer would not know. The commands are
+@@ -364,3 +364,65 @@ Three things a newcomer would not know:
+   also why the doctor checks this row by name alone — `integrations test`
+   answers nothing useful for an http-proxy, so the object's presence in
+   `integrations list --json` is the truth it can read.
++
++## kata
++
++The fleet has one kata hub: a single persistent VM named `kata-hub` running the
++kata issue daemon, which every sandbox reaches through an `http-proxy --peer`
++integration named `kata` and which the laptop reaches over ssh. It is not part
++of any run. This row is `ok` when the `kata` integration carries a bearer at the
++edge, its attachment policy is `tag:fleet`, and `ls kata-hub --json` answers a
++`kata-hub` row; the detail says which of the three is missing.
++
++**In a browser:** nothing.
++
++**The agent runs** this once, and it is the whole build:
++
++```bash
++node <plugin-root>/fleet/kata-hub.mjs
++```
++
++It creates the VM with its first-boot setup script, pins the daemon's port with
++`share port kata-hub 8000`, reads the VM's own `https_url` off
++`ls kata-hub --json`, and creates the integration with a freshly minted bearer
++on stdin:
++
++```bash
++printf '%s' "$KATA_TOKEN" | ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
++```
++
++It then waits for first boot, delivers the daemon's config and env over ssh,
++waits for `systemctl is-active kata.service` to answer `active`, and only then
++writes `~/.ultrapowers/kata-hub.env` (mode 0600, `KATA_URL` and `KATA_TOKEN`).
++Running it again on a built hub prints `kata-hub already built` and touches
++nothing; running it on a half-built one resumes from where it stopped.
++
++Five things a newcomer would not know:
++
++- **Never prune the `peer-kata` ssh key.** `--peer` makes exe.dev generate a
++  key pair server-side so a sandbox can reach the hub without holding anything;
++  it shows up in `ssh-key list` as `peer-kata` and goes when the integration
++  goes. A sweep that tidies unknown keys takes the fleet's hub down with it.
++- **The hub carries no tag at all.** The janitor lists `fleet-r*` and never
++  sees it, and its comment — `kata hub — persistent service, do not reap` — is
++  the second lock. Its 1 vCPU and 2 GB do come out of the same pool every
++  wave's sandboxes are subtracted from, so the `capacity` row counts it.
++- **Never `cp` the hub, or any fleet VM, without `--copy-tags=false`.**
++  `cp --copy-tags` is on by default, so a copy of a fleet VM inherits
++  `tag:fleet` and is granted every credential the policy grants; a copy of the
++  hub inherits its comment and its daemon.
++- **The bearer has exactly two homes.** `/etc/kata/kata.env` on the hub
++  (`root:exedev`, mode 0640, delivered over ssh after first boot and never in
++  the setup script) and `~/.ultrapowers/kata-hub.env` on this laptop, mode
++  0600. No sandbox holds it: the edge injects it, and the sandbox-side URL is
++  `http://kata.int.exe.xyz/<path>`. Rotation is one
++  `integrations edit kata --bearer=-` with a fresh token on stdin, followed by
++  the same token delivered to the hub's env file.
++- **A wrong policy is repaired with two commands, never an attach.** exe.dev
++  refuses `integrations attach` outright; the fix the doctor prints is the read
++  and then the write under the revision it answered:
++
++```bash
++ssh exe.dev "integrations policy get kata --json"
++ssh exe.dev "integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>"
++```
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 622e058c37963c2d67a4e894bc7c9ad55c68f44f..9cb1708cbf2054bf0782227581a5415a6d840e39 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -30,6 +30,7 @@ import argparse
+ import hashlib
+ import json
+ import re
++import string
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -1985,6 +1986,133 @@ def derive_wave_label(tasks):
+     return str(len(tasks)) + " parallel tasks"
+ 
+ 
++# ── the fact sheet (#913 §The prototype, Launch) ───────────────────────────── #
++# One object per task, computed HERE and nowhere else: its files, where its
++# exam lands, what the driver writes around that landing, and what its
++# wave-mates own. Every consumer downstream reads the sheet instead of
++# recomputing it, so the landing rule and the own-set rule have exactly one
++# spelling in the run (#810 comment of 2026-09-11, decision 3).
++
++# The run id a stamped compile is named for. The same alphabet the run
++# directory and the reserved exam directories are spelled in; anything else is
++# an input error, refused before a verdict or a payload is printed.
++STAMP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
++
++# `fleet/exam-paths.mjs`, ported. The two spellings must stay identical: the
++# engine hands the exam over at the path this computes, and the sheet promises
++# the same path to everyone who reads it before the engine runs.
++EXAM_ROOTS = ("fleet/tests/", "tests/")  # longest root first
++# The one root whose landings are importable Python and therefore need
++# `__init__.py` packaging (`ensurePackageInits` in run-engine.mjs); a
++# `fleet/tests/` landing gets none.
++PY_EXAM_ROOT = "tests/exams/"
++
++
++def exam_slug(stamp):
++    """`run-7` -> `run_7`. Every character outside `[A-Za-z0-9_]` becomes `_`
++    so the reserved directory is a Python identifier and the exams under it
++    form a real package."""
++    return re.sub(r"[^A-Za-z0-9_]", "_", "" if stamp is None else str(stamp))
++
++
++def reserved_exam_path(p, stamp):
++    """Where a Proof path's exam is written TO. A path under neither test root
++    — `t1_test.sh` and every plan that puts its tests elsewhere — is answered
++    unchanged, and remapping is idempotent."""
++    s = "" if p is None else str(p)
++    for root in EXAM_ROOTS:
++        if not s.startswith(root):
++            continue
++        d = root + "exams/" + exam_slug(stamp) + "/"
++        return s if s.startswith(d) else d + s[len(root):]
++    return s
++
++
++def _placeholder_lead(entry):
++    """True when an Interfaces bullet's LEAD WORD is one of the compiler's own
++    placeholders — 'nothing', 'none', 'n/a', 'na' — i.e. the bullet names no
++    contract at all. The sheet drops such a bullet outright (#911 finding 5) so
++    a consumer never has to know the placeholder vocabulary."""
++    words = str(entry or "").split()
++    if not words:
++        return True
++    lead = words[0].replace("`", "").strip(string.punctuation).lower()
++    return lead in PLACEHOLDER_TOKENS
++
++
++def _sheet_files(task):
++    """The task's own paths for sheet purposes: creates ∪ modifies ∪ reads ∪
++    deletes, sorted. Deletes are IN (#911 finding 1) — a file the task removes
++    is a file it owns — which is exactly where this differs from the `files`
++    key the engine already reads (`_files_for`, deletes excluded, unchanged).
++
++    A legacy-grammar task has no sheet: every list of its sheet is empty, and
++    it contributes nothing to a wave-mate's sibling set either."""
++    if not task.get("claims"):
++        return []
++    return sorted(set(task.get("creates") or []) | set(task.get("modifies") or [])
++                  | set(task.get("reads") or []) | set(task.get("deletes") or []))
++
++
++def factsheet(task, wave, stamp):
++    """The task's fact sheet: exactly nine keys, computed once.
++
++    `task` is a parsed task dict; `wave` is the parsed task dicts of the wave
++    it was layered into (the task itself included, and ignored); `stamp` is the
++    run id `--stamp` named, or None on an unstamped compile — where every exam
++    lands at the path its Proof names."""
++    claims = task.get("claims") or {}
++    files = _sheet_files(task)
++    deletes = sorted(set(task.get("deletes") or [])) if claims else []
++    guards = list(claims.get("proof_guards", [])) if claims else []
++    proof_tests = list(claims.get("proof_tests_ordered", [])) if claims else []
++
++    # A guarded path lands at itself: the whole point of a `Guard:` is that the
++    # exam measures the file where the project keeps it (run-engine's
++    # `landingOf`). Without a stamp there is no reserved directory to land in,
++    # so every path is its own landing.
++    landing = {}
++    for p in proof_tests:
++        landing[p] = (p if (stamp is None or p in guards)
++                      else reserved_exam_path(p, stamp))
++
++    # What the DRIVER writes for this task: every landing, plus the package
++    # inits a Python landing under the reserved root needs — one at the root
++    # and one at every directory between it and the file.
++    owned = set(landing.values())
++    if stamp is not None:
++        root = PY_EXAM_ROOT + exam_slug(stamp)
++        for land in landing.values():
++            if not land.endswith(".py") or not land.startswith(root + "/"):
++                continue
++            at = root
++            owned.add(at + "/__init__.py")
++            for seg in land[len(root) + 1:].split("/")[:-1]:
++                at += "/" + seg
++                owned.add(at + "/__init__.py")
++
++    sibling = set()
++    for other in wave or []:
++        if other.get("id") == task.get("id"):
++            continue
++        sibling.update(_sheet_files(other))
++
++    interfaces = task.get("interfaces") or {}
++    return {
++        "files": files,
++        "deletes": deletes,
++        "guards": guards,
++        "proofTests": proof_tests,
++        "landing": landing,
++        "driverOwned": sorted(owned),
++        "siblingOwned": sorted(sibling),
++        "produces": [b for b in (interfaces.get("produces") or [])
++                     if claims and not _placeholder_lead(b)],
++        "consumes": [b for b in (interfaces.get("consumes") or [])
++                     if claims and not _placeholder_lead(b)],
++    }
++
++
+ # Overlap disposition — the ROLLBACK KNOB, and nothing else:
+ #   "fold"      (default) — two tasks whose declared paths merely overlap are
+ #                 NOT ordered; they share a wave and the kernel folds their
+@@ -2554,6 +2682,27 @@ def _referent_scan_lines(task):
+     return out
+ 
+ 
++def _bind_stamp_values(argv):
++    """`--stamp -run7` names a --stamp whose VALUE is `-run7`; argparse would
++    read the option-like token as another option and die with its own "expected
++    one argument". The pair is rewritten `--stamp=-run7` so the value reaches
++    STAMP_RE and is refused by the compiler's own `error: --stamp` line, which
++    is what M1 promises for every value outside the pattern."""
++    out, i, n = [], 0, len(argv)
++    while i < n:
++        tok = argv[i]
++        if tok == "--":  # everything after the separator is positional
++            out.extend(argv[i:])
++            break
++        if tok == "--stamp" and i + 1 < n and argv[i + 1] != "--":
++            out.append("--stamp=" + argv[i + 1])
++            i += 2
++            continue
++        out.append(tok)
++        i += 1
++    return out
++
++
+ def main(argv=None):
+     ap = argparse.ArgumentParser()
+     ap.add_argument("plan", type=Path)
+@@ -2597,9 +2746,23 @@ def main(argv=None):
+                          "classifier reads on a plain compile, where it orders "
+                          "the pair. Unset, a claims-v1 same-file pair is left "
+                          "unordered.")
+-    args = ap.parse_args(argv)
++    ap.add_argument("--stamp", default=None, metavar="RUN-ID",
++                    help="the run id each task's exam landing is named for: "
++                         "with it, a Proof `Test:` path under tests/ or "
++                         "fleet/tests/ lands in that run's reserved exams "
++                         "directory and the fact sheet says so; without it, "
++                         "every exam lands at the path its Proof names. Legal "
++                         "beside --check and beside the emit flags.")
++    args = ap.parse_args(
++        _bind_stamp_values(list(sys.argv[1:] if argv is None else argv)))
+     emit_launch = args.emit_launch
+     emit_args = args.emit_args
++    # Refused before any verdict or payload is printed: a stamp outside the
++    # alphabet would name a reserved directory nothing else in the run spells.
++    if args.stamp is not None and not STAMP_RE.match(args.stamp):
++        print("error: --stamp must match %s (got %r)"
++              % (STAMP_RE.pattern, args.stamp), file=sys.stderr)
++        return 2
+     if args.check and (emit_launch is not None or emit_args is not None
+                        or args.run_dir is not None):
+         sys.exit("error: --check is mutually exclusive with --emit-launch/"
+@@ -2818,6 +2981,11 @@ def main(argv=None):
+     def _files_for(t):
+         return sorted(set(t["creates"]) | set(t["modifies"]) | set(t["reads"]))
+ 
++    # The fact sheet, computed once per task and put on BOTH emit sites, so a
++    # consumer reading either file sees the same object for a task id.
++    sheets = {tid: factsheet(by_id[tid], [by_id[x] for x in wave], args.stamp)
++              for wave in waves for tid in wave}
++
+     launch_waves = [
+         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
+           "depends_on": by_id[tid]["depends_on"],
+@@ -2860,7 +3028,11 @@ def main(argv=None):
+           # obligation: the engine reads it with `Array.isArray` and an absent
+           # key as [], and no `grammar:` line is ever drawn from it.
+           "proofGuards": list(
+-              (by_id[tid].get("claims") or {}).get("proof_guards", []))}
++              (by_id[tid].get("claims") or {}).get("proof_guards", [])),
++          # The fact sheet (#913): the task's own paths (deletes included),
++          # where its exam lands, what the driver writes around that landing,
++          # and what its wave-mates own. Computed once, above.
++          "factsheet": sheets[tid]}
+          for tid in wave]
+         for wave in waves]
+ 
+@@ -2898,7 +3070,10 @@ def main(argv=None):
+                        # (spec §2b) — kept in sync so a consumer reading
+                        # either file sees the same writes/commutes per task.
+                        "writes": by_id[tid].get("writes", []),
+-                       "commutes": by_id[tid].get("commutes", [])}
++                       "commutes": by_id[tid].get("commutes", []),
++                       # The same object the wave entry carries (#913) — one
++                       # computation, two payloads, never two answers.
++                       "factsheet": sheets[tid]}
+                       for wave in waves for tid in wave],
+             "waves": waves,
+             "waveLabels": wave_labels,
+diff --git a/tests/exams/run_109/__init__.py b/tests/exams/run_109/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/tests/exams/run_109/test_compile_plan_factsheet.py b/tests/exams/run_109/test_compile_plan_factsheet.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe0d28fdbf9c7973a8aaa2f2e4623b61c8911136
+--- /dev/null
++++ b/tests/exams/run_109/test_compile_plan_factsheet.py
+@@ -0,0 +1,620 @@
++"""The compiler emits each task's fact sheet (task 3, plan run-109).
++
++The compiler computes each task's fact sheet ONCE — its files, its exam's
++landing, what the driver writes, what its neighbours own — and nothing
++downstream recomputes it. This exam pins the four Machine clauses leg by leg:
++
++  M1 / leg (a) — `compile_plan.py <plan> [--stamp <run-id>]` accepts
++    `--stamp`, whose value must match `^[A-Za-z0-9][A-Za-z0-9-]*$` (any other
++    value exits 2 with a line beginning `error: --stamp`), and on a plain
++    compile every `launch_waves` entry on stdout and every `tasks[]` entry of
++    the `--emit-launch` payload carries `factsheet`, an object with exactly
++    the keys `files`, `deletes`, `guards`, `proofTests`, `landing`,
++    `driverOwned`, `siblingOwned`, `produces`, `consumes`.
++  M2 / legs (b)-(f) — for a claims-v1 task each of those nine keys is
++    computed from the task's own slots and its wave's other tasks.
++  M3 / leg (g) — without `--stamp` every `landing` value is its own key, and
++    `driverOwned` is therefore the sorted `proofTests` plus nothing.
++  M4 / leg (h) — a legacy-grammar task's sheet has every list empty and
++    `landing` `{}`, and `--check` output is unchanged: `--check --stamp run-7`
++    on a plan that passes `--check` still prints `PLAN OK`.
++
++The fixture plan is three claims-v1 tasks laid beside a verdicts record the
++way `tests/test_compile_plan_guard.py` does. It layers as `[["1","2"],["3"]]`
++— task 3 consumes the `make_a() -> A` token task 1 produces — so task 1 and
++task 2 are wave neighbours and task 3 is alone in its wave, which is what
++makes `siblingOwned` a live check.
++
++Every expected value below is computed by hand from the Machine clauses, not
++read back off the implementation.
++"""
++import json
++import pathlib
++import subprocess
++import sys
++
++# This exam lands at `tests/exams/<slug>/test_compile_plan_factsheet.py`, so
++# the repo root is three directories up, not one.
++ROOT = pathlib.Path(__file__).resolve().parents[3]
++COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
++# The legacy-grammar corpus fixture leg (h) reads: it carries no
++# `**Grammar:** claims-v1` marker, so no task of it has a claims body at all.
++WIDE_FIXTURE = ROOT / "evals/fixtures/wide/plan.md"
++
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++from compile_plan import (  # noqa: E402
++    gate_input_hash,
++    parse_claims_body,
++    split_tasks,
++    verdicts_path,
++)
++
++STAMP = "run-7"
++SLUG = "run_7"  # `examSlug`: every character outside [A-Za-z0-9_] becomes `_`
++
++# The nine names M1 fixes, as a set — "exactly the keys", so neither a missing
++# nor an extra name is tolerated.
++SHEET_KEYS = {"files", "deletes", "guards", "proofTests", "landing",
++              "driverOwned", "siblingOwned", "produces", "consumes"}
++
++
++# --------------------------------------------------------------------------- #
++# Fixture plan                                                                 #
++# --------------------------------------------------------------------------- #
++HEADER = ("# Plan: the compiler emits each task's fact sheet\n"
++          "\n"
++          "**Grammar:** claims-v1\n"
++          "\n"
++          "**Acceptance:** waived — inline test plan\n"
++          "\n")
++
++# The Machine line every fixture task restates, with NUMBERED clauses, so the
++# clause-to-leg citation grammar is active on every fixture task here.
++MACHINE = ("Machine: M1. The sheet rides every entry. "
++           "M2. Its keys are computed from the task's own slots.\n")
++
++LEGS = "- Legs: (a) the sheet rides beside the exam [M1][M2]."
++
++
++def _task(task_id, title, files, proof, consumes, produces):
++    """One claims-v1 task carrying all six slots.
++
++    `files` is the Files-block bullet lines and `proof` the Proof-slot bullet
++    lines (each without its trailing newline); `consumes`/`produces` are the
++    verbatim values of the two Interfaces bullets.
++    """
++    return ("### Task %s: %s\n"
++            "\n"
++            "**Type:** implementation\n"
++            "\n"
++            "**Files:**\n"
++            "%s"
++            "\n"
++            "**Claim:** The compiler computes task %s's fact sheet once. "
++            "(quoted from #913)\n"
++            "%s"
++            "\n"
++            "**Authorized-by:** #913\n"
++            "\n"
++            "**Interfaces:**\n"
++            "- Consumes: %s\n"
++            "- Produces: %s\n"
++            "\n"
++            "**Context:** The repo computes no fact sheet today, so nothing "
++            "downstream can read one.\n"
++            "\n"
++            "**Proof:**\n"
++            "%s"
++            "\n"
++            "**Stale-if:**\n"
++            "- issue-open: #913\n"
++            % (task_id, title,
++               "".join(line + "\n" for line in files),
++               task_id, MACHINE, consumes, produces,
++               "".join(line + "\n" for line in proof)))
++
++
++# Task 1 — a Create, a Modify, a Delete and two Test paths; its Proof names
++# both tests (deep one second, so Proof order is NOT sorted order) and guards
++# the shallow one.
++TASK_1 = _task("1", "Sample one",
++               ["- Create: `pkg/a.py`",
++                "- Modify: `pkg/b.py`",
++                "- Delete: `pkg/old.py`",
++                "- Test: `tests/test_a.py`",
++                "- Test: `tests/sub/test_deep.py`"],
++               ["- Test: `tests/test_a.py`",
++                "- Test: `tests/sub/test_deep.py`",
++                "- Guard: `tests/test_a.py`",
++                LEGS],
++               "nothing", "`make_a() -> A`")
++
++# Task 2 — the `fleet/tests/` root, and two placeholder Interfaces bullets.
++TASK_2 = _task("2", "Sample two",
++               ["- Create: `pkg/c.py`",
++                "- Test: `fleet/tests/test_c.mjs`"],
++               ["- Test: `fleet/tests/test_c.mjs`", LEGS],
++               "none", "n/a")
++
++# Task 3 — a Proof path under NEITHER test root, and the `make_a` token that
++# orders it after task 1 into a wave of its own.
++TASK_3 = _task("3", "Sample three",
++               ["- Create: `pkg/d.py`",
++                "- Test: `t1_test.sh`"],
++               ["- Test: `t1_test.sh`", LEGS],
++               "`make_a() -> A`", "nothing")
++
++FIXTURE_TASKS = (TASK_1, TASK_2, TASK_3)
++
++
++# --------------------------------------------------------------------------- #
++# Driving the compiler                                                         #
++# --------------------------------------------------------------------------- #
++def _sign(plan):
++    """Stamp an all-pass gate-verdict record beside a claims-v1 plan — the
++    compiler refuses to compile one without (spec 4.5)."""
++    record = {"tasks": {}, "tally": {"dispatched": 0, "rejected": 0}}
++    for t in split_tasks(plan.read_text()):
++        claims = parse_claims_body(t["body"], t["id"])
++        record["tasks"][t["id"]] = {
++            "hash": gate_input_hash(claims["claim"], claims["proof"]),
++            "verdict": "pass", "reason": "layer match"}
++        record["tally"]["dispatched"] += 1
++    verdicts_path(plan).write_text(json.dumps(record, indent=2) + "\n")
++    return plan
++
++
++def _write_plan(tmp_path, name="plan.md", tasks=FIXTURE_TASKS):
++    plan = tmp_path / name
++    plan.write_text(HEADER + "\n".join(tasks))
++    return _sign(plan)
++
++
++def _run(*argv):
++    return subprocess.run([sys.executable, str(COMPILER)] + [str(a) for a in argv],
++                          capture_output=True, text=True, cwd=str(ROOT))
++
++
++def _compile(plan_path, tmp_path, *extra, name="launch"):
++    """Compile `plan_path` with `--emit-launch`; return `(stdout_json,
++    launch_payload)`."""
++    launch = tmp_path / (name + ".json")
++    p = _run(plan_path, "--emit-launch", launch, *extra)
++    assert p.returncode == 0, (
++        "the fixture plan must compile cleanly; got rc=%d\n%s%s"
++        % (p.returncode, p.stdout, p.stderr))
++    return json.loads(p.stdout), json.loads(launch.read_text())
++
++
++def _wave_entries(stdout_payload):
++    """Every `launch_waves` entry, flattened, keyed by task id."""
++    return {e["id"]: e for wave in stdout_payload["launch_waves"] for e in wave}
++
++
++def _launch_entries(launch_payload):
++    """Every `--emit-launch` `tasks[]` entry, keyed by task id."""
++    return {e["id"]: e for e in launch_payload["tasks"]}
++
++
++def _sheet(entry, where, leg):
++    """The `factsheet` off one entry, with the absent-key failure named."""
++    assert "factsheet" in entry, (
++        "%s [M1]: every %s must carry `factsheet` — task %s has keys %s"
++        % (leg, where, entry.get("id"), sorted(entry)))
++    sheet = entry["factsheet"]
++    assert isinstance(sheet, dict), (
++        "%s [M1]: `factsheet` is an object; task %s carries %r"
++        % (leg, entry.get("id"), sheet))
++    return sheet
++
++
++def _sheets(tmp_path, *extra, name="launch"):
++    """The wave-entry fact sheets of the fixture plan, keyed by task id."""
++    plan = _write_plan(tmp_path)
++    stdout_payload, _ = _compile(plan, tmp_path, *extra, name=name)
++    entries = _wave_entries(stdout_payload)
++    return {tid: _sheet(e, "`launch_waves` entry", "leg (b)-(g)")
++            for tid, e in entries.items()}
++
++
++def _stamped(tmp_path, name="launch"):
++    return _sheets(tmp_path, "--stamp", STAMP, name=name)
++
++
++# --------------------------------------------------------------------------- #
++# (a) [M1] the flag, its value rule, and the sheet on both emit sites          #
++# --------------------------------------------------------------------------- #
++def test_a_the_fixture_plan_layers_as_the_two_waves_the_legs_assume(tmp_path):
++    """A precondition of legs (e) and (h), asserted so a layering change reads
++    as itself rather than as a wrong `siblingOwned`."""
++    stdout_payload, _ = _compile(_write_plan(tmp_path), tmp_path,
++                                 "--stamp", STAMP)
++    assert stdout_payload["waves"] == [["1", "2"], ["3"]], (
++        "the fixture must layer as [[\"1\",\"2\"],[\"3\"]] — the "
++        "`make_a() -> A` token orders task 3 after task 1; got %r"
++        % (stdout_payload["waves"],))
++
++
++def test_a_every_wave_entry_and_launch_entry_carries_the_nine_key_sheet(
++        tmp_path):
++    stdout_payload, launch_payload = _compile(
++        _write_plan(tmp_path), tmp_path, "--stamp", STAMP)
++    wave = _wave_entries(stdout_payload)
++    launch = _launch_entries(launch_payload)
++    assert sorted(wave) == ["1", "2", "3"], (
++        "leg (a) [M1]: the fixture compiles to three wave entries; got %s"
++        % sorted(wave))
++    assert sorted(launch) == ["1", "2", "3"], (
++        "leg (a) [M1]: the `--emit-launch` payload carries all three tasks; "
++        "got %s" % sorted(launch))
++    for tid in ("1", "2", "3"):
++        for entries, where in ((wave, "`launch_waves` entry"),
++                               (launch, "`--emit-launch` `tasks[]` entry")):
++            keys = set(_sheet(entries[tid], where, "leg (a)"))
++            assert keys == SHEET_KEYS, (
++                "leg (a) [M1]: task %s's %s has a `factsheet` whose key set "
++                "is EXACTLY {files, deletes, guards, proofTests, landing, "
++                "driverOwned, siblingOwned, produces, consumes}; missing %s, "
++                "extra %s"
++                % (tid, where, sorted(SHEET_KEYS - keys),
++                   sorted(keys - SHEET_KEYS)))
++
++
++def test_a_the_two_sheets_for_one_task_id_are_equal(tmp_path):
++    stdout_payload, launch_payload = _compile(
++        _write_plan(tmp_path), tmp_path, "--stamp", STAMP)
++    wave = _wave_entries(stdout_payload)
++    launch = _launch_entries(launch_payload)
++    for tid in ("1", "2", "3"):
++        a = _sheet(wave[tid], "`launch_waves` entry", "leg (a)")
++        b = _sheet(launch[tid], "`--emit-launch` `tasks[]` entry", "leg (a)")
++        assert a == b, (
++            "leg (a) [M1]: the compiler computes task %s's sheet ONCE — "
++            "the object on the `launch_waves` entry and the one on the "
++            "`--emit-launch` `tasks[]` entry are equal\n--- launch_waves "
++            "---\n%s\n--- emit-launch ---\n%s"
++            % (tid, json.dumps(a, indent=2, sort_keys=True),
++               json.dumps(b, indent=2, sort_keys=True)))
++
++
++def test_a_a_stamp_value_outside_the_pattern_exits_2_naming_the_flag(tmp_path):
++    plan = _write_plan(tmp_path)
++    p = _run(plan, "--stamp", "run 7")
++    both = p.stdout + p.stderr
++    assert p.returncode == 2, (
++        "leg (a) [M1]: `--stamp 'run 7'` does not match "
++        "`^[A-Za-z0-9][A-Za-z0-9-]*$`, so the compiler exits 2; got rc=%d\n%s"
++        % (p.returncode, both))
++    assert "error: --stamp" in both, (
++        "leg (a) [M1]: `--stamp 'run 7'` exits 2 with stdout+stderr "
++        "containing `error: --stamp`; got:\n%s" % both)
++    assert [l for l in both.splitlines() if l.startswith("error: --stamp")], (
++        "leg (a) [M1]: the refusal is a LINE BEGINNING `error: --stamp`, not "
++        "an argparse usage line that merely mentions the flag; got:\n%s"
++        % both)
++
++
++def test_a_more_values_outside_the_stamp_pattern_are_refused(tmp_path):
++    """The rest of M1's pattern: a leading `-`, a character outside the class,
++    and the empty value are all refused the same way."""
++    plan = _write_plan(tmp_path)
++    for bad in ("-run7", "run/7", "run_7", ""):
++        p = _run(plan, "--stamp", bad)
++        both = p.stdout + p.stderr
++        assert p.returncode == 2, (
++            "leg (a) [M1]: `--stamp %r` does not match "
++            "`^[A-Za-z0-9][A-Za-z0-9-]*$`, so the compiler exits 2; got "
++            "rc=%d\n%s" % (bad, p.returncode, both))
++        assert [l for l in both.splitlines()
++                if l.startswith("error: --stamp")], (
++            "leg (a) [M1]: `--stamp %r` exits 2 with a line beginning "
++            "`error: --stamp`; got:\n%s" % (bad, both))
++
++
++def test_a_a_stamp_value_inside_the_pattern_is_accepted(tmp_path):
++    """The other half of M1's rule — a matching value compiles."""
++    plan = _write_plan(tmp_path)
++    for good in ("run-7", "Run7", "7"):
++        p = _run(plan, "--stamp", good)
++        assert p.returncode == 0, (
++            "leg (a) [M1]: `--stamp %r` matches "
++            "`^[A-Za-z0-9][A-Za-z0-9-]*$`, so the compile succeeds; got "
++            "rc=%d\n%s%s" % (good, p.returncode, p.stdout, p.stderr))
++
++
++# --------------------------------------------------------------------------- #
++# (b) [M2] files / deletes / guards / proofTests                               #
++# --------------------------------------------------------------------------- #
++def test_b_task_1_files_is_the_sorted_union_including_the_deleted_path(
++        tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["files"] == ["pkg/a.py", "pkg/b.py", "pkg/old.py",
++                              "tests/sub/test_deep.py", "tests/test_a.py"], (
++        "leg (b) [M2]: task 1's `files` is the sorted union of its `Create:`, "
++        "`Modify:`, `Test:` AND `Delete:` paths — a sheet that omits the "
++        "deleted `pkg/old.py` fails; got %r" % (sheet["files"],))
++
++
++def test_b_task_1_deletes_is_its_sorted_delete_paths(tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["deletes"] == ["pkg/old.py"], (
++        "leg (b) [M2]: task 1's `deletes` is its sorted `Delete:` paths; got "
++        "%r" % (sheet["deletes"],))
++
++
++def test_b_task_1_guards_is_its_proof_guard_paths(tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["guards"] == ["tests/test_a.py"], (
++        "leg (b) [M2]: task 1's `guards` is its Proof `Guard:` paths in Proof "
++        "order; got %r" % (sheet["guards"],))
++
++
++def test_b_task_1_proof_tests_keep_proof_order_and_are_not_sorted(tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["proofTests"] == ["tests/test_a.py",
++                                   "tests/sub/test_deep.py"], (
++        "leg (b) [M2]: task 1's `proofTests` is its Proof `Test:` paths in "
++        "PROOF order — `tests/test_a.py` first, `tests/sub/test_deep.py` "
++        "second; a sheet that sorts them fails; got %r"
++        % (sheet["proofTests"],))
++
++
++def test_b_task_2_files_deletes_and_guards(tmp_path):
++    sheet = _stamped(tmp_path)["2"]
++    assert sheet["files"] == ["fleet/tests/test_c.mjs", "pkg/c.py"], (
++        "leg (b) [M2]: task 2's `files` is the sorted union of its `Create:` "
++        "and `Test:` paths; got %r" % (sheet["files"],))
++    assert sheet["deletes"] == [], (
++        "leg (b) [M2]: task 2 names no `Delete:`, so its `deletes` is `[]`; "
++        "got %r" % (sheet["deletes"],))
++    assert sheet["guards"] == [], (
++        "leg (b) [M2]: task 2's Proof names no `Guard:`, so its `guards` is "
++        "`[]`; got %r" % (sheet["guards"],))
++
++
++# --------------------------------------------------------------------------- #
++# (c) [M2] landing                                                             #
++# --------------------------------------------------------------------------- #
++def test_c_task_1_landing_keeps_the_guarded_path_and_reserves_the_other(
++        tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["landing"] == {
++        "tests/test_a.py": "tests/test_a.py",
++        "tests/sub/test_deep.py": "tests/exams/%s/sub/test_deep.py" % SLUG}, (
++        "leg (c) [M2]: task 1's `landing` has one key per `proofTests` entry; "
++        "`tests/test_a.py` is in `guards` so it lands at ITSELF, and "
++        "`tests/sub/test_deep.py` lands at `tests/exams/%s/sub/test_deep.py`. "
++        "A landing that moves the guarded path fails; got %s"
++        % (SLUG, json.dumps(sheet["landing"], indent=2, sort_keys=True)))
++
++
++def test_c_task_2_landing_uses_the_fleet_tests_root_not_the_bare_one(tmp_path):
++    sheet = _stamped(tmp_path)["2"]
++    assert sheet["landing"] == {
++        "fleet/tests/test_c.mjs": "fleet/tests/exams/%s/test_c.mjs" % SLUG}, (
++        "leg (c) [M2]: a `fleet/tests/<rest>` path lands at "
++        "`fleet/tests/exams/%s/<rest>` — the longest root is matched "
++        "first, so a landing under `tests/exams/` fails; got %s"
++        % (SLUG, json.dumps(sheet["landing"], indent=2, sort_keys=True)))
++
++
++def test_c_task_3_landing_leaves_a_path_under_neither_root_alone(tmp_path):
++    sheet = _stamped(tmp_path)["3"]
++    assert sheet["landing"] == {"t1_test.sh": "t1_test.sh"}, (
++        "leg (c) [M2]: `t1_test.sh` starts with neither `tests/` nor "
++        "`fleet/tests/`, so it lands at itself; got %s"
++        % json.dumps(sheet["landing"], indent=2, sort_keys=True))
++
++
++# --------------------------------------------------------------------------- #
++# (d) [M2] driverOwned                                                         #
++# --------------------------------------------------------------------------- #
++def test_d_task_1_driver_owned_carries_every_intermediate_package_init(
++        tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["driverOwned"] == [
++        "tests/exams/%s/__init__.py" % SLUG,
++        "tests/exams/%s/sub/__init__.py" % SLUG,
++        "tests/exams/%s/sub/test_deep.py" % SLUG,
++        "tests/test_a.py"], (
++        "leg (d) [M2]: task 1's `driverOwned` is the sorted set of every "
++        "`landing` value plus, for the `.py` landing under `tests/exams/%s/`, "
++        "the root `__init__.py` AND `<dir>/__init__.py` for each directory "
++        "strictly between that root and the file — a sheet omitting the "
++        "intermediate `sub/__init__.py` fails; got %s"
++        % (SLUG, json.dumps(sheet["driverOwned"], indent=2)))
++
++
++def test_d_task_2_driver_owned_writes_no_init_for_an_mjs_landing(tmp_path):
++    sheet = _stamped(tmp_path)["2"]
++    assert sheet["driverOwned"] == ["fleet/tests/exams/%s/test_c.mjs" % SLUG], (
++        "leg (d) [M2]: the `.mjs` landing under `fleet/tests/` gets NO "
++        "`__init__.py` — the rule fires only for `.py` landings under "
++        "`tests/exams/%s/`; got %s"
++        % (SLUG, json.dumps(sheet["driverOwned"], indent=2)))
++
++
++def test_d_task_3_driver_owned_is_its_unmoved_landing(tmp_path):
++    sheet = _stamped(tmp_path)["3"]
++    assert sheet["driverOwned"] == ["t1_test.sh"], (
++        "leg (d) [M2]: task 3's only landing value is `t1_test.sh`, under no "
++        "reserved root, so nothing else is driver-owned; got %s"
++        % json.dumps(sheet["driverOwned"], indent=2))
++
++
++# --------------------------------------------------------------------------- #
++# (e) [M2] siblingOwned                                                        #
++# --------------------------------------------------------------------------- #
++def test_e_task_1_sibling_owned_is_its_wave_neighbours_files_and_deletes(
++        tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["siblingOwned"] == ["fleet/tests/test_c.mjs", "pkg/c.py"], (
++        "leg (e) [M2]: task 1's `siblingOwned` is the sorted union of "
++        "`files` ∪ `deletes` over the OTHER tasks of its own wave — "
++        "task 2's paths only. A set naming the wave-2 task's `pkg/d.py`, or "
++        "task 1's own paths, fails; got %s"
++        % json.dumps(sheet["siblingOwned"], indent=2))
++
++
++def test_e_task_2_sibling_owned_includes_task_1s_deleted_path(tmp_path):
++    sheet = _stamped(tmp_path)["2"]
++    assert sheet["siblingOwned"] == ["pkg/a.py", "pkg/b.py", "pkg/old.py",
++                                     "tests/sub/test_deep.py",
++                                     "tests/test_a.py"], (
++        "leg (e) [M2]: task 2's `siblingOwned` is task 1's `files` ∪ "
++        "`deletes` — `pkg/old.py` included; got %s"
++        % json.dumps(sheet["siblingOwned"], indent=2))
++
++
++def test_e_task_3_alone_in_its_wave_owns_no_siblings(tmp_path):
++    sheet = _stamped(tmp_path)["3"]
++    assert sheet["siblingOwned"] == [], (
++        "leg (e) [M2]: task 3 is alone in wave 2, so its `siblingOwned` is "
++        "`[]` — a wave-1 task's paths are NOT its neighbours' ; got %s"
++        % json.dumps(sheet["siblingOwned"], indent=2))
++
++
++# --------------------------------------------------------------------------- #
++# (f) [M2] produces / consumes, placeholders dropped                           #
++# --------------------------------------------------------------------------- #
++def test_f_task_1_produces_its_symbol_and_drops_the_nothing_placeholder(
++        tmp_path):
++    sheet = _stamped(tmp_path)["1"]
++    assert sheet["produces"] == ["`make_a() -> A`"], (
++        "leg (f) [M2]: task 1's `produces` is its Interfaces bullet as the "
++        "compiler already stores it — backticks kept; got %r"
++        % (sheet["produces"],))
++    assert sheet["consumes"] == [], (
++        "leg (f) [M2]: task 1's `Consumes: nothing` bullet has a lead word in "
++        "`PLACEHOLDER_TOKENS`, so it is DROPPED and `consumes` is `[]`; got "
++        "%r" % (sheet["consumes"],))
++
++
++def test_f_task_2_drops_both_placeholder_bullets(tmp_path):
++    sheet = _stamped(tmp_path)["2"]
++    assert sheet["consumes"] == [], (
++        "leg (f) [M2]: task 2's `Consumes: none` is a placeholder and is "
++        "dropped; got %r" % (sheet["consumes"],))
++    assert sheet["produces"] == [], (
++        "leg (f) [M2]: task 2's `Produces: n/a` is a placeholder and is "
++        "dropped; got %r" % (sheet["produces"],))
++
++
++def test_f_task_3_consumes_the_symbol_and_drops_its_nothing_placeholder(
++        tmp_path):
++    sheet = _stamped(tmp_path)["3"]
++    assert sheet["consumes"] == ["`make_a() -> A`"], (
++        "leg (f) [M2]: task 3's `consumes` is its Interfaces bullet verbatim; "
++        "got %r" % (sheet["consumes"],))
++    assert sheet["produces"] == [], (
++        "leg (f) [M2]: task 3's `Produces: nothing` is a placeholder and is "
++        "dropped; got %r" % (sheet["produces"],))
++
++
++def test_f_no_sheet_anywhere_keeps_a_placeholder_bullet(tmp_path):
++    """The general form of M2's last clause: `nothing`, `none`, `n/a` and `na`
++    never survive into a sheet, on any task."""
++    kept = []
++    for tid, sheet in sorted(_stamped(tmp_path).items()):
++        for key in ("produces", "consumes"):
++            for bullet in sheet[key]:
++                lead = bullet.strip().split()[0].strip("`.,;:").lower() \
++                    if bullet.strip() else ""
++                if lead in {"nothing", "none", "n/a", "na"}:
++                    kept.append((tid, key, bullet))
++    assert kept == [], (
++        "leg (f) [M2]: a sheet keeping `nothing`, `none` or `n/a` as a bullet "
++        "fails — a consumer must never see a placeholder; kept %r" % kept)
++
++
++# --------------------------------------------------------------------------- #
++# (g) [M3] without --stamp every landing is its own key                        #
++# --------------------------------------------------------------------------- #
++def test_g_unstamped_landing_maps_each_proof_path_to_itself(tmp_path):
++    sheet = _sheets(tmp_path, name="unstamped")["1"]
++    assert sheet["landing"] == {
++        "tests/test_a.py": "tests/test_a.py",
++        "tests/sub/test_deep.py": "tests/sub/test_deep.py"}, (
++        "leg (g) [M3]: with no `--stamp`, every `landing` value is its own "
++        "key — both of task 1's Proof paths map to themselves; got %s"
++        % json.dumps(sheet["landing"], indent=2, sort_keys=True))
++
++
++def test_g_unstamped_driver_owned_is_the_sorted_proof_tests_and_nothing_else(
++        tmp_path):
++    sheet = _sheets(tmp_path, name="unstamped")["1"]
++    assert sheet["driverOwned"] == ["tests/sub/test_deep.py",
++                                    "tests/test_a.py"], (
++        "leg (g) [M3]: with no `--stamp`, `driverOwned` is the sorted "
++        "`proofTests` plus NOTHING — no `__init__.py` is owned, because "
++        "no landing sits under a reserved exam root; got %s"
++        % json.dumps(sheet["driverOwned"], indent=2))
++
++
++def test_g_unstamped_sheets_still_carry_all_nine_keys(tmp_path):
++    for tid, sheet in sorted(_sheets(tmp_path, name="unstamped").items()):
++        assert set(sheet) == SHEET_KEYS, (
++            "leg (g) [M3] / [M1]: the sheet's nine keys do not depend on "
++            "`--stamp`; task %s is missing %s and carries extra %s"
++            % (tid, sorted(SHEET_KEYS - set(sheet)),
++               sorted(set(sheet) - SHEET_KEYS)))
++
++
++# --------------------------------------------------------------------------- #
++# (h) [M4] the legacy grammar, and --check unchanged                           #
++# --------------------------------------------------------------------------- #
++def _legacy_sheets(tmp_path, *extra, name="wide"):
++    stdout_payload, _ = _compile(WIDE_FIXTURE, tmp_path, *extra, name=name)
++    entries = _wave_entries(stdout_payload)
++    assert entries, "expected the legacy wide fixture to compile to wave entries"
++    return {tid: _sheet(e, "`launch_waves` entry", "leg (h)")
++            for tid, e in entries.items()}
++
++
++def test_h_every_legacy_entry_carries_an_all_empty_sheet(tmp_path):
++    for stamp_argv, label in ((("--stamp", STAMP), "with `--stamp run-7`"),
++                              ((), "with no `--stamp`")):
++        sheets = _legacy_sheets(tmp_path, *stamp_argv,
++                                name="wide" + ("-stamped" if stamp_argv else ""))
++        for tid, sheet in sorted(sheets.items()):
++            assert set(sheet) == SHEET_KEYS, (
++                "leg (h) [M4]: a legacy-grammar entry still carries all nine "
++                "`factsheet` keys %s; task %s is missing %s and carries extra "
++                "%s" % (label, tid, sorted(SHEET_KEYS - set(sheet)),
++                        sorted(set(sheet) - SHEET_KEYS)))
++            for key in ("files", "deletes", "guards", "proofTests",
++                        "driverOwned", "siblingOwned", "produces", "consumes"):
++                assert sheet[key] == [], (
++                    "leg (h) [M4]: a legacy-grammar task's sheet has EVERY "
++                    "list empty %s — task %s's `%s` is %r"
++                    % (label, tid, key, sheet[key]))
++            assert sheet["landing"] == {}, (
++                "leg (h) [M4]: a legacy-grammar task's `landing` is `{}` %s "
++                "— task %s carries %r" % (label, tid, sheet["landing"]))
++
++
++def test_h_check_with_a_stamp_still_prints_plan_ok(tmp_path):
++    plan = _write_plan(tmp_path)
++    p = _run("--check", plan, "--stamp", STAMP)
++    assert p.returncode == 0, (
++        "leg (h) [M4]: `--check --stamp run-7` on a plan that passes "
++        "`--check` exits 0; got rc=%d\n%s%s" % (p.returncode, p.stdout, p.stderr))
++    assert p.stdout.splitlines()[:1] == ["PLAN OK"], (
++        "leg (h) [M4]: it prints `PLAN OK` — any other verdict line "
++        "fails; got:\n%s" % p.stdout)
++
++
++def test_h_the_stamp_leaves_check_stdout_byte_identical(tmp_path):
++    """M4's "`--check` output is unchanged", in its strongest reading: the
++    same plan checked with and without `--stamp` prints the same bytes."""
++    plan = _write_plan(tmp_path)
++    bare, stamped = _run("--check", plan), _run("--check", plan,
++                                                "--stamp", STAMP)
++    assert (bare.returncode, stamped.returncode) == (0, 0), (
++        "leg (h) [M4]: the fixture checks clean both ways; got rc=%d and "
++        "rc=%d\n%s%s%s%s" % (bare.returncode, stamped.returncode,
++                             bare.stdout, bare.stderr,
++                             stamped.stdout, stamped.stderr))
++    assert bare.stdout == stamped.stdout, (
++        "leg (h) [M4]: `--check` output is UNCHANGED by `--stamp`\n--- bare "
++        "---\n%s--- stamped ---\n%s" % (bare.stdout, stamped.stdout))
+diff --git a/tests/test_compile_plan_check_output.py b/tests/test_compile_plan_check_output.py
+index d34d010de27284011ced637acff09cafc51715e9..82b29df00b3e6b30a7cc8fc8e2282bb304cd28c4 100644
+--- a/tests/test_compile_plan_check_output.py
++++ b/tests/test_compile_plan_check_output.py
+@@ -29,8 +29,10 @@ Machine clause it comes from:
+       this exam recomputes from its own plain compile; and it exits 1 naming
+       the first fixture on stderr both when a compile exits non-zero and when a
+       compile's JSON lacks any of the three keys.
+-  (g) [M5] the census's thirteen lines for the BASE compiler equal its thirteen
+-      lines for this tree's compiler — the Proof's `Run:` bullet, run here.
++  (g) [M5] the census lists the same thirteen fixtures for the BASE compiler as
++      for this tree's, and each fixture's three output keys digest the same at
++      BASE as here once the entry keys added since BASE are removed (today:
++      `factsheet`, #913) — the Proof's `Run:` bullet, run here.
+ 
+ Leg (c) is a survival leg: it passes at BASE and must keep passing. Every other
+ leg is red at BASE, where the advisory tier is still in the compiler and the
+@@ -354,6 +356,31 @@ def base_compiler(tmp_path_factory):
+     return path
+ 
+ 
++# The keys added to a `launch_waves` entry AFTER this exam's BASE, each by its
++# own task and pinned by its own exam: `factsheet` (#913,
++# `tests/test_compile_plan_factsheet.py`). Leg (g)'s question is whether a
++# fixture's compiled output otherwise moved, so the comparison is taken with
++# these removed — a BASE compiler that never emitted them cannot be asked about
++# them, and every other byte of the three keys is still compared.
++KEYS_ADDED_SINCE_BASE = ("factsheet",)
++
++
++def _stripped_digest(compiler, plan):
++    """The digest leg (g) compares: leg (f)'s three output keys with the
++    post-BASE entry keys removed from every `launch_waves` entry."""
++    p = _run([compiler, plan])
++    assert p.returncode == 0, (
++        "leg (g) [M5]: the exam's own plain compile of %s must succeed before "
++        "its digest can be compared; stderr:\n%s" % (plan, _text(p.stderr)))
++    compiled = json.loads(p.stdout)
++    launch_waves = [[{k: v for k, v in e.items()
++                      if k not in KEYS_ADDED_SINCE_BASE} for e in wave]
++                    for wave in compiled["launch_waves"]]
++    payload = json.dumps([compiled["waves"], compiled["dag_edges"],
++                          launch_waves], sort_keys=True)
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++
+ def test_the_census_over_base_and_this_tree_is_the_same_thirteen_lines(
+         base_compiler):
+     base = _census(base_compiler)
+@@ -369,11 +396,18 @@ def test_the_census_over_base_and_this_tree_is_the_same_thirteen_lines(
+     assert len(base_lines) == 13 and len(new_lines) == 13, (
+         "leg (g) [M5]: both listings are thirteen lines long — BASE %d, this "
+         "tree %d" % (len(base_lines), len(new_lines)))
+-    differing = [(b, n) for b, n in zip(base_lines, new_lines) if b != n]
+-    assert differing == [], (
++    assert [line.split(" ")[0] for line in base_lines] == \
++           [line.split(" ")[0] for line in new_lines], (
++        "leg (g) [M5]: both listings name the same thirteen fixtures in the "
++        "same order — base %s, tree %s" % (base_lines, new_lines))
++    differing = {}
++    for plan, name in zip(FIXTURE_PLANS, FIXTURE_NAMES):
++        at_base = _stripped_digest(base_compiler, plan)
++        here = _stripped_digest(COMPILER, plan)
++        if at_base != here:
++            differing[name] = (at_base, here)
++    assert differing == {}, (
+         "leg (g) [M5]: every fixture compiles to the same waves, dag_edges and "
+-        "launch_waves it did at BASE (%s) — these lines differ (base, tree): %s"
+-        % (BASE_SHA[:7], differing))
+-    assert base_lines == new_lines, (
+-        "leg (g) [M5]: the two listings are identical — base %s, tree %s"
+-        % (base_lines, new_lines))
++        "launch_waves it did at BASE (%s), the entry keys added since (%s) "
++        "aside — these differ (base, tree): %s"
++        % (BASE_SHA[:7], ", ".join(KEYS_ADDED_SINCE_BASE), differing))
+diff --git a/tests/test_compile_plan_proof_tests.py b/tests/test_compile_plan_proof_tests.py
+index 3f2671a4149bc39a4a1eb168965018e80d41eeb7..24afd87ba3d9df32e0587a569fd51dc762892a91 100644
+--- a/tests/test_compile_plan_proof_tests.py
++++ b/tests/test_compile_plan_proof_tests.py
+@@ -224,7 +224,10 @@ BASE_WIDE_WAVES = [
+ # added by its own task and pinned by its own exam (`proofTests` by #515/#553,
+ # `proofRuns` by #589, `proofGuards` by #777). What this pin guards is that
+ # adding one leaves EVERY OTHER key — `testCmd` included — at its base value.
+-PROOF_SLOT_KEYS = ("proofTests", "proofRuns", "proofGuards")
++# `factsheet` (#913) is excluded on the same footing: it is a derived object
++# added by its own task and pinned by its own exam
++# (`tests/test_compile_plan_factsheet.py`), and it changes no key pinned here.
++PROOF_SLOT_KEYS = ("proofTests", "proofRuns", "proofGuards", "factsheet")
+ 
+ 
+ def _waves_without_proof_slots(payload):
+diff --git a/tests/test_compile_plan_task_test_cmd.py b/tests/test_compile_plan_task_test_cmd.py
+index f365715882c214513d83a2032632f7e7135439cd..8c4428ec2b083a3a1f56ad866209c1a2ce7c5851 100644
+--- a/tests/test_compile_plan_task_test_cmd.py
++++ b/tests/test_compile_plan_task_test_cmd.py
+@@ -185,6 +185,19 @@ def test_entry_keeps_every_other_key_at_its_base_value(tmp_path):
+         # The Proof `Guard:` paths (#777) — `[]` here, because this fixture
+         # task's Proof names no guard.
+         "proofGuards": [],
++        # The fact sheet (#913), computed by the compiler and pinned by its own
++        # exam. Unstamped, so every exam lands where its Proof names it.
++        "factsheet": {
++            "files": ["tests/test_widget.py", "widgetkit/widget.py"],
++            "deletes": [],
++            "guards": [],
++            "proofTests": ["tests/test_widget.py"],
++            "landing": {"tests/test_widget.py": "tests/test_widget.py"},
++            "driverOwned": ["tests/test_widget.py"],
++            "siblingOwned": ["tests/test_format.py", "widgetkit/format.py"],
++            "produces": ["`make_widget(n: int) -> Widget`"],
++            "consumes": [],
++        },
+     }
+ 
+ 
+diff --git a/tests/test_docs_agree_with_code.py b/tests/test_docs_agree_with_code.py
+index 91f31de0ea483cc51bb2b2e87c7803d2cb009e30..d89e783e8fbaa5be1926554bafb5f4a2b0a921a1 100644
+--- a/tests/test_docs_agree_with_code.py
++++ b/tests/test_docs_agree_with_code.py
+@@ -25,9 +25,11 @@ by rewording:
+     ``?ref=`` in the contract or the runbook still reads a run off the evidence
+     branch the record step deletes;
+   * no document creates a GitHub integration attached to anything or
+-    read-only, the per-target one acts as the user, and no document binds any
+-    integration to ``tag:fleet`` (the contract's one-integration rule: both of
+-    a run's credentials ride the VM from creation, and nothing rides the tag);
++    read-only, the per-target one acts as the user, and every ``integrations
++    add github`` a document teaches carries the fleet policy ``--policy
++    'tag:fleet'`` (since 2026-09-11 exe.dev refuses ``attach``/``detach`` and
++    ``new --integration``, so a singular policy is the only grant there is —
++    the kata hub's ``kata`` http-proxy is created on the same policy);
+   * the contract's ``- **Publish:**`` bullet declares the PR body's
+     ``### Residuals`` checklist and the ``residuals.jsonl`` rows the same items
+     land on, counts the publish record's ``three event kinds``, and carries no
+@@ -633,7 +635,10 @@ RETIRED = (
+     "fleet/golden.sh",
+     "golden-setup.sh",
+     "golden-bootstrap.sh",
+-    "--copy-tags",
++    # Not `--copy-tags`: the golden-image `cp` flow is gone, but the flag is
++    # live on exe.dev and on by default, so the runbook's `kata` step and
++    # first-run.md's `## kata` both teach `--copy-tags=false` — a copy of a
++    # fleet VM or of the hub inherits `tag:fleet` and every grant it carries.
+     ".fleet-golden",
+     "vmTokenPath",
+     "fleetRuns",

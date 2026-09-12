@@ -1,0 +1,84 @@
+{
+  "mode": "gate",
+  "stamp": "run-109",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-109/report.json",
+  "branch": "ultra/integration-run-109",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": false,
+        "detail": "merge-sha guard unavailable \u2014 result lacks waveMerges[last].headSha (budget-exhausted or SKIPPED-only run); inspect and redirect/re-run"
+      },
+      {
+        "name": "head-match",
+        "ok": false,
+        "detail": "skipped \u2014 no recorded merge headSha to compare"
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"5\", \"files\": [\"fleet/CONTRACT.md\", \"fleet/kata-client.mjs\", \"fleet/run-engine.mjs\", \"fleet/run-main.mjs\", \"fleet/tests/test_kata_client.mjs\", \"fleet/tests/test_run_engine_kata.mjs\"]}, {\"task\": \"6\", \"files\": [\"fleet/CONTRACT.md\", \"fleet/sandbox-boot.sh\", \"fleet/tests/_sandbox_boot_helpers.mjs\", \"fleet/tests/test_sandbox_boot_kata.mjs\"]}, {\"task\": \"4\", \"files\": [\"fleet/CONTRACT.md\", \"fleet/launch.mjs\", \"fleet/tests/test_launch.mjs\", \"fleet/tests/test_launch_compile.mjs\", \"fleet/tests/test_launch_kata.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 3/6 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/kata-hub.mjs \u2014 the actual build against exe.dev \u2014 Every verb goes through the injectable `exec` seam and the exams drive it with a fake lobby, so `new --name kata-hub \u2026`, `share port kata-hub 8000`, `integrations add http-proxy \u2026 --policy 'tag:fleet'` and the ssh delivery have never been issued against a real edge. Whether exe.dev accepts this exact verb shape, and whether `ls kata-hub --json` really answers `https_url`/`ssh_dest` on the row, is unexecutable here. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/kata-hub-setup.sh \u2014 first-boot behaviour \u2014 The driver's `bash -n fleet/kata-hub-setup.sh` settles its syntax and the rendered script's nine literals are pinned, but its duties need a booting VM with network and sudo: fetching kata_0.17.2_linux_amd64.tar.gz and SHA256SUMS from the kenn-io release, `sha256sum -c`, installing the unit and `systemctl enable --now kata.service`. None of that can run in this sandbox. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/kata.service \u2014 systemd semantics \u2014 The unit is asserted literal-by-literal only. That `ExecStartPre=/usr/bin/test -f /etc/kata/kata.env` parks the unit until the env file arrives, that `EnvironmentFile=-` keeps an absent file non-fatal, and that `Restart=on-failure` plus systemd's start-rate limit behave as the design assumes, cannot be exercised without systemd. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/doctor.mjs \u2014 the `kata` row against a live edge \u2014 The row's four reds and its green are fully driven by stubs, but the assumption that `ssh exe.dev \"integrations policy get kata --json\"` answers `{revision, valid, policy: {selector, \u2026}}` and that the listing reports the http-proxy's bearer as `Authorization:Bearer` is a shape taken from Shelley's measurement, not something this environment can confirm. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "5 \u2014 plan-defect: leg (f) expects the sheet-driven green run's close message to be `adopted in wave 1 (PASS)`, but M6 specifies `adopted in wave <n> (<its reviewVerdict>)`. A `done` row's reviewVerdict is `clean` (round 1) or `fixed` (round 2) \u2014 never `PASS`, which is the referee's own verdict string and never reaches the row. No implementation can satisfy both. I implemented M6 literally, so the close message reads `adopted in wave 1 (clean)` on a first-round-clean run; the rest of leg (f) (reason, evidence shape, idempotencyKey `sim:T1:close`, the wontfix shapes, the left-open wave-2 task) is satisfied as written."
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "6 \u2014 plan-defect: leg (d) says the issues endpoint fails `with STUB_KATA_ISSUES_EXIT=22 from the second transition on` while the Context sketches a plain `exit ${STUB_KATA_ISSUES_EXIT:-0}` arm. One boot is one process with one environment, so a static knob cannot fail only from the second transition, and a static 22 would mean no kata.jsonl ever exists \u2014 leg (d)'s `the file's four lines are unchanged` could not hold. The rig's issues arm therefore counts its calls and applies the exit code from its `STUB_KATA_ISSUES_EXIT_FROM`-th call on, defaulting to 2, with `STUB_KATA_ISSUES_EXIT_FROM=1` available to fail every call. This is a deviation from the Context's literal stub sketch; a peer exam written against that sketch and expecting every call to fail must set `STUB_KATA_ISSUES_EXIT_FROM=1`."
+      }
+    ],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-109/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1562 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n......................................................................s. [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n..................................................                       [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========== 1561 passed, 1 skipped, 5 warnings in 377.52s (0:06:17) ============\n"
+  },
+  "verdict": "BLOCKED"
+}

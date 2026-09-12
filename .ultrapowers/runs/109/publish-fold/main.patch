@@ -1,0 +1,891 @@
+diff --git a/fleet/doctor.mjs b/fleet/doctor.mjs
+index 0c033ebe3a7acfacad5ff1a983bb77c7a747df98..c33e43d2800c48148ae8abd837940296fe345a93 100644
+--- a/fleet/doctor.mjs
++++ b/fleet/doctor.mjs
+@@ -475,8 +475,9 @@ function attachedTags (entry) {
+ /** The fix for a policy that is not `tag:fleet`: the read, then the write
+  *  under the revision the read answered. */
+ const policyFix = (name) =>
++  `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}" (or, when the lobby serves the policy model: ` +
+   `ssh exe.dev "integrations policy get ${name} --json" then ` +
+-  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>"`
++  `ssh exe.dev "integrations policy set ${name} '${FLEET_POLICY}' --permanent --if-revision=<revision>")`
+ 
+ /**
+  * `integrations policy get <name> --json` read defensively: `policy.selector`
+@@ -769,6 +770,10 @@ function integrationsRow (found, target, render, policies) {
+   const names = policyNames(target, render)
+   for (const name of names) {
+     if (!found.has(name)) continue // the claude and render rows name a missing object
++    // The listing is served by both lobby models (2026-09-11 exe.dev shipped a
++    // policy model at noon and rolled it back by 3 PM): an attachment `tag:fleet`
++    // in `integrations list --json` is the grant whichever verb set the edge has.
++    if (found.get(name).tags.has('fleet')) continue
+     const res = policies.get(name)
+     const policy = res && res.code === 0 ? parsePolicy(res.stdout) : null
+     if (policy === null) {
+diff --git a/fleet/roles/reviewer.md b/fleet/roles/reviewer.md
+index a6c3f214108737fb2028f28f5d32495fd9eda3db..5997466269a8964ff0c26eef45356e401ff1aeee 100644
+--- a/fleet/roles/reviewer.md
++++ b/fleet/roles/reviewer.md
+@@ -69,6 +69,20 @@ is not a finding, and a non-zero one is already the fix loop's, not the
+ referee's — say what the diff gets wrong and leave the re-run to the loop that
+ owns it.
+ 
++An `EXAM CONCERN:` line, when present, is the one exception to the rule above
++against reading an implementer's report: it is the fix round's claim that a
++named case of this task's exam cannot pass for any output — that the red in
++EXAM EVIDENCE is the exam's fault, not the submission's. Check the claim
++against the exam file in PATCH. Rule 8's standard settles it: a pin no correct
++implementation could satisfy. Agree, and raise a `blocking` issue with actor
++`implementer` whose `proposedPatch` is the unified diff on that exam path —
++naming the path the exam lands at in PATCH — changing only the case named and
++nothing else the peer wrote. Disagree, and raise a `blocking` issue with actor
++`implementer` naming what the claim gets wrong, so the round that follows
++repairs the tree rather than the exam. Either way the claim is answered by a
++finding, never by silence: the exam is red, and a red exam blocks whatever you
++return.
++
+ CHECK EVIDENCE, when present, is the same for the GLOBAL CONSTRAINTS that carry
+ a `Check:` command: the driver ran each one itself, in this task's clone, on
+ the tree the patch describes. A blocking check that exited non-zero is already
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index f7e83e9c27cd696967d36f64bfc3d10d429f8980..92fe1acd34b38b334a1a8f4ce08d9be19d0b7c0f 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -385,6 +385,20 @@ export const examEvidenceBlock = (exam) => {
+     'stderr combined, last 4,000 characters.' +
+     '\n\n$ ' + exam.cmd + '\nexit ' + exam.exit + '\n' + exam.stdout
+ }
++// #908 — what the fix round SAID about that red. `fleet/roles/fix.md` tells a
++// round that finds a Proof `Test:` file red for a reason other than the missing
++// implementation to report it as a `concerns` entry prefixed `exam:` rather
++// than edit around it; when the exam is still red on the second pre-review pass
++// and such an entry is on the reply, the driver spends a review round on it
++// instead of parking `proof-red`. These lines are how the claim reaches the
++// referee — one per entry, verbatim, rendered AFTER the EXAM EVIDENCE block so
++// the referee reads the driver's own red output first and the claim about it
++// second. No entries renders nothing at all, which keeps the prompt of every
++// other task byte-identical to the one it had before this existed.
++export const examConcernBlock = (concerns) => {
++  if (!Array.isArray(concerns) || concerns.length === 0) return ''
++  return '\n\n' + concerns.map((c) => 'EXAM CONCERN: ' + String(c)).join('\n')
++}
+ // ── the state-exam record (spec 2026-09-09 §3.5, §3.6) ──────────────────────
+ // A state exam is an exam that measures a running app's STATE — the store diff
+ // it produced, whether the render happened, whether a mutant of the expected
+@@ -1950,6 +1964,10 @@ export async function runEngine({
+       }
+       return reds
+     }
++    // The fix round's `exam:` entries, when they bought the review round below
++    // (#908). Empty on every other task, which is what keeps their review
++    // prompts unchanged.
++    let examConcerns = []
+     let reds = await prePass()
+     if (reds.length) {
+       // ── the implementer's own plan-defect against a Proof leg (#722) ────
+@@ -2015,14 +2033,45 @@ export async function runEngine({
+       }
+       reds = await prePass()
+       if (reds.length) {
+-        const notes = reds.map((r) => r.line).join('; ')
+-        judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
+-          notes + ') — no reviewer was dispatched')
+-        log('task ' + task.id + ' proof-red after the pre-review repair round')
+-        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+-                 reviewVerdict: 'proof-red', notes,
+-                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+-                 ...examEditedField() }
++        // ── the fix round's `exam:` concern beside a still-red exam (#908) ──
++        // The park above assumes a red proof is the patch's own failure, which
++        // is the honest reading of a red `Run:` or `Check:` — those the graded
++        // party can always clear. A red exam is the one red it may not: since
++        // #653 the exam arrives over the Proof `Test:` paths from a peer, and a
++        // case no output can satisfy stays red however good the implementation
++        // is. The fix round is the round that holds those bytes, so it is the
++        // one party that can say so, and `fix.md` already tells it to say so as
++        // a `concerns` entry prefixed `exam:` rather than edit around it. That
++        // entry beside the same pass's red exam buys a reviewer instead of a
++        // park: the referee reads the exam in PATCH against the driver's own
++        // red output, and either proposes the patch that fixes the case or
++        // names what the claim gets wrong (reviewer.md rule 8). Nothing merges
++        // on the implementer's word — round 1 re-appends the red exam as a
++        // blocking issue whatever the reviewer returned, so a reviewer that
++        // waves it through still ends at `fix-loop-exhausted`.
++        const examStillRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
++        const examStillRed = Boolean(examStillRedLine) &&
++          reds.some((r) => r.line === examStillRedLine)
++        const entries = (examStillRed && impl.status === 'DONE_WITH_CONCERNS' &&
++          Array.isArray(impl.concerns))
++          ? impl.concerns.map(String).filter((c) => /^exam:/.test(c))
++          : []
++        if (!entries.length) {
++          const notes = reds.map((r) => r.line).join('; ')
++          judgmentCalls.push('task ' + task.id + ': still red after the pre-review repair round (' +
++            notes + ') — no reviewer was dispatched')
++          log('task ' + task.id + ' proof-red after the pre-review repair round')
++          return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
++                   reviewVerdict: 'proof-red', notes,
++                   tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
++                   ...examEditedField() }
++        }
++        examConcerns = entries
++        judgmentCalls.push('task ' + task.id + ': exam concern from the fix round beside a ' +
++          'still-red exam (' + entries.join('; ') + ') — review round 1 dispatched to judge ' +
++          'the exam instead of parking proof-red')
++        log('task ' + task.id + ' exam concern after the pre-review repair round — ' +
++          'the reviewer reads it')
+       }
+     }
+ 
+@@ -2058,6 +2107,10 @@ export async function runEngine({
+         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
+         examEditedDiffBlock(editedDiffs) +
+         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
++        // After the exam's own output, never before it (#908): the red bytes
++        // are the driver's fact and the concern is the graded party's claim
++        // about them.
++        examConcernBlock(examConcerns) +
+         checkEvidenceBlock(checkEvidence) +
+         // Read HERE, not at the pre-review pass: round 2 grades the tree the
+         // fix round left, so it must read the record that round's own exam
+diff --git a/fleet/target.mjs b/fleet/target.mjs
+index 2973272bf27432a704e3c8d564fb86decd81f0ac..441e704ab1f79c61c01f399884881dde604d6631 100644
+--- a/fleet/target.mjs
++++ b/fleet/target.mjs
+@@ -65,6 +65,11 @@ export const FLEET_POLICY = 'tag:fleet'
+ export const addCommand = (target) =>
+   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --policy '${FLEET_POLICY}'`
+ 
++/** The same creation on the attach-model lobby, and the attach verb for an existing object. */
++export const addCommandAttach = (target) =>
++  `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
++export const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
++
+ /** The read and the write that bring an existing object onto the policy. */
+ export const policyGetCommand = (name) => `integrations policy get ${name} --json`
+ export const policySetCommand = (name, revision) =>
+@@ -89,8 +94,24 @@ export function parsePolicy (stdout) {
+ 
+ /** Read the object's policy and, unless it already is `tag:fleet`, replace it
+  *  under the revision the read answered. Answers `kept` or `set`. */
+-async function ensurePolicy ({ exec, name }) {
+-  const res = await lobby(exec, policyGetCommand(name))
++async function ensurePolicy ({ exec, name, rows = null }) {
++  // The listing answers first: it is served by both lobby models (the policy
++  // model exe.dev shipped 2026-09-11 and rolled back the same afternoon), and an
++  // attachment `tag:fleet` there is the grant whichever verb wrote it.
++  const listed = rows ?? await listIntegrations(exec)
++  const row = listed.find((r) => r.name === name)
++  if (row && row.attachments.some((a) => a.kind === 'tag' && a.value === 'fleet')) {
++    return { policy: 'kept', command: null }
++  }
++  let res
++  try {
++    res = await lobby(exec, policyGetCommand(name))
++  } catch (error) {
++    // No `policy` subcommand: the lobby is on the attach model — attach by tag.
++    const command = attachCommand(name)
++    await lobby(exec, command)
++    return { policy: 'set', command }
++  }
+   const policy = parsePolicy(res.stdout)
+   if (policy === null) {
+     throw new LobbyError(`exe.dev integrations policy get ${name} --json answered no policy and revision:\n${res.stdout}`)
+@@ -103,13 +124,20 @@ async function ensurePolicy ({ exec, name }) {
+ 
+ async function add ({ exec, target }) {
+   const name = githubIntegrationFor(target)
+-  const existing = new Set((await listIntegrations(exec)).map((row) => row.name))
++  const rows = await listIntegrations(exec)
++  const existing = new Set(rows.map((row) => row.name))
+   if (existing.has(name)) {
+-    const ensured = await ensurePolicy({ exec, name })
++    const ensured = await ensurePolicy({ exec, name, rows })
+     return { verb: 'add', target, results: [{ name, action: 'skipped', command: ensured.command, policy: ensured.policy }] }
+   }
+-  const command = addCommand(target)
+-  await lobby(exec, command)
++  let command = addCommand(target)
++  try {
++    await lobby(exec, command)
++  } catch (error) {
++    // The attach-model lobby knows no `--policy`: create with `--attach tag:fleet`.
++    command = addCommandAttach(target)
++    await lobby(exec, command)
++  }
+   return { verb: 'add', target, results: [{ name, action: 'created', command, policy: 'set' }] }
+ }
+ 
+diff --git a/fleet/tests/test_doctor.mjs b/fleet/tests/test_doctor.mjs
+index 183d8e95a04dbe692ec3b0da45fa781e763377c9..45016e9acf9236f1fc324963fcc6c96177460744 100644
+--- a/fleet/tests/test_doctor.mjs
++++ b/fleet/tests/test_doctor.mjs
+@@ -609,21 +609,28 @@ for (const [label, answer] of [
+ }
+ 
+ {
+-  // The policy read is the truth, not the listing's attachments: an object the
+-  // listing shows on no attachment at all is green when its policy says
+-  // tag:fleet, and one the listing shows on tag:fleet is red when its policy
+-  // says otherwise.
++  // The listing's `tag:fleet` attachment is the grant under either lobby model
++  // (exe.dev shipped a policy model 2026-09-11 and rolled it back the same
++  // afternoon): an object the listing shows on tag:fleet is green whatever a
++  // policy read says, and only an object the listing shows unattached is judged
++  // by its policy.
+   const listed = [claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET, { attachments: ['tag:fleet'] })]
+-  const { result: offPolicy } = await run({
++  const { result: attached } = await run({
+     [CMD.list]: { code: 0, stdout: listing(listed) },
+     [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
+   }, { target: TARGET })
+-  const row = rowById(offPolicy, 'integrations')
+-  assert.equal(row.status, 'missing', "5 the target's object off the policy is red whatever the listing shows")
+-  assert.ok(row.detail.includes(GH), `5 the detail names the object; got ${row.detail}`)
+-  assert.ok(row.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${row.detail}`)
++  const row = rowById(attached, 'integrations')
++  assert.equal(row.status, 'ok', "5 an object the listing attaches by tag:fleet is green whatever the policy read says")
++  const { result: offPolicy } = await run({
++    [CMD.list]: { code: 0, stdout: listing([claudeMax({ attachments: ['tag:fleet'] }), ghObject(TARGET)]) },
++    [policyCmd(GH)]: policyAnswer(GH, 'tag:themis')
++  }, { target: TARGET })
++  const off = rowById(offPolicy, 'integrations')
++  assert.equal(off.status, 'missing', "5 an unattached object whose policy is not tag:fleet is red")
++  assert.ok(off.detail.includes(GH), `5 the detail names the object; got ${off.detail}`)
++  assert.ok(off.detail.includes('tag:themis'), `5 the detail quotes the selector it found; got ${off.detail}`)
+   for (const step of policyFix(GH)) {
+-    assert.ok(row.detail.includes(step), `5 the detail names \`${step}\`; got ${row.detail}`)
++    assert.ok(off.detail.includes(step), `5 the detail names \`${step}\`; got ${off.detail}`)
+   }
+ }
+ 
+diff --git a/fleet/tests/test_run_engine_exam_concern.mjs b/fleet/tests/test_run_engine_exam_concern.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..40142ccf7b1c5092e74b87d71752f446b93d3f3c
+--- /dev/null
++++ b/fleet/tests/test_run_engine_exam_concern.mjs
+@@ -0,0 +1,273 @@
++// fleet/tests/test_run_engine_exam_concern.mjs — an `exam:` concern beside a
++// still-red exam buys a reviewer, not a park.
++//
++// The exam is written against the task's Machine clauses, leg by leg. Every
++// assertion below names the leg it belongs to and the clause it comes from, so
++// a reader can map this file back to the contract:
++//
++//   M1 — when the pre-review pass after `fix:<id>:0` still has the exam red
++//        (its `reds` carry the `the Proof's exam failed:` line) and that fix
++//        round's reply is `DONE_WITH_CONCERNS` with at least one `concerns`
++//        entry whose text begins `exam:`, the driver does not return
++//        `reviewVerdict: 'proof-red'`; it pushes one `judgmentCalls` entry
++//        containing `exam concern` and the task id, then enters review round 1
++//        (`review:<id>:1` is dispatched) reading that second pass's evidence.
++//   M2 — the round-1 review prompt carries, for each such entry, one line
++//        `EXAM CONCERN: <entry verbatim>`, and every such line sits after the
++//        `EXAM EVIDENCE:` block's header line; a review prompt of a task whose
++//        fix round returned no `exam:` entry carries no line beginning
++//        `EXAM CONCERN: `.
++//   M3 — round 1 FIX_REQUIRED with one blocking `implementer` issue carrying a
++//        `proposedPatch`, and a `fix:<id>:1` that rewrites the exam so the
++//        round-2 exam exits 0: the row reads `status: 'done'`,
++//        `reviewVerdict: 'fixed'`, `proofFixes: 1`, `fixIterations: 1`,
++//        `examEdited` exactly that path, `coverage.tasks_merged` 1, the
++//        `review:<id>:2` prompt carries `EXAM EDITED: <path>` and
++//        `EXAM EDITED DIFF <path>:`, and the integration branch holds the
++//        rewritten exam bytes.
++//   M4 — the same run with a `fix:<id>:0` reply of `DONE` (no concerns) and the
++//        exam still red ends `status: 'failed'`, `reviewVerdict: 'proof-red'`,
++//        `proofFixes: 1`, with no `review:` label ever dispatched and
++//        `coverage.tasks_merged` 0.
++//   M5 — the same run as M3 but with a round-1 reviewer that returns `PASS` and
++//        a `fix:<id>:1` that leaves the exam red ends `status: 'failed'`,
++//        `reviewVerdict: 'fix-loop-exhausted'`, `examEdited` `[]`, and
++//        `coverage.tasks_merged` 0.
++//   M6 — `fleet/roles/reviewer.md` carries `EXAM CONCERN:` with `proposedPatch`
++//        within the 600 characters that follow it (newlines read as spaces),
++//        and the two named `report-format.md` table rows carry `EXAM CONCERN`.
++//
++// Legs: (a) M1, (b) M2, (c) M2, (d) M3, (e) M4, (f) M5, (g)(h)(i) M6.
++//
++// Everything below the agent seam is real (git, clones, capture, the real `sh`,
++// the fold kernel, the blob shas, the red-at-BASE exam run); only the judgments
++// are canned. The default `rolesDir` holds all seven role files, so the shared
++// rig from `_engine_helpers.mjs` is the whole rig.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import { rig, makeRepo, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-exam-concern-'))
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++
++// ── the wave entry: six-slot shaped, one Proof `Test:` path ──────────────────
++const MACHINE = 'Machine: M1. The tree holds `one.txt` whose content is "from T1".'
++const LEGS = '- Legs: (a) `one.txt` reads exactly "from T1" [M1]'
++const BODY = '**Claim:** the tree gains one.txt\n' + MACHINE +
++  '\n\n**Proof:**\n- Test: `t1_test.sh`\n' + LEGS
++const entry = (over = {}) => ({
++  id: 'T1', title: 'create one', files: ['one.txt'], tier: 'standard', review: 'lean',
++  writes: ['one.txt'], commutes: [],
++  interfaces: { consumes: [], produces: [] },
++  testCmd: 'bash t1_test.sh',
++  proofTests: ['t1_test.sh'],
++  body: BODY,
++  ...over,
++})
++
++// The exam whose third case no tree can pass: it compares `one.txt` against
++// two different literals. Red at BASE (the file is absent) and red on every
++// tree the implementer can write — which is what an `exam:` concern is about.
++const THIRD_LINE = '[ "$(cat one.txt)" = "something else" ]'
++const UNSAT_EXAM = '#!/bin/bash\n[ -f one.txt ] || exit 1\n' +
++  '[ "$(cat one.txt)" = "from T1" ] || exit 1\n' + THIRD_LINE + '\n'
++// The satisfiable exam: red at BASE, green once `one.txt` reads "from T1".
++const SAT_EXAM = '#!/bin/bash\n[ -f one.txt ] || exit 1\n[ "$(cat one.txt)" = "from T1" ]\n'
++
++// The fix round's claim about the exam, and the referee's patch for it.
++const EXAM_CONCERN = 'exam: t1_test.sh compares one.txt against two different ' +
++  'literals — cannot pass for any output'
++const OTHER_CONCERN = 'out-of-FILES: sim note'
++const PROPOSED_PATCH = [
++  '--- a/t1_test.sh',
++  '+++ b/t1_test.sh',
++  '@@ -1,4 +1,3 @@',
++  ' #!/bin/bash',
++  ' [ -f one.txt ] || exit 1',
++  '-[ "$(cat one.txt)" = "from T1" ] || exit 1',
++  '-' + THIRD_LINE,
++  '+[ "$(cat one.txt)" = "from T1" ]',
++  '',
++].join('\n')
++
++const writeExam = (cwd, text) => fs.writeFileSync(path.join(cwd, 't1_test.sh'), text)
++const writeOne = (cwd, text = 'from T1\n') => fs.writeFileSync(path.join(cwd, 'one.txt'), text)
++const concernsReply = (cwd, concerns) => ({
++  status: 'DONE_WITH_CONCERNS', summary: 'sim work done with concerns',
++  startHead: gitSync(['rev-parse', 'HEAD'], cwd), concerns,
++})
++const blockingWithPatch = () => ({
++  verdict: 'FIX_REQUIRED',
++  issues: [{ severity: 'blocking', actor: 'implementer',
++             detail: 'the third line of t1_test.sh is unsatisfiable',
++             proposedPatch: PROPOSED_PATCH }],
++})
++
++// One scenario of the rig: the examiner writes `examText`, the implementer does
++// `implWork`, and the three judged rounds are the caller's. Unique stamp and
++// runDir per scenario, as the sibling sims do.
++let seq = 0
++const scenario = async ({
++  examText = UNSAT_EXAM,
++  implWork = (cwd) => writeOne(cwd),
++  fix0 = (cwd) => concernsReply(cwd, [EXAM_CONCERN]),
++  review1 = () => blockingWithPatch(),
++  fix1 = (cwd) => { writeExam(cwd, SAT_EXAM); return doneImpl(cwd) },
++} = {}) => {
++  seq += 1
++  const stamp = 'examconcern' + seq
++  const repo = makeRepo(path.join(tmp, 'repo-' + stamp))
++  const runDir = path.join(tmp, 'run-' + stamp)
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      writeExam(cwd, examText)
++      return { status: 'DONE', summary: 'exam written', startHead: 'ignored' }
++    }
++    if (kind === 'impl') { implWork(cwd); return doneImpl(cwd) }
++    if (opts.label === 'fix:T1:0') return fix0(cwd)
++    if (opts.label === 'review:T1:1') return review1(cwd)
++    if (opts.label === 'fix:T1:1') return fix1(cwd)
++    if (opts.label === 'review:T1:2') return passReview()
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run, integ } = rig({ repo, runDir, waves: [[entry()]], stub, stamp })
++  const report = await run()
++  return { report, labels, prompts, integ, stamp, row: report.tasks[0] }
++}
++
++// ── legs (a), (b), (d): the route, its prompt line, and the merge ────────────
++{
++  const { report, labels, prompts, integ, stamp, row } = await scenario()
++
++  // (a) [M1] the still-red exam beside an `exam:` concern reaches review round 1
++  // instead of parking, and the driver says so in one judgment call.
++  assert.ok(labels.includes('review:T1:1'),
++    '(a)[M1] `review:T1:1` is dispatched after the `exam:` concern: ' + labels.join(','))
++  assert.notEqual(row.reviewVerdict, 'proof-red',
++    '(a)[M1] the row is not parked at proof-red: ' + row.notes)
++  const calls = report.judgmentCalls.filter((j) => j.includes('exam concern'))
++  assert.equal(calls.length, 1,
++    '(a)[M1] exactly one judgment call names the exam concern: ' +
++    JSON.stringify(report.judgmentCalls))
++  assert.ok(calls[0].includes('T1'),
++    '(a)[M1] and it names the task id: ' + calls[0])
++
++  // (b) [M2] the round-1 prompt carries the concern verbatim on its own line,
++  // after the EXAM EVIDENCE header line — the red output first, the claim about
++  // it second.
++  const lines = prompts['review:T1:1'].split('\n')
++  const iConcern = lines.indexOf('EXAM CONCERN: ' + EXAM_CONCERN)
++  const iEvidence = lines.findIndex((l) => l.startsWith('EXAM EVIDENCE:'))
++  assert.ok(iConcern >= 0,
++    '(b)[M2] the round-1 prompt carries the line `EXAM CONCERN: ' + EXAM_CONCERN + '`: ' +
++    JSON.stringify(lines.filter((l) => l.startsWith('EXAM'))))
++  assert.ok(iEvidence >= 0,
++    '(b)[M2] the round-1 prompt carries the EXAM EVIDENCE block header line')
++  assert.ok(iConcern > iEvidence,
++    '(b)[M2] and the EXAM CONCERN line sits after it (at ' + iConcern + ' vs ' + iEvidence + ')')
++
++  // (d) [M3] the referee's patch is bought, the fix round rewrites the exam,
++  // the edit is recorded and named to the re-review, and the task merges.
++  assert.equal(row.status, 'done', '(d)[M3] the row is done: ' + row.notes)
++  assert.equal(row.reviewVerdict, 'fixed', '(d)[M3] reviewVerdict')
++  assert.equal(row.proofFixes, 1, '(d)[M3] proofFixes')
++  assert.equal(row.fixIterations, 1, '(d)[M3] fixIterations')
++  assert.deepEqual(row.examEdited, ['t1_test.sh'], '(d)[M3] examEdited')
++  assert.equal(report.coverage.tasks_merged, 1, '(d)[M3] tasks_merged')
++  const round2 = prompts['review:T1:2'].split('\n')
++  assert.ok(round2.includes('EXAM EDITED: t1_test.sh'),
++    '(d)[M3] the `review:T1:2` prompt carries the line `EXAM EDITED: t1_test.sh`')
++  assert.ok(round2.includes('EXAM EDITED DIFF t1_test.sh:'),
++    '(d)[M3] and the line `EXAM EDITED DIFF t1_test.sh:`')
++  const merged = gitSync(['show', 'ultra/integration-' + stamp + ':t1_test.sh'], integ)
++  assert.ok(!merged.includes(THIRD_LINE),
++    '(d)[M3] the integration branch holds the rewritten exam, without the ' +
++    'unsatisfiable line: ' + JSON.stringify(merged))
++}
++
++// ── leg (c): a fix round with no `exam:` entry gets no EXAM CONCERN line ─────
++{
++  // The exam is satisfiable here: red on the first pass (the implementer wrote
++  // the wrong bytes), green on the second (the fix round repaired the tree).
++  // Its single concern is not an `exam:` one, so the prompt carries no line.
++  const { labels, prompts } = await scenario({
++    examText: SAT_EXAM,
++    implWork: (cwd) => writeOne(cwd, 'wrong\n'),
++    fix0: (cwd) => { writeOne(cwd); return concernsReply(cwd, [OTHER_CONCERN]) },
++    review1: () => passReview(),
++  })
++  assert.ok(labels.includes('review:T1:1'),
++    '(c)[M2] a repaired pass reaches review round 1 as it always did: ' + labels.join(','))
++  const carried = prompts['review:T1:1'].split('\n').filter((l) => l.startsWith('EXAM CONCERN: '))
++  assert.deepEqual(carried, [],
++    '(c)[M2] a fix round with no `exam:` entry carries no EXAM CONCERN line: ' +
++    JSON.stringify(carried))
++}
++
++// ── leg (e): the park is unchanged when the fix round claimed nothing ────────
++{
++  const { report, labels, row } = await scenario({ fix0: (cwd) => doneImpl(cwd) })
++  assert.equal(row.status, 'failed', '(e)[M4] the row is failed')
++  assert.equal(row.reviewVerdict, 'proof-red', '(e)[M4] reviewVerdict')
++  assert.equal(row.proofFixes, 1, '(e)[M4] proofFixes')
++  assert.deepEqual(labels.filter((l) => l.startsWith('review:')), [],
++    '(e)[M4] no reviewer was ever dispatched: ' + labels.join(','))
++  assert.equal(report.coverage.tasks_merged, 0, '(e)[M4] nothing merges')
++}
++
++// ── leg (f): a reviewer that waves the red through still cannot merge it ─────
++{
++  const { report, row } = await scenario({
++    review1: () => passReview(),
++    fix1: (cwd) => doneImpl(cwd),
++  })
++  assert.equal(row.status, 'failed', '(f)[M5] the row is failed: ' + row.notes)
++  assert.equal(row.reviewVerdict, 'fix-loop-exhausted', '(f)[M5] reviewVerdict')
++  assert.deepEqual(row.examEdited, [], '(f)[M5] the exam was never edited')
++  assert.equal(report.coverage.tasks_merged, 0, '(f)[M5] nothing merges')
++}
++
++// ── legs (g), (h), (i): the role file and the two report-format rows [M6] ────
++const readRepoFile = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
++
++{
++  // (g) reviewer.md tells the referee what an EXAM CONCERN line is and what to
++  // return for it — a `proposedPatch` — within the 600 characters that follow.
++  const flat = readRepoFile('../roles/reviewer.md').split('\n').join(' ')
++  const RE = () => new RegExp('EXAM CONCERN:.{0,600}proposedPatch')
++  assert.ok(RE().test(flat),
++    '(g)[M6] fleet/roles/reviewer.md matches /EXAM CONCERN:.{0,600}proposedPatch/ ' +
++    'with newlines read as spaces')
++  // The negative control: with the literal removed, the match is gone — so the
++  // assertion above is answered by that passage and nothing else.
++  assert.ok(!RE().test(flat.split('EXAM CONCERN:').join('')),
++    '(g)[M6] and fails to match once its `EXAM CONCERN:` occurrences are removed')
++}
++
++{
++  const doc = readRepoFile('../../skills/ultrapowers/references/report-format.md').split('\n')
++  // (h)[M6] and (i)[M6] — the two rows this route changes the meaning of. The
++  // selection is the Proof's own: the table row whose line begins `| ` then the
++  // backticked key.
++  for (const [leg, re] of [['(h)', /^\| .tasks\[\]\.reviewVerdict. \|/],
++                           ['(i)', /^\| .tasks\[\]\.proofFixes. \|/]]) {
++    const rows = doc.filter((l) => re.test(l))
++    assert.ok(rows.length >= 1,
++      leg + '[M6] at least one report-format.md row matches ' + re)
++    for (const r of rows) {
++      assert.ok(r.includes('EXAM CONCERN'),
++        leg + '[M6] the row names EXAM CONCERN: ' + r)
++    }
++  }
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_target.mjs b/fleet/tests/test_target.mjs
+index c622b7e3bcf059a6268742dbd766c088693c6ca3..0785dfcf25f5c5a567d42d311e4c67bd7cffe8be 100644
+--- a/fleet/tests/test_target.mjs
++++ b/fleet/tests/test_target.mjs
+@@ -72,8 +72,8 @@ const rules = (integrations = [], {
+   const exec = makeExec({ rules: rules([{ name: GH, attachments: ['tag:fleet'] }]) })
+   const result = await target({ argv: [TARGET], exec })
+   assert.deepEqual(
+-    exec.lobby(), ['integrations list --json', policyGetCommand(GH)],
+-    '(2) an existing object on the policy issues the one policy read and no write'
++    exec.lobby(), ['integrations list --json'],
++    '(2) an existing object the listing attaches by tag:fleet needs no policy read and no write'
+   )
+   assert.deepEqual(exec.mutating(), [], '(2) nothing mutates when the policy is already tag:fleet')
+   assert.deepEqual(result.results.map((r) => [r.action, r.policy]), [['skipped', 'kept']], '(2) skipped, policy kept')
+diff --git a/skills/ultralearn/scripts/catch_counter.py b/skills/ultralearn/scripts/catch_counter.py
+index d3cd04b4fc117d88bcac6c4ac51de5557d5d0f45..e4a7b32a2b25b3bccd8e6b1c16c81eca6526a927 100644
+--- a/skills/ultralearn/scripts/catch_counter.py
++++ b/skills/ultralearn/scripts/catch_counter.py
+@@ -220,8 +220,8 @@ def derive_catches(run_dir):
+     empty union is dropped, so a path no receipt entry backs — and every path
+     of a run with no receipt at all — carries no entry here. This row is a
+     reading of the log, and never invents a row for a file the log is silent
+-    about: the report's tree walk over the repository is the only source of
+-    `unobserved` rows."""
++    about: `catch_report.py`'s tree walk over the repository is the only source
++    of `unobserved` rows."""
+     run_dir = Path(run_dir)
+     events = read_events(run_dir)
+     report = _read_json(run_dir / "report.json")
+@@ -234,9 +234,10 @@ def derive_catches(run_dir):
+     started_at = status.get("startedAt") if isinstance(status, dict) else None
+     if not isinstance(started_at, str):
+         started_at = None
+-    # "Neither readable" is the pair of Nones `_read_json` returns for a
+-    # missing, unreadable or malformed file.
+-    have_record = report is not None or receipt is not None
++    # "Neither readable" means neither file is a JSON object: `_read_json`
++    # returns None for a missing, unreadable or malformed file, and a bare
++    # string or list is no record either (#860).
++    have_record = isinstance(report, dict) or isinstance(receipt, dict)
+     exam_edited = _exam_edited(report)
+     writes = _writes(receipt)
+ 
+diff --git a/skills/ultralearn/scripts/catch_report.py b/skills/ultralearn/scripts/catch_report.py
+index db927761ef0342ce7d99d780057ccf2f26e3bbe2..811be1585b88b726d3f809635bdabc4effc0a2ef 100644
+--- a/skills/ultralearn/scripts/catch_report.py
++++ b/skills/ultralearn/scripts/catch_report.py
+@@ -55,8 +55,9 @@ NO_STAMP_NOTE = "%d row(s) carry no startedAt — recount them"
+ 
+ HEADER = "| test | catches | touching runs | status |"
+ # GFM renders a pipe table only when the header is followed by a delimiter row,
+-# one cell per column — the same row `merge_ledger.py` writes under its own
+-# header. Without it the whole report reads as one paragraph of pipes.
++# one cell per column — a delimiter row of the same shape as the one
++# `merge_ledger.py` writes under its own (five-cell) header. Without it the
++# whole report reads as one paragraph of pipes.
+ DELIMITER = "| --- | --- | --- | --- |"
+ CURVE_HEADING = "## Zero-catch curve"
+ 
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 1a9319d6731f43fefb9772af345f986dbd37a578..f18829b2da9352b585d59be3f676d14fb93c1413 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -84,14 +84,14 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `tasks[].headSha` | no | The implementer's final worktree HEAD (what the merge agent merges); distinct from `commit` below |
+ | `tasks[].commit` | no | The implementer's final commit on the task's worktree branch (self-reported); the integration merge SHA lives in `waveMerges[].headSha` |
+ | `headSha` provenance | — | headSha values are derived at finalization from git ancestry by `finalize_report.py --report <file> --repo <path> --branch <integrationBranch>` (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §3): each merged task's `headSha` is its branch tip (`git rev-parse <branch>`), asserted to be an ancestor of the integration branch tip; the final MERGED `waveMerges` entry's `headSha` is the integration branch tip itself. finalize_report.py rewrites the saved result envelope's `result.*` headSha fields in place before ultra_gate.py runs. Intermediate (non-final) `waveMerges[].headSha` values are left as model-recorded — context, not authority; no mechanical consumer reads them. The `<runDir>/heads/` sidecars no longer exist. |
+-| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` (passed first review) or `fixed` (passed after the fix round). Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues after the capped fix round), `blocked-after-fix` (implementer blocked during the fix round), `agent-error` (the agent call itself failed), `lost-coordinates` (reported done without driver-captured coordinates — downgraded to failed; see the matching judgmentCalls entry), `reanchor-failed` (0.3.0 engine: a later wave's clone could not be re-anchored onto the adopted head — failed closed before dispatch, since a mis-anchored patch would silently revert the prior wave), `proof-red` (the driver's own `Run:`/`Check:` pass was still red after its one pre-review repair round — no reviewer was ever dispatched, because a patch whose own proof fails is not a patch a reviewer can grade), `plan-defect` (#722 — the implementer's own reply named a `plan-defect:` concern against a Proof leg, by the leg's label, while the driver's pre-review pass had that task's exam red; the implementer may not edit the exam, so no fix round could close it and none was dispatched — the task is parked for the plan, carries `actor` below, and the concern travels to the gate under `deferredVerification`). An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02). |
++| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` (passed first review) or `fixed` (passed after the fix round). Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues after the capped fix round), `blocked-after-fix` (implementer blocked during the fix round), `agent-error` (the agent call itself failed), `lost-coordinates` (reported done without driver-captured coordinates — downgraded to failed; see the matching judgmentCalls entry), `reanchor-failed` (0.3.0 engine: a later wave's clone could not be re-anchored onto the adopted head — failed closed before dispatch, since a mis-anchored patch would silently revert the prior wave), `proof-red` (the driver's own `Run:`/`Check:` pass was still red after its one pre-review repair round — no reviewer was ever dispatched, because a patch whose own proof fails is not a patch a reviewer can grade; one case now proceeds instead (#908) — when the still-red proof is the task's own exam and the `fix:<id>:0` reply was `DONE_WITH_CONCERNS` carrying an `exam:` concern, the fix round's claim that a named exam case cannot pass for any output, the task goes to review round 1 with that entry on the prompt as an `EXAM CONCERN:` line and its row then reads like any reviewed task's — `clean`, `fixed` or `fix-loop-exhausted`, never `proof-red`. Nothing merges on that claim alone: a red exam stays a blocking issue in every review round whatever the reviewer returned, so only a fix round that actually turns the exam green ends the task `done`), `plan-defect` (#722 — the implementer's own reply named a `plan-defect:` concern against a Proof leg, by the leg's label, while the driver's pre-review pass had that task's exam red; the implementer may not edit the exam, so no fix round could close it and none was dispatched — the task is parked for the plan, carries `actor` below, and the concern travels to the gate under `deferredVerification`). An edited exam is never a verdict of its own: it is recorded under `examEdited` and reviewed (2026-09-02). |
+ | `tasks[].actor` | no | Who a failed row's question belongs to. Present only on a row the driver parked for the **plan** (#722), where it reads `plan`: the implementer reported a leg-labelled `plan-defect:` concern against a Proof leg whose exam the pre-review pass found red, so the driver spent no `fix:<id>:0` round and dispatched no reviewer (`reviewVerdict: 'plan-defect'`, `fixIterations: 0`, `proofFixes: 0`, `notes` = the matching concerns joined by `; `). Absent from every other row — a row without the key is a row whose findings the implementer owned. Not the same field as a reviewer issue's `actor`, which routes a finding inside a review round rather than ending the task |
+ | `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent (minor review findings and implementer concerns) |
+ | `tasks[].tier` | no | Resolved model alias the implementer ran at (`haiku`/`sonnet`/`opus`) |
+ | `tasks[].review` | no | Review depth applied: `lean` (one pass) or `peer` (two) |
+ | `tasks[].fixIterations` | no | Fix rounds consumed (0 = clean on first review) |
+ | `tasks[].proposedPatches` | no | The number of blocking issues in the review round that carried a non-empty `proposedPatch`; `0` when none, on a clean first review, and on a task that failed before any review |
+-| `tasks[].proofFixes` | no | Pre-review repair rounds this task consumed: `0` when the driver's own `Run:`/`Check:` pass was green the first time it ran (and on every task the run declared no commands for), `1` when a red command bought one `fix:<id>:0` round before any reviewer was dispatched. Never more than 1 — a second red pass ends the task at `proof-red`. Read it beside `fixIterations`, which counts only the rounds a REVIEWER's findings drove: a task can be `proofFixes: 1, fixIterations: 0` — the driver caught it, and the reviewers then found nothing |
++| `tasks[].proofFixes` | no | Pre-review repair rounds this task consumed: `0` when the driver's own `Run:`/`Check:` pass was green the first time it ran (and on every task the run declared no commands for), `1` when a red command bought one `fix:<id>:0` round before any reviewer was dispatched. Never more than 1 — a second red pass ends the task at `proof-red`, with one exception (#908): a still-red exam beside an `exam:` concern on the `fix:<id>:0` reply goes to review round 1 with an `EXAM CONCERN:` line instead of parking, so the row keeps `proofFixes: 1` and carries a reviewed verdict with `fixIterations` counting the rounds that followed. Read it beside `fixIterations`, which counts only the rounds a REVIEWER's findings drove: a task can be `proofFixes: 1, fixIterations: 0` — the driver caught it, and the reviewers then found nothing |
+ | `tasks[].stateExams` | no | The task's state-exam record, read back by the driver from `<runDir>/state-exams/task-<id>/` — one element per exam stem, `[]` when the task's exam wrote nothing there (which is every task whose exam is not a state exam, and every `failed` row that never got that far; the key is present on every row either way). A stem's directories are named `<stem>-<pass>`, split at the last `-`, and the element is read from that stem's highest-numbered pass, never `base` and never any other non-numeric suffix. The exam's own passes are `0` (the pre-review pass) and `2` (a round-2 re-execution after a fix), so the row carries the last record the task's own tree produced; `base` is the at-BASE probe's pass, taken on a tree that predates the patch, so a stem whose only directory is `-base` contributes no element at all. Each element is `{ exam, store_ms, render_ms, render, mutant_killed, contract }`: `exam` is the stem; `store_ms` and `render` (`ran`/`skipped`) are read from that directory's `walls.json`; `render_ms` is that file's reading when `render` is `ran` and `null` when the render was skipped; `mutant_killed` is `killed` from `mutant.json` — the driver's own proof that the exam would have caught a wrong state; `contract` is `ok` when `contract.json`'s `breach` is `null` and the breach line verbatim otherwise. Unreadable or missing JSON leaves `null` in the fields it could not supply rather than dropping the element — evidence, not control flow. When every element's `mutant_killed` is `true`, the driver also tells that task's reviewer so, as a `STATE EXAM:` block naming each exam and its mutant path: duty 5 is settled for those exam files and for nothing else |
+ | `tasks[].exam` | no | #553 — what the wave-0 examiner established for this task, in the examiner's own clone (since #653 the examiner and the implementer start together, and the driver hands the exam into the implementer's clone once both have returned). `null` when no exam was dispatched (the wave entry carried no non-empty `proofTests`, or no per-task `testCmd` to run them with); `red` when the task's own `testCmd` failed against the examiner's tests at BASE (the exam establishes something); `green-at-base` when it passed there — recorded with a judgment call, because an exam that is already green establishes nothing; `blocked` when the examiner reported BLOCKED, returned no reply, or had no role file, in which case the implementer proceeds unexamined. Driver-derived: the blob shas and the red run are `exec` in the examiner's clone, never a model report (Amendment 10). |
+ | `tasks[].examEdited` | no | Present on every row returned after the implementer when the wave-0 examiner recorded an exam (#553): the `proofTests` paths whose blob no longer matches what the examiner left — edited by a fix round (since #653 the implementer never holds the exam while it works, so only a fix round can move it) — `[]` when none moved. The driver never refuses the edit: it names the paths to the reviewer as `EXAM EDITED` and pushes one matching `judgmentCalls` entry; the reviewer decides whether the exam was wrong (reviewer.md rule 8). Absent when no exam was recorded. |
+@@ -107,7 +107,7 @@ The engine (`fleet/run-engine.mjs`) returns a single structured report object; `
+ | `coverage` | no | Structural completeness signal: `{ tasks_merged, tasks_planned, complete }`. `tasks_planned` = total tasks across all waves; `tasks_merged` = count of distinct task branches that landed via a `MERGED` wave; `complete` = `tasks_merged >= tasks_planned`. A `complete: false` with a green `tests.passed` is the false-green the gate must catch — only existing tests can fail, so a dropped/never-merged task leaves the suite green. The engine reports the *count* it can observe; confirming each merged task's files are actually present is the completeness critic's git tree-diff |
+ | `missingDeliverables` | no | One entry per `failed` (or cascade-blocked) task whose plan-declared `files` did not reach the integration branch: `{ task, files }`. Tasks with no declared file scope are omitted. The completeness critic reads this list to target its git presence check; the gate renders it under unfinished |
+ | `gitVerified` | no | Boolean: did the completeness critic confirm it reviewed the tree at the integration branch tip it derives itself — `git rev-parse HEAD` inside the integration worktree (already required to be on the integration branch), then `git checkout --detach` and a re-confirm — rather than a recorded slot (#259; `docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §2)? The model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority — a mismatch against the critic's derived tip also fails the check. True only when the critic returned `onIntegrationHead: true`; false when it returned `onIntegrationHead: false` (it could not confirm — possible checkout drift or a failing detach, #29) or when the critic died/degraded (no flag). A false value also pushes a checkout-drift judgment call. **Step-5 gating:** `gitVerified` MUST be true to Approve — a false value makes the completeness review unverified and is treated as `BLOCKED` pending a manual integration-tree check. This is the report-driven hardening of the gate's `git rev-parse <integrationBranch>` == `waveMerges[last].headSha` check. **Patch-input engine note (Amendment 10, `fleet/run-engine.mjs`):** on the driver path the critic performs no detach and records no `onIntegrationHead` — `gitVerified` is DRIVER-derived instead: true iff at least one wave merged, the integration branch tip equals the last adopt receipt's sha, every task reported merged has a fold event in its wave's fold log (the receipt-based #70 check, surfaced as `ancestryMisses`), AND the completeness critic actually returned a result (a dead critic withholds it, preserving the fail-closed gate invariant). Same Step-5 gating either way |
+-| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task reviewer returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no reviewer can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`, plus one item for each task the driver parked for the plan before any fix round (#722): the row that carries `actor: plan`, whose `why` is the implementer's own leg-naming `plan-defect:` concern verbatim rather than a reviewer's detail. A parked task is the one `failed` row that still asks the plan a question, and its files are also listed under `missingDeliverables`; `deliverable` is the task id. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |
++| `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit — a command the driver executed is never `manual` on its own, because the integrated run evidence already carries its result, and a recorded exit code is not a judgment call. When that evidence settles the deliverable's presence and only the judgment remains, the `why` quotes the settling command verbatim from the `$ <cmd>` line of the integrated run evidence, and `ackDecision` pre-authorizes the resulting `deferred:manual` ack when the quoted command is an integrated `Run:` the driver executed that exited 0; a `deferred:manual` ack whose detail quotes no green run verbatim — or quotes a red one as well — is not pre-authorized and parks for an operator, which is the safe failure for a paraphrase (#753)), `plan-defect` (a per-task reviewer returned a blocking issue whose actor is the **plan**, not the implementer: a machine clause that cannot hold, an interface the task was never given. No fix round can close it and no reviewer can wave it through, so the task merges as reviewed and the defect travels here — one item per distinct detail, on tasks whose final `status` is `done`, plus one item for each task the driver parked for the plan before any fix round (#722): the row that carries `actor: plan`, whose `why` is the implementer's own leg-naming `plan-defect:` concern verbatim rather than a reviewer's detail. A parked task is the one `failed` row that still asks the plan a question, and its files are also listed under `missingDeliverables`; `deliverable` is the task id. `ackDecision` does not pre-authorize the resulting `deferred:plan-defect` ack: an operator reads it or the run does not merge). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. One exception, read by `gate_check.py` before it types the ack (#863): a `browser` or `external` item whose subject is the render (its `deliverable`/`why` says so) is checked against `tasks[].stateExams` — the named task's rows, or every task's rows when it names no task id — and when there is at least one row and every row reads `render: "ran"`, the run's own record contradicts the deferral (the driver ran those exams against the live renderer during the suite), so the item is not an ack at all: it lands in the gate output's `notes` as `{ type: "satisfied-by-record", downgraded: "deferred:<reason>", detail, rows }`, naming each row, and gates nothing. A `render: "skipped"` row, a task with no record, or a deferral whose subject is not the render parks exactly as before. Empty when the critic flagged none |
+ | `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314)); **degradation** — verify the affected slice (budget-deferred, integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo (endpoint not in run, dependent before prerequisite, endpoints share a wave). New cases slot into an existing kind rather than lengthening this reference. |
+ | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
+ | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic derives its own detach target — `git rev-parse HEAD` inside the integration worktree — then runs `git checkout --detach` and re-confirms `git rev-parse HEAD` still matches; the model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority, and a mismatch against the derived tip also blocks. If it cannot (an unresolvable branch/HEAD, or the detach itself fails — e.g. a dirty/conflicted integration worktree) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). Each finding is an object `{severity, detail}` (#474): **`blocking`** means the critic found a named defect that must not be merged as-is — an unmet plan requirement, a missing deliverable, a claim the integrated tree contradicts; **`minor`** means everything the operator should see but that does not stop the run. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
+@@ -135,7 +135,7 @@ When the workflow completes, the main agent renders the report as a concise huma
+ 7. **Test result** — pass or fail, the command run, and any relevant output excerpt. When `coverage.complete` is false, show a ⚠ "green suite but `tasks_merged`/`tasks_planned` tasks merged" beside the result: a passing suite over an incomplete merge is a false-green (only existing tests can fail), and the unmerged tasks' deliverables are itemized in `missingDeliverables` under unfinished.
+ 8. **Judgment calls** — render entries grouped by kind, leading with `disagreement` and `binding`, then `degradation`, folding `autonomy` last, so the human can prioritize high-signal items (likely issues) before low-signal FYIs; within disagreement, cluster plan-defect: entries together so all plan divergences read as one group.
+ 9. **Unfinished / completeness findings** — anything deferred, plus the critic's unmet-requirement/unverified-claim/untested-path findings; empty means nothing was left behind. Surface `gitVerified` here: a false value means the completeness review is unverified (the critic could not confirm it was on the integration tree, #29) and the gate must treat it as `BLOCKED`.
+-9a. **Deferred verification — confirm before trusting green** — render `deferredVerification` grouped by `reason`, applying the taxonomy and gating rule from the field reference above: `runtime`/`external` groups require the explicit operator acknowledgement; `browser`/`manual` remain a verify-then-approve checklist. Omit the section when the array is empty.
++9a. **Deferred verification — confirm before trusting green** — render `deferredVerification` grouped by `reason`, applying the taxonomy and gating rule from the field reference above: `runtime`/`external` groups require the explicit operator acknowledgement; `browser`/`manual` remain a verify-then-approve checklist; a gate-output `notes` entry of type `satisfied-by-record` is rendered beside the item it downgraded, with its rows, and asks for nothing. Omit the section when the array is empty.
+ 10. **Post-merge runbook** — the `release`/`manual` tasks excluded at compile time,
+    rendered verbatim in document order. Sourced from the compiler's
+    `post_merge_runbook` (`compile_plan.py` output), **not** from the engine's report —
+diff --git a/skills/ultrapowers/scripts/gate_check.py b/skills/ultrapowers/scripts/gate_check.py
+index 91b62e342a675b2809c171c60b20697e35265698..5e1febc38300acf88cf84b9f98ae85e119c02ed4 100755
+--- a/skills/ultrapowers/scripts/gate_check.py
++++ b/skills/ultrapowers/scripts/gate_check.py
+@@ -4,7 +4,9 @@
+ The orchestrator saves the workflow's report JSON verbatim to disk and runs
+ this script; the verdict JSON on stdout and the exit code are the gate.
+ Exit 0 = PASS, 2 = NEEDS_ACK (operator must acknowledge the listed items
+-before Approve), 1 = BLOCKED (do not Approve).
++before Approve), 1 = BLOCKED (do not Approve). `notes` carries what did NOT
++park: a `satisfied-by-record` entry is a deferral the run's own state-exam
++record contradicted (#863), and it gates nothing.
+ 
+ Fail-closed by construction: git is the ground truth the report is checked
+ AGAINST, so a corrupted or hand-edited report can only produce BLOCKED,
+@@ -18,6 +20,7 @@ from __future__ import annotations
+ 
+ import argparse
+ import json
++import re
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -29,15 +32,58 @@ def sh(cmd, cwd):
+     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+ 
+ 
+-def emit(checks, acks, context=None):
++def emit(checks, acks, context=None, notes=None):
+     blocked = any(not c["ok"] for c in checks)
+     verdict = "BLOCKED" if blocked else ("NEEDS_ACK" if acks else "PASS")
+-    out = {"verdict": verdict, "checks": checks, "acks": acks}
++    out = {"verdict": verdict, "checks": checks, "acks": acks,
++           "notes": list(notes or [])}
+     out.update(context or {})
+     print(json.dumps(out, indent=2))
+     return 1 if blocked else (2 if acks else 0)
+ 
+ 
++def _mentions_render(text):
++    return "render" in text.lower()
++
++
++def _named_tasks(text, task_ids):
++    """Task ids the deferral names, as whole words, in its own text."""
++    return [t for t in task_ids
++            if re.search(r"(?<![\w-])" + re.escape(t) + r"(?![\w-])", text)]
++
++
++def satisfied_by_record(d, report):
++    """#863 — a `deferred:external`/`deferred:browser` item whose subject is the
++    render branch, for a task whose state-exam record shows every render
++    `ran`, is contradicted by the run's own record: the driver executed those
++    exams against the live renderer during the suite. Returns the rows that
++    settle it, or [] when the record settles nothing (which parks, as before).
++
++    The rows are the deferral's named task's (`deliverable`/`why` naming a
++    task id); a deferral naming no task is read against every task's record.
++    One `render: "skipped"` row, or no row at all, is no contradiction.
++    """
++    if d.get("reason") not in ("external", "browser"):
++        return []
++    text = str(d.get("deliverable", "")) + " " + str(d.get("why", ""))
++    if not _mentions_render(text):
++        return []
++    tasks = [t for t in (report.get("tasks") or []) if isinstance(t, dict)]
++    by_id = {str(t.get("task")): t for t in tasks if t.get("task")}
++    named = _named_tasks(text, list(by_id))
++    pool = [by_id[t] for t in named] if named else tasks
++    rows = []
++    for t in pool:
++        for e in (t.get("stateExams") or []):
++            if isinstance(e, dict):
++                rows.append({"task": t.get("task"), "exam": e.get("exam"),
++                             "render": e.get("render"),
++                             "render_ms": e.get("render_ms")})
++    if not rows or not all(r["render"] == "ran" for r in rows):
++        return []
++    return rows
++
++
+ def main(argv=None):
+     ap = argparse.ArgumentParser()
+     ap.add_argument("--run-id", required=True)
+@@ -48,7 +94,7 @@ def main(argv=None):
+ 
+     context = {"repo": str(a.repo.resolve())}
+ 
+-    checks, acks = [], []
++    checks, acks, notes = [], [], []
+ 
+     def check(name, ok, detail=""):
+         checks.append({"name": name, "ok": bool(ok), "detail": detail})
+@@ -131,14 +177,25 @@ def main(argv=None):
+                                "incomplete merge is a false-green"})
+     for d in (report.get("deferredVerification") or []):
+         d = d or {}
++        detail = (str(d.get("deliverable", "?")) + " — " + str(d.get("why", "")) +
++                  (" [structural false-green: sandbox could not "
++                   "execute it against the target]"
++                   if d.get("reason") in ("runtime", "external") else ""))
++        rows = satisfied_by_record(d, report)
++        if rows:
++            # The record contradicts the deferral (#863): a note, not a park.
++            notes.append({"type": "satisfied-by-record",
++                          "downgraded": "deferred:" + str(d.get("reason")),
++                          "detail": detail + " — satisfied by the record: " +
++                                    ", ".join("task " + str(r["task"]) + " exam " +
++                                              str(r["exam"]) + " render ran (" +
++                                              str(r["render_ms"]) + " ms)"
++                                              for r in rows),
++                          "rows": rows})
++            continue
+         acks.append({"type": "deferred:" + str(d.get("reason", "unknown")),
+-                     "detail": str(d.get("deliverable", "?")) + " — " +
+-                               str(d.get("why", "")) +
+-                               (" [structural false-green: sandbox could not "
+-                                "execute it against the target]"
+-                                if d.get("reason") in ("runtime", "external")
+-                                else "")})
+-    return emit(checks, acks, context)
++                     "detail": detail})
++    return emit(checks, acks, context, notes)
+ 
+ 
+ if __name__ == "__main__":
+@@ -150,5 +207,5 @@ if __name__ == "__main__":
+         print(json.dumps({"verdict": "BLOCKED",
+                           "checks": [{"name": "internal", "ok": False,
+                                       "detail": str(e)}],
+-                          "acks": []}))
++                          "acks": [], "notes": []}))
+         sys.exit(1)
+diff --git a/tests/test_gate_check.py b/tests/test_gate_check.py
+index d2ddfb70c569a322c291ea77380b589747b99a6b..837900f348a61b9dfd664b2f3a3000cf9fd85de5 100644
+--- a/tests/test_gate_check.py
++++ b/tests/test_gate_check.py
+@@ -221,3 +221,67 @@ def test_verdict_echoes_repo_context_and_no_lock(tmp_path):
+     assert [c["name"] for c in out["checks"]] == [
+         "report-parse", "clean-tree", "wave-merges", "head-match",
+         "git-verified", "ancestry", "deliverables"]
++
++
++# #863 — a `deferred:external`/`deferred:browser` ack whose subject is the
++# render branch, on a task whose state-exam rows all read `render: "ran"`, is
++# contradicted by the run's own record; the driver already ran those exams
++# against the live renderer, so the item is a note, not a park.
++RUN4_DEFERRAL = {
++    "deliverable": "task-3: the render branch end to end against a live renderer",
++    "reason": "external",
++    "why": "cannot be re-measured here — the suite forbids network",
++}
++
++
++def exam_row(exam, render, ms):
++    return {"exam": exam, "store_ms": 12, "render_ms": ms, "render": render,
++            "mutant_killed": True, "contract": "ok"}
++
++
++def test_deferral_the_record_contradicts_is_a_note_not_a_park(tmp_path):
++    repo, head = make_repo(tmp_path)
++    r = good_report(head)
++    r["deferredVerification"] = [dict(RUN4_DEFERRAL)]
++    r["tasks"] = [{"task": "task-3", "status": "done", "stateExams": [
++        exam_row("buy-milk", "ran", 2499), exam_row("empty-todo-refused", "ran", 2292)]}]
++    p, out = run_gate(repo, r)
++    assert p.returncode == 0 and out["verdict"] == "PASS", out
++    assert out["acks"] == []
++    (note,) = out["notes"]
++    assert note["type"] == "satisfied-by-record"
++    assert note["downgraded"] == "deferred:external"
++    assert [x["exam"] for x in note["rows"]] == ["buy-milk", "empty-todo-refused"]
++    assert "exam buy-milk render ran (2499 ms)" in note["detail"]
++    assert "exam empty-todo-refused render ran (2292 ms)" in note["detail"]
++
++
++def test_deferral_with_a_skipped_render_still_parks(tmp_path):
++    repo, head = make_repo(tmp_path)
++    r = good_report(head)
++    r["deferredVerification"] = [dict(RUN4_DEFERRAL)]
++    r["tasks"] = [{"task": "task-3", "status": "done", "stateExams": [
++        exam_row("buy-milk", "ran", 2499), exam_row("empty-todo-refused", "skipped", None)]}]
++    p, out = run_gate(repo, r)
++    assert p.returncode == 2 and out["verdict"] == "NEEDS_ACK"
++    assert [a["type"] for a in out["acks"]] == ["deferred:external"]
++    assert out["notes"] == []
++
++
++def test_deferral_with_no_matching_row_still_parks(tmp_path):
++    repo, head = make_repo(tmp_path)
++    r = good_report(head)
++    # The named task has no state-exam record at all; another task's rendered
++    # exams are not its evidence.
++    r["deferredVerification"] = [dict(RUN4_DEFERRAL)]
++    r["tasks"] = [{"task": "task-3", "status": "done", "stateExams": []},
++                  {"task": "task-1", "status": "done", "stateExams": [exam_row("x", "ran", 5)]}]
++    p, out = run_gate(repo, r)
++    assert p.returncode == 2 and [a["type"] for a in out["acks"]] == ["deferred:external"]
++    # And an external deferral whose subject is not the render is never read
++    # against the record, however green the rows.
++    r["deferredVerification"] = [{"deliverable": "task-1: the Stripe webhook",
++                                  "reason": "external", "why": "no network"}]
++    p, out = run_gate(repo, r)
++    assert p.returncode == 2 and [a["type"] for a in out["acks"]] == ["deferred:external"]
++    assert out["notes"] == []
+diff --git a/tests/test_ultralearn_catches.py b/tests/test_ultralearn_catches.py
+index cda99567a00c6324d95825c531da2abfdd0d71db..577296c45facc92d92324969fada51dd14ccad7f 100644
+--- a/tests/test_ultralearn_catches.py
++++ b/tests/test_ultralearn_catches.py
+@@ -14,6 +14,7 @@ collection error.
+ Every fixture run directory is built under pytest's `tmp_path`: the record this
+ counter reads is the engine's, and the exam writes no bytes into the tree.
+ """
++import ast
+ import hashlib
+ import importlib.util
+ import json
+@@ -641,15 +642,23 @@ def test_task1_e_outcomes_is_the_six_member_tuple(tmp_path):
+ 
+ 
+ def test_task1_e_outcomes_is_defined_and_used(tmp_path):
+-    """Task 1 leg (e)/M3: the name `OUTCOMES` occurs at least twice in
+-    `skills/ultralearn/scripts/catch_counter.py` — its definition and a use —
+-    the exam's reading of the Proof's `grep -c OUTCOMES … -ge 2`."""
+-    counter = _load()
+-    lines = [line for line in SCRIPT.read_text(encoding="utf-8").splitlines()
+-             if "OUTCOMES" in line]
+-    assert len(lines) >= 2, (
+-        "OUTCOMES is defined and used, so at least two lines name it; got %r"
+-        % (lines,))
++    """Task 1 leg (e)/M3: `skills/ultralearn/scripts/catch_counter.py` defines
++    the module-level name `OUTCOMES` exactly once and reads it at least once
++    outside that definition — pinned by AST (#860), so deleting the tuple
++    unpack that uses it fails this leg, where a substring count did not."""
++    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
++    definitions = [node for node in tree.body
++                   if isinstance(node, ast.Assign)
++                   and any(isinstance(t, ast.Name) and t.id == "OUTCOMES"
++                           for t in node.targets)]
++    assert len(definitions) == 1, (
++        "OUTCOMES is defined once at module level; got %d" % len(definitions))
++    defined_at = definitions[0].lineno
++    uses = [node for node in ast.walk(tree)
++            if isinstance(node, ast.Name) and node.id == "OUTCOMES"
++            and isinstance(node.ctx, ast.Load)
++            and node.lineno != defined_at]
++    assert uses, "OUTCOMES is read at least once outside its definition"
+ 
+ 
+ # --- task 1 leg (f) — M4: no writes behind a path, and the docstring --------

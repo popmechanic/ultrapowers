@@ -1,0 +1,39 @@
+{
+  "engineHead": "0578f61297723e189a2483ceb65876b5deccebe1",
+  "attempts": {
+    "1": {
+      "tip": "d6f2258e4d53daa72cfe72d28a32610cae325f7f",
+      "candidate": "be10cdfcfe1d2ea9895c56d712f4f4d835998017",
+      "disposition": "suite red",
+      "reason": "fleet/tests/exams/run_109/test_doctor_kata.mjs red on fleet/doctor.mjs",
+      "pathsJoined": 2,
+      "resolversDispatched": 0,
+      "suite": "none",
+      "checks": [
+        {
+          "check": "parse",
+          "path": "fleet/doctor.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "parse",
+          "path": "fleet/tests/test_doctor.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/exams/run_109/test_kata_hub.mjs",
+          "path": "fleet/doctor.mjs",
+          "result": "pass"
+        },
+        {
+          "check": "exam",
+          "exam": "fleet/tests/exams/run_109/test_doctor_kata.mjs",
+          "path": "fleet/doctor.mjs",
+          "result": "fail"
+        }
+      ],
+      "checkRetries": 0
+    }
+  }
+}

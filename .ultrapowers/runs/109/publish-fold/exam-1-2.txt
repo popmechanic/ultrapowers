@@ -1,0 +1,18 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: 4 [M6 leg g] a policy read exiting 1: no detail names integrations attach — the edge refuses it; got "kata's policy is not tag:fleet (the read exited 1), so no fleet VM is granted it — ssh exe.dev \"integrations attach kata tag:fleet\" (or, when the lobby serves the policy model: ssh exe.dev \"integrations policy get kata --json\" then ssh exe.dev \"integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>\")"
+
+true !== false
+
+    at file:///home/exedev/target/.claude/ultrapowers/run-run-109/clones/integration/fleet/tests/exams/run_109/test_doctor_kata.mjs:308:10 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: true,
+  expected: false,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.20.0
