@@ -65,6 +65,7 @@ import { simEnv } from './_helpers.mjs'
 import {
   makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl,
 } from './_engine_helpers.mjs'
+import { createRunWorker, ATTACHMENT_WINDOW_MS } from '../run-worker.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-infra-retry-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
@@ -748,6 +749,176 @@ const withWatchStub = async (body) => {
   assert.deepEqual(
     report.judgmentCalls.filter((j) => String(j).includes('parked for one barrier retry')), [],
     '(857-d)/R3: and no barrier park was taken: ' + shown(report))
+}
+
+// ══ #903 — an edge 403 rides the infra lane, with the REAL worker in the rig ═
+// Everything above cans the agent seam. These legs put `createRunWorker`
+// itself under the implementer label, driving a fake `claude` that answers
+// exe.dev's plain-text `403 integration not found or not attached to this VM
+// (trace: <32 hex>)`, with a `curl` stub first on PATH standing in for
+// reflection. Reviews and the critic stay canned. What is proved is the whole
+// path: envelope -> classify -> reflection probe -> `null` -> AGENT_NULL ->
+// parked-infra -> the barrier retry -> a second dispatch that finishes the
+// task -> the run completes, the trace id on the event log.
+{
+  const TRACE = '53af9083708deefaa364aa37e112695d'
+  const edgeTmp = fs.mkdtempSync(path.join(tmp, 'edge-'))
+  const bin = path.join(edgeTmp, 'bin')
+  fs.mkdirSync(bin)
+  // reflection, canned by FAKE_REFLECTION.
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/bin/bash
+case "$FAKE_REFLECTION" in
+  attached) printf '%s' '{"integrations":[{"name":"github"},{"name":"claude-max"}]}' ;;
+  absent) printf '%s' '{"integrations":[{"name":"github"}]}' ;;
+  *) exit 22 ;;
+esac
+`)
+  fs.chmodSync(path.join(bin, 'curl'), 0o755)
+  // The fake CLI: its scenario is the file named after its cwd's basename
+  // (`task-T1`) under FAKE_SCENARIO_DIR, which the stub writes before each
+  // dispatch. `success` writes the task's file and answers doneImpl's shape.
+  const fakeCli = path.join(edgeTmp, 'fake-claude')
+  fs.writeFileSync(fakeCli, `#!/usr/bin/env node
+const fs = require('fs')
+const path = require('path')
+const out = (line, code) => process.stdout.write(line + '\\n', () => process.exit(code))
+const id = path.basename(process.cwd()).replace(/^task-/, '')
+const s = fs.readFileSync(path.join(process.env.FAKE_SCENARIO_DIR, id), 'utf8').trim()
+if (s === 'edge403') { out(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:403,result:'API Error: 403 integration not found or not attached to this VM (trace: ${TRACE})',modelUsage:{}}), 1); return }
+if (s === 'auth403') { out(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:403,result:'API Error: 403 {"type":"error","error":{"type":"authentication_error","message":"OAuth token has been revoked"}}',modelUsage:{}}), 1); return }
+fs.writeFileSync(path.join(process.cwd(), id + '.txt'), 'v1\\n')
+out(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reason:'completed',api_error_status:null,structured_output:{status:'DONE',summary:'sim work done',startHead:process.env.FAKE_START_HEAD},total_cost_usd:0,modelUsage:{}}), 0)
+`)
+  fs.chmodSync(fakeCli, 0o755)
+
+  const taskOf = (id) => ({
+    id, title: 't', files: [id + '.txt'], tier: 'standard', review: 'lean',
+    writes: [id + '.txt'], commutes: [], proofTests: [], proofRuns: [], body: 'sim task ' + id,
+  })
+  const readAll = (runDir) => readEvents(runDir)
+
+  // One run: `plan` maps a task id to the scenario of each of its implementer
+  // dispatches in order (the last one repeats); `reflection` cans the probe;
+  // `clock` is the worker's `now`.
+  async function edgeRun({ ids, plan, reflection, clock }) {
+    const { stamp, repo, runDir } = freshNames('e')
+    const scenDir = path.join(runDir, 'scenarios')
+    fs.mkdirSync(scenDir, { recursive: true })
+    const labels = []
+    const counts = new Map()
+    let worker = null
+    const stub = (prompt, opts, cwd) => {
+      labels.push(opts.label)
+      const kind = opts.label.split(':')[0]
+      if (kind === 'review') return passReview()
+      if (opts.label === 'integration') return cleanCritic()
+      if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
+      const id = opts.label.split(':')[1]
+      const n = (counts.get(id) || 0) + 1
+      counts.set(id, n)
+      const steps = plan[id]
+      fs.writeFileSync(path.join(scenDir, id), steps[Math.min(n, steps.length) - 1])
+      return worker(prompt, opts)
+    }
+    const built = rig({
+      repo, runDir, waves: [ids.map(taskOf)], stub, stamp, extraArgs: { infraBackoffMs: 0 },
+    })
+    const eventsFile = path.join(runDir, 'events.jsonl')
+    worker = createRunWorker({
+      runId: 'run-' + stamp, workersDir: path.join(runDir, 'workers'),
+      cwdFor: (opts) => path.join(built.clonesDir, 'task-' + opts.label.split(':')[1]),
+      cli: fakeCli,
+      env: simEnv({ bin, env: { FAKE_SCENARIO_DIR: scenDir, FAKE_REFLECTION: reflection, FAKE_START_HEAD: built.base } }),
+      onEvent: (e) => fs.appendFileSync(eventsFile, JSON.stringify(e) + '\n'),
+      ...(clock ? { now: clock } : {}),
+    })
+    const report = await built.run()
+    return { report, labels, runDir, events: readAll(runDir) }
+  }
+  const kinds = (events, kind) => events.filter((e) => e.kind === kind)
+
+  // (a) one edge 403, reflection lists claude-max -> retried in the infra
+  // lane, the run completes, the trace id on the event log.
+  {
+    const { report, labels, events } = await edgeRun({
+      ids: ['T1'], plan: { T1: ['edge403', 'success'] }, reflection: 'attached',
+    })
+    assert.equal(countOf(labels, 'impl:T1'), 2,
+      '#903 (a): the implementer is dispatched twice — once refused, once at the barrier: ' + labels.join(','))
+    assert.equal(report.tasks[0].status, 'done',
+      '#903 (a): the run completes: ' + JSON.stringify(report.tasks[0]) + ' | ' + shown(report))
+    assert.ok(report.judgmentCalls.some((j) => String(j).includes('parked on infra-death, recovered at the barrier retry')),
+      '#903 (a): recovered through the infra lane: ' + shown(report))
+    const sightings = kinds(events, 'worker:edge-403')
+    assert.equal(sightings.length, 1, '#903 (a): one worker:edge-403 event: ' + JSON.stringify(sightings))
+    assert.equal(sightings[0].trace, TRACE, '#903 (a): the trace id is on the event log')
+    assert.equal(sightings[0].probe, 'attached')
+    assert.equal(sightings[0].resolution, 'infra')
+    const ends = kinds(events, 'worker:end').filter((e) => e.label === 'impl:T1')
+    assert.equal(ends[0].class, 'infra', '#903 (a): worker:end is the infra shape: ' + JSON.stringify(ends[0]))
+    assert.equal(ends[0].status, 403)
+    assert.equal(ends[0].trace, TRACE, '#903 (a): and carries the trace id')
+    assert.equal(kinds(events, 'run:fatal').length, 0, '#903 (a): no run:fatal on one worker\'s 403')
+  }
+
+  // (b) reflection answers without claude-max -> the run fails naming the
+  // attachment; the trace id is on the record.
+  {
+    const { report, events } = await edgeRun({
+      ids: ['T1'], plan: { T1: ['edge403', 'success'] }, reflection: 'absent',
+    })
+    assert.equal(report.tasks[0].status, 'failed',
+      '#903 (b): the run fails: ' + JSON.stringify(report.tasks[0]))
+    assert.match(String(report.tasks[0].notes), /claude-max is not attached to this VM/,
+      '#903 (b): naming the attachment: ' + JSON.stringify(report.tasks[0]))
+    const fatal = kinds(events, 'run:fatal')
+    assert.equal(fatal.length, 1, '#903 (b): one run:fatal: ' + JSON.stringify(fatal))
+    assert.equal(fatal[0].class, 'attachment')
+    assert.equal(fatal[0].trace, TRACE, '#903 (b): the trace id rides on run:fatal')
+    assert.ok(kinds(events, 'worker:refused').some((e) => e.why === 'run-fatal'),
+      '#903 (b): the retry is refused before spawning')
+  }
+
+  // (c) Anthropic's JSON authentication_error 403 -> fatal as today, no sighting.
+  {
+    const { report, events } = await edgeRun({
+      ids: ['T1'], plan: { T1: ['auth403', 'success'] }, reflection: 'attached',
+    })
+    assert.equal(report.tasks[0].status, 'failed', '#903 (c): fatal as today: ' + JSON.stringify(report.tasks[0]))
+    assert.match(String(report.tasks[0].notes), /API refused with 403 \(credential or config\)/)
+    assert.equal(kinds(events, 'worker:edge-403').length, 0, '#903 (c): no attachment sighting')
+    assert.equal(kinds(events, 'run:fatal')[0].class, 'credential')
+  }
+
+  // (d) two independent workers refused inside the window, reflection
+  // attached -> the run fails; 121 s apart -> both recover at the barrier.
+  {
+    const { report, events } = await edgeRun({
+      ids: ['T1', 'T2'], plan: { T1: ['edge403', 'success'], T2: ['edge403', 'success'] },
+      reflection: 'attached', clock: () => 5_000_000,
+    })
+    assert.deepEqual(report.tasks.map((t) => t.status), ['failed', 'failed'],
+      '#903 (d): two sightings inside the window fail the run: ' + JSON.stringify(report.tasks) + ' | ' + shown(report))
+    const fatal = kinds(events, 'run:fatal')
+    assert.equal(fatal.length, 1, '#903 (d): one run:fatal: ' + JSON.stringify(fatal))
+    assert.match(fatal[0].detail, /two workers within 120 s/)
+    assert.equal(fatal[0].trace, TRACE)
+    assert.equal(kinds(events, 'worker:edge-403').length, 2)
+  }
+  {
+    let t = 6_000_000
+    const { report, events } = await edgeRun({
+      ids: ['T1', 'T2'], plan: { T1: ['edge403', 'success'], T2: ['edge403', 'success'] },
+      reflection: 'attached', clock: () => { t += ATTACHMENT_WINDOW_MS + 1000; return t },
+    })
+    assert.deepEqual(report.tasks.map((t) => t.status), ['done', 'done'],
+      '#903 (d): 121 s apart is two blinks — both recover: ' + JSON.stringify(report.tasks) + ' | ' + shown(report))
+    assert.equal(kinds(events, 'run:fatal').length, 0)
+    assert.equal(kinds(events, 'worker:edge-403').length, 2)
+    assert.ok(kinds(events, 'worker:edge-403').every((e) => e.resolution === 'infra' && e.trace === TRACE))
+  }
+
+  console.log('ok - #903: the edge 403 rides the infra lane end to end; the trace id reaches the event log')
 }
 
 console.log('ALL TESTS PASSED')

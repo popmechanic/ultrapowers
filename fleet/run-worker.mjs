@@ -41,7 +41,7 @@
 // repro ids (R-o*, R-l*) are cited per row. Two things are NOT reproductions and
 // are marked ASSUMPTION where they are relied on.
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -334,6 +334,8 @@ export function lastResult(stdout) {
 //   'retry'     -> the driver retries with tier escalation (runTaskInner's shape)
 //   'fail-task' -> this task fails, recorded with its class; the wave proceeds
 //   'fail-run'  -> credential/config: nothing downstream can succeed
+//   'probe'     -> an edge 403 (#903): not a verdict until the dispatcher's
+//                  resolveAttachment() turns it into 'null' or 'fail-run'
 // Transient at the API layer -> null -> AGENT_NULL -> the barrier-retry park
 // lane. 500/502/504 join 429/503/529 because they are the same CLASS of
 // failure — an upstream that may work in a minute — and the alternative is
@@ -343,7 +345,82 @@ export function lastResult(stdout) {
 export const INFRA_STATUSES = [429, 500, 502, 503, 504, 529]
 export const CREDENTIAL_STATUSES = [401, 403, 404]
 
-export function classify({ exitCode, envelope }) {
+// ── the edge 403 (#903) ──────────────────────────────────────────────────────
+// exe.dev's edge answers a request whose integration it cannot resolve with a
+// plain-text 403 — `integration not found or not attached to this VM (trace:
+// <32 hex>)` — before anything reaches Anthropic. Run-95 (2026-09-11) got one
+// on ONE call while `claude-max` was attached the whole time and the bearer
+// was valid for hours more; the credential row read the status alone and
+// ended the run. The string is byte-identical for an integration that was
+// detached and one that never existed, so the text separates nothing about
+// the cause — what it separates is the LAYER: Anthropic's own refusal through
+// the proxy is a JSON `authentication_error` document, and that one stays
+// fatal under CREDENTIAL_STATUSES. The 32-hex trace id is the only handle
+// exe.dev support can resolve, so it rides on every record of the sighting
+// (`worker:edge-403`, `worker:end`, `run:fatal`, the engine's
+// `driver:infra-retry`).
+//
+// The attachment is ASKED, not inferred: reflection is the VM-native listing
+// of what is attached (`auto:all`, no credential). `claude-max` present there
+// means the edge lookup blinked — the infra lane's case, `null`, one
+// re-dispatch after the backoff. Absent there is a run that cannot proceed,
+// named as the attachment it is missing. A reflection that cannot answer
+// (curl non-zero, a body that is not the listing) is the lookup path itself
+// being sick, and that is the infra lane too — a probe never manufactures a
+// fatal out of a flake.
+//
+// One worker's single 403 is never the run's verdict. Two INDEPENDENT workers
+// (different labels) refused by the edge inside `ATTACHMENT_WINDOW_MS` are: a
+// lookup that fails twice in two minutes is not a blink, whatever reflection
+// says about the policy at that moment.
+export const EDGE_ATTACHMENT_RE = /integration not found or not attached to this VM \(trace: ([0-9a-f]{32})\)/
+export const ATTACHMENT_WINDOW_MS = 120 * 1000
+export const REFLECTION_URL = 'https://reflection.int.exe.xyz/integrations'
+export const REFLECTION_INTEGRATION = 'claude-max'
+
+// The trace id of an edge refusal in this worker's output, or null. The CLI
+// carries the API's error text in the envelope's `result`; the raw stdout is
+// read as well, so a CLI that moves the text still yields the id.
+export function edgeTraceOf(envelope, stdout) {
+  for (const text of [envelope && envelope.result, stdout]) {
+    const m = EDGE_ATTACHMENT_RE.exec(String(text == null ? '' : text))
+    if (m) return m[1]
+  }
+  return null
+}
+
+// Ask reflection whether `claude-max` is attached to this VM:
+// `curl -fsS --max-time 5 https://reflection.int.exe.xyz/integrations`, the
+// answer's `.integrations[].name` read in-process — the VM ships no `jq`
+// (sandbox-boot.sh reads every value with sed for the same reason). Answers
+// `{ attached: true | false | null, detail, names }`; null is "could not tell".
+export function probeReflection({ env = process.env, spawnSyncFn = spawnSync,
+                                  url = REFLECTION_URL, name = REFLECTION_INTEGRATION } = {}) {
+  let r
+  try {
+    r = spawnSyncFn('curl', ['-fsS', '--max-time', '5', url], { env, encoding: 'utf8', timeout: 10 * 1000 })
+  } catch (e) {
+    return { attached: null, names: [], detail: 'reflection probe could not start: ' + String((e && e.message) || e) }
+  }
+  if (!r || r.error || r.status !== 0) {
+    const why = String((r && r.stderr) || (r && r.error && r.error.message) || '').trim().slice(0, 200)
+    return { attached: null, names: [],
+      detail: 'reflection probe failed (curl exit ' + (r && r.status != null ? r.status : 'none') + (why ? ': ' + why : '') + ')' }
+  }
+  let doc
+  try { doc = JSON.parse(String(r.stdout || '')) } catch {
+    return { attached: null, names: [], detail: 'reflection answered something that is not JSON' }
+  }
+  const list = doc && Array.isArray(doc.integrations) ? doc.integrations : null
+  if (!list) return { attached: null, names: [], detail: 'reflection answered without an integrations list' }
+  const names = list.map((i) => i && i.name).filter((n) => typeof n === 'string')
+  const attached = names.includes(name)
+  return { attached, names,
+    detail: attached ? name + ' is attached (reflection lists it)'
+      : name + ' is not attached to this VM (reflection lists: ' + (names.join(', ') || 'nothing') + ')' }
+}
+
+export function classify({ exitCode, envelope, stdout }) {
   // 143 = SIGTERM, and there is NO ENVELOPE AT ALL — stdout is empty (R-o7a).
   // Retryable once, then the task fails. Checked first precisely because there
   // is nothing else to read.
@@ -381,9 +458,22 @@ export function classify({ exitCode, envelope }) {
       return { outcome: 'null', class: 'infra', status,
         detail: 'API-layer failure ' + status + ' — terminal here; barrier retry owns it' }
     }
+    if (status === 403) {
+      // The edge's own refusal, told from Anthropic's by its sentence (#903).
+      // Not a verdict yet: `probe` hands it to the dispatcher, which holds the
+      // two-worker window and asks reflection — classify() itself spawns
+      // nothing.
+      const trace = edgeTraceOf(envelope, stdout)
+      if (trace) {
+        return { outcome: 'probe', class: 'attachment', status, trace,
+          detail: 'the edge refused this VM with 403 (integration not found or not attached to this VM, trace ' + trace + ')' }
+      }
+    }
     if (CREDENTIAL_STATUSES.includes(status)) {
       // Nothing downstream can succeed, and every further worker would burn a
-      // process to learn the same thing.
+      // process to learn the same thing. A 403 reaching here is Anthropic's
+      // own JSON `authentication_error` (or any body that is not the edge's
+      // sentence): the bearer, not the attachment — fatal as it always was.
       return { outcome: 'fail-run', class: 'credential', status,
         detail: 'API refused with ' + status + ' (credential or config) — the run cannot proceed' }
     }
@@ -776,6 +866,9 @@ export function createRunWorker(cfg) {
     // for every faster one. Falls back to `timeoutMs` for roles it omits.
     timeoutMsFor,
     maxTurns, maxBudgetUsd, effortFor, onEvent = () => {}, spawnFn = spawn,
+    // #903: the reflection probe's spawn and the clock the two-worker window
+    // reads — both seams, so a sim can can the listing and move the clock.
+    spawnSyncFn = spawnSync, now = Date.now,
   } = cfg
 
   // Latched by the first fail-run verdict; see the 'fail-run' case below for why
@@ -795,6 +888,43 @@ export function createRunWorker(cfg) {
   // id from the label plus its attempt number, the same `.2` the evidence
   // directory gets from `nextWorkerDir`; the first keeps the re-drive property.
   const dispatched = new Map()
+  // #903: every edge 403 this run has seen, `{ label, at, trace }`. Read by
+  // `resolveAttachment` for the two-worker rule; a sighting is kept whatever
+  // it resolved to, so an earlier blink still counts against the next one.
+  const sightings = []
+
+  // A `probe` verdict from classify() becomes the worker's real verdict here:
+  //   two independent labels inside ATTACHMENT_WINDOW_MS  -> fail-run
+  //   else reflection says claude-max is NOT listed         -> fail-run
+  //   else (listed, or reflection could not tell)           -> null, infra
+  // and one `worker:edge-403` event records the sighting, its trace, what the
+  // probe said and how it resolved.
+  const resolveAttachment = (verdict, label) => {
+    const at = now()
+    const trace = verdict.trace
+    const other = sightings.find((s) => s.label !== label && (at - s.at) <= ATTACHMENT_WINDOW_MS)
+    sightings.push({ label, at, trace })
+    let out, probe = null
+    if (other) {
+      out = { outcome: 'fail-run', class: 'attachment', status: verdict.status, trace,
+        detail: 'the edge refused two workers within ' + Math.round(ATTACHMENT_WINDOW_MS / 1000) + ' s (' +
+          other.label + ' trace ' + other.trace + ', ' + label + ' trace ' + trace + ') — the ' +
+          REFLECTION_INTEGRATION + ' attachment is not answering this VM; the run cannot proceed' }
+    } else {
+      probe = probeReflection({ env, spawnSyncFn })
+      if (probe.attached === false) {
+        out = { outcome: 'fail-run', class: 'attachment', status: verdict.status, trace,
+          detail: 'the edge refused with 403 and ' + probe.detail + ' (trace ' + trace + ') — the run cannot proceed' }
+      } else {
+        out = { outcome: 'null', class: 'infra', status: verdict.status, trace,
+          detail: 'edge 403 (trace ' + trace + '), ' + probe.detail + ' — terminal here; the infra lane owns the retry' }
+      }
+    }
+    onEvent({ kind: 'worker:edge-403', label, trace, status: verdict.status,
+      probe: probe === null ? 'skipped' : probe.attached === null ? 'inconclusive' : probe.attached ? 'attached' : 'not-listed',
+      sightings: sightings.length, resolution: out.outcome === 'null' ? 'infra' : 'fail-run', detail: out.detail })
+    return out
+  }
 
   return async function agent(prompt, opts = {}) {
     // Refuse BEFORE spawning. This is the whole of the credential row's value:
@@ -856,9 +986,11 @@ export function createRunWorker(cfg) {
       if (envelope) fs.writeFileSync(path.join(dir, 'envelope.json'), JSON.stringify(envelope, null, 2))
     }
     recordEnvelopeDenials({ workersDir, label: opts.label, role, envelope })
-    const verdict = classify({ exitCode, envelope })
+    let verdict = classify({ exitCode, envelope, stdout })
+    if (verdict.outcome === 'probe') verdict = resolveAttachment(verdict, opts.label)
     onEvent({ kind: 'worker:end', label: opts.label, role, sessionId, exitCode, timedOut,
       outcome: verdict.outcome, class: verdict.class, status: verdict.status || null,
+      ...(verdict.trace ? { trace: verdict.trace } : {}),
       meter: envelope ? meterOf(envelope) : null })
 
     // #702 Task 1 — the slice, after `worker:end` and before the verdict is
@@ -911,7 +1043,8 @@ export function createRunWorker(cfg) {
         // engine still sees ordinary task failures and writes an honest report;
         // what it does not do is pay for them.
         runFatal = runFatal || { detail: verdict.detail, label: opts.label, status: verdict.status ?? null }
-        onEvent({ kind: 'run:fatal', label: opts.label, detail: verdict.detail, status: verdict.status ?? null })
+        onEvent({ kind: 'run:fatal', label: opts.label, detail: verdict.detail, status: verdict.status ?? null,
+          class: verdict.class, ...(verdict.trace ? { trace: verdict.trace } : {}) })
         throw new Error('RUN_FATAL: ' + verdict.detail + ' (label ' + opts.label + ')')
       }
       default:

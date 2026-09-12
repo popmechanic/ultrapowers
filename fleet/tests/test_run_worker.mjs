@@ -29,7 +29,10 @@ import { EventEmitter } from 'node:events'
 import {
   ROLES, roleForLabel, sessionIdFor, buildArgs, lastResult, classify, meterOf,
   createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES, recordEnvelopeDenials,
+  EDGE_ATTACHMENT_RE, ATTACHMENT_WINDOW_MS, REFLECTION_URL, REFLECTION_INTEGRATION,
+  edgeTraceOf, probeReflection,
 } from '../run-worker.mjs'
+import { simEnv } from './_helpers.mjs'
 import { isSchemaTrip } from '../run-engine.mjs'
 // #702 Task 1 reads its two new exports off the NAMESPACE rather than adding
 // them to the named import above: a missing named export is a link-time
@@ -400,6 +403,11 @@ if (s === 'unicode') {
   return
 }
 if (s === 'maxturns') { out(JSON.stringify({type:'result',subtype:'error_max_turns',is_error:true,terminal_reason:'max_turns',api_error_status:null,structured_output:null}), 1); return }
+// #903: exe.dev's edge refusing the VM — the plain-text sentence with its
+// 32-hex trace id, carried in \`result\` exactly as the CLI carries an API error.
+if (s === 'edge403') { out(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:403,result:'API Error: 403 integration not found or not attached to this VM (trace: ' + process.env.FAKE_TRACE + ')'}), 1); return }
+// #903: Anthropic's own 403 through the proxy — the JSON authentication_error document.
+if (s === 'auth403') { out(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:403,result:'API Error: 403 {"type":"error","error":{"type":"authentication_error","message":"OAuth token has been revoked"}}'}), 1); return }
 process.exit(9)
 `)
 fs.chmodSync(fakeCli, 0o755)
@@ -1065,6 +1073,192 @@ await assert.rejects(
   }
 
   console.log('ok - #762 [M5]: the worker passes the prompt\'s TEST COMMAND to its child as FLEET_TEST_CMD')
+}
+
+// ── #903 — an edge 403 is an attachment question, not a revoked credential ───
+// exe.dev's edge answers `403 integration not found or not attached to this VM
+// (trace: <32 hex>)` in plain text before anything reaches Anthropic; run-95
+// died on one such call while `claude-max` was attached the whole time. The
+// worker tells that sentence from Anthropic's JSON `authentication_error`,
+// asks reflection whether `claude-max` is attached, and lands the call in the
+// infra lane when it is — the run fails only on a negative probe or on two
+// independent workers refused inside ATTACHMENT_WINDOW_MS.
+{
+  const TRACE = '53af9083708deefaa364aa37e112695d'
+  const TRACE2 = '0123456789abcdef0123456789abcdef'
+  const EDGE = 'API Error: 403 integration not found or not attached to this VM (trace: ' + TRACE + ')'
+  const AUTH = 'API Error: 403 {"type":"error","error":{"type":"authentication_error","message":"OAuth token has been revoked"}}'
+
+  // The constants the ticket names.
+  assert.deepEqual(CREDENTIAL_STATUSES, [401, 403, 404], '#903: 401, 403 and 404 stay credential statuses')
+  assert.equal(ATTACHMENT_WINDOW_MS, 120 * 1000, '#903: the two-worker window is 120 s')
+  assert.equal(REFLECTION_URL, 'https://reflection.int.exe.xyz/integrations')
+  assert.equal(REFLECTION_INTEGRATION, 'claude-max')
+  assert.ok(EDGE_ATTACHMENT_RE.test('integration not found or not attached to this VM (trace: ' + TRACE + ')'))
+
+  // classify(): the edge sentence with a trace is `probe`/`attachment`, never
+  // fail-run on its own; the trace rides on the verdict.
+  {
+    const v = classify({ exitCode: 1, envelope: env({ is_error: true, terminal_reason: 'api_error', api_error_status: 403, result: EDGE }) })
+    assert.equal(v.outcome, 'probe', '#903 classify: an edge 403 is not a verdict yet: ' + JSON.stringify(v))
+    assert.equal(v.class, 'attachment')
+    assert.equal(v.status, 403)
+    assert.equal(v.trace, TRACE, '#903 classify: the 32-hex trace id is captured')
+    // The sentence in the raw stdout alone still yields the id.
+    const v2 = classify({ exitCode: 1, envelope: env({ is_error: true, terminal_reason: 'api_error', api_error_status: 403, result: 'API Error: 403' }), stdout: 'x\n' + EDGE + '\n' })
+    assert.equal(v2.trace, TRACE, '#903 classify: the trace is read off stdout when result lacks it')
+    assert.equal(edgeTraceOf({ result: 'nothing' }, ''), null)
+    // (c) a JSON authentication_error 403 is the bearer: fail-run, as today.
+    const c = classify({ exitCode: 1, envelope: env({ is_error: true, terminal_reason: 'api_error', api_error_status: 403, result: AUTH }) })
+    assert.equal(c.outcome, 'fail-run', '#903 (c): a JSON authentication_error 403 stays fatal')
+    assert.equal(c.class, 'credential')
+    // 401 and 404 are untouched.
+    for (const st of [401, 404]) {
+      assert.equal(classify({ exitCode: 1, envelope: env({ is_error: true, terminal_reason: 'api_error', api_error_status: st, result: EDGE }) }).outcome, 'fail-run',
+        '#903: a ' + st + ' is fail-run whatever its body says')
+    }
+  }
+
+  // The reflection stub: `curl` first on PATH, answering by FAKE_REFLECTION and
+  // recording the argv it was handed. No jq anywhere — the worker parses the
+  // JSON itself.
+  const stubBin = path.join(tmp, 'edge-bin')
+  fs.mkdirSync(stubBin, { recursive: true })
+  const curlArgv = path.join(tmp, 'curl-argv.txt')
+  fs.writeFileSync(path.join(stubBin, 'curl'), `#!/bin/bash
+printf '%s\\n' "$@" > "$FAKE_CURL_ARGV"
+case "$FAKE_REFLECTION" in
+  attached) printf '%s' '{"integrations":[{"name":"github","kind":"github"},{"name":"claude-max","kind":"http-proxy"}]}' ;;
+  absent) printf '%s' '{"integrations":[{"name":"github","kind":"github"}]}' ;;
+  garbage) printf '%s' 'not json' ;;
+  *) echo 'curl: (22) The requested URL returned error: 403' >&2; exit 22 ;;
+esac
+`)
+  fs.chmodSync(path.join(stubBin, 'curl'), 0o755)
+
+  // probeReflection() on its own, through the stub.
+  {
+    const penv = (reflection) => simEnv({ bin: stubBin, env: { FAKE_REFLECTION: reflection, FAKE_CURL_ARGV: curlArgv } })
+    const a = probeReflection({ env: penv('attached') })
+    assert.equal(a.attached, true, '#903 probe: claude-max listed -> attached: ' + JSON.stringify(a))
+    assert.deepEqual(fs.readFileSync(curlArgv, 'utf8').trim().split('\n'), ['-fsS', '--max-time', '5', REFLECTION_URL],
+      '#903 probe: the exact curl line the ticket names')
+    assert.equal(probeReflection({ env: penv('absent') }).attached, false, '#903 probe: not listed -> false')
+    assert.equal(probeReflection({ env: penv('sick') }).attached, null, '#903 probe: curl non-zero -> inconclusive')
+    assert.equal(probeReflection({ env: penv('garbage') }).attached, null, '#903 probe: non-JSON -> inconclusive')
+  }
+
+  const edgeWorkers = path.join(tmp, 'edge-workers')
+  const edgeEvents = []
+  const mkEdge = (scenario, reflection, over = {}) => createRunWorker({
+    runId: 'run-95', workersDir: edgeWorkers, cwdFor: () => clone, cli: fakeCli,
+    env: simEnv({ bin: stubBin, env: {
+      FAKE_SCENARIO: scenario, FAKE_ARGV_OUT: argvOut, FAKE_STDIN_OUT: stdinOut,
+      FAKE_TRACE: TRACE, FAKE_REFLECTION: reflection, FAKE_CURL_ARGV: curlArgv,
+    } }),
+    onEvent: (e) => edgeEvents.push(e),
+    ...over,
+  })
+  const call = (agent, label) => agent('x', { label, model: 'sonnet', schema: SCHEMA })
+  const lastOf = (kind) => edgeEvents.filter((e) => e.kind === kind).pop()
+
+  // (a) the edge sentence, reflection lists claude-max -> null (the infra
+  // lane), the trace on worker:edge-403 and on worker:end, no run:fatal.
+  {
+    edgeEvents.length = 0
+    const out = await call(mkEdge('edge403', 'attached'), 'impl:T1')
+    assert.equal(out, null, '#903 (a): attached -> null, the infra lane\'s reply')
+    const sighting = lastOf('worker:edge-403')
+    assert.ok(sighting, '#903 (a): one worker:edge-403 event')
+    assert.equal(sighting.trace, TRACE, '#903 (a): carrying the trace id')
+    assert.equal(sighting.probe, 'attached')
+    assert.equal(sighting.resolution, 'infra')
+    const end = lastOf('worker:end')
+    assert.equal(end.class, 'infra', '#903 (a): worker:end is the infra shape: ' + JSON.stringify(end))
+    assert.equal(end.status, 403)
+    assert.equal(end.outcome, 'null')
+    assert.equal(end.trace, TRACE, '#903 (a): worker:end carries the trace id')
+    assert.ok(!edgeEvents.some((e) => e.kind === 'run:fatal'), '#903 (a): no run:fatal on one worker\'s 403')
+  }
+
+  // reflection sick (curl 22) -> still the infra lane.
+  {
+    edgeEvents.length = 0
+    assert.equal(await call(mkEdge('edge403', 'sick'), 'impl:T1'), null, '#903: a sick reflection is infra, retry')
+    assert.equal(lastOf('worker:edge-403').probe, 'inconclusive')
+  }
+
+  // (b) reflection answers without claude-max -> fail-run naming the attachment,
+  // and the next dispatch is refused before spawning.
+  {
+    edgeEvents.length = 0
+    const agent = mkEdge('edge403', 'absent')
+    await assert.rejects(() => call(agent, 'impl:T1'),
+      (e) => /RUN_FATAL/.test(e.message) && /claude-max is not attached/.test(e.message),
+      '#903 (b): not listed -> RUN_FATAL naming the attachment')
+    const fatal = lastOf('run:fatal')
+    assert.equal(fatal.class, 'attachment', '#903 (b): run:fatal carries the class: ' + JSON.stringify(fatal))
+    assert.equal(fatal.trace, TRACE, '#903 (b): and the trace id')
+    assert.equal(lastOf('worker:end').class, 'attachment')
+    const spawnsBefore = fs.readdirSync(edgeWorkers).length
+    await assert.rejects(() => call(agent, 'impl:T2'), /refusing to dispatch/)
+    assert.equal(fs.readdirSync(edgeWorkers).length, spawnsBefore, '#903 (b): the latch refuses before spawning')
+  }
+
+  // (c) Anthropic's JSON authentication_error 403 -> fatal as today, no probe.
+  {
+    edgeEvents.length = 0
+    fs.rmSync(curlArgv, { force: true })
+    await assert.rejects(() => call(mkEdge('auth403', 'attached'), 'impl:T1'), /RUN_FATAL: API refused with 403/,
+      '#903 (c): a JSON authentication_error 403 is the credential row, unchanged')
+    assert.equal(lastOf('run:fatal').class, 'credential')
+    assert.ok(!edgeEvents.some((e) => e.kind === 'worker:edge-403'), '#903 (c): no attachment sighting')
+    assert.ok(!fs.existsSync(curlArgv), '#903 (c): reflection was never asked')
+  }
+
+  // (d) two independent workers inside the window, reflection attached -> the
+  // run fails on the second; 121 s apart -> both land in the infra lane.
+  {
+    edgeEvents.length = 0
+    let clock = 1_000_000
+    const agent = mkEdge('edge403', 'attached', { now: () => clock })
+    assert.equal(await call(agent, 'impl:T1'), null, '#903 (d): the first sighting is infra')
+    clock += ATTACHMENT_WINDOW_MS
+    await assert.rejects(() => call(agent, 'impl:T2'),
+      (e) => /RUN_FATAL/.test(e.message) && /two workers within 120 s/.test(e.message) && e.message.includes(TRACE),
+      '#903 (d): a second worker inside the window fails the run')
+    assert.equal(lastOf('worker:edge-403').probe, 'skipped', '#903 (d): the window rule needs no probe')
+    assert.equal(lastOf('run:fatal').class, 'attachment')
+  }
+  {
+    edgeEvents.length = 0
+    let clock = 2_000_000
+    const agent = mkEdge('edge403', 'attached', { now: () => clock })
+    assert.equal(await call(agent, 'impl:T1'), null)
+    clock += ATTACHMENT_WINDOW_MS + 1000
+    assert.equal(await call(agent, 'impl:T2'), null, '#903 (d): 121 s apart is two blinks, both infra')
+    assert.ok(!edgeEvents.some((e) => e.kind === 'run:fatal'), '#903 (d): no run:fatal outside the window')
+    // The same label twice is one worker retried, never two independent ones.
+    assert.equal(await call(agent, 'impl:T2'), null, '#903 (d): a retried label is not a second worker')
+    assert.ok(!edgeEvents.some((e) => e.kind === 'run:fatal'))
+  }
+
+  // A different trace on the second sighting is what the fatal names.
+  {
+    edgeEvents.length = 0
+    const agent = createRunWorker({
+      runId: 'run-95b', workersDir: edgeWorkers, cwdFor: () => clone, cli: fakeCli,
+      env: simEnv({ bin: stubBin, env: {
+        FAKE_SCENARIO: 'edge403', FAKE_ARGV_OUT: argvOut, FAKE_STDIN_OUT: stdinOut,
+        FAKE_TRACE: TRACE2, FAKE_REFLECTION: 'attached', FAKE_CURL_ARGV: curlArgv,
+      } }),
+      onEvent: (e) => edgeEvents.push(e), now: () => 0,
+    })
+    assert.equal(await call(agent, 'review:T1:1:1'), null)
+    assert.equal(lastOf('worker:end').trace, TRACE2)
+  }
+
+  console.log('ok - #903: an edge 403 asks reflection and lands in the infra lane; the trace id is on the record')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

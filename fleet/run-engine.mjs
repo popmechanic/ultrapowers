@@ -1348,22 +1348,29 @@ export async function runEngine({
   // The code is carried on AS READ — `worker:end` writes a number, so the
   // `driver:infra-retry` event repeats that number rather than a stringified
   // copy of it; the judgment-call text stringifies it on its own.
-  const lastWorkerStatus = (label) => {
+  // #903: the same read also carries the edge trace id the worker put on its
+  // `worker:end` (an edge 403 resolved into the infra lane), so the
+  // `driver:infra-retry` event names the id support can resolve.
+  const lastWorkerEnd = (label) => {
     let text
     try {
       text = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8')
-    } catch { return 'unknown' }
-    let status = 'unknown'
+    } catch { return { status: 'unknown', trace: null } }
+    let status = 'unknown', trace = null
     for (const line of text.split('\n')) {
       const s = line.trim()
       if (!s || s[0] !== '{') continue
       let e
       try { e = JSON.parse(s) } catch { continue /* not an event line */ }
       if (e && e.kind === 'worker:end' && e.label === label &&
-          e.status !== undefined && e.status !== null) status = e.status
+          e.status !== undefined && e.status !== null) {
+        status = e.status
+        trace = (typeof e.trace === 'string' && e.trace) ? e.trace : null
+      }
     }
-    return status
+    return { status, trace }
   }
+  const lastWorkerStatus = (label) => lastWorkerEnd(label).status
   // The wait, and nothing else: one ref'd timer. "A backoff must never be the
   // reason a finished process is still alive" is met by RESOLVING — the engine
   // `await`s this promise, so the timer has fired and the loop is empty again
@@ -1404,7 +1411,8 @@ export async function runEngine({
   // reliable — which each caller supplies as `redispatch`. Returns the second
   // reply, or `null` when there was none.
   const redispatchInfra = async (label, scope, status, redispatch) => {
-    appendEvent({ kind: 'driver:infra-retry', label, attempt: 1, status })
+    const { trace } = lastWorkerEnd(label)
+    appendEvent({ kind: 'driver:infra-retry', label, attempt: 1, status, ...(trace ? { trace } : {}) })
     const again = await redispatch()
     if (again === null) {
       judgmentCalls.push(scope + 'infra-retry: ' + label + ' attempt 2 returned null (status ' +
