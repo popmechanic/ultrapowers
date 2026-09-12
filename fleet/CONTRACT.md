@@ -41,7 +41,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 - **The three branches on the target** — where a run works, not what it leaves; each one is deleted
   when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
-    [+ `.ultrapowers/gate-verdicts.json`]. Written by the launcher, before any VM exists.
+    [+ `.ultrapowers/gate-verdicts.json`] + `.ultrapowers/kata.json` (the run's record on the hub —
+    `{"url":"http://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,revision}}}`,
+    keys in that order, each `revision` the one the launcher's post-link `getIssue` of that issue
+    answered; `JSON.stringify(…, null, 2)` plus a trailing newline). Written by the launcher, before
+    any VM exists.
   - `ultra/evidence-run-<N>` — the run's record under `.ultrapowers/runs/<N>/`: `status.json`,
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,
     `claude-version.txt` (the boot's `claude --version` line, written before the engine starts), plus
@@ -59,6 +63,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `{run, task, file, line, kind, text, sha}`, `kind` one of `nit`, `unverified`, `deferred`,
     `structural`. It is the same items the PR body lists, on the record rather than in a page a
     merge closes; append-only, and a run that left nothing writes no file.
+    `kata.jsonl` — THE HUB'S OWN RECORD of the run, beside the engine's, present when the plan
+    commit carried a `.ultrapowers/kata.json`. Two line kinds, one JSON object per line with `kind`
+    first and the object's own fields spread after it: `{"kind":"issue", …}` per issue of the run's
+    kata project, then `{"kind":"event", …}` per envelope of its event log. Exported at every
+    transition to a temporary name and moved into place, so a fetch that fails leaves the last whole
+    export exactly as it was — the hub is archived and the run's state outlives it here.
     `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
     and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
     `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
@@ -126,6 +136,21 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `ultra/*-run-*` branches and `ultra/{plan,evidence}/run-*` tags for N → refuse when `integrations list --json` has no `gh-<owner>-<repo>` (the fix
   named is `node fleet/target.mjs <owner>/<repo>`; a public target would still clone from github.com
   but could not push or open its PR, so it is not launched) → `node fleet/claude-token.mjs refresh` →
+  kata: the run filed on the hub, for each push attempt's N and before that attempt's plan commit is
+  built — `compile_plan.py <plan> --stamp run-N --base <base>` (the launch's second compiler call; its
+  `launch_waves` entries carry each task's `factsheet`), one project `<owner>-<repo>-run-N` (slashes
+  in the target become `-`), one run issue (`run-N: <plan H1>`, body the plan's `**Claim:**` line,
+  metadata `{run, target, base, closes}` — `closes` the numbers of the `**Closes:**` line, `[]` when
+  absent), one issue per task in wave order (`task <id>: <title>`, metadata `{task, wave, factsheet}`,
+  a `parent` link to the run), one `blocks` link per `dag_edges` entry created ON the task that
+  blocks, then one `getIssue` per task and one for the run, whose revisions are what
+  `.ultrapowers/kata.json` records; a refused push that bumps N purges that project (`run number
+  taken`) and files again for N+1. The hub is reached from the laptop as `ssh <hub> curl …
+  localhost:8000/api/v1/…` — the host is the `KATA_URL` of `~/.ultrapowers/kata-hub.env`, the bearer
+  is sourced from `/etc/kata/kata.env` ON the hub and never rides a laptop argv; an absent env file
+  is refused before any command (`node fleet/kata-hub.mjs` builds the hub), a `ping` that fails —
+  asked right after the `integrations list --json` read — is refused before any push, and a hub call
+  that fails after it is a launch failure before any push and before `new` →
   push `ultra/plan-run-N` → ONE verb:
 
   ```
@@ -207,11 +232,33 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     assignment's `plan=` or the run is `failed` — the plan a run executes is the plan the launcher
     signed. `.ultrapowers/plan.md` is read out of that commit into `/home/exedev/plans/run-N.md`,
     which is the path the engine's argv carries.
+  - kata: `.ultrapowers/kata.json` is read out of that same commit the same way, into
+    `/home/exedev/plans/run-N.kata.json`. A plan commit that carries none is a run that proceeds
+    without kata — no kata request is made and the engine is handed no `--kata`. With the file, and
+    directly after the evidence worktree is built, one request and only one:
+    `curl -fsS --max-time 10 --retry 3 --retry-delay 2 --retry-connrefused
+    http://kata.int.exe.xyz/api/v1/ping`. The retry flags are the contract, not a nicety: a single
+    try turns one hub hiccup — a restart, a two-second `Restart=on-failure` window — into every
+    sandbox of a wave parking at once, and `--retry-connrefused` is what makes a refused connection
+    retryable at all. The request carries no bearer of its own; it passes the hub's exe.dev auth
+    proxy only because the peer key is injected at the edge, and the Host the daemon sees is the
+    hub's own host, which is what kata's `public_origin` check needs. A non-zero curl exit parks the
+    run right there, before any engine: state `parked`, phase `kata unreachable`, `error` exactly
+    `parked: kata unreachable at http://kata.int.exe.xyz (curl exit <n>)`, evidence committed and
+    pushed under the subject `run-<N>: parked — kata unreachable`, both record tags pushed, a
+    `run-<N> parked` notify, exit 0 — no engine unit started and no pull request opened.
+    With the file, every `collect_evidence` also exports the hub's record to the `kata.jsonl` the
+    evidence bullet declares:
+    `GET http://kata.int.exe.xyz/api/v1/projects/<project id>/issues?limit=1000`, then
+    `GET …/projects/<project id>/events?after_id=<c>&limit=1000` from `after_id=0`, following each
+    answer's `next_after_id` until an answer's `events` is empty. The project id is the file's own
+    `project.id`; a fetch that fails logs
+    `kata: export failed (curl exit <n>) — previous kata.jsonl kept` and changes nothing.
   - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
     env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
-    ULTRAPOWERS_FLEET_RUN=run-N TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-} node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--tier …] [--overlap …]`,
+    ULTRAPOWERS_FLEET_RUN=run-N TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-} node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …] [--overlap …]`,
     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
     service's (`--wait`). The render entry passes the boot's render address through to the engine and
     is empty when the run carries no render integration — a value, never a bearer.
@@ -321,6 +368,29 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     A run that ends `failed` keeps its branches for the sweep, and a tag that does not verify keeps
     both branches and logs `record: … kept` — the record step never leaves a run with neither a tag
     nor a branch.
+- **Kata record (engine):** `run-main.mjs --kata <path>` names the run's kata record
+  (`{url, project, run, tasks}`), read as JSON **before the run tree is provisioned** — an unreadable
+  or malformed file is `kata-unreadable` and the run never starts. With it the engine is handed a
+  client built on `httpTransport({url})` — no `Authorization` header, because the edge injects the
+  bearer — and the record itself; without it the engine makes no request at all and behaves exactly
+  as it does with no hub.
+  Per task, once, at the start of its pipeline and before any worker is dispatched: one `getIssue`
+  of the recorded uid. A revision unequal to the recorded one ends the run
+  (`kata-revision-mismatch`) — the record and the hub disagree about what this run is, and no retry
+  can clear that. The answer's `metadata.factsheet` IS the task from then on: its `files`, its
+  `proofTests`, its `guards`, and every exam landing the pipeline uses, read from `landing[p]` and
+  never computed again. Then `claim` — on the hub before the implementer and examiner exist.
+  Every capture of the graded patch (the exam handoff's re-capture, and each fix round's) patches the
+  issue's metadata with `touched_files`, the patch's own paths, under the revision the last answer
+  carried; a 412 there ends the run as a mismatch does. Every `driver:*` event is also a comment —
+  the event's JSON line verbatim, on the task's issue when it names one and on the run's issue
+  otherwise, in append order, and every pending comment is on the hub before the next claim,
+  metadata patch or close and before the engine returns.
+  Closes: an adopted task is `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted commit
+  and the task's test command, under the idempotency key `<runId>:<task>:close`. A task of a wave the
+  barrier blocked is `wontfix` (`wave <n> blocked: <detail>`), and so is any task whose row is not
+  `done` and that no wave closed (`<status>: <verdict> — <notes>`); `wontfix` carries no evidence.
+  A task of a SKIPPED wave, and any task that produced no row, is left open.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while

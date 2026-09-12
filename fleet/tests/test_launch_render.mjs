@@ -203,7 +203,7 @@ const refreshSpy = () => {
 }
 
 /** One launch over the seam, answering the result and the seam that saw it. */
-async function launchWith (ws, { extra = [], rules = {}, config = CONFIG } = {}) {
+async function launchWith (ws, { extra = [], rules = {}, config = CONFIG, kata } = {}) {
   const exec = makeExec({ rules: readRules({ repo: ws.repo, ...rules }) })
   const result = await launch({
     argv: argvFor(ws, extra),
@@ -211,7 +211,8 @@ async function launchWith (ws, { extra = [], rules = {}, config = CONFIG } = {})
     config,
     now: () => NOW,
     sleep: async () => {},
-    refreshCredential: refreshSpy()
+    refreshCredential: refreshSpy(),
+    kata
   })
   return { result, exec }
 }
@@ -306,9 +307,13 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
   // `fleetConfigRender`, and its renderer rides the line.
   const fromFile = workspace()
   const file = configFile(fromFile, { ...CONFIG, render: { ...RENDER } })
+  // `kata: null` beside the null config: this leg is about the render read,
+  // and a launch with neither injected would read the laptop's kata-hub.env
+  // (the hub's own sim, test_launch_kata.mjs, drives that path).
   const { result: fileResult, exec: fileExec } = await launchWith(fromFile, {
     extra: ['--config', file],
-    config: null
+    config: null,
+    kata: null
   })
   assert.ok(
     !carriesIntegration(newLines(fileExec)[0]),

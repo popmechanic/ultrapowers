@@ -49,6 +49,7 @@ import {
 } from './run-waves.mjs'
 import { runEngine } from './run-engine.mjs'
 import { createRunWorker } from './run-worker.mjs'
+import { makeKataClient, httpTransport } from './kata-client.mjs'
 
 // ONE VARIABLE BECAME TWO (#575, spec §1). `ENGINE_DIR` is THIS module's own
 // repository, resolved from its own location: the kernel scripts, the role
@@ -111,6 +112,10 @@ export const DEFAULTS = Object.freeze({
   testCmd: null,
   bootstrapCmd: null,
   cli: 'claude',
+  // No `kata` key: the run's kata record (`--kata`, written by the launcher
+  // into the plan commit and landed beside the plan by the boot script) is
+  // absent from a parse that did not name one, and absent means the run keeps
+  // no state on the hub at all and the engine makes no request.
 })
 
 const FLAGS = Object.freeze({
@@ -121,13 +126,16 @@ const FLAGS = Object.freeze({
   '--test-cmd': 'testCmd',
   '--bootstrap-cmd': 'bootstrapCmd',
   '--cli': 'cli',
+  '--kata': 'kata',
 })
 
 export const usage = () =>
   'usage: node fleet/run-main.mjs <plan.md> <runId> --repo DIR [--tier standard|mostCapable] ' +
   '[--overlap fold|serialize] [--implementer-effort low|medium|high] ' +
-  '[--test-cmd CMD] [--bootstrap-cmd CMD|\'\'] [--cli BIN]\n' +
-  '  --bootstrap-cmd: omit to derive the install from the target\'s lockfile; \'\' disables it'
+  '[--test-cmd CMD] [--bootstrap-cmd CMD|\'\'] [--cli BIN] [--kata PATH]\n' +
+  '  --bootstrap-cmd: omit to derive the install from the target\'s lockfile; \'\' disables it\n' +
+  '  --kata: the run\'s kata.json record (url, project, run, tasks) — omit and the ' +
+  'engine keeps no state on the hub'
 
 export function parseArgs(argv) {
   const positional = []
@@ -492,7 +500,8 @@ export async function runMain(parsed, deps = {}) {
     log = console.error,
     env = process.env,
   } = deps
-  const { planPath, runId, tier, overlap, implementerEffort, testCmd, bootstrapCmd, cli } = parsed
+  const { planPath, runId, tier, overlap, implementerEffort, testCmd, bootstrapCmd, cli,
+          kata: kataPath } = parsed
   // Absolute, always: patchesDir is derived from repoDir, and waves.js's
   // PATCH_PREFIX second wall arms only for an absolute patchInput — a relative
   // --repo would silently disarm it, leaving only withPatchCapture's reply
@@ -584,6 +593,35 @@ export async function runMain(parsed, deps = {}) {
       (vk.stdout || vk.stderr).slice(-500))
   }
 
+  // 2b. The run's kata record, read BEFORE anything is provisioned. The file is
+  // the launcher's own (`.ultrapowers/kata.json` in the plan commit, landed
+  // beside the plan by the boot script): the hub's url, the project, the run
+  // issue and one entry per task. A run told to keep state on the hub and
+  // unable to read what that state IS has nothing to reconcile against, so an
+  // unreadable or malformed file ends it here — before a clone exists, before a
+  // worker is dispatched, and with the receipt naming why.
+  let kataRecord = null
+  let kata = null
+  if (kataPath) {
+    try {
+      kataRecord = JSON.parse(fs.readFileSync(kataPath, 'utf8'))
+    } catch (e) {
+      return fail('kata-unreadable', 'could not read --kata ' + kataPath + ': ' +
+        String((e && e.message) || e))
+    }
+    if (!kataRecord || typeof kataRecord !== 'object' || Array.isArray(kataRecord)) {
+      return fail('kata-unreadable', '--kata ' + kataPath + ' is not a JSON object')
+    }
+    // No token, ever: the sandbox reaches the hub through the exe.dev edge,
+    // which injects the bearer. The actor names the run, so every mutation on
+    // the hub is attributable to the engine that made it.
+    kata = makeKataClient({
+      transport: httpTransport({ url: kataRecord.url }),
+      actor: 'engine:' + runId,
+    })
+    stage('kata', 'record ' + kataPath + ' → ' + String(kataRecord.url))
+  }
+
   // 3. Provision the run tree.
   const baseR = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoDir })
   if (baseR.code !== 0) return fail('no-base', 'git rev-parse HEAD failed in ' + repoDir)
@@ -620,13 +658,26 @@ export async function runMain(parsed, deps = {}) {
   // told to stay inside and the scope the capture keeps are one fact. Built
   // here because the wrapper is built once, before the engine runs, and a
   // second parse of the plan would be a second fact.
-  const filesByTask = new Map(argsObj.waves.flat()
-    .map((t) => [t.id, Array.isArray(t.files) ? t.files : []]))
+  // …and the TASK OBJECTS, not a Map of their arrays: the engine receives these
+  // very objects as `args.waves`, and with a kata record it replaces a task's
+  // `files` with the hub's own `factsheet.files` at the start of that task's
+  // pipeline. A Map built here would have frozen the compiled array before the
+  // sheet arrived, so the scope the implementer is told to stay inside and the
+  // scope the capture keeps would be two different facts again. Read at CALL
+  // time, sheet first.
+  const tasksById = new Map(argsObj.waves.flat().map((t) => [t.id, t]))
+  const filesFor = (opts) => {
+    const task = tasksById.get(defaultTaskIdOf(opts && opts.label))
+    if (!task) return []
+    const sheet = task.factsheet
+    if (sheet && Array.isArray(sheet.files)) return sheet.files
+    return Array.isArray(task.files) ? task.files : []
+  }
   const { agent, patchInput } = makeAgent({
     runId, base: () => patchBase.current, runDir,
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog, implementerEffort,
-    filesFor: (opts) => filesByTask.get(defaultTaskIdOf(opts && opts.label)) || [],
+    filesFor,
   })
   // #213 credential evidence (restored after the cutover deleted the shim's
   // copy — review finding 6): name the credential the workers will ride, in
@@ -658,7 +709,10 @@ export async function runMain(parsed, deps = {}) {
     report = await runEngineFn({
       // #436: the engine caps the implementers' suite parallelism by the
       // number of them that share the machine — it must be told the real one.
-      args: { ...launchArgs, width: WIDTH },
+      // The kata pair travels together or not at all: the client is the seam,
+      // the record is which project and which issue each task is.
+      args: { ...launchArgs, width: WIDTH, ...(kata ? { kataRecord } : {}) },
+      ...(kata ? { kata } : {}),
       agent,
       parallel: boundedParallel(WIDTH),
       exec,

@@ -269,9 +269,9 @@ const refreshSpy = (exec, reply = { ok: true }) => {
 
 const launchIn = (ws, {
   argv, exec, sleep = async () => {}, config = CONFIG,
-  refreshCredential = refreshSpy(exec), verbsPath
+  refreshCredential = refreshSpy(exec), verbsPath, kata
 } = {}) => launch({
-  argv: argv ?? argvFor(ws), exec, config, now: () => NOW, sleep, refreshCredential, verbsPath
+  argv: argv ?? argvFor(ws), exec, config, now: () => NOW, sleep, refreshCredential, verbsPath, kata
 })
 
 /** A green launch with the default rules; answers the result and its seams. */
@@ -823,8 +823,11 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
   const configPath = path.join(filed.root, 'fleet.json')
   fs.writeFileSync(configPath, '{"cpu":"8","memory":"16GB","account":"d"}')
   const execFiled = makeExec({ rules: readRules({ repo: filed.repo }) })
+  // `kata: null` beside the null config: this leg is about the account read,
+  // and a launch with neither injected would read the laptop's kata-hub.env
+  // (the hub's own sim, test_launch_kata.mjs, drives that path).
   const fromFile = await launchIn(filed, {
-    argv: argvFor(filed, ['--config', configPath]), exec: execFiled, config: null
+    argv: argvFor(filed, ['--config', configPath]), exec: execFiled, config: null, kata: null
   })
   assert.equal(
     await fleetConfigAccount({ path: configPath }), 'd',

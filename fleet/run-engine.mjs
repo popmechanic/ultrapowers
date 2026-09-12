@@ -976,6 +976,12 @@ export async function runEngine({
   paths, // { repoDir, runDir, clonesDir }
   log = () => {}, phase = () => {},
   rolesDir,
+  // The hub's client (optional): `fleet/kata-client.mjs`'s `makeKataClient`,
+  // built by run-main from the run's `--kata` record. Present it WITH
+  // `args.kataRecord` and the engine reads each task's fact sheet from the hub
+  // and writes the run's record back there; absent, the engine makes no request
+  // and behaves exactly as it does without a hub.
+  kata,
   // Live patch base (optional): a { current } holder shared with the caller's
   // withPatchCapture wrapper. Wave 1 captures against BASE; each adopted wave
   // advances it so wave N+1's diffs are taken against the tree its tasks
@@ -996,12 +1002,114 @@ export async function runEngine({
   // append-only `<runDir>/events.jsonl` makeEventLog opened, stamped the same
   // way. A failed append is never the run's failure mode — the evidence the
   // reviewer reads is the prompt block, and this is the durable copy.
-  const appendEvent = (e) => {
+  // ── the hub (#913) ─────────────────────────────────────────────────────────
+  // Both halves or neither: the client is how a request travels and the record
+  // is what the run's issues ARE. `kataOn` is the only condition anything below
+  // reads, so a run handed one half makes no request at all.
+  const kataRecord = (args.kataRecord && typeof args.kataRecord === 'object' &&
+                      !Array.isArray(args.kataRecord)) ? args.kataRecord : null
+  const kataOn = Boolean(kata && kataRecord)
+  const kataProjectId = kataOn ? ((kataRecord.project || {}).id) : null
+  const kataRunUid = kataOn ? ((kataRecord.run || {}).uid) : null
+  const kataTaskRows = kataOn ? (kataRecord.tasks || {}) : {}
+  const kataRowOf = (id) => {
+    const row = (id != null && Object.prototype.hasOwnProperty.call(kataTaskRows, id))
+      ? kataTaskRows[id] : null
+    return (row && typeof row === 'object') ? row : null
+  }
+  // The revision each issue is known to be at, by uid: seeded by the record and
+  // advanced by EVERY answer a mutation of that issue returns. An `If-Match`
+  // built from the record after a claim (or a comment, or an earlier patch) has
+  // moved it is a 412, so the tracker — not the record — is what a patch sends.
+  const kataRevisions = new Map()
+  // Task ids whose sheet has been read and whose issue has been claimed. Both
+  // are once-per-task: `runTaskInner` is re-entered by the tier retry and the
+  // barrier retry, and a second read would see the revision our own claim
+  // bumped. `kataClosed` is the same guard on the other end — the wave rows and
+  // the sweep must not close the same issue twice.
+  const kataOpened = new Set()
+  const kataClaimed = new Set()
+  const kataClosed = new Set()
+  // A kata disagreement is not a task's failure and not something a retry can
+  // clear: the record and the hub say different things about what this run is.
+  // Marked so `runTask`'s catch lets it climb to run-main, which ends the run
+  // as `engine-crashed`.
+  const kataFatal = (message) => {
+    const e = new Error(message)
+    e.kataFatal = true
+    return e
+  }
+  const isKataFatal = (e) => Boolean(e && e.kataFatal)
+  // Every hub call goes through here: the answered revision is recorded against
+  // the issue it belongs to, and a failure ends the run rather than leaving the
+  // hub and the driver disagreeing about a step that did not land.
+  const kataCall = async (what, uid, thunk) => {
+    let answer
     try {
-      const ts = Date.now()
-      fs.appendFileSync(path.join(runDir, 'events.jsonl'),
-        JSON.stringify({ ...e, id: ulid(ts), ts }) + '\n')
+      answer = await thunk()
+    } catch (e) {
+      if (isKataFatal(e)) throw e
+      throw kataFatal('run-engine: kata-' + what + ' failed: ' + String((e && e.message) || e))
+    }
+    if (uid && answer && typeof answer.revision === 'number') kataRevisions.set(uid, answer.revision)
+    return answer
+  }
+  // The comment queue. `appendEvent` is synchronous and must stay so (it is the
+  // durable evidence copy and a failed append is never the run's failure mode),
+  // so a `driver:` event pushes its own line here and the post is awaited at the
+  // points the record must be complete: before each claim, each metadata patch
+  // and each close, and before the engine returns. Append order is post order.
+  const kataPosts = []
+  const drainKataPosts = async () => {
+    while (kataPosts.length) {
+      const post = kataPosts.shift()
+      await kataCall('comment', post.uid,
+        () => kata.comment(kataProjectId, post.uid, post.body))
+    }
+  }
+  // What the graded patch touched, on the task's issue, at every point the
+  // driver captures one. The revision is the tracker's — the record's is stale
+  // the moment the claim lands — and a 412 says the hub moved under us, which
+  // is the same disagreement a revision mismatch is and ends the run the same
+  // way.
+  const kataTouched = async (row, patchFile) => {
+    if (!row) return
+    await drainKataPosts()
+    try {
+      const answer = await kata.patchMetadata(kataProjectId, row.uid,
+        { touched_files: patchPaths(patchFile) }, kataRevisions.get(row.uid))
+      if (answer && typeof answer.revision === 'number') kataRevisions.set(row.uid, answer.revision)
+    } catch (e) {
+      if (e && e.status === 412) {
+        throw kataFatal('run-engine: kata-revision-mismatch issue ' + row.uid +
+          ': If-Match rev-' + kataRevisions.get(row.uid) + ' was refused (412)')
+      }
+      throw kataFatal('run-engine: kata-metadata failed: ' + String((e && e.message) || e))
+    }
+  }
+  // The last word on a task's issue. Once per task — the wave's own close wins
+  // over the sweep's — and never before the comments that precede it have
+  // landed, so the issue reads in the order the run happened.
+  const kataClose = async (id, spec) => {
+    const row = kataRowOf(id)
+    if (!row || kataClosed.has(id)) return
+    kataClosed.add(id)
+    await drainKataPosts()
+    await kataCall('close', row.uid, () => kata.close(kataProjectId, row.uid, spec))
+  }
+  const appendEvent = (e) => {
+    const ts = Date.now()
+    const line = JSON.stringify({ ...e, id: ulid(ts), ts })
+    try {
+      fs.appendFileSync(path.join(runDir, 'events.jsonl'), line + '\n')
     } catch { /* evidence, not control flow */ }
+    // The hub carries the same line, verbatim: the driver's own narration of
+    // the run, on the task's issue when the event names a task the record
+    // knows, and on the run's issue otherwise.
+    if (!kataOn || !String((e && e.kind) || '').startsWith('driver:')) return
+    const row = (typeof e.task === 'string') ? kataRowOf(e.task) : null
+    const uid = row ? row.uid : kataRunUid
+    if (uid) kataPosts.push({ uid, body: line })
   }
   const repoDir = path.resolve(paths.repoDir)
   const integ = path.join(clonesDir, 'integration')
@@ -1422,6 +1530,38 @@ export async function runEngine({
         '" — fell back to standard (valid: standard, mostCapable/most-capable)')
     }
 
+    // ── the task's fact sheet, from the hub (#913) ──────────────────────────
+    // With a record, the sheet the launcher wrote IS this task's files, Proof
+    // paths and exam landing: read once, at the start of the pipeline and
+    // before any worker is dispatched, and never computed again. A revision
+    // that moved under the driver means the record and the hub disagree about
+    // this run — not something a driver may paper over, so it ends the run.
+    // `runTaskInner` is re-entered on a tier retry and on a barrier retry; the
+    // read is once per TASK, because the second read would see the revision our
+    // own claim bumped and call that a mismatch.
+    const kataRow = kataOn ? kataRowOf(task.id) : null
+    if (kataRow && !kataOpened.has(task.id)) {
+      kataOpened.add(task.id)
+      await drainKataPosts()
+      const issue = await kataCall('getissue', null, () => kata.getIssue(kataRow.uid))
+      if (!issue || issue.revision !== kataRow.revision) {
+        throw kataFatal('run-engine: kata-revision-mismatch task ' + task.id +
+          ': recorded ' + kataRow.revision + ' found ' + ((issue && issue.revision)))
+      }
+      kataRevisions.set(kataRow.uid, issue.revision)
+      const fromHub = (issue.metadata || {}).factsheet
+      if (fromHub && typeof fromHub === 'object') {
+        task.factsheet = fromHub
+        if (Array.isArray(fromHub.files)) task.files = fromHub.files
+        if (Array.isArray(fromHub.proofTests)) task.proofTests = fromHub.proofTests
+        if (Array.isArray(fromHub.guards)) task.proofGuards = fromHub.guards
+      }
+    }
+    // The sheet, once, for everything below. Absent — no record, or a task the
+    // record does not name — every branch below is the one it was at BASE.
+    const factsheet = (task.factsheet && typeof task.factsheet === 'object')
+      ? task.factsheet : null
+
     // ── where this task's exam lands (#777) ─────────────────────────────────
     // The Proof's `Test:` path is the path the exam is written FOR; unless the
     // Proof marked it `Guard:` — in which case the file AT that path is the
@@ -1436,7 +1576,12 @@ export async function runEngine({
       : []
     const examTestCmd = (typeof task.testCmd === 'string' && task.testCmd.trim())
       ? task.testCmd : null
-    const landingOf = (p) => (proofGuards.includes(p) ? p : reservedExamPath(p, stamp))
+    // With a sheet the landing is READ, never derived: the launcher already
+    // decided where every Proof path goes and wrote it down, and a driver that
+    // recomputed it could disagree with the record it is supposed to obey.
+    const landingOf = (p) => factsheet
+      ? (factsheet.landing || {})[p]
+      : (proofGuards.includes(p) ? p : reservedExamPath(p, stamp))
     // Proof order, and only the paths that actually move. A task whose paths
     // are under neither test root — every sim at BASE, whose Proof names
     // `t1_test.sh` — has an empty list here and takes every branch below with
@@ -1532,20 +1677,33 @@ export async function runEngine({
     // the reserved root down to the file gets an empty `__init__.py`, written
     // only where none exists. `fleet/tests/` is a bare node-runner glob with no
     // package semantics and gets none.
-    const pyExamRoot = 'tests/exams/' + examSlug(stamp)
-    const ensurePackageInits = (dir, landings) => {
+    //
+    // With a sheet the set is READ too: the launcher owns those files, listed
+    // in `driverOwned`, and the ones that are packaging are exactly the entries
+    // ending `__init__.py`. Lazy, so a task with a sheet calls `examSlug`
+    // never.
+    const pyExamRoot = () => 'tests/exams/' + examSlug(stamp)
+    const initsFromLandings = (landings) => {
+      const root = pyExamRoot()
       const dirs = new Set()
       for (const land of landings) {
-        if (!land.endsWith('.py') || !land.startsWith(pyExamRoot + '/')) continue
-        let at = pyExamRoot
+        if (!land.endsWith('.py') || !land.startsWith(root + '/')) continue
+        let at = root
         dirs.add(at)
-        for (const seg of land.slice(pyExamRoot.length + 1).split('/').slice(0, -1)) {
+        for (const seg of land.slice(root.length + 1).split('/').slice(0, -1)) {
           at += '/' + seg
           dirs.add(at)
         }
       }
-      for (const d of dirs) {
-        const f = path.resolve(dir, d, '__init__.py')
+      return [...dirs].map((d) => d + '/__init__.py')
+    }
+    const ensurePackageInits = (dir, landings) => {
+      const files = factsheet
+        ? (Array.isArray(factsheet.driverOwned) ? factsheet.driverOwned : [])
+            .filter((p) => typeof p === 'string' && p.endsWith('__init__.py'))
+        : initsFromLandings(landings)
+      for (const rel of files) {
+        const f = path.resolve(dir, rel)
         fs.mkdirSync(path.dirname(f), { recursive: true })
         if (!fs.existsSync(f)) fs.writeFileSync(f, '')
       }
@@ -1665,6 +1823,13 @@ export async function runEngine({
     // neither before the other. Deliberately NOT the `parallel` seam: that one
     // is bounded by the caller and this code already runs inside one of its
     // slots, so nesting it could hand the wave a width it does not have.
+    // The claim is the hub's record that this task is now being worked, and it
+    // is on the hub BEFORE the pair exists — once per task, like the read.
+    if (kataRow && !kataClaimed.has(task.id)) {
+      kataClaimed.add(task.id)
+      await drainKataPosts()
+      await kataCall('claim', kataRow.uid, () => kata.claim(kataProjectId, kataRow.uid))
+    }
     const examPrompt = roles.examiner + '\nBASE: ' + baseShaForTask + examinerInputs
     const examOpts = { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
                        schema: EXAMINER_SCHEMA }
@@ -1856,6 +2021,7 @@ export async function runEngine({
           impl.headSha = ''
           impl.captureError = 'exam handoff re-capture failed: ' + String((e && e.message) || e)
         }
+        await kataTouched(kataRow, impl.patch)
       }
       examBlobs = []
       for (const [p] of examinerBlobs) examBlobs.push([p, await blobShaOf(p)])
@@ -2016,6 +2182,7 @@ export async function runEngine({
       stripUntrustedPatch(impl, patchPrefix)
       noteConcerns(impl)
       await noteDrift('the fix round')
+      if (hasCoordinates(impl)) await kataTouched(kataRow, impl.patch)
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
         judgmentCalls.push('task ' + task.id + ': pre-review fix round lost driver-captured coordinates (' +
           (impl.captureError || 'capture absent') + ') — failed before review')
@@ -2302,6 +2469,7 @@ export async function runEngine({
       // Same tree, same rule: a fix round applying a referee's findings may
       // find the finding WAS the exam (run-53, #556) — recorded, then re-reviewed.
       await noteDrift('the fix round')
+      if (hasCoordinates(impl)) await kataTouched(kataRow, impl.patch)
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
         judgmentCalls.push('task ' + task.id + ': fix round lost driver-captured coordinates (' +
           (impl.captureError || 'capture absent') + ') — failed before re-review')
@@ -2324,6 +2492,10 @@ export async function runEngine({
     try {
       return await runTaskInner(task, baseShaForTask, siblingsStr)
     } catch (e) {
+      // A kata disagreement is not this task's failure and no retry can clear
+      // it: the record and the hub say different things about what this run is.
+      // It climbs out of the wave to run-main, which ends the run.
+      if (isKataFatal(e)) throw e
       const msg = String((e && e.message) || e)
       if (isInfraFault(msg)) {
         judgmentCalls.push('task ' + task.id + ': infra-death (' + msg +
@@ -2350,6 +2522,7 @@ export async function runEngine({
           (capabilityFixable ? 'escalation to ' : 'same-tier retry at ') + retryTier)
         return res
       } catch (e2) {
+        if (isKataFatal(e2)) throw e2
         const msg2 = String((e2 && e2.message) || e2)
         judgmentCalls.push('task ' + task.id + ': agent error after ' +
           (capabilityFixable ? 'escalation to ' : 'same-tier retry at ') + retryTier + ' — ' + msg2)
@@ -2807,6 +2980,7 @@ export async function runEngine({
           judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
           return res
         } catch (e2) {
+          if (isKataFatal(e2)) throw e2
           const msg2 = String((e2 && e2.message) || e2)
           judgmentCalls.push('task ' + task.id + ': barrier retry after infra-death failed — ' + msg2)
           return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
@@ -2909,6 +3083,13 @@ export async function runEngine({
     if (merge.status === 'TEST_FAILED') {
       appendEvent({ kind: 'driver:wave-blocked', wave: w + 1,
         tasks: waveIds(w), detail: merge.detail })
+      // The barrier could not make this wave green, so nothing in it landed —
+      // every task of the wave is closed `wontfix` carrying the row's own
+      // detail, and `wontfix` refuses evidence by construction.
+      for (const id of waveIds(w)) {
+        await kataClose(id, { reason: 'wontfix',
+          message: 'wave ' + (w + 1) + ' blocked: ' + String(merge.detail), evidence: [] })
+      }
     }
     if (merge.status === 'MERGED') {
       appendEvent({ kind: 'driver:wave-adopted', wave: w + 1,
@@ -2999,6 +3180,22 @@ export async function runEngine({
         judgmentCalls.push(detail + ' — a Global Constraint the fold broke; the run is BLOCKED ' +
           'whatever the critic returns')
         log('wave ' + (w + 1) + ': ' + detail)
+      }
+      // The wave is over on the hub too. Last, after the integrated proofs, so
+      // every `driver:` comment this wave produced is on the issue before its
+      // close is: the evidence is the head the wave adopted and the command
+      // this task is measured by, and the idempotency key makes a re-driven
+      // close the same close rather than a second one.
+      for (const r of mergeable) {
+        const t = (Array.isArray(WAVES[w]) ? WAVES[w] : []).find((x) => x && x.id === r.task)
+        const cmd = (t && typeof t.testCmd === 'string' && t.testCmd.trim()) ? t.testCmd : testCmd
+        await kataClose(r.task, {
+          reason: 'done',
+          message: 'adopted in wave ' + (w + 1) + ' (' + r.reviewVerdict + ')',
+          evidence: [{ type: 'commit', sha: merge.headSha },
+                     { type: 'test', command: cmd }],
+          idempotencyKey: stamp + ':' + r.task + ':close',
+        })
       }
       continue
     }
@@ -3186,6 +3383,24 @@ export async function runEngine({
   const taskRows = taskResults.map((r) => ((r && typeof r === 'object')
     ? { ...r, stateExams: stateExamsOf(runDirAbs, r.task) }
     : r))
+
+  // ── the hub's last word (#913) ────────────────────────────────────────────
+  // Every task that produced a row and did not finish `done` is closed
+  // `wontfix` carrying its own reading — the wave closes above already took
+  // the ones they own, and this takes the rest. A task that never produced a
+  // row at all (a cascade-blocked wave, a SKIPPED one) is left OPEN: the run
+  // has nothing to say about it, and an open issue is the honest record of a
+  // task that was never attempted. Then the comment queue is drained, so the
+  // hub holds every `driver:` event before the engine answers.
+  for (const r of taskResults) {
+    if (!r || r.status === 'done') continue
+    await kataClose(r.task, {
+      reason: 'wontfix',
+      message: String(r.status) + ': ' + String(r.reviewVerdict) + ' — ' + String(r.notes),
+      evidence: [],
+    })
+  }
+  await drainKataPosts()
 
   return {
     integrationBranch,

@@ -112,6 +112,7 @@ import {
   vmNameFor
 } from './lobby.mjs'
 import { fleetConfigAccount, fleetConfigRender, verbDrift } from './doctor.mjs'
+import { makeKataClient, sshTransport } from './kata-client.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 
@@ -165,6 +166,68 @@ const VERBS_PATH = new URL('./exe-verbs.json', import.meta.url).pathname
 /** Where the plan lands in the commit the launcher pushes. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
 export const VERDICTS_PATH = '.ultrapowers/gate-verdicts.json'
+/** The third path of the plan commit: the run's kata record — the project, the
+ *  run issue and one issue per task on the hub, each with the revision it had
+ *  when the launcher last read it (#913). Written only when a hub is reached. */
+export const KATA_PATH = '.ultrapowers/kata.json'
+/** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
+ *  `tag:fleet` — written into the record regardless of the laptop's own route,
+ *  because the record's reader is the engine on the sandbox and never the
+ *  laptop. */
+export const KATA_SANDBOX_URL = 'http://kata.int.exe.xyz'
+/** The one command that builds the hub, named by every refusal about it. */
+export const KATA_HUB_FIX = 'node fleet/kata-hub.mjs'
+/** Where `fleet/kata-hub.mjs` leaves the hub's address and bearer. */
+export const defaultKataEnvPath = () => path.join(os.homedir(), '.ultrapowers', 'kata-hub.env')
+
+/**
+ * `~/.ultrapowers/kata-hub.env`, read: `{ url, token }` from its `KATA_URL=`
+ * and `KATA_TOKEN=` lines. An absent file, or one missing either line, is a
+ * refusal naming the path and the command that writes it — before any command
+ * has run, so a laptop with no hub has touched neither exe.dev nor the target.
+ *
+ * The token is the laptop's RECORD of the bearer the hub was given; the
+ * launcher never sends it. Every laptop request rides `ssh <hub> curl …` and
+ * sources the bearer from the hub's own `/etc/kata/kata.env` there.
+ */
+export async function readKataEnv (envPath) {
+  let text
+  try {
+    text = await fsp.readFile(envPath, 'utf8')
+  } catch (error) {
+    throw new Refusal(`launch: no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — build the hub once: ${KATA_HUB_FIX}`)
+  }
+  const fields = {}
+  for (const line of text.split('\n')) {
+    const m = /^(KATA_URL|KATA_TOKEN)=(.*)$/.exec(line.trim())
+    if (m && !(m[1] in fields)) fields[m[1]] = m[2].trim()
+  }
+  for (const key of ['KATA_URL', 'KATA_TOKEN']) {
+    if (!fields[key]) {
+      throw new Refusal(`launch: ${envPath} has no ${key}= line — build the hub once: ${KATA_HUB_FIX}`)
+    }
+  }
+  return { url: fields.KATA_URL, token: fields.KATA_TOKEN }
+}
+
+/** The plan's H1: the text after `# ` on the first such line, `''` when none. */
+export const planTitleOf = (planText) => /^# (.*)$/m.exec(planText)?.[1]?.trim() ?? ''
+/** The plan's `**Claim:**` line, whole — the run issue's body. `''` when none. */
+export const planClaimOf = (planText) =>
+  planText.split('\n').find((line) => line.startsWith('**Claim:**'))?.trim() ?? ''
+/**
+ * The numbers of the plan's one `**Closes:**` line — the first such line
+ * before the first `### ` heading, which is the line the sandbox's
+ * `plan_closes` reads — as integers, `[]` when the plan has none.
+ */
+export const planClosesOf = (planText) => {
+  for (const line of planText.split('\n')) {
+    if (line.startsWith('### ')) break
+    if (!line.startsWith('**Closes:**')) continue
+    return [...line.matchAll(/#(\d+)/g)].map((m) => Number(m[1]))
+  }
+  return []
+}
 
 /**
  * What a base off the default branch is told to do. The parked branch is not
@@ -561,7 +624,8 @@ export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spa
  */
 export async function launch ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
-  refreshCredential = defaultRefreshCredential, verbsPath = VERBS_PATH
+  refreshCredential = defaultRefreshCredential, verbsPath = VERBS_PATH,
+  kata, kataEnvPath = defaultKataEnvPath()
 }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold'] })
 
@@ -645,6 +709,32 @@ export async function launch ({
       )
     }
   }
+  // The hub, on the same branch the account and the renderer take: an injected
+  // `kata` is the client (a fake in a sim; `null` means "no hub" outright); with
+  // none injected and no injected config, the laptop's own `kata-hub.env` is
+  // read and the client is built on it — one `ssh <hub> curl …` per request
+  // through this launch's own `exec` seam, the bearer sourced ON the hub. A
+  // config injected with no `kata` is a launch with no hub at all: no request
+  // is made and the result's `kata` is null, which is what keeps every sim that
+  // hands `launch` a config at its BASE behaviour. The env read is a refusal
+  // that precedes every command.
+  let kataEnv = null
+  let hub = kata === undefined ? null : kata
+  if (kata === undefined && (config === undefined || config === null)) {
+    kataEnv = await readKataEnv(kataEnvPath)
+    let sshHost
+    try {
+      sshHost = new URL(kataEnv.url).hostname
+    } catch {
+      sshHost = ''
+    }
+    if (!sshHost) {
+      throw new Refusal(`launch: ${kataEnvPath} names KATA_URL ${JSON.stringify(kataEnv.url)}, not a url with a host — rebuild the hub: ${KATA_HUB_FIX}`)
+    }
+    hub = makeKataClient({ transport: sshTransport({ sshHost, exec }), actor: 'launch' })
+  }
+  const kataUrl = hub === null ? null : (hub.url ?? kataEnv?.url ?? null)
+
   const cpu = String(opts.cpu ?? settings.cpu ?? FLEET_DEFAULTS.cpu)
   const memory = String(opts.memory ?? settings.memory ?? FLEET_DEFAULTS.memory)
   if (!isPositiveInt(cpu)) {
@@ -795,6 +885,18 @@ export async function launch ({
     )
   }
 
+  // ── The hub answers, or nothing is launched. One `ping` right after the
+  //    integrations read and before the reap: a hub that is dark is a run
+  //    that would park at boot on `kata unreachable`, so the laptop refuses it
+  //    here, before a plan branch or a VM exists.
+  if (hub !== null) {
+    try {
+      await hub.ping()
+    } catch (error) {
+      throw new Refusal(`launch: the kata hub at ${kataUrl} did not answer its ping — ${error?.message ?? error}; nothing was pushed and no VM was created (${KATA_HUB_FIX} rebuilds it)`)
+    }
+  }
+
   // ── The verb-drift preflight. `help <verb>` for every verb of the record,
   //    diffed against the flags recorded there. Every read, and every one of
   //    them a `help` line: `exec.mutating()` is untouched by it. A drift, a
@@ -868,6 +970,27 @@ export async function launch ({
   //    never touched. The push is also what reserves the run number, so the N
   //    the launch ends up with is the one that got through — see `pushPlan`.
   const commands = []
+  // The hub's half of each push attempt: the sheets compiled for THIS N, the
+  // project and issues filed under it, the record read back — and, on a bump,
+  // the project purged before the next N is filed.
+  const kataCall = async (method, fn) => {
+    try {
+      return await fn()
+    } catch (error) {
+      throw new LobbyError(`launch: kata ${method} failed — ${error?.message ?? error}; no plan branch was pushed and no VM was created`)
+    }
+  }
+  const kataStep = hub === null
+    ? null
+    : async (n) => {
+        const record = await fileRunOnHub({
+          hub, call: kataCall, exec, repoDir, planPath, planText, target, base: opts.base, n
+        })
+        return { text: `${JSON.stringify(record, null, 2)}\n`, record }
+      }
+  const kataPurge = hub === null
+    ? null
+    : (record) => kataCall('purgeProject', () => hub.purgeProject(record.project.id, 'run number taken'))
   const plan = await pushPlan({
     exec,
     repoDir,
@@ -878,7 +1001,9 @@ export async function launch ({
     commands,
     // `--run N` is the operator's number, not one the launcher is free to
     // move: a refused push under it is refused, never retried elsewhere.
-    reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir)
+    reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir),
+    kataStep,
+    kataPurge
   })
   const run = plan.run
   const planBranch = plan.branch
@@ -948,6 +1073,10 @@ export async function launch ({
     // `COMMENT_KEYS` nor `buildComment` spells `account`. It lives here and on
     // the launch line instead.
     account,
+    // The hub's record of this run — `{url, project, run, tasks}`, the same
+    // object the plan commit carries as `.ultrapowers/kata.json` — or null for
+    // a launch that reached no hub.
+    kata: plan.kata,
     verbDrift: drift,
     github: githubName,
     // The renderer this run was given, or null for a fleet that names none.
@@ -1099,7 +1228,7 @@ export async function detectTestCommand ({ exec, repoDir, base }) {
  * A local git failure here is still a refusal: exe.dev has seen nothing but
  * reads, and the target has nothing new on it.
  */
-async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText }) {
+async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText, kataText = null }) {
   const indexDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-plan-'))
   const env = { ...process.env, GIT_INDEX_FILE: path.join(indexDir, 'index') }
   const plumb = async (argv, options = {}) => {
@@ -1113,6 +1242,7 @@ async function commitPlan ({ exec, repoDir, base, run, planText, verdictsText })
     await plumb(['read-tree', base])
     const entries = [[PLAN_PATH, planText]]
     if (verdictsText !== null) entries.push([VERDICTS_PATH, verdictsText])
+    if (kataText !== null) entries.push([KATA_PATH, kataText])
     for (const [rel, text] of entries) {
       const blob = await plumb(['hash-object', '-w', '--stdin'], { input: text })
       if (!isSafeSha(blob)) {
@@ -1162,15 +1292,23 @@ export const PUSH_ATTEMPTS = 3
  * text a single refused push has always carried — with ` after <n> tries` when
  * more than one was made.
  */
-async function pushPlan ({ exec, repoDir, base, run, planText, verdictsText, commands, reread }) {
+async function pushPlan ({
+  exec, repoDir, base, run, planText, verdictsText, commands, reread, kataStep = null, kataPurge = null
+}) {
   let n = run
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
     const branch = planBranchFor(n)
-    const sha = await commitPlan({ exec, repoDir, base, run: n, planText, verdictsText })
+    // The hub is filed for THIS N before the commit is built, because the
+    // project's name and every sheet's landing slug carry the number: a bump
+    // purges what was filed and files again for N+1.
+    const filed = kataStep === null ? null : await kataStep(n)
+    const sha = await commitPlan({
+      exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
+    })
     const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
     commands.push(`git ${pushArgv.join(' ')}`)
     const push = await exec('git', pushArgv)
-    if (push.code === 0) return { run: n, sha, branch }
+    if (push.code === 0) return { run: n, sha, branch, kata: filed === null ? null : filed.record }
 
     const refusal = () =>
       new Refusal(
@@ -1181,7 +1319,82 @@ async function pushPlan ({ exec, repoDir, base, run, planText, verdictsText, com
     const highest = await reread()
     if (highest < n) throw refusal()
     n = highest + 1
+    if (filed !== null) await kataPurge(filed.record)
   }
+}
+
+/**
+ * The run, filed on the hub for one run number: the sheets compiled under
+ * `--stamp run-<n>` (the compiler's second call of the launch — the first was
+ * `--check`), one project `<owner>-<repo>-run-<n>`, one run issue carrying the
+ * plan's title, Claim line and Closes numbers, one issue per task in wave
+ * order carrying its fact sheet and a `parent` link to the run, one `blocks`
+ * link per dependency edge created ON the task that blocks, and then one
+ * `getIssue` per task and one for the run — the revisions THOSE answer are the
+ * record's, because nothing here assumes which side of a link kata
+ * re-revisions. The answer is the `.ultrapowers/kata.json` object, keys in
+ * the order the contract spells: `url`, `project`, `run`, `tasks`.
+ *
+ * Every hub call goes through `call`, which turns a throw into the launch's
+ * LobbyError naming the method; the compile is the launch's own refusal.
+ */
+async function fileRunOnHub ({ hub, call, exec, repoDir, planPath, planText, target, base, n }) {
+  const stamp = `run-${n}`
+  const compiled = await exec('python3', [COMPILER_PATH, planPath, '--stamp', stamp, '--base', base], { cwd: repoDir })
+  if (compiled.code !== 0) {
+    throw new Refusal(`launch: compile_plan.py --stamp ${stamp} failed (exit ${compiled.code}):\n${output(compiled)}`)
+  }
+  let payload
+  try {
+    payload = JSON.parse(String(compiled.stdout ?? ''))
+  } catch (error) {
+    throw new Refusal(`launch: compile_plan.py --stamp ${stamp} printed no JSON: ${error?.message ?? error}`)
+  }
+  const waves = Array.isArray(payload?.launch_waves) ? payload.launch_waves : []
+  const edges = Array.isArray(payload?.dag_edges) ? payload.dag_edges : []
+
+  const name = `${target.replace(/\//g, '-')}-run-${n}`
+  const project = await call('createProject', () => hub.createProject(name))
+  const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
+    title: `${stamp}: ${planTitleOf(planText)}`,
+    body: planClaimOf(planText),
+    metadata: { run: n, target, base, closes: planClosesOf(planText) }
+  }))
+  const tasks = []
+  for (const [index, wave] of waves.entries()) {
+    for (const entry of wave) {
+      const id = String(entry.id)
+      const issue = await call('createIssue', () => hub.createIssue(project.id, {
+        title: `task ${id}: ${entry.title ?? ''}`,
+        body: '',
+        metadata: { task: id, wave: index + 1, factsheet: entry.factsheet },
+        links: [{ type: 'parent', to_ref: runIssue.uid }]
+      }))
+      tasks.push({ id, uid: issue.uid })
+    }
+  }
+  const uidOf = new Map(tasks.map((t) => [t.id, t.uid]))
+  for (const edge of edges) {
+    const from = uidOf.get(String(edge.from))
+    const to = uidOf.get(String(edge.to))
+    if (!from || !to) {
+      throw new Refusal(`launch: compile_plan.py --stamp ${stamp} names an edge ${edge.from} -> ${edge.to} between tasks it did not list`)
+    }
+    await call('link', () => hub.link(project.id, from, { type: 'blocks', to_ref: to }))
+  }
+  const record = {
+    url: KATA_SANDBOX_URL,
+    project: { id: project.id, uid: project.uid, name: project.name },
+    run: null,
+    tasks: {}
+  }
+  for (const t of tasks) {
+    const read = await call('getIssue', () => hub.getIssue(t.uid))
+    record.tasks[t.id] = { uid: t.uid, revision: read.revision }
+  }
+  const readRun = await call('getIssue', () => hub.getIssue(runIssue.uid))
+  record.run = { uid: runIssue.uid, revision: readRun.revision }
+  return record
 }
 
 /**
@@ -1220,6 +1433,7 @@ export const renderLaunch = (result) => [
   result.comment,
   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
   result.account === undefined ? null : `account=${result.account}`,
+  result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
   result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
   engineLine(result),
   ...(result.baseFacts ?? [])
