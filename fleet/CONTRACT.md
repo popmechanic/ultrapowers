@@ -300,6 +300,25 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     the unit: a probe never manufactures a park out of a flake, and a credential that really is dead
     is still stopped by the engine's own credential row at its first worker.
     No `--scope`, no `KillMode=process`, no re-exec, no self-hash.
+  - the worker's API-layer classes (`fleet/run-worker.mjs` `classify`), read off the envelope's
+    `api_error_status`: `infra` is 429, 500, 502, 503, 504 and 529 — the call answers `null` and the
+    engine's infra lane owns the one re-dispatch after `INFRA_BACKOFF_MS`; `credential` is 401, 403
+    and 404 (`CREDENTIAL_STATUSES`) — the first such worker latches `run:fatal` and every later
+    dispatch is refused before it spawns. A 403 is `credential` only when its body is Anthropic's
+    (a JSON `authentication_error` document, or anything else that is not the edge's sentence).
+    A 403 whose body matches `integration not found or not attached to this VM (trace: <32 hex>)`
+    is the class `attachment` (#903), exe.dev's edge refusing the VM, and is never a verdict on its
+    own: the worker asks reflection — `curl -fsS --max-time 5 https://reflection.int.exe.xyz/integrations`,
+    `.integrations[].name` read in-process, no `jq` — and `claude-max` listed there (or reflection
+    unable to answer: curl non-zero, a body that is not the listing) resolves the call as `infra`
+    (`null`, status 403, the same lane as a 529); `claude-max` absent from the listing resolves it as
+    `run:fatal` naming the attachment. Two independent labels refused by the edge inside
+    `ATTACHMENT_WINDOW_MS` (120 s) are `run:fatal` without a probe. The trace id rides verbatim as
+    `trace` on the `worker:edge-403` event (`label`, `trace`, `status`, `probe` one of `attached`,
+    `not-listed`, `inconclusive`, `skipped`, `sightings`, `resolution` one of `infra`, `fail-run`,
+    `detail`), on that worker's `worker:end`, on `run:fatal` when it fails the run, and on the
+    engine's `driver:infra-retry` when the lane re-dispatches a judgment — it is the only handle
+    exe.dev support resolves.
   - publish fold: the target's default branch may have moved while the run worked, so before the PR is
     opened the boot script folds that tip into the run's branch — under state `running` with phase
     `publish fold`, after the engine's unit is inactive and before `publishing`, as its own transient
