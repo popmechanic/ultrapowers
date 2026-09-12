@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1b481121f4ffb324a0c7ac34f19d612e8378caa4ed0baf55751f37d89ac59a6b",
+      "verdict": "pass",
+      "reason": "Leg (a)'s BASE deep-equal falsifies both halves of M1; leg (b)'s ordered regex plus the three named absences falsify every clause of M2 with the failing case named; leg (c) runs M3 directly."
+    }
+  },
+  "tally": {"dispatched": 1, "rejected": 0, "rounds": {"1": {"pass": 1, "fail": 0}}}
+}
