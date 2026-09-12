@@ -493,12 +493,48 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'))
 // leaves whatever receipt already exists as the terminal artifact (no receipt
 // reads red at the shim; a BLOCKED gate receipt reads BLOCKED).
 export async function runMain(parsed, deps = {}) {
+  // run-main's own comment chain to the hub (subscribed to the event log at
+  // step 1b below): every return path — an approval, a refusal, a crash —
+  // waits for the posts it queued, so the run issue holds the last stage
+  // before the process ends.
+  const hub = makeHubChain()
+  try {
+    return await runMainInner(parsed, deps, hub)
+  } finally {
+    await hub.drain()
+  }
+}
+
+// One serialized promise chain: a push starts the moment the post before it
+// has answered, never two in flight, push order = post order. The engine keeps
+// the same shape for its own lines (run-engine.mjs `kataPost`); this one is
+// run-main's, for the `driver:` lines it appends around the engine — the
+// stages, the credential, the critic and ack decisions, the approval — which
+// never reached the hub before run-112 (2026-09-12).
+export const makeHubChain = () => {
+  let chain = Promise.resolve()
+  return {
+    push: (thunk) => { chain = chain.then(thunk).catch(() => { /* recorded by the thunk */ }) },
+    drain: async () => {
+      let head
+      do { head = chain; await head } while (head !== chain)
+    },
+  }
+}
+
+async function runMainInner(parsed, deps, hub) {
   const {
     exec = execSeam,
     runEngineFn = runEngine,
     makeAgent = composeAgent,
     log = console.error,
     env = process.env,
+    // The hub client, from the record: a sim hands in a fake and no request
+    // leaves the box; production builds `httpTransport` on the record's url.
+    kataClientFor = (record, id) => makeKataClient({
+      transport: httpTransport({ url: record.url }),
+      actor: 'engine:' + id,
+    }),
   } = deps
   const { planPath, runId, tier, overlap, implementerEffort, testCmd, bootstrapCmd, cli,
           kata: kataPath } = parsed
@@ -574,6 +610,58 @@ export async function runMain(parsed, deps = {}) {
     return fail('empty-plan', 'compile produced no waves — nothing to launch')
   }
 
+  // 1b. The run's kata record, read BEFORE anything is provisioned — and before
+  // the first stage the log records, so the hub's view of the run starts where
+  // the record's does. The file is the launcher's own (`.ultrapowers/kata.json`
+  // in the plan commit, landed beside the plan by the boot script): the hub's
+  // url, the project, the run issue and one entry per task. A run told to keep
+  // state on the hub and unable to read what that state IS has nothing to
+  // reconcile against, so an unreadable or malformed file ends it here —
+  // before a clone exists, before a worker is dispatched, and with the receipt
+  // naming why.
+  let kataRecord = null
+  let kata = null
+  if (kataPath) {
+    try {
+      kataRecord = JSON.parse(fs.readFileSync(kataPath, 'utf8'))
+    } catch (e) {
+      return fail('kata-unreadable', 'could not read --kata ' + kataPath + ': ' +
+        String((e && e.message) || e))
+    }
+    if (!kataRecord || typeof kataRecord !== 'object' || Array.isArray(kataRecord)) {
+      return fail('kata-unreadable', '--kata ' + kataPath + ' is not a JSON object')
+    }
+    // No token, ever: the sandbox reaches the hub through the exe.dev edge,
+    // which injects the bearer. The actor names the run, so every mutation on
+    // the hub is attributable to the engine that made it.
+    kata = kataClientFor(kataRecord, runId)
+    // run-main's mirror: each `driver:` line this log appends from here on is
+    // a comment on the run issue, through the same non-fatal rule as the
+    // engine's — a refused post is one `kata:write-failed` event, never a
+    // failure. Only `driver:` lines: the engine appends its own straight to
+    // the file (never through this log) and mirrors them itself, and the
+    // worker envelopes and phase marks are the engine's to route (its
+    // `eventLog` subscription, run-engine.mjs `kataUidFor`), so no line is
+    // posted twice. Subscribed before the `kata` stage so that stage is the
+    // first line on the hub.
+    const runUid = (kataRecord.run || {}).uid
+    const projectId = (kataRecord.project || {}).id
+    if (runUid && projectId != null) {
+      eventLog.subscribe((e, line) => {
+        if (!String((e && e.kind) || '').startsWith('driver:')) return
+        hub.push(async () => {
+          try {
+            await kata.comment(projectId, runUid, line)
+          } catch (err) {
+            eventLog.onEvent({ kind: 'kata:write-failed', what: 'comment', uid: runUid,
+              detail: String((err && err.message) || err).slice(0, 600) })
+          }
+        })
+      })
+    }
+    stage('kata', 'record ' + kataPath + ' → ' + String(kataRecord.url))
+  }
+
   // 2. Fill tiers, write back, validate.
   const filled = fillTiers(argsObj, tier)
   fs.writeFileSync(argsFilePath, JSON.stringify(argsObj, null, 2))
@@ -591,35 +679,6 @@ export async function runMain(parsed, deps = {}) {
     // Fail closed; the operator re-drives with the repair plan.
     return fail('knob-validate-failed', 'ultra_run.py --validate-knobs exited ' + vk.code + ': ' +
       (vk.stdout || vk.stderr).slice(-500))
-  }
-
-  // 2b. The run's kata record, read BEFORE anything is provisioned. The file is
-  // the launcher's own (`.ultrapowers/kata.json` in the plan commit, landed
-  // beside the plan by the boot script): the hub's url, the project, the run
-  // issue and one entry per task. A run told to keep state on the hub and
-  // unable to read what that state IS has nothing to reconcile against, so an
-  // unreadable or malformed file ends it here — before a clone exists, before a
-  // worker is dispatched, and with the receipt naming why.
-  let kataRecord = null
-  let kata = null
-  if (kataPath) {
-    try {
-      kataRecord = JSON.parse(fs.readFileSync(kataPath, 'utf8'))
-    } catch (e) {
-      return fail('kata-unreadable', 'could not read --kata ' + kataPath + ': ' +
-        String((e && e.message) || e))
-    }
-    if (!kataRecord || typeof kataRecord !== 'object' || Array.isArray(kataRecord)) {
-      return fail('kata-unreadable', '--kata ' + kataPath + ' is not a JSON object')
-    }
-    // No token, ever: the sandbox reaches the hub through the exe.dev edge,
-    // which injects the bearer. The actor names the run, so every mutation on
-    // the hub is attributable to the engine that made it.
-    kata = makeKataClient({
-      transport: httpTransport({ url: kataRecord.url }),
-      actor: 'engine:' + runId,
-    })
-    stage('kata', 'record ' + kataPath + ' → ' + String(kataRecord.url))
   }
 
   // 3. Provision the run tree.
@@ -719,6 +778,8 @@ export async function runMain(parsed, deps = {}) {
       paths: { repoDir, runDir, clonesDir: tree.clonesDir },
       log: eventLog.log,
       phase: eventLog.phase,
+      // The log itself, for the envelopes the engine mirrors but never writes.
+      eventLog,
       patchBase,
     })
   } catch (e) {

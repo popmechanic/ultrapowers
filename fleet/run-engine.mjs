@@ -982,6 +982,15 @@ export async function runEngine({
   // and writes the run's record back there; absent, the engine makes no request
   // and behaves exactly as it does without a hub.
   kata,
+  // The run's event log (optional): run-main's `makeEventLog`, the sink the
+  // workers' envelopes and the phase marks are appended through — lines this
+  // engine never writes itself. With a hub on, the engine subscribes to it and
+  // mirrors `worker:start`, `worker:end` and `engine:phase` to the hub beside
+  // its own `driver:` lines (#880: the hub is a LIVE view, so what the fleet
+  // is doing right now — which worker, on which task, at what cost — has to be
+  // on it, not only what the driver judged). Absent, only the driver's own
+  // lines reach the hub, as before.
+  eventLog,
   // Live patch base (optional): a { current } holder shared with the caller's
   // withPatchCapture wrapper. Wave 1 captures against BASE; each adopted wave
   // advances it so wave N+1's diffs are taken against the tree its tasks
@@ -1059,19 +1068,66 @@ export async function runEngine({
     if (uid && answer && typeof answer.revision === 'number') kataRevisions.set(uid, answer.revision)
     return answer
   }
-  // The comment queue. `appendEvent` is synchronous and must stay so (it is the
+  // The comment chain. `appendEvent` is synchronous and must stay so (it is the
   // durable evidence copy and a failed append is never the run's failure mode),
-  // so a `driver:` event pushes its own line here and the post is awaited at the
-  // points the record must be complete: before each claim, each metadata patch
-  // and each close, and before the engine returns. Append order is post order.
-  const kataPosts = []
-  const drainKataPosts = async () => {
-    while (kataPosts.length) {
-      const post = kataPosts.shift()
-      await kataCall('comment', post.uid,
-        () => kata.comment(kataProjectId, post.uid, post.body))
-    }
+  // so a mirrored event pushes its own line here and the post goes out on its
+  // own: ONE serialized chain, each post started the moment the one before it
+  // has answered, never two in flight, append order = post order. Eager,
+  // because the hub is the live view: until run-112 (2026-09-12) the queue was
+  // drained only at the next hub write — claim, metadata patch, close, return —
+  // so every mid-wave `driver:proof-run` landed in one burst at adoption,
+  // median 539 s after its event. A post the hub refuses is one
+  // `kata:write-failed` (kataCall) and the chain goes on to the next.
+  // `drainKataPosts` is the barrier the record still needs — before each claim,
+  // each metadata patch, each close, and before the engine returns — and awaits
+  // the chain until nothing is pending, pushes made while it waited included.
+  let kataChain = Promise.resolve()
+  const kataPost = (uid, body) => {
+    kataChain = kataChain
+      .then(() => kataCall('comment', uid, () => kata.comment(kataProjectId, uid, body)))
+      .catch(() => { /* kataCall recorded it; the chain never breaks */ })
   }
+  const drainKataPosts = async () => {
+    let head
+    do { head = kataChain; await head } while (head !== kataChain)
+  }
+  // Which issue a line belongs on. A `driver:` line names its task outright;
+  // a worker envelope names it in its label — `impl:1`, `exam:1`, `fix:1:0`,
+  // `review:1:1:2` all carry the task as the second colon-segment, while
+  // `integration` (the critic) and `reconcile:wave1:1` name none the record
+  // knows — and a phase mark names the run. Everything else (`transcript:*`,
+  // `engine:log`, `capture:*`, `kata:*`, `run:*`) is the record's alone.
+  const MIRRORED_ENVELOPES = new Set(['worker:start', 'worker:end'])
+  const kataUidFor = (e) => {
+    const kind = String((e && e.kind) || '')
+    if (kind.startsWith('driver:')) {
+      const row = (typeof e.task === 'string') ? kataRowOf(e.task) : null
+      return row ? row.uid : kataRunUid
+    }
+    if (MIRRORED_ENVELOPES.has(kind)) {
+      const row = kataRowOf(String(e.label || '').split(':')[1])
+      return row ? row.uid : kataRunUid
+    }
+    if (kind === 'engine:phase') return kataRunUid
+    return null
+  }
+  const mirrorToHub = (e, line) => {
+    if (!kataOn) return
+    const uid = kataUidFor(e)
+    if (uid) kataPost(uid, line)
+  }
+  // The envelopes this engine does not write: subscribed for the run's length,
+  // released at the final drain. Only the envelopes and the phase marks are
+  // taken off the log — a `driver:` line on the log is run-main's own and is
+  // run-main's chain's to post, so a run that ends by throwing (subscription
+  // still in place) never posts run-main's `driver:fail` twice.
+  const mirrorLogLine = (e, line) => {
+    if (String((e && e.kind) || '').startsWith('driver:')) return
+    mirrorToHub(e, line)
+  }
+  const unsubscribeHub = (kataOn && eventLog && typeof eventLog.subscribe === 'function')
+    ? eventLog.subscribe(mirrorLogLine)
+    : () => {}
   // What the graded patch touched, on the task's issue, at every point the
   // driver captures one. The revision is the tracker's — the record's is stale
   // the moment the claim lands — and a 412 says the hub moved under us, which
@@ -1111,11 +1167,8 @@ export async function runEngine({
     } catch { /* evidence, not control flow */ }
     // The hub carries the same line, verbatim: the driver's own narration of
     // the run, on the task's issue when the event names a task the record
-    // knows, and on the run's issue otherwise.
-    if (!kataOn || !String((e && e.kind) || '').startsWith('driver:')) return
-    const row = (typeof e.task === 'string') ? kataRowOf(e.task) : null
-    const uid = row ? row.uid : kataRunUid
-    if (uid) kataPosts.push({ uid, body: line })
+    // knows, and on the run's issue otherwise (`kataUidFor`).
+    mirrorToHub(e, line)
   }
   const repoDir = path.resolve(paths.repoDir)
   const integ = path.join(clonesDir, 'integration')
@@ -3436,6 +3489,7 @@ export async function runEngine({
       evidence: [],
     })
   }
+  unsubscribeHub()
   await drainKataPosts()
 
   return {

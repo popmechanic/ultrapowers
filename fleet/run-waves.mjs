@@ -465,9 +465,21 @@ export function makeEventLog({ file, runId, base, source = 'fleet/run-waves.mjs'
   // deliberately: the id stays the sort key, ts stays the wall clock. The stamp
   // spreads LAST: an envelope carrying its own `id`/`ts` must not clobber the
   // ULID, or the readers-order-by-id contract breaks silently.
+  // Who else reads a line the moment it is appended: the hub mirrors (the
+  // engine's, for the worker envelopes and the phase marks; run-main's, for its
+  // own `driver:` lines). Each is handed the stamped event AND the exact line
+  // the file got, so what it posts is the record, byte for byte. A subscriber
+  // that throws never reaches the append — the file is the record, the mirror
+  // is a view of it.
+  const subscribers = new Set()
   const append = (e) => {
     const ts = Date.now()
-    fs.appendFileSync(file, JSON.stringify({ ...e, id: ulid(ts), ts }) + '\n')
+    const stamped = { ...e, id: ulid(ts), ts }
+    const line = JSON.stringify(stamped)
+    fs.appendFileSync(file, line + '\n')
+    for (const fn of subscribers) {
+      try { fn(stamped, line) } catch { /* a view, never the record's failure */ }
+    }
   }
   append({ kind: 'run:open', runId, base, source })
   return {
@@ -479,5 +491,11 @@ export function makeEventLog({ file, runId, base, source = 'fleet/run-waves.mjs'
     // fallbacks and wave boundaries at the moment they happen.
     log: (line) => append({ kind: 'engine:log', line: String(line) }),
     phase: (name) => append({ kind: 'engine:phase', phase: String(name) }),
+    // `subscribe(fn)` → unsubscribe. `fn(event, line)` after every append from
+    // here on; nothing already in the file is replayed.
+    subscribe: (fn) => {
+      subscribers.add(fn)
+      return () => { subscribers.delete(fn) }
+    },
   }
 }

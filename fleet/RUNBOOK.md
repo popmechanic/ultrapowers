@@ -237,6 +237,13 @@ and does not merge it (a measurement run).
   engine is appending to, recopied on every poll. It is what the page above is
   a projection of; `bash fleet/sandbox-boot.sh project <events.jsonl>` prints
   that projection for a log you have in your hand.
+- the hub, when the plan commit carried `.ultrapowers/kata.json` — the run's
+  kata project holds the same lines as comments, posted as they happen: every
+  `driver:*` line (the engine's on the task's issue when it names one, run-main's
+  stages on the run issue), every `worker:start`/`worker:end` envelope on the
+  issue of the task its label names (`integration` and the phase marks on the
+  run issue). `fleet/CONTRACT.md` §Kata record (engine) is the exact list of
+  what is mirrored and what is not.
 - `.ultrapowers/runs/<N>/status.json` on the target — committed at every
   transition and, while the engine runs, whenever the log has grown by
   `FLEET_COMMIT_EVENTS` events (default 10) or `FLEET_COMMIT_SECONDS` seconds
