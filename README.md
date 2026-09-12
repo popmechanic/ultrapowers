@@ -222,8 +222,10 @@ At the end you get the finished result: the sandbox opens the pull request on th
 ultrapowers itself is just one such repository. Its body carries the gate receipt and links the
 evidence branch. The pull request merges itself on the run's own evidence — once its own gate is
 green and main has not moved off the tip it folded onto. Launch with `--hold` and the
-pull request stays open instead — your second checkpoint, yours to merge or close. Either way the
-run is over and the sandbox is gone.
+pull request stays open instead — your second checkpoint, yours to merge or close. A run the gate
+parked leaves a draft pull request, and the sandbox merges nothing after a park: acknowledge it by
+hand — mark it ready, `gh pr update-branch <N>` if it is behind main, `gh pr merge --squash <N>`.
+Either way the run is over and the sandbox is gone.
 
 ### One hazard: keep the GitHub integration personal
 
