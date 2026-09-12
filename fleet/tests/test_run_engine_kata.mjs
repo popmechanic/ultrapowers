@@ -35,6 +35,20 @@
 //            open.
 //   (g) [M7] with no `kata` the engine makes no request and behaves as at BASE.
 //   (h) [M8] the CONTRACT.md bullet, directly before `- **status.json:**`.
+//
+// The hub carries the run LIVE (2026-09-12, read on run-112: comments drained
+// only at the next hub write, median 539 s late; worker envelopes, phase marks
+// and run-main's own stages never posted). Legs (i)–(l), at the end:
+//   (i) eager: a `driver:proof-run` appended mid-task is on the hub before the
+//       first referee is dispatched — no claim, patch or close in between.
+//   (j) `worker:end` for `impl:T1` is a comment on T1's issue, its body the
+//       verbatim line (`meter` included); `worker:start` for `integration` and
+//       `engine:phase` land on the run issue; `transcript:slice` never posts.
+//   (k) a refused comment is exactly one `kata:write-failed` and the next
+//       comment still posts.
+//   (l) run-main: one comment on the run issue per `driver:*` line it appends
+//       (`driver:stage` ×N, `driver:auth`, …), verbatim, in order, through its
+//       own chain; a refusal there is one `kata:write-failed` and the rest post.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -44,7 +58,7 @@ import { fileURLToPath } from 'node:url'
 
 import { examSlug, reservedExamPath } from '../exam-paths.mjs'
 import { execSeam, parseArgs, usage, runMain } from '../run-main.mjs'
-import { makeCwdFor, withPatchCapture, defaultTaskIdOf } from '../run-waves.mjs'
+import { makeCwdFor, withPatchCapture, defaultTaskIdOf, makeEventLog } from '../run-waves.mjs'
 import { runEngine } from '../run-engine.mjs'
 import { ENV, gitSync, makeRepo, provision, passReview, cleanCritic, doneImpl }
   from './_engine_helpers.mjs'
@@ -249,7 +263,7 @@ function makeFakeKata ({ record, issues, trace = [], always412 = false, commentT
 // BASE call, byte for byte, for leg (g).
 function kataRig ({ repo, runDir, waves, edges = [], stub, testCmd = 'bash check.sh',
                     acceptance = { mode: 'suite', reason: 'sim' }, stamp = 'sim',
-                    kata = null, extraArgs = {} }) {
+                    kata = null, extraArgs = {}, eventLog = null }) {
   const taskIds = waves.flat().map((t) => t.id)
   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
   const patchBase = { current: base }
@@ -274,9 +288,12 @@ function kataRig ({ repo, runDir, waves, edges = [], stub, testCmd = 'bash check
     exec: execSeam,
     paths: { repoDir: repo, runDir, clonesDir },
     log: (l) => logs.push(String(l)),
-    phase: (p) => phases.push(String(p)),
+    // With a real event log (legs i–k) the phase marks go through it, as
+    // run-main's do; without one the rig reads them off `phases` as before.
+    phase: eventLog ? eventLog.phase : (p) => phases.push(String(p)),
     patchBase,
     ...(kata ? { kata } : {}),
+    ...(eventLog ? { eventLog } : {}),
   })
   return { run, base, clonesDir, patchesDir, integ, logs, phases, patchBase }
 }
@@ -310,7 +327,7 @@ let seq = 0
  */
 async function scenario ({ waves, sheets, recordRevisions, stamp = 'sim', testCmd,
                            onImpl, onFix, reviews, always412 = false, commentThrows = false,
-                           edges = [], noKata = false, expectReject = false }) {
+                           edges = [], noKata = false, expectReject = false, withLog = false }) {
   seq += 1
   const repo = makeRepo(path.join(tmp, 'repo-' + seq))
   const runDir = path.join(tmp, 'run-' + seq)
@@ -327,10 +344,16 @@ async function scenario ({ waves, sheets, recordRevisions, stamp = 'sim', testCm
   const labels = []
   const prompts = {}
   let reviewCount = 0
-  const stub = async (prompt, opts, cwd) => {
-    labels.push(opts.label)
-    prompts[opts.label] = prompt
-    trace.push('agent:' + opts.label)
+  // Legs (i)–(k): the run's own event log — run-main's `makeEventLog` on the
+  // same `events.jsonl` the engine appends to — and a stub that writes the
+  // envelopes run-worker would around each dispatch: `worker:start`, then the
+  // reply, then `worker:end` carrying the meter, then a `transcript:slice`.
+  const eventLog = withLog
+    ? makeEventLog({ file: path.join(runDir, 'events.jsonl'), runId: stamp, base: '', source: 'sim' })
+    : null
+  const meterFor = (label) => ({ input: 1200, output: 340, cacheRead: 9000, cacheCreation: 0,
+                                 costUsd: 0.0123, models: { 'sim-model': 1 }, label })
+  const judge = async (prompt, opts, cwd) => {
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') return writeExamFromCommand(cwd, prompt)
     if (kind === 'impl') return onImpl(cwd, opts)
@@ -340,10 +363,24 @@ async function scenario ({ waves, sheets, recordRevisions, stamp = 'sim', testCm
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
+  const stub = async (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    prompts[opts.label] = prompt
+    trace.push('agent:' + opts.label)
+    if (eventLog) eventLog.onEvent({ kind: 'worker:start', label: opts.label, role: opts.label.split(':')[0] })
+    const reply = await judge(prompt, opts, cwd)
+    if (eventLog) {
+      eventLog.onEvent({ kind: 'worker:end', label: opts.label, exitCode: 0, timedOut: false,
+                         meter: meterFor(opts.label) })
+      eventLog.onEvent({ kind: 'transcript:slice', label: opts.label, bytes: 512 })
+    }
+    return reply
+  }
   const rigged = kataRig({
     repo, runDir, waves, edges, stub, stamp,
     ...(testCmd ? { testCmd } : {}),
     ...(noKata ? {} : { kata: fake.kata, extraArgs: { kataRecord: record } }),
+    ...(eventLog ? { eventLog } : {}),
   })
   let report = null
   let error = null
@@ -392,7 +429,29 @@ const RUNMAIN_WAVES = () => [[
   { id: 'T1', title: 't1', files: ['a.txt'], tier: null, review: 'lean',
     writes: ['a.txt'], commutes: [] },
 ]]
-async function runMainFlow ({ name, kataPath }) {
+// The hub client run-main is handed (leg l): a fake with the client's method
+// names, recording every comment; `getIssue` is a function so leg (b)'s
+// "it is a client" read still holds. `commentThrows` refuses the FIRST post.
+function makeRunMainKata ({ commentThrows = false } = {}) {
+  const comments = []
+  let thrown = 0
+  return {
+    comments,
+    client: {
+      async getIssue () { throw new Error('run-main sim: the engine is stubbed; no read expected') },
+      async comment (projectId, uid, body) {
+        comments.push({ projectId, uid, body })
+        if (commentThrows && thrown === 0) {
+          thrown += 1
+          throw new FakeKataError(500, 'POST',
+            '/api/v1/projects/' + projectId + '/issues/' + uid + '/comments', COMMENT_BOOM)
+        }
+        return { uid, revision: comments.length + 1 }
+      },
+    },
+  }
+}
+async function runMainFlow ({ name, kataPath, commentThrows = false }) {
   const target = mkdir(path.join(tmp, 'rm-' + name))
   const git = (argv, cwd) => execFileSync('git', argv,
     { cwd, env: ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -452,12 +511,14 @@ async function runMainFlow ({ name, kataPath }) {
   }
   let received = null
   let filesFor = null
+  const hubFake = makeRunMainKata({ commentThrows })
   const out = await runMain(
     { planPath, runId, repoDir: target, tier: 'mostCapable', overlap: null, testCmd: null,
       bootstrapCmd: null, cli: 'claude', ...(kataPath === undefined ? {} : { kata: kataPath }) },
     {
       exec,
       log: () => {},
+      kataClientFor: () => hubFake.client,
       runEngineFn: async (deps) => {
         received = deps
         return { integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [] }
@@ -468,7 +529,7 @@ async function runMainFlow ({ name, kataPath }) {
       },
     },
   )
-  return { out, received, filesFor: () => filesFor, runDir, target }
+  return { out, received, filesFor: () => filesFor, runDir, target, comments: hubFake.comments }
 }
 
 // ── (b) [M2] with --kata: the client and the record reach the engine ───────
@@ -818,6 +879,16 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
     '(e) [M5] carrying the KataError\'s message; got ' + failed[0].detail)
   assert.equal(boom.report.tasks.find((r) => r.task === 'T1').status, 'done',
     '(e) [M5] and the task still lands')
+  // (k) the chain goes on past the refusal: every driver line was offered, and
+  // the one right after the refused first is posted verbatim.
+  const offered = boom.fake.of('comment')
+  const lines = driverLines(boom.runDir)
+  assert.equal(offered.length, lines.length,
+    '(k) every driver:* line is still offered to the hub after the one refusal: ' +
+    lines.length + ' lines, ' + offered.length + ' comment calls')
+  assert.ok(offered.length >= 2 && offered[1].body === lines[1],
+    '(k) and the comment right after the refused one is posted, verbatim; got ' +
+    JSON.stringify(offered[1] && offered[1].body))
 }
 
 // ══ (f) [M6] a blocked wave: wontfix here, nothing for the wave after ══════
@@ -945,6 +1016,136 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
   assert.deepEqual(linesStarting(String(noKata.prompts['exam:T1']), 'EXAM PATHS'),
     ['EXAM PATHS: tests/test_x.py -> ' + reservedExamPath('tests/test_x.py', 'sim')],
     '(g) [M7] and the EXAM PATHS line is the computed one')
+}
+
+// ══ (i)–(j) the hub carries the run live ═══════════════════════════════════
+// A run with the real event log behind the stub and a proof `Run:` on the
+// task, so there is a mid-task driver line between the handoff patch and the
+// first referee — where the drain-at-next-write queue had nowhere to post it.
+const live = await scenario({
+  waves: [[entry({ proofRuns: ['true'] })]],
+  sheets: { T1: SHEET },
+  stamp: 'liv',
+  withLog: true,
+  onImpl: (cwd) => {
+    fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
+    fs.writeFileSync(path.join(cwd, 'extra.txt'), 'also from T1\n')
+    return doneImpl(cwd)
+  },
+})
+{
+  const row = live.report.tasks.find((r) => r.task === 'T1')
+  assert.equal(row.status, 'done', '(i) the live run merges: ' + row.reviewVerdict + ' — ' + row.notes)
+  const comments = live.fake.of('comment')
+  const kinds = comments.map((c) => (parseLine(c.body) || {}).kind)
+  // (i) eager: the proof-run comment is on the hub BEFORE the first referee is
+  // dispatched. Under the drain-at-next-write queue it could not be: after the
+  // handoff patch the next hub write is past the review.
+  const proofAt = kinds.indexOf('driver:proof-run')
+  assert.notEqual(proofAt, -1, '(i) the driver:proof-run event was commented; kinds: ' +
+    JSON.stringify(kinds))
+  const proofTraceAt = traceIndexOfComment(live.trace, proofAt)
+  const firstReview = live.trace.findIndex((t) => t.startsWith('agent:review:'))
+  assert.ok(firstReview !== -1, '(i) a referee was dispatched')
+  assert.ok(proofTraceAt !== -1 && proofTraceAt < firstReview,
+    '(i) the proof-run comment is posted before the first review dispatch — eagerly, not at ' +
+    'the next claim, patch or close; comment at ' + proofTraceAt + ', review at ' + firstReview +
+    '; trace: ' + JSON.stringify(live.trace))
+  const firstClose = live.trace.findIndex((t) => t.startsWith('kata:close:'))
+  assert.ok(proofTraceAt < firstClose, '(i) and before the task\'s close')
+
+  // (j) the worker envelopes and the phase marks, routed by label.
+  const events = eventsOf(live.runDir)
+  const implEnd = eventLines(live.runDir).find((l) => {
+    const e = parseLine(l); return e && e.kind === 'worker:end' && e.label === 'impl:T1'
+  })
+  assert.ok(implEnd, '(j) the log holds a worker:end for impl:T1')
+  const implEndComment = comments.find((c) => c.body === implEnd)
+  assert.ok(implEndComment,
+    '(j) the worker:end for impl:T1 is a comment whose body is the verbatim event line; ' +
+    'bodies posted: ' + JSON.stringify(comments.map((c) => c.body).filter((b) => b.includes('worker:end'))))
+  assert.equal(implEndComment.uid, 'U-T1', '(j) on task T1\'s issue — the label\'s second segment')
+  assert.deepEqual(JSON.parse(implEndComment.body).meter, JSON.parse(implEnd).meter,
+    '(j) and the body carries the meter object')
+  assert.equal(JSON.parse(implEndComment.body).meter.costUsd, 0.0123, '(j) meter.costUsd as written')
+  const reviewStart = comments.find((c) => {
+    const e = parseLine(c.body); return e && e.kind === 'worker:start' && /^review:T1:/.test(e.label)
+  })
+  assert.ok(reviewStart && reviewStart.uid === 'U-T1',
+    '(j) a review:T1:… worker:start lands on T1\'s issue too; got ' + JSON.stringify(reviewStart))
+  const criticStart = comments.find((c) => {
+    const e = parseLine(c.body); return e && e.kind === 'worker:start' && e.label === 'integration'
+  })
+  assert.ok(criticStart && criticStart.uid === 'RUN0',
+    '(j) the critic\'s `integration` label names no task → the run issue; got ' +
+    JSON.stringify(criticStart))
+  const phases = comments.filter((c) => (parseLine(c.body) || {}).kind === 'engine:phase')
+  assert.ok(phases.length >= 3,
+    '(j) every engine:phase is a comment (Setup, Wave 1, Integration Review); got ' +
+    JSON.stringify(phases.map((c) => parseLine(c.body).phase)))
+  assert.ok(phases.every((c) => c.uid === 'RUN0'), '(j) each on the run issue')
+  assert.deepEqual(phases.map((c) => parseLine(c.body).phase).slice(0, 2), ['Setup', 'Wave 1'],
+    '(j) in the order the engine announced them')
+  assert.ok(events.some((e) => e.kind === 'transcript:slice'),
+    '(j) the log holds transcript:slice lines (the stub wrote them)')
+  assert.ok(!kinds.includes('transcript:slice'),
+    '(j) and none is posted; kinds posted: ' + JSON.stringify(kinds))
+  assert.ok(!kinds.some((k) => k === 'engine:log' || String(k).startsWith('kata:') || k === 'run:open'),
+    '(j) nor engine:log, kata:* or run:open; kinds posted: ' + JSON.stringify(kinds))
+  // Order: one chain, push order — the posted bodies are a subsequence of the
+  // file in file order.
+  const fileLines = eventLines(live.runDir)
+  let cursor = 0
+  for (const c of comments) {
+    const at = fileLines.indexOf(c.body, cursor)
+    assert.ok(at !== -1, '(j) every comment body is a line of events.jsonl, posted in file order; ' +
+      'out of order or unknown: ' + c.body)
+    cursor = at + 1
+  }
+}
+
+// ══ (l) run-main's own lines reach the run issue ═══════════════════════════
+{
+  const kataFile = path.join(tmp, 'kata-live.json')
+  fs.writeFileSync(kataFile, JSON.stringify(recordFor({ T1: { uid: 'U-T1', revision: 3 } }), null, 2))
+  const { out, runDir, comments } = await runMainFlow({ name: 'live', kataPath: kataFile })
+  assert.equal(out.code, 0, '(l) the flow with --kata is green — ' + out.verdict + ': ' + out.detail)
+  const lines = driverLines(runDir)
+  const stages = lines.map(parseLine).filter((e) => e.kind === 'driver:stage')
+  assert.ok(stages.length >= 6,
+    '(l) run-main appended its stages (found ' + stages.length + ': ' +
+    JSON.stringify(stages.map((e) => e.stage)) + ')')
+  assert.ok(stages.some((e) => e.stage === 'tiers') && stages.some((e) => e.stage === 'kata'),
+    '(l) the `tiers` and `kata` stages are among them — the record is read before the first ' +
+    'stage the log records')
+  assert.equal(comments.length, lines.length,
+    '(l) one comment per driver:* line run-main appended: ' + lines.length + ' lines, ' +
+    comments.length + ' comments; kinds: ' + JSON.stringify(lines.map((l) => parseLine(l).kind)))
+  for (let i = 0; i < lines.length; i += 1) {
+    assert.equal(comments[i].body, lines[i], '(l) comment #' + i + ' is the line, verbatim, in order')
+    assert.equal(comments[i].uid, 'RUN0', '(l) on the run issue')
+    assert.equal(comments[i].projectId, 7, '(l) comment(project.id, uid, body)')
+  }
+  for (const st of stages) {
+    assert.ok(comments.some((c) => c.body === JSON.stringify(st)),
+      '(l) the driver:stage ' + st.stage + ' has its comment')
+  }
+  assert.equal(parseLine(lines[lines.length - 1]).kind, 'driver:approved',
+    '(l) the last of them is driver:approved — and it was posted, so the chain was drained ' +
+    'before runMain returned')
+
+  const refused = await runMainFlow({ name: 'live-refused', kataPath: kataFile, commentThrows: true })
+  assert.equal(refused.out.code, 0, '(l) a refused post never fails the run: ' + refused.out.detail)
+  const failed = eventsOf(refused.runDir).filter((e) => e.kind === 'kata:write-failed')
+  assert.equal(failed.length, 1,
+    '(l) exactly one kata:write-failed for the one refusal; got ' + JSON.stringify(failed))
+  assert.ok(failed[0].what === 'comment' && failed[0].uid === 'RUN0' &&
+    String(failed[0].detail).includes(COMMENT_BOOM),
+    '(l) naming the comment, the run issue and the KataError; got ' + JSON.stringify(failed[0]))
+  const rLines = driverLines(refused.runDir)
+  assert.equal(refused.comments.length, rLines.length,
+    '(l) and every later driver:* line still posts: ' + rLines.length + ' lines, ' +
+    refused.comments.length + ' comment calls')
 }
 
 // ══ (h) [M8] the contract's bullet ═════════════════════════════════════════

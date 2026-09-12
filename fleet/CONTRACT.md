@@ -404,10 +404,22 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   never computed again. Then `claim` — on the hub before the implementer and examiner exist.
   Every capture of the graded patch (the exam handoff's re-capture, and each fix round's) patches the
   issue's metadata with `touched_files`, the patch's own paths, under the revision the last answer
-  carried; a 412 there ends the run as a mismatch does. Every `driver:*` event is also a comment —
-  the event's JSON line verbatim, on the task's issue when it names one and on the run's issue
-  otherwise, in append order, and every pending comment is on the hub before the next claim,
-  metadata patch or close and before the engine returns.
+  carried; a 412 there ends the run as a mismatch does. The hub is the LIVE view of the run
+  (#880 reads it), so the record's lines reach it as they happen: every `driver:*` event the
+  engine appends, every `worker:start` and `worker:end` envelope (the `meter` included) and every
+  `engine:phase` mark is a comment — the event's JSON line verbatim — posted eagerly on one
+  serialized chain, each post started the moment the one before it has answered, never two in
+  flight, in append order. A `driver:*` line goes on the task's issue when it names one and on the
+  run's issue otherwise; a worker envelope goes on the issue of the task its label's second
+  colon-segment names (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1:2`) and on the run's issue when
+  that segment names no task the record knows (`integration`, `reconcile:wave1:1`); a phase mark
+  goes on the run's issue. `transcript:*`, `engine:log`, `capture:*`, `kata:*` and `run:*` lines
+  are never posted. The chain is still drained — every pending comment on the hub — before each
+  claim, metadata patch and close and before the engine returns. run-main's own `driver:*` lines
+  (`driver:stage`, `driver:auth`, `driver:critic-decision`, `driver:ack-decision`,
+  `driver:approved`, `driver:fail`) are comments on the run's issue too, on run-main's own chain,
+  drained before run-main returns; the record is read before the first stage the log records, so
+  the hub's view starts where the record's does.
   Closes: an adopted task is `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted commit
   and the task's test command, under the idempotency key `<runId>:<task>:close`. A task of a wave the
   barrier blocked is `wontfix` (`wave <n> blocked: <detail>`), and so is any task whose row is not
