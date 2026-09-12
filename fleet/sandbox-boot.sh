@@ -204,6 +204,10 @@ PLAN_FILE=""
 # ping, the engine's `--kata` pair and the export all read it, so a run without
 # the file makes no kata request at all.
 KATA_FILE=""
+# Set once the run issue's close has been attempted — the write is made once
+# per boot whatever the terminal transition, and a re-entered boot's close
+# rides the same idempotency key.
+KATA_RUN_CLOSED=""
 VM_NAME=""
 VM_EMAIL=""
 STARTED_AT=""
@@ -1362,6 +1366,85 @@ for row in out:
 ' "$@"
 }
 
+# --- the run issue's close ---------------------------------------------------
+#
+# THE RUN'S OWN ISSUE CLOSES WITH THE RUN (#937). The engine closes each TASK's
+# issue at adoption and owns nothing else; the run issue the launcher filed is
+# the sandbox's, and until this write it stayed `open` on the hub after the PR
+# had merged (run-112). ONE WRITE, at the terminal transition, and BEFORE that
+# transition's export: the close is an `issue.closed` event of the run's
+# project, and the `collect_evidence` right after it carries it out in
+# `kata.jsonl` on the tag like every other write.
+#
+# THE REASON IS THE DISPOSITION. `done` when the run ended `done`, with the
+# pull request as `{"type":"pr","url"}` evidence and the squash commit as
+# `{"type":"commit","sha"}` when the sandbox merged it; `wontfix` — which kata
+# refuses evidence on — when the run parked or failed, carrying the page's own
+# `error`. A `done` message has to read on its own (kata wants 40 characters or
+# more, run-111): it is the plan's H1 and the merge sha.
+#
+# NON-FATAL, THE SAME WAY THE ENGINE'S WRITES ARE (#934): a close the hub
+# refuses, or a hub that has gone dark since the ping, is one
+# `kata:write-failed` event (`what` `close`, the run's `uid`, the curl exit in
+# `detail`) on the record, and the run publishes exactly as it would have. The
+# idempotency key is the run's own — `run-<N>:run:close` — so a re-entered boot
+# that closes again is the same close and not a second one. The actor is
+# `sandbox:run-<N>`: the launcher writes as `launch`, the engine as
+# `engine:run-<N>`, and the record should say which of the three closed it.
+#
+# The endpoint's collection segment is spelled through `$open`, as the export's
+# is, for the reason given there.
+kata_close_run() { # $1 = done|wontfix, $2 = message
+  local reason="$1" message="$2" ids project uid body code
+  local open="issues"
+  [ -n "$KATA_FILE" ] && [ -f "$KATA_FILE" ] || return 0
+  [ -z "$KATA_RUN_CLOSED" ] || return 0
+  KATA_RUN_CLOSED=1
+  ids="$(python3 -c '
+import json, sys
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+print("%s %s" % (doc["project"]["id"], doc["run"]["uid"]))
+' "$KATA_FILE" 2>/dev/null || true)"
+  project="${ids%% *}"
+  uid="${ids##* }"
+  if [ -z "$project" ] || [ -z "$uid" ] || [ "$ids" = "$project" ]; then
+    log "kata: $KATA_FILE names no project.id and run.uid — the run issue is not closed"
+    return 0
+  fi
+  # The body, built where a string is a string: the message carries the plan's
+  # H1 verbatim, and `wontfix` carries no evidence because kata refuses any.
+  body="$(KATA_ACTOR="sandbox:$RUN_ID" KATA_REASON="$reason" KATA_MESSAGE="$message" \
+    KATA_PR_URL="$PR_URL" KATA_MERGED_SHA="$MERGED_SHA" python3 -c '
+import json, os
+reason = os.environ["KATA_REASON"]
+evidence = []
+if reason == "done":
+    if os.environ.get("KATA_PR_URL"):
+        evidence.append({"type": "pr", "url": os.environ["KATA_PR_URL"]})
+    if os.environ.get("KATA_MERGED_SHA"):
+        evidence.append({"type": "commit", "sha": os.environ["KATA_MERGED_SHA"]})
+body = {"actor": os.environ["KATA_ACTOR"], "reason": reason,
+        "message": os.environ["KATA_MESSAGE"], "evidence": evidence,
+        "retry_protocol": "close-v1"}
+print(json.dumps(body, separators=(",", ":"), ensure_ascii=False))
+')"
+  code=0
+  fleet_curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+    -H "Idempotency-Key: $RUN_ID:run:close" -d "$body" \
+    "$KATA_URL/api/v1/projects/$project/$open/$uid/actions/close" >/dev/null 2>&1 || code=$?
+  if [ "$code" = 0 ]; then
+    log "kata: run issue $uid closed $reason"
+    return 0
+  fi
+  log "kata: run issue close ($reason) refused — curl exit $code, recorded, continuing"
+  append_event kata:write-failed what=s:close "uid=s:$uid" \
+    "detail=s:run issue close ($reason) answered curl exit $code"
+}
+
+# The first line of the page's `error`, for a close message: a failed run's
+# error carries the engine's last lines and the message wants the sentence.
+error_head() { printf '%s' "$ERROR" | head -n 1; }
+
 collect_evidence() {
   local dest receipt approve run_dir f rel rows
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
@@ -2060,23 +2143,6 @@ failing_block() { # $1 = the suite file
       if (!stop) stop = NR
       for (i = start; i <= stop; i++) print line[i]
     }
-  ' "$1"
-}
-
-# Does this file carry a failing line at all? — exit 0 when it does, 1 when it
-# does not.
-#
-# `failing_block`'s fallback prints a file with no start line WHOLE. That is
-# right for the fold's `suite red` section, which is only ever handed a suite
-# that failed, and wrong for any caller that may be handed a GREEN log: there
-# the whole file would land in the cell it was quoting one block into. Such a
-# caller asks this first. The pattern is `failing_block`'s own start line and
-# the two must agree literal for literal, exactly as both agree with
-# `fleet/failing-block.mjs`'s `START`. POSIX awk only, for the same reasons.
-has_failing_block() { # $1 = the suite file
-  awk '
-    /^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)/ { found = 1; exit }
-    END { exit(found ? 0 : 1) }
   ' "$1"
 }
 
@@ -3104,6 +3170,7 @@ do_boot() {
     ERROR="engine exited $code
 $(engine_tail)"
     write_status failed "engine exit $code"
+    kata_close_run wontfix "$(plan_title) — $(error_head)"
     collect_evidence
     push_evidence "$RUN_ID: failed (engine exit $code)"
     notify "run-$RUN_N failed" "$TARGET_REPO — engine exited $code"
@@ -3148,6 +3215,7 @@ $(engine_tail)"
   if [ "$ahead" = "0" ]; then
     ERROR="parked: $BRANCH has no commits ahead of base (verdict ${verdict:-none})"
     write_status parked "nothing to publish"
+    kata_close_run wontfix "$(plan_title) — $(error_head)"
     collect_evidence
     push_evidence "$RUN_ID: parked — nothing ahead of base"
     # A parked run's record is worth as much as a green one's: the evidence
@@ -3249,9 +3317,17 @@ $(engine_tail)"
     # PASS from a NEEDS_ACK the two-move rule signed off without opening the
     # gate receipt — and last what became of it at the merge button.
     write_status done "$PR_URL — $approved_how$fold_tail${MERGE_NOTE:+ — $MERGE_NOTE}"
+    # The run issue on the hub, closed the way the page just was: `done`, with
+    # the merge sha when the sandbox merged and the PR left open when it did not.
+    if [ -n "$MERGED_SHA" ]; then
+      kata_close_run done "$(plan_title) — merged $MERGED_SHA"
+    else
+      kata_close_run done "$(plan_title) — $PR_URL ${MERGE_NOTE:-left open}"
+    fi
   else
     # `ERROR` was set with the outcome, above, so the card could quote it.
     write_status parked "$PR_URL$fold_tail"
+    kata_close_run wontfix "$(plan_title) — $(error_head)"
   fi
   collect_evidence
   push_evidence "$RUN_ID: $outcome — $PR_URL"

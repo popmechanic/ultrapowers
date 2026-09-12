@@ -41,6 +41,19 @@
  *       `--kata /home/exedev/plans/run-N.kata.json` on its engine line, the
  *       `parked: kata unreachable` park, the ping's `--retry-connrefused` and
  *       the `peer key` sentence.
+ *   M6  (#937) with the file, the boot closes the RUN issue — the file's
+ *       `run.uid` — exactly once, at the terminal transition and before that
+ *       transition's export: `POST …/projects/<project id>/issues/<run
+ *       uid>/actions/close` with `Idempotency-Key: run-7:run:close`, body
+ *       `{actor: "sandbox:run-7", reason, message, evidence, retry_protocol:
+ *       "close-v1"}`. A run that ended `done` closes `done` with
+ *       `{type: "pr", url}` and `{type: "commit", sha: <merge sha>}` evidence
+ *       and a message of 40+ characters carrying the plan's H1 and the merge
+ *       sha; a run that parked (or failed) closes `wontfix` with no evidence
+ *       and the page's `error`. A close the hub refuses is one
+ *       `kata:write-failed` event (`what` `close`, `uid`, `detail` naming the
+ *       curl exit) on the record, and the run still publishes and merges.
+ *       The contract's boot-script bullet says so (`run-<N>:run:close`).
  *
  * The rig is `_sandbox_boot_helpers.mjs` — the stub bin dir, `makeHome`,
  * `boot`/`bootAsync`, the memoized `green` run and the log readers — shared
@@ -79,11 +92,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  PLAN_SHA, RUN_PATH,
+  PLAN_SHA, RUN_PATH, PLAN_H1, PR_URL, MERGE_SHA,
   PRELUDE, STUBS,
   makeHome, boot, bootAsync, green, stubEnv,
   argvLines, gitLog, verbOf, stream, statusOf, commitStates, trees, notifies,
-  prArgv, targetDir, runTests,
+  prArgv, mergePuts, targetDir, kataCloses, evidenceEvents, runTests,
 } from './_sandbox_boot_helpers.mjs'
 
 // ── the literals of the hub ──────────────────────────────────────────────────
@@ -93,6 +106,12 @@ const KATA_URL = 'https://kata.int.exe.xyz'
 const PING_URL = `${KATA_URL}/api/v1/ping`
 /** The project the fixture's `project.id` names. */
 const PROJECT_ID = 42
+/** The run issue the fixture's `run.uid` names — the one the boot closes (M6). */
+const RUN_UID = 'R7'
+const CLOSE_URL = `${KATA_URL}/api/v1/projects/${PROJECT_ID}/issues/${RUN_UID}/actions/close`
+/** M6's idempotency key and actor, word for word. */
+const CLOSE_KEY = 'run-7:run:close'
+const CLOSE_ACTOR = 'sandbox:run-7'
 const ISSUES_URL = `${KATA_URL}/api/v1/projects/${PROJECT_ID}/issues?limit=1000`
 const eventsUrl = (after) => `${KATA_URL}/api/v1/projects/${PROJECT_ID}/events?after_id=${after}&limit=1000`
 
@@ -103,7 +122,7 @@ const eventsUrl = (after) => `${KATA_URL}/api/v1/projects/${PROJECT_ID}/events?a
  * that way would ask the hub about `not-the-project` and every URL below would
  * say so. M4 names `project.id`, read with `python3`.
  */
-const KATA_JSON = '{"run":"run-7","id":"not-the-project"'
+const KATA_JSON = `{"run":{"uid":"${RUN_UID}","revision":1},"id":"not-the-project"`
   + `,"project":{"id":${PROJECT_ID},"key":"run-7"},"origin":"${KATA_URL}"}`
 
 /** The two issues the hub lists, and the two events it has. */
@@ -162,7 +181,8 @@ const curlArgv = (ctx) => argvLines(ctx, 'curl')
 const kataUrls = (ctx) =>
   curlArgv(ctx).flatMap((a) => a.filter((s) => s.includes('kata.int.exe.xyz')))
 const pingArgv = (ctx) => curlArgv(ctx).find((a) => a.some((s) => s.includes('/api/v1/ping')))
-const issuesUrls = (ctx) => kataUrls(ctx).filter((u) => u.includes('/issues'))
+/** The export's issues READ — never the run issue's close, which shares the prefix (M6). */
+const issuesUrls = (ctx) => kataUrls(ctx).filter((u) => u.includes('/issues?'))
 const eventsUrls = (ctx) => kataUrls(ctx).filter((u) => u.includes('/events'))
 
 const engineArgv = (ctx) =>
@@ -442,6 +462,130 @@ test('a fetch that fails from the second transition on keeps the file and says s
   }
 })
 
+// ── (f) the run issue closes with the run  [M6 / #937] ───────────────────────
+
+/** The curl argv of every close POST, in order. */
+const closeArgv = (ctx) => curlArgv(ctx).filter((a) => a.includes(CLOSE_URL))
+const writeFailed = (ctx) => evidenceEvents(ctx).filter((e) => e.kind === 'kata:write-failed')
+
+/**
+ * M6's shape, common to every disposition: exactly one POST, to the run
+ * issue's own close action, keyed and attributed as the clause says. Returns
+ * the one body for the caller to read the disposition off.
+ */
+function assertOneClose(ctx, label) {
+  const argv = closeArgv(ctx)
+  assert.equal(argv.length, 1,
+    `${label} [M6] exactly one close is POSTed to '${CLOSE_URL}' — ${argv.length} were${whyCurl(ctx)}`)
+  const a = argv[0]
+  assert.ok(a.includes('-X') && a[a.indexOf('-X') + 1] === 'POST',
+    `${label} [M6] and it is a POST: ${a.join(' ')}`)
+  assert.ok(a.includes(`Idempotency-Key: ${CLOSE_KEY}`),
+    `${label} [M6] carrying 'Idempotency-Key: ${CLOSE_KEY}': ${a.join(' ')}`)
+  const bodies = kataCloses(ctx)
+  assert.equal(bodies.length, 1, `${label} [M6] the rig logged exactly one close body`)
+  const body = bodies[0]
+  assert.equal(body.actor, CLOSE_ACTOR, `${label} [M6] the actor is '${CLOSE_ACTOR}'`)
+  assert.equal(body.retry_protocol, 'close-v1', `${label} [M6] the body carries retry_protocol close-v1`)
+  assert.equal(typeof body.message, 'string', `${label} [M6] the body carries a message`)
+  return body
+}
+
+/** The close sits after the page's terminal write and before the export that
+ *  carries it out — so `kata.jsonl` on the tag holds the `issue.closed`. */
+function assertCloseBeforeLastExport(ctx, label, state) {
+  const s = stream(ctx)
+  const closeAt = s.findIndex((l) => l.includes('curl kata close'))
+  const terminalAt = s.findIndex((l) => l.includes(`status: state=${state}`))
+  const lastIssuesAt = s.reduce((at, l, i) => (l.includes('curl kata issues') ? i : at), -1)
+  assert.ok(closeAt >= 0, `${label} [M6] the stream carries the close${why(ctx)}`)
+  assert.ok(terminalAt >= 0 && closeAt > terminalAt,
+    `${label} [M6] the close (${closeAt}) follows the terminal 'status: state=${state}' write ` +
+    `(${terminalAt})${why(ctx)}`)
+  assert.ok(lastIssuesAt > closeAt,
+    `${label} [M6] and precedes the last export's issues read (${lastIssuesAt}) — the close rides ` +
+    `kata.jsonl on the tag${why(ctx)}`)
+}
+
+test('a merged run closes its issue done, with the PR and the merge sha as evidence  [M6 / leg (f)]', async () => {
+  const ctx = await kataGreen()
+  assert.equal(statusOf(ctx).state, 'done', '(f) [M6] the run ended done')
+  assert.equal(mergePuts(ctx).length, 1, '(f) [M6] and the sandbox merged its PR')
+
+  const body = assertOneClose(ctx, '(f)')
+  assert.equal(body.reason, 'done', '(f) [M6] a merged run closes `done`')
+  assert.deepEqual(body.evidence,
+    [{ type: 'pr', url: PR_URL }, { type: 'commit', sha: MERGE_SHA }],
+    '(f) [M6] the evidence is the PR and then the squash commit the merge answered')
+  assert.ok(body.message.length >= 40,
+    `(f) [M6] the message is 40+ characters (kata refuses a shorter done): '${body.message}'`)
+  assert.ok(body.message.includes(PLAN_H1),
+    `(f) [M6] the message carries the plan's H1 '${PLAN_H1}': '${body.message}'`)
+  assert.ok(body.message.includes(MERGE_SHA),
+    `(f) [M6] and the merge sha: '${body.message}'`)
+  assertCloseBeforeLastExport(ctx, '(f)', 'done')
+  assert.deepEqual(writeFailed(ctx), [], '(f) [M6] a close the hub took records no kata:write-failed')
+})
+
+for (const [what, env, error] of [
+  ['a parked run with a PR', { STUB_VERDICT: 'NEEDS_ACK' },
+    'parked: gate verdict NEEDS_ACK'],
+  ['a run with nothing ahead of base', { STUB_VERDICT: 'NEEDS_ACK', STUB_NO_COMMITS: '1' },
+    'parked: ultra/integration-run-7 has no commits ahead of base (verdict NEEDS_ACK)'],
+]) {
+  test(`${what} closes its issue wontfix with the park reason and no evidence  [M6 / leg (f)]`, () => {
+    const ctx = makeHome()
+    const r = boot(ctx, ['boot'], { ...KATA_ENV, ...env })
+    assert.equal(r.status, 0, `(f) [M6] the park exits 0:\n${r.stdout}${r.stderr}`)
+    const page = statusOf(ctx)
+    assert.equal(page.state, 'parked', `(f) [M6] the run parked${why(ctx)}`)
+    assert.equal(page.error, error, `(f) [M6] with the error '${error}'`)
+
+    const body = assertOneClose(ctx, '(f)')
+    assert.equal(body.reason, 'wontfix', '(f) [M6] a parked run closes `wontfix`')
+    assert.deepEqual(body.evidence, [], '(f) [M6] carrying no evidence — kata refuses any on a wontfix')
+    assert.ok(body.message.includes(error),
+      `(f) [M6] the message carries the page's error '${error}': '${body.message}'`)
+    assert.ok(body.message.includes(PLAN_H1),
+      `(f) [M6] and the plan's H1: '${body.message}'`)
+    assertCloseBeforeLastExport(ctx, '(f)', 'parked')
+    assert.deepEqual(writeFailed(ctx), [], '(f) [M6] and records no kata:write-failed')
+  })
+}
+
+test('a hub that is dark at the close records one kata:write-failed, and the run still publishes and merges  [M6 / leg (f)]', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { ...KATA_ENV, STUB_KATA_CLOSE_EXIT: '7' })
+  assert.equal(r.status, 0, `(f) [M6] a refused close is not a failed run:\n${r.stdout}${r.stderr}`)
+  const page = statusOf(ctx)
+  assert.equal(page.state, 'done', `(f) [M6] the run still ends done${why(ctx)}`)
+  assert.equal(page.pr, PR_URL, '(f) [M6] its PR was opened')
+  assert.equal(page.merged, MERGE_SHA, '(f) [M6] and merged')
+  assert.equal(closeArgv(ctx).length, 1,
+    `(f) [M6] the close was attempted exactly once${whyCurl(ctx)}`)
+
+  const failed = writeFailed(ctx)
+  assert.equal(failed.length, 1,
+    `(f) [M6] exactly one kata:write-failed rides the evidence branch's events.jsonl: ` +
+    `${JSON.stringify(failed)}${why(ctx)}`)
+  assert.equal(failed[0].what, 'close', '(f) [M6] its `what` is close')
+  assert.equal(failed[0].uid, RUN_UID, `(f) [M6] its \`uid\` is the run issue's, '${RUN_UID}'`)
+  assert.ok(String(failed[0].detail).includes('curl exit 7'),
+    `(f) [M6] and its \`detail\` names the curl exit: '${failed[0].detail}'`)
+  assert.ok(typeof failed[0].id === 'string' && typeof failed[0].ts === 'number',
+    '(f) [M6] the event carries the log\'s own `id` and `ts`')
+  const last = commitStates(ctx)[commitStates(ctx).length - 1]
+  assert.equal(last, 'done', `(f) [M6] the last evidence commit is the done page: ${JSON.stringify(commitStates(ctx))}`)
+  assert.ok(trees(ctx)[trees(ctx).length - 1].includes('events.jsonl'),
+    '(f) [M6] and it carries events.jsonl, so the refused write is on the tag')
+})
+
+test('without the blob no close is made  [M6 / leg (f)]', () => {
+  const ctx = green()
+  assert.deepEqual(closeArgv(ctx), [], `(f) [M6] a run without kata closes nothing${whyCurl(ctx)}`)
+  assert.deepEqual(kataCloses(ctx), [], '(f) [M6] and the rig logged no close body')
+})
+
 // ── (e) the contract says all five things  [M5] ──────────────────────────────
 //
 // The same five readings the task's `Run:` lines take, taken here too so the
@@ -482,6 +626,8 @@ for (const [what, literal] of [
   ['the park is named', 'parked: kata unreachable'],
   ['the ping keeps its retries', '--retry-connrefused'],
   ['the edge injects the peer key', 'peer key'],
+  ['the run issue closes with the run (#937)', 'run-<N>:run:close'],
+  ['and its actor is the sandbox', 'sandbox:run-<N>'],
 ]) {
   test(`the boot-script bullet: ${what}  [M5 / leg (e)]`, () => {
     assert.ok(bootBullet().includes(literal),
