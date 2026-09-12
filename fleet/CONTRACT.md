@@ -42,7 +42,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
     [+ `.ultrapowers/gate-verdicts.json`] + `.ultrapowers/kata.json` (the run's record on the hub —
-    `{"url":"http://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,revision}}}`,
+    `{"url":"https://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,revision}}}`,
     keys in that order, each `revision` the one the launcher's post-link `getIssue` of that issue
     answered; `JSON.stringify(…, null, 2)` plus a trailing newline). Written by the launcher, before
     any VM exists.
@@ -237,19 +237,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     without kata — no kata request is made and the engine is handed no `--kata`. With the file, and
     directly after the evidence worktree is built, one request and only one:
     `curl -fsS --max-time 10 --retry 3 --retry-delay 2 --retry-connrefused
-    http://kata.int.exe.xyz/api/v1/ping`. The retry flags are the contract, not a nicety: a single
+    https://kata.int.exe.xyz/api/v1/ping`. The retry flags are the contract, not a nicety: a single
     try turns one hub hiccup — a restart, a two-second `Restart=on-failure` window — into every
     sandbox of a wave parking at once, and `--retry-connrefused` is what makes a refused connection
     retryable at all. The request carries no bearer of its own; it passes the hub's exe.dev auth
     proxy only because the peer key is injected at the edge, and the Host the daemon sees is the
     hub's own host, which is what kata's `public_origin` check needs. A non-zero curl exit parks the
     run right there, before any engine: state `parked`, phase `kata unreachable`, `error` exactly
-    `parked: kata unreachable at http://kata.int.exe.xyz (curl exit <n>)`, evidence committed and
+    `parked: kata unreachable at https://kata.int.exe.xyz (curl exit <n>)`, evidence committed and
     pushed under the subject `run-<N>: parked — kata unreachable`, both record tags pushed, a
     `run-<N> parked` notify, exit 0 — no engine unit started and no pull request opened.
     With the file, every `collect_evidence` also exports the hub's record to the `kata.jsonl` the
     evidence bullet declares:
-    `GET http://kata.int.exe.xyz/api/v1/projects/<project id>/issues?limit=1000`, then
+    `GET https://kata.int.exe.xyz/api/v1/projects/<project id>/issues?limit=1000`, then
     `GET …/projects/<project id>/events?after_id=<c>&limit=1000` from `after_id=0`, following each
     answer's `next_after_id` until an answer's `events` is empty. The project id is the file's own
     `project.id`; a fetch that fails logs
@@ -516,7 +516,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   where `<https_url>` is read off the `kata-hub` row of `ls kata-hub --json` and never guessed from
   the VM name; a wrong policy is repaired with `integrations policy get kata --json` then
   `integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>`, never an attach.
-  A sandbox reaches it at `http://kata.int.exe.xyz` and holds no token — the edge injects the
+  A sandbox reaches it at `https://kata.int.exe.xyz` and holds no token — the edge injects the
   bearer, and the `peer-kata` key `--peer` generates is server-side and is never pruned. The laptop
   reaches it as `ssh <ssh_dest>` + `curl` against `localhost:8000`, sourcing the token from
   `/etc/kata/kata.env` on the hub so no bearer ever rides an argv on the laptop. On the hub:

@@ -174,7 +174,7 @@ export const KATA_PATH = '.ultrapowers/kata.json'
  *  `tag:fleet` — written into the record regardless of the laptop's own route,
  *  because the record's reader is the engine on the sandbox and never the
  *  laptop. */
-export const KATA_SANDBOX_URL = 'http://kata.int.exe.xyz'
+export const KATA_SANDBOX_URL = 'https://kata.int.exe.xyz'
 /** The one command that builds the hub, named by every refusal about it. */
 export const KATA_HUB_FIX = 'node fleet/kata-hub.mjs'
 /** Where `fleet/kata-hub.mjs` leaves the hub's address and bearer. */

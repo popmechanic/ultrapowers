@@ -415,7 +415,7 @@ Five things a newcomer would not know:
   (`root:exedev`, mode 0640, delivered over ssh after first boot and never in
   the setup script) and `~/.ultrapowers/kata-hub.env` on this laptop, mode
   0600. No sandbox holds it: the edge injects it, and the sandbox-side URL is
-  `http://kata.int.exe.xyz/<path>`. Rotation is one
+  `https://kata.int.exe.xyz/<path>`. Rotation is one
   `integrations edit kata --bearer=-` with a fresh token on stdin, followed by
   the same token delivered to the hub's env file.
 - **A wrong policy is repaired with two commands, never an attach.** exe.dev

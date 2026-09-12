@@ -79,7 +79,7 @@ export const KATA_PATH = '.ultrapowers/kata.json'
 /** The hub's address the boot script defaults to — the literal a case reads back
  *  off the ping's argv. `FLEET_KATA_URL` overrides it; nothing in `bootEnv`
  *  does, so a boot that asks the hub anything asks it here. */
-export const KATA_URL = 'http://kata.int.exe.xyz'
+export const KATA_URL = 'https://kata.int.exe.xyz'
 
 // M3's two links, spelled the way the PR body has to spell them: the two tags
 // the run creates at publish, never the branches those tags were cut from.

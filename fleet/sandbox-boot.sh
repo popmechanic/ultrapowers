@@ -131,7 +131,7 @@ ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
 # needs. `FLEET_KATA_URL` exists for the same reason `FLEET_RENDER_ENV` does —
 # so a sim can pin the address inside its own home — and the literal is the
 # production value.
-KATA_URL="${FLEET_KATA_URL:-http://kata.int.exe.xyz}"
+KATA_URL="${FLEET_KATA_URL:-https://kata.int.exe.xyz}"
 # The plan's path inside the plan commit's tree, and the run's directory inside
 # the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
 PLAN_BLOB_PATH=".ultrapowers/plan.md"
