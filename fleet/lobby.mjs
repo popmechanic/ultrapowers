@@ -172,6 +172,45 @@ export const FLEET_DEFAULTS = Object.freeze({
 
 export const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
 
+// ── The kata hub, as the laptop knows it ────────────────────────────────────
+
+/** The one command that builds the hub, named by every refusal about it. */
+export const KATA_HUB_FIX = 'node fleet/kata-hub.mjs'
+
+/** Where `fleet/kata-hub.mjs` leaves the hub's address and bearer. */
+export const defaultKataEnvPath = () => path.join(os.homedir(), '.ultrapowers', 'kata-hub.env')
+
+/**
+ * `~/.ultrapowers/kata-hub.env`, parsed: `{ url, token }` from its `KATA_URL=`
+ * and `KATA_TOKEN=` lines, each `null` when the line is missing. The first
+ * spelling of a key wins. Deciding what a missing line means is the caller's:
+ * the launcher refuses, the janitor reads the target instead.
+ */
+export function parseKataEnv (text) {
+  const fields = {}
+  for (const line of String(text ?? '').split('\n')) {
+    const m = /^(KATA_URL|KATA_TOKEN)=(.*)$/.exec(line.trim())
+    if (m && !(m[1] in fields)) fields[m[1]] = m[2].trim()
+  }
+  return { url: fields.KATA_URL || null, token: fields.KATA_TOKEN || null }
+}
+
+/** The host `ssh` reaches the hub at: the `KATA_URL`'s hostname, or null. */
+export const kataHostOf = (url) => {
+  try {
+    return new URL(String(url ?? '')).hostname || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The hub project one run is: `<owner>-<repo>-run-<N>`, every slash of the
+ * target spelled `-`. The launcher files it under this name and the janitor
+ * looks it up by it, so both spell it here.
+ */
+export const kataProjectFor = (target, run) => `${String(target).replace(/\//g, '-')}-run-${run}`
+
 /** `~/x` → `<home>/x`. The config file is hand-edited, so it may hold either. */
 export const expandHome = (value) => {
   const text = String(value ?? '')

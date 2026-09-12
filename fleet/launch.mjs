@@ -99,11 +99,16 @@ import {
   isSafeSha,
   isSafeTarget,
   isVmName,
+  KATA_HUB_FIX,
+  defaultKataEnvPath,
+  kataHostOf,
+  kataProjectFor,
   listIntegrations,
   loadFleetConfig,
   lobby,
   output,
   parseArgs,
+  parseKataEnv,
   parseMemoryGb,
   planBranchFor,
   readPlanCapacity,
@@ -175,10 +180,10 @@ export const KATA_PATH = '.ultrapowers/kata.json'
  *  because the record's reader is the engine on the sandbox and never the
  *  laptop. */
 export const KATA_SANDBOX_URL = 'https://kata.int.exe.xyz'
-/** The one command that builds the hub, named by every refusal about it. */
-export const KATA_HUB_FIX = 'node fleet/kata-hub.mjs'
-/** Where `fleet/kata-hub.mjs` leaves the hub's address and bearer. */
-export const defaultKataEnvPath = () => path.join(os.homedir(), '.ultrapowers', 'kata-hub.env')
+/** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
+ *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
+ *  reads the same file; re-exported so the launcher's callers see them here. */
+export { KATA_HUB_FIX, defaultKataEnvPath }
 
 /**
  * `~/.ultrapowers/kata-hub.env`, read: `{ url, token }` from its `KATA_URL=`
@@ -197,17 +202,13 @@ export async function readKataEnv (envPath) {
   } catch (error) {
     throw new Refusal(`launch: no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — build the hub once: ${KATA_HUB_FIX}`)
   }
-  const fields = {}
-  for (const line of text.split('\n')) {
-    const m = /^(KATA_URL|KATA_TOKEN)=(.*)$/.exec(line.trim())
-    if (m && !(m[1] in fields)) fields[m[1]] = m[2].trim()
-  }
-  for (const key of ['KATA_URL', 'KATA_TOKEN']) {
-    if (!fields[key]) {
+  const env = parseKataEnv(text)
+  for (const [key, value] of [['KATA_URL', env.url], ['KATA_TOKEN', env.token]]) {
+    if (!value) {
       throw new Refusal(`launch: ${envPath} has no ${key}= line — build the hub once: ${KATA_HUB_FIX}`)
     }
   }
-  return { url: fields.KATA_URL, token: fields.KATA_TOKEN }
+  return env
 }
 
 /** The plan's H1: the text after `# ` on the first such line, `''` when none. */
@@ -722,13 +723,8 @@ export async function launch ({
   let hub = kata === undefined ? null : kata
   if (kata === undefined && (config === undefined || config === null)) {
     kataEnv = await readKataEnv(kataEnvPath)
-    let sshHost
-    try {
-      sshHost = new URL(kataEnv.url).hostname
-    } catch {
-      sshHost = ''
-    }
-    if (!sshHost) {
+    const sshHost = kataHostOf(kataEnv.url)
+    if (sshHost === null) {
       throw new Refusal(`launch: ${kataEnvPath} names KATA_URL ${JSON.stringify(kataEnv.url)}, not a url with a host — rebuild the hub: ${KATA_HUB_FIX}`)
     }
     hub = makeKataClient({ transport: sshTransport({ sshHost, exec }), actor: 'launch' })
@@ -937,13 +933,15 @@ export async function launch ({
   // ── The reap. Nothing schedules the janitor, so every launch is where it
   //    runs — before the run number is read, so the fleet a launch joins is
   //    already clear of the VMs of runs that finished over an hour ago.
-  //    `settings` is the config loaded above, so the file is read once. A reap
+  //    `settings` is the config loaded above, so the file is read once, and
+  //    `hub` is the client built above, so the janitor asks the hub this
+  //    launch already reached — or, with no hub, reads the target. A reap
   //    that fails is reported and not fatal: the run being launched is worth
   //    more than the ballast the janitor came for.
   const reaped = []
   let reapError = null
   try {
-    const reap = await janitor({ argv: [], exec, config: settings, now })
+    const reap = await janitor({ argv: [], exec, config: settings, now, kata: hub })
     for (const action of reap.actions) {
       if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
     }
@@ -1353,7 +1351,7 @@ async function fileRunOnHub ({ hub, call, exec, repoDir, planPath, planText, tar
   const waves = Array.isArray(payload?.launch_waves) ? payload.launch_waves : []
   const edges = Array.isArray(payload?.dag_edges) ? payload.dag_edges : []
 
-  const name = `${target.replace(/\//g, '-')}-run-${n}`
+  const name = kataProjectFor(target, n)
   const project = await call('createProject', () => hub.createProject(name))
   const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
     title: `${stamp}: ${planTitleOf(planText)}`,

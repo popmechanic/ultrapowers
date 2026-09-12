@@ -841,6 +841,11 @@ for (const argv of [['--target', TARGET, '--dry-run'], ['--dry-run', '--target',
 // ── #706 (l) M7: the two documents each declare the skip ────────────────────
 
 const REPO_ROOT = path.resolve(FLEET_DIR, '..')
+/** One home for every child this file spawns (#890): `retire.mjs` reads its
+ *  shims and the greps read the checkout, none of them a home — so one
+ *  `fleet-sim-*` dir, shared, rather than one per spawn. `runProcess` still
+ *  puts each case's own shim dir first on PATH. */
+const ENV = simEnv()
 const CONTRACT_MD = path.join(FLEET_DIR, 'CONTRACT.md')
 const RUNBOOK_MD = path.join(FLEET_DIR, 'RUNBOOK.md')
 
@@ -888,7 +893,7 @@ const logLines = (file) =>
 const runProcess = (args, dir) => spawnSync(process.execPath, [RETIRE_SRC, ...args], {
   encoding: 'utf8',
   // The shim dir first on PATH, and nothing of the box behind it.
-  env: simEnv({ bin: dir }),
+  env: simEnv({ bin: dir, home: ENV.HOME }),
   timeout: 60000
 })
 
@@ -1211,7 +1216,7 @@ for (const [command, why] of [
   [`sed -n '1,/^import /p' fleet/retire.mjs | tr '\\n' ' ' | grep -q 'open-PR read per terminal candidate'`,
     "and its `--dry-run` paragraph still says the open-PR read is made per terminal candidate — that is a stays, not a change: a rewrite that says the read is per pair again fails here"]
 ]) {
-  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv(), timeout: 60000 })
+  const res = spawnSync('sh', ['-c', command], { cwd: REPO_ROOT, encoding: 'utf8', env: ENV, timeout: 60000 })
   assert.equal(res.status, 0,
     `#752 Task 1 (j)/M6 \`${command}\` exits 0: ${why}; status ${res.status}, stderr: ${res.stderr}`)
 }
@@ -1472,7 +1477,7 @@ const DOC_TEXT = { [CONTRACT_REL]: contractText, [RUNBOOK_REL]: runbookText }
 /** One of the Proof's two greps, as `{ file, line, text }` rows. */
 const grepDocs = (pattern) => {
   const res = spawnSync('grep', ['-n', pattern, CONTRACT_REL, RUNBOOK_REL],
-    { cwd: REPO_ROOT, encoding: 'utf8', env: simEnv(), timeout: 60000 })
+    { cwd: REPO_ROOT, encoding: 'utf8', env: ENV, timeout: 60000 })
   assert.ok(res.status === 0 || res.status === 1,
     `#724 Task 1 (h)/M6 \`grep -n '${pattern}' ${CONTRACT_REL} ${RUNBOOK_REL}\` ran; status ${res.status}, stderr: ${res.stderr}`)
   return String(res.stdout).split('\n').filter((l) => l !== '').map((row) => {

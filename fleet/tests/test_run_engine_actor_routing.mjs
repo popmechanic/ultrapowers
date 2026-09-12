@@ -39,6 +39,10 @@ import { rig, makeRepo, passReview, cleanCritic, doneImpl, gitSync } from './_en
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-actor-routing-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 const SCRIPTS = fileURLToPath(new URL('../../skills/ultrapowers/scripts', import.meta.url))
+/** One environment for every child this file spawns (#890): the gate reads
+ *  the paths it is handed and the greps read the checkout, so none of them
+ *  needs a home of its own — one `fleet-sim-*` dir, not one per spawn. */
+const ENV = simEnv()
 
 const PLAN_DETAIL = 'plan-defect: M2 cannot hold'
 const IMPL_DETAIL = 'v1 is wrong'
@@ -129,7 +133,7 @@ const oneTaskRun = ({ name, files = ['a.txt'], reviews, fixWrites = false }) => 
   // there: clean tree, the recorded merge head, the branch it merged onto.
   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
     '--run-id', 'sim', '--branch', branch, '--report', reportPath, '--repo', integ],
-    { encoding: 'utf8', env: simEnv() })
+    { encoding: 'utf8', env: ENV })
   assert.equal(gate.status, 2,
     'gate_check.py must exit 2 (NEEDS_ACK) on a plan-defect deferral: ' +
     gate.stdout + gate.stderr)
@@ -377,7 +381,7 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
   const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
     '--run-id', 'sim', '--branch', r.branch, '--report', reportPath, '--repo', r.integ],
-    { encoding: 'utf8', env: simEnv() })
+    { encoding: 'utf8', env: ENV })
   assert.equal(gate.status, 1,
     '(d)/M4: the frozen gate exits 1 on the parked task: ' + gate.stdout + gate.stderr)
   const verdict = JSON.parse(gate.stdout)
@@ -504,7 +508,7 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
     'grep \'tasks\\[\\]\\.actor\' ' + q(p) + ' | grep -q \'plan\'',
     'grep \'deferredVerification. | no |\' ' + q(p) + ' | grep -q \'actor\'',
   ].join(' && ')
-  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8', env: simEnv() }).status
+  const sh = (cmd) => spawnSync('bash', ['-c', cmd], { encoding: 'utf8', env: ENV }).status
   assert.equal(sh(IMPL_GREP(IMPL_MD)), 0,
     '(h)/M8: the implementer.md grep exits 0 on the document as written')
   assert.equal(sh(RF_GREP(RF_MD)), 0,

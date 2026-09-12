@@ -291,20 +291,25 @@ Integrations page, and check the account is not a team.
 node fleet/janitor.mjs
 ```
 
-It lists the fleet, reads each VM's comment for its run and its target, reads
-that run's status page off the target with `gh api`, and `rm`s every VM whose
-run has been `done`, `parked` or `failed` for over an hour. Last in its report
-it also names, for each target its rows carry, every `ultra/integration-run-<N>`
-whose highest-numbered pull request is closed and not merged. The janitor
-deletes no branch — the sweep (`node fleet/retire.mjs --target <t>`) does. It
-reads the page at the evidence tag `ultra/evidence/run-<N>` first, and at the
-branch `ultra/evidence-run-<N>` only while the run is in flight or its sweep is
-pending; a run with no page is aged from the plan tag `ultra/plan/run-<N>` and
-then the plan branch `ultra/plan-run-<N>`, and the stale line names the ref it
-read. It merges nothing: an approved run merges its own pull request from the
-sandbox.
-For any fleet VM whose run has had no status update in six hours it prints a
-line, once. It never sshes into a VM. A VM that has to go now:
+It lists the fleet, reads each VM's comment for its run and its target, asks
+the hub for that run's issue (`ssh <KATA_URL host> curl localhost:8000/api/v1/…`,
+the bearer sourced on the hub — the road the launcher takes), and `rm`s every
+VM whose run issue has been closed for over an hour. When the hub cannot be
+asked — no `~/.ultrapowers/kata-hub.env`, an ssh that fails — it says so on its
+first line and reads each run's status page off the target with `gh api`
+instead, at the evidence tag `ultra/evidence/run-<N>` first and at the branch
+`ultra/evidence-run-<N>` only while the run is in flight or its sweep is
+pending; a run the hub has never heard of is read that way too, and a run with
+no record anywhere is left alone. Last in its report it also names, for each
+target its rows carry, every `ultra/integration-run-<N>` whose highest-numbered
+pull request is closed and not merged. The janitor deletes no branch — the
+sweep (`node fleet/retire.mjs --target <t>`) does. It merges nothing: an
+approved run merges its own pull request from the sandbox.
+For any fleet VM whose run has had no update in six hours it prints a line,
+once, naming where it read the age. The only ssh into a fleet VM is the unit
+read of a run the record says is in flight; a unit that has died is written as
+the death — the journal and the page on the evidence branch, the run issue
+closed `wontfix` on the hub — and reaped an hour later. A VM that has to go now:
 `ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
 
 The launcher runs it before every launch; nothing schedules it. Run it by hand
