@@ -1,0 +1,166 @@
+{
+  "ok": true,
+  "stamp": "run-113",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-113"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The plugin is 0.3.26 in both manifests and in its own instructions",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          ".claude-plugin/marketplace.json",
+          ".claude-plugin/plugin.json",
+          "CLAUDE.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The plugin is 0.3.26 in both manifests and in its own instructions",
+          "files": [
+            ".claude-plugin/marketplace.json",
+            ".claude-plugin/plugin.json",
+            "CLAUDE.md",
+            "tests/test_release_0_3_26.py"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            ".claude-plugin/marketplace.json",
+            ".claude-plugin/plugin.json",
+            "CLAUDE.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "tests/test_release_0_3_26.py"
+          ],
+          "testCmd": "python3 -m pytest -q tests/test_release_0_3_26.py",
+          "proofRuns": [
+            "python3 -c \"import json,subprocess,copy; base=lambda p: json.loads(subprocess.check_output(['git','show','$ULTRA_BASE:'+p])); new=lambda p: json.load(open(p)); a,b=base('.claude-plugin/plugin.json'),new('.claude-plugin/plugin.json'); assert b['version']=='0.3.26', b['version']; a2=dict(a); a2['version']='0.3.26'; assert a2==b, 'plugin.json changed more than version'; m0,m1=base('.claude-plugin/marketplace.json'),new('.claude-plugin/marketplace.json'); e1=[p for p in m1['plugins'] if p['name']=='ultrapowers'][0]; assert e1['version']=='0.3.26', e1['version']; m2=copy.deepcopy(m0); [p.__setitem__('version','0.3.26') for p in m2['plugins'] if p['name']=='ultrapowers']; assert m2==m1, 'marketplace.json changed more than the ultrapowers version'; print('both manifests 0.3.26, nothing else changed')\"",
+            "python3 -m pytest -q tests/test_version_sync.py",
+            "wc -w skills/*/SKILL.md fleet/roles/*.md"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              ".claude-plugin/marketplace.json",
+              ".claude-plugin/plugin.json",
+              "CLAUDE.md",
+              "tests/test_release_0_3_26.py"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [
+              "tests/test_release_0_3_26.py"
+            ],
+            "landing": {
+              "tests/test_release_0_3_26.py": "tests/test_release_0_3_26.py"
+            },
+            "driverOwned": [
+              "tests/test_release_0_3_26.py"
+            ],
+            "siblingOwned": [],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The plugin is 0.3.26 in both manifests and in its own i\u2026"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The two manifests carry the same version string.",
+    "constraintChecks": [
+      {
+        "cmd": "python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b, (a,b)\"",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-113/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-113/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-113/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-113/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
