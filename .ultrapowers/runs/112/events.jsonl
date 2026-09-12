@@ -34,3 +34,13 @@
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs","exit":0,"minor":false,"wave":1,"id":"01M29NE60P0000VFKARNZXSVDA","ts":1789178353686}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M29NE6FY00005CXQ6TA54KB4","ts":1789178354174}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"de61b3cb-2f3f-44be-9a23-a57d9cacded5","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-112/clones/integration","model":"opus","id":"01M29NE6FZ0000G58PT0BBT15M","ts":1789178354175}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"de61b3cb-2f3f-44be-9a23-a57d9cacded5","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":3332,"output":5842,"cacheRead":344008,"cacheCreation":62144,"costUsd":0.9561540000000003,"models":["claude-opus-5"]},"id":"01M29NGNW600005068952E48Z3","ts":1789178435462}
+{"kind":"transcript:slice","label":"integration","sessionId":"de61b3cb-2f3f-44be-9a23-a57d9cacded5","bytes":11499,"id":"01M29NGNWA0000ZMKBDA87QN8Q","ts":1789178435466}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M29NGNWN0000KJVS0TFT2G5M","ts":1789178435477}
+{"kind":"driver:stage","stage":"finalize","id":"01M29NGNY70000HDXP30F0C3BK","ts":1789178435527}
+{"kind":"driver:stage","stage":"gate","id":"01M29NGNZW000093YPV6KA88MA","ts":1789178435580}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M29NGP2E000072F241W1XXC1","ts":1789178435662}
+{"kind":"driver:stage","stage":"approve","id":"01M29NGP2E0001KJK6Y2B21B0T","ts":1789178435662}
+{"kind":"driver:approved","stamp":"run-112","integrationBranch":"ultra/integration-run-112","id":"01M29NGP3S000005YBE2THCW35","ts":1789178435705}
+{"kind":"run:open","runId":"run-112","base":"17e72bc2f9274d681e833c6a2aaa9061f03c275b","source":"fleet/publish-fold.mjs","id":"01M29NGPV60000RN43W1CJ5YRY","ts":1789178436454}
+{"kind":"driver:publish-fold","run":"112","attempt":"1","base":"17e72bc2f9274d681e833c6a2aaa9061f03c275b","tip":"17e72bc2f9274d681e833c6a2aaa9061f03c275b","candidate":"857aba924c3fa55199b92b4b2e37aa513674d995","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M29NGQWY00007QFPBB88C2J6","ts":1789178437534}

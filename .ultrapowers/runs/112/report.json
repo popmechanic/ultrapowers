@@ -1,0 +1,98 @@
+{
+  "integrationBranch": "ultra/integration-run-112",
+  "baseSha": "17e72bc2f9274d681e833c6a2aaa9061f03c275b",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "7ada789be29ad76522e24ff6196f2f8952bc21e3",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-112/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Acceptance is `suite`, but the evidence covers only this task's exam plus the three Proof `Run:` commands (`test_run_engine_infra_retry.mjs`, `test_run_engine_pre_review.mjs`, the grep pin). The three engine edits \u2014 `waitInfraBackoff` losing its `fs.watch` hold and `unref()`, `retryInfraNull` split into `noteInfraDeath`/`redispatchInfra`, and the pair lane's one-wait concurrent re-ask at `fleet/run-engine.mjs:2312-2319` \u2014 are engine-internal, so nothing in the diff settles the rest of `tests/test_fleet_suite.py`. Mitigating: grep across `fleet/` finds `retryInfraNull`, `infra-retry` and `infraBackoffMs` only in `fleet/run-engine.mjs` and `fleet/tests/test_run_engine_infra_retry.mjs`, and `fs.watch` only at the one line this patch deletes, so no other sim can reach the changed branches (a reviewer pair that never returns `null` never enters the new `if (r1 === null || r2 === null)` block). What would settle it: one run of `tests/test_fleet_suite.py`, which is also what joins the guarded sim to the suite through its `fleet/tests/test_*.mjs` glob.; unverified: the diff restructures the pair-review lane (fleet/run-engine.mjs :2329-2344 in PATCH) and re-routes both examiner `kept` sites through the new `keptReply` helper \u2014 code that other committed sims exercise (`fleet/tests/test_run_engine_review_pair.mjs`, `test_run_engine_review_peer.mjs`, `test_run_engine_examiner.mjs`, `test_run_engine_fixloop.mjs`). The Proof's `Run:` lines cover only `test_run_engine_infra_retry.mjs` and `test_run_engine_pre_review.mjs`, and the task's Acceptance is `suite`. Nothing in the diff suggests a regression \u2014 the record literals and the `driver:infra-retry` payload are byte-identical, the single-death path (`retryInfraNull`) is the BASE sequence recomposed from the three moves, and `keptReply` is the BASE expression verbatim \u2014 but the diff alone cannot settle it. What would settle it: `python3 -m pytest tests/test_fleet_suite.py` (or running the remaining `fleet/tests/test_run_engine_*.mjs` sims), green.; Code quality: `keptReply` (fleet/run-engine.mjs, the new line beside `hasCoordinates`) dereferences `r.status` without a null guard, while both of its neighbours in that cluster \u2014 `hasCoordinates = (r) => r && \u2026` and `isMergeable = (r) => r && \u2026` \u2014 are null-safe. Both current call sites are downstream of `if (impl === null) throw` (:1861 at BASE), so there is no live defect and no regression against BASE, which spelled the same unguarded dereference inline. But extracting the condition into a named helper next to two null-safe siblings invites a third caller that passes a `null` reply and gets a TypeError instead of `false`. Suggested fix, which keeps M4's one-line grep count at 1 (the fragment `DONE_WITH_CONCERNS') && hasCoordinates(` still occurs exactly once): `const keptReply = (r) => !!r && (r.status === 'DONE' || r.status === 'DONE_WITH_CONCERNS') && hasCoordinates(r)`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-112/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1538 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 14%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 37%]\n........................................................................ [ 42%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n..........................                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1538 passed, 5 warnings in 363.12s (0:06:03) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "! grep -En \"Date\\.now|performance\\.now|hrtime\" fleet/tests/test_run_engine_infra_retry.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 314289,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 42%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 70%]\n........................................................................ [ 74%]\n........................................................................ [ 79%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 98%]\n..........................                                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1538 passed, 5 warnings in 350.69s (0:05:50) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "857aba924c3fa55199b92b4b2e37aa513674d995",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-112/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-112/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.817,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
