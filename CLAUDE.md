@@ -157,7 +157,10 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   #913: a hub daemon reached through a peer integration by `tag:fleet`, the compiler writes each
   task's fact sheet at launch, the engine reads it, `kata export` rides the tag; the plan stays the
   signed input and GitHub stays the public record; #814 decided shape 3, #601 folds into #913, #812 stays
-  gated on #832 and lost its linker at #921); #727 *The Determinism Ratchet* (chartered
+  gated on #832 and lost its linker at #921; **#913 LANDED 2026-09-11** — the hub `kata-hub` is live,
+  the `kata` peer integration rides `tag:fleet` at `https://kata.int.exe.xyz`, the launcher files each
+  run and its tasks with their fact sheets, the engine claims/comments/closes through non-fatal writes
+  (`kata:write-failed` events), `kata.jsonl` rides the tag; run-112 was the first end-to-end proof); #727 *The Determinism Ratchet* (chartered
   2026-09-07: a prose rule violated twice becomes a check; its first move A1, the mechanical referee, shipped at
   #729 and was deleted whole at #921 on the reading in #911 — rule 4 in reverse; open moves A6 #728, B3 #730,
   B1 #731, #888; the ratchet instrument has been read for no release yet); #551 *Peer Review* — **CLOSED 2026-09-11 as reached** (#552–#556, #638, #642, #644 shipped; exams
@@ -298,6 +301,11 @@ structural dozen).
   --force` only when `ssh exe.dev ls` shows no `fleet-r*` VM running. The sibling trap: a
   `usage` read rotates an expired account with `install: false` and leaves the edge holding a
   revoked bearer (run-100) — the credential-seam plan makes every launch install the token it holds.
+- **Kata seams, measured 2026-09-11.** Every `*.int.exe.xyz` hostname is `https://` (http 301s, and a
+  followed 301 turns a POST into a GET — run-110). A `done` close needs a ≥40-character message
+  (run-111). Hub writes are never the run's failure; the boot's ping is the one gate. The laptop reads
+  the daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`, the bearer from
+  `~/.ultrapowers/kata-hub.env` passed on stdin, never on an argv.
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script. On the fleet the
