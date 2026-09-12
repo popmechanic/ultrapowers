@@ -1443,7 +1443,7 @@ print(json.dumps(body, separators=(",", ":"), ensure_ascii=False))
 
 # The first line of the page's `error`, for a close message: a failed run's
 # error carries the engine's last lines and the message wants the sentence.
-error_head() { printf '%s' "$ERROR" | head -n 1; }
+error_head() { { printf '%s' "$ERROR" || true; } | head -n 1; }
 
 collect_evidence() {
   local dest receipt approve run_dir f rel rows
