@@ -28,3 +28,9 @@
 {"kind":"transcript:slice","label":"review:1:1:2","sessionId":"6062af30-31ef-47ba-b74f-c3a2d1a38e37","bytes":11605,"id":"01M29N219Z0000ND3F17AMEH2M","ts":1789177955647}
 {"kind":"worker:end","label":"review:1:1:1","role":"reviewer","sessionId":"ac7c58f7-b464-4ecc-9577-18187d5e661f","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4836,"output":13073,"cacheRead":658162,"cacheCreation":48306,"costUsd":1.163146,"models":["claude-opus-5"]},"id":"01M29N32A70000V4MF1AT5RRVY","ts":1789177989447}
 {"kind":"transcript:slice","label":"review:1:1:1","sessionId":"ac7c58f7-b464-4ecc-9577-18187d5e661f","bytes":11562,"id":"01M29N32AC00009DGWQH2VB32W","ts":1789177989452}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"857aba924c3fa55199b92b4b2e37aa513674d995","id":"01M29NE5ZX00009N3S1A37HBQ0","ts":1789178353661}
+{"kind":"driver:integrated-clean","wave":1,"removed":10,"id":"01M29NE6080000EW2V2THERJ5F","ts":1789178353672}
+{"kind":"driver:integrated-check","cmd":"! grep -En \"Date\\.now|performance\\.now|hrtime\" fleet/tests/test_run_engine_infra_retry.mjs","exit":0,"minor":false,"wave":1,"id":"01M29NE60E00001E2THH9909XB","ts":1789178353678}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs","exit":0,"minor":false,"wave":1,"id":"01M29NE60P0000VFKARNZXSVDA","ts":1789178353686}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M29NE6FY00005CXQ6TA54KB4","ts":1789178354174}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"de61b3cb-2f3f-44be-9a23-a57d9cacded5","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-112/clones/integration","model":"opus","id":"01M29NE6FZ0000G58PT0BBT15M","ts":1789178354175}
