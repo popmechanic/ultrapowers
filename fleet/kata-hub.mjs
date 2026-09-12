@@ -139,6 +139,13 @@ export const addVerb = (httpsUrl) =>
   `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
   `--bearer - --comment '${INTEGRATION_COMMENT}' --policy '${FLEET_POLICY}'`
 
+/** The same creation on the attach-model lobby: exe.dev shipped the policy model
+ *  on 2026-09-11 and rolled it back the same afternoon, so `--policy` may be an
+ *  unknown flag; `--attach tag:fleet` says the same thing there (#924's rule). */
+export const addVerbAttach = (httpsUrl) =>
+  `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
+  `--bearer - --comment '${INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
+
 export const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
 
 // ── Reads ───────────────────────────────────────────────────────────────────
@@ -304,7 +311,14 @@ export async function kataHub ({
   if (!row.httpsUrl) throw new LobbyError(`the ${HUB_VM} row carries no https_url`)
   if (!row.sshDest) throw new LobbyError(`the ${HUB_VM} row carries no ssh_dest`)
 
-  if (!listed) await lobby(exec, addVerb(row.httpsUrl), { input: bearer })
+  if (!listed) {
+    try {
+      await lobby(exec, addVerb(row.httpsUrl), { input: bearer })
+    } catch (error) {
+      // The attach-model lobby knows no `--policy`; create with `--attach`.
+      await lobby(exec, addVerbAttach(row.httpsUrl), { input: bearer })
+    }
+  }
   else if (rebuilt) await lobby(exec, editVerb(), { input: bearer })
 
   // First boot: the setup script's last act before it deletes itself.
