@@ -293,11 +293,12 @@ test('grep -c acceptance.log fleet/sandbox-boot.sh is 0  [M3 / leg (c)]', () => 
   assert.equal(grepCount(BOOT_SCRIPT, ACCEPTANCE_LOG_RE), 0,
     'leg (c) [M3]: the boot script names no acceptance.log — neither the evidence copy nor the ' +
     'parked arm\'s cut:\n  ' + grepLines(BOOT_SCRIPT, ACCEPTANCE_LOG_RE).join('\n  '))
-  // The survivors: `failing_block`/`has_failing_block` are the publish fold's,
-  // and the fold's `suite-<n>.txt` still calls them. A deletion that took them
-  // out took a live reader with it.
+  // The survivor: `failing_block` is the publish fold's, and the fold's
+  // `suite-<n>.txt` still calls it. A deletion that took it out took a live
+  // reader with it. (Its green-log guard went with its last caller — #893
+  // deleted the parked arm — and is pinned no longer.)
   const boot = read(BOOT_SCRIPT)
-  for (const name of ['failing_block', 'has_failing_block']) {
+  for (const name of ['failing_block']) {
     assert.ok(boot.includes(name + '('),
       'leg (c) [M3]: `' + name + '` still exists in the boot script — the publish fold\'s ' +
       '`suite-<n>.txt` is a live caller and stays one')
