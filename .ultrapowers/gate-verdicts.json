@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "720a71bb57ac7b2568f200e029c2162a934a08f17861ad8d222978522be14333",
+      "verdict": "pass",
+      "reason": "Each leg names the BASE-side failure it would catch (fs.watch count 1 / exit 13 / unref count 1 / two backoff delays / grep count 2), and the pinned literals compute consistently under the clauses (two null halves -> one wait, two events, two entries, four review dispatches, one implementer; one handle for 4321 with zero unref)."
+    }
+  },
+  "tally": { "dispatched": 2, "rejected": 0, "rounds": 2, "round_1": { "pass": 1, "fail": 0 }, "round_2": { "pass": 1, "fail": 0 } },
+  "history": [
+    { "round": 1, "task": "1", "hash": "720a71bb57ac7b2568f200e029c2162a934a08f17861ad8d222978522be14333", "verdict": "pass", "note": "plan-level Claim then quoted from #857" },
+    { "round": 2, "task": "1", "hash": "720a71bb57ac7b2568f200e029c2162a934a08f17861ad8d222978522be14333", "verdict": "pass", "note": "re-dispatched after the plan-level Claim was replaced by the operator's elicited sentence; task hash unchanged" }
+  ]
+}
