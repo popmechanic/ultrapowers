@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-114.md run-114 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "Task 1 — the plan-level Claim's release flow: \"a PR that bumps the plugin to 0.3.26 in both manifests, opened and merged by the sandbox itself, its every event on the hub as it happens\" — The tree-side deliverable is complete and verified statically (both manifests and CLAUDE.md:262 read 0.3.26). The PR being opened and squash-merged by the sandbox, and each driver:*/worker:*/engine:phase event landing on the hub project within a minute of its engine ts, are engine behaviors that occur after this read and against github.com and the hub — this read-only environment cannot execute or observe them. The squash title requirement is already met in-tree: HEAD 4ca171fb's subject is the plan's H1 verbatim. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

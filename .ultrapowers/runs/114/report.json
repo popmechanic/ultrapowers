@@ -1,0 +1,98 @@
+{
+  "integrationBranch": "ultra/integration-run-114",
+  "baseSha": "52b6355149bfd9742f606e4cfb08b64b0e551f41",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e0dcf2dddae72f1c548d1dac3f53e70616dfebc4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-114/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Footprint note only: the diff adds `tests/exams/run_114/__init__.py` (an empty package marker), a path outside the declared FILES block. It is the package marker for the exam directory the task's Context authorizes (\"the examiner writes it under `tests/exams/<run>/`\"), it contains no logic, and `ROOT = HERE.parents[3]` in the exam resolves correctly from that landing path, so no change is needed \u2014 it is recorded here because the path is not named in FILES.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-114/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1554 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 32%]\n........................................................................ [ 37%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 97%]\n..........................................                               [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1554 passed, 5 warnings in 367.23s (0:06:07) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b, (a,b)\"",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 63790,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 60%]\n........................................................................ [ 65%]\n........................................................................ [ 69%]\n........................................................................ [ 74%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 88%]\n........................................................................ [ 93%]\n........................................................................ [ 97%]\n...............................                                          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1543 passed, 5 warnings in 351.00s (0:05:51) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "4ca171fb5589125c56bcd70a79518fb3d5579d9d",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-114/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-114/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.5700000000000001,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 \u2014 the plan-level Claim's release flow: \"a PR that bumps the plugin to 0.3.26 in both manifests, opened and merged by the sandbox itself, its every event on the hub as it happens\"",
+      "reason": "external",
+      "why": "The tree-side deliverable is complete and verified statically (both manifests and CLAUDE.md:262 read 0.3.26). The PR being opened and squash-merged by the sandbox, and each driver:*/worker:*/engine:phase event landing on the hub project within a minute of its engine ts, are engine behaviors that occur after this read and against github.com and the hub \u2014 this read-only environment cannot execute or observe them. The squash title requirement is already met in-tree: HEAD 4ca171fb's subject is the plan's H1 verbatim."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

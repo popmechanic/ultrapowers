@@ -51,3 +51,13 @@
 {"kind":"worker:end","label":"integration","role":"critic","sessionId":"639fd95b-3f16-4018-aae4-de979ab82dc2","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2979,"output":4545,"cacheRead":209890,"cacheCreation":48659,"costUsd":0.720055,"models":["claude-opus-5"]},"id":"01M2BQYBPP0000KRAKGJCAAX85","ts":1789248089814}
 {"kind":"transcript:slice","label":"integration","sessionId":"639fd95b-3f16-4018-aae4-de979ab82dc2","bytes":11509,"id":"01M2BQYBPS0000TQ58Q68XWRV2","ts":1789248089817}
 {"kind":"kata:write-failed","what":"comment","uid":"01M2BPJ2AM4AV6RW2T8510326P","detail":"kata: POST /api/v1/projects/8/issues/01M2BPJ2AM4AV6RW2T8510326P/comments answered 502: integration proxy: upstream request failed (trace: 536169eb808942924f59ce6149c44605)\n","id":"01M2BR0PQE0000MGGY4HV0G2PC","ts":1789248166638}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2BR41CC0000234FD29K0AA4","ts":1789248275852}
+{"kind":"driver:stage","stage":"finalize","id":"01M2BR41DF0000QP0HP91NMRPH","ts":1789248275887}
+{"kind":"driver:stage","stage":"gate","id":"01M2BR41FG0000GG5G9ZTGRN3K","ts":1789248275952}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2BR41JZ0000KGRCFDNN9WQC","ts":1789248276063}
+{"kind":"driver:ack-decision","approve":true,"reason":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M2BR41K00000D1EF8ZF57R36","ts":1789248276064}
+{"kind":"driver:stage","stage":"acks","detail":"1 deferred runtime/external ack(s) — pre-authorized (#243)","id":"01M2BR41K00001EBDBBGRVGN72","ts":1789248276064}
+{"kind":"driver:stage","stage":"approve","id":"01M2BR41K00002TFWB6ZFY9YPN","ts":1789248276064}
+{"kind":"driver:approved","stamp":"run-114","integrationBranch":"ultra/integration-run-114","id":"01M2BR41MK00008FFBCQN0BX99","ts":1789248276115}
+{"kind":"run:open","runId":"run-114","base":"52b6355149bfd9742f606e4cfb08b64b0e551f41","source":"fleet/publish-fold.mjs","id":"01M2BR46H70000J691TQKEF60N","ts":1789248281127}
+{"kind":"driver:publish-fold","run":"114","attempt":"1","base":"52b6355149bfd9742f606e4cfb08b64b0e551f41","tip":"52b6355149bfd9742f606e4cfb08b64b0e551f41","candidate":"4ca171fb5589125c56bcd70a79518fb3d5579d9d","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2BR47KY0000QHXZGFJ71JPB","ts":1789248282238}

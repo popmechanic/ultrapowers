@@ -1,0 +1,8 @@
+Running as unit: fleet-fold-114-1.service; invocation ID: f91a231c4ede473ea4e8ade1d396d2fe
+publish-fold: attempt 1 — nothing to join
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 1.177s
+CPU time consumed: 160ms
+Memory peak: 332.0K
+Memory swap peak: 0B
