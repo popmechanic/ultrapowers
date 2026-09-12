@@ -68,7 +68,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     first and the object's own fields spread after it: `{"kind":"issue", …}` per issue of the run's
     kata project, then `{"kind":"event", …}` per envelope of its event log. Exported at every
     transition to a temporary name and moved into place, so a fetch that fails leaves the last whole
-    export exactly as it was — the hub is archived and the run's state outlives it here.
+    export exactly as it was — the hub is archived and the run's state outlives it here. The last
+    export carries the run issue's own `issue.closed` (the boot's, `sandbox:run-<N>`, `done` or
+    `wontfix` as the page ended — #937) beside the task closes the engine made.
     `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
     and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
     `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
@@ -260,6 +262,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     answer's `next_after_id` until an answer's `events` is empty. The project id is the file's own
     `project.id`; a fetch that fails logs
     `kata: export failed (curl exit <n>) — previous kata.jsonl kept` and changes nothing.
+    With the file, the RUN issue — the file's `run.uid` — is closed by the boot, once, at the
+    terminal transition and before that transition's export, so the `issue.closed` rides
+    `kata.jsonl` on the tag (#937): `POST …/projects/<project id>/issues/<run uid>/actions/close`
+    with `Idempotency-Key: run-<N>:run:close` and the body `{actor: "sandbox:run-<N>", reason,
+    message, evidence, retry_protocol: "close-v1"}`. A run whose page ends `done` closes `done`
+    with `{type: "pr", url}` and, when the sandbox merged, `{type: "commit", sha: <merge sha>}`
+    as evidence, the message the plan's H1 and the merge sha (40+ characters — kata refuses a
+    shorter `done`); a run whose page ends `parked` or `failed` closes `wontfix` with no evidence
+    and the page's `error`. The task issues are the engine's to close; the boot closes only this
+    one, and never at the ping park, where the hub was never reached. A close the hub refuses is
+    one `kata:write-failed` event (`what` `close`, `uid`, `detail` naming the curl exit) on the
+    record, and the run publishes and merges exactly as it would have.
   - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
