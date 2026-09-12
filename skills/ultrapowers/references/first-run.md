@@ -320,8 +320,9 @@ it reaches it the way every other credential reaches a sandbox: as an exe.dev
 never holds the Cloudflare token and cannot read it back. The renderer is
 optional — a fleet that names none is `ok` here, with a detail reading
 `not configured`, and each of its runs records the render move as `skipped`.
-The row is `missing` only when the config file names an integration the edge
-does not have.
+A `render` key missing either half — no `account`, an empty string — is read
+as none, here and at launch alike. The row is `missing` only when the config
+file names an integration the edge does not have.
 
 **In a browser:** Cloudflare's dashboard, once. Create an API token with the
 Browser Rendering permission, and copy the account id out of the dashboard URL.

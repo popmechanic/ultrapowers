@@ -533,6 +533,30 @@ const BREACH = 'contract breach: https://x'
   }]), '', 'and a record whose mutant survived renders nothing either')
 }
 
+// ── leg (j2): a record cut mid-file reads as null, never as a crash [M3] ────
+// #859's reduced ask: `readJsonOrNull` answers null on a truncated file, so a
+// pass whose `mutant.json` was cut mid-object yields `mutant_killed: null` and
+// keeps every field its other two records could supply. Pinned on the pure
+// reader, off a tree this leg writes by hand.
+{
+  const cutRoot = path.join(tmp, 'truncated')
+  const passDir = path.join(cutRoot, 'state-exams', 'task-T9', 'buy-milk-0')
+  fs.mkdirSync(passDir, { recursive: true })
+  fs.writeFileSync(path.join(passDir, 'walls.json'),
+    j({ store_ms: 12, render_ms: 999, mutant_ms: 4, render: 'skipped' }))
+  fs.writeFileSync(path.join(passDir, 'contract.json'),
+    j({ clock: '2026-09-09T00:00:00Z', breach: null }))
+  const whole = j({ killed: true, path: MUTANT_PATH })
+  const cut = whole.slice(0, Math.floor(whole.length / 2))
+  assert.throws(() => JSON.parse(cut), 'sim precondition: the half-written mutant.json is not JSON')
+  fs.writeFileSync(path.join(passDir, 'mutant.json'), cut)
+  assert.deepEqual(stateExamsOf(cutRoot, 'T9'), [{
+    exam: 'buy-milk', store_ms: 12, render_ms: null, render: 'skipped',
+    mutant_killed: null, contract: 'ok',
+  }], 'a mutant.json cut mid-object reads as mutant_killed: null, and the row still carries ' +
+      'what walls.json and contract.json could supply')
+}
+
 // ── leg (k): the report contract names the key and the rule [M5] ────────────
 {
   const md = fs.readFileSync(REPORT_FORMAT_MD, 'utf8')

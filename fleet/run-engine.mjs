@@ -480,7 +480,7 @@ export const stateExamBlock = (rows) => {
     'killed, so duty 5 is settled for the exam file(s) named below and for nothing else — the ' +
     'implementer\'s own tests stay under duty 5.' +
     rows.map((r) => '\n- ' + r.exam + ': mutant ' +
-      String((r.mutant_path || r.path || '')) + ' killed: true').join('')
+      String(r.mutant_path || '') + ' killed: true').join('')
 }
 // ── #887 — the join: which paths two of a wave's tasks both touched ──────────
 //
@@ -794,6 +794,13 @@ export function parseCliJson(stdout) {
 }
 
 const tail = (s, n = 4000) => String(s || '').slice(-n)
+/** The implementer's concern that parks a task for the plan (#722, #944): a
+ *  `plan-defect:` entry that names a Proof leg by its parenthesised label AND
+ *  says the leg cannot pass. A `(a)` cited in a note about a resolved ambiguity
+ *  is not this — the sentence has to claim the leg is unsatisfiable. */
+export const LEG_CANNOT_PASS_RE = /cannot pass|can't pass|unsatisfiable|no output|for any output/i
+export const legCannotPass = (c) =>
+  /^plan-defect:[\s\S]*\([a-z]\)/.test(String(c)) && LEG_CANNOT_PASS_RE.test(String(c))
 
 // ── the integration clone's cache sweep (#631 option (d)) ────────────────────
 // The driver runs the suite in the integration clone — each wave's candidate,
@@ -2158,12 +2165,18 @@ export async function runEngine({
     // or dead examiner writes no file, and `command not found` is not a red
     // exam, it is the absence of one (the task proceeds unexamined, as it did).
     const examRunnable = Boolean(proofTests.length && examTestCmd && examBlobs)
-    const runExam = async (iter) => {
+    // The event carries the same output tail the fix prompt reads (#944), so a
+    // parked task's red is legible from the tag and the hub without the VM.
+    // `rerun: true` marks the one re-execution the park below may buy; a green
+    // re-run also says `flaky: true`, which is where that fact is first known.
+    const runExam = async (iter, rerun = false) => {
       if (!examRunnable) return null
       const r = await sh(examRunCmd, cloneDir, examEnv({ base: baseShaForTask, task: task.id,
                                                         runDir: runDirAbs, pass: String(iter) }))
-      appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examRunCmd, exit: r.code, iter })
-      return { cmd: examRunCmd, exit: r.code, stdout: tail(r.stdout + r.stderr) }
+      const stdout = tail(r.stdout + r.stderr)
+      appendEvent({ kind: 'driver:exam-run', task: task.id, cmd: examRunCmd, exit: r.code, iter,
+                    stdout, ...(rerun ? { rerun: true, ...(r.code === 0 ? { flaky: true } : {}) } : {}) })
+      return { cmd: examRunCmd, exit: r.code, stdout }
     }
     const runChecks = async (iter) => {
       const checks = []
@@ -2237,12 +2250,32 @@ export async function runEngine({
       // as a `deferred:plan-defect` item. A red `Run:` or `Check:` beside
       // the red exam does not change the answer — the exam's red plus the
       // leg-naming concern is the whole condition.
+      //
+      // Both halves were misread once (#944, ultraviz run-2 task 3): the red
+      // was a one-off renderer failure, and the concern cited `(a)` in a note
+      // about an ambiguity it had resolved. So the concern must SAY the leg
+      // cannot pass (`legCannotPass`), and the driver re-runs the red exam
+      // once — same clone, same env — before it believes it: green on the
+      // re-run is green (the pass proceeds as if it had been), red twice
+      // beside the concern is the park. An ordinary red, with no such
+      // concern, still buys the one repair round below and no re-run.
       const examRedLine = (preExam && preExam.exit !== 0) ? EXAM_FAIL(preExam) : null
       const examIsRed = Boolean(examRedLine) && reds.some((r) => r.line === examRedLine)
-      const legDefects = (examIsRed && impl.status === 'DONE_WITH_CONCERNS' &&
+      let legDefects = (examIsRed && impl.status === 'DONE_WITH_CONCERNS' &&
         Array.isArray(impl.concerns))
-        ? impl.concerns.map(String).filter((c) => /^plan-defect:[\s\S]*\([a-z]\)/.test(c))
+        ? impl.concerns.map(String).filter(legCannotPass)
         : []
+      if (legDefects.length) {
+        const again = await runExam(0, true)
+        if (again && again.exit === 0) {
+          judgmentCalls.push('task ' + task.id + ': the exam was red once and green on the ' +
+            'driver\'s re-run — read as green (flaky), the plan-defect concern recorded and ' +
+            'no park — ' + legDefects.join('; '))
+          preExam = again
+          reds = reds.filter((r) => r.line !== examRedLine)
+          legDefects = []
+        }
+      }
       if (legDefects.length) {
         const notes = legDefects.join('; ')
         parkedForPlan.push({ task: task.id, why: notes })
@@ -2254,6 +2287,10 @@ export async function runEngine({
                  tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
+    }
+    // A flaky exam beside an otherwise-green pass leaves `reds` empty here, and
+    // an empty pass buys no round — the task goes straight to review.
+    if (reds.length) {
       // The meaning of `proofFixes`: the pass was red once and bought a round.
       proofFixes = 1
       judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +

@@ -48,7 +48,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import * as doctorModule from '../doctor.mjs'
-import { simEnv } from './_helpers.mjs'
+import { RENDER_SHAPES, simEnv } from './_helpers.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FLEET_DIR = path.resolve(HERE, '..')
@@ -65,7 +65,7 @@ assert.equal(
   'function',
   '0 [M3] fleet/doctor.mjs exports fleetConfigRender({ path })'
 )
-const { fleetConfigRender, doctor, renderRows, ROW_IDS } = doctorModule
+const { fleetConfigRender, renderOf, doctor, renderRows, ROW_IDS } = doctorModule
 
 // ── the exec rig, copied from test_doctor_config_keys.mjs ────────────────────
 
@@ -546,6 +546,36 @@ for (const [label, body] of [
     ['cpu', 'memory'],
     `3 [M3 leg c] result.config has exactly the keys cpu and memory; got ${JSON.stringify(result.config)}`
   )
+}
+
+// ── 3b. #859 — renderOf, the one reading, on the shared fixture set ─────────
+
+assert.equal(typeof renderOf, 'function', '3b [#859] fleet/doctor.mjs exports renderOf(value)')
+
+for (const { label, value, answer } of RENDER_SHAPES) {
+  // The same six shapes `test_launch_render.mjs` and
+  // `test_setup_script_render_env.mjs` loop, and the same answer at each site:
+  // `renderOf` directly, `fleetConfigRender` on a file carrying that value,
+  // and the `render` row of a doctor handed it.
+  assert.deepEqual(renderOf(value), answer, `3b [#859] renderOf: ${label} answers ${JSON.stringify(answer)}`)
+  const file = fixture(
+    `shape-${label.replace(/\W+/g, '-')}.json`,
+    JSON.stringify({ cpu: '8', memory: '16GB', render: value })
+  )
+  assert.deepEqual(
+    await fleetConfigRender({ path: file }),
+    answer,
+    `3b [#859] fleetConfigRender: a file whose render is ${label} answers ${JSON.stringify(answer)}`
+  )
+  const { result } = await run({ render: value })
+  const render = renderRow(result)
+  if (answer === null) {
+    assert.equal(render.status, 'ok', `3b [#859] the render row reads ${label} as no renderer; got ${render.status} — ${render.detail}`)
+    assert.ok(render.detail.startsWith('not configured'), `3b [#859] and says not configured; got ${render.detail}`)
+  } else {
+    assert.equal(render.status, 'missing', `3b [#859] the render row reads ${label} as a renderer the listing lacks; got ${render.status}`)
+    assert.ok(render.detail.includes(answer.integration), `3b [#859] and names it; got ${render.detail}`)
+  }
 }
 
 // ── 4. M4 / leg (d) — CONFIG_KEYS accepts render ─────────────────────────────

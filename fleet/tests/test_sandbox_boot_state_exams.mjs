@@ -60,7 +60,7 @@ import { fileURLToPath } from 'node:url'
 import {
   SCRIPT, RUN_PATH,
   STUBS, PRELUDE, makeHome, bootAsync, renderEnvPath,
-  argvLines, foldArgv, unitsRun, commitStates, evidenceDir,
+  argvLines, foldArgv, unitsRun, commitStates, evidenceDir, statusOf, stream,
   runTests, ENV,
 } from './_sandbox_boot_helpers.mjs'
 
@@ -155,6 +155,9 @@ const PASS_FILES = [
   ['walls.json', Buffer.from(WALLS_BYTES)],
 ]
 const PASS_NAMES = PASS_FILES.map(([name]) => name)
+/** The sixth artifact of the LOCKED boot (#859): a file the exam left at mode
+ *  000, which `collect_evidence` cannot read. */
+const LOCKED_NAME = 'locked.json'
 
 /**
  * The engine's state-exam writes, under `$run_dir/state-exams/`, at the layout
@@ -172,6 +175,10 @@ if [ -n "\${STUB_STATE_EXAMS:-}" ]; then
   printf '%s' "$STUB_EXAM_STORE_DIFF" >"$pass_dir/store-diff.json"
   printf '${PNG_FORMAT}' >"$pass_dir/screenshot.png"
   printf '%s' "$STUB_EXAM_BASE_WALLS" >"$base_dir/walls.json"
+  if [ -n "\${STUB_STATE_EXAMS_LOCKED:-}" ]; then
+    printf '%s' 'unreadable' >"$pass_dir/${LOCKED_NAME}"
+    chmod 000 "$pass_dir/${LOCKED_NAME}"
+  fi
 fi
 `
 
@@ -252,6 +259,21 @@ const bareBoot = (() => {
     assert.equal(r.status, 0, `the bare boot must run to completion:\n${r.stdout}${r.stderr}`)
     return { ctx, result: r }
   })
+  done.catch(() => {})
+  return () => done
+})()
+
+/**
+ * THE LOCKED BOOT (#859): the planted tree plus one artifact at mode 000. Leg
+ * (h) reads this one run: the walk's copies are tolerant under
+ * `set -euo pipefail`, so the boot still commits the record and still reaches
+ * its terminal state. A third boot, on purpose — the planted boot's legs pin
+ * the pass directory to exactly five files, so the sixth cannot ride there.
+ */
+const lockedBoot = (() => {
+  const ctx = examHome()
+  const done = bootAsync(ctx, ['boot'], { ...STATE_EXAMS_ENV, STUB_STATE_EXAMS_LOCKED: '1' })
+    .then((r) => ({ ctx, result: r }))
   done.catch(() => {})
   return () => done
 })()
@@ -454,6 +476,37 @@ test('the planted boot committed the record at least three times  [M3 / leg (f)]
 })
 
 // ── (g) the siblings are real sims, and the script parses  [M1, M3] ──────────
+
+test('an unreadable state-exam artifact is skipped; the record still commits and the run still ends  [#859 / leg (h)]', async () => {
+  const { ctx, result } = await lockedBoot()
+  assert.equal(result.status, 0,
+    `(h) [#859] the locked boot must run to completion:\n${result.stdout}${result.stderr}`)
+  const locked = path.join(runExams(ctx), 'task-1', 'buy-milk-0', LOCKED_NAME)
+  assert.ok(fs.existsSync(locked), '(h) [#859] sim precondition: the engine left the locked artifact')
+  assert.equal(fs.statSync(locked).mode & 0o777, 0,
+    '(h) [#859] sim precondition: the locked artifact is mode 000')
+  // The terminal state, on the status page and on the record.
+  assert.equal(statusOf(ctx).state, 'done',
+    `(h) [#859] the status page reaches done past an unreadable artifact; log:\n${stream(ctx).join('\n')}`)
+  const states = commitStates(ctx)
+  for (const state of ['running', 'publishing', 'done']) {
+    assert.ok(states.includes(state),
+      `(h) [#859] the record was committed at \`${state}\`, got ${JSON.stringify(states)}`)
+  }
+  // The readable five still land, byte for byte.
+  const dir = path.join(evidenceExams(ctx), 'task-1', 'buy-milk-0')
+  for (const [name, bytes] of PASS_FILES) {
+    assert.ok(fs.existsSync(path.join(dir, name)), `(h) [#859] ${name} is still collected beside the locked file`)
+    assert.ok(read(path.join(dir, name)).equals(bytes), `(h) [#859] ${name} is byte-equal`)
+  }
+  // Root reads a mode-000 file, so only a non-root run can see the skip.
+  if (typeof process.getuid === 'function' && process.getuid() !== 0) {
+    assert.ok(!fs.existsSync(path.join(dir, LOCKED_NAME)),
+      `(h) [#859] the unreadable artifact is not on the record, got ${JSON.stringify(walk(evidenceExams(ctx)))}`)
+    assert.ok(stream(ctx).some((l) => l.includes(`state-exams/task-1/buy-milk-0/${LOCKED_NAME} could not be copied`)),
+      `(h) [#859] and the boot log names the file it skipped; log:\n${stream(ctx).join('\n')}`)
+  }
+})
 
 test('the boot script parses  [M1, M3 / leg (g)]', () => {
   const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8', env: ENV })
