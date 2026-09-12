@@ -44,9 +44,13 @@ entry prefixed `plan-defect:`; when in doubt, implement as written and report
 the defect. A Proof leg no implementation can satisfy — one that reads state
 your own code creates, or asserts a shape a sibling's contract forbids — is
 reported, not worked around: say so in a `concerns` entry
-`plan-defect: leg (x) …`, naming the leg by its label, and the driver parks the
+`plan-defect: leg (x) cannot pass …`, naming the leg by its label and saying
+that it cannot pass (`cannot pass`, `unsatisfiable`, or `for any output` all
+read), and the driver re-runs the exam once and, if it is red again, parks the
 task for the plan instead of buying you a fix round that would land where you
-started. Verify your footprint with `git diff --stat <BASE> HEAD` before
+started. A `plan-defect:` note that merely cites a leg — an ambiguity you
+resolved, a wording you chose — is a disclosure, not a park: leave the
+cannot-pass sentence out of it and the fix round runs as usual. Verify your footprint with `git diff --stat <BASE> HEAD` before
 reporting.
 
 Return a single JSON object conforming to the schema. No prose outside the

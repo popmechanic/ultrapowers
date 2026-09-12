@@ -54,6 +54,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `driver:wave-adopted` `{wave, tasks, headSha}` — the 1-based wave, the ids it merged in plan
     order, the head it left on the integration branch — and `driver:wave-blocked`
     `{wave, tasks, detail}`, the same wave and ids with the `waveMerges` row's own `detail`.
+    The driver's own executions are three more kinds, one per command run: `driver:proof-run`
+    `{task, cmd, exit, iter}`, `driver:check-run` `{task, cmd, exit, minor, iter}` and
+    `driver:exam-run` `{task, cmd, exit, iter, stdout}` — `stdout` is the exam's combined
+    stdout+stderr, last 4,000 characters, the same tail the fix prompt reads (#944), so a parked
+    task's red is legible from the tag and the hub. The pre-review pass (`iter: 0`) parks a task
+    for the plan (`reviewVerdict: plan-defect`, actor `plan`, no fix round) only on the pair: the
+    implementer's `plan-defect:` concern names a Proof leg by its `(x)` label AND says it cannot
+    pass (`cannot pass|can't pass|unsatisfiable|no output|for any output`, case-insensitive), and
+    the exam is red on the pass AND on the one re-run the driver then makes in the same clone
+    and environment — a second `driver:exam-run` at `iter: 0` carrying `rerun: true`. A green
+    re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
+    the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
+    red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
     `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
     readers slice — is there on the same terms, present when the engine wrote them.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
