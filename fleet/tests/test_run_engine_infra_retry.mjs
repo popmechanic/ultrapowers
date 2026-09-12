@@ -417,7 +417,9 @@ for (const [name, implReply] of [
 
 // ── the reviewer scenarios [M7] ────────────────────────────────────────────
 // `review({ label, n, runDir })` answers the n-th dispatch OF THAT LABEL.
-async function reviewerRun({ profile, review }) {
+// `extraArgs` is merged after the default `infraBackoffMs: 0`, so every caller
+// above is unchanged; the #857 pair scenario below needs a distinctive backoff.
+async function reviewerRun({ profile, review, extraArgs = {} }) {
   const { stamp, repo, runDir } = freshNames('r')
   const labels = []
   const perLabel = new Map()
@@ -437,7 +439,7 @@ async function reviewerRun({ profile, review }) {
   }
   const { run } = rig({
     repo, runDir, waves: [[plainTask(profile)]], stub, stamp,
-    extraArgs: { infraBackoffMs: 0 },
+    extraArgs: { infraBackoffMs: 0, ...extraArgs },
   })
   const report = await run()
   return { report, labels, prompts, runDir }
@@ -520,6 +522,232 @@ async function reviewerRun({ profile, review }) {
     '(j)/M8: the critic is dispatched twice: ' + labels.join(','))
   assert.deepEqual(withRetry(report), [attempt1('integration', 429, 300)],
     '(j)/M8: and the call names the backoff it waited: ' + shown(report))
+}
+
+// ════ the ref'd timer, the pair's one wait, and the `kept` helper (#857) ═════
+// The residuals of the retry above, measured. The clauses of that task are
+// restated here as R1–R4 so they do not collide with the M1–M8 of the header,
+// and every assertion below names its own leg and the clause it comes from:
+//   R1 — between a judgment call's `null` reply and its re-dispatch,
+//        `fleet/run-engine.mjs` calls `fs.watch` ZERO times: with `fs.watch`
+//        replaced by a counting, throwing stub, a lean one-task run whose
+//        `integration` call returns `null` once and then answers dispatches
+//        `integration` exactly twice, ends with the critic's attestation in hand
+//        (`gitVerified` true), and leaves the stub's count at 0.
+//   R2 — the wait is held by the backoff's TIMER ALONE: with `fs.watch` stubbed
+//        to throw and `globalThis.setTimeout` left real, that same run with
+//        `args.infraBackoffMs` of 50 reaches its report (the sim process is
+//        still alive to assert `gitVerified` is true); and with
+//        `globalThis.setTimeout` stubbed to hand back handles that record
+//        `unref` calls, the handle returned for the delay equal to
+//        `args.infraBackoffMs` receives NO `unref` call.
+//   R3 — when both halves of a `peer` pair return `null` on their first
+//        dispatch, `globalThis.setTimeout` is asked for a delay equal to
+//        `args.infraBackoffMs` exactly ONCE; each half's label is dispatched
+//        exactly twice with a byte-identical prompt and the implementer exactly
+//        once; the record holds exactly two `driver:infra-retry` events, one per
+//        half's label, each naming the first attempt; the judgment-call list
+//        holds exactly two `infra-retry:` entries, both for the first attempt;
+//        the task ends `done` and no barrier park is taken.
+//   R4 — the kept-reply condition is spelled ONCE: exactly one line of
+//        `fleet/run-engine.mjs` contains both `'DONE_WITH_CONCERNS')` and
+//        `&& hasCoordinates(`, and both examiner lanes still re-dispatch the
+//        examiner once and the implementer never.
+//
+// Leg order: the source pin (857-e) runs FIRST on purpose. At BASE the two
+// real-timer legs below end the process at Node's exit 13 ("unsettled top-level
+// await", measured) rather than at an assertion, so the crisp red — a count of
+// 2 where the contract says 1 — is the one a reader meets first. Leg (857-f) is
+// carried by the scenarios already above: the thrown-examiner and null-examiner
+// lanes of leg (g) (examiner twice, implementer once, for both kept statuses),
+// the single-death pair and lean single of leg (i), and the configured backoff
+// of leg (j) — all of which stand unedited and must stay green.
+//
+// The two process-wide stubs, each restored in a `finally` before the next
+// scenario runs. No assertion here reads a clock: a backoff is measured by the
+// delay `globalThis.setTimeout` was ASKED for and how many times (#892, #885).
+const ENGINE_SRC = fileURLToPath(new URL('../run-engine.mjs', import.meta.url))
+
+// Every delay the engine asks for is recorded; the callback is fired at once on
+// a handle the sim keeps to itself, so the sim never sleeps the backoff, and the
+// caller is handed a fresh inert handle per call whose `unref()` is counted
+// against the delay that handle was asked for.
+const withTimerStub = async (body) => {
+  const realSetTimeout = globalThis.setTimeout
+  const delays = []
+  const unrefs = new Map()
+  globalThis.setTimeout = function (fn, ms, ...rest) {
+    delays.push(ms)
+    realSetTimeout(fn, 0, ...rest)
+    const handle = {
+      unref: () => { unrefs.set(ms, (unrefs.get(ms) || 0) + 1); return handle },
+      ref: () => handle,
+      hasRef: () => true,
+      refresh: () => handle,
+    }
+    return handle
+  }
+  try {
+    return { value: await body(), delays, unrefs: (ms) => unrefs.get(ms) || 0 }
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
+}
+
+// The box where `fs.watch` is not available: it counts the call and throws, the
+// way an inotify limit does. The engine imports `fs` from `node:fs` as the
+// module object this file imports, so the assignment replaces what it calls.
+const withWatchStub = async (body) => {
+  const realWatch = fs.watch
+  const state = { calls: 0 }
+  fs.watch = function () {
+    state.calls += 1
+    throw new Error('sim: fs.watch is unavailable on this box')
+  }
+  try {
+    return { value: await body(), watch: state }
+  } finally {
+    fs.watch = realWatch
+  }
+}
+
+// ══ (857-e) the kept-reply condition is spelled on exactly one line [R4] ═════
+// The same count the Proof's `Run:` line takes with `grep -c`, read here so the
+// suite carries it too. At BASE it is 2 — `:1872` (the examiner that threw) and
+// `:1902` (the examiner that returned null) spell the condition twice. The
+// `&& hasCoordinates(` fragment deliberately excludes the `&& !hasCoordinates(`
+// lines, which are a different condition (a success that lost its capture).
+{
+  const lines = fs.readFileSync(ENGINE_SRC, 'utf8').split('\n')
+  const runPattern = "DONE_WITH_CONCERNS') && hasCoordinates("
+  const grepped = lines.filter((l) => l.includes(runPattern))
+  assert.equal(grepped.length, 1,
+    '(857-e)/R4: exactly one line of fleet/run-engine.mjs may contain `' + runPattern +
+    '` — the Proof\'s `Run:` grep -c reads this count — got ' + grepped.length + ':\n' +
+    grepped.map((l) => '  ' + l.trim()).join('\n'))
+  const bothFragments = lines.filter((l) =>
+    l.includes("'DONE_WITH_CONCERNS')") && l.includes('&& hasCoordinates('))
+  assert.equal(bothFragments.length, 1,
+    '(857-e)/R4: and exactly one line contains both `\'DONE_WITH_CONCERNS\')` and ' +
+    '`&& hasCoordinates(` — the condition lives in one helper — got ' +
+    bothFragments.length + ':\n' + bothFragments.map((l) => '  ' + l.trim()).join('\n'))
+}
+
+// ══ (857-a) the backoff calls `fs.watch` zero times [R1] ════════════════════
+// At BASE the engine opens `fs.watch(runDir, () => {})` to hold the loop, so the
+// count is 1 — and on the real timer left over there the process never reaches
+// this assertion at all.
+{
+  const { value: r, watch } = await withWatchStub(() => criticRun({
+    extraArgs: { infraBackoffMs: 0 },
+    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
+  }))
+  assert.equal(countOf(r.labels, 'integration'), 2,
+    '(857-a)/R1: on a box where fs.watch throws, the null critic is still dispatched ' +
+    'exactly twice: ' + r.labels.join(','))
+  assert.equal(r.report.gitVerified, true,
+    '(857-a)/R1: and the run ends with the critic\'s attestation in hand: ' + shown(r.report))
+  assert.deepEqual(withRetry(r.report), [attempt1('integration', 429, 0)],
+    '(857-a)/R1: by the same one re-dispatch, recorded unchanged: ' + shown(r.report))
+  assert.equal(watch.calls, 0,
+    '(857-a)/R1: and the backoff called fs.watch zero times, got ' + watch.calls)
+}
+
+// ══ (857-b) the wait is the timer alone: the run reaches its report [R2] ════
+// No `setTimeout` stub at all — the REAL timer holds the loop for the 50 ms. At
+// BASE the timer is unref'd and the watch that stood in for it throws, so node
+// ends the process with exit 13 ("unsettled top-level await", measured) and this
+// assertion is never reached; nor is the `ALL TESTS PASSED` sentinel printed.
+{
+  const { value: r } = await withWatchStub(() => criticRun({
+    extraArgs: { infraBackoffMs: 50 },
+    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
+  }))
+  assert.equal(countOf(r.labels, 'integration'), 2,
+    '(857-b)/R2: a real 50 ms backoff on a watch-less box still buys the one ' +
+    're-dispatch: ' + r.labels.join(','))
+  assert.equal(r.report.gitVerified, true,
+    '(857-b)/R2: and the sim process is still alive to read the attestation off the ' +
+    'report — a wait that does not hold the loop never gets here: ' + shown(r.report))
+  assert.deepEqual(withRetry(r.report), [attempt1('integration', 429, 50)],
+    '(857-b)/R2: the call naming the 50 ms it waited: ' + shown(r.report))
+}
+
+// ══ (857-c) the backoff's own timer is never unref'd [R2] ═══════════════════
+// 4321 ms, because the engine asks for other delays (the baseline head start's
+// 500 ms is unref'd ON PURPOSE) and this leg reads the handle the BACKOFF was
+// handed. At BASE `waitInfraBackoff` unrefs it, so the counter is 1.
+{
+  const BACKOFF = 4321
+  const { value: r, delays, unrefs } = await withTimerStub(() => criticRun({
+    extraArgs: { infraBackoffMs: BACKOFF },
+    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
+  }))
+  assert.equal(countOf(r.labels, 'integration'), 2,
+    '(857-c)/R2: the critic is dispatched exactly twice: ' + r.labels.join(','))
+  assert.equal(delays.filter((d) => d === BACKOFF).length, 1,
+    '(857-c)/R2: exactly one handle was asked for ' + BACKOFF + ' ms, got delays [' +
+    delays.join(',') + ']')
+  assert.equal(unrefs(BACKOFF), 0,
+    '(857-c)/R2: and the handle returned for ' + BACKOFF + ' ms received no unref() ' +
+    'call — a ref\'d timer is what holds the loop for the wait — got ' + unrefs(BACKOFF))
+}
+
+// ══ (857-d) two dead halves of a pair wait the backoff ONCE [R3] ════════════
+// Both halves die on their first dispatch, each leaving its own `worker:end`
+// status, and both are re-asked. At BASE the two retries are serial, so the
+// engine asks for the backoff twice.
+{
+  const BACKOFF = 4321
+  const { value: r, delays } = await withTimerStub(() => reviewerRun({
+    profile: 'peer',
+    extraArgs: { infraBackoffMs: BACKOFF },
+    review: ({ label, n, runDir: rd }) => (
+      n === 1 ? dieNull(rd, label, label === 'review:T1:1:1' ? 429 : 503) : passReview()
+    ),
+  }))
+  const { report, labels, prompts, runDir } = r
+  assert.equal(delays.filter((d) => d === BACKOFF).length, 1,
+    '(857-d)/R3: two dead halves wait the backoff exactly once — the engine asked ' +
+    'setTimeout for ' + BACKOFF + ' ms ' + delays.filter((d) => d === BACKOFF).length +
+    ' time(s), delays [' + delays.join(',') + ']')
+  for (const half of ['review:T1:1:1', 'review:T1:1:2']) {
+    assert.equal(countOf(labels, half), 2,
+      '(857-d)/R3: ' + half + ' is dispatched exactly twice: ' + labels.join(','))
+    assert.equal(prompts.get(half + '#2'), prompts.get(half + '#1'),
+      '(857-d)/R3: and the re-dispatched ' + half + ' is handed a byte-identical prompt')
+  }
+  assert.equal(countOf(labels, 'impl:T1'), 1,
+    '(857-d)/R3: the implementer is dispatched exactly once: ' + labels.join(','))
+
+  const marks = infraMarks(runDir)
+  assert.equal(marks.length, 2,
+    '(857-d)/R3: exactly two driver:infra-retry events, one per dead half: ' +
+    JSON.stringify(marks))
+  assert.deepEqual(marks.map((m) => m.label).sort(), ['review:T1:1:1', 'review:T1:1:2'],
+    '(857-d)/R3: one per half\'s label: ' + JSON.stringify(marks))
+  for (const m of marks) {
+    assert.equal(m.attempt, 1,
+      '(857-d)/R3: each naming the first attempt: ' + JSON.stringify(m))
+    assert.equal(m.status, m.label === 'review:T1:1:1' ? 429 : 503,
+      '(857-d)/R3: carrying the status that half\'s own worker:end line wrote: ' +
+      JSON.stringify(m))
+  }
+
+  assert.deepEqual(withRetry(report).slice().sort(), [
+    'task T1: ' + attempt1('review:T1:1:1', 429, BACKOFF),
+    'task T1: ' + attempt1('review:T1:1:2', 503, BACKOFF),
+  ].sort(),
+  '(857-d)/R3: exactly two infra-retry judgment calls, both for the first attempt, ' +
+  'each naming its own half and its own status: ' + shown(report))
+  assert.deepEqual(report.judgmentCalls.filter((j) => String(j).includes('attempt 2')), [],
+    '(857-d)/R3: and no attempt-2 entry — both halves answered the second time: ' +
+    shown(report))
+  assert.equal(report.tasks[0].status, 'done',
+    '(857-d)/R3: the task ends done: ' + JSON.stringify(report.tasks[0]))
+  assert.deepEqual(
+    report.judgmentCalls.filter((j) => String(j).includes('parked for one barrier retry')), [],
+    '(857-d)/R3: and no barrier park was taken: ' + shown(report))
 }
 
 console.log('ALL TESTS PASSED')

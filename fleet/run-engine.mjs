@@ -1304,37 +1304,46 @@ export async function runEngine({
     }
     return status
   }
-  // The wait. The timer is unref'd — a backoff must never be the reason a
-  // finished process is still alive — but an unref'd timer is equally not a
-  // reason for the loop to KEEP running, and node exits out from under an engine
-  // whose only pending work is this wait (measured: exit 13, "unsettled
-  // top-level await"). So a ref'd handle that is NOT a timer holds the loop for
-  // exactly the wait and is closed the moment it ends: the run stays alive while
-  // it waits, and nothing outlives the re-dispatch. `globalThis.setTimeout` by
-  // name, so a sim can substitute its own clock and read back the delay asked
-  // for.
+  // The wait, and nothing else: one ref'd timer. "A backoff must never be the
+  // reason a finished process is still alive" is met by RESOLVING — the engine
+  // `await`s this promise, so the timer has fired and the loop is empty again
+  // before the re-dispatch is even asked for — and NOT by unref'ing. An unref'd
+  // timer honoured that clause and broke the run instead: node exits out from
+  // under an engine whose only pending work is an unref'd timer (measured: exit
+  // 13, "unsettled top-level await"), so the wait needed a second ref'd handle
+  // to hold the loop, and the one chosen — `fs.watch` on the run directory — is
+  // not available on every box: where it throws, the hold was silently null and
+  // the run died 13 mid-wait (#857). A ref'd timer is both halves at once.
+  // `globalThis.setTimeout` by name, so a sim can substitute its own clock and
+  // read back the delay asked for.
   const waitInfraBackoff = () => new Promise((resolve) => {
-    let hold = null
-    try { hold = fs.watch(runDir, () => {}) } catch { hold = null }
-    const t = globalThis.setTimeout(() => {
-      if (hold) { try { hold.close() } catch { /* already gone */ } }
-      resolve()
-    }, infraBackoffMs)
-    if (t && typeof t.unref === 'function') t.unref()
+    globalThis.setTimeout(resolve, infraBackoffMs)
   })
-  // Called with attempt 1's `null` in hand: record what died, wait, re-dispatch
-  // once, record a second death. The re-dispatch is a FRESH worker with the same
-  // prompt — `--resume` after an API error is not documented as reliable — which
-  // each caller supplies as `redispatch`. `scope` is the `task <id>: ` prefix a
-  // per-task judgment carries and the empty string for the run-wide critic.
-  // Returns the second reply, or `null` when there was none.
-  const retryInfraNull = async (label, scope, redispatch) => {
+  // Attempt 1's `null`, in three moves — record the death, wait, re-dispatch —
+  // so a caller holding TWO dead workers can record both, wait once, and re-ask
+  // both concurrently (#857). The backoff is a property of the outage, not of
+  // each worker that died in it; a pair that took it serially took it twice.
+  // A caller with one death calls `retryInfraNull` below, which is the three
+  // moves in the BASE order and writes the BASE record.
+  //
+  // Move 1: what died. `scope` is the `task <id>: ` prefix a per-task judgment
+  // carries and the empty string for the run-wide critic. Returns the worker
+  // status, which move 3's event names — read HERE so it is the status attempt
+  // 1 ended on, not whatever the re-dispatch has since written.
+  const noteInfraDeath = (label, scope) => {
     const status = lastWorkerStatus(label)
     judgmentCalls.push(scope + 'infra-retry: ' + label + ' attempt 1 returned null (status ' +
       status + ') — re-dispatched once after ' + infraBackoffMs + ' ms')
     log(label + ' returned null (status ' + status + ') — re-dispatching once after ' +
       infraBackoffMs + ' ms')
-    await waitInfraBackoff()
+    return status
+  }
+  // Move 3 (move 2 is `waitInfraBackoff`): the event, the one re-dispatch, and
+  // a second `null` recorded as fail-closed. The re-dispatch is a FRESH worker
+  // with the same prompt — `--resume` after an API error is not documented as
+  // reliable — which each caller supplies as `redispatch`. Returns the second
+  // reply, or `null` when there was none.
+  const redispatchInfra = async (label, scope, status, redispatch) => {
     appendEvent({ kind: 'driver:infra-retry', label, attempt: 1, status })
     const again = await redispatch()
     if (again === null) {
@@ -1343,6 +1352,12 @@ export async function runEngine({
       return null
     }
     return again
+  }
+  // The one-death path: the three moves in order, which is the BASE sequence.
+  const retryInfraNull = async (label, scope, redispatch) => {
+    const status = noteInfraDeath(label, scope)
+    await waitInfraBackoff()
+    return redispatchInfra(label, scope, status, redispatch)
   }
 
   // Edge sanity (ported): an unbound / inverted / same-wave edge weakens
@@ -1485,6 +1500,11 @@ export async function runEngine({
   }
 
   const hasCoordinates = (r) => r && r.headSha && r.patch
+  // A KEPT reply: success WITH the driver's own coordinates, which is the whole
+  // condition for re-dispatching an examiner alone rather than the pair. Both
+  // examiner lanes ask it, so it is spelled ONCE (#857) — a prose rule violated
+  // twice becomes a check, and the check greps this one line. Keep it on one.
+  const keptReply = (r) => (r.status === 'DONE' || r.status === 'DONE_WITH_CONCERNS') && hasCoordinates(r)
   const isMergeable = (r) => r && r.status === 'done' && hasCoordinates(r)
 
   // Every RETRY dispatch gets a clean tree (review finding 3): waves.js
@@ -1869,7 +1889,7 @@ export async function runEngine({
       // implementer that merely returned (BLOCKED, NEEDS_CONTEXT, a capture
       // failure) has nothing worth keeping, so the examiner's error climbs and
       // the lane at BASE runs.
-      const kept = (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && hasCoordinates(impl)
+      const kept = keptReply(impl)
       if (!kept) throw examSettled.reason
       judgmentCalls.push('task ' + task.id + ': examiner died (' + examErr +
         ') — the implementer ended success with its patch captured; re-dispatching the examiner alone')
@@ -1899,7 +1919,7 @@ export async function runEngine({
       // has work a whole-pair retry would throw away. The clone is re-cut at
       // BASE and bootstrapped again for the same reason it is there — the
       // second examiner must open its eyes on the tree the first was given.
-      const kept = (impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && hasCoordinates(impl)
+      const kept = keptReply(impl)
       if (kept) {
         try {
           ex = await retryInfraNull('exam:' + task.id, 'task ' + task.id + ': ', async () => {
@@ -2309,13 +2329,20 @@ export async function runEngine({
         // other reviewer's verdict is in hand, and re-asking it buys a second
         // read of a patch that was already read. A second null falls through to
         // the throw below, which is the park and the barrier retry, as at BASE.
-        if (r1 === null) {
-          r1 = await retryInfraNull(opts1.label, 'task ' + task.id + ': ',
-            () => timedReview(reviewPrompt, opts1))
-        }
-        if (r2 === null) {
-          r2 = await retryInfraNull(opts2.label, 'task ' + task.id + ': ',
-            () => timedReview(reviewPrompt, opts2))
+        // Both halves dead is ONE outage, so it is one backoff and one
+        // concurrent re-ask (#857) — serial `retryInfraNull` calls waited the
+        // backoff twice for a single hiccup. One death is the BASE sequence.
+        if (r1 === null || r2 === null) {
+          const scope = 'task ' + task.id + ': '
+          const s1 = r1 === null ? noteInfraDeath(opts1.label, scope) : null
+          const s2 = r2 === null ? noteInfraDeath(opts2.label, scope) : null
+          await waitInfraBackoff()
+          ;[r1, r2] = await Promise.all([
+            r1 === null ? redispatchInfra(opts1.label, scope, s1,
+              () => timedReview(reviewPrompt, opts1)) : r1,
+            r2 === null ? redispatchInfra(opts2.label, scope, s2,
+              () => timedReview(reviewPrompt, opts2)) : r2,
+          ])
         }
         if (r1 === null || r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = (r1.issues || []).concat(r2.issues || [])
