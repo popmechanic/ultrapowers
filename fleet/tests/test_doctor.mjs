@@ -1,5 +1,5 @@
 /**
- * Exam for fleet/doctor.mjs — "do you have a fleet?", eight rows read off
+ * Exam for fleet/doctor.mjs — "do you have a fleet?", nine rows read off
  * exe.dev's own truth.
  *
  * Every group below names the Machine clause and the Proof leg it encodes, so a
@@ -56,8 +56,8 @@ const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-'))
 
 // ── Shared literals ──────────────────────────────────────────────────────────
 
-/** M1: the eight rows, in the order the doctor reports them. */
-const EXPECTED_IDS = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render']
+/** M1: the nine rows, in the order the doctor reports them. */
+const EXPECTED_IDS = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render', 'kata']
 
 /** M1: the reads, in the order M1 lists them — the five BASE reads, then the
  *  accounts read, then one `help <verb>` per verb of the record in the record's
@@ -73,7 +73,8 @@ const CMD = {
   list: 'ssh exe.dev "integrations list --json"',
   github: 'ssh exe.dev "integrations setup github --list"',
   token: `node ${CLAUDE_TOKEN} status`,
-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
+  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
+  kataVm: 'ssh exe.dev "ls kata-hub --json"'
 }
 
 /** The policy read for one integration, and what it answers (measured 2026-09-11):
@@ -92,6 +93,9 @@ const policyAnswer = (name, selector) => ({ code: 0, stdout: policyJson(name, se
 
 /** The five BASE reads, in BASE's order — M1 keeps them first and unchanged. */
 const BASE_READS = [CMD.whoami, CMD.billing, CMD.list, CMD.github, CMD.token]
+
+/** The `kata` row's two reads, which follow the accounts read. */
+const KATA_READS = [policyCmd('kata'), CMD.kataVm]
 
 // ── the fixture record the unit legs read ────────────────────────────────────
 //
@@ -118,8 +122,9 @@ const HELP_READS = FIXTURE_NAMES.map(helpCmd)
  *  record issues, and the only commands it ever runs. (BASE's `FIVE_READS`.)
  *  The policy read of `claude-max` follows the accounts read; `--target` adds
  *  the target object's own policy read after it. */
-const ALL_READS = [...BASE_READS, CMD.accounts, policyCmd('claude-max'), ...HELP_READS]
-const TARGETED_READS = (gh) => [...BASE_READS, CMD.accounts, policyCmd('claude-max'), policyCmd(gh), ...HELP_READS]
+const ALL_READS = [...BASE_READS, CMD.accounts, ...KATA_READS, policyCmd('claude-max'), ...HELP_READS]
+const TARGETED_READS = (gh) =>
+  [...BASE_READS, CMD.accounts, ...KATA_READS, policyCmd('claude-max'), policyCmd(gh), ...HELP_READS]
 
 /** M4: what `help <verb>` prints — a `Command:` line, a description, an
  *  `Options:` block whose lines are two spaces, the flag, spaces, its
@@ -182,8 +187,23 @@ const ghObject = (target, over = {}) => ({
   ...over
 })
 
-/** A healthy account: the bearer, and one target object on no tag. */
-const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET)]
+/** The hub's http-proxy. Its `attachments` name a VM and no tag at all — the
+ *  policy read, never this array, is what the `kata` row asks about. */
+const kataObject = (over = {}) => ({
+  name: 'kata',
+  type: 'http-proxy',
+  attachments: ['vm:fleet-r7-2609030900-a1b2'],
+  comment: 'kata issue daemon on kata-hub',
+  config_summary: 'target=https://kata-hub.example.exe.xyz header=Authorization:Bearer ***',
+  ...over
+})
+
+/** The hub's row, as `ls kata-hub --json` answers it. */
+const kataVms = (rows = [{ vm_name: 'kata-hub', status: 'running' }]) =>
+  `${JSON.stringify({ vms: rows })}\n`
+
+/** A healthy account: the bearer, one target object on no tag, and the hub. */
+const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET), kataObject()]
 
 const billing = (over = {}) =>
   `${JSON.stringify({ max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'team', ...over })}\n`
@@ -199,6 +219,8 @@ const GREEN = () => ({
   [CMD.accounts]: { code: 0, stdout: accountsJson(ACCOUNTS_ONE) },
   [policyCmd('claude-max')]: policyAnswer('claude-max'),
   [policyCmd(GH)]: policyAnswer(GH),
+  [policyCmd('kata')]: policyAnswer('kata'),
+  [CMD.kataVm]: { code: 0, stdout: kataVms() },
   ...Object.fromEntries(
     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
   )
@@ -237,7 +259,7 @@ async function run (overrides = {}, opts = {}) {
 
 const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
 
-/** The eight-row status map of a healthy fleet — the green fixture passes no
+/** The nine-row status map of a healthy fleet — the green fixture passes no
  *  `render`, which is the "not configured" green. */
 const ALL_OK = Object.freeze({
   'exe-dev': 'ok',
@@ -247,7 +269,8 @@ const ALL_OK = Object.freeze({
   github: 'ok',
   integrations: 'ok',
   'verb-drift': 'ok',
-  render: 'ok'
+  render: 'ok',
+  kata: 'ok'
 })
 
 /** ALL_OK with one row reddened. */
@@ -256,8 +279,8 @@ const allOkBut = (id) => ({ ...ALL_OK, [id]: 'missing' })
 // ── 1. M1 — the rows, the defaults, the reads, the exports ───────────────────
 
 {
-  // leg (a): ROW_IDS deep-equals the eight ids in order.
-  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the eight ids in order')
+  // leg (a): ROW_IDS deep-equals the nine ids in order.
+  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the nine ids in order')
 
   // leg (a): DOCTOR_DEFAULTS deep-equals the config literal. lobby.mjs's
   // FLEET_DEFAULTS is byte-identical to it; two readers of one config file that
@@ -673,18 +696,18 @@ for (const [label, answer] of [
 }
 
 {
-  // The verdict is `ready` exactly when all eight rows are ok. Each scenario
+  // The verdict is `ready` exactly when all nine rows are ok. Each scenario
   // below reddens exactly one row, and each is not-ready.
   const { result: green } = await run()
-  assert.deepEqual(statusOf(green), ALL_OK, '5 the green account is eight ok rows')
-  assert.equal(green.verdict, 'ready', '5 eight ok rows is a ready verdict')
+  assert.deepEqual(statusOf(green), ALL_OK, '5 the green account is nine ok rows')
+  assert.equal(green.verdict, 'ready', '5 nine ok rows is a ready verdict')
 
   const scenarios = {
     'exe-dev': { [CMD.whoami]: { code: 1, stdout: '' } },
     // A pool smaller than the run is green now (group 2), so the one thing that
     // still reddens this row is a billing read the doctor cannot believe.
     capacity: { [CMD.billing]: { code: 1, stdout: '' } },
-    claude: { [CMD.list]: { code: 0, stdout: listing([ghObject(TARGET)]) } },
+    claude: { [CMD.list]: { code: 0, stdout: listing([ghObject(TARGET), kataObject()]) } },
     // M2: an accounts read the doctor cannot believe.
     accounts: { [CMD.accounts]: { code: 1, stdout: '' } },
     github: { [CMD.github]: { code: 1, stdout: '' } },
@@ -805,6 +828,8 @@ ${HELP_CASES}
   *"billing plan"*) echo '${BILLING_JSON}' ;;
   *"integrations list"*) echo '${CATALOG_JSON}' ;;
   *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
+  *"integrations policy get kata"*) echo '${policyJson('kata').trim()}' ;;
+  *"ls kata-hub"*) echo '${kataVms().trim()}' ;;
   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
   *) exit 1 ;;
 esac
@@ -839,13 +864,13 @@ const absentConfig = path.join(cliRoot, 'absent.json')
 assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config path starts absent')
 
 {
-  // leg (g): the green shim exits 0 with the eight rows in order, and the
+  // leg (g): the green shim exits 0 with the nine rows in order, and the
   // verb-drift detail is the real record's own match sentence.
   const res = runCli(['--json', '--config', absentConfig], { dir: GREEN_DIR })
   assert.equal(res.status, 0, `6b [leg g] a ready run exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
   const parsed = JSON.parse(res.stdout)
   assert.equal(parsed.verdict, 'ready', '6b [leg g] an all-green CLI run is ready')
-  assert.deepEqual(parsed.rows.map((r) => r.id), EXPECTED_IDS, '6b [leg g] the envelope carries the eight rows in order')
+  assert.deepEqual(parsed.rows.map((r) => r.id), EXPECTED_IDS, '6b [leg g] the envelope carries the nine rows in order')
   assert.deepEqual(parsed.config, { cpu: '8', memory: '16GB' }, '6b an absent config file means the defaults')
 
   const drift = parsed.rows.find((r) => r.id === 'verb-drift')
@@ -915,21 +940,26 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
     red.length * 2 + GREEN_UNDER_RED.length,
     `6b [leg g] the human form is two lines per red row and one per green row; got:\n${human.stdout}`
   )
-  for (const [i, id] of red.entries()) {
-    assert.ok(lines[i * 2].includes(id), `6b the human form names ${id}; got ${lines[i * 2]}`)
+  // Row order, not red-then-green: `kata` is the last row and is red under this
+  // shim, so a red row is no longer a prefix of the report.
+  let at = 0
+  for (const r of parsed.rows) {
+    assert.ok(lines[at].includes(r.id), `6b the human form names ${r.id}; got ${lines[at]}`)
+    if (r.status === 'missing') {
+      assert.ok(
+        lines[at + 1].includes(`references/first-run.md §${r.id}`),
+        `6b a red ${r.id} points at its first-run.md heading; got ${lines[at + 1]}`
+      )
+      at += 2
+      continue
+    }
     assert.ok(
-      lines[i * 2 + 1].includes(`references/first-run.md §${id}`),
-      `6b a red ${id} points at its first-run.md heading; got ${lines[i * 2 + 1]}`
+      !lines[at].includes('references/first-run.md'),
+      `6b [leg g] a green ${r.id} row prints no fix line; got ${lines[at]}`
     )
+    at += 1
   }
-  const tail = lines.slice(-GREEN_UNDER_RED.length)
-  for (const [i, id] of GREEN_UNDER_RED.entries()) {
-    assert.ok(tail[i].includes(id), `6b [leg g] the human form's tail line ${i} is ${id}'s; got ${tail[i]}`)
-    assert.ok(
-      !tail[i].includes('references/first-run.md'),
-      `6b [leg g] a green ${id} row prints no fix line; got ${tail[i]}`
-    )
-  }
+  assert.equal(at, lines.length, '6b [leg g] every line of the human form belongs to a row')
 }
 
 {
@@ -1039,7 +1069,9 @@ assert.equal(fs.existsSync(absentConfig), false, '6b fixture: the CLI config pat
 /** Run the doctor with an accounts read of `entries` and a `claude-max` whose
  *  comment is `comment`, and answer the accounts row. */
 async function accountsRow ({ entries, comment = EDGE_COMMENT, answer, account = null } = {}) {
-  const catalog = [claudeMax(comment === null ? { comment: null } : { comment }), ghObject(TARGET)]
+  const catalog = [
+    claudeMax(comment === null ? { comment: null } : { comment }), ghObject(TARGET), kataObject()
+  ]
   const overrides = {
     [CMD.list]: { code: 0, stdout: listing(catalog) },
     [CMD.accounts]: answer ?? { code: 0, stdout: accountsJson(entries) }
@@ -1427,7 +1459,7 @@ for (const [label, fixtureName, body] of [
   // M1: an unreadable record issues no help read at all.
   assert.deepEqual(
     calls,
-    [...BASE_READS, CMD.accounts, policyCmd('claude-max')],
+    [...BASE_READS, CMD.accounts, ...KATA_READS, policyCmd('claude-max')],
     `9 [M1] an unreadable record issues the reads before it and no help read; got ${JSON.stringify(calls)}`
   )
 }
@@ -1536,13 +1568,21 @@ const GREPS = [
   },
   {
     name: '## render',
-    cut: (lines) => span(lines, /^## render/, null),
+    cut: (lines) => span(lines, /^## render/, /^## kata/),
     words: ['http-proxy', '--bearer -', 'fleet.json', 'browser-run.int.exe.xyz', 'skipped']
+  },
+  {
+    name: '## kata',
+    cut: (lines) => span(lines, /^## kata/, null),
+    words: [
+      'node <plugin-root>/fleet/kata-hub.mjs', 'peer-kata', '--copy-tags=false',
+      "--policy 'tag:fleet'", 'kata-hub.env', '--permanent --if-revision='
+    ]
   },
   {
     name: 'the text before ## exe-dev',
     cut: (lines) => span(lines, null, /^## exe-dev/),
-    words: ['eight rows']
+    words: ['nine rows']
   }
 ]
 
@@ -1590,9 +1630,10 @@ for (const { name, cut, words } of GREPS) {
   assert.equal(headings[headings.indexOf('accounts') - 1], 'claude', '11 [M7] ## accounts follows ## claude')
   assert.equal(headings[headings.indexOf('accounts') + 1], 'github', '11 [M7] ## accounts precedes ## github')
   assert.equal(headings[headings.indexOf('render') - 1], 'verb-drift', '11 ## render follows ## verb-drift')
-  assert.equal(headings[headings.length - 1], 'render', '11 ## render is the last section')
+  assert.equal(headings[headings.indexOf('kata') - 1], 'render', '11 [M7] ## kata follows ## render')
+  assert.equal(headings[headings.length - 1], 'kata', '11 [M7] ## kata is the last section')
 
-  // M7: the opening paragraph says eight rows, and no longer five.
+  // M7: the opening paragraph says nine rows, and no longer five.
   const head = textOf(FIRST_RUN_LINES, span(FIRST_RUN_LINES, null, /^## exe-dev/))
   assert.equal(head.includes('five rows'), false, `11 [M7] the opening no longer says five rows; got:\n${head}`)
 }

@@ -25,9 +25,11 @@ by rewording:
     ``?ref=`` in the contract or the runbook still reads a run off the evidence
     branch the record step deletes;
   * no document creates a GitHub integration attached to anything or
-    read-only, the per-target one acts as the user, and no document binds any
-    integration to ``tag:fleet`` (the contract's one-integration rule: both of
-    a run's credentials ride the VM from creation, and nothing rides the tag);
+    read-only, the per-target one acts as the user, and every ``integrations
+    add github`` a document teaches carries the fleet policy ``--policy
+    'tag:fleet'`` (since 2026-09-11 exe.dev refuses ``attach``/``detach`` and
+    ``new --integration``, so a singular policy is the only grant there is —
+    the kata hub's ``kata`` http-proxy is created on the same policy);
   * the contract's ``- **Publish:**`` bullet declares the PR body's
     ``### Residuals`` checklist and the ``residuals.jsonl`` rows the same items
     land on, counts the publish record's ``three event kinds``, and carries no
@@ -633,7 +635,10 @@ RETIRED = (
     "fleet/golden.sh",
     "golden-setup.sh",
     "golden-bootstrap.sh",
-    "--copy-tags",
+    # Not `--copy-tags`: the golden-image `cp` flow is gone, but the flag is
+    # live on exe.dev and on by default, so the runbook's `kata` step and
+    # first-run.md's `## kata` both teach `--copy-tags=false` — a copy of a
+    # fleet VM or of the hub inherits `tag:fleet` and every grant it carries.
     ".fleet-golden",
     "vmTokenPath",
     "fleetRuns",

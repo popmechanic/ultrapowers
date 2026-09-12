@@ -30,6 +30,7 @@ import argparse
 import hashlib
 import json
 import re
+import string
 import subprocess
 import sys
 from pathlib import Path
@@ -1985,6 +1986,133 @@ def derive_wave_label(tasks):
     return str(len(tasks)) + " parallel tasks"
 
 
+# ── the fact sheet (#913 §The prototype, Launch) ───────────────────────────── #
+# One object per task, computed HERE and nowhere else: its files, where its
+# exam lands, what the driver writes around that landing, and what its
+# wave-mates own. Every consumer downstream reads the sheet instead of
+# recomputing it, so the landing rule and the own-set rule have exactly one
+# spelling in the run (#810 comment of 2026-09-11, decision 3).
+
+# The run id a stamped compile is named for. The same alphabet the run
+# directory and the reserved exam directories are spelled in; anything else is
+# an input error, refused before a verdict or a payload is printed.
+STAMP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
+
+# `fleet/exam-paths.mjs`, ported. The two spellings must stay identical: the
+# engine hands the exam over at the path this computes, and the sheet promises
+# the same path to everyone who reads it before the engine runs.
+EXAM_ROOTS = ("fleet/tests/", "tests/")  # longest root first
+# The one root whose landings are importable Python and therefore need
+# `__init__.py` packaging (`ensurePackageInits` in run-engine.mjs); a
+# `fleet/tests/` landing gets none.
+PY_EXAM_ROOT = "tests/exams/"
+
+
+def exam_slug(stamp):
+    """`run-7` -> `run_7`. Every character outside `[A-Za-z0-9_]` becomes `_`
+    so the reserved directory is a Python identifier and the exams under it
+    form a real package."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", "" if stamp is None else str(stamp))
+
+
+def reserved_exam_path(p, stamp):
+    """Where a Proof path's exam is written TO. A path under neither test root
+    — `t1_test.sh` and every plan that puts its tests elsewhere — is answered
+    unchanged, and remapping is idempotent."""
+    s = "" if p is None else str(p)
+    for root in EXAM_ROOTS:
+        if not s.startswith(root):
+            continue
+        d = root + "exams/" + exam_slug(stamp) + "/"
+        return s if s.startswith(d) else d + s[len(root):]
+    return s
+
+
+def _placeholder_lead(entry):
+    """True when an Interfaces bullet's LEAD WORD is one of the compiler's own
+    placeholders — 'nothing', 'none', 'n/a', 'na' — i.e. the bullet names no
+    contract at all. The sheet drops such a bullet outright (#911 finding 5) so
+    a consumer never has to know the placeholder vocabulary."""
+    words = str(entry or "").split()
+    if not words:
+        return True
+    lead = words[0].replace("`", "").strip(string.punctuation).lower()
+    return lead in PLACEHOLDER_TOKENS
+
+
+def _sheet_files(task):
+    """The task's own paths for sheet purposes: creates ∪ modifies ∪ reads ∪
+    deletes, sorted. Deletes are IN (#911 finding 1) — a file the task removes
+    is a file it owns — which is exactly where this differs from the `files`
+    key the engine already reads (`_files_for`, deletes excluded, unchanged).
+
+    A legacy-grammar task has no sheet: every list of its sheet is empty, and
+    it contributes nothing to a wave-mate's sibling set either."""
+    if not task.get("claims"):
+        return []
+    return sorted(set(task.get("creates") or []) | set(task.get("modifies") or [])
+                  | set(task.get("reads") or []) | set(task.get("deletes") or []))
+
+
+def factsheet(task, wave, stamp):
+    """The task's fact sheet: exactly nine keys, computed once.
+
+    `task` is a parsed task dict; `wave` is the parsed task dicts of the wave
+    it was layered into (the task itself included, and ignored); `stamp` is the
+    run id `--stamp` named, or None on an unstamped compile — where every exam
+    lands at the path its Proof names."""
+    claims = task.get("claims") or {}
+    files = _sheet_files(task)
+    deletes = sorted(set(task.get("deletes") or [])) if claims else []
+    guards = list(claims.get("proof_guards", [])) if claims else []
+    proof_tests = list(claims.get("proof_tests_ordered", [])) if claims else []
+
+    # A guarded path lands at itself: the whole point of a `Guard:` is that the
+    # exam measures the file where the project keeps it (run-engine's
+    # `landingOf`). Without a stamp there is no reserved directory to land in,
+    # so every path is its own landing.
+    landing = {}
+    for p in proof_tests:
+        landing[p] = (p if (stamp is None or p in guards)
+                      else reserved_exam_path(p, stamp))
+
+    # What the DRIVER writes for this task: every landing, plus the package
+    # inits a Python landing under the reserved root needs — one at the root
+    # and one at every directory between it and the file.
+    owned = set(landing.values())
+    if stamp is not None:
+        root = PY_EXAM_ROOT + exam_slug(stamp)
+        for land in landing.values():
+            if not land.endswith(".py") or not land.startswith(root + "/"):
+                continue
+            at = root
+            owned.add(at + "/__init__.py")
+            for seg in land[len(root) + 1:].split("/")[:-1]:
+                at += "/" + seg
+                owned.add(at + "/__init__.py")
+
+    sibling = set()
+    for other in wave or []:
+        if other.get("id") == task.get("id"):
+            continue
+        sibling.update(_sheet_files(other))
+
+    interfaces = task.get("interfaces") or {}
+    return {
+        "files": files,
+        "deletes": deletes,
+        "guards": guards,
+        "proofTests": proof_tests,
+        "landing": landing,
+        "driverOwned": sorted(owned),
+        "siblingOwned": sorted(sibling),
+        "produces": [b for b in (interfaces.get("produces") or [])
+                     if claims and not _placeholder_lead(b)],
+        "consumes": [b for b in (interfaces.get("consumes") or [])
+                     if claims and not _placeholder_lead(b)],
+    }
+
+
 # Overlap disposition — the ROLLBACK KNOB, and nothing else:
 #   "fold"      (default) — two tasks whose declared paths merely overlap are
 #                 NOT ordered; they share a wave and the kernel folds their
@@ -2554,6 +2682,27 @@ def _referent_scan_lines(task):
     return out
 
 
+def _bind_stamp_values(argv):
+    """`--stamp -run7` names a --stamp whose VALUE is `-run7`; argparse would
+    read the option-like token as another option and die with its own "expected
+    one argument". The pair is rewritten `--stamp=-run7` so the value reaches
+    STAMP_RE and is refused by the compiler's own `error: --stamp` line, which
+    is what M1 promises for every value outside the pattern."""
+    out, i, n = [], 0, len(argv)
+    while i < n:
+        tok = argv[i]
+        if tok == "--":  # everything after the separator is positional
+            out.extend(argv[i:])
+            break
+        if tok == "--stamp" and i + 1 < n and argv[i + 1] != "--":
+            out.append("--stamp=" + argv[i + 1])
+            i += 2
+            continue
+        out.append(tok)
+        i += 1
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
@@ -2597,9 +2746,23 @@ def main(argv=None):
                          "classifier reads on a plain compile, where it orders "
                          "the pair. Unset, a claims-v1 same-file pair is left "
                          "unordered.")
-    args = ap.parse_args(argv)
+    ap.add_argument("--stamp", default=None, metavar="RUN-ID",
+                    help="the run id each task's exam landing is named for: "
+                         "with it, a Proof `Test:` path under tests/ or "
+                         "fleet/tests/ lands in that run's reserved exams "
+                         "directory and the fact sheet says so; without it, "
+                         "every exam lands at the path its Proof names. Legal "
+                         "beside --check and beside the emit flags.")
+    args = ap.parse_args(
+        _bind_stamp_values(list(sys.argv[1:] if argv is None else argv)))
     emit_launch = args.emit_launch
     emit_args = args.emit_args
+    # Refused before any verdict or payload is printed: a stamp outside the
+    # alphabet would name a reserved directory nothing else in the run spells.
+    if args.stamp is not None and not STAMP_RE.match(args.stamp):
+        print("error: --stamp must match %s (got %r)"
+              % (STAMP_RE.pattern, args.stamp), file=sys.stderr)
+        return 2
     if args.check and (emit_launch is not None or emit_args is not None
                        or args.run_dir is not None):
         sys.exit("error: --check is mutually exclusive with --emit-launch/"
@@ -2818,6 +2981,11 @@ def main(argv=None):
     def _files_for(t):
         return sorted(set(t["creates"]) | set(t["modifies"]) | set(t["reads"]))
 
+    # The fact sheet, computed once per task and put on BOTH emit sites, so a
+    # consumer reading either file sees the same object for a task id.
+    sheets = {tid: factsheet(by_id[tid], [by_id[x] for x in wave], args.stamp)
+              for wave in waves for tid in wave}
+
     launch_waves = [
         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
           "depends_on": by_id[tid]["depends_on"],
@@ -2860,7 +3028,11 @@ def main(argv=None):
           # obligation: the engine reads it with `Array.isArray` and an absent
           # key as [], and no `grammar:` line is ever drawn from it.
           "proofGuards": list(
-              (by_id[tid].get("claims") or {}).get("proof_guards", []))}
+              (by_id[tid].get("claims") or {}).get("proof_guards", [])),
+          # The fact sheet (#913): the task's own paths (deletes included),
+          # where its exam lands, what the driver writes around that landing,
+          # and what its wave-mates own. Computed once, above.
+          "factsheet": sheets[tid]}
          for tid in wave]
         for wave in waves]
 
@@ -2898,7 +3070,10 @@ def main(argv=None):
                        # (spec §2b) — kept in sync so a consumer reading
                        # either file sees the same writes/commutes per task.
                        "writes": by_id[tid].get("writes", []),
-                       "commutes": by_id[tid].get("commutes", [])}
+                       "commutes": by_id[tid].get("commutes", []),
+                       # The same object the wave entry carries (#913) — one
+                       # computation, two payloads, never two answers.
+                       "factsheet": sheets[tid]}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,

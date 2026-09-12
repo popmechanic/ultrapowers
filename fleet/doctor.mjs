@@ -7,7 +7,7 @@
  * ever existed. Hence the built-ins-only rule: every specifier here is
  * `node:`-prefixed, and the doctor imports no other fleet module.
  *
- * Eight rows, all reads, every one of them answered by exe.dev's own truth or
+ * Nine rows, all reads, every one of them answered by exe.dev's own truth or
  * by this laptop's own keychain:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
@@ -35,6 +35,12 @@
  *                 the http-proxy integration it names exists at the edge. A
  *                 fleet that names none is green and says so: the renderer is
  *                 optional, and a run without it records the move as skipped.
+ *   kata          the hub is there: the `kata` http-proxy carries a bearer at
+ *                 the edge, its attachment policy is `tag:fleet` (`integrations
+ *                 policy get kata --json`, `policy.selector` — never the
+ *                 listing's `attachments`, which name the VMs the policy
+ *                 currently resolves to), and `ls kata-hub --json` answers a
+ *                 `kata-hub` row. All three, or the row says which is absent.
  *
  * Running the doctor twice is the same as running it once: nothing here
  * creates, copies or removes a VM, and nothing writes a file. A red row names
@@ -70,10 +76,11 @@ const execFileAsync = promisify(execFile)
  *  would certify a fleet the launcher never looks at. */
 export const DOCTOR_DEFAULTS = Object.freeze({ cpu: '8', memory: '16GB' })
 
-/** The eight rows, in the order the doctor reports them. Each id is also a
+/** The nine rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render',
+  'kata'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -91,17 +98,25 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
  *  drives the row from a fixture rather than from the committed record. */
 const DEFAULT_VERBS_PATH = () => path.join(HERE, 'exe-verbs.json')
 
-/** The six standing reads, in the order the doctor issues them. One policy
+/** The eight standing reads, in the order the doctor issues them. One policy
  *  read per integration the `integrations` row asks about follows them, then
  *  the `help` reads of the verb-drift row, one per verb of the record;
- *  together they are the only commands the doctor ever runs. */
+ *  together they are the only commands the doctor ever runs.
+ *
+ *  The last two are the `kata` row's. Its policy read is spelled out rather
+ *  than taken from `policyRead`, because it is a standing read of a fixed name
+ *  and not one of the names the `integrations` row computes; and the hub is the
+ *  one thing the doctor asks `ls` about, every other row reading edge-side
+ *  objects the listing already carries. */
 const READS = Object.freeze({
   whoami: 'ssh exe.dev whoami',
   billing: 'ssh exe.dev "billing plan --json"',
   list: 'ssh exe.dev "integrations list --json"',
   github: 'ssh exe.dev "integrations setup github --list"',
   token: `node ${CLAUDE_TOKEN} status`,
-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
+  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
+  kataPolicy: 'ssh exe.dev "integrations policy get kata --json"',
+  kataVm: 'ssh exe.dev "ls kata-hub --json"'
 })
 
 /** The policy read for one integration — the only read of a name. */
@@ -847,6 +862,68 @@ function wantRender (render) {
   return { integration, account: typeof account === 'string' ? account : '' }
 }
 
+// ── kata ─────────────────────────────────────────────────────────────────────
+
+/** The hub's VM, the integration that fronts it, and the one command that
+ *  builds either. */
+const KATA_INTEGRATION = 'kata'
+const KATA_VM = 'kata-hub'
+const KATA_FIX = 'node fleet/kata-hub.mjs'
+
+/** `ssh exe.dev "ls kata-hub --json"` → the `kata-hub` row of `.vms[]`, or null.
+ *  `.vms[]` only: `.shared_vms[]` are other people's machines. */
+function kataVmRow (res) {
+  if (!res || res.code !== 0) return null
+  const parsed = readJson(res.stdout)
+  const rows = Array.isArray(parsed?.vms) ? parsed.vms : []
+  return rows.find((entry) => entry?.vm_name === KATA_VM) ?? null
+}
+
+/**
+ * The hub, in three questions asked in the order an operator fixes them: the
+ * object, its bearer, its policy, and then the VM behind it.
+ *
+ * The policy question is asked of `integrations policy get kata --json` and
+ * never of the listing's `attachments`: an attachment array names the VMs a
+ * live selector currently resolves to, so a hub whose policy is right reads as
+ * a list of today's fleet VMs, and a hub attached to one VM by hand reads as a
+ * plausible one. Only the selector says which.
+ */
+function kataRow (found, policyRes, vmsRes) {
+  const have = found === null ? undefined : found.get(KATA_INTEGRATION)
+  if (have === undefined) {
+    return row('kata', 'missing', `no ${KATA_INTEGRATION} http-proxy at the edge — ${KATA_FIX}`)
+  }
+  if (!have.bearer) {
+    return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
+  }
+  const readable = Boolean(policyRes) && policyRes.code === 0
+  const policy = readable ? parsePolicy(policyRes.stdout) : null
+  if (policy === null || policy.selector !== FLEET_POLICY) {
+    const seen = !readable
+      ? `the read exited ${policyRes?.code ?? 1}`
+      : policy === null
+        ? 'it printed no readable policy'
+        : JSON.stringify(policy.selector)
+    return row(
+      'kata',
+      'missing',
+      `${KATA_INTEGRATION}'s policy is not ${FLEET_POLICY} (${seen}), so no fleet VM is granted it — ` +
+      policyFix(KATA_INTEGRATION)
+    )
+  }
+  const vm = kataVmRow(vmsRes)
+  if (vm === null) {
+    return row('kata', 'missing', `no ${KATA_VM} VM — ${KATA_FIX}`)
+  }
+  const status = typeof vm.status === 'string' && vm.status !== '' ? vm.status : 'unknown'
+  return row(
+    'kata',
+    'ok',
+    `${KATA_INTEGRATION} carries the bearer on the policy ${FLEET_POLICY}, and ${KATA_VM} is ${status}`
+  )
+}
+
 // ── the doctor ───────────────────────────────────────────────────────────────
 
 /**
@@ -886,6 +963,9 @@ export async function doctor ({
   // the code's default: the keychain entries are named by email since 2026-09-11.
   const token = await run(wantAccount ? `${READS.token} --account ${wantAccount}` : READS.token)
   const accounts = await run(READS.accounts)
+  // The hub's two reads: the policy that grants it, then the VM behind it.
+  const kataPolicy = await run(READS.kataPolicy)
+  const kataVms = await run(READS.kataVm)
   const policies = new Map()
   for (const name of policyNames(want, renderer)) {
     policies.set(name, await run(policyRead(name)))
@@ -904,7 +984,8 @@ export async function doctor ({
     githubRow(github),
     integrationsRow(found, want, renderer, policies),
     verbDriftRow(drift),
-    rendererRow(found, renderer)
+    rendererRow(found, renderer),
+    kataRow(found, kataPolicy, kataVms)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }

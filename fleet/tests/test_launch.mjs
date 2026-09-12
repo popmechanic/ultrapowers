@@ -313,7 +313,9 @@ const indexOf = (exec, pred) => exec.calls.findIndex(pred)
     `${'fleet'}${HY}${'golden'}`,
     `${'golden'}${HY}${'setup'}`,
     `${'golden'}\\.${'sh'}`,
-    `${HY}${HY}${'copy'}${HY}${'tags'}`,
+    // Not the copy flag: the golden-image `cp` flow is gone, but `cp` itself
+    // still copies tags by default, so `fleet/RUNBOOK.md`'s `kata` step has to
+    // be able to say `--copy-tags=false`.
     `${'vm'}${'TokenPath'}`
   ]
   const banned = new RegExp(bannedSpellings.join('|'))

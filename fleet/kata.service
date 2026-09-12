@@ -1,0 +1,16 @@
+[Unit]
+Description=kata issue daemon (the fleet hub)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+EnvironmentFile=-/etc/kata/kata.env
+ExecStartPre=/usr/bin/test -f /etc/kata/kata.env
+ExecStart=/usr/local/bin/kata daemon start --foreground
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

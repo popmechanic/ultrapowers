@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with eight rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with nine rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -364,3 +364,65 @@ Three things a newcomer would not know:
   also why the doctor checks this row by name alone — `integrations test`
   answers nothing useful for an http-proxy, so the object's presence in
   `integrations list --json` is the truth it can read.
+
+## kata
+
+The fleet has one kata hub: a single persistent VM named `kata-hub` running the
+kata issue daemon, which every sandbox reaches through an `http-proxy --peer`
+integration named `kata` and which the laptop reaches over ssh. It is not part
+of any run. This row is `ok` when the `kata` integration carries a bearer at the
+edge, its attachment policy is `tag:fleet`, and `ls kata-hub --json` answers a
+`kata-hub` row; the detail says which of the three is missing.
+
+**In a browser:** nothing.
+
+**The agent runs** this once, and it is the whole build:
+
+```bash
+node <plugin-root>/fleet/kata-hub.mjs
+```
+
+It creates the VM with its first-boot setup script, pins the daemon's port with
+`share port kata-hub 8000`, reads the VM's own `https_url` off
+`ls kata-hub --json`, and creates the integration with a freshly minted bearer
+on stdin:
+
+```bash
+printf '%s' "$KATA_TOKEN" | ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
+```
+
+It then waits for first boot, delivers the daemon's config and env over ssh,
+waits for `systemctl is-active kata.service` to answer `active`, and only then
+writes `~/.ultrapowers/kata-hub.env` (mode 0600, `KATA_URL` and `KATA_TOKEN`).
+Running it again on a built hub prints `kata-hub already built` and touches
+nothing; running it on a half-built one resumes from where it stopped.
+
+Five things a newcomer would not know:
+
+- **Never prune the `peer-kata` ssh key.** `--peer` makes exe.dev generate a
+  key pair server-side so a sandbox can reach the hub without holding anything;
+  it shows up in `ssh-key list` as `peer-kata` and goes when the integration
+  goes. A sweep that tidies unknown keys takes the fleet's hub down with it.
+- **The hub carries no tag at all.** The janitor lists `fleet-r*` and never
+  sees it, and its comment — `kata hub — persistent service, do not reap` — is
+  the second lock. Its 1 vCPU and 2 GB do come out of the same pool every
+  wave's sandboxes are subtracted from, so the `capacity` row counts it.
+- **Never `cp` the hub, or any fleet VM, without `--copy-tags=false`.**
+  `cp --copy-tags` is on by default, so a copy of a fleet VM inherits
+  `tag:fleet` and is granted every credential the policy grants; a copy of the
+  hub inherits its comment and its daemon.
+- **The bearer has exactly two homes.** `/etc/kata/kata.env` on the hub
+  (`root:exedev`, mode 0640, delivered over ssh after first boot and never in
+  the setup script) and `~/.ultrapowers/kata-hub.env` on this laptop, mode
+  0600. No sandbox holds it: the edge injects it, and the sandbox-side URL is
+  `http://kata.int.exe.xyz/<path>`. Rotation is one
+  `integrations edit kata --bearer=-` with a fresh token on stdin, followed by
+  the same token delivered to the hub's env file.
+- **A wrong policy is repaired with two commands, never an attach.** exe.dev
+  refuses `integrations attach` outright; the fix the doctor prints is the read
+  and then the write under the revision it answered:
+
+```bash
+ssh exe.dev "integrations policy get kata --json"
+ssh exe.dev "integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>"
+```

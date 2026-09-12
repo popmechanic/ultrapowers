@@ -81,7 +81,8 @@ const CMD = {
   list: 'ssh exe.dev "integrations list --json"',
   github: 'ssh exe.dev "integrations setup github --list"',
   token: `node ${CLAUDE_TOKEN} status`,
-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
+  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
+  kataVm: 'ssh exe.dev "ls kata-hub --json"'
 }
 
 /** The policy read for one integration, and what it answers (measured 2026-09-11):
@@ -130,8 +131,29 @@ const ghObject = (target) => ({
   config: { repositories: [target], installation_id: 4711, act_as_user: true }
 })
 
-/** A healthy account: the bearer, and one target object on no tag. */
-const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET)]
+/** The hub's own http-proxy, as the listing carries it: a bearer in the
+ *  summary, and the policy — not the attachments — is what grants it. */
+const kataObject = () => ({
+  name: 'kata',
+  type: 'http-proxy',
+  attachments: ['vm:fleet-r7-2609030900-a1b2'],
+  comment: 'kata issue daemon on kata-hub',
+  config_summary: 'target=https://kata-hub.example.exe.xyz header=Authorization:Bearer ***'
+})
+
+/** What `ls kata-hub --json` answers once the hub is built. */
+const kataVms = () => `${JSON.stringify({
+  vms: [{
+    vm_name: 'kata-hub',
+    status: 'running',
+    https_url: 'https://kata-hub.example.exe.xyz',
+    ssh_dest: 'kata-hub@exe.dev'
+  }]
+})}\n`
+
+/** A healthy account: the bearer, one target object on no tag, and the hub's
+ *  own proxy. */
+const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET), kataObject()]
 
 const BILLING = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'team' }
 const GITHUB_LISTING = 'GitHub accounts:\n  popmechanic\n'
@@ -158,6 +180,8 @@ const GREEN = () => ({
   [CMD.token]: { code: 0, stdout: `${STATUS_LINE}\n` },
   [CMD.accounts]: { code: 0, stdout: `${ACCOUNTS_JSON}\n` },
   [policyCmd('claude-max')]: policyAnswer('claude-max'),
+  [policyCmd('kata')]: policyAnswer('kata'),
+  [CMD.kataVm]: { code: 0, stdout: kataVms() },
   ...Object.fromEntries(
     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
   )
@@ -185,8 +209,8 @@ const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB; a run asks 8 vCPU / 16GB'
 const rowById = (result, id) => result.rows.find((r) => r.id === id)
 const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
 
-/** The eight-row status map of a healthy fleet. The runs below pass no `render`
- *  option, which is the `render` row's "not configured" green. */
+/** The status map of a healthy fleet. The runs below pass no `render` option,
+ *  which is the `render` row's "not configured" green. */
 const ALL_OK = Object.freeze({
   'exe-dev': 'ok',
   capacity: 'ok',
@@ -195,7 +219,8 @@ const ALL_OK = Object.freeze({
   github: 'ok',
   integrations: 'ok',
   'verb-drift': 'ok',
-  render: 'ok'
+  render: 'ok',
+  kata: 'ok'
 })
 
 /** Run the doctor over the green account with `opts` spread onto it, and answer
@@ -443,6 +468,8 @@ case "$*" in
   *"billing plan"*) echo '${BILLING_JSON}' ;;
   *"integrations list"*) echo '${CATALOG_JSON}' ;;
   *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
+  *"integrations policy get kata"*) echo '${policyJson('kata').trim()}' ;;
+  *"ls kata-hub"*) echo '${kataVms().trim()}' ;;
   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
   *) exit 1 ;;
 esac

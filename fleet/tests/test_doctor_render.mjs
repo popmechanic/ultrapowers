@@ -11,20 +11,21 @@
  * Every group below names the Machine clause and the Proof leg it encodes, so a
  * reader can map an assertion back to the contract it came from.
  *
- *   1  M1 / leg (a) — `ROW_IDS` is the eight ids in order, and a green
- *      doctor's rows are that list.
+ *   1  M1 / leg (a) — `ROW_IDS` carries `render` eighth, after `verb-drift`,
+ *      and a green doctor's rows are that list. (The hub's `kata` row was
+ *      later appended after it, so `render` is eighth rather than last.)
  *   2  M2 / leg (b) — the `render` row: absent, null, present-and-found,
  *      present-and-absent, and an unreadable listing.
  *   3  M3 / leg (c) — `fleetConfigRender({ path })`, and `render` staying out
  *      of `result.config`.
  *   4  M4 / leg (d) — `CONFIG_KEYS` accepting `render`, and the reworded red
  *      detail.
- *   5  M5 / leg (e) — `renderRows` printing the eighth row last, with its
- *      first-run.md pointer under a red one.
+ *   5  M5 / leg (e) — `renderRows` printing the eighth row after the seventh,
+ *      with its first-run.md pointer under a red one.
  *   6  M5 / leg (f) — the CLI, against a PATH shim: `node fleet/doctor.mjs
  *      --json --config <fixture>` reads the file's `render` key.
- *   7  M1, M2 / leg (g) — `skills/ultrapowers/references/first-run.md`: eight
- *      `## ` headings, `ROW_IDS` in order, and the `## render` section last.
+ *   7  M1, M2 / leg (g) — `skills/ultrapowers/references/first-run.md`: one
+ *      `## ` heading per row, `ROW_IDS` in order, `## render` the eighth.
  *
  * Every read the doctor makes is driven through the `exec` seam with a stub, and
  * group 6 drives it against a PATH shim. That rig is copied from
@@ -78,7 +79,8 @@ const CMD = {
   list: 'ssh exe.dev "integrations list --json"',
   github: 'ssh exe.dev "integrations setup github --list"',
   token: `node ${CLAUDE_TOKEN} status`,
-  accounts: `node ${CLAUDE_TOKEN} accounts --json`
+  accounts: `node ${CLAUDE_TOKEN} accounts --json`,
+  kataVm: 'ssh exe.dev "ls kata-hub --json"'
 }
 
 /** The policy read for one integration, and what it answers (measured 2026-09-11):
@@ -139,9 +141,29 @@ const renderObject = () => ({
   comment: null
 })
 
-/** A healthy account with no renderer at the edge: the bearer, and one target
- *  object on no tag. */
-const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET)]
+/** The hub's own http-proxy, as the listing carries it: a bearer in the
+ *  summary, and the policy — not the attachments — is what grants it. */
+const kataObject = () => ({
+  name: 'kata',
+  type: 'http-proxy',
+  attachments: ['vm:fleet-r7-2609030900-a1b2'],
+  comment: 'kata issue daemon on kata-hub',
+  config_summary: 'target=https://kata-hub.example.exe.xyz header=Authorization:Bearer ***'
+})
+
+/** What `ls kata-hub --json` answers once the hub is built. */
+const kataVms = () => `${JSON.stringify({
+  vms: [{
+    vm_name: 'kata-hub',
+    status: 'running',
+    https_url: 'https://kata-hub.example.exe.xyz',
+    ssh_dest: 'kata-hub@exe.dev'
+  }]
+})}\n`
+
+/** A healthy account with no renderer at the edge: the bearer, one target
+ *  object on no tag, and the hub's own proxy. */
+const GREEN_CATALOG = () => [claudeMax(), ghObject(TARGET), kataObject()]
 
 /** The same account, with the renderer's own object beside them. */
 const RENDER_CATALOG = () => [...GREEN_CATALOG(), renderObject()]
@@ -172,6 +194,8 @@ const GREEN = () => ({
   [CMD.accounts]: { code: 0, stdout: `${ACCOUNTS_JSON}\n` },
   [policyCmd('claude-max')]: policyAnswer('claude-max'),
   [policyCmd(RENDER_NAME)]: policyAnswer(RENDER_NAME),
+  [policyCmd('kata')]: policyAnswer('kata'),
+  [CMD.kataVm]: { code: 0, stdout: kataVms() },
   ...Object.fromEntries(
     FIXTURE_NAMES.map((verb) => [helpCmd(verb), { code: 0, stdout: optionsBlock(verb, FIXTURE_VERBS[verb]) }])
   )
@@ -208,16 +232,21 @@ const withRenderListing = (opts = {}) =>
   run({ overrides: { [CMD.list]: { code: 0, stdout: listing(RENDER_CATALOG()) } }, ...opts })
 
 const rowById = (result, id) => result.rows.find((r) => r.id === id)
-const lastRow = (result) => result.rows[result.rows.length - 1]
+// `render` was the last row until the hub's `kata` row was appended after it,
+// so the row this file is about is fetched by id rather than by position.
+const renderRow = (result) => rowById(result, 'render')
 const statusOf = (result) => Object.fromEntries(result.rows.map((r) => [r.id, r.status]))
 
-/** M1: the eight rows, in the order the doctor reports them. */
+/** M1: the rows, in the order the doctor reports them. `render` is the eighth,
+ *  and the hub's `kata` row was appended after it. */
 const EXPECTED_IDS = [
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'render',
+  'kata'
 ]
+const RENDER_AT = EXPECTED_IDS.indexOf('render')
 
-/** M2: the eight-row status map of a healthy fleet — the green fixture passes
- *  no `render`, which is the "not configured" green. */
+/** M2: the status map of a healthy fleet — the green fixture passes no
+ *  `render`, which is the "not configured" green. */
 const ALL_OK = Object.freeze({
   'exe-dev': 'ok',
   capacity: 'ok',
@@ -226,7 +255,8 @@ const ALL_OK = Object.freeze({
   github: 'ok',
   integrations: 'ok',
   'verb-drift': 'ok',
-  render: 'ok'
+  render: 'ok',
+  kata: 'ok'
 })
 
 /** ALL_OK with one row reddened. */
@@ -257,18 +287,18 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
 // ── 1. M1 / leg (a) — the eight ids, in order ────────────────────────────────
 
 {
-  // leg (a): `[...ROW_IDS]` deep-equals the eight ids in order — `render` last,
+  // leg (a): `[...ROW_IDS]` deep-equals the ids in order — `render` eighth,
   // after `verb-drift`.
-  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the eight ids in order')
-  assert.equal(ROW_IDS.length, 8, '1 [M1 leg a] ROW_IDS holds eight ids and no ninth')
-  assert.equal(ROW_IDS[ROW_IDS.length - 1], 'render', '1 [M1 leg a] render is the last id')
+  assert.deepEqual([...ROW_IDS], EXPECTED_IDS, '1 [M1 leg a] ROW_IDS is the ids in order')
+  assert.equal(ROW_IDS[RENDER_AT], 'render', '1 [M1 leg a] render is the eighth id')
+  assert.equal(ROW_IDS[RENDER_AT - 1], 'verb-drift', '1 [M1 leg a] and it follows verb-drift')
 
   // leg (a): a green doctor's `result.rows.map(id)` is that same list.
   const { result } = await run()
   assert.deepEqual(
     result.rows.map((r) => r.id),
     EXPECTED_IDS,
-    '1 [M1 leg a] a green doctor answers the eight rows in ROW_IDS order'
+    '1 [M1 leg a] a green doctor answers the rows in ROW_IDS order'
   )
 
   // `FIXES` derives from `ROW_IDS`, so the new row's fix is its own `## `
@@ -289,7 +319,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
   // renderer is green, because the doctor has two row states and `verdict` is
   // every row `ok`.
   const { result } = await run()
-  const render = lastRow(result)
+  const render = renderRow(result)
   assert.equal(render.id, 'render', '2 [M2 leg b] the render row is answered last')
   assert.equal(
     render.status,
@@ -310,7 +340,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
   // option — same status, same detail.
   const { result: absent } = await run()
   const { result } = await run({ render: null })
-  const render = lastRow(result)
+  const render = renderRow(result)
   assert.equal(render.id, 'render', '2 [M2 leg b] render: null still answers the render row last')
   assert.equal(
     render.status,
@@ -323,7 +353,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
   )
   assert.equal(
     render.detail,
-    lastRow(absent).detail,
+    renderRow(absent).detail,
     `2 [M2 leg b] render: null answers the same detail as the absent option; got ${render.detail}`
   )
   assert.equal(result.verdict, 'ready', '2 [M2 leg b] render: null is a ready fleet')
@@ -334,7 +364,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
   // listing carrying an entry named `browser-run` is `ok`, and the detail names
   // the integration.
   const { result } = await withRenderListing({ render: { ...RENDER_KEY } })
-  const render = lastRow(result)
+  const render = renderRow(result)
   assert.equal(render.id, 'render', '2 [M2 leg b] the render row is still last')
   assert.equal(
     render.status,
@@ -359,7 +389,7 @@ assert.equal(fs.existsSync(ABSENT), false, '0 fixture: the absent config path st
   // catalog — is `missing`, its `fix` is `render`, and the detail names both the
   // integration and the file that named it.
   const { result } = await run({ render: { ...RENDER_KEY } })
-  const render = lastRow(result)
+  const render = renderRow(result)
   assert.equal(render.id, 'render', '2 [M2 leg b] the red render row is still last')
   assert.equal(
     render.status,
@@ -389,7 +419,7 @@ for (const [label, answer] of [
     overrides: { [CMD.list]: answer },
     render: { ...RENDER_KEY }
   })
-  const render = lastRow(result)
+  const render = renderRow(result)
   assert.equal(render.id, 'render', `2 [M2 leg b] ${label} still answers the render row last`)
   assert.equal(
     render.status,
@@ -404,7 +434,7 @@ for (const [label, answer] of [
   // M2: an unreadable listing with NO `render` option is still the green
   // "not configured" row — the row reads the config first.
   const { result } = await run({ overrides: { [CMD.list]: { code: 0, stdout: 'not json at all\n' } } })
-  const render = lastRow(result)
+  const render = renderRow(result)
   assert.equal(
     render.status,
     'ok',
@@ -587,29 +617,29 @@ const BASE_DETAIL = 'XLarge pool 16 vCPU / 64GB; a run asks 8 vCPU / 16GB'
 assert.equal(typeof renderRows, 'function', '5 [M5] fleet/doctor.mjs exports renderRows')
 
 {
-  // leg (e): `renderRows` of a result whose rows are the eight ids prints
-  // `render` on the LAST line. A green run prints one line per row and no fix
-  // line, so the last line is the render row's own.
+  // leg (e): `renderRows` of a result whose rows are ROW_IDS prints `render` on
+  // the EIGHTH line. A green run prints one line per row and no fix line, so
+  // that line is the render row's own.
   const { result } = await run()
-  assert.deepEqual(result.rows.map((r) => r.id), EXPECTED_IDS, '5 [M5 leg e] the result carries the eight rows')
+  assert.deepEqual(result.rows.map((r) => r.id), EXPECTED_IDS, '5 [M5 leg e] the result carries the rows')
   const lines = renderRows(result.rows).split('\n')
   assert.equal(lines.length, EXPECTED_IDS.length, `5 [M5 leg e] a green run prints one line per row; got:\n${lines.join('\n')}`)
-  const last = lines[lines.length - 1]
+  const line = lines[RENDER_AT]
   assert.equal(
-    last.trim().split(/\s+/)[1],
+    line.trim().split(/\s+/)[1],
     'render',
-    `5 [M5 leg e] the last printed line is the render row's; got ${last}`
+    `5 [M5 leg e] the eighth printed line is the render row's; got ${line}`
   )
-  assert.ok(last.startsWith('ok'), `5 [M5 leg e] the green render line opens with its status; got ${last}`)
+  assert.ok(line.startsWith('ok'), `5 [M5 leg e] the green render line opens with its status; got ${line}`)
   assert.ok(
-    last.includes('not configured'),
-    `5 [M5 leg e] the green render line carries its detail; got ${last}`
+    line.includes('not configured'),
+    `5 [M5 leg e] the green render line carries its detail; got ${line}`
   )
   // The row before it is verb-drift's: the eighth row prints after the seventh.
   assert.equal(
-    lines[lines.length - 2].trim().split(/\s+/)[1],
+    lines[RENDER_AT - 1].trim().split(/\s+/)[1],
     'verb-drift',
-    `5 [M5 leg e] render prints after verb-drift; got ${lines[lines.length - 2]}`
+    `5 [M5 leg e] render prints after verb-drift; got ${lines[RENDER_AT - 1]}`
   )
 }
 
@@ -617,17 +647,17 @@ assert.equal(typeof renderRows, 'function', '5 [M5] fleet/doctor.mjs exports ren
   // leg (e): a `missing` render row prints the
   // `→ references/first-run.md §render` pointer on the line under it.
   const { result } = await run({ render: { ...RENDER_KEY } })
-  assert.equal(lastRow(result).status, 'missing', '5 [M5 leg e] the fixture\'s render row is red')
+  assert.equal(renderRow(result).status, 'missing', '5 [M5 leg e] the fixture\'s render row is red')
   const lines = renderRows(result.rows).split('\n')
-  const last = lines[lines.length - 1]
+  const pointer = lines[RENDER_AT + 1]
   assert.ok(
-    last.includes('→ references/first-run.md §render'),
-    `5 [M5 leg e] a red render row points at its first-run.md heading; got ${last}`
+    pointer.includes('→ references/first-run.md §render'),
+    `5 [M5 leg e] a red render row points at its first-run.md heading; got ${pointer}`
   )
   assert.equal(
-    lines[lines.length - 2].trim().split(/\s+/)[1],
+    lines[RENDER_AT].trim().split(/\s+/)[1],
     'render',
-    `5 [M5 leg e] the pointer sits under the render row; got ${lines[lines.length - 2]}`
+    `5 [M5 leg e] the pointer sits under the render row; got ${lines[RENDER_AT]}`
   )
   assert.equal(
     lines.length,
@@ -673,6 +703,8 @@ case "$*" in
   *"integrations list"*) echo '${CATALOG_JSON}' ;;
   *"integrations policy get claude-max"*) echo '${policyJson('claude-max').trim()}' ;;
   *"integrations policy get ${RENDER_NAME}"*) echo '${policyJson(RENDER_NAME).trim()}' ;;
+  *"integrations policy get kata"*) echo '${policyJson('kata').trim()}' ;;
+  *"ls kata-hub"*) echo '${kataVms().trim()}' ;;
   *"integrations setup github"*) printf 'GitHub accounts:\\n  popmechanic\\n' ;;
   *) exit 1 ;;
 esac
@@ -709,10 +741,10 @@ const runCli = (args, { dir }) => {
   assert.deepEqual(
     parsed.rows.map((r) => r.id),
     EXPECTED_IDS,
-    `6 [M5 leg f] the printed envelope carries the eight rows in order; got ${res.stdout}`
+    `6 [M5 leg f] the printed envelope carries the rows in order; got ${res.stdout}`
   )
-  const render = parsed.rows[parsed.rows.length - 1]
-  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows end with the render row; got ${res.stdout}`)
+  const render = parsed.rows[RENDER_AT]
+  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows carry the render row eighth; got ${res.stdout}`)
   assert.equal(
     render.status,
     'ok',
@@ -751,8 +783,8 @@ const runCli = (args, { dir }) => {
     `6 [M5 leg f] a fleet.json naming no renderer exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`
   )
   const parsed = JSON.parse(res.stdout)
-  const render = parsed.rows[parsed.rows.length - 1]
-  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows end with the render row; got ${res.stdout}`)
+  const render = parsed.rows[RENDER_AT]
+  assert.equal(render.id, 'render', `6 [M5 leg f] the printed rows carry the render row eighth; got ${res.stdout}`)
   assert.equal(
     render.status,
     'ok',
@@ -787,23 +819,23 @@ const FIRST_RUN_LINES = fs.readFileSync(FIRST_RUN, 'utf8').split('\n')
 
 {
   // leg (g) [M1]: the walk's `## ` headings are exactly ROW_IDS, in that order —
-  // eight of them, `render` last. This is the agreement
+  // `render` the eighth of them. This is the agreement
   // tests/test_docs_agree_with_code.py reads.
   const headings = FIRST_RUN_LINES
     .filter((line) => /^## /.test(line))
     .map((line) => line.slice(3).trim())
   assert.equal(
     headings.length,
-    8,
-    `7 [M1 leg g] first-run.md has exactly eight ## headings; got ${JSON.stringify(headings)}`
+    ROW_IDS.length,
+    `7 [M1 leg g] first-run.md has one ## heading per row; got ${JSON.stringify(headings)}`
   )
   assert.deepEqual(
     headings,
     [...ROW_IDS],
     `7 [M1 leg g] first-run.md's ## headings are ROW_IDS, in order; got ${JSON.stringify(headings)}`
   )
-  assert.equal(headings[headings.length - 1], 'render', '7 [M1 leg g] ## render is the last section')
-  assert.equal(headings[headings.length - 2], 'verb-drift', '7 [M1 leg g] and it follows ## verb-drift')
+  assert.equal(headings[RENDER_AT], 'render', '7 [M1 leg g] ## render is the eighth section')
+  assert.equal(headings[RENDER_AT - 1], 'verb-drift', '7 [M1 leg g] and it follows ## verb-drift')
 
   // The opening paragraph no longer says the doctor answers seven rows.
   const head = textOf(FIRST_RUN_LINES, span(FIRST_RUN_LINES, null, /^## exe-dev/))
