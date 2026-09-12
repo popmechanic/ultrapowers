@@ -44,9 +44,12 @@
  *
  * The sweep (legs b, c, d) is a static read of source, never an execution: it
  * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
- * file, and never `probe_*.mjs` (those are live probes, `fleet/tests/PROBES.md`,
- * outside every sweep here) and never `fixtures/`. Reading source is also why
- * this file needs no child process of its own — leg (f) holds it to that.
+ * file, plus every `fleet/tests/exams/<slug>/test_*.mjs` and `_*.mjs` a run
+ * leaves in the reserved directory (#890 — the same globs the bridge
+ * collects; leg (j) proves the reach), and never `probe_*.mjs` (those are
+ * live probes, `fleet/tests/PROBES.md`, outside every sweep here) and never
+ * `fixtures/`. Reading source is also why this file needs no child process of
+ * its own — leg (f) holds it to that.
  *
  * The three rules, spelled once so an implementation can be read against them:
  *
@@ -510,9 +513,31 @@ const named = (offenders) => offenders.map((o) => `${o.where} (${o.why}) ${o.tex
 
 // ── the tree ─────────────────────────────────────────────────────────────────
 
-const SWEPT = fs.readdirSync(TESTS_DIR)
-  .filter((n) => n.endsWith('.mjs') && (n.startsWith('test_') || n.startsWith('_')) && n !== SELF)
-  .sort()
+/** A sim or a helper by name: `test_*.mjs`, `_*.mjs`. */
+const isSwept = (n) => n.endsWith('.mjs') && (n.startsWith('test_') || n.startsWith('_'))
+
+/**
+ * The names the sweep reads under `dir`, relative and `/`-joined: the flat
+ * `test_*.mjs` and `_*.mjs`, and — the same globs the bridge collects (#890,
+ * `tests/test_fleet_suite.py`'s `collect_sims`) — every `exams/<slug>/test_*.mjs`
+ * a run leaves in the reserved directory, with the `_*.mjs` helpers beside
+ * them. An exam is held to the three rules exactly as a curated sim is; a
+ * probe that swept only the flat directory would let a run's own exam inherit
+ * the box. The reserved directory does not exist on main, so the second list is
+ * empty there.
+ */
+const sweptNames = (dir, self = SELF) => {
+  const flat = fs.readdirSync(dir).filter((n) => isSwept(n) && n !== self)
+  const exams = path.join(dir, 'exams')
+  const nested = !fs.existsSync(exams) ? [] : fs.readdirSync(exams)
+    .filter((slug) => fs.statSync(path.join(exams, slug)).isDirectory())
+    .flatMap((slug) => fs.readdirSync(path.join(exams, slug))
+      .filter(isSwept)
+      .map((n) => `exams/${slug}/${n}`))
+  return [...flat, ...nested].sort()
+}
+
+const SWEPT = sweptNames(TESTS_DIR)
 
 const cache = new Map()
 const sourceOf = (name) => {
@@ -523,15 +548,20 @@ const sourceOf = (name) => {
   return cache.get(name)
 }
 
-/** ident -> the sibling `_*.mjs` source it is imported from. */
-const importerFor = (src) => {
+/** ident -> the sibling `_*.mjs` source it is imported from, resolved against
+ *  the importing file's own directory: `./_x.mjs` beside a flat sim, and for an
+ *  exam in `exams/<slug>/` either `../../_x.mjs` (the rig at the top) or
+ *  `./_x.mjs` (a helper the run left beside it). */
+const importerFor = (src, file = '') => {
   const map = new Map()
-  const re = /import\s*\{([^}]*)\}\s*from\s*(['"])(\.\/(_[A-Za-z0-9_]+\.mjs))\2/g
+  const base = path.posix.dirname(file)
+  const re = /import\s*\{([^}]*)\}\s*from\s*(['"])((?:\.\/|\.\.\/\.\.\/)_[A-Za-z0-9_]+\.mjs)\2/g
   let m
   while ((m = re.exec(src.code)) !== null) {
+    const target = path.posix.normalize(path.posix.join(base, m[3]))
     for (const part of m[1].split(',')) {
       const name = part.trim().split(/\s+as\s+/).pop().trim()
-      if (name) map.set(name, m[4])
+      if (name) map.set(name, target)
     }
   }
   return (ident) => (map.has(ident) ? sourceOf(map.get(ident)) : null)
@@ -540,7 +570,7 @@ const importerFor = (src) => {
 const TREE = SWEPT.map((name) => {
   const text = fs.readFileSync(path.join(TESTS_DIR, name), 'utf8')
   const src = scan(text)
-  return sweep(text, { file: name, resolveImport: importerFor(src) })
+  return sweep(text, { file: name, resolveImport: importerFor(src, name) })
 })
 const treeOffenders = (kind) => TREE.flatMap((r) => r[kind])
 
@@ -923,6 +953,50 @@ test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (
     '(g) [M7] nor swept as a sim of the tree')
 })
 
+// ── (j) the reserved exams directory is swept like the flat one  [#890] ──────
+
+/** The fixture tree leg (j) sweeps: one flat sim, one exam under `exams/run_7/`. */
+const TREE_FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'tree')
+const EXAM_FIXTURE = 'exams/run_7/test_leaky_exam.mjs'
+
+test('the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]', () => {
+  // The names, from one root: the flat sim and the exam two levels down.
+  assert.deepEqual(sweptNames(TREE_FIXTURE, '<none>'), [EXAM_FIXTURE, 'test_clean_sim.mjs'],
+    '(j) [#890] sweptNames lists the flat test_*.mjs and every exams/<slug>/test_*.mjs, relative and /-joined')
+
+  // The exam is swept by the rules — its one inheriting spawn is named, and
+  // its `../../_helpers.mjs` import resolves so the hermetic spawn beside it
+  // is not.
+  const text = fs.readFileSync(path.join(TREE_FIXTURE, EXAM_FIXTURE), 'utf8')
+  const src = scan(text)
+  const r = sweep(text, { file: EXAM_FIXTURE, resolveImport: importerFor(src, EXAM_FIXTURE) })
+  assert.equal(r.inherit.length, 1,
+    `(j) [#890] the exam's one inheriting spawn is named: ${JSON.stringify(named(r.inherit))}`)
+  assert.match(r.inherit[0].where, /^exams\/run_7\/test_leaky_exam\.mjs:/,
+    `(j) [#890] by its path under exams/: ${r.inherit[0].where}`)
+  assert.equal(r.absolute.length + r.siblings.length, 0,
+    '(j) [#890] and nothing else — a fixture with one leak is named once')
+
+  // The live tree: every exams/*/test_*.mjs present under fleet/tests/ — the
+  // bridge's second glob, read here independently — is in SWEPT. Empty on
+  // main, where the reserved directory does not exist; inside a run it is the
+  // run's own exams.
+  const examsDir = path.join(TESTS_DIR, 'exams')
+  const present = !fs.existsSync(examsDir) ? [] : fs.readdirSync(examsDir)
+    .filter((slug) => fs.statSync(path.join(examsDir, slug)).isDirectory())
+    .flatMap((slug) => fs.readdirSync(path.join(examsDir, slug))
+      .filter((n) => n.startsWith('test_') && n.endsWith('.mjs'))
+      .map((n) => `exams/${slug}/${n}`))
+  for (const name of present) {
+    assert.ok(SWEPT.includes(name), `(j) [#890] ${name} is collected by the bridge and must be swept`)
+  }
+
+  // And the bridge collects exactly that second glob, so the two lists are one.
+  const bridge = fs.readFileSync(BRIDGE, 'utf8')
+  assert.ok(bridge.includes('"exams", "*", "test_*.mjs"'),
+    '(j) [#890] tests/test_fleet_suite.py collects exams/*/test_*.mjs — the glob this sweep mirrors')
+})
+
 // ── (h) the bridge hands each sim its environment  [M6] ──────────────────────
 
 test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]', () => {
@@ -946,9 +1020,19 @@ test('tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / l
   assert.ok(calls.length >= 1,
     '(h) [M6] the bridge dispatches each sim with subprocess.run(["node", path], …)')
   for (const call of calls) {
-    assert.match(call, /env=sim_env\(\)/,
+    // `env=sim_env()` inline, or `env=<name>` where `<name> = sim_env()` is
+    // bound in the bridge — the shape #890 needs, since the bridge removes
+    // that environment's HOME once the sim exits and has to hold the object.
+    const m = call.match(/env=(sim_env\(\)|[A-Za-z_]\w*)\b/)
+    assert.ok(m,
       `(h) [M6] and hands that sim the environment sim_env() returns: ${call.replace(/\s+/g, ' ')}`)
+    if (m[1] !== 'sim_env()') {
+      assert.match(text, new RegExp(`^\\s*${m[1]} = sim_env\\(\\)\\s*$`, 'm'),
+        `(h) [M6] env=${m[1]} is bound by \`${m[1]} = sim_env()\` in the bridge`)
+    }
   }
+  assert.match(text, /finally:\s*\n\s*shutil\.rmtree\(env\["HOME"\], ignore_errors=True\)/,
+    '(h) [#890] and removes that environment\'s fleet-bridge-* HOME in a finally once the sim exits')
 
   const body = text.slice(text.search(/^def sim_env\(/m))
   const end = body.slice(1).search(/^(def |@|class )/m)

@@ -76,8 +76,27 @@ const interpreterDirs = () => {
  *   `env`   the caller's own keys, laid over everything else last, so a
  *           caller-supplied key of any name wins
  */
+/**
+ * The `fleet-sim-*` directories this process minted, removed when it exits
+ * (#890): a `simEnv()` with no `home` makes one per call, and a sim that
+ * spawns a dozen children a dozen times would otherwise leave a dozen dirs
+ * under `os.tmpdir()` for good. Sync on purpose — an `exit` handler gets no
+ * event loop — and `force`, so a dir a child already removed is not an error.
+ */
+const OWNED = []
+process.on('exit', () => {
+  for (const dir of OWNED) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // Left for the box's own tmp reaper; never a failed sim.
+    }
+  }
+})
+
 export function simEnv ({ bin, home, env } = {}) {
   const root = home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-sim-'))
+  if (home == null) OWNED.push(root)
 
   const dirs = []
   for (const dir of [...(Array.isArray(bin) ? bin : bin ? [bin] : []), ...interpreterDirs()]) {
