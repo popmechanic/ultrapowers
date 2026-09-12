@@ -4,3 +4,17 @@ run-main: tiers — 1 null tier slot(s) stamped mostCapable (uniform driver fill
 run-main: kata — record /home/exedev/plans/run-111.kata.json → https://kata.int.exe.xyz
 run-main: provision — BASE 77b916ac5bc24adc423aa3e277aa0f1357c595a9; 1 task clone(s) + integration
 run-main: engine — waves 1, width bound 12, patch input armed
+run-main: engine-crashed — Error: run-engine: kata-close failed: kata: POST /api/v1/projects/3/issues/01M29J0JTWT9N9SRKC7ENQJSYT/actions/close answered 400: {"status":400,"error":{"code":"validation","message":"message too short for reason=done (need >=40 chars after normalization, got 25)"}}
+    at kataFatal (file:///home/exedev/engines/77b916ac5bc24adc423aa3e277aa0f1357c595a9/fleet/run-engine.mjs:1038:15)
+    at kataCall (file:///home/exedev/engines/77b916ac5bc24adc423aa3e277aa0f1357c595a9/fleet/run-engine.mjs:1052:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async kataClose (file:///home/exedev/engines/77b916ac5bc24adc423aa3e277aa0f1357c595a9/fleet/run-engine.mjs:1098:5)
+    at async runEngine (file:///home/exedev/engines/77b916ac5bc24adc423aa3e277aa0f1357c595a9/fleet/run-engine.mjs:3192:9)
+    at async runMain (file:///home/exedev/engines/77b916ac5bc24adc423aa3e277aa0f1357c595a9/fleet/run-main.mjs:709:14)
+    at async main (file:///home/exedev/engines/77b916ac5bc24adc423aa3e277aa0f1357c595a9/fleet/run-main.mjs:813:15)
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 18min 12.098s
+CPU time consumed: 27min 33.098s
+Memory peak: 2.0M
+Memory swap peak: 0B
