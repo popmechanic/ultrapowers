@@ -185,6 +185,19 @@ def test_entry_keeps_every_other_key_at_its_base_value(tmp_path):
         # The Proof `Guard:` paths (#777) — `[]` here, because this fixture
         # task's Proof names no guard.
         "proofGuards": [],
+        # The fact sheet (#913), computed by the compiler and pinned by its own
+        # exam. Unstamped, so every exam lands where its Proof names it.
+        "factsheet": {
+            "files": ["tests/test_widget.py", "widgetkit/widget.py"],
+            "deletes": [],
+            "guards": [],
+            "proofTests": ["tests/test_widget.py"],
+            "landing": {"tests/test_widget.py": "tests/test_widget.py"},
+            "driverOwned": ["tests/test_widget.py"],
+            "siblingOwned": ["tests/test_format.py", "widgetkit/format.py"],
+            "produces": ["`make_widget(n: int) -> Widget`"],
+            "consumes": [],
+        },
     }
 
 

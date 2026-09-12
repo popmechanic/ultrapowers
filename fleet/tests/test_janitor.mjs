@@ -323,15 +323,20 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
     '(a)/M1 every row here has a readable assignment')
   // #724 Task 2 re-scopes this pin: the result gains one key and one only,
   // `branches`, and a fleet whose targets answer no integration head may carry
-  // it empty or not at all — the six BASE fields stand either way.
+  // it empty or not at all — the six BASE fields stand either way. #913 adds
+  // the second and last such key, `kept`: the rows whose comment says do not
+  // reap, empty here because no row in this fleet carries one.
   const BASE_KEYS = ['dryRun', 'age', 'actions', 'stale', 'unknown', 'deaths']
+  const ADDED_KEYS = ['branches', 'kept']
   for (const key of BASE_KEYS) {
     assert.equal(Object.hasOwn(result, key), true,
       `(a)/M1 the result carries its six fields { dryRun, age, actions, stale, unknown, deaths } — ${key} is missing`)
   }
+  assert.deepEqual(result.kept ?? [], [],
+    '(a)/M1 and no row in this fleet says do not reap, so `kept` is empty')
   assert.deepEqual(
-    sorted(Object.keys(result).filter((k) => !BASE_KEYS.includes(k) && k !== 'branches')), [],
-    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2')
+    sorted(Object.keys(result).filter((k) => !BASE_KEYS.includes(k) && !ADDED_KEYS.includes(k))), [],
+    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2 and the `kept` of #913')
 
   // ── (a)/M4 the unit read fires for a live page whichever ref served it ────
   assert.deepEqual(

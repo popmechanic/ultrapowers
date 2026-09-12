@@ -406,7 +406,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   by that policy and by nothing else: no `--integration` on `new`, no `attach`, no per-VM grant.
   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
-- **Doctor (`fleet/doctor.mjs`) — eight rows, this order, `ROW_IDS`:**
+  The pre-2026-09-11 rule that **no GitHub object rides** `tag:fleet` was superseded by that
+  migration: with `attach` refused there is no per-VM grant left to ride, so every object reaches a
+  fleet VM by its own `tag:fleet` policy — including the hub's `kata` **http-proxy**, which is
+  created with `--policy 'tag:fleet'` like the rest. What the `- **Publish:**` rule still forbids is
+  the *attachment*: no GitHub integration is attached to the tag, because nothing is attached at all.
+- **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
@@ -417,6 +422,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   | `integrations` | `integrations list --json` + `integrations policy get <name> --json` for `claude-max`, `gh-<owner>-<repo>` (with `--target`) and `render.integration` (when configured) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects' `policy.selector` is `tag:fleet` — the red names the first that is not and the get/set two-step that fixes it |
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
   | `render` | `integrations list --json` against `fleet.json`'s `render` | `not configured` when the file names none; otherwise `render.integration` is a name in the listing |
+  | `kata` | `integrations list --json` + `ssh exe.dev "integrations policy get kata --json"` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists and carries a bearer, its `policy.selector` is exactly `tag:fleet` (the listing's `attachments` are never consulted for this row), and `.vms[]` has a `kata-hub` row; the red says which of the four is absent, and names `node fleet/kata-hub.mjs` — or, for a wrong policy, the get/set two-step |
 
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`.
@@ -427,9 +433,31 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   the evidence tag `ultra/evidence/run-<N>` first, and at the branch `ultra/evidence-run-<N>`
   only while the run is in flight or its sweep is pending; a run with no page at either ref is aged
   from the plan tag `ultra/plan/run-<N>`'s commit and then the plan branch `ultra/plan-run-<N>`, and
-  the ref it read is named in the line it prints. A VM whose run has had
+  the ref it read is named in the line it prints. A VM whose `comment` carries the substring
+  `do not reap` is never removed: the guard is decided on the raw comment before the assignment is
+  parsed, so no page is read for that row at all, and it is reported as `kept` instead. A VM whose run has had
   no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone. Run by
   `fleet/launch.mjs` before every launch and by hand after a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
+- **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
+  --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's
+  `fleet-r*` never lists it, and the comment is the second lock. Its port is pinned by
+  `share port kata-hub 8000`. One integration fronts it: `kata`, an `http-proxy --peer` created with
+  `--target <https_url> --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'`,
+  where `<https_url>` is read off the `kata-hub` row of `ls kata-hub --json` and never guessed from
+  the VM name; a wrong policy is repaired with `integrations policy get kata --json` then
+  `integrations policy set kata 'tag:fleet' --permanent --if-revision=<revision>`, never an attach.
+  A sandbox reaches it at `http://kata.int.exe.xyz` and holds no token — the edge injects the
+  bearer, and the `peer-kata` key `--peer` generates is server-side and is never pruned. The laptop
+  reaches it as `ssh <ssh_dest>` + `curl` against `localhost:8000`, sourcing the token from
+  `/etc/kata/kata.env` on the hub so no bearer ever rides an argv on the laptop. On the hub:
+  `/etc/kata/kata.env` (`root:exedev`, 0640, `KATA_AUTH_TOKEN`, `KATA_TRUST_PRIVATE_NETWORK=1`,
+  `KATA_HOME=/var/lib/kata`, `PORT=8000`) delivered over ssh after first boot and never in the setup
+  script; `fleet/kata.service` at `/etc/systemd/system/kata.service`; `/var/lib/kata` as `KATA_HOME`
+  with `config.toml` carrying `[web] public_origin`; the binary from
+  `https://github.com/kenn-io/kata/releases/download/v0.17.2/kata_0.17.2_linux_amd64.tar.gz`,
+  checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
+  script writes last and the laptop polls for. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
+  0600, exactly `KATA_URL` and `KATA_TOKEN`, written only after the daemon answers `active`.
 - **Laptop config `~/.ultrapowers/fleet.json`** — `cpu`, `memory`, `account` and `render` (an object
   of `integration` and `account`), every one of them optional, an unknown key ignored and a missing
   file meaning the defaults:

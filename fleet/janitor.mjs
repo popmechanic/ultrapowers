@@ -28,6 +28,10 @@
  *
  * Three things are never removed and reported instead:
  *
+ *   kept    — a row whose `comment` carries `do not reap`. It is decided on the
+ *             raw comment string, before the assignment is parsed, so a comment
+ *             that also reads as an assignment is still kept; the row is then
+ *             skipped whole, so not one `gh api` read is issued about it.
  *   unknown — a row with no comment, or a comment carrying no `target=`: there
  *             is nothing to read, so there is nothing to decide on.
  *   stale   — a live run silent for six hours, and a run with no evidence at
@@ -127,6 +131,13 @@ export const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
 export const DEFAULT_AGE = '1h'
 /** No status update for this long is a stale run, reported and left alone. */
 export const STALE_MS = 6 * 60 * 60 * 1000
+/**
+ * The comment that takes a VM out of the reap. The hub's own comment is
+ * `kata hub — persistent service, do not reap`, and `fleet/kata-hub.mjs` writes
+ * it; the guard matches this substring, case-sensitively, so any row someone
+ * marks by hand is kept the same way.
+ */
+export const NEVER_REAP = 'do not reap'
 
 /**
  * One `gh api <path>` on the laptop, through the exec seam. An absent file is
@@ -234,6 +245,13 @@ function assignmentOf (row) {
   if (run === null || target === null) return null
   return { run, target }
 }
+
+/**
+ * Is this row's comment the operator's "leave it alone"? The raw string is
+ * read, not the parsed fields: the sentence is prose a person wrote, and a row
+ * that also carries `run=` and `target=` is kept all the same.
+ */
+const saysNeverReap = (row) => String(row?.comment ?? '').includes(NEVER_REAP)
 
 // ── The one VM read: is the run's unit still there? ─────────────────────────
 
@@ -444,11 +462,19 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
   const stale = []
   const unknown = []
   const deaths = []
+  const kept = []
   // The only targets there are: a row's assignment comment is where the
   // janitor learns of one, so a target no row names is nobody's here.
   const targets = new Set()
   const nowIso = new Date(nowMs).toISOString()
   for (const row of rows) {
+    // Before anything is parsed and before a single read is issued: a comment
+    // that says do not reap ends this row's pass. Nothing is read about it, so
+    // it cannot be aged, cannot be probed, and cannot be removed.
+    if (saysNeverReap(row)) {
+      kept.push({ vm: row.name, comment: row.comment })
+      continue
+    }
     const assignment = assignmentOf(row)
     if (assignment === null) {
       unknown.push({ vm: row.name, comment: row.comment })
@@ -529,7 +555,7 @@ export async function janitor ({ argv = [], exec = defaultExec, config, now = ()
     for (const action of actions) await lobby(exec, action.command)
   }
 
-  return { dryRun, age, actions, stale, unknown, deaths, branches }
+  return { dryRun, age, actions, stale, unknown, deaths, branches, kept }
 }
 
 const renderAction = (a, dryRun) =>
@@ -547,10 +573,16 @@ const renderBranch = (b) =>
   `branch ${b.branch}  target=${b.target} PR #${b.pr} closed, not merged — ` +
   `node fleet/retire.mjs --target ${b.target}`
 
+/** A row the reap never touches, and why — the comment itself said so. */
+const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never removed`
+
 export const renderJanitor = (result) => {
   const lines = [
     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),
     ...(result.actions ?? []).map((a) => renderAction(a, result.dryRun)),
+    // After every rm and before every stale line: what was removed, then what
+    // never will be, then what wants a look.
+    ...(result.kept ?? []).map(renderKept),
     ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
     // Last, after every rm, stale and unknown line: the reap is the pass's

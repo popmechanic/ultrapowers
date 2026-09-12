@@ -224,7 +224,10 @@ BASE_WIDE_WAVES = [
 # added by its own task and pinned by its own exam (`proofTests` by #515/#553,
 # `proofRuns` by #589, `proofGuards` by #777). What this pin guards is that
 # adding one leaves EVERY OTHER key — `testCmd` included — at its base value.
-PROOF_SLOT_KEYS = ("proofTests", "proofRuns", "proofGuards")
+# `factsheet` (#913) is excluded on the same footing: it is a derived object
+# added by its own task and pinned by its own exam
+# (`tests/test_compile_plan_factsheet.py`), and it changes no key pinned here.
+PROOF_SLOT_KEYS = ("proofTests", "proofRuns", "proofGuards", "factsheet")
 
 
 def _waves_without_proof_slots(payload):

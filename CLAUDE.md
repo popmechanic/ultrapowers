@@ -89,7 +89,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   credential (loom-style OAuth on the laptop, refresh token in the keychain, refreshed before every
   launch, single-flight — #602); `janitor.mjs` reads each fleet VM's comment and the target's
   evidence branch through `gh api`, never a VM's disk; `target.mjs` creates the per-target
-  integration; `doctor.mjs` says which of its eight rows is missing. The engine itself is untouched
+  integration; `doctor.mjs` says which of its nine rows is missing. The engine itself is untouched
   by the lift (#402): `run-main.mjs` (entry) →
   `run-engine.mjs` (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),
   `run-waves.mjs` (clones-at-BASE + `withPatchCapture`), `confine-hook.mjs` (the implementer's

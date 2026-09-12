@@ -29,8 +29,10 @@ Machine clause it comes from:
       this exam recomputes from its own plain compile; and it exits 1 naming
       the first fixture on stderr both when a compile exits non-zero and when a
       compile's JSON lacks any of the three keys.
-  (g) [M5] the census's thirteen lines for the BASE compiler equal its thirteen
-      lines for this tree's compiler — the Proof's `Run:` bullet, run here.
+  (g) [M5] the census lists the same thirteen fixtures for the BASE compiler as
+      for this tree's, and each fixture's three output keys digest the same at
+      BASE as here once the entry keys added since BASE are removed (today:
+      `factsheet`, #913) — the Proof's `Run:` bullet, run here.
 
 Leg (c) is a survival leg: it passes at BASE and must keep passing. Every other
 leg is red at BASE, where the advisory tier is still in the compiler and the
@@ -354,6 +356,31 @@ def base_compiler(tmp_path_factory):
     return path
 
 
+# The keys added to a `launch_waves` entry AFTER this exam's BASE, each by its
+# own task and pinned by its own exam: `factsheet` (#913,
+# `tests/test_compile_plan_factsheet.py`). Leg (g)'s question is whether a
+# fixture's compiled output otherwise moved, so the comparison is taken with
+# these removed — a BASE compiler that never emitted them cannot be asked about
+# them, and every other byte of the three keys is still compared.
+KEYS_ADDED_SINCE_BASE = ("factsheet",)
+
+
+def _stripped_digest(compiler, plan):
+    """The digest leg (g) compares: leg (f)'s three output keys with the
+    post-BASE entry keys removed from every `launch_waves` entry."""
+    p = _run([compiler, plan])
+    assert p.returncode == 0, (
+        "leg (g) [M5]: the exam's own plain compile of %s must succeed before "
+        "its digest can be compared; stderr:\n%s" % (plan, _text(p.stderr)))
+    compiled = json.loads(p.stdout)
+    launch_waves = [[{k: v for k, v in e.items()
+                      if k not in KEYS_ADDED_SINCE_BASE} for e in wave]
+                    for wave in compiled["launch_waves"]]
+    payload = json.dumps([compiled["waves"], compiled["dag_edges"],
+                          launch_waves], sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def test_the_census_over_base_and_this_tree_is_the_same_thirteen_lines(
         base_compiler):
     base = _census(base_compiler)
@@ -369,11 +396,18 @@ def test_the_census_over_base_and_this_tree_is_the_same_thirteen_lines(
     assert len(base_lines) == 13 and len(new_lines) == 13, (
         "leg (g) [M5]: both listings are thirteen lines long — BASE %d, this "
         "tree %d" % (len(base_lines), len(new_lines)))
-    differing = [(b, n) for b, n in zip(base_lines, new_lines) if b != n]
-    assert differing == [], (
+    assert [line.split(" ")[0] for line in base_lines] == \
+           [line.split(" ")[0] for line in new_lines], (
+        "leg (g) [M5]: both listings name the same thirteen fixtures in the "
+        "same order — base %s, tree %s" % (base_lines, new_lines))
+    differing = {}
+    for plan, name in zip(FIXTURE_PLANS, FIXTURE_NAMES):
+        at_base = _stripped_digest(base_compiler, plan)
+        here = _stripped_digest(COMPILER, plan)
+        if at_base != here:
+            differing[name] = (at_base, here)
+    assert differing == {}, (
         "leg (g) [M5]: every fixture compiles to the same waves, dag_edges and "
-        "launch_waves it did at BASE (%s) — these lines differ (base, tree): %s"
-        % (BASE_SHA[:7], differing))
-    assert base_lines == new_lines, (
-        "leg (g) [M5]: the two listings are identical — base %s, tree %s"
-        % (base_lines, new_lines))
+        "launch_waves it did at BASE (%s), the entry keys added since (%s) "
+        "aside — these differ (base, tree): %s"
+        % (BASE_SHA[:7], ", ".join(KEYS_ADDED_SINCE_BASE), differing))

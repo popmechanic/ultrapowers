@@ -167,6 +167,38 @@ two targets' objects on one VM name two repositories, which the edge routes
 apart. A target with no `gh-<owner>-<repo>` object is a launch refusal, public
 or not — a public repo would clone from github.com but could not publish.
 
+**6. `kata` — the hub.** One persistent VM, `kata-hub`, running the kata issue
+daemon, plus the one `http-proxy --peer` integration every sandbox reaches it
+through. Built by one command, which is idempotent — on a built hub it prints
+`kata-hub already built` and issues no verb, and on a half-built one it resumes:
+
+```bash
+node fleet/kata-hub.mjs
+```
+
+It issues three mutating verbs and nothing else: `new --name kata-hub --cpu 1
+--memory 2GB --disk 20GB` with the rendered setup script on stdin and no tag at
+all, `share port kata-hub 8000`, and
+
+```bash
+ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --policy 'tag:fleet'"
+```
+
+with a freshly minted 32-byte bearer on stdin. `<https_url>` is read off the
+`kata-hub` row of `ls kata-hub --json`, never guessed from the VM name. It then
+waits for first boot, delivers `/var/lib/kata/config.toml` and
+`/etc/kata/kata.env` (`root:exedev`, 0640) over ssh, restarts the unit, waits
+for `systemctl is-active kata.service` to answer `active`, and only then writes
+`~/.ultrapowers/kata-hub.env` at mode 0600 with `KATA_URL` and `KATA_TOKEN`.
+The hub carries no tag, so the janitor's `fleet-r*` never lists it; its comment
+says so a second time. Its 1 vCPU and 2 GB come out of the same pool step 2
+measures. Never `cp` the hub, or any fleet VM, without `--copy-tags=false`:
+`cp --copy-tags` is on by default, so the copy inherits `tag:fleet` and with it
+every credential the policy grants. Never prune the `peer-kata` ssh key
+`--peer` generates: it is how a sandbox reaches the hub, and it goes when the
+integration goes. A wrong policy is repaired by the same two-step as step 5,
+never by `integrations attach`.
+
 ## Per run
 
 ```bash
