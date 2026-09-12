@@ -15,9 +15,9 @@
  *       without kata`, makes no kata request and passes no `--kata`.
  *   M2  with the file, directly after `prepare_evidence` and before
  *       `check_engine`, the boot pings
- *       `http://kata.int.exe.xyz/api/v1/ping` with `--max-time 10 --retry 3
+ *       `https://kata.int.exe.xyz/api/v1/ping` with `--max-time 10 --retry 3
  *       --retry-delay 2 --retry-connrefused`; a non-zero exit sets `ERROR` to
- *       exactly `parked: kata unreachable at http://kata.int.exe.xyz (curl exit
+ *       exactly `parked: kata unreachable at https://kata.int.exe.xyz (curl exit
  *       <n>)`, writes the page `parked` with phase `kata unreachable`, commits
  *       and pushes the evidence with subject `run-7: parked — kata unreachable`,
  *       records the tags, notifies `run-7 parked`, and exits 0 with no engine
@@ -89,7 +89,7 @@ import {
 // ── the literals of the hub ──────────────────────────────────────────────────
 
 /** The script constant the task pins, spelled once here and nowhere else. */
-const KATA_URL = 'http://kata.int.exe.xyz'
+const KATA_URL = 'https://kata.int.exe.xyz'
 const PING_URL = `${KATA_URL}/api/v1/ping`
 /** The project the fixture's `project.id` names. */
 const PROJECT_ID = 42

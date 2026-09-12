@@ -93,7 +93,7 @@ const traceIndexOfComment = (trace, nth) => {
 // The record `fleet/launch.mjs` writes (task 4's shape): the project, the run
 // issue, and one issue per task with the revision the launcher last saw.
 const recordFor = (tasks) => ({
-  url: 'http://kata.int.exe.xyz',
+  url: 'https://kata.int.exe.xyz',
   project: { id: 7, uid: 'PROJ0', name: 'ultra-sim' },
   run: { uid: 'RUN0', revision: 1 },
   tasks,
