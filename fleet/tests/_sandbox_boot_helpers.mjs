@@ -74,6 +74,12 @@ export const ENGINE_EVENT_LINE =
   `{"kind":"engine:phase","phase":"gate","id":"${ENGINE_EVENT_ID}","ts":1}\n`
 /** The plan's path inside the plan commit's tree. */
 export const PLAN_PATH = '.ultrapowers/plan.md'
+/** The run's kata record inside that same commit, when the launcher made one. */
+export const KATA_PATH = '.ultrapowers/kata.json'
+/** The hub's address the boot script defaults to — the literal a case reads back
+ *  off the ping's argv. `FLEET_KATA_URL` overrides it; nothing in `bootEnv`
+ *  does, so a boot that asks the hub anything asks it here. */
+export const KATA_URL = 'http://kata.int.exe.xyz'
 
 // M3's two links, spelled the way the PR body has to spell them: the two tags
 // the run creates at publish, never the branches those tags were cut from.
@@ -206,13 +212,22 @@ export const STUBS = {
   // `-w '\\n%{http_code}'` makes real curl print.
   curl: `
 argv "curl" "$@"
-url=""; payload=""; prev=""; method=GET
+url=""; payload=""; prev=""; method=GET; out=""
 for a in "$@"; do
-  case "$a" in https://*) url="$a" ;; esac
+  # \`http://\` as well as \`https://\`: the kata hub is reached over plain http
+  # inside the fleet's network, and a dispatcher that only saw https URLs would
+  # answer every kata request with UNKNOWN.
+  case "$a" in https://*|http://*) url="$a" ;; esac
   [ "$prev" = "-d" ] && payload="$a"
   [ "$prev" = "-X" ] && method="$a"
+  # \`-o <file>\`: the kata export asks for each page in a file rather than on
+  # stdout, so the arms that answer it have to honour the flag the way curl
+  # does. \`emit\` below is what does it.
+  [ "$prev" = "-o" ] && out="$a"
   prev="$a"
 done
+# One answer, to the file the caller named or to stdout when it named none.
+emit() { if [ -n "$out" ]; then printf '%s\\n' "$1" >"$out"; else printf '%s\\n' "$1"; fi; }
 bump() {
   f="$FLEET_HOME/stub/$1"; n=0
   [ -f "$f" ] && n=$(cat "$f")
@@ -329,6 +344,45 @@ case "$url" in
       *)
         printf '{"five_hour":{"utilization":1,"resets_at":"x"},"seven_day":{"utilization":1,"resets_at":"x"}}\\n200\\n' ;;
     esac ;;
+  *kata.int.exe.xyz/api/v1/ping)
+    # THE HUB, ASKED ONCE, before the engine. STUB_KATA_PING_EXIT is the curl
+    # exit a case wants the boot to see — the daemon that is not there.
+    say "curl kata ping"
+    emit '{"ok":true,"service":"kata","version":"0.17.2"}'
+    exit \${STUB_KATA_PING_EXIT:-0} ;;
+  *kata.int.exe.xyz/api/v1/projects/*/issues*)
+    # The export's first request. STUB_KATA_ISSUES is the answer;
+    # STUB_KATA_ISSUES_EXIT is the curl exit it fails with FROM ITS
+    # STUB_KATA_ISSUES_EXIT_FROM-th call on (default the second), because
+    # \`collect_evidence\` exports at every transition and a case that asks what a
+    # failed export does to an already-written record needs the first one to
+    # have succeeded. \`STUB_KATA_ISSUES_EXIT_FROM=1\` fails every call.
+    n=$(bump kata-issues)
+    say "curl kata issues"
+    issues="\${STUB_KATA_ISSUES:-}"
+    [ -n "$issues" ] || issues='{"issues":[]}'
+    emit "$issues"
+    [ "$n" -ge "\${STUB_KATA_ISSUES_EXIT_FROM:-2}" ] && exit \${STUB_KATA_ISSUES_EXIT:-0}
+    exit 0 ;;
+  *kata.int.exe.xyz/api/v1/projects/*/events*)
+    # STATELESS, AND KEYED ON THE URL: \`after_id=0\` is answered with
+    # STUB_KATA_EVENTS and every other cursor with the empty page at the cursor
+    # it was asked about. Each export pages from zero on its own, so a boot that
+    # follows \`next_after_id\` makes exactly two calls per export and one that
+    # ignores it, re-asks \`after_id=0\` or never stops makes a different count.
+    after="\${url##*after_id=}"; after="\${after%%'&'*}"
+    say "curl kata events $after"
+    # The \`&\` is QUOTED in both the pattern and the trim above: \`/bin/sh\` is
+    # dash here, and a bare \`&\` inside a case pattern is a syntax error there.
+    case "$url" in
+      *'after_id=0&'*)
+        events="\${STUB_KATA_EVENTS:-}"
+        [ -n "$events" ] || events='{"events":[],"next_after_id":0,"reset_required":false}'
+        emit "$events" ;;
+      *)
+        emit "{\\"events\\":[],\\"next_after_id\\":$after,\\"reset_required\\":false}" ;;
+    esac
+    exit \${STUB_KATA_EVENTS_EXIT:-0} ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
 esac
 `,
@@ -435,9 +489,20 @@ case "$verb" in
         [ -f "$FLEET_HOME/stub/plan-extra" ] && cat "$FLEET_HOME/stub/plan-extra"
         exit 0 ;;
       *:.ultrapowers/gate-verdicts.json) printf '{"tasks":{"1":{"verdict":"pass"}},"tally":{"tasks":1}}\\n'; exit 0 ;;
+      *:.ultrapowers/kata.json)
+        # STUB_KATA_JSON VERBATIM, no trailing newline of the stub's own: the
+        # landed \`run-7.kata.json\` has to be byte-equal to what the plan commit
+        # carried, so this prints the bytes the case gave and nothing else.
+        printf '%s' "$STUB_KATA_JSON"; exit 0 ;;
     esac
     exit 0 ;;
   cat-file)
+    # \`cat-file -e <plan>:.ultrapowers/kata.json\`: the record is on the branch
+    # only when the case gave one, which is what makes every sim that asks for
+    # no kata take the boot's "proceeds without kata" branch.
+    case "$a2" in
+      *:.ultrapowers/kata.json) [ -n "\${STUB_KATA_JSON:-}" ] || exit 1; exit 0 ;;
+    esac
     # \`cat-file -e <plan>:.ultrapowers/gate-verdicts.json\`: the record is on the
     # branch unless the case says otherwise.
     [ -n "\${STUB_NO_VERDICTS:-}" ] && exit 1
@@ -1088,6 +1153,35 @@ export const updateRefs = (ctx) => gitLog(ctx).filter((a) => verbOf(a) === 'upda
 export const leasePushes = (ctx) =>
   gitLog(ctx).filter((a) => a.some((s) => s.startsWith('--force-with-lease=')))
 export const leaseOf = (a) => a.find((s) => s.startsWith('--force-with-lease='))?.slice(19)
+
+// ── reading the hub's record ─────────────────────────────────────────────────
+//
+// Two files and one stream. `run-7.kata.json` is what the boot read off the
+// plan commit — the path the engine's `--kata` pair carries — and `kata.jsonl`
+// on the evidence branch is what the export wrote back. The kata URLs are read
+// off the recorded curl argv, so a leg can count an export's pages and see
+// which cursors it followed.
+
+/** Where the boot lands the plan commit's `.ultrapowers/kata.json`. */
+export const kataPlanFile = (ctx) => path.join(ctx.home, 'plans', 'run-7.kata.json')
+/** Its bytes as the boot wrote them, or '' when the run landed none. */
+export const kataPlanRaw = (ctx) => {
+  const f = kataPlanFile(ctx)
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
+}
+/** The evidence branch's `kata.jsonl`, or '' when the run exported none. */
+export const kataJsonlFile = (ctx) => path.join(ctx.home, 'evidence', RUN_PATH, 'kata.jsonl')
+export const kataJsonlRaw = (ctx) => {
+  const f = kataJsonlFile(ctx)
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''
+}
+/** Its lines, in file order — every issue, then the event log. */
+export const kataJsonl = (ctx) => lines(kataJsonlRaw(ctx))
+/** Every kata URL this run asked for, in order. */
+export const kataUrls = (ctx) =>
+  argvLines(ctx, 'curl')
+    .map((a) => a.find((s) => s.startsWith(KATA_URL)))
+    .filter(Boolean)
 
 // ── reading the git log ──────────────────────────────────────────────────────
 

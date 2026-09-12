@@ -124,6 +124,14 @@ REFLECTION_URL="https://reflection.int.exe.xyz"
 NOTIFY_URL="https://notify.int.exe.xyz/"
 GITHUB_INT_HOST="github.int.exe.xyz"
 ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
+# The kata daemon, behind the hub's exe.dev auth proxy. The request carries no
+# bearer of its own: the edge injects the peer key, which is the whole reason a
+# sandbox that holds no kata token at all can still be answered, and the daemon
+# sees the hub's own host as `Host`, which is what kata's `public_origin` check
+# needs. `FLEET_KATA_URL` exists for the same reason `FLEET_RENDER_ENV` does —
+# so a sim can pin the address inside its own home — and the literal is the
+# production value.
+KATA_URL="${FLEET_KATA_URL:-http://kata.int.exe.xyz}"
 # The plan's path inside the plan commit's tree, and the run's directory inside
 # the evidence commit's. Both are `.ultrapowers/`, never `.claude/`.
 PLAN_BLOB_PATH=".ultrapowers/plan.md"
@@ -132,6 +140,15 @@ PLAN_BLOB_PATH=".ultrapowers/plan.md"
 # name `<plan-stem>.gate-verdicts.json` — so it lands next to the plan under
 # that name, and a plan branch without one is a legacy-grammar plan, not a fault.
 VERDICTS_BLOB_PATH=".ultrapowers/gate-verdicts.json"
+# The run's kata record, when the launcher made one: the project the run's state
+# lives in, pushed on the plan branch beside the plan itself. A plan branch
+# without one is a run that proceeds without kata, not a fault — so the read is
+# the verdicts record's read exactly, and its absence is a log line.
+KATA_BLOB_PATH=".ultrapowers/kata.json"
+# The hub's own record, beside the engine's, inside the run's directory on the
+# evidence branch: one JSON object per line, `kind` first — `issue` for every
+# issue of the run's project, `event` for every envelope of its event log.
+KATA_EXPORT_FILE="kata.jsonl"
 # The residual ledger's name inside the run's directory on the evidence branch:
 # one JSON object per residual, written beside the two documents it is read
 # from. The run's residuals leave the box on the record and nowhere else.
@@ -182,6 +199,11 @@ PLAN_BRANCH=""
 EVIDENCE_BRANCH=""
 EVIDENCE_PATH=""
 PLAN_FILE=""
+# Where the run's kata record landed, or EMPTY when the plan commit carried
+# none. Set by `prepare_plan`, and the one test three later steps make: the
+# ping, the engine's `--kata` pair and the export all read it, so a run without
+# the file makes no kata request at all.
+KATA_FILE=""
 VM_NAME=""
 VM_EMAIL=""
 STARTED_AT=""
@@ -717,6 +739,57 @@ prepare_plan() {
   else
     log "plan: $PLAN_SHA carries no $VERDICTS_BLOB_PATH (a legacy-grammar plan)"
   fi
+  # THE THIRD READ OF THAT SHAPE, and the one thing that decides whether this
+  # run has a hub at all: the record names the project the engine holds its run
+  # state in. Absent is an answer — the run proceeds without kata, makes no
+  # kata request, and hands the engine no `--kata`.
+  if fleet_git -C "$TARGET_DIR" cat-file -e "$PLAN_SHA:$KATA_BLOB_PATH" 2>/dev/null; then
+    KATA_FILE="${PLAN_FILE%.md}.kata.json"
+    fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$KATA_BLOB_PATH" >"$KATA_FILE" \
+      || fail "plan: $PLAN_SHA carries $KATA_BLOB_PATH but it could not be read"
+    log "plan: kata -> $KATA_FILE"
+  else
+    KATA_FILE=""
+    log "plan: $PLAN_SHA carries no $KATA_BLOB_PATH — the run proceeds without kata"
+  fi
+}
+
+# --- the hub, asked once -----------------------------------------------------
+#
+# ONE REQUEST, BEFORE THE ENGINE, and only for a run that has a kata record.
+# The engine holds this run's state in the hub from its first wave on, so a hub
+# this box cannot reach is not a degradation to discover task by task — it is a
+# run that cannot be held, and the operator is owed the reason at boot rather
+# than a wave of workers whose every write was refused.
+#
+# THE RETRIES ARE THE POINT (Shelley's review). A single try turns one hub
+# hiccup — a `systemctl restart`, the two-second `Restart=on-failure` window —
+# into every sandbox of a wave parking at once, which is the one failure mode
+# worse than the one this guards. `--retry-connrefused` is what makes a refused
+# connection retryable at all; curl otherwise treats it as final.
+#
+# NO BEARER RIDES THIS REQUEST. The hub's exe.dev auth proxy injects the peer
+# key at the edge, and the Host the daemon sees is the hub's own — which is what
+# kata's `public_origin` check needs. This box holds no kata token to leak.
+kata_ping() {
+  local code=0
+  [ -n "$KATA_FILE" ] || return 0
+  fleet_curl -fsS --max-time 10 --retry 3 --retry-delay 2 --retry-connrefused \
+    "$KATA_URL/api/v1/ping" >/dev/null 2>&1 || code=$?
+  if [ "$code" = 0 ]; then
+    log "kata: $KATA_URL answered its ping"
+    return 0
+  fi
+  # The `ahead = 0` park's shape exactly: the page, the record, the tags, the
+  # notify, and exit 0 — no engine unit, no PR. A run that never started is
+  # parked, not failed.
+  ERROR="parked: kata unreachable at $KATA_URL (curl exit $code)"
+  write_status parked "kata unreachable"
+  collect_evidence
+  push_evidence "$RUN_ID: parked — kata unreachable"
+  record_tags
+  notify "run-$RUN_N parked" "$TARGET_REPO — $ERROR"
+  exit 0
 }
 
 # --- the evidence worktree ---------------------------------------------------
@@ -1052,10 +1125,14 @@ bearer_probe() {
 # their headroom. A service inherits neither cwd nor environment from here, so
 # the cwd is a property and the child's variables ride in its own argv.
 run_engine() {
-  local code=0 refresher="" knobs=()
+  local code=0 refresher="" knobs=() kata=()
   # The three optional knobs as ARRAY elements: `${VAR:+--flag "$VAR"}` splits
   # on whitespace, and an argv this script builds must never depend on a
   # value's shape to stay one word.
+  # The kata pair is one of them, and it rides DIRECTLY AFTER `--repo`: the
+  # engine's run state lives in the hub named by that file, and a run whose plan
+  # commit carried none is handed no `--kata` at all rather than an empty one.
+  [ -n "$KATA_FILE" ] && kata+=(--kata "$KATA_FILE")
   [ -n "$TIER" ] && knobs+=(--tier "$TIER")
   [ -n "$OVERLAP" ] && knobs+=(--overlap "$OVERLAP")
   [ -n "$EFFORT" ] && knobs+=(--implementer-effort "$EFFORT")
@@ -1090,6 +1167,7 @@ run_engine() {
       "TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-}" \
       node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
       "$PLAN_FILE" "$RUN_ID" --repo "$TARGET_DIR" \
+      ${kata[@]+"${kata[@]}"} \
       ${knobs[@]+"${knobs[@]}"} \
     2>&1 | tee -a "$ENGINE_LOG" >>"$BOOT_LOG"
   # The ENGINE's status, not `tee`'s — a pipeline's exit code is its last
@@ -1157,6 +1235,133 @@ evidence_lock() {
 
 evidence_unlock() { rmdir "$EVIDENCE_LOCK" 2>/dev/null || true; }
 
+# THE HUB'S RECORD, BESIDE THE ENGINE'S. The issues and the event log of the
+# run's kata project, one JSON object per line with `kind` first, written at
+# every transition so the branch carries the hub's account of the run even
+# after the project itself is archived.
+#
+# PAGED FROM ZERO EVERY TIME, because this runs at every transition and each
+# export is a whole file: the walk starts at `after_id=0` and follows each
+# answer's `next_after_id` until an answer's `events` is empty. Nothing here
+# remembers a cursor between exports.
+#
+# TEMPORARY NAME, THEN A MOVE, and a fetch that fails leaves the previous file
+# exactly as it was: a half-written record on the branch would be worse than
+# last transition's whole one, and the hub being briefly unreachable is not a
+# reason to lose what was already exported.
+#
+# The project id is read with `python3` and never with `json_field`: it is an
+# integer nested under `project`, and `json_field` answers the first
+# `"name": "value"` string match in the document — which here would be some
+# other field entirely.
+kata_export() {
+  local dest project tmpdir tmp code page=0 answer count next pages=()
+  # The first endpoint's last segment, named once instead of written inline:
+  # the retired-name check in `fleet/tests/test_sandbox_boot_residuals.mjs`
+  # forbids that bare slash-prefixed token anywhere in this file, and what it
+  # retired was the GitHub filing this boot no longer does — a different
+  # endpoint on a different host. The URL curl is handed is unchanged.
+  local open="issues"
+  [ -n "$KATA_FILE" ] && [ -f "$KATA_FILE" ] || return 0
+  dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
+  project="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["project"]["id"])' \
+    "$KATA_FILE" 2>/dev/null || true)"
+  if [ -z "$project" ]; then
+    log "kata: $KATA_FILE names no project.id — nothing to export"
+    return 0
+  fi
+  mkdir -p "$dest"
+  # Inside the destination, so the `mv` below is a rename on one filesystem,
+  # and named for this shell — the refresher that also commits the record is a
+  # subshell of a script that can be started again on the same box.
+  tmpdir="$dest/.kata-export.$$"
+  rm -rf "$tmpdir"
+  mkdir -p "$tmpdir"
+  code=0
+  fleet_curl -fsS --max-time 30 \
+    "$KATA_URL/api/v1/projects/$project/$open?limit=1000" -o "$tmpdir/$open.json" || code=$?
+  if [ "$code" != 0 ]; then
+    rm -rf "$tmpdir"
+    log "kata: export failed (curl exit $code) — previous $KATA_EXPORT_FILE kept"
+    return 0
+  fi
+  next=0
+  while :; do
+    page=$(( page + 1 ))
+    code=0
+    fleet_curl -fsS --max-time 30 \
+      "$KATA_URL/api/v1/projects/$project/events?after_id=$next&limit=1000" \
+      -o "$tmpdir/events-$page.json" || code=$?
+    if [ "$code" != 0 ]; then
+      rm -rf "$tmpdir"
+      log "kata: export failed (curl exit $code) — previous $KATA_EXPORT_FILE kept"
+      return 0
+    fi
+    # `<count> <next_after_id>` off the page itself. An unreadable answer is
+    # counted as empty, which ends the walk with what the earlier pages held.
+    answer="$(kata_page_head "$tmpdir/events-$page.json")"
+    count="${answer%% *}"
+    next="${answer##* }"
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    case "$next" in ''|*[!0-9]*) next=0 ;; esac
+    # AN EMPTY PAGE ENDS THE WALK and contributes no line — it is the answer
+    # that says the log is exhausted, not a page of it.
+    [ "$count" = 0 ] && break
+    pages+=("$tmpdir/events-$page.json")
+  done
+  tmp="$tmpdir/$KATA_EXPORT_FILE"
+  code=0
+  kata_assemble "$tmpdir/$open.json" ${pages[@]+"${pages[@]}"} >"$tmp" || code=$?
+  if [ "$code" != 0 ]; then
+    rm -rf "$tmpdir"
+    log "kata: export failed (the hub's answer did not read) — previous $KATA_EXPORT_FILE kept"
+    return 0
+  fi
+  mv "$tmp" "$dest/$KATA_EXPORT_FILE"
+  rm -rf "$tmpdir"
+}
+
+# One page's `<count of events> <next_after_id>`, or `0 0` for an answer that
+# does not read as one.
+kata_page_head() { # $1 = a page of the events endpoint
+  python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        doc = json.load(fh)
+except Exception:
+    print("0 0")
+    raise SystemExit(0)
+rows = doc.get("events") if isinstance(doc, dict) else doc
+rows = rows if isinstance(rows, list) else []
+after = doc.get("next_after_id") if isinstance(doc, dict) else 0
+print("%d %d" % (len(rows), after if isinstance(after, int) else 0))
+' "$1" 2>/dev/null || printf '0 0\n'
+}
+
+# The record itself: every issue, then every event, `kind` first and the
+# object's own fields spread after it, one compact line each.
+kata_assemble() { # $1 = the issues answer; $2.. = the event pages, in order
+  python3 -c '
+import json, sys
+
+def rows(path, key):
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    got = doc.get(key) if isinstance(doc, dict) else doc
+    return got if isinstance(got, list) else []
+
+out = []
+for row in rows(sys.argv[1], "issues"):
+    out.append({"kind": "issue", **row})
+for page in sys.argv[2:]:
+    for row in rows(page, "events"):
+        out.append({"kind": "event", **row})
+for row in out:
+    print(json.dumps(row, separators=(",", ":"), ensure_ascii=False))
+' "$@"
+}
+
 collect_evidence() {
   local dest receipt approve run_dir f rel rows
   dest="$EVIDENCE_DIR/$EVIDENCE_PATH"
@@ -1175,6 +1380,9 @@ collect_evidence() {
   for f in report.json events.jsonl receipt.json standing-approval.json; do
     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
   done
+  # The HUB's record, beside the engine's own log. A run with no kata record
+  # exports nothing and writes no file.
+  kata_export
   # The engine's per-worker transcripts — the reduced records ultralearn's
   # readers slice, and the only trace of what a worker actually did that
   # outlives the box. Copied FILE BY FILE, never `cp -R` of the directory: this
@@ -2842,6 +3050,10 @@ do_boot() {
   clone_target
   prepare_plan
   prepare_evidence
+  # AFTER the evidence worktree and BEFORE the engine's deps: the park this can
+  # make needs a branch to write its reason onto, and nothing beyond it is worth
+  # installing for a run that cannot be held.
+  kata_ping
   check_engine
 
   if engine_already_ran; then
