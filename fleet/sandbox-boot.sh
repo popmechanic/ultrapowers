@@ -1421,11 +1421,26 @@ collect_evidence() {
   # a parked run that opens no PR still commits it.
   #
   # NO ITEM, NO FILE — an absent ledger is a run that left nothing, not a run
-  # that was never read — and a file an earlier transition wrote is left as it
-  # was: the items only grow, so re-reading the same record rewrites the same
-  # bytes and appends nothing.
+  # that was never read — and a file an earlier transition wrote is APPENDED
+  # TO, never rewritten (#883): the ledger is the union of every transition's
+  # rows — the existing lines first, in their order, then only the new lines
+  # the file does not already carry, compared whole. A row an earlier report
+  # carried and a later one does not — a task the engine re-ran, a report a
+  # repair round shrank — stays on the record, and re-reading the same record
+  # adds nothing. Built in a sibling file and moved over, so the file is never
+  # read as its own pattern list while it is being written.
   rows="$(residual_rows || true)"
-  if [ -n "$rows" ]; then printf '%s\n' "$rows" >"$dest/$RESIDUALS_FILE"; fi
+  if [ -n "$rows" ]; then
+    if [ -s "$dest/$RESIDUALS_FILE" ]; then
+      {
+        cat "$dest/$RESIDUALS_FILE"
+        printf '%s\n' "$rows" | grep -vxF -f "$dest/$RESIDUALS_FILE" || true
+      } >"$dest/$RESIDUALS_FILE.tmp"
+      mv "$dest/$RESIDUALS_FILE.tmp" "$dest/$RESIDUALS_FILE"
+    else
+      printf '%s\n' "$rows" >"$dest/$RESIDUALS_FILE"
+    fi
+  fi
   cp "$STATUS_FILE" "$dest/status.json" 2>/dev/null || true
   log "evidence: $(ls "$dest" | tr '\n' ' ')"
 }

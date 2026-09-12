@@ -254,6 +254,10 @@ const SHASUMS_FIXTURE = `${'7'.repeat(64)}  ${NODE_TARBALL}`
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-script-'))
 let caseNo = 0
+/** One environment for every `bash -n` this file runs (#890): a syntax check
+ *  writes nothing, so every parse shares one `fleet-sim-*` dir. The renders
+ *  themselves keep `scriptEnv`, pinned under each case's own home. */
+const SYNTAX_ENV = simEnv()
 
 function makeCase() {
   caseNo += 1
@@ -299,7 +303,7 @@ function makeCase() {
 function plant(ctx, text) {
   fs.writeFileSync(ctx.script, text)
   fs.chmodSync(ctx.script, 0o755)
-  const syntax = spawnSync('bash', ['-n', ctx.script], { encoding: 'utf8', env: simEnv() })
+  const syntax = spawnSync('bash', ['-n', ctx.script], { encoding: 'utf8', env: SYNTAX_ENV })
   assert.equal(syntax.status, 0, `the render must parse before it is run:\n${syntax.stderr}`)
 }
 
@@ -417,7 +421,7 @@ test('(a) [M1] the render for run 70 fits 10240 bytes and passes bash -n', () =>
   for (const run of ['1', RUN, OTHER_RUN, '999999']) {
     const f = path.join(tmpRoot, `syntax-${run}.sh`)
     fs.writeFileSync(f, renderSetupScript({ run, bootstrap: files.bootstrap, unit: files.unit }))
-    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8', env: simEnv() })
+    const r = spawnSync('bash', ['-n', f], { encoding: 'utf8', env: SYNTAX_ENV })
     assert.equal(r.status, 0, `bash -n failed for run=${run}:\n${r.stderr}`)
   }
 })
