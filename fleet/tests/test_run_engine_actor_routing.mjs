@@ -265,10 +265,10 @@ const T1_TEST = 't1_test.sh'
 const IMPOSSIBLE_EXAM = '#!/bin/bash\n[ "$(cat a.txt)" = "impossible" ]\n'
 // The ordinary exam beside it: red at BASE, green once the implementer wrote.
 const REACHABLE_EXAM = '#!/bin/bash\n[ "$(cat a.txt)" = "implemented" ]\n'
-// The Context's parking concern, verbatim — it matches
-// /^plan-defect:[\s\S]*\([a-z]\)/ because it names its leg by label.
+// The Context's parking concern, verbatim — it matches `legCannotPass`
+// because it names its leg by label AND says the leg cannot pass (#944).
 const PARK_CONCERN = 'plan-defect: leg (a) asserts a.txt reads "impossible", ' +
-  'which no implementation of this task can produce'
+  'which no implementation of this task can produce — the leg cannot pass'
 // The same prefix with no leg label anywhere in it [M5].
 const UNLABELLED_CONCERN = 'plan-defect: the exam cannot pass on this fixture'
 const PARK_CALL = 'task T1: plan-defect against a Proof leg named by the implementer' +
@@ -544,6 +544,117 @@ const examConcernRun = ({ name, exam, concerns, sibling = false, fix = null, rev
     lines(t).map((l) => (l.startsWith('| `deferredVerification` |')
       ? l.split('actor').join('owner') : l)).join('\n')))), 0,
     '(h)/M8: a deferredVerification row that does not say `actor` exits non-zero')
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #944 — a red exam beside a leg-naming concern is re-run once before the park,
+// the concern has to SAY the leg cannot pass, and every `driver:exam-run` event
+// carries the exam's output tail. Found on ultraviz run-2 task 3: the red was a
+// one-off renderer failure and the concern cited `(a)` in a resolved-ambiguity
+// note; the pair parked a correct patch. Legs (a)–(d) of the issue's proofs.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const examEvents = (runDir) => {
+  const file = path.join(runDir, 'events.jsonl')
+  if (!fs.existsSync(file)) return []
+  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
+    .map((l) => { try { return JSON.parse(l) } catch { return null } })
+    .filter((e) => e && e.kind === 'driver:exam-run' && e.task === 'T1')
+}
+// The resolved-ambiguity note from the record: it cites `(a)` and says nothing
+// about the leg being unsatisfiable, so it is a disclosure, not a park.
+const NOTE_CONCERN = 'plan-defect: leg (a)/Context ambiguity over seed uids ' +
+  '(r<N>/t<N> vs r1/t1) — resolved as r1/t1; no leg asserts an issue cell'
+const allExamEvents = []
+
+// ── (a) red once, green on the re-run → review, no park ─────────────────────
+{
+  // Red at BASE (`base` pass), red on the FIRST pass-0 run, green on every run
+  // after it — the one-off failure the record showed, keyed on the pass so the
+  // examiner's own at-BASE probe does not consume the flip.
+  const marker = path.join(tmp, 'flaky-944a.marker')
+  const FLAKY_EXAM = '#!/bin/bash\n' +
+    '[ "$ULTRA_EXAM_PASS" = base ] && exit 1\n' +
+    'if [ ! -f "' + marker + '" ]; then touch "' + marker + '"; echo renderer-down; exit 1; fi\n' +
+    '[ "$(cat a.txt)" = "implemented" ]\n'
+  const r = examConcernRun({
+    name: 'ar944a', exam: FLAKY_EXAM, concerns: [PARK_CONCERN], review: passReview,
+  })
+  const report = await r.run()
+  assert.deepEqual(r.forT1(), ['exam:T1', 'impl:T1', 'review:T1:1'],
+    '(a) #944: a red-then-green exam beside a cannot-pass concern buys no fix round and no ' +
+    'park — the task proceeds to review: ' + r.calls.join(','))
+  const evs = examEvents(r.runDir)
+  allExamEvents.push(...evs)
+  assert.deepEqual(evs.map((e) => [e.exit, e.iter, e.rerun === true, e.flaky === true]),
+    [[1, 0, false, false], [0, 0, true, true]],
+    '(a) #944: exactly two exam runs at iter 0 — the pass\'s red, then the driver\'s re-run ' +
+    'marked `rerun: true` and, being green, `flaky: true`: ' + JSON.stringify(evs))
+  assert.equal(evs[0].stdout.trim(), 'renderer-down',
+    '(a) #944: the first event carries the red\'s output: ' + JSON.stringify(evs[0]))
+  const row = report.tasks.find((t) => t.task === 'T1')
+  assert.equal(row.status, 'done', '(a) #944: a PASS review ends `done`: ' + JSON.stringify(row))
+  assert.notEqual(row.reviewVerdict, 'plan-defect', '(a) #944: no plan-defect verdict')
+  assert.equal('actor' in row, false, '(a) #944: no `actor` key: ' + JSON.stringify(row))
+  assert.equal(row.proofFixes, 0, '(a) #944: no repair round was bought: ' + JSON.stringify(row))
+  assert.deepEqual(report.deferredVerification, [],
+    '(a) #944: nothing is deferred to the gate: ' + JSON.stringify(report.deferredVerification))
+  assert.ok(report.judgmentCalls.some((j) => j.startsWith('task T1: the exam was red once and green on the driver\'s re-run')),
+    '(a) #944: one judgment call records the flaky read: ' + JSON.stringify(report.judgmentCalls))
+}
+
+// ── (b) red twice beside the cannot-pass concern → the park, after ONE re-run ─
+{
+  const r = examConcernRun({
+    name: 'ar944b', exam: IMPOSSIBLE_EXAM, concerns: [PARK_CONCERN],
+  })
+  const report = await r.run()
+  assert.deepEqual(r.forT1(), ['exam:T1', 'impl:T1'],
+    '(b) #944: red twice — no fix round, no referee: ' + r.calls.join(','))
+  const row = report.tasks.find((t) => t.task === 'T1')
+  assert.equal(row.reviewVerdict, 'plan-defect', '(b) #944: parked: ' + JSON.stringify(row))
+  assert.equal(row.actor, 'plan', '(b) #944: actor plan: ' + JSON.stringify(row))
+  assert.equal(row.proofFixes, 0, '(b) #944: no fix round: ' + JSON.stringify(row))
+  const evs = examEvents(r.runDir)
+  allExamEvents.push(...evs)
+  assert.deepEqual(evs.map((e) => [e.exit, e.iter, e.rerun === true, 'flaky' in e]),
+    [[1, 0, false, false], [1, 0, true, false]],
+    '(b) #944: exactly two exam runs — the pass and one re-run, both red, neither flaky: ' +
+    JSON.stringify(evs))
+}
+
+// ── (c) red twice beside a concern that only CITES `(a)` → the ordinary repair round
+// ── (d) every `driver:exam-run` carries `stdout`, cut to 4,000 characters ─────
+{
+  // Red and loud: 6,000 characters of output, so the cap is measured.
+  const LOUD_EXAM = '#!/bin/bash\nhead -c 6000 /dev/zero | tr "\\0" x\nexit 1\n'
+  const r = examConcernRun({
+    name: 'ar944c', exam: LOUD_EXAM, concerns: [NOTE_CONCERN],
+    fix: (cwd) => fs.writeFileSync(path.join(cwd, 'a.txt'), 'repaired\n'),
+  })
+  const report = await r.run()
+  assert.deepEqual(r.calls.filter((l) => l.startsWith('fix:')), ['fix:T1:0'],
+    '(c) #944: a `plan-defect:` that cites `(a)` without saying the leg cannot pass is not ' +
+    'a park — the pre-review repair round is dispatched: ' + r.calls.join(','))
+  const row = report.tasks.find((t) => t.task === 'T1')
+  assert.equal('actor' in row, false, '(c) #944: no `actor` key: ' + JSON.stringify(row))
+  assert.equal(row.reviewVerdict, 'proof-red',
+    '(c) #944: the ordinary lane runs to its end: ' + JSON.stringify(row))
+  const evs = examEvents(r.runDir)
+  allExamEvents.push(...evs)
+  assert.deepEqual(evs.map((e) => [e.exit, e.iter, 'rerun' in e]), [[1, 0, false], [1, 0, false]],
+    '(c) #944: the pass and the post-fix pass, no re-run — a re-run is bought only beside a ' +
+    'cannot-pass concern: ' + JSON.stringify(evs.map((e) => [e.exit, e.iter, e.rerun])))
+  for (const e of evs) {
+    assert.equal(e.stdout.length, 4000,
+      '(d) #944: a 6,000-character exam output is cut to 4,000 on the event: ' + e.stdout.length)
+  }
+  assert.ok(allExamEvents.length >= 6, '(d) #944 precondition: events were collected')
+  for (const e of allExamEvents) {
+    assert.equal(typeof e.stdout, 'string',
+      '(d) #944: every driver:exam-run event carries `stdout`: ' + JSON.stringify(e))
+    assert.ok(e.stdout.length <= 4000, '(d) #944: never above 4,000 characters')
+  }
 }
 
 console.log('ALL TESTS PASSED')
