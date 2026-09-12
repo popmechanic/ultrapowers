@@ -59,7 +59,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
     contents are the exam's own output copied file by file — is there on the same terms, present
     when the exams wrote it.
-    `residuals.jsonl` — one JSON object per residual, present when the run had one:
+    `residuals.jsonl` — one JSON object per residual, present when the run had one, and a union
+    across transitions — a row an earlier transition recorded stays when a later report no longer
+    carries it, and no row is written twice:
     `{run, task, file, line, kind, text, sha}`, `kind` one of `nit`, `unverified`, `deferred`,
     `structural`. It is the same items the PR body lists, on the record rather than in a page a
     merge closes; append-only, and a run that left nothing writes no file.

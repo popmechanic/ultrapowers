@@ -155,9 +155,18 @@ def test_fleet_mjs(path):
     # measured the numbers above. A wall only a little over an honest runtime
     # reports a slow box as a broken suite; this one is a deadlock catcher,
     # not a budget.
-    r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT, env=sim_env())
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "ALL TESTS PASSED" in r.stdout
+    # The sim's environment is bound once, because its `HOME` is the
+    # `fleet-bridge-*` directory this call has to remove when the sim is done
+    # (#890): a suite of a hundred sims left a hundred of them under the tmpdir
+    # for good. `finally`, so a red sim and a timed-out one are reaped too;
+    # `ignore_errors`, so a dir a sim already removed is not a second failure.
+    env = sim_env()
+    try:
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT, env=env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "ALL TESTS PASSED" in r.stdout
+    finally:
+        shutil.rmtree(env["HOME"], ignore_errors=True)
 
 
 def test_fleet_has_tests():

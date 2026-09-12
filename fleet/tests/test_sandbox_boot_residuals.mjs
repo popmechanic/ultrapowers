@@ -54,7 +54,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   BASE_SHA, DEFAULT_REPORT, PLAN_LINK, RUN_DIR_PATH, RUN_PATH,
-  makeHome, boot, prPosts, evidenceDir, targetDir,
+  makeHome, boot, bootAsync, prPosts, evidenceDir, targetDir, runDir, eventsFile, committed,
   argvLines, statusOf, stream,
   runTests,
 } from './_sandbox_boot_helpers.mjs'
@@ -812,6 +812,110 @@ test('`tests/test_docs_agree_with_code.py` names the two new literals and none o
       `no line of \`tests/test_docs_agree_with_code.py\` may carry \`${name}\`, and these do:\n`
         + carrying.join('\n'))
   }
+})
+
+// ── (h) the ledger is a union across transitions  [#883 / #892 item 1] ───────
+//
+// `collect_evidence` runs at every transition and reads the report AS IT IS
+// THEN. A report that shrinks between two transitions — a task's row present at
+// the first, absent at the second — must leave the earlier row in the file: the
+// ledger is existing lines first, then only the lines it does not already
+// carry. The boot is HELD (`STUB_ENGINE_HOLD`) after the stub engine has
+// written its full report; the refresher commits evidence at every new event
+// line (`FLEET_COMMIT_EVENTS=1`), so appending one line to the run dir's
+// `events.jsonl` is one transition, and the report is rewritten between two of
+// them. The release then lets the run finish `publishing → done`, two more
+// transitions over the shrunk report.
+
+/** Two done tasks, two reviewer pieces — two rows.  [transition 1] */
+const SHRINK_REPORT_FULL = '{"stamp":"run-7","tasks":['
+  + '{"task":"1","status":"done","notes":"H1 the row that goes missing"},'
+  + '{"task":"2","status":"done","notes":"H2 the row that stays"}'
+  + ']}'
+/** The same report less task 1 — one row.  [transition 2 onward] */
+const SHRINK_REPORT_LATER = '{"stamp":"run-7","tasks":['
+  + '{"task":"2","status":"done","notes":"H2 the row that stays"}'
+  + ']}'
+const SHRINK_TEXTS = ['H1 the row that goes missing', 'H2 the row that stays']
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Poll `cond` every 50 ms, up to `cap` polls; fail early once the boot has exited. */
+async function pollFor(what, cond, over, cap = 400) {
+  for (let i = 0; i < cap; i += 1) {
+    try {
+      if (cond()) return
+    } catch {
+      // not yet
+    }
+    const r = over()
+    if (r) throw new Error(`${what}\n  the boot exited (status ${r.status}) before it held:\n${r.stdout}${r.stderr}`)
+    await sleep(50)
+  }
+  throw new Error(`${what}\n  not after ${cap} polls`)
+}
+
+/** The rows of `<evidence>/…/residuals.jsonl` for a context, or null when absent. */
+const rowsAt = (ctx) => {
+  const f = path.join(evidenceDir(ctx), RUN_PATH, ROWS_NAME)
+  if (!fs.existsSync(f)) return null
+  return fs.readFileSync(f, 'utf8').split('\n').filter((l) => l !== '').map((l) => JSON.parse(l))
+}
+
+test('a report that shrinks between two transitions leaves the earlier row in the file — existing lines first, nothing twice  [#883 / leg (h)]', async () => {
+  const ctx = makeHome()
+  let over = null
+  const run = bootAsync(ctx, ['boot'], {
+    STUB_ENGINE_HOLD: '1',
+    FLEET_STATUS_INTERVAL: '0.25',
+    FLEET_COMMIT_EVENTS: '1',
+    STUB_GATE_RECEIPT: VERIFY_GATE_RECEIPT,
+    STUB_REPORT: SHRINK_REPORT_FULL,
+  }).then((r) => { over = r; return r })
+  const release = () => fs.writeFileSync(path.join(ctx.home, 'stub', 'engine-release'), '')
+  const reportFile = path.join(runDir(ctx), 'report.json')
+  const tick = (n) => fs.appendFileSync(eventsFile(ctx),
+    `{"kind":"engine:phase","phase":"wave ${n}","id":"000000000${n}0000000000000000","ts":${n}}\n`)
+  try {
+    // The held engine has written its full report.
+    await pollFor('the stub engine writes the full report and holds',
+      () => fs.readFileSync(reportFile, 'utf8').includes('"task":"1"'), () => over)
+
+    // Each transition is awaited as its COMMIT, counted before the tick that
+    // earns it: `collect_evidence` copies the report before it writes the
+    // ledger, and the commit follows both, so a poll on a file could read the
+    // new report beside the old ledger, and a count taken after a tick could
+    // be satisfied by the previous transition's commit landing late.
+    const transition = async (what, n) => {
+      const before = committed(ctx).length
+      tick(n)
+      await pollFor(what, () => committed(ctx).length > before, () => over)
+    }
+
+    // Transition 1: one new event line, one commit, two rows.
+    await transition('transition 1 commits the two-row ledger', 2)
+    assert.deepEqual(cells(rowsAt(ctx) || [], 'text'), SHRINK_TEXTS,
+      `after transition 1 the ledger holds the two rows in report order:\n${showRows(rowsAt(ctx) || [])}`)
+
+    // The report shrinks: task 1's row is gone from what the next transition reads.
+    fs.writeFileSync(reportFile, `${SHRINK_REPORT_LATER}\n`)
+    await transition('transition 2 commits over the shrunk report', 3)
+    assert.ok(!fs.readFileSync(path.join(evidenceDir(ctx), RUN_PATH, 'report.json'), 'utf8').includes('H1'),
+      'the premise: the report the second transition copied onto the record no longer carries H1')
+    assert.deepEqual(cells(rowsAt(ctx), 'text'), SHRINK_TEXTS,
+      `after transition 2 — the report now carrying only H2 — the ledger still holds H1 first, then H2, and nothing twice:\n${showRows(rowsAt(ctx))}`)
+  } finally {
+    release()
+  }
+  const r = await run
+  assert.equal(r.status, 0, `the boot did not exit 0\n${r.stdout}${r.stderr}`)
+
+  // The run finished — `publishing`, `done`, each a transition over the shrunk
+  // report — and the record still carries both rows, once each.
+  const rows = rowsAt(ctx)
+  assert.deepEqual(cells(rows, 'text'), SHRINK_TEXTS,
+    `at the end of the run the ledger is exactly the union, existing first:\n${showRows(rows)}`)
+  assert.deepEqual(cells(rows, 'task'), ['1', '2'], 'and each row still names its task')
 })
 
 runTests(tests)
