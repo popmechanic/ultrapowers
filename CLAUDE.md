@@ -87,8 +87,9 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   transition (tagged `ultra/evidence/run-<N>` at publish), and pushes `ultra/integration-run-<N>` and opens its own PR over REST with
   `prAuthor` recorded. The PR is the gate; there is no grant step. `claude-token.mjs` owns the
   credential (loom-style OAuth on the laptop, refresh token in the keychain, refreshed before every
-  launch, single-flight — #602); `janitor.mjs` reads each fleet VM's comment and the target's
-  evidence branch through `gh api`, never a VM's disk; `target.mjs` creates the per-target
+  launch, single-flight — #602); `janitor.mjs` reads each fleet VM's comment and asks the hub for
+  the run issue's state (#938), reading the target's evidence through `gh api` only when the hub
+  is dark, never a VM's disk; `target.mjs` creates the per-target
   integration; `doctor.mjs` says which of its nine rows is missing. The engine itself is untouched
   by the lift (#402): `run-main.mjs` (entry) →
   `run-engine.mjs` (deterministic waves), `run-worker.mjs` (`agent()` backed by one `claude -p`),

@@ -159,7 +159,7 @@ const legAExec = () => makeExec({
 // ── (a) the reap, and only the reap [M1] ────────────────────────────────────
 {
   const exec = legAExec()
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(ghPrLines(exec), [],
     '(a)/M1 a done run whose status page carries a pr URL gets no `gh pr` command of any kind — no view, no merge: the pull request is the sandbox\'s to merge')
@@ -212,7 +212,7 @@ const legAExec = () => makeExec({
 
   // --dry-run reads the same fleet and mutates nothing.
   const dry = legAExec()
-  const dryResult = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
+  const dryResult = await janitor({ kata: null, argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(dry.mutating(), [],
     '(a)/M1 --dry-run over the same fleet issues no rm')
@@ -317,7 +317,7 @@ const ghLines = (exec) => ghArgvs(exec).map((argv) => argv.join(' '))
 // ── (1a) the row with the comment is kept, and the fleet around it is not ───
 {
   const exec = execFor(FLEET_1A, PAGES_1A)
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(result.kept, [KEPT_ENTRY],
     `(1a)/M1 the row whose comment contains \`do not reap\` is answered in a new \`kept\` array as { vm, comment }: ${JSON.stringify([KEPT_ENTRY])}`)
@@ -353,7 +353,7 @@ const ghLines = (exec) => ghArgvs(exec).map((argv) => argv.join(' '))
 
   // --dry-run keeps the row the same way, and still removes nothing.
   const dry = execFor(FLEET_1A, PAGES_1A)
-  const dryResult = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
+  const dryResult = await janitor({ kata: null, argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(dryResult.kept, [KEPT_ENTRY],
     '(1a)/M1 --dry-run over the same fleet answers the same `kept`')
@@ -371,7 +371,7 @@ const ghLines = (exec) => ghArgvs(exec).map((argv) => argv.join(' '))
 // ── (1b) what `renderJanitor` prints for a kept row [M2] ────────────────────
 {
   const exec = execFor(FLEET_1A, PAGES_1A)
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   const lines = renderJanitor(result).split('\n')
   assert.equal(lines.length, 2,
@@ -400,7 +400,7 @@ const ghLines = (exec) => ghArgvs(exec).map((argv) => argv.join(' '))
     { ...PAGES_1A, [evidencePath(R5)]: stalePage },
     [vmRule(answer('', { code: 255, stderr: 'ssh: connect to host: Connection timed out' }))]
   )
-  const staleResult = await janitor({ argv: [], exec: staleExec, config: CONFIG, now: () => NOW })
+  const staleResult = await janitor({ kata: null, argv: [], exec: staleExec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(staleResult.kept, [KEPT_ENTRY],
     '(1b)/M2 the kept row is kept in this fleet too')

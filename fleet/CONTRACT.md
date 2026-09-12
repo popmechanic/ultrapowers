@@ -503,17 +503,38 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`.
 - **Janitor (`fleet/janitor.mjs`):** `ls 'fleet-r*' --json` → for each row, parse the VM's `comment` for
-  `run=` and `target=` → read `.ultrapowers/runs/<N>/status.json` on that target with `gh api`
-  (`gh api repos/<owner>/<repo>/contents/…?ref=…`) → `rm <vm> --json` for a run in
-  `done|parked|failed` whose `updatedAt` is older than 1 h. It reads the page at
-  the evidence tag `ultra/evidence/run-<N>` first, and at the branch `ultra/evidence-run-<N>`
-  only while the run is in flight or its sweep is pending; a run with no page at either ref is aged
-  from the plan tag `ultra/plan/run-<N>`'s commit and then the plan branch `ultra/plan-run-<N>`, and
-  the ref it read is named in the line it prints. A VM whose `comment` carries the substring
-  `do not reap` is never removed: the guard is decided on the raw comment before the assignment is
-  parsed, so no page is read for that row at all, and it is reported as `kept` instead. A VM whose run has had
-  no status update in 6 h is notified once. No ssh into any VM, no `created_at`, no clone. Run by
-  `fleet/launch.mjs` before every launch and by hand after a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
+  `run=` and `target=` → ask the hub for the run's state (#938): once per pass, on the first row that
+  needs it, `GET /api/v1/projects?limit=1000`, matched on `name` against the run's project
+  `<owner>-<repo>-run-<N>` (kata addresses a project by integer `id`; a name in the path is a 400),
+  then `GET /api/v1/projects/<id>/issues?limit=1000`, in which the run issue is the one whose
+  `metadata.run` is N — `status` `closed` is a finished run, its `closed_reason` (`done`|`wontfix`)
+  the state and its `closed_at` the age; `open` is a run in flight, aged from `updated_at` →
+  `rm <vm> --json` for a finished run older than 1 h. The hub is reached exactly as the launcher
+  reaches it, `fleet/kata-client.mjs`'s `sshTransport`: `ssh <KATA_URL host>` running `curl` against
+  `localhost:8000`, the bearer sourced from `/etc/kata/kata.env` ON the hub, the laptop's argv
+  carrying the literal `$KATA_AUTH_TOKEN` and never a token; `KATA_URL` is
+  `~/.ultrapowers/kata-hub.env`'s, and `fleet/launch.mjs` hands the janitor the client it already
+  built. A hub that cannot be read — the env file absent, ssh or curl failing, an answer that is not
+  one — darkens the pass at the first error: no further hub request is made, every row from there
+  is read from the target's evidence, `.ultrapowers/runs/<N>/status.json` with `gh api`
+  (`gh api repos/<owner>/<repo>/contents/…?ref=…`) at the evidence tag `ultra/evidence/run-<N>` first
+  and at the branch `ultra/evidence-run-<N>` only when the tag answered no envelope — the page's
+  `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) and `updatedAt`
+  standing in for the issue's — the result carries `hub: {host, dark}`, and the report opens with one
+  `hub <host> unreachable` line. A run the hub is up for but holds no project or run issue for is
+  read from the evidence the same way, row by row, without darkening the pass; a run with no record
+  anywhere is left alone, and no plan-tag or plan-branch read is issued for it. A VM whose `comment`
+  carries the substring `do not reap` is never removed: the guard is decided on the raw comment
+  before the assignment is parsed, so nothing is read for that row at all, and it is reported as
+  `kept` instead. A VM whose run has had no update in 6 h is notified once, the line naming where
+  the age was read (`kata:<project>`, or the evidence ref). A run the record says is in flight is
+  cross-checked at its unit (`ssh <ssh_dest> "… systemctl --user show fleet-run@<N>.service …"`, the
+  one ssh into a fleet VM); a dead unit is written as the death — the journal and the page as
+  `failed`, both `gh api -X PUT` on the evidence branch when it has a page, and, for a row the hub
+  answered, one `wontfix` close of the run issue under `Idempotency-Key janitor:run-<N>:death` with a
+  message of forty characters or more — and reaped an hour later by the ordinary rule. No
+  `created_at`, no clone, no `git`. Run by `fleet/launch.mjs` before every launch and by hand after
+  a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
   --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's
   `fleet-r*` never lists it, and the comment is the second lock. Its port is pinned by

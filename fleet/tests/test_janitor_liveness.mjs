@@ -254,7 +254,7 @@ const ALIVE = { ActiveState: 'active', SubState: 'running', Result: 'success', E
     ghRule({ evidence, plans: { [planPath(37)]: hoursAgo(3) } }),
     vmAnswers(Object.fromEntries(fleet.map((r) => [r.ssh_dest, () => answer(unitText(ALIVE))])))
   ])
-  await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(
     byDest(exec.vm()),
@@ -320,7 +320,7 @@ const deadExec = () => newExec([
 ])
 
 const wet = deadExec()
-const wetResult = await janitor({ argv: [], exec: wet, config: CONFIG, now: () => NOW })
+const wetResult = await janitor({ kata: null, argv: [], exec: wet, config: CONFIG, now: () => NOW })
 
 /** The page each status PUT carried, per run — leg (d)'s second pass reads it back. */
 const WRITTEN = {}
@@ -421,7 +421,7 @@ for (const { n, state, unit } of DEAD) {
     }),
     vmAnswers({ [dest(n)]: () => answer(unitText(DEAD[0].unit)) })
   ])
-  const reaped = await janitor({ argv: [], exec: later, config: CONFIG, now: () => laterBy(2) })
+  const reaped = await janitor({ kata: null, argv: [], exec: later, config: CONFIG, now: () => laterBy(2) })
 
   assert.deepEqual(later.mutating(), [`rm ${vm(n)} --json`],
     '(d)/M4 two hours on, the written `failed` page is older than --age and the row is removed by the ordinary rule')
@@ -463,7 +463,7 @@ for (const { n, state, unit } of DEAD) {
     }),
     vmAnswers(Object.fromEntries(CASES.map(({ n, reply }) => [dest(n), reply])))
   ])
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(ghCalls(exec).filter((c) => c.argv.includes('-X')).map((c) => c.line), [],
     '(e)/M5 a live unit, an unreadable unit and an empty answer each yield no gh api call carrying -X: nothing is written')
@@ -493,7 +493,7 @@ for (const { n, state, unit } of DEAD) {
 // ═══════════════════════════════════════════════════════════════════════════
 {
   const dry = deadExec()
-  const result = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(byDest(unitReads(dry)), byDest(unitReads(wet)),
     '(f)/M6 under --dry-run a dead unit draws the same unit read: a read is a read')

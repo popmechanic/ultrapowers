@@ -16,11 +16,12 @@
 //                  and NO `Authorization` header of any kind — the exe.dev edge
 //                  injects the bearer, so the sandbox holds no kata token and
 //                  no worker environment can leak one.
-//   sshTransport   the LAPTOP's. One `ssh <hub> curl …` per request, the bearer
-//                  sourced on the hub from `/etc/kata/kata.env` by the hub's own
-//                  shell. Shelley's review deleted the laptop-side token: no
-//                  secret is ever an argv here, so the remote string carries the
-//                  literal `$KATA_AUTH_TOKEN` and never its value.
+//   sshTransport   the LAPTOP's — the launcher's and the janitor's. One
+//                  `ssh <hub> curl …` per request, the bearer sourced on the hub
+//                  from `/etc/kata/kata.env` by the hub's own shell. Shelley's
+//                  review deleted the laptop-side token: no secret is ever an
+//                  argv here, so the remote string carries the literal
+//                  `$KATA_AUTH_TOKEN` and never its value.
 //
 // The module imports nothing (`node:` or otherwise) and reads no `process.env`:
 // everything it needs — the url, the ssh host, the exec seam, the fetch — is
@@ -240,6 +241,12 @@ export const makeKataClient = ({ transport, actor }) => {
                  body: { actor, reason, message, evidence, retry_protocol: 'close-v1' },
                  headers: idempotencyKey === undefined
                    ? {} : { 'Idempotency-Key': String(idempotencyKey) } }),
+
+    // The projects are addressed by integer `id` and nothing else — a name in
+    // the path is a 400 — so a reader that knows only a run's project NAME
+    // lists them and matches on `name` itself.
+    listProjects: () =>
+      send({ method: 'GET', path: API + '/projects?limit=1000' }),
 
     listIssues: (projectId) =>
       send({ method: 'GET', path: issuesPath(projectId) + '?limit=1000' }),
