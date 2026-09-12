@@ -116,7 +116,7 @@ import {
   statusUrlFor,
   vmNameFor
 } from './lobby.mjs'
-import { fleetConfigAccount, fleetConfigRender, verbDrift } from './doctor.mjs'
+import { fleetConfigAccount, fleetConfigRender, renderOf, verbDrift } from './doctor.mjs'
 import { makeKataClient, sshTransport } from './kata-client.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
@@ -156,7 +156,10 @@ const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
  * reason `ACCOUNT_NAME` is: the laptop refuses on the laptop what the renderer
  * would have thrown on, before a VM exists to throw it. The integration is an
  * exe.dev object name and reaches a proxy hostname; the account is a
- * Cloudflare account id and reaches a URL path segment.
+ * Cloudflare account id and reaches a URL path segment. They are applied to a
+ * pair `renderOf` has already answered — a `render` lacking either non-empty
+ * string is read as no renderer at all, the doctor's reading (#859), and never
+ * reaches these.
  */
 const RENDER_INTEGRATION_NAME = /^[a-z][a-z0-9-]*$/
 const RENDER_ACCOUNT_ID = /^[A-Za-z0-9_-]+$/
@@ -692,21 +695,28 @@ export async function launch ({
   // injected config's own `render`, else the file's — so an exam that hands
   // `launch` a config never reads the laptop's own. There is no `--render`; an
   // address the whole fleet shares is not a per-launch choice.
+  // Both branches are `renderOf`'s reading (the file's through
+  // `fleetConfigRender`, the injected object's directly): half a renderer —
+  // `{integration:"x"}`, an empty string in either slot, a non-object — is no
+  // renderer, here as in the doctor's `render` row and the setup script.
   const render = config === undefined || config === null
     ? await fleetConfigRender({ path: opts.config })
-    : (config.render ?? null)
+    : renderOf(config.render)
+  // The file the renderer was read from, named as the operator named it: the
+  // `--config` path when one was given, the laptop's own otherwise.
+  const configName = opts.config ?? '~/.ultrapowers/fleet.json'
   // A malformed `render` is refused here, beside `--account`'s own shape check
   // and before the checkout is read: nothing has been executed yet, so a laptop
   // that cannot spell its renderer has touched neither exe.dev nor the target.
   if (render !== null) {
-    if (!RENDER_INTEGRATION_NAME.test(String(render.integration))) {
+    if (!RENDER_INTEGRATION_NAME.test(render.integration)) {
       throw new Refusal(
-        `launch: render.integration must match ${RENDER_INTEGRATION_NAME.source}, got ${JSON.stringify(render.integration ?? null)}`
+        `launch: ${configName} render.integration must match ${RENDER_INTEGRATION_NAME.source}, got ${JSON.stringify(render.integration)}`
       )
     }
-    if (!RENDER_ACCOUNT_ID.test(String(render.account))) {
+    if (!RENDER_ACCOUNT_ID.test(render.account)) {
       throw new Refusal(
-        `launch: render.account must match ${RENDER_ACCOUNT_ID.source}, got ${JSON.stringify(render.account ?? null)}`
+        `launch: ${configName} render.account must match ${RENDER_ACCOUNT_ID.source}, got ${JSON.stringify(render.account)}`
       )
     }
   }
@@ -877,7 +887,7 @@ export async function launch ({
   // which is where the proxy object is built once per account.
   if (render !== null && !integrations.some((row) => row.name === render.integration)) {
     throw new Refusal(
-      `launch: ~/.ultrapowers/fleet.json names render.integration ${render.integration} but integrations list --json has no ${render.integration} — build it once per account: references/first-run.md §render`
+      `launch: ${configName} names render.integration ${render.integration} but integrations list --json has no ${render.integration} — build it once per account: references/first-run.md §render`
     )
   }
 

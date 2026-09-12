@@ -598,7 +598,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
 
   `memory` is `<int>GB` or `<int>G`; a bare number or a fractional `1.5GB` is unreadable. `account`
   is the keychain account the `accounts` row expects; `render` names the rendering integration the
-  `render` row reads and the account its proxy address carries, and its absence is not a red.
+  `render` row reads and the account its proxy address carries, and its absence is not a red. A
+  `render` lacking either non-empty string — `{"integration":"x"}`, an empty slot, a non-object —
+  is read as none by the doctor, the launcher and the setup script alike (`renderOf` in
+  `fleet/doctor.mjs`, the one reading): the `render` row says `not configured` and no address is
+  rendered. A well-formed pair whose strings do not fit the object-name or account-id shape is
+  refused by the launcher before anything runs.
 - **Logs without an env var:** `ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'`
   reads the run unit's journal by field match, so it needs no `XDG_RUNTIME_DIR` and no `--user`. The
   setup script's own output is `~/fleet-setup.log` on the VM.
