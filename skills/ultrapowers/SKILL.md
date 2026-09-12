@@ -190,8 +190,12 @@ approved plan, **is** the authorization to execute — no further approval pause
    and main has not moved off the tip it folded onto —
    `status.json`'s `merged` cell is the squash commit — and `--hold`
    on the launch line keeps it open for the operator; a draft PR is the
-   operator's to merge or close; a parked run is
-   acknowledged by marking it ready, or re-driven as a narrower plan. A parked
+   operator's to merge or close. That self-merge sentence is a gate-green
+   run's only: after a park the sandbox has exited and merges nothing, so a
+   parked run is acknowledged by the operator, by hand — mark the draft ready,
+   `gh pr update-branch <N>` when it is behind main (GitHub's strict rule
+   refuses a behind merge; this is a GitHub merge, not the kernel's fold),
+   then `gh pr merge --squash <N>` — or re-driven as a narrower plan. A parked
    run with nothing to publish opens no PR; its record is still pushed and
    still tagged `ultra/evidence/run-<N>`. The laptop never fetches a run
    branch.

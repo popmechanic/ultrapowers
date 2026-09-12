@@ -37,6 +37,12 @@ by rewording:
     reader of the boot script has to find declared somewhere;
   * the retired vocabulary of the pre-lift fleet appears in none of the four
     documents;
+  * no sentence in the skill, the runbook or the README says a parked run's
+    pull request merges by itself — after a park the sandbox has exited and
+    merges nothing (#864: two acked drafts sat behind main waiting for a merge
+    that was never coming), so every sentence that says ``parked`` and
+    ``merge`` names the hand that does it, and the skill's step 4 teaches
+    ``gh pr update-branch`` for the draft that is behind main;
   * ``validate_skill.py`` still accepts ``skills/ultrapowers``.
 
 Offline: reads committed files and runs one local Python script.
@@ -652,6 +658,46 @@ def test_no_document_names_a_retired_mechanism(document):
     found = [name for name in RETIRED if name in text]
     assert not found, (
         f"{document} still names retired fleet machinery: " + ", ".join(found)
+    )
+
+
+# ── a parked run is merged by hand ───────────────────────────────────────────
+
+# After a park the sandbox has exited: the self-merge sentence belongs to a
+# gate-green run only, and a parked run's draft is merged by the operator —
+# ready, `gh pr update-branch` when it is behind main, `gh pr merge`. A sentence
+# that puts `parked` and `merge` together without one of these words is telling
+# the operator to wait for a merge that will not come (#864).
+ACK_DOCUMENTS = (SKILL, RUNBOOK, README)
+ACK_WORDS = ("gh pr merge", "by hand", "the operator")
+UPDATE_BRANCH = "gh pr update-branch"
+SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n(?=\s*\|)")
+STEP_FOUR_RE = re.compile(r"^4\. \*\*.*?(?=^5\. \*\*)", re.M | re.S)
+
+
+def sentences(text):
+    return [" ".join(s.split()) for s in SENTENCE_RE.split(text) if s.strip()]
+
+
+@pytest.mark.parametrize("document", ACK_DOCUMENTS, ids=lambda p: p.name)
+def test_no_document_says_a_parked_run_merges_by_itself(document):
+    offending = [
+        s for s in sentences(read(document))
+        if "parked" in s.lower() and "merge" in s.lower()
+        and not any(word in s.lower() for word in ACK_WORDS)
+    ]
+    assert not offending, (
+        f"{document} has a sentence about a parked run's merge that names no "
+        f"hand to do it (one of {ACK_WORDS!r}):\n  " + "\n  ".join(offending)
+    )
+
+
+def test_the_skill_acks_a_parked_run_with_update_branch():
+    step = STEP_FOUR_RE.search(read(SKILL))
+    assert step, "SKILL.md §Client has no step 4"
+    assert UPDATE_BRANCH in step.group(0), (
+        f"SKILL.md step 4 does not teach `{UPDATE_BRANCH}` for a parked "
+        "run's draft that is behind main"
     )
 
 
