@@ -2131,23 +2131,6 @@ failing_block() { # $1 = the suite file
   ' "$1"
 }
 
-# Does this file carry a failing line at all? — exit 0 when it does, 1 when it
-# does not.
-#
-# `failing_block`'s fallback prints a file with no start line WHOLE. That is
-# right for the fold's `suite red` section, which is only ever handed a suite
-# that failed, and wrong for any caller that may be handed a GREEN log: there
-# the whole file would land in the cell it was quoting one block into. Such a
-# caller asks this first. The pattern is `failing_block`'s own start line and
-# the two must agree literal for literal, exactly as both agree with
-# `fleet/failing-block.mjs`'s `START`. POSIX awk only, for the same reasons.
-has_failing_block() { # $1 = the suite file
-  awk '
-    /^(___+ .+ ___+$|FAILED |FAIL[: ]|not ok |AssertionError)/ { found = 1; exit }
-    END { exit(found ? 0 : 1) }
-  ' "$1"
-}
-
 # The fold's section of the PR body, or nothing at all. It is the reader's only
 # account of what happened between the engine's commit and the head this PR
 # carries, so it appears whenever that account is not "it just folded": on any
