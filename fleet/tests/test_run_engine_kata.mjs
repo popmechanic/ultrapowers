@@ -25,11 +25,11 @@
 //            the prompts, the handoff and the branch; a stale recorded revision
 //            ends the run and claims nothing.
 //   (d) [M4] `patchMetadata` at the handoff re-capture and again after the fix
-//            round, each with the revision the last answer carried; a 412 ends
-//            the run.
+//            round, each with the revision the last answer carried; a 412 is a
+//            `kata:write-failed` event and the run goes on.
 //   (e) [M5] one `comment` per `driver:*` event, in append order, body for
 //            body, on the task's issue or the run's; drained before the close;
-//            a throwing post ends the run.
+//            a throwing post is a `kata:write-failed` event and the run goes on.
 //   (f) [M6] the four close shapes: MERGED `done`, TEST_FAILED `wontfix`, a row
 //            that is not `done` `wontfix`, and a task of a `SKIPPED` wave left
 //            open.
@@ -62,6 +62,7 @@ const eventLines = (runDir) => {
   return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
 }
 const parseLine = (l) => { try { return JSON.parse(l) } catch { return null } }
+const eventsOf = (runDir) => eventLines(runDir).map(parseLine).filter(Boolean)
 const driverLines = (runDir) =>
   eventLines(runDir).filter((l) => {
     const e = parseLine(l)
@@ -700,9 +701,11 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
   assert.equal(c.projectId, 7, '(f) [M6] close(project.id, uid, …)')
   assert.equal(c.opts.reason, 'done',
     '(f) [M6] a MERGED wave closes its mergeable rows with reason `done`')
-  assert.equal(c.opts.message, 'adopted in wave 1 (' + greenRow.reviewVerdict + ')',
-    '(f) [M6] message `adopted in wave 1 (<its reviewVerdict>)` — the row\'s own verdict, ' +
-    'which is ' + JSON.stringify(greenRow.reviewVerdict) + ' for a clean first round')
+  assert.ok(c.opts.message.startsWith('adopted in wave 1 (' + greenRow.reviewVerdict + '): ') &&
+    c.opts.message.includes(' — merged ' + green.report.waveMerges[0].headSha) &&
+    c.opts.message.length >= 40,
+    '(f) [M6] message `adopted in wave 1 (<its reviewVerdict>): <title> — merged <sha>` (kata ' +
+    'refuses a done close under 40 chars); got ' + JSON.stringify(c.opts.message))
   assert.deepEqual(c.opts.evidence, [
     { type: 'commit', sha: green.report.waveMerges[0].headSha },
     { type: 'test', command: entry().testCmd },
@@ -772,7 +775,7 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
     '(d) [M4] which is not the first patch\'s revision: every answer in between moved it')
 }
 
-// ══ (d) [M4] a 412 ends the run ════════════════════════════════════════════
+// ══ (d) [M4] a 412 at the patch is recorded, not fatal ═════════════════════
 {
   const stale = await scenario({
     waves: [[entry()]],
@@ -783,17 +786,18 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
       fs.writeFileSync(path.join(cwd, 'extra.txt'), 'also from T1\n')
       return doneImpl(cwd)
     },
-    expectReject: true,
   })
-  assert.ok(stale.error,
-    '(d) [M4] a KataError with status 412 at the patch ENDS the run, as M3\'s mismatch does; ' +
-    'the run finished instead: ' + JSON.stringify(stale.report && stale.report.tasks))
-  assert.ok(String((stale.error && stale.error.message) || stale.error).includes('412'),
-    '(d) [M4] with 412 in the thrown error; got: ' +
+  assert.ok(!stale.error, '(d) [M4] a 412 at the metadata patch no longer ends the run; threw: ' +
     String((stale.error && stale.error.message) || stale.error))
+  const row = stale.report.tasks.find((r) => r.task === 'T1')
+  assert.equal(row.status, 'done', '(d) [M4] the task still lands: ' + JSON.stringify(row))
+  const failed = eventsOf(stale.runDir).filter((e) => e.kind === 'kata:write-failed')
+  assert.ok(failed.length >= 1 && failed.every((e) => e.what === 'metadata' && e.status === 412),
+    '(d) [M4] every refused patch is one kata:write-failed event with status 412; got ' +
+    JSON.stringify(failed))
 }
 
-// ══ (e) [M5] a post that throws ends the run ═══════════════════════════════
+// ══ (e) [M5] a post that throws is recorded, not fatal ═════════════════════
 {
   const boom = await scenario({
     waves: [[entry()]],
@@ -804,14 +808,16 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
       fs.writeFileSync(path.join(cwd, 'extra.txt'), 'also from T1\n')
       return doneImpl(cwd)
     },
-    expectReject: true,
   })
-  assert.ok(boom.error,
-    '(e) [M5] a comment that throws once ENDS the run; it finished instead: ' +
-    JSON.stringify(boom.report && boom.report.tasks))
-  assert.ok(String((boom.error && boom.error.message) || boom.error).includes(COMMENT_BOOM),
-    '(e) [M5] with the KataError\'s message in the thrown error (expected ' + COMMENT_BOOM +
-    '); got: ' + String((boom.error && boom.error.message) || boom.error))
+  assert.ok(!boom.error, '(e) [M5] a comment that throws once no longer ends the run; threw: ' +
+    String((boom.error && boom.error.message) || boom.error))
+  const failed = eventsOf(boom.runDir).filter((e) => e.kind === 'kata:write-failed')
+  assert.equal(failed.length, 1, '(e) [M5] exactly one kata:write-failed event for the one throw; got ' +
+    JSON.stringify(failed))
+  assert.ok(String(failed[0].detail).includes(COMMENT_BOOM),
+    '(e) [M5] carrying the KataError\'s message; got ' + failed[0].detail)
+  assert.equal(boom.report.tasks.find((r) => r.task === 'T1').status, 'done',
+    '(e) [M5] and the task still lands')
 }
 
 // ══ (f) [M6] a blocked wave: wontfix here, nothing for the wave after ══════

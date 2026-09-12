@@ -232,6 +232,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     assignment's `plan=` or the run is `failed` — the plan a run executes is the plan the launcher
     signed. `.ultrapowers/plan.md` is read out of that commit into `/home/exedev/plans/run-N.md`,
     which is the path the engine's argv carries.
+  - kata writes are never the run's failure: a claim, comment, metadata patch or close the hub
+    refuses is one `kata:write-failed` event (`what`, `uid`, `detail`) on the record and the run
+    goes on (operator, 2026-09-11 — run-111 died green on a close-message length rule); the
+    boot's ping is the one hard kata gate, and a sheet whose revision disagrees at dispatch is the
+    one fatal read. A `done` close message carries the task title and the merge sha (kata wants
+    ≥40 characters).
   - kata: `.ultrapowers/kata.json` is read out of that same commit the same way, into
     `/home/exedev/plans/run-N.kata.json`. A plan commit that carries none is a run that proceeds
     without kata — no kata request is made and the engine is handed no `--kata`. With the file, and

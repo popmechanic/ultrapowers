@@ -1040,16 +1040,21 @@ export async function runEngine({
     return e
   }
   const isKataFatal = (e) => Boolean(e && e.kataFatal)
-  // Every hub call goes through here: the answered revision is recorded against
-  // the issue it belongs to, and a failure ends the run rather than leaving the
-  // hub and the driver disagreeing about a step that did not land.
+  // Every hub WRITE goes through here: the answered revision is recorded against
+  // the issue it belongs to. A failed write is recorded as a `kata:write-failed`
+  // event and the run goes on (operator, 2026-09-11, after run-111 died green
+  // on a 40-character close-message rule): the hub is the live view, the tag is
+  // the record, and the boot's ping is the one hard gate. Reads that disagree
+  // with the record (the sheet's revision at dispatch) stay fatal.
   const kataCall = async (what, uid, thunk) => {
     let answer
     try {
       answer = await thunk()
     } catch (e) {
       if (isKataFatal(e)) throw e
-      throw kataFatal('run-engine: kata-' + what + ' failed: ' + String((e && e.message) || e))
+      appendEvent({ kind: 'kata:write-failed', what, uid: uid || null,
+        detail: String((e && e.message) || e).slice(0, 600) })
+      return null
     }
     if (uid && answer && typeof answer.revision === 'number') kataRevisions.set(uid, answer.revision)
     return answer
@@ -1080,11 +1085,12 @@ export async function runEngine({
         { touched_files: patchPaths(patchFile) }, kataRevisions.get(row.uid))
       if (answer && typeof answer.revision === 'number') kataRevisions.set(row.uid, answer.revision)
     } catch (e) {
-      if (e && e.status === 412) {
-        throw kataFatal('run-engine: kata-revision-mismatch issue ' + row.uid +
-          ': If-Match rev-' + kataRevisions.get(row.uid) + ' was refused (412)')
-      }
-      throw kataFatal('run-engine: kata-metadata failed: ' + String((e && e.message) || e))
+      // A refused metadata write, a 412 included, is recorded and the run goes
+      // on: the sheet's own revision was checked at dispatch; a later mismatch
+      // on `touched_files` is a disagreement the export will show, not a park.
+      appendEvent({ kind: 'kata:write-failed', what: 'metadata', uid: row.uid,
+        status: (e && e.status) || null,
+        detail: String((e && e.message) || e).slice(0, 600) })
     }
   }
   // The last word on a task's issue. Once per task — the wave's own close wins
@@ -3189,9 +3195,12 @@ export async function runEngine({
       for (const r of mergeable) {
         const t = (Array.isArray(WAVES[w]) ? WAVES[w] : []).find((x) => x && x.id === r.task)
         const cmd = (t && typeof t.testCmd === 'string' && t.testCmd.trim()) ? t.testCmd : testCmd
+        // kata refuses a `done` close under 40 characters (run-111): the title
+        // and the merge sha make the message read on its own.
         await kataClose(r.task, {
           reason: 'done',
-          message: 'adopted in wave ' + (w + 1) + ' (' + r.reviewVerdict + ')',
+          message: 'adopted in wave ' + (w + 1) + ' (' + r.reviewVerdict + '): ' +
+            String((t && t.title) || ('task ' + r.task)) + ' — merged ' + String(merge.headSha),
           evidence: [{ type: 'commit', sha: merge.headSha },
                      { type: 'test', command: cmd }],
           idempotencyKey: stamp + ':' + r.task + ':close',
