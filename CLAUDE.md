@@ -148,7 +148,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   as assignment, credentials at the edge, a systemd template unit, git as the record — and 0.3.6
   collapsed the grant into one integration per target attached at launch. The `fleet` program
   continues as tickets #597 #598 #387 #513 #384 #383 #548 #601, with no map.
-- **Open maps:** #876 *Viz* (chartered 2026-09-10: a live model of the fleet the operator watches turn — `events.jsonl` rows + the `status.json` register as a projection, never a writer; the tag as replay; a TinyApp on the committed stack, the first reader of whatever #810/#814 pick as the store; tickets #877 serve the log + per-task cells → #878 grilling → #879 read-path research → #880 prototype as one of #867's three TinyApps; retires #866); #870 *The Suite as Sensor* (chartered 2026-09-09 after Böckeler's *TDD in the agent loop*: acceptance is exams + probes + state exams, the target's suite is a reported sensor with attribution, mutation is the meter, zero-catch tests are deleted behind the catch counter; tickets #871 grilling → #872 one-release experiment → #873 ratchet; its first form is #862's early off-path baseline); #810 *The Blackboard* (chartered 2026-09-09: where agents talk — a per-run TinyBase
+- **Open maps:** #876 *Viz* (chartered 2026-09-10: a live model of the fleet the operator watches turn — `events.jsonl` rows + the `status.json` register as a projection, never a writer; the tag as replay; a TinyApp on the committed stack that reads kata's event stream (#913) — #877 sensor and #878 grilling done, #866 closed into it 2026-09-11, next #880 the fleet index); #870 *The Suite as Sensor* (chartered 2026-09-09 after Böckeler's *TDD in the agent loop*: acceptance is exams + probes + state exams, the target's suite is a reported sensor with attribution, mutation is the meter, zero-catch tests are deleted behind the catch counter; three of four clauses shipped by 2026-09-11 — #893 the Acceptance default gone, #894/#895 the gate reads the record, #906/#907/#920 the ratchet and the tier cut; unbuilt: every peer exam has a mutant (#731); tickets #872 readings → #873 ratchet; absorbs #766 *The Exam Lifecycle*, closed reached 2026-09-11); #810 *The Blackboard* (chartered 2026-09-09: where agents talk — a per-run TinyBase
   tuple space of facts, never commands; row = evidence, cell = status, readiness = a fold at read
   time; the record as the scheduler; tickets #811 grilling first, #812 interface-handshake
   prototype, #813 readiness-fold research gated on an order-shuffled fold sim, #814 = #485's
@@ -156,18 +156,20 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>      # one 
   daemon with an append-only event stream — is the substrate, not a build of our own; prototype
   #913: a hub daemon reached through a peer integration by `tag:fleet`, the compiler writes each
   task's fact sheet at launch, the engine reads it, `kata export` rides the tag; the plan stays the
-  signed input and GitHub stays the public record); #727 *The Determinism Ratchet* (chartered
-  2026-09-07: a prose rule violated twice becomes a check; the referee reading of 2026-09-11 on
-  #911 — reviewers never escalated a referee finding, 3 of 3 terminal verdicts false — decided the
-  referee's deletion whole, plan in authoring; rule 4 cuts both ways: a check is kept only if the
-  record shows it raises what a model would not); #551 *Peer Review* — **CLOSED 2026-09-11 as reached** (#552–#556, #638, #642, #644 shipped; exams
+  signed input and GitHub stays the public record; #814 decided shape 3, #601 folds into #913, #812 stays
+  gated on #832 and lost its linker at #921); #727 *The Determinism Ratchet* (chartered
+  2026-09-07: a prose rule violated twice becomes a check; its first move A1, the mechanical referee, shipped at
+  #729 and was deleted whole at #921 on the reading in #911 — rule 4 in reverse; open moves A6 #728, B3 #730,
+  B1 #731, #888; the ratchet instrument has been read for no release yet); #551 *Peer Review* — **CLOSED 2026-09-11 as reached** (#552–#556, #638, #642, #644 shipped; exams
   recorded-and-reviewed, sealing retired; the pair question answered on #232: the second reviewer
   earns its keep; #526 stays an enhancement); #525 *The Verification
   Frontier* (review finds truth it cannot enforce — three generations of
   blocking-findings-that-could-not-block; tickets #518/#519/#232, experiment queue
   #511→#522→#462→#516, single novelty per run window; run-57 was the first run that did block,
   on a real defect); #414 *Experience Compiler* (run = event log, ledger = wiki, learning =
-  fold); #485 *The Record* — **CLOSED 2026-09-11 as superseded** by #810/#913 (finished record = the
+  fold; P1/P2 shipped, P3/P5/P7 unbuilt, closes as reached-what-the-record-licenses if #417 is not grilled by the
+  next release); #732 *Parallel Universes* — **parked 2026-09-11**, resumes on the next spec large enough to
+  race (#733); #485 *The Record* — **CLOSED 2026-09-11 as superseded** by #810/#913 (finished record = the
   two tags; live record = the kata daemon on the hub VM, #814 shape 3); #360 *The Merge Frontier* — **CLOSED 2026-09-11 as reached what the record
   licenses** (tier 2, the cross-run fold, shipped at #715; tier 1 shipped as shadow seeding only;
   every kernel-seen join after run-44 was line-disjoint; re-charter on the first publish fold with a
