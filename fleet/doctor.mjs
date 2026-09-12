@@ -269,9 +269,27 @@ export async function fleetConfigRender ({ path: configPath } = {}) {
     return null
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-  const render = parsed.render
-  if (!render || typeof render !== 'object' || Array.isArray(render)) return null
-  const { integration, account } = render
+  return renderOf(parsed.render)
+}
+
+/**
+ * THE ONE READING of a config's `render` value (#859): `{ integration, account }`
+ * when the value is a plain object whose two keys are both non-empty strings,
+ * and null for anything else — absent, null, a string, an array, `{}`, or half
+ * a pair (`{integration:"x"}`, `{integration:"x",account:""}`,
+ * `{integration:"",account:"a"}`). Half a renderer is no renderer.
+ *
+ * The doctor's `render` row, `fleet/launch.mjs` and `fleet/setup-script.mjs`
+ * all read through this one function, so a shape one of them called "none" can
+ * never reach another as a renderer: before it, the setup script coerced with
+ * `String()` and `{integration:"x"}` rendered an address ending in
+ * `accounts/undefined`. Whether a NON-EMPTY pair is well-formed (the exe.dev
+ * object-name and Cloudflare account-id shapes) is the launcher's and the setup
+ * script's own refusal, made on the strings this answers.
+ */
+export function renderOf (value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const { integration, account } = value
   if (typeof integration !== 'string' || integration === '') return null
   if (typeof account !== 'string' || account === '') return null
   return { integration, account }
@@ -852,16 +870,6 @@ function rendererRow (found, render) {
   return row('render', 'ok', `${name} carries the renderer at the edge for account ${render.account}`)
 }
 
-/** The `render` option as a row can use it: the `{ integration, account }` pair
- *  `fleetConfigRender` answers, or null for a fleet that names no renderer.
- *  Anything else is a file that names half a renderer, which names none. */
-function wantRender (render) {
-  if (!render || typeof render !== 'object') return null
-  const { integration, account } = render
-  if (typeof integration !== 'string' || integration === '') return null
-  return { integration, account: typeof account === 'string' ? account : '' }
-}
-
 // ── kata ─────────────────────────────────────────────────────────────────────
 
 /** The hub's VM, the integration that fronts it, and the one command that
@@ -957,7 +965,9 @@ export async function doctor ({
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
   const wantAccount = account === null || account === undefined ? null : String(account)
-  const renderer = wantRender(render)
+  // The `render` option as a row can use it — `renderOf`, the same reading
+  // `fleetConfigRender` and the launcher make: half a renderer is none.
+  const renderer = renderOf(render)
 
   const whoami = await run(READS.whoami)
   const billing = await run(READS.billing)

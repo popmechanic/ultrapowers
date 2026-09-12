@@ -20,6 +20,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { renderOf } from './doctor.mjs'
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 /** exe.dev's ceiling for a `--setup-script` payload. */
@@ -71,14 +73,21 @@ function heredocBody(tag, text) {
  * The address is the proxy's, so the box never learns the renderer's own host;
  * the file is 0644 because it carries an address and never a secret — the
  * bearer is injected at the edge. /etc/fleet/ is not on the image, hence -D.
+ *
+ * `render` is read through `renderOf`, the doctor's and the launcher's one
+ * reading (#859): a pair lacking either non-empty string is no renderer, so
+ * the step is empty for it — never an address ending in `accounts/undefined`,
+ * which is what `String()` on a missing account once rendered. The two shape
+ * rules below apply to the strings that reading answers.
  */
 function renderEnvStep(render) {
-  if (render === undefined || render === null) return ''
-  const { integration, account } = render
-  if (!RENDER_INTEGRATION_RE.test(String(integration))) {
+  const named = renderOf(render)
+  if (named === null) return ''
+  const { integration, account } = named
+  if (!RENDER_INTEGRATION_RE.test(integration)) {
     throw new Error(`render.integration must match ${RENDER_INTEGRATION_RE.source}`)
   }
-  if (!RENDER_ACCOUNT_RE.test(String(account))) {
+  if (!RENDER_ACCOUNT_RE.test(account)) {
     throw new Error(`render.account must match ${RENDER_ACCOUNT_RE.source}`)
   }
   const url = `https://${integration}.int.exe.xyz/client/v4/accounts/${account}/browser-rendering`
@@ -91,7 +100,7 @@ sudo -n install -D -m 0644 render.env /etc/fleet/render.env
 /**
  * The setup script for one run. `bootstrap` and `unit` are carried verbatim.
  * `render` is `{integration, account}` when a renderer is named, and null when
- * none is.
+ * none is — or any shape `renderOf` reads as none.
  */
 export function renderSetupScript({ run, bootstrap, unit, render = null }) {
   if (!/^[0-9]+$/.test(String(run))) throw new Error(`run must be digits, got ${run}`)

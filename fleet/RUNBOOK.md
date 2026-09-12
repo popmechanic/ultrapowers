@@ -356,7 +356,10 @@ That reading is why the unit is a `Type=exec` template and not a oneshot
 A park is a verdict, not a dead end. Which of the two shapes below applies is
 read off the finding, and both leave the parked branch where it is.
 
-**The finding is fixable.** Ack it and merge the run by hand: `gh pr ready <n>`,
+**The finding is fixable.** Ack it and merge the run by hand — the sandbox has
+exited, and nothing merges a parked run's PR but the operator: `gh pr ready <n>`,
+then `gh pr update-branch <n>` when the branch is behind main (GitHub's strict
+rule refuses a behind merge; this is a GitHub merge, not the kernel's fold),
 then `gh pr merge <n> --squash`. The finding is then fixed by its own run on
 main, a one-task plan whose Claim is the finding. That is the shape run-54 was
 re-driven by on 2026-09-08, as run-57: ready, squash-merge, then a plan for the

@@ -45,6 +45,7 @@ import { readFleetFiles, renderSetupScript } from '../setup-script.mjs'
 import {
   answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir, thrown
 } from './_lobby_helpers.mjs'
+import { RENDER_SHAPES } from './_helpers.mjs'
 
 const TARGET = 'popmechanic/smoke'
 /** The target's one GitHub integration — the object the launcher requires to exist. */
@@ -433,6 +434,73 @@ const listReads = (exec) => exec.lobby().filter((line) => line === 'integrations
     )
     ws.cleanup()
   }
+}
+
+// ── d2. [#859] the shared fixture set: half a renderer is no renderer ───────
+//
+// The same six shapes `test_doctor_render.mjs` and
+// `test_setup_script_render_env.mjs` loop, read here through an injected
+// config: a shape `renderOf` answers null for launches with no renderer at all
+// (`result.render` null, no render.env in the stdin script — never an address
+// ending in `accounts/undefined`), and the one well-formed pair is read as a
+// renderer, which this account's listing lacks, so it is refused BY NAME.
+for (const { label, value, answer } of RENDER_SHAPES) {
+  const ws = workspace()
+  if (answer === null) {
+    const { result, exec } = await launchWith(ws, { config: { ...CONFIG, render: value } })
+    assert.equal(result.render, null, `(d2) [#859] ${label} launches with render null`)
+    assert.equal(newLines(exec).length, 1, `(d2) [#859] ${label} still issues its one \`new\``)
+    const script = String(newCallOf(exec).options?.input ?? '')
+    assert.ok(!script.includes('render.env'), `(d2) [#859] ${label}: the stdin script says nothing of render.env`)
+    assert.ok(!script.includes('accounts/undefined'), `(d2) [#859] ${label}: no accounts/undefined address is ever rendered`)
+  } else {
+    const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+    const error = await thrown(() => launch({
+      argv: argvFor(ws),
+      exec,
+      config: { ...CONFIG, render: value },
+      now: () => NOW,
+      sleep: async () => {},
+      refreshCredential: refreshSpy()
+    }))
+    assert.ok(error instanceof Refusal, `(d2) [#859] ${label} is read as a renderer this listing lacks, and refused; got ${error?.message}`)
+    assert.ok(
+      error.message.includes(`render.integration ${answer.integration}`),
+      `(d2) [#859] ${label} is refused by the integration's name; got ${JSON.stringify(error.message)}`
+    )
+  }
+  ws.cleanup()
+}
+
+// ── d3. [#859] the refusal names the configured file, not the laptop's ──────
+{
+  // With `--config <path>` the message about a renderer the listing lacks names
+  // that path; with no flag it names `~/.ultrapowers/fleet.json`.
+  const ws = workspace()
+  const file = configFile(ws, { ...CONFIG, render: { ...RENDER } })
+  const flagged = await thrown(() => launch({
+    argv: argvFor(ws, ['--config', file]),
+    exec: makeExec({ rules: readRules({ repo: ws.repo, integrations: LISTING_WITHOUT_RENDER }) }),
+    config: null,
+    now: () => NOW,
+    sleep: async () => {},
+    refreshCredential: refreshSpy(),
+    kata: null
+  }))
+  assert.ok(flagged instanceof Refusal, `(d3) [#859] a --config naming an absent renderer is refused; got ${flagged?.message}`)
+  assert.ok(flagged.message.includes(file), `(d3) [#859] and the refusal names the --config path; got ${JSON.stringify(flagged.message)}`)
+  assert.ok(!flagged.message.includes('~/.ultrapowers/fleet.json'), `(d3) [#859] not the laptop's own; got ${JSON.stringify(flagged.message)}`)
+  const bare = await thrown(() => launch({
+    argv: argvFor(ws),
+    exec: makeExec({ rules: readRules({ repo: ws.repo, integrations: LISTING_WITHOUT_RENDER }) }),
+    config: { ...CONFIG, render: { ...RENDER } },
+    now: () => NOW,
+    sleep: async () => {},
+    refreshCredential: refreshSpy()
+  }))
+  assert.ok(bare instanceof Refusal, `(d3) [#859] the same renderer with no --config is refused too`)
+  assert.ok(bare.message.includes('~/.ultrapowers/fleet.json'), `(d3) [#859] and names ~/.ultrapowers/fleet.json; got ${JSON.stringify(bare.message)}`)
+  ws.cleanup()
 }
 
 // ── e. [M4] the renderer is the config file's, never a flag ─────────────────

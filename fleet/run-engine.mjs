@@ -480,7 +480,7 @@ export const stateExamBlock = (rows) => {
     'killed, so duty 5 is settled for the exam file(s) named below and for nothing else — the ' +
     'implementer\'s own tests stay under duty 5.' +
     rows.map((r) => '\n- ' + r.exam + ': mutant ' +
-      String((r.mutant_path || r.path || '')) + ' killed: true').join('')
+      String(r.mutant_path || '') + ' killed: true').join('')
 }
 // ── #887 — the join: which paths two of a wave's tasks both touched ──────────
 //

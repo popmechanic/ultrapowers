@@ -75,9 +75,11 @@ Object inside a sandbox is #764's question, not this page's.
 
 Every `**Review:** peer` task of a TinyApp plan names one `*.test.ts` state exam
 as a Proof `Test:` path — a `lean` task may carry one, and no other task type
-owes one. The exam is a single Bun test. Hand an examiner this shape, verbatim,
-in Context; the examiner receives no library docs and writes the file from the
-task text alone:
+owes one. The exam is a single Bun test. The `tinyapp-exam` it imports is
+`packages/tinyapp-exam` of popmechanic/tinyapp-fixture, copied into each target
+per plan (its own tests stay in the fixture) until it is published as a package.
+Hand an examiner this shape, verbatim, in Context; the examiner receives no
+library docs and writes the file from the task text alone:
 
 ```ts
 import { stateExam } from "tinyapp-exam";
