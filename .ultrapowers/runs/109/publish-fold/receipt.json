@@ -33,7 +33,8 @@
           "result": "fail"
         }
       ],
-      "checkRetries": 0
+      "checkRetries": 0,
+      "pushedHead": "1bae043d48db43b60a8207888578579a11c1fa40"
     }
   }
 }
