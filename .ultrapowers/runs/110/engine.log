@@ -1,0 +1,24 @@
+Running as unit: fleet-engine-110.service
+run-main: preflight
+run-main: tiers — 1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: kata — record /home/exedev/plans/run-110.kata.json → http://kata.int.exe.xyz
+run-main: provision — BASE c80279f37d67b8436edec4cff7b2a602a0383a99; 1 task clone(s) + integration
+run-main: engine — waves 1, width bound 12, patch input armed
+run-main: engine-crashed — Error: run-engine: kata-claim failed: kata: POST /api/v1/projects/2/issues/01M29HQTCDDR3T8NW0B299T9S9/actions/claim answered 404: 404 page not found
+
+    at kataFatal (file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-engine.mjs:1038:15)
+    at kataCall (file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-engine.mjs:1052:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async runTaskInner (file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-engine.mjs:1831:7)
+    at async runTask (file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-engine.mjs:2493:14)
+    at async file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-main.mjs:481:20
+    at async Promise.all (index 0)
+    at async file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-main.mjs:484:3
+    at async runEngine (file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-engine.mjs:2956:28)
+    at async runMain (file:///home/exedev/engines/c80279f37d67b8436edec4cff7b2a602a0383a99/fleet/run-main.mjs:709:14)
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 2.350s
+CPU time consumed: 5.884s
+Memory peak: 304.7M
+Memory swap peak: 0B
