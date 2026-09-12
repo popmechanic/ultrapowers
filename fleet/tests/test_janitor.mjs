@@ -1,46 +1,48 @@
 /**
- * fleet/tests/test_janitor.mjs — the janitor reads a finished run by its tag.
+ * fleet/tests/test_janitor.mjs — the janitor's fallback: a run read off the
+ * target when there is no hub.
  *
- * The janitor reads the *target*, never a side repository and never a VM but for
- * #607's one unit read. Its only reads are one `ls 'fleet-r*' --json` through the
- * lobby and `gh api` on the laptop, through the same exec seam; this exam cans
- * both, and every path a leg did not can answers `HTTP 404`, so a read at the
- * wrong path cannot look like a read at the right one.
+ * #938 item 1 moved the janitor's read of a run's state onto the hub;
+ * `fleet/tests/test_janitor_hub.mjs` is that path's exam. This file drives the
+ * janitor with `kata: null` — "no hub" — which is the path every row takes
+ * when the hub cannot be asked: the target's evidence, read with `gh api`
+ * through the same exec seam, tag first. Every path a leg did not can answers
+ * `HTTP 404`, so a read at the wrong path cannot look like a read at the right
+ * one. The janitor reads the *target*, never a side repository and never a VM
+ * but for #607's one unit read.
  *
  * What is pinned, clause by clause:
  *
- *   M1 — the first contents read of every row with a readable assignment is
+ *   M1 — with no hub, the first contents read of every row with a readable
+ *        assignment is
  *        `repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>`;
  *        the same path with `?ref=ultra/evidence-run-<N>` is read only when the
  *        tag read answered no contents envelope — a 404, or a body with no
  *        string `content` — and never when the tag answered one; a page found on
- *        either ref drives the verdict as at BASE (`rm <vm> --json` for a `state`
- *        in `done|parked|failed` older than `--age`, default `1h`), and a page
+ *        either ref drives the verdict (`rm <vm> --json` for a `state` in
+ *        `done|parked|failed` older than `--age`, default `1h`), and a page
  *        served bare on both refs removes nothing         — legs (a), (b), (c)
- *   M2 — a run with no page on either ref is aged from the plan tag:
- *        `git/ref/tags/ultra/plan/run-<N>` for `.object.sha`, then
- *        `commits/<that sha>` for `.commit.committer.date`;
- *        `branches/ultra/plan-run-<N>` is read for
- *        `.commit.commit.committer.date` only when the tag ref answered no hex
- *        `.object.sha`, and then no `commits/` read is issued for that row; six
- *        hours or more is `stale`, younger is neither `stale` nor `actions`, and
- *        no age at all is neither                                     — leg (d)
+ *   M2 — a run with no page on either ref is left alone: no plan-tag,
+ *        plan-branch or commit read is issued for it, and it is in neither
+ *        `stale` nor `actions` — the hub ages such a run now, and a dark hub
+ *        has no age for it                                    — legs (c), (g)
  *   M3 — every `stale` entry's `from` is the ref its `lastUpdate` came from —
- *        `ultra/evidence/run-<N>`, `ultra/evidence-run-<N>`, `ultra/plan/run-<N>`
- *        or `ultra/plan-run-<N>` — and `renderJanitor` prints it in the
- *        parentheses of the BASE-shaped `stale` line          — legs (d), (e)
+ *        `ultra/evidence/run-<N>` or `ultra/evidence-run-<N>` — and
+ *        `renderJanitor` prints it in the parentheses of the `stale` line
+ *                                                                     — leg (e)
  *   M4 — #607 is unchanged: a live page draws exactly one unit read at the row's
  *        own `ssh_dest` whichever ref served it, and a dead unit draws the
  *        journal read and both `gh api -X PUT` writes, each carrying
  *        `-f branch=ultra/evidence-run-<N>` — never the tag — with the
  *        `status.json` write carrying the read envelope's `-f sha=`
  *                                                              — legs (a), (f)
- *   M5 — everything else holds as at BASE: `--dry-run` reads the same and
- *        removes nothing, an unreadable assignment is `unknown` and draws no
- *        read, every non-`-X` `gh` call is two argv words `api` and a path
- *        beginning `repos/`, no `git` is run, every `ssh <ssh_dest>` is #607's
- *        unit or journal read at a live row's own destination, and nothing under
- *        `~/.ultrapowers/` but `fleet.json` is opened                 — leg (g)
+ *   M5 — everything else holds: `--dry-run` reads the same and removes
+ *        nothing, an unreadable assignment is `unknown` and draws no read,
+ *        every non-`-X` `gh` call is two argv words `api` and a path beginning
+ *        `repos/`, no `git` is run, every `ssh <ssh_dest>` is #607's unit or
+ *        journal read at a live row's own destination, and nothing under
+ *        `~/.ultrapowers/` but `fleet.json` is opened when the hub is `null`
+ *                                                                     — leg (g)
  *
  * #724 Task 2 adds legs T2(a)–T2(f) at the foot of this file, and re-scopes one
  * pin of leg (a): the result's key set gains one optional member, `branches`.
@@ -53,9 +55,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import {
-  evidenceBranchFor, evidenceTagFor, planBranchFor, planTagFor
-} from '../lobby.mjs'
+import { evidenceBranchFor, evidenceTagFor } from '../lobby.mjs'
 import { janitor, renderJanitor } from '../janitor.mjs'
 import {
   answer, cleanup, cmdRule, makeExec, sshRule, tempDir, vmRow, vmRule, vmsPayload
@@ -84,7 +84,7 @@ const row = (n, { target = TARGET } = {}) => vmRow(vm(n), { comment: comment(n, 
 /** Regex-safe spelling of a literal the contract pins. */
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-// ── The five `gh api` paths the contract names ──────────────────────────────
+// ── The two `gh api` paths the fallback reads, and the two of a death ──────
 
 const statusPath = (target, run) =>
   `repos/${target}/contents/.ultrapowers/runs/${run}/status.json`
@@ -94,10 +94,6 @@ const journalPath = (target, run) =>
 const tagPagePath = (target, run) => `${statusPath(target, run)}?ref=${evidenceTagFor(run)}`
 /** The same path at the evidence *branch* — the read M1 allows only after it. */
 const branchPagePath = (target, run) => `${statusPath(target, run)}?ref=${evidenceBranchFor(run)}`
-/** The plan tag's own document: slashes in the tag name spelled as they are. */
-const planTagRefPath = (target, run) => `repos/${target}/git/ref/tags/${planTagFor(run)}`
-const planBranchPath = (target, run) => `repos/${target}/branches/${planBranchFor(run)}`
-const commitPath = (target, sha) => `repos/${target}/commits/${sha}`
 
 // ── The canned answers ──────────────────────────────────────────────────────
 
@@ -113,17 +109,6 @@ const envelope = (status, sha) => answer({
 })
 /** The status page served *bare* — no envelope, so no `content` string. */
 const barePage = (status) => answer(JSON.stringify(status))
-/** The branches endpoint's document: the date is one level deeper than a commit's. */
-const branchDoc = (date) => answer({ commit: { commit: { committer: { date } } } })
-/** The commits endpoint's document: `.commit.committer.date`. */
-const commitDoc = (date) => answer({ commit: { committer: { date } } })
-/** A lightweight tag's ref document, as `git/ref/tags/<name>` answers it. */
-const tagRefDoc = (run, sha) => ({
-  ref: `refs/tags/${planTagFor(run)}`,
-  node_id: 'MDM6UmVmMQ==',
-  url: `https://api.github.com/${planTagRefPath(TARGET, run)}`,
-  object: { sha, type: 'commit', url: `https://api.github.com/${commitPath(TARGET, sha)}` }
-})
 /** What the contents API answers a successful PUT. */
 const PUT_OK = answer({ content: { sha: 'f'.repeat(40) }, commit: { sha: 'e'.repeat(40) } })
 
@@ -131,7 +116,7 @@ const PUT_OK = answer({ content: { sha: 'f'.repeat(40) }, commit: { sha: 'e'.rep
  * `gh api <path>` answers only what a leg canned; every other path is a 404. A
  * call carrying `-X` is a write, answered as the contents API answers a 200.
  */
-const ghRule = ({ pages = {}, plans = {}, tags = {}, commits = {} } = {}) =>
+const ghRule = ({ pages = {} } = {}) =>
   cmdRule('gh', 'api', (cmd, argv) => {
     if (argv.includes('-X')) return PUT_OK
     const p = argv.find((a) => typeof a === 'string' && a.startsWith('repos/'))
@@ -140,9 +125,6 @@ const ghRule = ({ pages = {}, plans = {}, tags = {}, commits = {} } = {}) =>
       const canned = pages[p]
       return canned.raw !== undefined ? barePage(canned.raw) : envelope(canned.page, canned.sha)
     }
-    if (Object.hasOwn(plans, p)) return branchDoc(plans[p])
-    if (Object.hasOwn(tags, p)) return answer(tags[p])
-    if (Object.hasOwn(commits, p)) return commitDoc(commits[p])
     return NOT_FOUND
   })
 
@@ -228,7 +210,9 @@ const readPaths = (exec) => ghCalls(exec)
   .filter((p) => p !== undefined)
 /** The status-page reads, in the order they were issued. */
 const contentsReads = (exec) => readPaths(exec).filter((p) => p.includes('/contents/'))
-const commitReads = (exec) => readPaths(exec).filter((p) => p.includes('/commits/'))
+/** The reads M2 pins absent: the plan tag's ref, the plan branch, a commit. */
+const ageReads = (exec) => readPaths(exec).filter((p) =>
+  p.includes('/git/ref/tags/') || p.includes('/branches/') || p.includes('/commits/'))
 const readsFor = (exec, run) =>
   contentsReads(exec).filter((p) => p.includes(`/runs/${run}/status.json`))
 const lsReads = (exec) => exec.lobby().filter((line) => line.startsWith('ls '))
@@ -296,7 +280,7 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
 // ═══════════════════════════════════════════════════════════════════════════
 {
   const exec = legAExec()
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(lsReads(exec), ["ls 'fleet-r*' --json"],
     '(a)/M1 one fleet-wide read: the janitor works from the `ls \'fleet-r*\' --json` rows')
@@ -324,10 +308,11 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
   // #724 Task 2 re-scopes this pin: the result gains one key and one only,
   // `branches`, and a fleet whose targets answer no integration head may carry
   // it empty or not at all — the six BASE fields stand either way. #913 adds
-  // the second and last such key, `kept`: the rows whose comment says do not
-  // reap, empty here because no row in this fleet carries one.
+  // `kept`: the rows whose comment says do not reap, empty here because no row
+  // in this fleet carries one. #938 adds the last, `hub`: null here, since the
+  // janitor was told there is none.
   const BASE_KEYS = ['dryRun', 'age', 'actions', 'stale', 'unknown', 'deaths']
-  const ADDED_KEYS = ['branches', 'kept']
+  const ADDED_KEYS = ['branches', 'kept', 'hub']
   for (const key of BASE_KEYS) {
     assert.equal(Object.hasOwn(result, key), true,
       `(a)/M1 the result carries its six fields { dryRun, age, actions, stale, unknown, deaths } — ${key} is missing`)
@@ -336,7 +321,7 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
     '(a)/M1 and no row in this fleet says do not reap, so `kept` is empty')
   assert.deepEqual(
     sorted(Object.keys(result).filter((k) => !BASE_KEYS.includes(k) && !ADDED_KEYS.includes(k))), [],
-    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2 and the `kept` of #913')
+    '(a)/M1 and nothing beyond them but the `branches` of #724 Task 2, the `kept` of #913 and the `hub` of #938')
 
   // ── (a)/M4 the unit read fires for a live page whichever ref served it ────
   assert.deepEqual(
@@ -349,7 +334,7 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
 
   // ── --age 3h moves the bar past all four, and reads exactly the same ──────
   const exec3h = legAExec()
-  const older = await janitor({ argv: ['--age', '3h'], exec: exec3h, config: CONFIG, now: () => NOW })
+  const older = await janitor({ kata: null, argv: ['--age', '3h'], exec: exec3h, config: CONFIG, now: () => NOW })
   assert.deepEqual(exec3h.mutating(), [],
     '(a)/M1 --age 3h over the same fleet removes nothing at all')
   assert.deepEqual(older.actions, [], '(a)/M1 and reports no action')
@@ -363,7 +348,7 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
 // ═══════════════════════════════════════════════════════════════════════════
 {
   const exec = newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(branchPagePath, LEG_A) })])
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(
     contentsReads(exec),
@@ -383,7 +368,7 @@ const legAExec = () => newExec([...lsRules(FLEET), ghRule({ pages: pagesAt(tagPa
         { target: 'other/repo' })
     })
   ])
-  const result9 = await janitor({ argv: [], exec: other, config: CONFIG, now: () => NOW })
+  const result9 = await janitor({ kata: null, argv: [], exec: other, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(contentsReads(other), [
     'repos/other/repo/contents/.ultrapowers/runs/9/status.json?ref=ultra/evidence/run-9',
@@ -405,20 +390,24 @@ const BARE_PAGE = (n) => ({ run: n, state: 'done', updatedAt: hoursAgo(2) })
     ...lsRules([row(41)]),
     ghRule({ pages: { [tagPagePath(TARGET, 41)]: { raw: BARE_PAGE(41) } } })
   ])
-  const r1 = await janitor({ argv: [], exec: bareTag, config: CONFIG, now: () => NOW })
+  const r1 = await janitor({ kata: null, argv: [], exec: bareTag, config: CONFIG, now: () => NOW })
   assert.deepEqual(readsFor(bareTag, 41),
     [tagPagePath(TARGET, 41), branchPagePath(TARGET, 41)],
     '(c)/M1 a bare tag answer is no contents envelope, so the branch read follows it')
   assert.deepEqual(bareTag.mutating(), [],
     '(c)/M1 a two-hour-old done page served bare on the tag with the branch 404 removes nothing')
   assert.deepEqual(r1.actions, [], '(c)/M1 and reports no action')
+  assert.deepEqual(ageReads(bareTag), [],
+    '(c)/M2 and a run with no page on either ref draws no git/ref/tags/, branches/ or commits/ read: nothing ages it')
+  assert.deepEqual(r1.stale, [],
+    '(c)/M2 so it is not stale either — the hub ages such a run, and with no hub there is no age')
 
   // 404 on the tag, bare on the branch: likewise nothing.
   const bareBranch = newExec([
     ...lsRules([row(42)]),
     ghRule({ pages: { [branchPagePath(TARGET, 42)]: { raw: BARE_PAGE(42) } } })
   ])
-  const r2 = await janitor({ argv: [], exec: bareBranch, config: CONFIG, now: () => NOW })
+  const r2 = await janitor({ kata: null, argv: [], exec: bareBranch, config: CONFIG, now: () => NOW })
   assert.deepEqual(readsFor(bareBranch, 42),
     [tagPagePath(TARGET, 42), branchPagePath(TARGET, 42)],
     '(c)/M1 a 404 on the tag is no contents envelope either, so the branch read follows it')
@@ -436,142 +425,13 @@ const BARE_PAGE = (n) => ({ run: n, state: 'done', updatedAt: hoursAgo(2) })
       }
     })
   ])
-  const r3 = await janitor({ argv: [], exec: mixed, config: CONFIG, now: () => NOW })
+  const r3 = await janitor({ kata: null, argv: [], exec: mixed, config: CONFIG, now: () => NOW })
   assert.deepEqual(readsFor(mixed, 43),
     [tagPagePath(TARGET, 43), branchPagePath(TARGET, 43)],
     '(c)/M1 the same page bare on the tag and enveloped on the branch draws the branch read')
   assert.deepEqual(mixed.mutating(), [`rm ${vm(43)} --json`],
     '(c)/M1 and its rm fires')
   assert.deepEqual(actionVms(r3), [vm(43)], '(c)/M1 one action, for run 43')
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// (d) a page-less run is aged from the plan tag, then the plan branch [M2, M3]
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** A distinct 40-hex object name per run — what `.object.sha` carries. */
-const tagSha = (n) => String(n).repeat(20).slice(0, 40)
-const SEVEN = hoursAgo(7)
-const THREE = hoursAgo(3)
-const SIX = hoursAgo(6)
-const NEARLY_SIX = minutesAgo(5 * 60 + 59)
-/** Canned on every plan *branch* whose tag ref answers a hex sha: a distinct
- *  eight-hour date, so a reading of the branch cannot pass for the tag's. */
-const BRANCH_DECOY = hoursAgo(8)
-
-const PAGELESS = [21, 24, 25, 26, 27, 28, 29, 30, 31, 32]
-/** The four rows whose plan tag answers a hex `.object.sha`. */
-const TAGGED = [21, 24, 31, 32]
-
-let LEG_D_RESULT
-{
-  const exec = newExec([
-    ...lsRules(PAGELESS.map((n) => row(n))),
-    ghRule({
-      tags: {
-        [planTagRefPath(TARGET, 21)]: tagRefDoc(21, tagSha(21)),
-        [planTagRefPath(TARGET, 24)]: tagRefDoc(24, tagSha(24)),
-        // A JSON array — what the sibling `git/refs/` endpoint answers.
-        [planTagRefPath(TARGET, 28)]: [tagRefDoc(28, tagSha(28))],
-        [planTagRefPath(TARGET, 29)]: { object: { sha: 'not-a-sha' } },
-        [planTagRefPath(TARGET, 30)]: { object: {} },
-        [planTagRefPath(TARGET, 31)]: tagRefDoc(31, tagSha(31)),
-        [planTagRefPath(TARGET, 32)]: tagRefDoc(32, tagSha(32))
-      },
-      commits: {
-        [commitPath(TARGET, tagSha(21))]: SEVEN,
-        [commitPath(TARGET, tagSha(24))]: THREE,
-        [commitPath(TARGET, tagSha(28))]: SEVEN,
-        [commitPath(TARGET, tagSha(31))]: SIX,
-        [commitPath(TARGET, tagSha(32))]: NEARLY_SIX
-      },
-      plans: {
-        [planBranchPath(TARGET, 21)]: BRANCH_DECOY,
-        [planBranchPath(TARGET, 24)]: BRANCH_DECOY,
-        [planBranchPath(TARGET, 25)]: SEVEN,
-        [planBranchPath(TARGET, 26)]: THREE,
-        [planBranchPath(TARGET, 28)]: SEVEN,
-        [planBranchPath(TARGET, 29)]: SEVEN,
-        [planBranchPath(TARGET, 30)]: SEVEN,
-        [planBranchPath(TARGET, 31)]: BRANCH_DECOY,
-        [planBranchPath(TARGET, 32)]: BRANCH_DECOY
-      }
-    })
-  ])
-  LEG_D_RESULT = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
-  const result = LEG_D_RESULT
-
-  assert.deepEqual(sorted(staleRuns(result).map(String)), sorted([21, 25, 28, 29, 30, 31].map(String)),
-    '(d)/M2 stale is exactly runs 21, 25, 28, 29, 30 and 31 — six hours or more from the tag\'s commit or from the plan branch; runs 24, 26, 27 and 32 are in neither stale nor actions')
-  assert.deepEqual(result.actions, [],
-    '(d)/M2 a run with no page is never an action: the reap needs a state')
-  assert.deepEqual(exec.mutating(), [],
-    '(d)/M2 and nothing is removed')
-
-  // run 21 — the plan tag, and only the plan tag.
-  const s21 = staleOf(result, 21)
-  assert.equal(s21.vm, vm(21), '(d)/M2 run 21: the stale entry names the VM')
-  assert.equal(s21.from, planTagFor(21),
-    '(d)/M3 run 21: aged from git/ref/tags/ultra/plan/run-21, so `from` is ultra/plan/run-21')
-  assert.equal(s21.lastUpdate, SEVEN,
-    '(d)/M2 run 21: lastUpdate is the .commit.committer.date of commits/<the tag\'s .object.sha>, seven hours old')
-  assert.equal(s21.state, null,
-    '(d)/M2 run 21: with no page there is no state')
-  assert.equal(ghPaths(exec).includes(planBranchPath(TARGET, 21)), false,
-    '(d)/M2 run 21: branches/ultra/plan-run-21 is never read — the tag ref answered a hex .object.sha')
-
-  // run 24 — the same, three hours old.
-  assert.equal(staleOf(result, 24), undefined,
-    '(d)/M2 run 24: a tag commit three hours old is in neither stale nor actions')
-  assert.equal(ghPaths(exec).includes(planBranchPath(TARGET, 24)), false,
-    '(d)/M2 run 24: and its plan branch is not read either')
-
-  // run 25 — no tag at all, so the plan branch.
-  const s25 = staleOf(result, 25)
-  assert.equal(s25.from, planBranchFor(25),
-    '(d)/M3 run 25: the tag ref answers 404, so the age comes from branches/ultra/plan-run-25 and `from` is ultra/plan-run-25')
-  assert.equal(s25.lastUpdate, SEVEN,
-    '(d)/M2 run 25: lastUpdate is the branch document\'s .commit.commit.committer.date')
-
-  // run 26 — the plan branch, three hours old.
-  assert.equal(staleOf(result, 26), undefined,
-    '(d)/M2 run 26: the tag ref 404s and the plan branch is three hours old, so it is in neither')
-
-  // run 27 — nothing answers.
-  assert.equal(staleOf(result, 27), undefined,
-    '(d)/M2 run 27: every read 404s, so it has no age from any source and is in neither')
-  assert.equal(actionVms(result).includes(vm(27)), false,
-    '(d)/M2 run 27: and in no action')
-
-  // run 28 — a JSON array is no tag.
-  const s28 = staleOf(result, 28)
-  assert.equal(s28.from, planBranchFor(28),
-    '(d)/M3 run 28: a tag ref answering a JSON array carries no .object.sha, so the plan branch answers and `from` is ultra/plan-run-28')
-  assert.equal(s28.lastUpdate, SEVEN, '(d)/M2 run 28: aged from the branch document')
-
-  // run 29 — a non-hex sha is no sha, and is never spliced into a path.
-  const s29 = staleOf(result, 29)
-  assert.equal(s29.from, planBranchFor(29),
-    '(d)/M3 run 29: `.object.sha` of `not-a-sha` is not hex, so the plan branch answers and `from` is ultra/plan-run-29')
-  assert.deepEqual(ghPaths(exec).filter((p) => p.includes('not-a-sha')), [],
-    '(d)/M2 run 29: no gh path contains not-a-sha — an unchecked value is never spliced into a path')
-
-  // run 30 — no `.object.sha` at all.
-  const s30 = staleOf(result, 30)
-  assert.equal(s30.from, planBranchFor(30),
-    '(d)/M3 run 30: a tag ref with no .object.sha at all falls to the plan branch, so `from` is ultra/plan-run-30')
-  assert.equal(s30.lastUpdate, SEVEN, '(d)/M2 run 30: aged from the branch document')
-
-  // run 31 — exactly six hours is stale; run 32 — a minute short is not.
-  const s31 = staleOf(result, 31)
-  assert.equal(s31.from, planTagFor(31),
-    '(d)/M3 run 31: a tag commit exactly six hours old is stale, from ultra/plan/run-31')
-  assert.equal(s31.lastUpdate, SIX, '(d)/M2 run 31: with that commit date as its lastUpdate')
-  assert.equal(staleOf(result, 32), undefined,
-    '(d)/M2 run 32: five hours and fifty-nine minutes is younger than six hours, so it is in neither')
-
-  assert.deepEqual(sorted(commitReads(exec)), sorted(TAGGED.map((n) => commitPath(TARGET, tagSha(n)))),
-    '(d)/M2 across these ten rows the only commits/ reads are runs 21, 24, 31 and 32\'s, each at its own tag\'s .object.sha: runs 25, 26, 27, 28, 29 and 30 issue none')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -589,7 +449,7 @@ let LEG_D_RESULT
       }
     })
   ])
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(sorted(staleRuns(result).map(String)), sorted(['61', '62']),
     '(e)/M3 a running row silent seven hours is stale whichever ref served its page; run 63, updated a minute ago, is not')
@@ -606,16 +466,6 @@ let LEG_D_RESULT
       printed,
       new RegExp(`^stale ${esc(vm(n))}  run=${n} state=running last update ${esc(hoursAgo(7))} \\(${esc(from)}\\) — look before you rm$`, 'm'),
       `(e)/M3 run ${n}: rendered as \`stale <vm>  run=<N> state=running last update <iso> (${from}) — look before you rm\``
-    )
-  }
-
-  // The page-less stale lines of leg (d) keep the same shape, with state=none.
-  const printedD = renderJanitor(LEG_D_RESULT)
-  for (const entry of LEG_D_RESULT.stale) {
-    assert.match(
-      printedD,
-      new RegExp(`^stale ${esc(entry.vm)}  run=${entry.run} state=none last update ${esc(entry.lastUpdate)} \\(${esc(entry.from)}\\) — look before you rm$`, 'm'),
-      `(e)/M3 run ${entry.run}: a page-less stale row prints the same line with state=none and its own from (${entry.from})`
     )
   }
 }
@@ -700,7 +550,7 @@ const assertDeathWrites = (exec, n, label) => {
 {
   // The page on the branch, the tag 404.
   const onBranch = deadExec(71, branchPagePath)
-  const result = await janitor({ argv: [], exec: onBranch, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec: onBranch, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(readsFor(onBranch, 71), [tagPagePath(TARGET, 71), branchPagePath(TARGET, 71)],
     '(f)/M1 run 71: the tag is read first and answers nothing, so the branch answers')
@@ -720,7 +570,7 @@ const assertDeathWrites = (exec, n, label) => {
 {
   // The same dead row with its page served from the tag, the branch 404.
   const onTag = deadExec(72, tagPagePath)
-  const result = await janitor({ argv: [], exec: onTag, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec: onTag, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(readsFor(onTag, 72), [tagPagePath(TARGET, 72)],
     '(f)/M1 run 72: the tag answered a contents envelope, so the branch is not read')
@@ -744,7 +594,7 @@ const assertDeathWrites = (exec, n, label) => {
     ghRule({ pages: { [tagPagePath(TARGET, 73)]: { page: livePage(73), sha: blobSha(73) } } }),
     vmAnswers({ [dest(73)]: () => answer(unitText(ALIVE_UNIT)) })
   ])
-  const result = await janitor({ argv: [], exec: alive, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec: alive, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(ghCalls(alive).filter((c) => c.argv.includes('-X')).map((c) => c.line), [],
     '(f)/M4 run 73: a live unit draws no gh call carrying -X')
@@ -762,7 +612,7 @@ const assertDeathWrites = (exec, n, label) => {
     ...lsRules([vmRow(vm(20)), vmRow(vm(12), { comment: 'run=12 base=abc' })]),
     ghRule({})
   ])
-  const result = await janitor({ argv: [], exec, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: [], exec, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(sorted(unknownVms(result)), sorted([vm(20), vm(12)]),
     '(g)/M5 a row with no comment and a row whose comment is `run=12 base=abc` with no target= both land in unknown')
@@ -781,9 +631,9 @@ const assertDeathWrites = (exec, n, label) => {
 {
   // --dry-run over the fleet of leg (a): the same reads, and no rm.
   const wet = legAExec()
-  const applied = await janitor({ argv: [], exec: wet, config: CONFIG, now: () => NOW })
+  const applied = await janitor({ kata: null, argv: [], exec: wet, config: CONFIG, now: () => NOW })
   const dry = legAExec()
-  const result = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
+  const result = await janitor({ kata: null, argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
 
   assert.deepEqual(ghPaths(dry), ghPaths(wet),
     '(g)/M5 --dry-run issues exactly the same gh api paths')
@@ -802,7 +652,8 @@ const assertDeathWrites = (exec, n, label) => {
 }
 
 {
-  // The only file read under ~/.ultrapowers/ is fleet.json.
+  // The only file read under ~/.ultrapowers/ is fleet.json — kata-hub.env is
+  // not opened when the janitor is told there is no hub.
   const home = tempDir('fleet-janitor-home-')
   const dot = path.join(home, '.ultrapowers')
   fs.mkdirSync(path.join(dot, 'runs', '3'), { recursive: true })
@@ -816,16 +667,16 @@ const assertDeathWrites = (exec, n, label) => {
   fs.mkdirSync(sideRepo, { recursive: true })
   fs.writeFileSync(path.join(sideRepo, 'run-3.md'), '# run 3\n')
 
-  const exec = newExec([
-    ...lsRules([row(3)]),
-    ghRule({ plans: { [planBranchPath(TARGET, 3)]: SEVEN } })
-  ])
+  // A second canary: a hub env file naming a host. A janitor that read it
+  // under `kata: null` would ssh to that host, and every ssh is pinned below.
+  fs.writeFileSync(path.join(dot, 'kata-hub.env'), 'KATA_URL=https://hub.canary\nKATA_TOKEN=x\n')
+  const exec = newExec([...lsRules([row(3)]), ghRule({})])
   const previous = process.env.HOME
   let result
   try {
     process.env.HOME = home
     // No `config`: the fleet.json under this HOME is the only file it may read.
-    result = await janitor({ argv: [], exec, now: () => NOW })
+    result = await janitor({ kata: null, argv: [], exec, now: () => NOW })
   } finally {
     if (previous === undefined) delete process.env.HOME
     else process.env.HOME = previous
@@ -835,9 +686,11 @@ const assertDeathWrites = (exec, n, label) => {
     '(g)/M5 the run-3 VM is not removed: the canary status page under ~/.ultrapowers/ is not a reader the janitor has')
   assert.deepEqual(result.actions, [],
     '(g)/M5 and run 3 is in no action')
-  assert.equal(
-    staleRuns(result).includes(3) || unknownVms(result).includes(vm(3)), true,
-    '(g)/M5 run 3 appears in stale or unknown — never in actions')
+  assert.deepEqual(result.stale, [],
+    '(g)/M5 and, with no page on the target and no hub, run 3 has no age: not stale either')
+  assert.deepEqual(exec.calls.filter((c) => c.cmd === 'ssh' && c.argv.includes('hub.canary')), [],
+    '(g)/M5 and no ssh reaches the host kata-hub.env names: under kata null the file is not opened')
+  assert.equal(result.hub, null, '(g)/M5 the result says there was no hub')
   cleanup(home)
 }
 
@@ -937,7 +790,7 @@ const T2_BRANCH_LINE =
   'branch ultra/integration-run-32  target=acme/widgets PR #720 closed, not merged — node fleet/retire.mjs --target acme/widgets'
 
 const T2_EXEC = t2Exec()
-const T2_RESULT = await janitor({ argv: [], exec: T2_EXEC, config: CONFIG, now: () => NOW })
+const T2_RESULT = await janitor({ kata: null, argv: [], exec: T2_EXEC, config: CONFIG, now: () => NOW })
 
 // ── T2(a) one heads listing per distinct target, after every row's reads [M1] ─
 {
@@ -1022,7 +875,7 @@ const T2_RESULT = await janitor({ argv: [], exec: T2_EXEC, config: CONFIG, now: 
 // ── T2(d) the janitor deletes nothing, and --dry-run reads the same [M3] ────
 {
   const dry = t2Exec()
-  const dryResult = await janitor({ argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
+  const dryResult = await janitor({ kata: null, argv: ['--dry-run'], exec: dry, config: CONFIG, now: () => NOW })
 
   for (const [label, exec] of [['the pass', T2_EXEC], ['--dry-run', dry]]) {
     assert.deepEqual(t2Deletes(exec), [],
