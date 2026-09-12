@@ -897,9 +897,13 @@ function kataRow (found, policyRes, vmsRes) {
   if (!have.bearer) {
     return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
   }
+  // The listing is served by both lobby models (#924): an attachment `tag:fleet`
+  // there is the grant whichever verb set the edge has; only an unattached
+  // object is judged by its policy read.
+  const attached = have.tags.has('fleet')
   const readable = Boolean(policyRes) && policyRes.code === 0
   const policy = readable ? parsePolicy(policyRes.stdout) : null
-  if (policy === null || policy.selector !== FLEET_POLICY) {
+  if (!attached && (policy === null || policy.selector !== FLEET_POLICY)) {
     const seen = !readable
       ? `the read exited ${policyRes?.code ?? 1}`
       : policy === null
