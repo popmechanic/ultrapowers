@@ -1,0 +1,14 @@
+{"kind":"run:open","runId":"run-121","base":"","source":"fleet/run-main.mjs","id":"01M2E9XFXT0000QK28ZFME3MQT","ts":1789334044602}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-121.kata.json → https://kata.int.exe.xyz","id":"01M2E9XFXW0000N61542H8PF79","ts":1789334044604}
+{"kind":"driver:stage","stage":"tiers","detail":"2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2E9XFXW0001D1BZHTRPAT1H","ts":1789334044604}
+{"kind":"driver:stage","stage":"provision","detail":"BASE d8ee9a3c4eabbeb5099af96180412a959dc59872; 2 task clone(s) + integration","id":"01M2E9XG810000BMCP6231WEB0","ts":1789334044929}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2E9XGQZ0000CHM6MQWS9R48","ts":1789334045439}
+{"kind":"driver:stage","stage":"engine","detail":"waves 2, width bound 12, patch input armed","id":"01M2E9XGQZ00013JJDWFWF988V","ts":1789334045439}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 3","id":"01M2E9XGR50000BG152BWGRHFN","ts":1789334045445}
+{"kind":"engine:phase","phase":"Setup","id":"01M2E9XGR50001B45NPB2GX9N4","ts":1789334045445}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-121 at d8ee9a3c4eabbeb5099af96180412a959dc59872","id":"01M2E9XGVK0000303XEKKR9KE0","ts":1789334045555}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2E9XGVP0000MX9RTZCA411A","ts":1789334045558}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"1c07aa81-362b-41ee-b131-16c988486963","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-121/clones/exam-1","model":"opus","id":"01M2E9XHMS0000CH9NTPQ3H67W","ts":1789334046361}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"569ada11-fcf3-40f3-a46e-81652bc628c6","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-121/clones/task-1","model":"opus","id":"01M2E9XHMW0000JMTXXSRP7386","ts":1789334046364}
+{"kind":"worker:start","label":"exam:2","role":"examiner","sessionId":"a6adc214-511e-4cff-8bae-f27b37284578","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-121/clones/exam-2","model":"opus","id":"01M2E9XHNJ00009K97RXSTV7M3","ts":1789334046386}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"3b9952f9-a22e-42c0-b2ca-720c0ff93b8f","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-121/clones/task-2","model":"opus","id":"01M2E9XHNM000009CZRST4P2MR","ts":1789334046388}
