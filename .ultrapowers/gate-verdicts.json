@@ -1,0 +1,68 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "221e21a6b8648f0f7638cb244127feac610b26710c778c91ce1d5d60ba561a19",
+      "verdict": "pass",
+      "reason": "Leg (a) falsifies the six install lines and their order including the bun/pytest bracket; (b) bounds the byte length; (c)'s Run falsifies the contract bullet."
+    },
+    "2": {
+      "hash": "e13ff14bbb7f3792a5401a49a15c63dfc41fe5dd298dfbc6e8790f40d87954e3",
+      "verdict": "pass",
+      "reason": "Each clause has a leg that fails on its negation: labels through envFor and the child env, hooks plus a frozen pre-edit hash, one getIssue per task with shortId kept, the contract grep."
+    },
+    "3": {
+      "hash": "2ca2faf3656649c0f93dba895ebcd3732d8bf9c6f245038b514d2bb146f3bedc",
+      "verdict": "pass",
+      "reason": "One assertion per file per literal for M1; M2's negation leg names the never/kata close proximity and the KATA_REF skip; M3's all-caps negation and the BASE-delta Run."
+    },
+    "4": {
+      "hash": "bd12d165b0cedc4c70428c965c23796e105e82684f3a059c411e0e7783c8cda1",
+      "verdict": "pass",
+      "reason": "Every M1 case (error poll, unchanged value, empty actor, no-row task), both fix rounds and the refused post, latest-and-null cells, the two contract Runs."
+    },
+    "5": {
+      "hash": "65189706ff57fc259f326c3be841b0336a5a8e45640107e98149d8b3b1952370",
+      "verdict": "pass",
+      "reason": "Every M1 outcome and each of the three non-fatal refusals has its own row with closes asserted zero; the 200-char truncation and done-path rows; key-set equals BASE plus addLabel; M4's Run lines jointly satisfiable."
+    },
+    "6": {
+      "hash": "992b83edeeb8e3c03b9227560c72fb33c85d2c2c9e553601e6fa077ad3de899b",
+      "verdict": "pass",
+      "reason": "All seven M1 fields with correct arithmetic, first-vs-last end and naming-vs-last adoption falsified, both skip conditions plus never-fetch, M3's tasks=0 row."
+    }
+  },
+  "tally": {
+    "dispatched": 19,
+    "rejected": 13,
+    "rounds": {
+      "1": {
+        "pass": 0,
+        "fail": 6
+      },
+      "2": {
+        "pass": 3,
+        "fail": 3
+      },
+      "3": {
+        "pass": 2,
+        "fail": 1
+      },
+      "4": {
+        "pass": 0,
+        "fail": 1
+      },
+      "5": {
+        "pass": 0,
+        "fail": 1
+      },
+      "6": {
+        "pass": 0,
+        "fail": 1
+      },
+      "7": {
+        "pass": 1,
+        "fail": 0
+      }
+    }
+  }
+}
