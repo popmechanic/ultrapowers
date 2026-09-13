@@ -64,3 +64,5 @@
 {"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2DYHA0Z000002TCY00JQC3K","ts":1789322111007}
 {"kind":"run:open","runId":"run-117","base":"20bae81585628ce7278a6aa277d65ae0c96ab3de","source":"fleet/publish-fold.mjs","id":"01M2DYHATV00005109J96Z1JCX","ts":1789322111835}
 {"kind":"driver:publish-fold","run":"117","attempt":"1","base":"20bae81585628ce7278a6aa277d65ae0c96ab3de","tip":"20bae81585628ce7278a6aa277d65ae0c96ab3de","candidate":"f2aff4581bc2a53c31becc2f22c4925958683347","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2DYHBVD0000EBFB01E7HW83","ts":1789322112877}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/962","number":962,"draft":true,"id":"01M2DYHJ350000GE32MQ8D68ZV","ts":1789322119269}
+{"kind":"kata:write-failed","what":"close","uid":"01M2DTA256YVYMJHDNNB6A4GC4","detail":"run issue close (wontfix) answered curl exit 22","id":"01M2DYHJCJ0000QCWPJPASSX4X","ts":1789322119570}
