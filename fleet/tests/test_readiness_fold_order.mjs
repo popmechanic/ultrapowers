@@ -28,6 +28,9 @@
  *                        `READINESS_FIXTURES_DIR`, or under
  *                        `fleet/tests/fixtures/readiness/` when that is unset.
  *                        Absent or empty, the corpus and the control run alone.
+ *                        `READINESS_ORDERS=all` runs every sampled order over
+ *                        them (the reading); unset it runs the first 2, so a
+ *                        suite pass fits the bridge's 300 s cap.
  *
  * The soft-edges pair (wave 2's `2b` re-captured against the head that adopted
  * `2a`, folded with that head as its recorded base) is measured too, but it is
@@ -63,6 +66,7 @@ import {
   runSet,
   setLine,
   softEdgesSpec,
+  sampledOrders,
 } from './_readiness_helpers.mjs'
 
 const note = (message) => process.stderr.write(message + '\n')
@@ -148,14 +152,31 @@ function main () {
     + soft.simTree + ', wave 2 folded to ' + trees.get(2))
   note('soft-edges ' + soft.simTree + ' — wave 2\'s tree from its recorded base')
 
-  // The real-join sets, run exactly like a corpus wave.
+  // The real-join sets, run exactly like a corpus wave — but the suite's pass
+  // over them is capped: a real-join set costs tens of kernel calls per order
+  // (contend-wide: 23 × 20 orders, ~6 minutes on a laptop), and the bridge
+  // holds every sim file to 300 s. `READINESS_ORDERS=all` is the reading —
+  // every order `sampled_orders` returns, what a plan's `Run:` asks for and
+  // what the record carries; unset, or a number, the first that many of the
+  // kernel's sampled orders run (default 2: the identity and one shuffle), the
+  // identity always first, so a suite pass still folds every fixture both ways
+  // and the line's `orders=` says how many it read.
   const root = process.env.READINESS_FIXTURES_DIR || FIXTURES_ROOT
   const dirs = discoverFixtureSets(root)
-  note('fixture root ' + root + ': ' + dirs.length + ' set(s)')
+  const ordersKnob = process.env.READINESS_ORDERS || '2'
+  const capOrders = (n) => {
+    const all = sampledOrders(n)
+    if (ordersKnob === 'all') return all
+    const k = Math.max(1, parseInt(ordersKnob, 10) || 2)
+    return all.slice(0, k)
+  }
+  note('fixture root ' + root + ': ' + dirs.length + ' set(s); orders '
+    + (ordersKnob === 'all' ? 'all (the reading)' : 'first ' + ordersKnob + ' (READINESS_ORDERS=all for the reading)'))
   for (const dir of dirs) {
     const setWork = path.join(work, 'fixtures', path.basename(dir))
     fs.mkdirSync(setWork, { recursive: true })
-    emit(measure(runSet(fixtureSetSpec(dir, setWork)), 'ok'))
+    const spec = fixtureSetSpec(dir, setWork)
+    emit(measure(runSet({ ...spec, orders: capOrders(spec.tasks.length) }), 'ok'))
   }
 
   process.stdout.write('ALL TESTS PASSED\n')
