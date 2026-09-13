@@ -477,18 +477,25 @@ def role_of(tid):
 
 
 # The sub-phase: the label of the most recent worker still running, else the
-# kind of the last event when the log has moved past its last `engine:phase`.
+# kind of the last event that is PROGRESS since the last `engine:phase`.
+# The bookkeeping the engine writes to the same log — `kata:*` (#934),
+# `transcript:*`, `engine:log`, `capture:*`, and `resolver:reply` with them — is
+# not progress, so it is skipped and a trailing line of one never becomes the
+# sub-phase; a phase followed by bookkeeping alone is still just that phase.
+PROGRESS = ("driver:", "worker:")
 sub = None
 for at, label, _ in reversed(opens):
     if open_at(at, label):
         sub = label
         break
 if sub is None and events:
-    last = len(events) - 1
     phase_at = max([at for at, doc in enumerate(events)
                     if doc.get("kind") == "engine:phase"] or [-1])
-    if phase_at < last:
-        sub = str(events[last].get("kind") or "") or None
+    for doc in reversed(events[phase_at + 1:]):
+        kind = str(doc.get("kind") or "")
+        if kind.startswith(PROGRESS):
+            sub = kind
+            break
 
 
 def key(tid):

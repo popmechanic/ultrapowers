@@ -476,6 +476,111 @@ test('(c) the live page carries `<phase> · <sub>` and the verb\'s own `tasks` c
     }
   }))
 
+// ── #952 task 1 — "The sub-phase skips bookkeeping kinds"  [M1–M5] ──────────
+//
+// Five more cases at case (c)'s surface. The fourteen cases above are run-97's
+// legs (a)–(h) and stand exactly as they were; these five are THIS task's own
+// legs (a)–(e), and every assertion below names them `#952 leg (x)` so the two
+// alphabets never read as one.
+//
+//   M1  a trailing `kata:write-failed` / `transcript:slice` / `engine:log` /
+//       `capture:dropped` is skipped; the last `driver:*`/`worker:*` kind is
+//       taken instead                                        → #952 leg (a)
+//   M2  nothing but bookkeeping since the `engine:phase` → `sub` is null
+//                                                            → #952 leg (b)
+//   M3  the open-label rule is untouched and still wins      → #952 leg (c)
+//   M4  case (c)'s three existing pins read as they do at BASE
+//                                                            → #952 leg (d)
+//   M5  `fleet/CONTRACT.md`'s `**status.json:**` bullet says the rule
+//                                                            → #952 leg (e)
+
+/**
+ * The four bookkeeping kinds M1 names, each in the shape the engine writes it:
+ * `kata:write-failed` (`run-engine.mjs` `kataCall`), `transcript:slice`
+ * (`run-worker.mjs`), `engine:log` (`run-waves.mjs`) and `capture:dropped`
+ * (`run-waves.mjs`). None carries a `task` or a `tasks` list, so none of them
+ * names a task — they are the run's bookkeeping and not its progress.
+ */
+const BOOKKEEPING = {
+  'kata:write-failed': (n) =>
+    ev(n, { kind: 'kata:write-failed', what: 'comment', uid: 'u1', detail: 'curl exit 22' }),
+  'transcript:slice': (n) =>
+    ev(n, { kind: 'transcript:slice', label: 'impl:1', sessionId: 's2', bytes: 4096 }),
+  'engine:log': (n) => ev(n, { kind: 'engine:log', line: 'wave 1 begins' }),
+  'capture:dropped': (n) =>
+    ev(n, { kind: 'capture:dropped', label: 'impl:1', paths: ['out/big.bin'] }),
+}
+const BOOKKEEPING_KINDS = Object.keys(BOOKKEEPING)
+
+test('(#952 a) a trailing bookkeeping kind is skipped for the last worker kind  [M1]', () => {
+  for (const kind of BOOKKEEPING_KINDS) {
+    // `engine:phase`, then `impl:1` opened AND closed — so no label is open and
+    // the log has moved past its last phase event — then the one trailing line.
+    const log = plant([
+      ENGINE_EVENT_LINE,
+      start(2, 'impl:1', 'implementer'),
+      end(3, 'impl:1', 'implementer'),
+      BOOKKEEPING[kind](4),
+    ].join(''))
+    const doc = project(log)
+    assert.equal(doc.sub, 'worker:end',
+      `with a trailing \`${kind}\` after \`engine:phase\`, \`worker:start impl:1\` and ` +
+      '`worker:end impl:1`, `sub` is `worker:end` — the kind of the last `driver:*`/`worker:*` ' +
+      `event, the bookkeeping line walked past  [#952 leg (a), M1]: ${JSON.stringify(doc.sub)}`)
+    assert.notEqual(doc.sub, kind,
+      `and \`sub\` is NOT \`${kind}\` — a bookkeeping kind is never the run's own progress  ` +
+      '[#952 leg (a), M1]')
+  }
+})
+
+test('(#952 b) only bookkeeping since the engine:phase leaves `sub` null  [M2]', () => {
+  const doc = project(plant([
+    ENGINE_EVENT_LINE,
+    BOOKKEEPING['kata:write-failed'](2),
+    BOOKKEEPING['transcript:slice'](3),
+  ].join('')))
+  assert.equal(doc.sub, null,
+    'an `engine:phase` followed only by a `kata:write-failed` and a `transcript:slice` has no ' +
+    '`driver:*`/`worker:*` event after the phase at all, so `sub` is null — not the kind of the ' +
+    `last line  [#952 leg (b), M2]: ${JSON.stringify(doc.sub)}`)
+})
+
+test('(#952 c) an open worker label still wins over a trailing bookkeeping line  [M3]', () => {
+  const doc = project(plant([
+    ENGINE_EVENT_LINE,
+    start(2, 'impl:2', 'implementer'),
+    BOOKKEEPING['kata:write-failed'](3),
+  ].join('')))
+  assert.equal(doc.sub, 'impl:2',
+    '`worker:start impl:2` with no later `worker:end impl:2` is the most recent worker still ' +
+    'running, and the open-label rule is untouched by M1 — so `sub` is the label `impl:2`, not ' +
+    `any trailing kind  [#952 leg (c), M3]: ${JSON.stringify(doc.sub)}`)
+})
+
+test('(#952 d) case (c)\'s three pins read as they do at BASE  [M4]', () => {
+  // The same three reads leg (c) above makes, restated here as this task's own
+  // regression pin: the skip rule must not move any of them.
+  assert.equal(project(plant(B.slice(0, 13).join(''))).sub, 'driver:wave-adopted',
+    'the prefix of `B` ending at line 13 still projects `driver:wave-adopted` — a `driver:*` kind ' +
+    'is progress and is taken, not skipped  [#952 leg (d), M4]')
+  assert.equal(project(plant(B.join(''))).sub, 'impl:2',
+    'the full fourteen-line `B` still projects the open label `impl:2`  [#952 leg (d), M4]')
+  assert.equal(project(plant(ENGINE_EVENT_LINE)).sub, null,
+    'the `engine:phase` line alone still projects null  [#952 leg (d), M4]')
+})
+
+test('(#952 e) the contract\'s status.json bullet states the skip rule  [M5]', () => {
+  // `STATUS_BULLET` is the same `sed -n` scope case (f) below greps, so both
+  // cases read the one bullet as one line. Case (f)'s own `· <sub>` and
+  // eight-state greps stand unchanged and must survive this edit.
+  shOk(`${STATUS_BULLET} | grep -q 'kata:\\*.*transcript:\\*.*engine:log.*capture:\\*'`,
+    'the `**status.json:**` bullet\'s sub-phase sentence must name `kata:*`, `transcript:*`, ' +
+    '`engine:log` and `capture:*` — in that order — as the kinds the projection skips  ' +
+    '[#952 leg (e), M5]')
+  shOk(`${STATUS_BULLET} | grep -q 'driver:\\*./.worker:\\*'`,
+    'and must say the kind taken is the last `driver:*`/`worker:*` one  [#952 leg (e), M5]')
+})
+
 // ── (d) the commit window in events  [M4] ───────────────────────────────────
 
 test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]', () =>
