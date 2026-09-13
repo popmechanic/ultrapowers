@@ -161,3 +161,5 @@
 {"kind":"transcript:slice","label":"resolve:wave1:1:1","sessionId":"fbce1734-684e-431e-b874-0e6c754569ac","bytes":8337,"id":"01M2D49XYX0000DR4K4AQ95HQX","ts":1789294606301}
 {"kind":"engine:log","line":"wave 1 candidate suite RED — reconcile attempt 1","id":"01M2D4NTXN0000PJ6GATHZRN01","ts":1789294996405}
 {"kind":"worker:start","label":"reconcile:wave1:1","role":"writeSide","sessionId":"7e901ba6-3b8d-4d30-a64c-c4d6dcbe1b57","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-115/clones/integration","model":"opus","id":"01M2D4NTXP000032P6S0221FXJ","ts":1789294996406}
+{"kind":"worker:end","label":"reconcile:wave1:1","role":"writeSide","sessionId":"7e901ba6-3b8d-4d30-a64c-c4d6dcbe1b57","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":2796,"output":7937,"cacheRead":896572,"cacheCreation":75790,"costUsd":1.4185909999999993,"models":["claude-opus-5"]},"id":"01M2D558WF0000GZK650WEXWV2","ts":1789295502223}
+{"kind":"transcript:slice","label":"reconcile:wave1:1","sessionId":"7e901ba6-3b8d-4d30-a64c-c4d6dcbe1b57","bytes":11640,"id":"01M2D558WM0000KMYTC6JEM3GT","ts":1789295502228}
