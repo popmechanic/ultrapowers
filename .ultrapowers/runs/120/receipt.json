@@ -1,0 +1,239 @@
+{
+  "ok": true,
+  "stamp": "run-120",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-120"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The real-join fixture patches",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "evals/frontier/split_fixture.py",
+          "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+          "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+          "fleet/tests/fixtures/readiness/contend/manifest.json",
+          "fleet/tests/fixtures/readiness/contend/task-1.patch",
+          "fleet/tests/fixtures/readiness/contend/task-2.patch",
+          "fleet/tests/fixtures/readiness/contend/task-3.patch",
+          "fleet/tests/fixtures/readiness/contend/task-4.patch",
+          "fleet/tests/fixtures/readiness/degrade/manifest.json",
+          "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+          "fleet/tests/fixtures/readiness/degrade/task-2.patch"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`split_fixture(fixture: str, out_dir: Path) -> list[Path]` (in `evals/frontier/split_fixture.py`)"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The real-join fixture patches",
+          "files": [
+            "evals/frontier/split_fixture.py",
+            "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+            "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+            "fleet/tests/fixtures/readiness/contend/manifest.json",
+            "fleet/tests/fixtures/readiness/contend/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend/task-4.patch",
+            "fleet/tests/fixtures/readiness/degrade/manifest.json",
+            "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+            "fleet/tests/fixtures/readiness/degrade/task-2.patch",
+            "fleet/tests/test_readiness_fixtures.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`split_fixture(fixture: str, out_dir: Path) -> list[Path]` (in `evals/frontier/split_fixture.py`)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "evals/frontier/split_fixture.py",
+            "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+            "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+            "fleet/tests/fixtures/readiness/contend/manifest.json",
+            "fleet/tests/fixtures/readiness/contend/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend/task-4.patch",
+            "fleet/tests/fixtures/readiness/degrade/manifest.json",
+            "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+            "fleet/tests/fixtures/readiness/degrade/task-2.patch"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_readiness_fixtures.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_readiness_fixtures.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_readiness_fixtures.mjs 2>&1 | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_readiness_fold_order.mjs 2>&1 | tee /tmp/readiness-fold-order.txt | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_readiness_fixtures.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "evals/frontier/split_fixture.py",
+              "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+              "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+              "fleet/tests/fixtures/readiness/contend/manifest.json",
+              "fleet/tests/fixtures/readiness/contend/task-1.patch",
+              "fleet/tests/fixtures/readiness/contend/task-2.patch",
+              "fleet/tests/fixtures/readiness/contend/task-3.patch",
+              "fleet/tests/fixtures/readiness/contend/task-4.patch",
+              "fleet/tests/fixtures/readiness/degrade/manifest.json",
+              "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+              "fleet/tests/fixtures/readiness/degrade/task-2.patch",
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_readiness_fixtures.mjs": "fleet/tests/test_readiness_fixtures.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [
+              "`split_fixture(fixture: str, out_dir: Path) -> list[Path]` (in `evals/frontier/split_fixture.py`)"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The real-join fixture patches"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The kernel is untouched (#360): nothing under `skills/ultrapowers/kernel/` changes.\n- The fold-order sim, its helpers and its exam are untouched: this task feeds them, it does not edit them.\n- The fixtures under `evals/fixtures/` are untouched: a split error is resolved in the script's override table, never in the fixture.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/tests/test_readiness_fold_order.mjs fleet/tests/_readiness_helpers.mjs fleet/tests/test_readiness_fold_order_exam.mjs fleet/tests/fixtures/readiness-corpus/",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- evals/fixtures/",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-120/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-120/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-120/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-120/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
