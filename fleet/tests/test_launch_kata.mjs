@@ -21,8 +21,9 @@
  *   (d) [M3] the filing's calls, in order and argument for argument.
  *   (e) [M3] the plan commit's tree carries `.ultrapowers/kata.json`; a push
  *       race purges the project and files again for N+1.
- *   (f) [M4] the blob's bytes, key order, the post-link revisions, the result's
- *       `kata` and the `kata=` line.
+ *   (f) [M4] the blob's bytes, key order, the post-link revisions, each task
+ *       row's created `short_id` (#963), the result's `kata` and the `kata=`
+ *       line.
  *   (g) [M5] a hub call that throws after the ping is a LobbyError naming the
  *       method, with no plan branch and no `new`.
  *   (h) [M6] the two contract bullets.
@@ -431,12 +432,21 @@ const contractSection = (startRe, endRe) => {
     url: KATA_SANDBOX_URL,
     project: { id: pid, uid: ULID(1), name: 'popmechanic-smoke-run-7' },
     run: { uid: RUN_UID, revision: 2 },
-    tasks: { 1: { uid: T1_UID, revision: 9 }, 2: { uid: T2_UID, revision: 4 } }
+    // Each task row carries the `short_id` ITS `createIssue` answered — the
+    // fake's `K-<nth issue>`, so `K-2` and `K-3`, the run issue having been the
+    // first. That is what a worker's `KATA_REF` is built from (#963); the run's
+    // own row stays `{uid, revision}`, because no worker label resolves to it.
+    tasks: {
+      1: { uid: T1_UID, short_id: 'K-2', revision: 9 },
+      2: { uid: T2_UID, short_id: 'K-3', revision: 4 }
+    }
   }
   const shown = ws.repo.git(['show', `${result.plan}:${KATA_PATH}`])
   const parsed = JSON.parse(shown)
-  assert.deepEqual(parsed, expected, '(f) [M4] the blob is the record, with the post-link getIssue revisions 9, 4 and 2')
+  assert.deepEqual(parsed, expected, '(f) [M4] the blob is the record, with the post-link getIssue revisions 9, 4 and 2 and each task\'s created short_id')
   assert.deepEqual(Object.keys(parsed), ['url', 'project', 'run', 'tasks'], '(f) [M4] keys in the order url, project, run, tasks')
+  assert.deepEqual(Object.keys(parsed.tasks['1']), ['uid', 'short_id', 'revision'], '(f) [M4] and a task row in the order uid, short_id, revision')
+  assert.deepEqual(Object.keys(parsed.run), ['uid', 'revision'], '(f) [M4] while the run row stays uid, revision')
   const expectedFile = path.join(ws.root, 'expected-kata.json')
   fs.writeFileSync(expectedFile, `${JSON.stringify(expected, null, 2)}\n`)
   const blob = ws.repo.git(['ls-tree', result.plan, KATA_PATH]).split(/\s+/)[2]

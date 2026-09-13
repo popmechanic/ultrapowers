@@ -42,9 +42,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   when the thing it carried has landed (nothing else the fleet writes lives anywhere else):
   - `ultra/plan-run-<N>` — one commit on `base=`; tree = base + `.ultrapowers/plan.md`
     [+ `.ultrapowers/gate-verdicts.json`] + `.ultrapowers/kata.json` (the run's record on the hub —
-    `{"url":"https://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,revision}}}`,
+    `{"url":"https://kata.int.exe.xyz","project":{id,uid,name},"run":{uid,revision},"tasks":{"<id>":{uid,short_id,revision}}}`,
     keys in that order, each `revision` the one the launcher's post-link `getIssue` of that issue
-    answered; `JSON.stringify(…, null, 2)` plus a trailing newline). Written by the launcher, before
+    answered and each task's `short_id` the one its `createIssue` answered — that is what a worker's
+    `KATA_REF=<project>#<short_id>` is built from, so a create answer without one is a refusal and no
+    record; `JSON.stringify(…, null, 2)` plus a trailing newline). Written by the launcher, before
     any VM exists.
   - `ultra/evidence-run-<N>` — the run's record under `.ultrapowers/runs/<N>/`: `status.json`,
     `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl`, `engine.log`,

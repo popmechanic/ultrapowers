@@ -86,12 +86,22 @@ const PROJECT = 'p'
 const SHORT_3 = 'ab12'
 const SHORT_4 = 'cd34'
 
-/** The record `fleet/launch.mjs` writes, for tasks `3` and `4`. */
+/**
+ * The record `fleet/launch.mjs` writes, for tasks `3` and `4` — shaped as the
+ * launcher writes it (#963): every task row is `{uid, short_id, revision}` in
+ * that order, carrying the `short_id` its `createIssue` answered, and the run's
+ * row stays `{uid, revision}`. Nothing below plants a short id onto a row: what
+ * `envFor` reads is what a launcher's record already holds. The seam is
+ * exercised against real launcher bytes in `test_worker_kata_ref.mjs`.
+ */
 const RECORD = () => ({
   url: KATA_SERVER,
   project: { id: 7, uid: 'PROJ0', name: PROJECT },
   run: { uid: 'RUN0', revision: 1 },
-  tasks: { 3: { uid: 'U-3', revision: 1 }, 4: { uid: 'U-4', revision: 1 } },
+  tasks: {
+    3: { uid: 'U-3', short_id: SHORT_3, revision: 1 },
+    4: { uid: 'U-4', short_id: SHORT_4, revision: 1 },
+  },
 })
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -222,17 +232,21 @@ assert.equal(typeof seamsK.envFor, 'function',
   'the per-worker kata environment; got ' + JSON.stringify(typeof seamsK.envFor))
 const envForK = seamsK.envFor
 
-// M3 stores the issue's `short_id` on the task's kata row at dispatch, and
-// `envFor` reads the row at CALL time (as `filesFor` reads the sheet). The
-// engine is stubbed here, so this exam does what the engine does: it writes
-// the two rows the dispatch read would have written, on the very record object
-// run-main parsed and handed over.
+// `envFor` reads the task's kata row at CALL time (as `filesFor` reads the
+// sheet), and the row it reads is the LAUNCHER's: the record run-main parsed
+// already carries each task's `short_id` (#963), so nothing here writes one
+// onto it. The engine is stubbed, and that is exactly the point — no dispatch
+// has happened, and the reference is there anyway.
 const recordSeen = withKata.received && withKata.received.args && withKata.received.args.kataRecord
 assert.ok(recordSeen && recordSeen.tasks && recordSeen.tasks['3'] && recordSeen.tasks['4'],
   '(a) [M1] the engine was handed the parsed record, with a row per task; got ' +
   JSON.stringify(recordSeen))
-recordSeen.tasks['3'].shortId = SHORT_3
-recordSeen.tasks['4'].shortId = SHORT_4
+assert.equal(recordSeen.tasks['3'].short_id, SHORT_3,
+  '(a) [M1] the parsed record\'s own row for task 3 carries short_id ' + SHORT_3 +
+  ' — the launcher\'s, not one this exam planted; got ' + JSON.stringify(recordSeen.tasks['3']))
+assert.equal(recordSeen.tasks['4'].short_id, SHORT_4,
+  '(a) [M1] and task 4\'s row carries ' + SHORT_4 + '; got ' +
+  JSON.stringify(recordSeen.tasks['4']))
 
 /** What M1 says a worker of `label` carries, for a task the record knows. */
 const fourFor = (label, shortId) => ({

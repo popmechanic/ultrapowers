@@ -1343,8 +1343,20 @@ async function pushPlan ({
  * re-revisions. The answer is the `.ultrapowers/kata.json` object, keys in
  * the order the contract spells: `url`, `project`, `run`, `tasks`.
  *
+ * A task row is `{uid, short_id, revision}`, in that order (#963). The
+ * `short_id` is the create answer's — `MUTATION_KEYS` in `fleet/kata-client.mjs`
+ * projects it, so the launcher already holds it here — and it is the ONLY place
+ * it can come from: the dispatch `getIssue` the engine makes projects
+ * `ISSUE_KEYS`, which has no `short_id`, so a row that does not carry one leaves
+ * every worker of that task with no `KATA_REF` and no issue to write to. Hence
+ * the refusal below rather than a row without it: a run whose workers cannot
+ * name their issue is not a run this launcher files. The run's own row stays
+ * `{uid, revision}` — no label resolves to it, so nothing reads a short id
+ * there.
+ *
  * Every hub call goes through `call`, which turns a throw into the launch's
- * LobbyError naming the method; the compile is the launch's own refusal.
+ * LobbyError naming the method; the compile, and the missing `short_id`, are
+ * the launch's own refusals.
  */
 async function fileRunOnHub ({ hub, call, exec, repoDir, planPath, planText, target, base, n }) {
   const stamp = `run-${n}`
@@ -1378,7 +1390,15 @@ async function fileRunOnHub ({ hub, call, exec, repoDir, planPath, planText, tar
         metadata: { task: id, wave: index + 1, factsheet: entry.factsheet },
         links: [{ type: 'parent', to_ref: runIssue.uid }]
       }))
-      tasks.push({ id, uid: issue.uid })
+      const shortId = issue?.short_id
+      if (typeof shortId !== 'string' || shortId === '') {
+        throw new Refusal(
+          `launch: kata createIssue for task ${id} answered no short_id — ` +
+          'the worker reference `<project>#<short id>` cannot be written and no ' +
+          'record was filed'
+        )
+      }
+      tasks.push({ id, uid: issue.uid, shortId })
     }
   }
   const uidOf = new Map(tasks.map((t) => [t.id, t.uid]))
@@ -1398,12 +1418,18 @@ async function fileRunOnHub ({ hub, call, exec, repoDir, planPath, planText, tar
   }
   for (const t of tasks) {
     const read = await call('getIssue', () => hub.getIssue(t.uid))
-    record.tasks[t.id] = { uid: t.uid, revision: read.revision }
+    record.tasks[t.id] = { uid: t.uid, short_id: t.shortId, revision: read.revision }
   }
   const readRun = await call('getIssue', () => hub.getIssue(runIssue.uid))
   record.run = { uid: runIssue.uid, revision: readRun.revision }
   return record
 }
+
+// The record writer under both of its names — `fileRunOnHub` is what this
+// module calls it, `buildKataRecord` what #963 names. Exported so a sim can
+// drive it against a fake hub without a whole launch; the launcher itself
+// still calls it directly.
+export { fileRunOnHub, fileRunOnHub as buildKataRecord }
 
 /**
  * An unpinned engine, named as the tip it is. Only the unpinned case is
