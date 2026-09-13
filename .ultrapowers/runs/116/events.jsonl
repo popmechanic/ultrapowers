@@ -1,0 +1,12 @@
+{"kind":"run:open","runId":"run-116","base":"","source":"fleet/run-main.mjs","id":"01M2DQAGZJ0000E6HNXNMV7JBX","ts":1789314548722}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-116.kata.json → https://kata.int.exe.xyz","id":"01M2DQAGZK00007E2FCTGM67TM","ts":1789314548723}
+{"kind":"driver:stage","stage":"tiers","detail":"1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2DQAGZK0001HW2G98VPWGEB","ts":1789314548723}
+{"kind":"driver:stage","stage":"provision","detail":"BASE f881d56e0175faa043b1e876773705506c99d318; 1 task clone(s) + integration","id":"01M2DQAHA30000GZ2MX41GS80W","ts":1789314549059}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2DQAHNK0000P5XD5X1Z0EVS","ts":1789314549427}
+{"kind":"driver:stage","stage":"engine","detail":"waves 1, width bound 12, patch input armed","id":"01M2DQAHNK00017QGFJ8VPBSDF","ts":1789314549427}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -n 6","id":"01M2DQAHNR0000K78NF33R9P75","ts":1789314549432}
+{"kind":"engine:phase","phase":"Setup","id":"01M2DQAHNS00007W99ZFPJEN7X","ts":1789314549433}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-116 at f881d56e0175faa043b1e876773705506c99d318","id":"01M2DQAHSD00006DK6Y7MSVTP6","ts":1789314549549}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2DQAHSF000066JSRBK8K5RD","ts":1789314549551}
+{"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"2368fb83-c0c0-47bf-8870-523a4df9b85c","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-116/clones/exam-1","model":"opus","id":"01M2DQAJFF0000W1257TGDFXZX","ts":1789314550255}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"05f87a44-275b-48fc-b384-360db389dbab","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-116/clones/task-1","model":"opus","id":"01M2DQAJFH0000AYW15M2M3Q5H","ts":1789314550257}
