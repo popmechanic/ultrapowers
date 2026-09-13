@@ -1,0 +1,73 @@
+{
+  "mode": "gate",
+  "stamp": "run-115",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-115/report.json",
+  "branch": "ultra/integration-run-115",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "Task 4 / Task 5 \u2014 which document shape kata v0.17.2 stores for a `work.attention` metadata merge-patch, and therefore whether the engine's nested read sees a worker's `kata meta set` write \u2014 Settling it needs the kata daemon on the hub (or the kata CLI) to write and read back one issue's metadata; this tree has no hub reachable, no kata binary and no OpenAPI document, and both exams stub the shape they assert. This is the execution the minor finding above hangs on. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 1 \u2014 `fleet/setup-script.mjs`'s kata block actually installing kata 0.17.2 on a first boot \u2014 The rendered six lines, their order between bun and pytest, and the 10 KiB budget are verified in-tree (and `bash -n fleet/kata-hub-setup.sh` exits 0 in the run evidence), but the Claim 'every sandbox can run the kata command from the moment its first boot finishes' needs a real VM, passwordless sudo and the GitHub release over the network. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "Task 2 \u2014 the `SessionStart`/`SessionEnd` `kata attention-hook start|end` entries firing in a live worker session \u2014 The settings file's contents and its byte-identity to BASE when `kataOn` is false are verified structurally; that Claude Code actually invokes the two hooks, and that `kata attention-hook start` exits 0 doing nothing with `KATA_REF` unset, can only be seen in a real session with the binary on PATH. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 6 \u2014 `evals/barrier_slack.py --tags 70-112`, the pre-registered Phase C reading over the real evidence tags \u2014 Its Proof `Run:` line begins `git fetch -q --tags origin`, and the task shares no path with another merged task so the driver's INTEGRATED RUN EVIDENCE block does not carry it. The script is complete and its guard `tests/test_barrier_slack.py` is in the driver-run suite, but the actual share figure that decides whether #813's pool sim is funded has not been produced in this tree. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-115/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1561 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n.................................................                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1561 passed, 5 warnings in 391.90s (0:06:31) =================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
