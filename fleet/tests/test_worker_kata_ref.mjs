@@ -508,10 +508,8 @@ ws.cleanup()
     'that pins the worker\'s environment reads the short id from the record rather than ' +
     'planting it. Still assigned on:\n' + planted.join('\n'))
 
-  const sim = execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)],
-    { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-  assert.ok(sim.includes('ALL TESTS PASSED'),
-    '(c) [M3] and that sim still passes when run; its output ended:\n' + sim.slice(-800))
+  // That the sibling sim still passes is the driver's `Run:` on this task, not
+  // this exam's to spawn: no sim runs another sim (test_sims_are_hermetic M4).
 }
 
 // ════════════════════════════════════════════════════════════════════════════
