@@ -18,3 +18,5 @@
 {"kind":"engine:log","line":"task 1 agent error — retrying at mostCapable","id":"01M2E5555V0000NAAZHXZ5K92M","ts":1789329052859}
 {"kind":"worker:start","label":"exam:1","role":"examiner","sessionId":"98ca8cfd-bf97-4364-a107-c7d003d6295b","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-120/clones/exam-1","model":"opus","id":"01M2E555AS0000P4TCZSDRF44K","ts":1789329053017}
 {"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"73db9e80-62fa-42ff-a3ad-b6679cce6e4f","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-120/clones/task-1","model":"opus","id":"01M2E555AW0000X330WF36DJR0","ts":1789329053020}
+{"kind":"worker:end","label":"exam:1","role":"examiner","sessionId":"98ca8cfd-bf97-4364-a107-c7d003d6295b","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":72,"output":53769,"cacheRead":3711717,"cacheCreation":137933,"costUsd":4.579773500000002,"models":["claude-opus-5"]},"id":"01M2E5SZNX0000HKXWY8KQW2Z8","ts":1789329735357}
+{"kind":"transcript:slice","label":"exam:1","sessionId":"98ca8cfd-bf97-4364-a107-c7d003d6295b","bytes":11667,"id":"01M2E5SZP80000SPASNGX4PGN1","ts":1789329735368}
