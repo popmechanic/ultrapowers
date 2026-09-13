@@ -421,6 +421,10 @@ for doc in events:
 state = dict.fromkeys(ids, "queued")
 wave = dict(waves)
 proof, park = {}, {}
+# The hand a worker raised, per task: the LATEST `driver:attention` the engine
+# wrote for it and nothing else. A task that never raised one has no entry, and
+# its cell reads `null`.
+attention = {}
 # Every `worker:start`, and the positions each label was closed at: a role is
 # the last start of the task that no later end of the SAME label answered.
 opens, closes = [], {}
@@ -444,6 +448,11 @@ for at, doc in enumerate(events):
                 state[tid] = "proving"
                 proof[tid] = {"cmd": doc.get("cmd"), "exit": doc.get("exit"),
                               "ts": doc.get("ts")}
+    elif kind == "driver:attention":
+        for tid in named(doc):
+            if tid in state:
+                attention[tid] = {"value": doc.get("attention"), "msg": doc.get("msg"),
+                                  "ts": doc.get("ts")}
     elif kind in ("driver:wave-adopted", "driver:wave-blocked"):
         blocked = kind == "driver:wave-blocked"
         for tid in [str(t) for t in listed(doc, "tasks")
@@ -489,7 +498,8 @@ def key(tid):
 cells = {}
 for tid in sorted(ids, key=key):
     cells[tid] = {"wave": wave.get(tid), "state": state[tid], "role": role_of(tid),
-                  "lastProof": proof.get(tid), "park": park.get(tid)}
+                  "lastProof": proof.get(tid), "park": park.get(tid),
+                  "attention": attention.get(tid)}
 
 if MODE == "sub":
     out = (sub or "") + "\n"

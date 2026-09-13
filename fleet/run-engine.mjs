@@ -138,6 +138,44 @@ export const isInfraFault = (msg) => String(msg).startsWith('AGENT_NULL')
 // pass 0); anything that is not a finite number ≥ 0 leaves this value standing.
 export const INFRA_BACKOFF_MS = 60000
 
+// ── the worker's raised hand (#810 Phase A) ──────────────────────────────────
+// A kata worker says it is stuck by writing its OWN issue's `work.attention`;
+// the coordinator only ever READS it (kata's orchestration recipe — the
+// coordinator never writes attention). So while a worker runs the engine polls
+// that task's issue metadata on this interval and records what it finds. Fifteen
+// seconds is the resting cadence: a hand raised mid-worker reaches the record
+// and the page well inside the minute an operator takes to look, and a run of
+// twenty tasks still costs the hub four reads a minute per running worker.
+// `args.attentionPollMs` overrides it per run (the sims pass 50); anything that
+// is not a finite number > 0 leaves this value standing.
+export const ATTENTION_POLL_MS = 15000
+/** The three readings kata's `work.attention` is allowed to carry. Anything
+ *  else — a typo, a value a later kata adds — is no reading at all: it records
+ *  nothing and leaves the last reading standing. */
+export const ATTENTION_VALUES = Object.freeze(['ok', 'needs-human', 'stuck'])
+/**
+ * Who moved `work.attention`, as the client exposes it — `''` when it exposes
+ * nobody. kata's metadata_updated event carries the actor, but `getIssue` is a
+ * projection of the ISSUE, so which of these spellings (if any) reaches the
+ * engine depends on what the client hands back. The engine records the first
+ * one it finds and never invents a name: an unattributed hand is `''`, not the
+ * driver's own actor.
+ */
+export const attentionActorOf = (issue) => {
+  const doc = (issue && typeof issue === 'object') ? issue : {}
+  const meta = (doc.metadata && typeof doc.metadata === 'object') ? doc.metadata : {}
+  const work = (meta.work && typeof meta.work === 'object') ? meta.work : {}
+  const event = ['metadata_updated', 'last_event', 'event']
+    .map((k) => doc[k])
+    .find((v) => v && typeof v === 'object') || {}
+  for (const candidate of [work.attention_actor, work.actor, meta.attention_actor,
+                           meta.actor, event.actor, doc.attention_actor, doc.actor,
+                           doc.metadata_actor, doc.updated_by, doc.last_actor]) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate
+  }
+  return ''
+}
+
 // #825 — does this set of changed paths change what the project installs? The
 // names are `derive_bootstrap_cmd`'s ladder (skills/ultrapowers/scripts/
 // ultra_run.py) plus `pytest.ini` and the `requirements*.txt` glob: if the
@@ -802,6 +840,13 @@ export const LEG_CANNOT_PASS_RE = /cannot pass|can't pass|unsatisfiable|no outpu
 export const legCannotPass = (c) =>
   /^plan-defect:[\s\S]*\([a-z]\)/.test(String(c)) && LEG_CANNOT_PASS_RE.test(String(c))
 
+/** The first 200 characters of `<status>: <verdict>` — what a person reads
+ *  first on the issue, so the status is in front of the reason. At module
+ *  scope so the exam can drive the cap directly: no engine lane produces a
+ *  `reviewVerdict` longer than a short literal, so no run can reach it. */
+export const attentionMsg = (status, verdict) =>
+  (String(status) + ': ' + String(verdict)).slice(0, 200)
+
 // ── the integration clone's cache sweep (#631 option (d)) ────────────────────
 // The driver runs the suite in the integration clone — each wave's candidate,
 // and BASE's tree once if one of them is red — so a python suite leaves
@@ -979,7 +1024,10 @@ export async function resolveConflicts({
 
 // ── the engine ───────────────────────────────────────────────────────────────
 export async function runEngine({
-  args, agent, parallel, exec,
+  // The worker seam. Wrapped below as `agent`, so every dispatch this engine
+  // makes for a task the record names is polled for that task's raised hand
+  // (#810 Phase A) without a call site having to remember to ask.
+  args, agent: dispatchAgent, parallel, exec,
   paths, // { repoDir, runDir, clonesDir }
   log = () => {}, phase = () => {},
   rolesDir,
@@ -1166,6 +1214,31 @@ export async function runEngine({
     await drainKataPosts()
     await kataCall('close', row.uid, () => kata.close(kataProjectId, row.uid, spec))
   }
+  // The OTHER last word: a task the run could not finish is left OPEN and marked
+  // for a person (#810 Phase A). `wontfix` was the engine's word for this until
+  // then, and it was the wrong one — a close says the question is settled, while
+  // a task the run could not finish is precisely the one still waiting for
+  // someone. So three writes and no close: the `needs-review` label, the two
+  // `work.attention` keys in ONE metadata patch (kata's metadata is a
+  // merge-patch), and one comment carrying the result's own notes. Each goes
+  // through `kataCall`, so a refusal is one `kata:write-failed` (#934) naming
+  // which write it was and the other two still go out. `kataClosed` is the same
+  // once-guard the close uses, so a wave's marking wins over the sweep's and no
+  // issue is marked twice.
+  const kataMark = async (id, { status, verdict, notes }) => {
+    const row = kataRowOf(id)
+    if (!row || kataClosed.has(id)) return
+    kataClosed.add(id)
+    await drainKataPosts()
+    await kataCall('label', row.uid,
+      () => kata.addLabel(kataProjectId, row.uid, 'needs-review'))
+    await kataCall('metadata', row.uid,
+      () => kata.patchMetadata(kataProjectId, row.uid,
+        { 'work.attention': 'needs-human', 'work.attention_msg': attentionMsg(status, verdict) },
+        kataRevisions.get(row.uid)))
+    await kataCall('comment', row.uid,
+      () => kata.comment(kataProjectId, row.uid, String(notes)))
+  }
   const appendEvent = (e) => {
     const ts = Date.now()
     const line = JSON.stringify({ ...e, id: ulid(ts), ts })
@@ -1177,6 +1250,117 @@ export async function runEngine({
     // knows, and on the run's issue otherwise (`kataUidFor`).
     mirrorToHub(e, line)
   }
+
+  // ── the worker's raised hand (#810 Phase A) ────────────────────────────────
+  // While a task's worker runs, the engine READS that task's issue metadata on
+  // a timer and writes nothing: `work.attention` is the worker's to move (the
+  // coordinator never writes it), and the run's record is where an operator —
+  // and the status page, through `driver:attention` — sees that it moved.
+  //
+  // The timer is per TASK and reference-counted, not per dispatch: the
+  // implementer runs beside its examiner and the two reviewers run beside each
+  // other, and two timers on one issue would double the hub's reads and race
+  // each other's readings. The count rises on the first worker of a task and
+  // the interval is cleared when the last one settles.
+  const attentionPollMs = (() => {
+    for (const raw of [args.attentionPollMs, args.ATTENTION_POLL_MS]) {
+      if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw
+    }
+    return ATTENTION_POLL_MS
+  })()
+  const ATTENTION_READINGS = new Set(ATTENTION_VALUES)
+  // What the driver last READ for a task. Absent means `ok`: a resting worker
+  // is the state every task starts in, so the first poll of a quiet task is not
+  // a change and records nothing.
+  const attentionSeen = new Map()
+  const attentionDepth = new Map()
+  const attentionTimer = new Map()
+  // One read of an issue in flight at a time. A hub slower than the interval
+  // would otherwise stack reads whose answers arrive out of order, and the
+  // record would carry a reading the worker had already moved past.
+  const attentionBusy = new Set()
+  const attentionRead = async (taskId, row) => {
+    if (attentionBusy.has(taskId)) return
+    attentionBusy.add(taskId)
+    try {
+      // NOT `kataCall`: this is a READ, and a read the hub refuses is a poll
+      // that learned nothing — not a failed write, and never the run's end.
+      // The revision tracker is left alone for the same reason; the writes that
+      // need an `If-Match` carry the revision their own last answer gave them.
+      const issue = await kata.getIssue(row.uid)
+      const meta = ((issue && issue.metadata) && typeof issue.metadata === 'object')
+        ? issue.metadata : {}
+      const work = (meta.work && typeof meta.work === 'object') ? meta.work : {}
+      const raw = work.attention
+      const value = (raw === undefined || raw === null || raw === '') ? 'ok' : String(raw)
+      if (!ATTENTION_READINGS.has(value)) return
+      const was = attentionSeen.has(taskId) ? attentionSeen.get(taskId) : 'ok'
+      if (value === was) return
+      attentionSeen.set(taskId, value)
+      const msg = work.attention_msg
+      appendEvent({ kind: 'driver:attention', task: taskId, attention: value,
+        msg: (msg === undefined || msg === null) ? '' : String(msg),
+        actor: attentionActorOf(issue) })
+    } catch { /* a read the hub refused: nothing to record, and no run to end */
+    } finally {
+      attentionBusy.delete(taskId)
+    }
+  }
+  const attentionStart = (taskId, row) => {
+    const depth = (attentionDepth.get(taskId) || 0) + 1
+    attentionDepth.set(taskId, depth)
+    if (depth > 1) return
+    const timer = setInterval(() => { attentionRead(taskId, row) }, attentionPollMs)
+    if (typeof timer.unref === 'function') timer.unref()
+    attentionTimer.set(taskId, timer)
+  }
+  const attentionStop = (taskId) => {
+    const depth = (attentionDepth.get(taskId) || 1) - 1
+    attentionDepth.set(taskId, depth)
+    if (depth > 0) return
+    const timer = attentionTimer.get(taskId)
+    if (timer !== undefined) clearInterval(timer)
+    attentionTimer.delete(taskId)
+  }
+  // Every dispatch goes through here. A label whose second colon-segment names
+  // a task the record knows (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1:2`) is
+  // polled while it runs; `integration`, `reconcile:wave1:1` and every dispatch
+  // of a run with no hub are the call the engine made at BASE, byte for byte.
+  const agent = (prompt, opts) => {
+    const row = kataOn ? kataRowOf(String((opts && opts.label) || '').split(':')[1]) : null
+    if (!row) return dispatchAgent(prompt, opts)
+    const taskId = String(opts.label).split(':')[1]
+    attentionStart(taskId, row)
+    // The dispatch itself is made in THIS tick — the pair at the top of the
+    // pipeline is two `agent()` calls with nothing awaited between them, and a
+    // wrapper that awaited anything first would put a turn of the loop there.
+    let call
+    try {
+      call = dispatchAgent(prompt, opts)
+    } catch (e) {
+      attentionStop(taskId)
+      throw e
+    }
+    return Promise.resolve(call).then(
+      (reply) => { attentionStop(taskId); return reply },
+      (err) => { attentionStop(taskId); throw err })
+  }
+
+  // ── the review's findings, where the fix will look (#810 Phase A) ──────────
+  // A fix round is dispatched with its blocking findings in its prompt and
+  // nothing on the record; the issue the fix worker reads said only that the
+  // task was claimed. This is the same list, on the issue, BEFORE that worker
+  // starts — `0` for the pre-review repair round, the reviewer's round number
+  // otherwise — posted through the non-fatal write path (#934) and drained, so
+  // a refused post is one `kata:write-failed` and the round still runs.
+  const postReviewRound = async (row, round, findings) => {
+    if (!kataOn || !row) return
+    const lines = (Array.isArray(findings) ? findings : [])
+      .map((f) => '- ' + String(f == null ? '' : f))
+    kataPost(row.uid, 'review round ' + round + ':\n' + lines.join('\n'))
+    await drainKataPosts()
+  }
+
   const repoDir = path.resolve(paths.repoDir)
   const integ = path.join(clonesDir, 'integration')
 
@@ -1643,6 +1827,15 @@ export async function runEngine({
           ': recorded ' + kataRow.revision + ' found ' + ((issue && issue.revision)))
       }
       kataRevisions.set(kataRow.uid, issue.revision)
+      // #810: the issue's short id, from the SAME answer the revision check
+      // read — the workers of this task carry `KATA_REF=<project>#<short_id>`,
+      // and a second read for it would be a second fact about one issue. Kept
+      // on the record's own row, which run-main's `envFor` reads at dispatch;
+      // an answer that carries no short id leaves the row as it was, and those
+      // workers simply hold no reference.
+      if (typeof issue.short_id === 'string' && issue.short_id) {
+        kataRow.shortId = issue.short_id
+      }
       const fromHub = (issue.metadata || {}).factsheet
       if (fromHub && typeof fromHub === 'object') {
         task.factsheet = fromHub
@@ -2295,6 +2488,7 @@ export async function runEngine({
       proofFixes = 1
       judgmentCalls.push('task ' + task.id + ': the driver\'s pre-review pass was red (' +
         reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
+      await postReviewRound(kataRow, 0, reds.map((r) => r.line))
       impl = await agent(
         roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
@@ -2584,6 +2778,7 @@ export async function runEngine({
       // Fix round: same tree (isolation routes fix:<id> to the task's clone),
       // prior work is simply the tree's state; capture stays cumulative
       // against the task BASE by construction (withPatchCapture).
+      await postReviewRound(kataRow, iter, blocking.map((b) => b.detail))
       impl = await agent(
         roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
@@ -3215,11 +3410,13 @@ export async function runEngine({
       appendEvent({ kind: 'driver:wave-blocked', wave: w + 1,
         tasks: waveIds(w), detail: merge.detail })
       // The barrier could not make this wave green, so nothing in it landed —
-      // every task of the wave is closed `wontfix` carrying the row's own
-      // detail, and `wontfix` refuses evidence by construction.
+      // every task of the wave is left OPEN and marked for a person, carrying
+      // the row's own detail. A wave the driver could not fold is a question for
+      // someone, not a settled one.
       for (const id of waveIds(w)) {
-        await kataClose(id, { reason: 'wontfix',
-          message: 'wave ' + (w + 1) + ' blocked: ' + String(merge.detail), evidence: [] })
+        await kataMark(id, { status: 'blocked',
+          verdict: 'wave ' + (w + 1) + ' blocked: ' + String(merge.detail),
+          notes: String(merge.detail) })
       }
     }
     if (merge.status === 'MERGED') {
@@ -3506,6 +3703,14 @@ export async function runEngine({
     .map((u) => (typeof u === 'string' ? u.split(/[:\s]/)[0] : (u && u.task)))
     .filter(Boolean)
   const missingIds = [...new Set([...failedIds, ...blockedIds])]
+  /** What `unfinished` already says about one task, joined — the reason a task
+   *  with no result row of its own has to offer, and '' when it has none. */
+  const unfinishedNotes = (id) => unfinished
+    .map((u) => (typeof u === 'string'
+      ? u
+      : ((u && u.task) ? String(u.task) + ': ' + String((u && u.detail) || '') : '')))
+    .filter((s) => s === id || s.startsWith(id + ':') || s.startsWith(id + ' '))
+    .join('; ')
   const missingDeliverables = missingIds
     .map((id) => ({ task: id, files: ((WAVES.flat().find((t) => t.id === id) || {}).files) || [] }))
     .filter((m) => m.files.length)
@@ -3519,19 +3724,33 @@ export async function runEngine({
     : r))
 
   // ── the hub's last word (#913) ────────────────────────────────────────────
-  // Every task that produced a row and did not finish `done` is closed
-  // `wontfix` carrying its own reading — the wave closes above already took
-  // the ones they own, and this takes the rest. A task that never produced a
-  // row at all (a cascade-blocked wave, a SKIPPED one) is left OPEN: the run
-  // has nothing to say about it, and an open issue is the honest record of a
-  // task that was never attempted. Then the comment queue is drained, so the
-  // hub holds every `driver:` event before the engine answers.
+  // Only a task adopted into the tree was closed, above. Everything the run
+  // could not finish stays OPEN and is marked for review here (#810 Phase A) —
+  // the waves' own markings already took the ones they own, and this takes the
+  // rest, in two passes.
+  //
+  // First every row that is not `done`: it carries its own reading, so the
+  // message is the row's.
   for (const r of taskResults) {
     if (!r || r.status === 'done') continue
-    await kataClose(r.task, {
-      reason: 'wontfix',
-      message: String(r.status) + ': ' + String(r.reviewVerdict) + ' — ' + String(r.notes),
-      evidence: [],
+    await kataMark(r.task, { status: r.status, verdict: r.reviewVerdict, notes: r.notes })
+  }
+  // Then the tasks the record names that produced no row at all — the run never
+  // got to them, and an unmarked open issue reads exactly like a task nobody has
+  // looked at yet. `blockedByDep` is the one distinction worth keeping: those are
+  // tasks the driver refused to dispatch because an upstream task failed
+  // (`skipped`), and the rest are the waves a cascade or a red baseline ended
+  // before they ran (`unattempted`). Then the comment queue is drained, so the
+  // hub holds every `driver:` event before the engine answers.
+  for (const id of Object.keys(kataTaskRows)) {
+    if (taskResults.some((r) => r && r.task === id)) continue
+    const skipped = blockedByDep.has(id)
+    await kataMark(id, {
+      status: skipped ? 'skipped' : 'unattempted',
+      verdict: skipped
+        ? 'an upstream dependency failed — never dispatched'
+        : 'the run ended before this task\'s wave',
+      notes: unfinishedNotes(id) || 'no result was recorded for this task',
     })
   }
   unsubscribeHub()

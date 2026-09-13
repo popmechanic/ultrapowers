@@ -55,3 +55,47 @@ reporting.
 
 Return a single JSON object conforming to the schema. No prose outside the
 JSON; keep the summary short.
+
+## The issue
+
+Your task has a kata issue behind it, and the driver puts its reference in
+`KATA_REF`. That issue is the run's memory: what you meant to do, what you got
+done, what a later session needs. The kata CLI is on your PATH and writes no
+path in your tree, so it runs inside the confinement you already have.
+
+Leave your notes there as comments:
+
+```
+kata comment $KATA_REF --body "the approach I am about to take"
+```
+
+Write one before a long stretch of work saying the approach you intend, one
+before you stop if the attempt is only partial, and one for any decision a later
+session would otherwise have to rediscover.
+
+Raise your hand in the same place rather than letting the run wait on you:
+
+```
+kata meta set $KATA_REF work.attention stuck
+kata meta set $KATA_REF work.attention needs-human
+kata meta set $KATA_REF work.attention_msg "one line saying why"
+```
+
+Set one of those mid-session with that message line — `stuck` for a blockage the
+driver can clear, `needs-human` for one only the operator can. Clear it with
+`kata meta set $KATA_REF work.attention ok` once you are moving again.
+
+If you stop short of the task, mark the work for review beside an honest
+comment:
+
+```
+kata label add $KATA_REF needs-review
+```
+
+The driver posts the review's findings on the issue before a fix round, as a
+comment beginning `review round <n>:`, so the thread you wrote into is the
+thread your next session reads.
+
+You never run `kata close`: a close carries a verified outcome, and the driver
+holds that. If `KATA_REF` is unset there is no kata at all — skip every command
+in this section and change nothing else about how you work.

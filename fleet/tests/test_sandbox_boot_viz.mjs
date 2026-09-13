@@ -109,7 +109,7 @@ const ARGS_JSON = `${JSON.stringify({
 })}\n`
 
 /** M2's cell, with M2's own defaults, so a case names only what it changes. */
-const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, ...over })
+const cell = (over = {}) => ({ wave: null, state: 'queued', role: null, lastProof: null, park: null, attention: null, ...over })
 
 /** Leg (b)'s `tasks` for the full log WITH `args.json`. */
 const TASKS_WITH_ARGS = {
@@ -296,15 +296,16 @@ test('(b) the full log with args.json projects three cells and no fourth  [M2]',
   const doc = project(log, args)
 
   assert.deepEqual(doc.tasks['1'],
-    { wave: 1, state: 'folded', role: null, lastProof: { cmd: EXAM_CMD, exit: 1, ts: 12 }, park: null },
+    { wave: 1, state: 'folded', role: null, lastProof: { cmd: EXAM_CMD, exit: 1, ts: 12 }, park: null,
+      attention: null },
     'task 1: folded by the `driver:wave-adopted` that lists it, no open `worker:start` so `role` ' +
     'is null, `lastProof` the last of the three proof kinds — the exam-run — and `wave` the ' +
     '1-based index of the args.json wave holding it  [leg (b), M2]')
   assert.deepEqual(doc.tasks['2'],
-    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null },
+    { wave: 1, state: 'implementing', role: 'impl:2', lastProof: null, park: null, attention: null },
     'task 2: `worker:start impl:2` with no later `worker:end` of that label  [leg (b), M2]')
   assert.deepEqual(doc.tasks['3'],
-    { wave: 2, state: 'queued', role: null, lastProof: null, park: null },
+    { wave: 2, state: 'queued', role: null, lastProof: null, park: null, attention: null },
     'task 3: named only by args.json\'s second wave, so queued in wave 2  [leg (b), M2]')
   assert.deepEqual(Object.keys(doc.tasks).sort(), ['1', '2', '3'],
     'one key per task id the log and args.json name, and no fourth  [leg (b), M2]: ' +
@@ -513,7 +514,7 @@ test('(d) the refresher commits by FLEET_COMMIT_EVENTS, once per window  [M4]', 
       'the second committed page\'s `tasks` carries the appended tasks  [leg (d), M3, M4]: ' +
       JSON.stringify(second.tasks))
     assert.deepEqual(second.tasks['6'],
-      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null },
+      { wave: null, state: 'implementing', role: 'impl:6', lastProof: null, park: null, attention: null },
       'including the line that closed the window  [leg (d), M3, M4]')
 
     // FIVE lines in ONE write: one window, one commit — not five.

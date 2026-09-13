@@ -133,6 +133,7 @@ for _a in "$@"; do
 done
 case "$_url" in
   *SHASUMS256.txt) _body="$STUB_SHASUMS" ;;
+  *SHA256SUMS) _body="$STUB_RELEASE_SUMS" ;;
   *reflection.int.exe.xyz/integrations*) _body='[{"name":"claude-max","type":"http-proxy"}]' ;;
   *) _body="fixture bytes for $_url" ;;
 esac
@@ -143,8 +144,14 @@ else
 fi
 exit 0
 `,
+  // Unpacks nothing, but answers a listing (-t): a release tarball named
+  // `<tool>_<version>_<os>_<arch>.tar.gz` holds the one file `<tool>`, so a
+  // render that reads the binary's path out of the archive gets one.
   tar: `
 argv tar "$@"
+case "$1" in
+  -tzf) _a="\${2##*/}"; printf '%s\\n' "\${_a%%_*}" ;;
+esac
 exit 0
 `,
   // Plants what a bun release zip holds, so the install after it has a source.
@@ -250,6 +257,17 @@ exit 0
 
 const SHASUMS_FIXTURE = `${'7'.repeat(64)}  ${NODE_TARBALL}`
 
+/**
+ * A GitHub release's own `SHA256SUMS`, as the stubbed curl answers one: a line
+ * per `.tar.gz` asset the render names, so a `grep " $ASSET$" | sha256sum -c -`
+ * finds its line. Read off the render rather than pinned here — which asset a
+ * release carries is the render's business, and a sibling exam's to assert.
+ */
+const releaseSums = () =>
+  [...new Set(render.match(/[\w.+-]+\.tar\.gz/g) || [])]
+    .map((asset) => `${'3'.repeat(64)}  ${asset}`)
+    .join('\n')
+
 // ── harness ──────────────────────────────────────────────────────────────────
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-script-'))
@@ -322,6 +340,7 @@ const scriptEnv = (ctx, env) => ({
   STUB_TMPROOT: ctx.root,
   STUB_REAL_PATH: simEnv({ home: ctx.home }).PATH,
   STUB_SHASUMS: SHASUMS_FIXTURE,
+  STUB_RELEASE_SUMS: releaseSums(),
   STUB_STATUS_SNAPSHOT: ctx.snapshot,
   STUB_SNAPSHOT_MARK: ctx.mark,
   ...env,

@@ -32,3 +32,51 @@ entry with DONE_WITH_CONCERNS, and never touch sibling-owned paths.
 
 Return a single JSON object conforming to the schema, with `startHead` as the
 sha `git rev-parse HEAD` printed when you began. No prose outside the JSON.
+
+## The issue
+
+This task has a kata issue behind it, and `KATA_REF` points at it. Your first
+move is to read it:
+
+```
+kata show $KATA_REF --agent
+```
+
+The driver posts the review's findings there before a fix round, as a comment
+beginning `review round <n>:`, so the blocking issues you were handed sit in the
+thread beside whatever the earlier session recorded about why the code looks the
+way it does.
+
+Leave your own notes the same way:
+
+```
+kata comment $KATA_REF --body "the approach I am about to take"
+```
+
+One before a long stretch of work saying the approach you intend, one before you
+stop if the attempt is only partial, and one for any decision the next session
+would otherwise have to rediscover.
+
+When a finding is blocked on something you cannot reach, raise your hand rather
+than churn the code:
+
+```
+kata meta set $KATA_REF work.attention stuck
+kata meta set $KATA_REF work.attention needs-human
+kata meta set $KATA_REF work.attention_msg "one line saying why"
+```
+
+Set one of those mid-session with that message line — `stuck` for a blockage the
+driver can clear, `needs-human` for one only the operator can — and clear it
+with `kata meta set $KATA_REF work.attention ok` once you are moving again.
+
+If you stop short of the listed issues, say so in an honest comment and mark the
+work:
+
+```
+kata label add $KATA_REF needs-review
+```
+
+You never run `kata close`: a close carries a verified outcome, and the driver
+holds that. If `KATA_REF` is unset there is no kata at all — skip every command
+in this section and change nothing else about how you work.

@@ -233,6 +233,14 @@ export const makeKataClient = ({ transport, actor }) => {
       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/comments',
                  body: { actor, body } }),
 
+    // One label onto an issue's own set. Kata merges rather than appends, so the
+    // same label twice is the same label once — which is why this sends exactly
+    // what `comment` sends and no `Idempotency-Key`: there is no second write to
+    // make idempotent. `ref` is the issue uid, as everywhere else here.
+    addLabel: (projectId, uid, label) =>
+      mutation({ method: 'POST', path: issuePath(projectId, uid) + '/labels',
+                 body: { actor, label } }),
+
     // `retry_protocol` is not optional beside an `Idempotency-Key`: kata refuses
     // the pair's absence, and the key is what makes a re-driven close the same
     // close rather than a second one.

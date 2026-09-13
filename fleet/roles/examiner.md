@@ -44,3 +44,47 @@ particular implementation could satisfy.
 A leg you cannot encode as written goes under `unsatisfiable` as `{leg, why}`; return `BLOCKED` only when no exam at all can be written.
 
 Return a single JSON object `{status: DONE|BLOCKED, summary, unsatisfiable: [{leg, why}]}` and no prose outside it; keep the summary short.
+
+## The issue
+
+This task has a kata issue behind it, and `KATA_REF` points at it. That issue
+outlives your session, so it is where the reading of a leg belongs.
+
+Leave your notes there as comments:
+
+```
+kata comment $KATA_REF --body "the approach I am about to take"
+```
+
+One before a long stretch of work saying the approach you intend, one before you
+stop if the exam is only partly written, and one for any reading of a leg a
+later session would otherwise have to reconstruct.
+
+A leg you cannot make satisfiable is worth raising in place as well as returning
+under `unsatisfiable`:
+
+```
+kata meta set $KATA_REF work.attention stuck
+kata meta set $KATA_REF work.attention needs-human
+kata meta set $KATA_REF work.attention_msg "one line saying why"
+```
+
+Set one of those mid-session with that message line — `stuck` for a blockage the
+driver can clear, `needs-human` for a reading only the operator can settle — and
+clear it with `kata meta set $KATA_REF work.attention ok` once you are moving
+again.
+
+If you hand in an exam that covers less than the Proof asks, mark it beside an
+honest comment:
+
+```
+kata label add $KATA_REF needs-review
+```
+
+The driver posts the review's findings on the issue before a fix round, as a
+comment beginning `review round <n>:`, so the thread you wrote into is the
+thread the implementer's next session reads.
+
+You never run `kata close`: a close carries a verified outcome, and the driver
+holds that. If `KATA_REF` is unset there is no kata at all — skip every command
+in this section and change nothing else about how you work.
