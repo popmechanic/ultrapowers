@@ -371,7 +371,9 @@ Three things a newcomer would not know:
 The fleet has one kata hub: a single persistent VM named `kata-hub` running the
 kata issue daemon, which every sandbox reaches through an `http-proxy --peer`
 integration named `kata` and which the laptop reaches over ssh. It is not part
-of any run. This row is `ok` when the `kata` integration carries a bearer at the
+of any run. Its HTTPS front door is the daemon's port and nothing else: exe.dev
+fronts exactly one port per VM (`share port`), so any second browser service — the
+Viz page, for one — lives on a VM of its own. This row is `ok` when the `kata` integration carries a bearer at the
 edge, its attachment policy is `tag:fleet`, and `ls kata-hub --json` answers a
 `kata-hub` row; the detail says which of the three is missing.
 
