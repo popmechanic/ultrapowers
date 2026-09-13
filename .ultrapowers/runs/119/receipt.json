@@ -1,0 +1,177 @@
+{
+  "ok": true,
+  "stamp": "run-119",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-119"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "1 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The record carries the short id",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/launch.mjs",
+          "fleet/tests/test_launch_kata.mjs",
+          "fleet/tests/test_worker_kata_env.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The record carries the short id",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_kata.mjs",
+            "fleet/tests/test_worker_kata_env.mjs",
+            "fleet/tests/test_worker_kata_ref.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_kata.mjs",
+            "fleet/tests/test_worker_kata_env.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_worker_kata_ref.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_worker_kata_ref.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_worker_kata_env.mjs 2>&1 | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_kata.mjs 2>&1 | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_worker_kata_ref.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_kata.mjs",
+              "fleet/tests/test_worker_kata_env.mjs",
+              "fleet/tests/test_worker_kata_ref.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_worker_kata_ref.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_worker_kata_ref.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_worker_kata_ref.mjs": "fleet/tests/test_worker_kata_ref.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_worker_kata_ref.mjs"
+            ],
+            "siblingOwned": [],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "The record carries the short id"
+    ],
+    "mode": "sequential",
+    "degrade_reason": "Sequential mode: 1 implementation tasks",
+    "globalConstraints": "- The engine and the worker are untouched: the ref travels through the record the launcher writes, not through a new engine read.\n- No worker ever holds a kata credential: the only `KATA_AUTH_TOKEN` in `fleet/` is the literal placeholder.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/kata-client.mjs fleet/confine-hook.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -rEn \"KATA_AUTH_TOKEN=[A-Za-z0-9]{32,}\" fleet/ skills/",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-119/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-119/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-119/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-119/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
