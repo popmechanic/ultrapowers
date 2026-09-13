@@ -1,0 +1,40 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "bb4ada6b133f120982e6b7805cdbdb43145e2943cea54db0c9be07f17b106e58",
+      "verdict": "pass",
+      "reason": "Every Machine clause has a leg that would fail if it were false: M1 per-wave rows in (a), M2 pinned by the committed reply's sha256 in both modes, M3 per-order conflictKeys anchored on a conflicting and a clean set, M4 with a positive control, M5 a regex, M6 absent/empty/two-directory cases, M7 compared to wave 2's simultaneous tree."
+    },
+    "2": {
+      "hash": "433a6aa08cf1ba660162526597dbb75cd0497c2bcb641f4cedbc7ee36f629f26",
+      "verdict": "pass",
+      "reason": "M1-M3 are for-each legs over the three fixtures with computed counts 4/8/2, M4 checks the exact five-key shape and each literal, M6 enumerates the root, M5 names the absent directories and the non-zero stderr-naming exit."
+    }
+  },
+  "tally": {
+    "dispatched": 7,
+    "rejected": 4,
+    "rounds": 4,
+    "history": [
+      {
+        "round": 1,
+        "1": "fail: M3 legs covered waves 1 and 3 only; (b) never compared reply text",
+        "2": "fail: (e) tested manifest absence not directory; (a) hard-coded counts"
+      },
+      {
+        "round": 2,
+        "1": "fail: M6 default root never exercised",
+        "2": "fail: the Claim's 'where the sim reads them' had no clause; M4 patch field unasserted"
+      },
+      {
+        "round": 3,
+        "1": "pass",
+        "2": "pass"
+      },
+      {
+        "round": 4,
+        "2": "pass (renumbered M5/M6 after a compile refusal)"
+      }
+    ]
+  }
+}
