@@ -130,7 +130,11 @@ approved plan, **is** the authorization to execute — no further approval pause
    the operator to push it before the launch. When the plan is for a
    repository other than this checkout, the launcher still needs a clone of
    that target with it as `origin`: clone it somewhere disposable and add
-   `--repo <that clone>` to the launch line; `--target` alone is refused.
+   `--repo <that clone>` to the launch line; `--target` alone is refused. The
+   launcher compiles the plan from inside that clone, so the plan path on the
+   launch line resolves relative to it: copy the plan and its
+   `.gate-verdicts.json` into the clone (an untracked `docs/superpowers/plans/`
+   there is fine) and name that relative path.
 
    Then run `node <plugin-root>/fleet/doctor.mjs --target <repo>` once. A
    verdict of `ready` goes straight to step 2. Any other verdict is repaired
