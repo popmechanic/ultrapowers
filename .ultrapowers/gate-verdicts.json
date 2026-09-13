@@ -1,0 +1,39 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "dd6160760d740fe79c018ed9aab4a36f850965c995629b7917cd21f8ad399411",
+      "verdict": "pass",
+      "reason": "Each M1 exit gets a per-row leg (no close, one metadata POST, deep-equal body), M2's green ordering and the refused-write branch are pinned with counts and event what, M3's contract sentence is checked positively for open plus the three keys and negatively for the retired wontfix wording."
+    },
+    "2": {
+      "hash": "b5fe8d0a684ffcdebb3e3784f40da6c73ff18ecd14453742d4b1bf4f900964a1",
+      "verdict": "pass",
+      "reason": "M1 is a for-each leg over done|parked|failed pinning finished/state/updatedAt and the rm verb, M2 names the absent rm and the stale row plus the unchanged closed read, M3 pins one request with deep-equal body, the Idempotency-Key and the absent /actions/close, M4's regexes are satisfiable."
+    }
+  },
+  "tally": {
+    "dispatched": 6,
+    "rejected": 3,
+    "rounds": 4,
+    "history": [
+      {
+        "round": 1,
+        "1": "fail: Run did not run the Test file (convention unstated)",
+        "2": "fail: same"
+      },
+      {
+        "round": 2,
+        "1": "fail: sentence promises work.state=done on the done exit, M2 forbade any metadata write there",
+        "2": "pass"
+      },
+      {
+        "round": 3,
+        "1": "fail: 'on any exit' quantified beyond leg (b)"
+      },
+      {
+        "round": 4,
+        "1": "pass"
+      }
+    ]
+  }
+}
