@@ -125,7 +125,7 @@ const withActor = (issue) => ({
   updated_by: ACTOR,
   metadata: {
     ...issue.metadata,
-    work: { ...((issue.metadata || {}).work || {}), attention_actor: ACTOR },
+    'work.attention_actor': ACTOR,
   },
 })
 
@@ -231,7 +231,7 @@ const setAttention = (fake, uid, attention, msg) => {
   const iss = fake.store.get(uid)
   iss.metadata = {
     ...iss.metadata,
-    work: { ...(iss.metadata.work || {}), attention, attention_msg: msg },
+    'work.attention': attention, 'work.attention_msg': msg,
   }
   // A metadata write on the hub moves the issue's revision. The polls read past
   // it: the revision rule is the fact sheet's, at dispatch, and a worker
@@ -325,7 +325,7 @@ async function scenario ({ waves, sheets, stamp = 'sim', examBody = NEEDS_ONE,
         ...((sheets && sheets[id]) ? { factsheet: sheets[id] } : {}),
         // The baseline every task opens at: `ok`, with no message. A poll that
         // reads it back unchanged is not a change (M1) and appends nothing.
-        work: { attention: 'ok', attention_msg: '' },
+        'work.attention': 'ok', 'work.attention_msg': '',
       },
     }
   }

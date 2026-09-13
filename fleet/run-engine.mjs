@@ -1290,7 +1290,18 @@ export async function runEngine({
       const issue = await kata.getIssue(row.uid)
       const meta = ((issue && issue.metadata) && typeof issue.metadata === 'object')
         ? issue.metadata : {}
-      const work = (meta.work && typeof meta.work === 'object') ? meta.work : {}
+      // kata stores `kata meta set <ref> work.attention …` as the FLAT key
+      // `"work.attention"` (measured on the hub 2026-09-13: `show --json`
+      // answers `{"work.attention": "stuck", "work.attention_msg": "…"}`), so
+      // the flat key is the reading; a nested `work` object is kept as the
+      // fallback for a client that expands dotted keys.
+      const nested = (meta.work && typeof meta.work === 'object') ? meta.work : {}
+      const work = {
+        ...nested,
+        ...(meta['work.attention'] !== undefined ? { attention: meta['work.attention'] } : {}),
+        ...(meta['work.attention_msg'] !== undefined ? { attention_msg: meta['work.attention_msg'] } : {}),
+        ...(meta['work.attention_actor'] !== undefined ? { attention_actor: meta['work.attention_actor'] } : {}),
+      }
       const raw = work.attention
       const value = (raw === undefined || raw === null || raw === '') ? 'ok' : String(raw)
       if (!ATTENTION_READINGS.has(value)) return
