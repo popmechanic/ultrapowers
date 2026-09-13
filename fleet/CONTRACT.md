@@ -514,7 +514,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
   is open, and `<phase> · <sub>` — that phase, a space, `·`, a space, and either the label of the
-  most recent worker still running or the kind of the last event — otherwise.
+  most recent worker still running or the kind of the last event — otherwise. That last event is the
+  run's OWN PROGRESS and not the bookkeeping written to the same log: the projection SKIPS the kinds
+  that are not progress — `kata:*`, `transcript:*`, `engine:log` and `capture:*`, and `resolver:reply`
+  with them — and the kind it takes is the last `driver:*`/`worker:*` one the log has written since
+  that phase event, so a phase followed only by bookkeeping reads as that phase alone.
   The `state` cell is a sequence, not a set: a run that published reads
   `booting → running → publishing → done`, and a run whose merge PUT answered a base-moved 405 folds
   again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase
