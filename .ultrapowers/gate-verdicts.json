@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "8bd3ffa5da13619f003ef4f43a4bd7ce76da234784f8b70393cd0642d30c9ff1",
+      "verdict": "pass",
+      "reason": "Both Machine clauses pin the same literal (41) and each leg's Run compares exact output to that literal; the literals are mutually consistent. (The tree holds 102 sims at BASE by design of this probe.)"
+    }
+  },
+  "tally": { "dispatched": 1, "rejected": 0, "rounds": 1 }
+}
