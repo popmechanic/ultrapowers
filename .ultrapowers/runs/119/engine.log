@@ -4,3 +4,13 @@ run-main: kata — record /home/exedev/plans/run-119.kata.json → https://kata.
 run-main: tiers — 1 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE 2f327c6f048b957e015e93c9d5b3e2cd652b610e; 1 task clone(s) + integration
 run-main: engine — waves 1, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: critic-blocking — 1 blocking completeness finding(s): Task 1 / Proof (Test+Guard `fleet/tests/test_worker_kata_ref.mjs`): leg (c) at fleet/tests/test_worker_kata_ref.mjs:511 spawns a sibling sim — `execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)], ...)` on fleet/tests/test_worker_kata_env.mjs — which violates the repo-wide invariant that fleet/tests/test_sims_are_hermetic.mjs:844-848 enforces (leg (d) / M4: "no fleet/tests/test_*.mjs spawns another test_*.mjs or pytest — the bridge is what runs them"). This is the driver's red suite: `python3 -m pytest -n auto` fails at tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs] naming that exact line. Nothing about the deliverable itself is wrong — launch.mjs, CONTRACT.md and the two sims all satisfy M1-M5 — but the exam file as landed makes the integrated tree's suite red, and the sweep offers no allowlist. The spawn is also redundant with the task's own `Run: node fleet/tests/test_worker_kata_env.mjs 2>&1 | grep -q 'ALL TESTS PASSED'`, which is the driver's one execution of that sim; leg (c)'s file-text half (the `\.shortId =` sweep, lines 502-509) is hermetic and is the part that actually pins M3. — critic-block.json is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 22min 17.716s
+CPU time consumed: 30min 48.362s
+Memory peak: 256.0K
+Memory swap peak: 0B

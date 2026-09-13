@@ -1,0 +1,125 @@
+{
+  "integrationBranch": "ultra/integration-run-119",
+  "baseSha": "2f327c6f048b957e015e93c9d5b3e2cd652b610e",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "ab066ad21c4f8eb9abe1418cfd59c58e85dca3d7",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-119/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Scope creep / dead code in `fleet/launch.mjs`: the patch adds `export { fileRunOnHub, fileRunOnHub as buildKataRecord }` after the record writer, with a comment claiming it is \"Exported so a sim can drive it against a fake hub without a whole launch\". No sim does: the exam `fleet/tests/test_worker_kata_ref.mjs` imports only `launch` from `../launch.mjs` and drives the writer through a full `launchIn(...)`, and `buildKataRecord` appears nowhere else in `fleet/` or `skills/`. Nothing in the task's Machine clauses or Proof legs asks for a new module export, so this widens `launch.mjs`'s public surface with a second, unused name for a private helper. Drop both names (the alias and the bare re-export) unless a later task consumes them.; unverified: the M5 refusal orphans what it already filed on the hub. The new `throw new Refusal(...)` sits inside `fileRunOnHub`'s create loop, after `hub.createProject` and one or more `hub.createIssue` calls have succeeded; the purge the launcher owns runs as `if (filed !== null) await kataPurge(filed.record)` (fleet/launch.mjs:1330) on the value `kataStep(n)` *returns*, so a throw from inside the writer never reaches it and the run's project plus its issues stay on the hub. The exam's leg (e) pins the local consequences only (no plan branch, no push, no `.ultrapowers/kata.json`, no mutating lobby verb) and cannot see hub state, and the sibling `names an edge ... between tasks it did not list` Refusal in the same function already has this shape, so this diff does not introduce the pattern \u2014 but it does add a second path to it, and M5 does not say what should happen to the filed project. What would settle it: a leg asserting the fake hub recorded a `purgeProject` call after the short_id refusal, or an explicit statement in the task that a short_id refusal leaves the project filed.; Scope: `fleet/launch.mjs` adds `export { fileRunOnHub, fileRunOnHub as buildKataRecord }` (patch hunk at launch.mjs, just after `fileRunOnHub`), whose own comment says it exists \"so a sim can drive it against a fake hub without a whole launch\" \u2014 but no sim in this diff imports either name. The task's exam `fleet/tests/test_worker_kata_ref.mjs` drives the writer through `launch()` (legs (a) and (e)), and neither `test_launch_kata.mjs` nor `test_worker_kata_env.mjs` imports it. Nothing in the Claim, M1\u2013M5 or the Proof legs requires the module's public surface to grow, and the alias gives one function two exported names. Suggest dropping the export block; if a future sim wants the writer directly, export it then, under one name.; Exam noise: EXAM EVIDENCE for `node fleet/tests/test_worker_kata_ref.mjs` exits 0 but prints `fatal: couldn't find remote ref ultra/integration-run-7` to stderr. The source is the `execStub` git branch in `fleet/tests/test_worker_kata_ref.mjs` (leg (b)'s `runMainFlow`): `execFileSync('git', argv, { cwd: opts.cwd, env, encoding: 'utf8' })` leaves stdio at the default, so a failing child git's stderr is inherited by the exam process rather than captured into the returned `stderr` field the stub pretends to fill (`stderr: ''`). No assertion is affected \u2014 `flow.out.code === 0` is asserted and holds \u2014 but a green exam that prints `fatal:` reads as a failure to whoever runs it, and the stub's error path cannot report what it swallowed. Pin stdio on the child.; unverified: the Claim's outer sentence \u2014 \"Every worker of a task whose issue is on the hub runs with `KATA_REF=<project>#<short_id>` in its environment\" \u2014 is established here only at the `envFor` seam (leg (b) reads the seam run-main hands `makeAgent`, with the engine and `claude` stubbed). The Context's measured symptom was a live run-117/118 worker whose environment carried no `KATA_REF`; nothing in this diff or in RUN/EXAM EVIDENCE exercises an actual VM, so the last hop \u2014 engine \u2192 `makeAgent` \u2192 spawned worker process env \u2014 is unverified by this patch, correctly so given the global constraint that the engine and worker stay untouched. What would settle it: the first live run launched after this lands, checking that an implementer's env shows `KATA_REF=<owner>-<repo>-run-<N>#<short id>`.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "t/tests/  [M4 / leg (d)]\nE             AssertionError [ERR_ASSERTION]: (d) [M4] no fleet/tests/test_*.mjs spawns another test_*.mjs or pytest \u2014 the bridge is what runs them:\nE               test_worker_kata_ref.mjs:511 (runs another sim) execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })\nE             + actual - expected\nE             \nE             + [\nE             +   \"test_worker_kata_ref.mjs:511 (runs another sim) execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })\"\nE             + ]\nE             - []\nE             \nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:846:10\nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:1086:5\nE             ok (1 ms) \u2014 the same sweep names each shape of a sim running another  [M4 / leg (d)]\nE             ok (1 ms) \u2014 test_run_engine_candidate_bootstrap.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (0 ms) \u2014 test_sandbox_boot_render_env.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (2 ms) \u2014 test_sandbox_boot_state_exams.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (0 ms) \u2014 test_launch_render.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (1 ms) \u2014 test_launch_test_command.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (1 ms) \u2014 test_setup_script_render_env.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (0 ms) \u2014 test_run_engine_state_exams.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (1 ms) \u2014 the probe imports nothing from child_process  [M7 / leg (f)]\nE             ok (0 ms) \u2014 the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]\nE             ok (1 ms) \u2014 the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]\nE             ok (0 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\nE             ok (1 ms) \u2014 fleet/sandbox-boot.sh names /etc/fleet/render.env once, as its default  [M5 / leg (i)]\nE             ok (3 ms) \u2014 the boot rig pins FLEET_RENDER_ENV under every case's own home  [M5 / leg (i)]\nE             2 FAILED\nE             \nE           assert 1 == 0\nE            +  where 1 = CompletedProcess(args=['node', '/home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration/tests/../fleet/...]\\nok (3 ms) \u2014 the boot rig pins FLEET_RENDER_ENV under every case\\'s own home  [M5 / leg (i)]\\n2 FAILED\\n', stderr='').returncode\n\ntests/test_fleet_suite.py:166: AssertionError\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs]\n============ 1 failed, 1563 passed, 5 warnings in 425.34s (0:07:05) ============\n",
+    "unattributed": [
+      "fleet/tests/test_sims_are_hermetic.mjs"
+    ]
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/kata-client.mjs fleet/confine-hook.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -rEn \"KATA_AUTH_TOKEN=[A-Za-z0-9]{32,}\" fleet/ skills/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 221689,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...................................................                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1563 passed, 5 warnings in 417.96s (0:06:57) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "d09571c7a19d7cf22827d0af58b015652bf31d41",
+      "branches": [
+        "1"
+      ],
+      "joined": [],
+      "suite": {
+        "passed": false,
+        "unattributed": [
+          "fleet/tests/test_sims_are_hermetic.mjs"
+        ],
+        "output": "t/tests/  [M4 / leg (d)]\nE             AssertionError [ERR_ASSERTION]: (d) [M4] no fleet/tests/test_*.mjs spawns another test_*.mjs or pytest \u2014 the bridge is what runs them:\nE               test_worker_kata_ref.mjs:511 (runs another sim) execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })\nE             + actual - expected\nE             \nE             + [\nE             +   \"test_worker_kata_ref.mjs:511 (runs another sim) execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })\"\nE             + ]\nE             - []\nE             \nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:846:10\nE                 at file:///home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:1086:5\nE             ok (1 ms) \u2014 the same sweep names each shape of a sim running another  [M4 / leg (d)]\nE             ok (1 ms) \u2014 test_run_engine_candidate_bootstrap.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (0 ms) \u2014 test_sandbox_boot_render_env.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (2 ms) \u2014 test_sandbox_boot_state_exams.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (0 ms) \u2014 test_launch_render.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (1 ms) \u2014 test_launch_test_command.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (1 ms) \u2014 test_setup_script_render_env.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (0 ms) \u2014 test_run_engine_state_exams.mjs reads its sibling list and runs none of it  [M4 / leg (e)]\nE             ok (1 ms) \u2014 the probe imports nothing from child_process  [M7 / leg (f)]\nE             ok (0 ms) \u2014 the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]\nE             ok (1 ms) \u2014 the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]\nE             ok (0 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\nE             ok (1 ms) \u2014 fleet/sandbox-boot.sh names /etc/fleet/render.env once, as its default  [M5 / leg (i)]\nE             ok (3 ms) \u2014 the boot rig pins FLEET_RENDER_ENV under every case's own home  [M5 / leg (i)]\nE             2 FAILED\nE             \nE           assert 1 == 0\nE            +  where 1 = CompletedProcess(args=['node', '/home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration/tests/../fleet/...]\\nok (3 ms) \u2014 the boot rig pins FLEET_RENDER_ENV under every case\\'s own home  [M5 / leg (i)]\\n2 FAILED\\n', stderr='').returncode\n\ntests/test_fleet_suite.py:166: AssertionError\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs]\n============ 1 failed, 1563 passed, 5 warnings in 425.34s (0:07:05) ============\n"
+      }
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-119/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-119/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.7569999999999999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "Task 1 Claim, operator sentence: \"launch any plan and look at a running worker's environment on the sandbox. see: the worker carries the reference to its own kata issue\" \u2014 KATA_REF observed on a live implementer's environment on a real sandbox VM.",
+      "reason": "external",
+      "why": "The end-to-end chain terminates at a real kata hub (https://kata.int.exe.xyz) and a provisioned sandbox, neither reachable from this read-only tree. Structurally complete and verified at the seam instead: fleet/launch.mjs:1393-1421 writes short_id into the record, fleet/run-main.mjs:437-449 and :835-836 build KATA_REF from it, and fleet/tests/test_worker_kata_ref.mjs legs (a)+(b) drive the launcher's own written bytes through run-main's envFor against a recording fake hub."
+    },
+    {
+      "deliverable": "Task 1 Claim, downstream consequence: \"the notes, stuck signals and needs-review label the roles teach can actually land on that issue\" \u2014 an actual kata write from a worker holding the new KATA_REF.",
+      "reason": "external",
+      "why": "Requires a worker session posting to the live hub. The consuming side is present in the tree (fleet/roles/implementer.md, fleet/roles/fix.md, fleet/roles/examiner.md all read KATA_REF), but whether a note lands on the issue cannot be exercised here."
+    }
+  ],
+  "judgmentCalls": [
+    "unattributed red: fleet/tests/test_sims_are_hermetic.mjs went red on wave 1's fold; no task names it"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "Task 1 / Proof (Test+Guard `fleet/tests/test_worker_kata_ref.mjs`): leg (c) at fleet/tests/test_worker_kata_ref.mjs:511 spawns a sibling sim \u2014 `execFileSync(process.execPath, [path.relative(REPO_ROOT, simPath)], ...)` on fleet/tests/test_worker_kata_env.mjs \u2014 which violates the repo-wide invariant that fleet/tests/test_sims_are_hermetic.mjs:844-848 enforces (leg (d) / M4: \"no fleet/tests/test_*.mjs spawns another test_*.mjs or pytest \u2014 the bridge is what runs them\"). This is the driver's red suite: `python3 -m pytest -n auto` fails at tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs] naming that exact line. Nothing about the deliverable itself is wrong \u2014 launch.mjs, CONTRACT.md and the two sims all satisfy M1-M5 \u2014 but the exam file as landed makes the integrated tree's suite red, and the sweep offers no allowlist. The spawn is also redundant with the task's own `Run: node fleet/tests/test_worker_kata_env.mjs 2>&1 | grep -q 'ALL TESTS PASSED'`, which is the driver's one execution of that sim; leg (c)'s file-text half (the `\\.shortId =` sweep, lines 502-509) is hermetic and is the part that actually pins M3."
+    }
+  ],
+  "blockedWaves": []
+}
