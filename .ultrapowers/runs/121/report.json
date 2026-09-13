@@ -1,0 +1,127 @@
+{
+  "integrationBranch": "ultra/integration-run-121",
+  "baseSha": "d8ee9a3c4eabbeb5099af96180412a959dc59872",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "proof-red",
+      "notes": "the Global Constraints Check: command failed: test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1 \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "proof-red",
+      "notes": "the Global Constraints Check: command failed: test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1 \u2014 exit 1",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n.....................................................                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1565 passed, 5 warnings in 452.87s (0:07:32) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "fleet/CONTRACT.md",
+        "fleet/sandbox-boot.sh",
+        "fleet/tests/test_sandbox_boot_kata.mjs",
+        "fleet/tests/test_sandbox_boot_park_state.mjs"
+      ]
+    },
+    {
+      "task": "2",
+      "files": [
+        "fleet/CONTRACT.md",
+        "fleet/janitor.mjs",
+        "fleet/tests/test_janitor_hub.mjs",
+        "fleet/tests/test_janitor_state_key.mjs"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: out-of-FILES: fleet/kata-client.mjs \u2014 the task's Context says to \"add a `patchMetadata(projectId, uid, body)` beside\" the janitor's hub client's `close`, but that client is `makeKataClient` from `fleet/kata-client.mjs`, which already exports a `patchMetadata(projectId, uid, patch, revision)` that sends `If-Match` and no `Idempotency-Key`. A second method of the same name is impossible, and `fleet/tests/test_run_engine_kata_close.mjs:624` pins `Object.keys(makeKataClient(\u2026))` exactly, so a new method name would break a passing sim. I extended the existing one's fourth argument instead: a number/string is still the revision and still sends `If-Match: \"rev-<n>\"` (test_kata_client.mjs unchanged and green), while `{idempotencyKey}` sends the key and no `If-Match` \u2014 the measured shape the task names. The body is `{actor, patch}` either way. This also keeps the death correct under `fleet/launch.mjs:954`, which hands the janitor a client it built rather than letting `openHub` build one \u2014 a janitor-local wrapper could not have reached that path.",
+    "task 2: plan-defect: the task's Context describes the janitor's hub client as a bespoke ssh-curl seam `openHub` builds whose only write is `close`; it is in fact `makeKataClient({transport: sshTransport(\u2026)})`, which already has a `patchMetadata`. This is a disclosure of how I resolved that, not an unsatisfiable leg \u2014 every Proof leg passes.",
+    "task 2: `fleet/tests/test_janitor_hub.mjs`'s last (c) case still drives a run issue `closed` `wontfix` an hour on. Under the new rule the janitor never writes that close itself, so I left the case and its assertions exactly as they were (it still pins M2's closed read) and rewrote only its leading comment to say a person closed it.",
+    "task 2: the driver's pre-review pass was red (the Global Constraints Check: command failed: test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1 \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 2: blocking-issue-not-fixable-in-tree: the Global Constraints Check `test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1` fails only on its sandbox-boot.sh half. janitor.mjs = 10 matches (passes); sandbox-boot.sh = 0 matches and is sibling-owned (SIBLING FILES 1, factsheet siblingOwned), written by sibling task 1 whose M1 is the boot's metadata POST setting work.state. I did not touch it. The check goes green in the folded tree, not in a single task's tree.",
+    "task 2: out-of-FILES: fleet/kata-client.mjs was modified by the prior commit (281db3a3), outside my declared FILES. Its `patchMetadata(projectId, uid, patch, at)` now accepts `{idempotencyKey}` in place of a numeric revision, so the janitor's death mark can post `\u2026/issues/<uid>/metadata` with `Idempotency-Key: janitor:run-<N>:death` and no `If-Match`, as M3 requires. The change is strictly additive \u2014 the numeric-revision If-Match path is unchanged and test_kata_client.mjs plus all three run-engine kata suites still pass \u2014 and run-engine.mjs itself is untouched. I kept it rather than re-implementing an ssh-curl POST inside janitor.mjs, which would duplicate the client's internal `mutation` seam.",
+    "task 2: plan-defect: the task Context describes the janitor's hub client as \"the ssh-curl seam `openHub` builds (~line 599), whose `close` posts to `\u2026/actions/close`\" and says to \"add a `patchMetadata(projectId, uid, body)` beside it\". In the actual code, `openHub` (fleet/janitor.mjs:204) builds `makeKataClient({transport: sshTransport(...), actor: HUB_ACTOR})` from fleet/kata-client.mjs, which already has both `close` and `patchMetadata` \u2014 there is no janitor-local seam to add a method to. That is why the idempotency-key affordance landed in kata-client.mjs; the observable behaviour the task specifies (one POST to `\u2026/issues/<run uid>/metadata`, body `{actor:'janitor', patch:{...}}`, that Idempotency-Key, no `actions/close`) is unchanged and is what the exam asserts.",
+    "task 2: still red after the pre-review repair round (the Global Constraints Check: command failed: test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1 \u2014 exit 1) \u2014 no reviewer was dispatched",
+    "task 1: out-of-FILES: fleet/tests/_sandbox_boot_helpers.mjs \u2014 the task's Context requires a `STUB_KATA_META_EXIT` knob beside `STUB_KATA_CLOSE_EXIT`, which lives in the shared rig. Added a `*/metadata` curl arm ABOVE the `issues*` arm (which would otherwise swallow the URL, as it does the close), logging each patch body to `kata-meta.log`, plus a `kataMetas(ctx)` reader mirroring `kataCloses`. No existing behaviour changed; nothing else in the rig was touched.",
+    "task 1: plan-defect: the Context's knob for M1's third exit is incomplete \u2014 `STUB_ENGINE_CODE: '1'` ALONE does not make the page `failed`. The boot downgrades exit 1 WITH a gate receipt to a verdict ('a verdict, not a crash'), and the engine stub writes a receipt by default, so that run ends `done`. A genuinely failed run needs `STUB_ENGINE_CODE: '1', STUB_NO_RECEIPT: '1'` (or a non-1 exit code); the sibling sim's new engine-exit case uses the former and passes. This is pre-existing rig behaviour, not something the implementation can or should change (the `done` path is untouched) \u2014 flagged so the exam's engine-exit leg pairs the knob.",
+    "task 1: The task's M3 names 'the `Kata record` bullet, ~line 289', but line 289 is inside the `- **Boot script \u2026**` bullet's `- kata:` sub-bullet, while `- **Kata record (engine):**` is the bullet at line 429 holding the ~497 `wontfix` sentence. Both were edited so that each bullet, read as one line, matches `parked.*failed.*open.*work\\.state.*work\\.attention.*work\\.attention_msg` and no line anywhere in the file matches `parked.*or.*failed.*closes that run issue .wontfix` \u2014 leg (c) passes whichever bullet the exam reads.",
+    "task 1: fleet/CONTRACT.md's ~501 line kept `#940` on the same physical line as a `wontfix` mention: the pre-existing pin in fleet/tests/test_run_engine_kata_close.mjs requires every `wontfix` line to also carry `run issue`, `#940` or `a person`, and at least one to name `#940`. The phrase 'the run issue's own park' is gone from the 'never the engine's word about a task' line, as M3 requires.",
+    "task 1: the driver's pre-review pass was red (the Global Constraints Check: command failed: test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1 \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 1: plan-defect: the Global Constraints `Check:` command is unsatisfiable within this task's declared file scope. It greps both `fleet/sandbox-boot.sh` (mine, 9 hits, passes) and `fleet/janitor.mjs` (sibling task 2's, 0 hits, fails) for `work.state`, so it is a post-merge/integration check being run against a single task's isolated tree. Satisfying it here would require editing a sibling-owned path. Recommend running this check against the merged tree, or splitting it into a per-task half.",
+    "task 1: out-of-FILES: `fleet/tests/_sandbox_boot_helpers.mjs` is modified (+12 lines) by the prior commit 6b1706e1 but is not in the declared FILES list. The task text mandates the edit \u2014 'the stub needs a `STUB_KATA_META_EXIT` knob (beside `STUB_KATA_CLOSE_EXIT`)' \u2014 and that stub's `curl` recorder lives in that helper, which M2's refused-write leg requires. The file is not sibling-owned (it appears in neither SIBLING FILES nor the factsheet's `siblingOwned`), so this is a scope-list omission rather than a boundary crossing.",
+    "task 1: still red after the pre-review repair round (the Global Constraints Check: command failed: test \"$(grep -c 'work\\.state' fleet/sandbox-boot.sh)\" -ge 1 && test \"$(grep -c 'work\\.state' fleet/janitor.mjs)\" -ge 1 \u2014 exit 1) \u2014 no reviewer was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}
