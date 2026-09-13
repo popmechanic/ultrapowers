@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "4ab52eb40a069d99b854e3a491d775682c2177bc1588eca9ae2eaebc17fb54d4",
+      "verdict": "pass",
+      "reason": "Each clause has a falsifying leg at the seam it names: (a) pins exact key order for task and run rows, (b) drives envFor with the object parsed from the writer's own bytes for impl/review/integration labels, (e) checks the thrown Refusal naming task 4 and the absence of written bytes, (c)/(d) name the concrete absent literals."
+    }
+  },
+  "tally": { "dispatched": 2, "rejected": 1, "rounds": 2, "history": [{"round": 1, "1": "fail: M5 said 'before any VM exists' with no leg ordering the writer ahead of the lobby verb"}, {"round": 2, "1": "pass"}] }
+}
