@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "81b4d170863ab5e0645d63d626f334c0a50e60643f2ead34acb369064b3bf833",
+      "verdict": "pass",
+      "reason": "Each machine clause has a falsifying leg at the projection layer: M1's four enumerated trailing kinds get a leg each asserting worker:end and the negation of the trailing kind, M2/M3 pin the no-worker and open-worker cases, M4 pins the three BASE readings, and M5's regexes are satisfiable against the bullet as written."
+    }
+  },
+  "tally": { "dispatched": 1, "rejected": 0, "rounds": 1 }
+}
