@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "1fa03c82a59282de2e33ce460a34b08de13a0284e48cd3609b870ed8375c7dea",
+      "verdict": "pass",
+      "reason": "Every clause has a falsifying leg: (a) computes task ids from the plan and checks the patch set per fixture, (b) folds, materializes and byte-compares against reference/ with a negative row, (c) sha-compares regeneration, (d)/(e)/(f) pin manifest keys, the root's three children and the two absences, (g) requires the set lines and sentinel from the sim itself."
+    }
+  },
+  "tally": { "dispatched": 1, "rejected": 0, "rounds": 1, "note": "re-plan of run-117 task 2; that task's exam graded with git apply and failed on every real join" }
+}
