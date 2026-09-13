@@ -27,3 +27,10 @@
 {"kind":"transcript:slice","label":"review:1:1:1","sessionId":"1bddaf02-ea78-4110-9d91-b32da5e72244","bytes":11672,"id":"01M2E0QRYG0000T1V8NTFNK81J","ts":1789324420048}
 {"kind":"worker:end","label":"review:1:1:2","role":"reviewer","sessionId":"fe66bb8d-15c9-439a-b212-8cc416008a4a","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4630,"output":8452,"cacheRead":384702,"cacheCreation":71024,"costUsd":1.1370410000000002,"models":["claude-opus-5"]},"id":"01M2E0R4ST00001FMJWH8SM0HK","ts":1789324432186}
 {"kind":"transcript:slice","label":"review:1:1:2","sessionId":"fe66bb8d-15c9-439a-b212-8cc416008a4a","bytes":11588,"id":"01M2E0R4SY0000M84JTHT92DQZ","ts":1789324432190}
+{"kind":"engine:log","line":"wave 1 candidate suite RED in fleet/tests/test_sims_are_hermetic.mjs — no task names it: adopted and recorded, no reconcile dispatched","id":"01M2E155520000JEV7WC90HV0S","ts":1789324858530}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"d09571c7a19d7cf22827d0af58b015652bf31d41","id":"01M2E155520001ZD8CXAE9HA66","ts":1789324858530}
+{"kind":"driver:integrated-clean","wave":1,"removed":10,"id":"01M2E1555D0000VD66F41T55EJ","ts":1789324858541}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/kata-client.mjs fleet/confine-hook.mjs","exit":0,"minor":false,"wave":1,"id":"01M2E1555P0000PAPN7ECKDATA","ts":1789324858550}
+{"kind":"driver:integrated-check","cmd":"! grep -rEn \"KATA_AUTH_TOKEN=[A-Za-z0-9]{32,}\" fleet/ skills/","exit":0,"minor":false,"wave":1,"id":"01M2E155650000C770RP6PK7D2","ts":1789324858565}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M2E155BS0000AR6DPPMH3YSF","ts":1789324858745}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"76ca0ffc-0def-494a-bf42-a26fa06c0cd9","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-119/clones/integration","model":"opus","id":"01M2E155BT0000W173ZBDQKF1D","ts":1789324858746}
