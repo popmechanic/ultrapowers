@@ -30,9 +30,10 @@
 //   (e) [M5] one `comment` per `driver:*` event, in append order, body for
 //            body, on the task's issue or the run's; drained before the close;
 //            a throwing post is a `kata:write-failed` event and the run goes on.
-//   (f) [M6] the four close shapes: MERGED `done`, TEST_FAILED `wontfix`, a row
-//            that is not `done` `wontfix`, and a task of a `SKIPPED` wave left
-//            open.
+//   (f) [M6] #810 Phase A moved three of the four close shapes off the close:
+//            only an adopted task is closed (`done`), while a TEST_FAILED wave's
+//            tasks, a row that is not `done`, and a task of a `SKIPPED` wave are
+//            left open and marked `needs-review` / `needs-human` instead.
 //   (g) [M7] with no `kata` the engine makes no request and behaves as at BASE.
 //   (h) [M8] the CONTRACT.md bullet, directly before `- **status.json:**`.
 //
@@ -241,6 +242,14 @@ function makeFakeKata ({ record, issues, trace = [], always412 = false, commentT
           '/api/v1/projects/' + projectId + '/issues/' + uid + '/comments', COMMENT_BOOM)
       }
       const iss = need(uid)
+      iss.revision += 1
+      return { uid, revision: answer(uid, iss.revision) }
+    },
+    async addLabel (projectId, uid, label) {
+      const iss = need(uid)
+      calls.push({ method: 'addLabel', projectId, uid, label })
+      trace.push('kata:addLabel:' + uid)
+      iss.labels = [...new Set([...(iss.labels || []), label])]
       iss.revision += 1
       return { uid, revision: answer(uid, iss.revision) }
     },
@@ -911,22 +920,37 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
   assert.equal(blocked.report.waveMerges[0].status, 'TEST_FAILED',
     '(f) [M6] the candidate suite is red and the reconcile agent refuses: the wave is ' +
     'TEST_FAILED; got ' + JSON.stringify(blocked.report.waveMerges[0]))
+  // #810 Phase A: a wave the barrier could not make green closes nothing. Its
+  // tasks are marked for a person instead — label, attention keys, comment.
   const closes = blocked.fake.of('close')
-  const t1Close = closes.find((c) => c.uid === 'U-T1')
-  assert.ok(t1Close, '(f) [M6] the blocked wave\'s task is closed; closes: ' +
+  assert.deepEqual(closes, [],
+    '(f) [M6] a TEST_FAILED wave closes NOTHING; closes: ' +
     JSON.stringify(closes.map((c) => [c.uid, c.opts && c.opts.reason])))
-  assert.equal(t1Close.opts.reason, 'wontfix',
-    '(f) [M6] a TEST_FAILED wave closes each of its tasks with reason `wontfix`')
-  assert.equal(t1Close.opts.message, 'wave 1 blocked: ' + blocked.report.waveMerges[0].detail,
-    '(f) [M6] message `wave <n> blocked: <the row\'s detail>`, the row\'s detail verbatim')
-  assert.ok(t1Close.opts.message.startsWith('wave 1 blocked:'),
-    '(f) [M6] which begins `wave 1 blocked:`')
-  assert.deepEqual(t1Close.opts.evidence, [],
-    '(f) [M6] and carries NO evidence — kata refuses evidence on a wontfix')
+  const t1Label = blocked.fake.of('addLabel').filter((c) => c.uid === 'U-T1')
+  assert.deepEqual(t1Label.map((c) => c.label), ['needs-review'],
+    '(f) [M6] the blocked wave\'s task gets exactly one `needs-review` label')
+  const t1Patch = blocked.fake.of('patchMetadata').filter((c) => c.uid === 'U-T1')
+  const attention = t1Patch.find((c) => c.patch && c.patch['work.attention'])
+  assert.ok(attention, '(f) [M6] and one metadata patch carrying the attention keys; patches: ' +
+    JSON.stringify(t1Patch.map((c) => c.patch)))
+  assert.equal(attention.patch['work.attention'], 'needs-human',
+    '(f) [M6] `work.attention` is `needs-human`')
+  assert.equal(attention.patch['work.attention_msg'],
+    'blocked: wave 1 blocked: ' + blocked.report.waveMerges[0].detail,
+    '(f) [M6] and `work.attention_msg` is `blocked: wave <n> blocked: <the row\'s detail>`')
+  assert.equal(blocked.fake.store.get('U-T1').status, 'open',
+    '(f) [M6] and the issue is still open')
 
-  // The wave after a blocked one never ran: its issue is untouched.
-  assert.deepEqual(closes.filter((c) => c.uid === 'U-T2'), [],
-    '(f) [M6] a task of a SKIPPED wave is left open — no close call for T2')
+  // The wave after a blocked one never ran: it is marked `unattempted` and, like
+  // every other task the run could not finish, never closed.
+  assert.deepEqual(blocked.fake.of('addLabel').filter((c) => c.uid === 'U-T2')
+    .map((c) => c.label), ['needs-review'],
+    '(f) [M6] a task of a SKIPPED wave is marked too — one `needs-review` label for T2')
+  const t2Attention = blocked.fake.of('patchMetadata')
+    .find((c) => c.uid === 'U-T2' && c.patch && c.patch['work.attention'])
+  assert.ok(t2Attention && /^unattempted: /.test(t2Attention.patch['work.attention_msg']),
+    '(f) [M6] whose `work.attention_msg` begins `unattempted: ` — the run ended before its wave; ' +
+    'got ' + JSON.stringify(t2Attention && t2Attention.patch))
   assert.equal(blocked.fake.store.get('U-T2').status, 'open',
     '(f) [M6] and its issue\'s status in the fake\'s store is still `open`')
 }
@@ -945,20 +969,26 @@ assert.equal(green.report.waveMerges[0].status, 'MERGED',
   const row = stuck.report.tasks.find((r) => r.task === 'T1')
   assert.notEqual(row.status, 'done',
     '(f) [M6] a BLOCKED implementer leaves a row that is not `done`; got ' + row.status)
-  const closes = stuck.fake.of('close')
-  assert.equal(closes.length, 1,
-    '(f) [M6] the task is closed once; got ' +
-    JSON.stringify(closes.map((c) => [c.uid, c.opts && c.opts.reason])))
-  assert.equal(closes[0].opts.reason, 'wontfix',
-    '(f) [M6] a row that is not `done` and is not yet closed is closed `wontfix`')
-  assert.equal(closes[0].opts.message,
-    row.status + ': ' + row.reviewVerdict + ' — ' + row.notes,
-    '(f) [M6] message `<status>: <reviewVerdict> — <notes>`, from the row itself')
-  assert.ok(closes[0].opts.message.startsWith('failed:'),
+  assert.deepEqual(stuck.fake.of('close'), [],
+    '(f) [M6] a row that is not `done` is never closed (#810 Phase A)')
+  assert.deepEqual(stuck.fake.of('addLabel').map((c) => [c.uid, c.label]),
+    [['U-T1', 'needs-review']],
+    '(f) [M6] it is marked once instead — one `needs-review` label on its issue')
+  const marked = stuck.fake.of('patchMetadata')
+    .find((c) => c.patch && c.patch['work.attention'])
+  assert.ok(marked, '(f) [M6] and one metadata patch carrying the attention keys')
+  assert.equal(marked.patch['work.attention'], 'needs-human',
+    '(f) [M6] `work.attention` is `needs-human`')
+  assert.equal(marked.patch['work.attention_msg'],
+    (row.status + ': ' + row.reviewVerdict).slice(0, 200),
+    '(f) [M6] `work.attention_msg` is `<status>: <reviewVerdict>` from the row itself')
+  assert.ok(marked.patch['work.attention_msg'].startsWith('failed:'),
     '(f) [M6] which begins `failed:` for a BLOCKED implementer; got ' +
-    JSON.stringify(closes[0].opts.message))
-  assert.deepEqual(closes[0].opts.evidence, [],
-    '(f) [M6] and carries no evidence')
+    JSON.stringify(marked.patch['work.attention_msg']))
+  const notes = stuck.fake.of('comment').filter((c) => c.body === String(row.notes))
+  assert.equal(notes.length, 1,
+    '(f) [M6] and one comment carrying the row\'s notes verbatim; got ' +
+    JSON.stringify(stuck.fake.of('comment').map((c) => c.body).slice(-3)))
 }
 
 // ══ (f) [M6] the run's own testCmd is the fallback evidence command ════════

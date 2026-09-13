@@ -85,7 +85,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     transition to a temporary name and moved into place, so a fetch that fails leaves the last whole
     export exactly as it was — the hub is archived and the run's state outlives it here. The last
     export carries the run issue's own `issue.closed` (the boot's, `sandbox:run-<N>`, `done` or
-    `wontfix` as the page ended — #937) beside the task closes the engine made.
+    `wontfix` as the run issue's page ended — #937) beside the task closes the engine made.
     `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
     and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
     `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
@@ -198,8 +198,10 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   1. write `/home/exedev/www/status.json` with `state: "booting"` and serve it (`busybox httpd -f -p 8000
      -h /home/exedev/www` under `systemd-run --user --unit=fleet-status`), so a launch is readable
      before the engine exists;
-  2. install the toolchain: node 24.20.0, bun 1.4.0, and `python3-pytest` + `python3-pytest-xdist`
-     from apt;
+  2. install the toolchain: node 24.20.0, bun 1.4.0, kata 0.17.2 (the release tarball from
+     `github.com/kenn-io/kata`, verified with `sha256sum -c` against the release's own `SHA256SUMS`
+     before it is extracted, installed at `/usr/local/bin/kata` mode 0755 — the hub's own recipe,
+     `fleet/kata-hub-setup.sh`), and `python3-pytest` + `python3-pytest-xdist` from apt;
   3. install the bootstrap at `/usr/local/lib/fleet/bootstrap.sh`, mode 0555, owned by root — outside
      `/home/exedev` and unwritable by the run;
   4. install the user unit TEMPLATE `~/.config/systemd/user/fleet-run@.service`
@@ -284,7 +286,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     message, evidence, retry_protocol: "close-v1"}`. A run whose page ends `done` closes `done`
     with `{type: "pr", url}` and, when the sandbox merged, `{type: "commit", sha: <merge sha>}`
     as evidence, the message the plan's H1 and the merge sha (40+ characters — kata refuses a
-    shorter `done`); a run whose page ends `parked` or `failed` closes `wontfix` with no evidence
+    shorter `done`); a run whose page ends `parked` or `failed` closes that run issue `wontfix` with no evidence
     and the page's `error`. The task issues are the engine's to close; the boot closes only this
     one, and never at the ping park, where the hub was never reached. A close the hub refuses is
     one `kata:write-failed` event (`what` `close`, `uid`, `detail` naming the curl exit) on the
@@ -434,9 +436,24 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   can clear that. The answer's `metadata.factsheet` IS the task from then on: its `files`, its
   `proofTests`, its `guards`, and every exam landing the pipeline uses, read from `landing[p]` and
   never computed again. Then `claim` — on the hub before the implementer and examiner exist.
+  Every worker of a run with a record is an actor on the hub, and knows which issue it is working:
+  its process env carries `KATA_SERVER` (the record's url, `https://kata.int.exe.xyz`),
+  `KATA_AUTH_TOKEN=edge-injects-the-bearer`
+  (the literal placeholder and the only one a worker ever holds — the edge replaces the
+  `Authorization` header with the real bearer, so no credential is on the VM),
+  `KATA_AUTHOR=<label>@run-<N>` (the worker's label as the engine spells its events, `impl:3@run-114`)
+  and, for a worker whose label's second colon-segment names a task the record knows,
+  `KATA_REF=<project name>#<short_id>` of that task's issue — the `short_id` read from the SAME
+  `getIssue` answer that checked the revision above and kept on the task's row, never a second read.
+  `integration` (the critic) and `reconcile:*` name no task, so they carry no `KATA_REF`.
+  The settings file handed to the three write roles carries, beside the unchanged PreToolUse confine
+  hook, a `SessionStart` hook running `kata attention-hook start` and a `SessionEnd` hook running
+  `kata attention-hook end`, so a worker's start and end are stamped on its issue without the worker
+  remembering to do it; with `KATA_REF` unset the hook exits 0 doing nothing. Without a record none
+  of the four variables is set and the settings file is byte for byte the one it was without a hub.
   Every capture of the graded patch (the exam handoff's re-capture, and each fix round's) patches the
   issue's metadata with `touched_files`, the patch's own paths, under the revision the last answer
-  carried; a 412 there ends the run as a mismatch does. The hub is the LIVE view of the run
+  carried; a 412 there is one `kata:write-failed` and the run goes on. The hub is the LIVE view of the run
   (#880 reads it), so the record's lines reach it as they happen: every `driver:*` event the
   engine appends, every `worker:start` and `worker:end` envelope (the `meter` included) and every
   `engine:phase` mark is a comment — the event's JSON line verbatim — posted eagerly on one
@@ -452,12 +469,34 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `driver:approved`, `driver:fail`) are comments on the run's issue too, on run-main's own chain,
   drained before run-main returns; the record is read before the first stage the log records, so
   the hub's view starts where the record's does.
+  The worker's raised hand: while a task's worker runs, the engine READS that task's issue metadata
+  every `ATTENTION_POLL_MS` (`args.attentionPollMs`, default 15000 ms) and never writes it —
+  `work.attention` is the worker's, and the coordinator only ever reads it. Each change of that
+  value to `stuck`, to `needs-human`, or back to `ok` is one `driver:attention` event
+  `{task, attention, msg, actor}` on the run's log: `msg` is the metadata's `work.attention_msg`,
+  and `actor` is the actor the metadata answer exposes — `''` when it exposes none. An unchanged
+  value records nothing, a read the hub refuses records nothing and does not end the run, and a task
+  the record does not name is never polled. And before each fix round's worker is dispatched, the
+  engine posts one comment on the task's issue whose body begins `review round <n>:` — `0` for the
+  pre-review repair round, the reviewer's round number otherwise — followed by that round's blocking
+  findings, one per line, the same lines the fix prompt carries; a refused post is one
+  `kata:write-failed` and the fix round still runs.
   Closes: an adopted task is `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted commit
-  and the task's test command, under the idempotency key `<runId>:<task>:close`. A task of a wave the
-  barrier blocked is `wontfix` (`wave <n> blocked: <detail>`), and so is any task whose row is not
-  `done` and that no wave closed (`<status>: <verdict> — <notes>`); `wontfix` carries no evidence.
-  A task of a SKIPPED wave, and any task that produced no row, is left open.
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>"}}}`
+  and the task's test command, under the idempotency key `<runId>:<task>:close`. A task adopted into
+  the tree is the only task the engine ever closes.
+  Needs review: a failed task stays OPEN and is marked for a person instead — the label
+  `needs-review`, then `work.attention` `needs-human` and `work.attention_msg` `<status>: <verdict>`
+  (its first 200 characters) in one metadata patch, then one comment carrying the result's notes.
+  Every task the run could not finish is marked exactly so: a row that is not `done`
+  (`failed: <verdict>`), every task of a wave the barrier could not make green
+  (`blocked: wave <n> blocked: <detail>`), a task the driver never dispatched because an upstream
+  task failed (`skipped: …`) and a task whose wave the run never reached (`unattempted: …`). All
+  three writes go through the non-fatal path — a refusal is one `kata:write-failed` whose `what` is
+  `label`, `metadata` or `comment`, and the other two still go out — and a task is marked at most
+  once, a wave's marking ahead of the end-of-run sweep's.
+  `wontfix` is never the engine's word about a task — it is the run issue's own park (#940) and otherwise a person's decision,
+  taken on the issue this leaves open for them.
+- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
   the engine runs, on the first refresher poll that has seen either `FLEET_COMMIT_EVENTS` new lines
@@ -468,7 +507,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and
   nothing else: one key per task id the plan's waves or the log names, each carrying the wave it
   belongs to, one of the eight states above, the label of the worker open for it, its last proof run
-  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`) and the detail it was parked with.
+  (`driver:proof-run`, `driver:check-run` or `driver:exam-run`), the detail it was parked with and
+  its `attention` cell — `{value, msg, ts}` read off that task's latest `driver:attention` event,
+  `null` for a task that never raised a hand.
   The same projection is printed for any log by
   `bash fleet/sandbox-boot.sh project <events.jsonl> [<args.json>]`, which reads and writes nothing.
   `phase` names the SUB-STEP while the engine runs: the run's last phase event alone when no worker
@@ -567,7 +608,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   needs it, `GET /api/v1/projects?limit=1000`, matched on `name` against the run's project
   `<owner>-<repo>-run-<N>` (kata addresses a project by integer `id`; a name in the path is a 400),
   then `GET /api/v1/projects/<id>/issues?limit=1000`, in which the run issue is the one whose
-  `metadata.run` is N — `status` `closed` is a finished run, its `closed_reason` (`done`|`wontfix`)
+  `metadata.run` is N — that run issue `closed` is a finished run, its `closed_reason` (`done`|`wontfix`)
   the state and its `closed_at` the age; `open` is a run in flight, aged from `updated_at` →
   `rm <vm> --json` for a finished run older than 1 h. The hub is reached exactly as the launcher
   reaches it, `fleet/kata-client.mjs`'s `sshTransport`: `ssh <KATA_URL host>` running `curl` against

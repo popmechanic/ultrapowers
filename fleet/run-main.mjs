@@ -42,7 +42,8 @@
 // agent is involved and no prompt knows about it.
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   cloneAtBase, makeCwdFor, withPatchCapture, makeEventLog, defaultTaskIdOf,
@@ -388,7 +389,17 @@ export function copyEngineRoles(destDir, sourceDir = path.join(ENGINE_DIR, 'flee
 // and nothing can point at the wrong tree. The allowlist roles get no
 // settings — for them the allowlist is the boundary (parity R-w3), and a
 // second mechanism would be a second thing to verify.
-export function writeConfineSettings({ runDir, hookPath }) {
+//
+// #810: with a kata record the same file also carries the attention hooks —
+// `kata attention-hook start` at SessionStart and `kata attention-hook end` at
+// SessionEnd, so a write worker's issue is stamped with its start and its end
+// without the worker remembering to do it. Only the three write roles get the
+// file, so only they are stamped; a session whose env carries no `KATA_REF`
+// (`integration`, the critic) runs the hook and it exits 0 doing nothing, which
+// is kata's own documented behaviour. The PreToolUse entry is untouched: the
+// confine boundary is what it was, and without a record the file is byte for
+// byte the one BASE wrote.
+export function writeConfineSettings({ runDir, hookPath, kataOn = false }) {
   const settingsPath = path.join(runDir, 'confine-settings.json')
   fs.writeFileSync(settingsPath, JSON.stringify({
     hooks: {
@@ -396,10 +407,45 @@ export function writeConfineSettings({ runDir, hookPath }) {
         matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash',
         hooks: [{ type: 'command', command: 'node ' + hookPath }],
       }],
+      ...(kataOn ? {
+        SessionStart: [{ hooks: [{ type: 'command', command: 'kata attention-hook start' }] }],
+        SessionEnd: [{ hooks: [{ type: 'command', command: 'kata attention-hook end' }] }],
+      } : {}),
     },
   }, null, 2))
   return (role) => (role === 'implementer' || role === 'writeSide' || role === 'examiner')
     ? settingsPath : undefined
+}
+
+// ── what a worker knows about the hub (#810 Phase A) ─────────────────────────
+// The literal placeholder, and the only `KATA_AUTH_TOKEN` any worker ever sees:
+// the sandbox reaches the hub through the exe.dev edge, which replaces the
+// `Authorization` header with the real bearer on the way out. No real token is
+// written anywhere under `fleet/`, and this one buys nothing off the VM.
+export const KATA_WORKER_TOKEN = 'edge-injects-the-bearer'
+// The hub, when the record does not name one. The record's own `url` is what
+// the engine's client is built on, so a worker pointed anywhere else would be
+// reading a different run.
+export const KATA_SERVER_FALLBACK = 'https://kata.int.exe.xyz'
+
+/** The issue a worker label holds, `<project name>#<short_id>`, or null when
+ *  the label names no task the record knows, when that task's short id has not
+ *  been read yet (its dispatch has not happened), or when the record names no
+ *  project. The label→task rule is `kataUidFor`'s (#943): the second
+ *  colon-segment, so `impl:3`, `exam:3`, `fix:3:0` and `review:3:1:2` are all
+ *  task 3 while `integration` and `reconcile:wave1:1` are the run's. */
+export function kataRefFor(record, label) {
+  if (!record || typeof record !== 'object') return null
+  const rows = (record.tasks && typeof record.tasks === 'object') ? record.tasks : {}
+  const id = String(label || '').split(':')[1]
+  if (!id || !Object.prototype.hasOwnProperty.call(rows, id)) return null
+  const row = rows[id]
+  if (!row || typeof row !== 'object') return null
+  const shortId = row.shortId || row.short_id
+  const project = (record.project && typeof record.project === 'object')
+    ? record.project.name : null
+  if (typeof shortId !== 'string' || !shortId || typeof project !== 'string' || !project) return null
+  return project + '#' + shortId
 }
 
 // ── --add-dir scope, per role (measured 2026-08-31) ──────────────────────────
@@ -431,13 +477,34 @@ export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
 // ── agent composition — the one decision, both halves ────────────────────────
 export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn,
-                               implementerEffort, filesFor }) {
+                               implementerEffort, filesFor, envFor }) {
   // One knob, one role. `roleForLabel` maps both `impl:` and `fix:` to
   // `implementer`; every other role answers undefined, so `buildArgs` pushes no
   // `--effort` for it and each judge keeps the CLI's own default (#522).
   const effortFor = implementerEffort
     ? (role) => (role === 'implementer' ? implementerEffort : undefined)
     : undefined
+  // #810: the kata variables of THIS worker, merged over the run-wide env on
+  // the way to its child process. They are applied HERE, in the composition,
+  // and not inside `createRunWorker`: that module holds each role's writable
+  // root and the confine boundary, and it stays exactly what it is.
+  //
+  // The unit is the DISPATCH, so the overlay travels with it — an async-local
+  // store opened around each `agent(...)` call and read by the spawn that call
+  // reaches. That is what makes it correct with several workers in flight at
+  // once (`boundedParallel`): a latched "current label" would hand one wave's
+  // author to another wave's child. Merged LAST, so a per-worker value wins
+  // over a run-wide one the driver inherited; with no `envFor`, or with an
+  // empty answer, the spawn is the one it was.
+  const kataEnv = new AsyncLocalStorage()
+  const baseSpawn = spawnFn || spawn
+  const spawnWithKata = (cmd, argv, options) => {
+    const overlay = kataEnv.getStore()
+    if (!overlay || !Object.keys(overlay).length) return baseSpawn(cmd, argv, options)
+    return baseSpawn(cmd, argv, {
+      ...options, env: { ...(options && options.env), ...overlay },
+    })
+  }
   const inner = createRunWorker({
     runId,
     workersDir,
@@ -450,9 +517,9 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
     timeoutMsFor: (role) => ROLE_TIMEOUT_MS[role],
     ...(effortFor ? { effortFor } : {}),
     onEvent: eventLog.onEvent,
-    ...(spawnFn ? { spawnFn } : {}),
+    ...(spawnFn || envFor ? { spawnFn: spawnWithKata } : {}),
   })
-  const agent = withPatchCapture({
+  const captured = withPatchCapture({
     agent: inner, clonesDir, base, patchesDir,
     taskIdOf: defaultTaskIdOf, onEvent: eventLog.onEvent,
     // #714: the task's Files, by label. The capture drops an untracked binary
@@ -461,6 +528,12 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
     // the worker was handed, which is the same compiled array.
     ...(filesFor ? { filesFor } : {}),
   })
+  // `envFor` is read at dispatch, not here: the short id of a task's issue
+  // lands on the kata record at that task's own dispatch (run-engine.mjs),
+  // which is long after this wrapper is built.
+  const agent = envFor
+    ? (prompt, opts = {}) => kataEnv.run(envFor(opts) || {}, () => captured(prompt, opts))
+    : captured
   // The flag's value IS the trust anchor: waves.js strips any reply patch
   // outside this prefix, so a launch template carrying `patchInput: true`
   // with no driver behind it anchors nothing and a model-typed path outside
@@ -696,6 +769,7 @@ async function runMainInner(parsed, deps, hub) {
   copyEngineRoles(path.join(runDir, 'roles'))
   const settingsFor = writeConfineSettings({
     runDir, hookPath: path.join(ENGINE_DIR, 'fleet/confine-hook.mjs'),
+    kataOn: Boolean(kataRecord),
   })
 
   // 4. The engine. CLAUDE_CONFIG_DIR points into the run tree (spec §5) so
@@ -732,11 +806,41 @@ async function runMainInner(parsed, deps, hub) {
     if (sheet && Array.isArray(sheet.files)) return sheet.files
     return Array.isArray(task.files) ? task.files : []
   }
+  // #810: the kata variables ONE worker carries, by its label — the same seam
+  // shape as `filesFor`, and read at CALL time for the same reason: the short id
+  // of a task's issue lands on the record's row at that task's dispatch
+  // (run-engine.mjs), which is after this wrapper is built.
+  //
+  // A worker is an actor on the hub, so it is told who it is (`KATA_AUTHOR`, the
+  // label the engine spells its events with) and which issue it is working
+  // (`KATA_REF`, project-qualified so the CLI resolves it with no workspace
+  // binding). The task is its label's second colon-segment — `kataUidFor`'s rule
+  // (#943), which is why `review:3:1:2` holds task 3's issue; `integration` and
+  // `reconcile:*` name no task the record knows, so they carry no `KATA_REF` and
+  // their attention hooks exit 0 doing nothing.
+  //
+  // NO TOKEN, EVER. The placeholder is the whole of what a worker holds: the
+  // request leaves through the exe.dev edge, which replaces the `Authorization`
+  // header with the real bearer, so the string below is worth nothing outside
+  // the fleet (measured 2026-09-13). Without a record none of the four is set.
+  const envFor = (opts) => {
+    if (!kataRecord) return {}
+    const label = String((opts && opts.label) || '')
+    const out = {
+      KATA_SERVER: (typeof kataRecord.url === 'string' && kataRecord.url)
+        ? kataRecord.url : KATA_SERVER_FALLBACK,
+      KATA_AUTH_TOKEN: KATA_WORKER_TOKEN,
+      KATA_AUTHOR: label + '@run-' + String(runId).replace(/^run-/, ''),
+    }
+    const ref = kataRefFor(kataRecord, label)
+    if (ref) out.KATA_REF = ref
+    return out
+  }
   const { agent, patchInput } = makeAgent({
     runId, base: () => patchBase.current, runDir,
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog, implementerEffort,
-    filesFor,
+    filesFor, envFor,
   })
   // #213 credential evidence (restored after the cutover deleted the shim's
   // copy — review finding 6): name the credential the workers will ride, in
