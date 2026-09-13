@@ -1,0 +1,65 @@
+{
+  "mode": "gate",
+  "stamp": "run-117",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-117/report.json",
+  "branch": "ultra/integration-run-117",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": false,
+        "detail": "gitVerified is not true \u2014 the completeness critic could not confirm it reviewed the recorded merge HEAD; the review is unverified"
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"2\", \"files\": [\"evals/frontier/split_fixture.py\", \"fleet/tests/fixtures/readiness/contend-wide/manifest.json\", \"fleet/tests/fixtures/readiness/contend-wide/task-1.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-2.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-3.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-4.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-5.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-6.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-7.patch\", \"fleet/tests/fixtures/readiness/contend-wide/task-8.patch\", \"fleet/tests/fixtures/readiness/contend/manifest.json\", \"fleet/tests/fixtures/readiness/contend/task-1.patch\", \"fleet/tests/fixtures/readiness/contend/task-2.patch\", \"fleet/tests/fixtures/readiness/contend/task-3.patch\", \"fleet/tests/fixtures/readiness/contend/task-4.patch\", \"fleet/tests/fixtures/readiness/degrade/manifest.json\", \"fleet/tests/fixtures/readiness/degrade/task-1.patch\", \"fleet/tests/fixtures/readiness/degrade/task-2.patch\", \"fleet/tests/test_readiness_fixtures.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 1/2 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "2 \u2014 plan-defect: leg (b) cannot pass \u2014 `git apply` of all patches together then `diff -r` against reference/ is unsatisfiable for any output that also satisfies M1/leg (a). M1 forces every patch to be BASE-relative (each must `git apply --check` clean against a *fresh* scratch commit of project/), and `git apply` applies multiple patch files sequentially against the same working file with exact, no-fuzz context matching. contend's tasks 1-3 all insert a `parser.add_argument(...)` line at the same anchor, between `parser = argparse.ArgumentParser(prog=\"report\")` and `return parser`; once task-1's line lands, tasks 2 and 3 no longer find their context. Verified empirically at git 2.43.0: all-at-once fails with `error: patch failed: clitool/cli.py:6`, and sequentially task-1 applies while task-2 and task-3 fail at the same anchor; the same happens for contend-wide (8 tasks, one anchor) and degrade. `git apply -3` yields conflict markers rather than reference/; -U0 patches would need --unidiff-zero and so would break leg (a); git 2.43 has no `git apply --union`. Unioning same-anchor additions is the fold's job, not `git apply`'s \u2014 which is exactly why the manifest carries `commutes`, and `evals/frontier/corpuslib.py` documents the same class (\"two appends at the SAME anchor, both declared commutative: the weave unions, git conflicts\"). What IS satisfied: applying every task's atoms to project/ reproduces reference/ byte for byte, asserted by the script before it writes."
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-117/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1563 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...................................................                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1563 passed, 5 warnings in 439.91s (0:07:19) =================\n"
+  },
+  "verdict": "BLOCKED"
+}

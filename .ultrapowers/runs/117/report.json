@@ -1,0 +1,175 @@
+{
+  "integrationBranch": "ultra/integration-run-117",
+  "baseSha": "20bae81585628ce7278a6aa277d65ae0c96ab3de",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "e6fa5be03b213813c7d668d700fac99d696e5c77",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-117/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Footprint: the diff creates three files outside the declared FILES \u2014 `fleet/tests/fixtures/readiness-corpus/replies/corpus/d.txt/h1.txt`, `.../replies/control/step-1/d.txt/h1.txt`, `.../replies/control/step-2/d.txt/h1.txt`. They are required, not creep: the global constraint says every reply is a committed file, and the task's Files block declares no path to commit them at. They correctly avoid `fleet/tests/fixtures/readiness/` (the sibling's root, whose M5 pins that root to exactly three directories), so no SIBLING FILES path is touched and nothing at BASE is deleted. The fix is in the task text's Files block, not in this tree.; The sim's own assertion 3 (one committed reply spent identically in both modes) is self-guarding and therefore vacuous: `fleet/tests/test_readiness_fold_order.mjs:931` calls `sameReplyBothModes(result)` only `if (result.repliesUsed.length)`, and the first thing `sameReplyBothModes` asserts is `repliesUsed.length > 0`. If wave 3 ever stopped narrating its `d.txt` conflict \u2014 the exact regression M2 exists to catch \u2014 the sim would print `ok` and pass with the reply check silently skipped. The exam still pins wave 3 (`repliesUsed` deep-equals one entry, `simConflictKeys` deep-equals `[[\"d.txt\",\"lines\"]]`), so no criterion is left unverified; the sim's own reading is what is weak. Key the call on the wave instead.; Error path in `foldOnce` (`fleet/tests/_readiness_helpers.mjs:378`): after a `resolve`, `if (Array.isArray(reply.waiting)) continue` re-enters the loop with the conflict already shifted off `pending`, so a kernel reply that reports remaining hunks at the same stop would drop that stop rather than re-dispatch it, and the loop would then die on the unrelated message 'fold left nothing dispatchable and did not complete'. `Array.isArray([])` is true, so the branch also fires on an empty `waiting`. Not reached on this corpus (EXAM/RUN EVIDENCE both exit 0), but the branch reads as handling a case it does not handle: either push `entry` back onto `pending` before continuing, or drop the branch and let the `reply.open` reassignment carry the next stop.; unverified: leg (f)'s third run (`READINESS_FIXTURES_DIR` unset) reads whatever `fleet/tests/fixtures/readiness/` holds, which is nothing in this clone \u2014 so the exam's 240 s child budget (`fleet/tests/test_readiness_fold_order_exam.mjs`, `runSim(null, deadlineBudget(240_000))`) is only ever exercised against the corpus and the control here. Once the sibling task's `contend` (4 tasks, all 24 orders of `sampled_orders(4)`), `contend-wide` (8 tasks, 20 orders, ~120 s by the task's own estimate) and `degrade` land under that root, that same unset run folds all three inside the 240 s budget, and the sim itself has to fit the suite bridge's 300 s cap. What would settle it: running `node fleet/tests/test_readiness_fold_order_exam.mjs` in the merged tree after task 2 lands. Nothing in this diff can settle it, and the fix \u2014 if the budget does blow \u2014 is leg (f)'s unset run or the sibling's order sample, both outside this task's FILES.; Footprint: the diff creates three paths outside this task's FILES \u2014 `fleet/tests/fixtures/readiness-corpus/replies/corpus/d.txt/h1.txt`, `.../replies/control/step-1/d.txt/h1.txt` and `.../replies/control/step-2/d.txt/h1.txt`. They are required (the global constraint says every reply is a committed file, and the sim's reply roots point at them), none is a SIBLING FILES path, and `readiness-corpus/` is deliberately outside the `fleet/tests/fixtures/readiness/` root the sim globs, so sibling task 2's M5 (\"that root holds exactly those three directories\") is not disturbed. Recorded as a footprint note only \u2014 no change wanted.; plan-defect: M4's construction as literally worded \u2014 a control \"whose committed reply for one hunk is chosen by the step index the conflict arose at\" \u2014 cannot diverge. On a two-task set step 1 folds a single task and cannot conflict, so the conflict is narrated at step 2 in BOTH orders, one reply answers both, and the orders agree however it is written. The submission keys instead on the step at which `3b` (the side the conflict is about) was adopted \u2014 `negativeControlSpec`'s `replyRootAt: (ctx) => controlReplyRoot(ctx.ids.indexOf('3b') + 1)` in `fleet/tests/_readiness_helpers.mjs` \u2014 and discloses exactly this in the function's doc comment (\"Why not key on the step the conflict is NARRATED at\u2026\"). That is a disclosed, correct divergence and is lawful; the text that needs correcting is M4's own, which lies outside this task's FILES.; unverified: M6's real-join half cannot be settled by this diff. `fleet/tests/fixtures/readiness/` does not exist at BASE (sibling task 2 creates it), so leg (f)'s unset run finds zero sets and the only manifests ever folded are the exam's own two hand-built two-task directories. In particular `fixtureSetSpec`'s second project-resolution branch (`path.resolve(REPO_ROOT, manifest.project)`, the one the sibling's `evals/fixtures/<name>/project` value will take) is exercised only because the exam writes a `path.relative(ROOT, \u2026)` value that escapes the fixture dir; nothing here folds an 8-task set, a per-task `commutes` map from a real manifest, or a `replies/` tree the sibling committed. What would settle it: run `node fleet/tests/test_readiness_fold_order.mjs` in a tree carrying both task 1 and task 2.; unverified: the exam's wall after the sibling lands. `fleet/tests/test_readiness_fold_order_exam.mjs` spawns the sim three times, and leg (f) requires one of those runs to have `READINESS_FIXTURES_DIR` unset \u2014 so once task 2's fixtures exist, that run folds `contend` (4 tasks), `contend-wide` (8 tasks \u00d7 20 sampled orders, the task's own Context estimates ~120 s) and `degrade` on top of the corpus, under `deadlineBudget(240_000)`, plus the exam's own corpus work and the other two sim runs. The task's Context says the exam should point the variable at an empty temp dir precisely \"so the exam's own wall is the corpus and the control, ~15 s, and never the real-join sets\", which leg (f)'s unset run contradicts; the suite bridge caps a file at 300 s. The exam is a guarded, peer-owned path and leg (f) mandates the run, so this is the plan's tension to settle, not an edit the implementer may make. Settled by timing the exam in a tree carrying both tasks.; Conditional assertion in the sim: `fleet/tests/test_readiness_fold_order.mjs:931` runs assertion 3 only when a reply was spent \u2014 `if (result.repliesUsed.length) sameReplyBothModes(result)`. If wave 3 ever stopped spending a committed reply (an auto-resolve, a corpus change), the sim's own M2 check would pass vacuously rather than fail. No criterion is left unverified \u2014 the exam's leg (b) pins `repliesUsed` to exactly `[{path:'d.txt',hunk:'h1',sha256:REPLY_SHA}]` for the simultaneous fold and every order \u2014 but the sim should assert the census itself, e.g. track that at least one corpus wave spent a reply and assert that after the loop.; Dead exports in `fleet/tests/_readiness_helpers.mjs`: `simRunEnv` (\"The environment, for a caller that spawns the sim itself\") and `sha256OfFile` are exported and used by neither `test_readiness_fold_order.mjs` nor `test_readiness_fold_order_exam.mjs` \u2014 the exam builds its own env via `simEnv({home, env})` and its own `sha256` over bytes. Drop them, or the next reader takes them for part of the contract alongside the one export the Produces line pins.; concern: out-of-FILES: fleet/tests/fixtures/readiness-corpus/replies/corpus/d.txt/h1.txt and .../replies/control/step-{1,2,3}/d.txt/h1.txt \u2014 four committed reply files. The global constraint says no reply is produced at test time and every reply is a committed file, so wave 3's reply and the control's per-step replies had to land on disk; FILES names only the three .mjs paths. Nothing outside FILES was modified or deleted.; concern: plan-defect: M4/leg (d) asks the negative control to be built from corpus wave 3's two patches AND to carry different tree shas across at least two orders. With only 3a and 3b, both orders narrate the d.txt conflict at step 2, so a reply keyed by step index is the same file in both orders and the two orders agree. I built the control from wave 3's 3a and 3b plus corpus wave 1's disjoint 1a, which slides the conflict between step 2 and step 3 across the six orders; with one committed reply per step index the orders then diverge, and leg (d) passes as built (verified: verdict `caught`, two distinct order trees, and the same-text copy reads `ok`). This is a disclosure of the resolution I chose, not a park request.; concern: plan-defect: the task's Context gives the resolve verb as `resolve --conflict <i> --reply-dir <dir> --base \u2026 --patch \u2026`, but `fold_wave.py resolve` has no `--base` argument \u2014 argparse rejects it, and the verb reads the base out of the fold log. Implemented without `--base`.; concern: plan-defect: M7 does not say how `2b` is re-captured against the head that adopted `2a`. Writing 2b's base-relative content onto that head would drop 2a's line, and re-applying 2b's insertion at the anchor would order the two additions the other way; either lands a different tree. I rebase 2b onto the adopted head with `git merge-file --union` (ours = the head, ancestor = BASE, theirs = 2b's content) \u2014 the same both-sides answer the weave gives a declared-commutative path \u2014 then capture the diff in a clone at that head. Documented in `softEdgesSpec`; it yields wave 2's simultaneous tree.; concern: The sim reserves stdout for set lines and the sentinel and writes progress to stderr, so leg (f)'s \"set lines are exactly \u2026\" holds under any parse. The soft-edges pair and the control copy are measured without printing a set line, for the same reason.; concern: plan-defect: M4 says the negative control's committed reply is \"chosen by the step index the conflict arose at\" and that this makes the two orders materialize different trees. On a two-task set it cannot: step 1 folds a single task, which cannot conflict, so the conflict is narrated at step 2 in BOTH orders and one reply answers both. The prior round resolved this by adding a third task to slide the conflict between steps 2 and 3, but the peer exam's leg (e) [M5] asserts n=2, steps=2 and orders=2 for every one of the six set lines, so a three-task control fails the exam. The control now keys its committed reply on the step index at which 3b \u2014 the side whose edit the conflict is about \u2014 was adopted: the same quantity read one task earlier, and the one that actually differs between the orders of a pair. It is still the mistake the sim exists to catch (a reply that is not a function of (set, path, hunk) alone), still `caught`, and still two distinct order trees.; concern: out-of-FILES: the committed conflict replies live under fleet/tests/fixtures/readiness-corpus/replies/ (corpus/d.txt/h1.txt for wave 3, control/step-1 and control/step-2 for the negative control), which the declared FILES list does not name \u2014 it names only the three .mjs files. They were added in the prior round and this round deletes control/step-3/d.txt/h1.txt, now unused. The constraint that every reply be a committed file cannot be met without them. The path is distinct from the sibling-owned fleet/tests/fixtures/readiness/ tree and nothing sibling-owned was touched.; concern: The Proof `Run:` command writes to /tmp via `tee /tmp/readiness-fold-order.txt`, which this worker's confine hook denies (it permits writes only inside the clone and the run dir). I ran the same pipeline without the tee: `node fleet/tests/test_readiness_fold_order.mjs 2>&1 | grep -q 'ALL TESTS PASSED'` exits 0. The driver executing the command itself is unaffected.; concern: exam: none \u2014 the exam is green on its own terms and I changed nothing in it. Noting only that the exam's spec vocabulary (`fixture`, a function-valued `replies`, a per-task `base`) is wider than the task text's Context describes, which is the exam's prerogative under \"the Produces line pins the answer shape and leaves the question shape to the exam\"; the helper now serves both it and the sim.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": "red",
+      "reviewVerdict": "plan-defect",
+      "notes": "plan-defect: leg (b) cannot pass \u2014 `git apply` of all patches together then `diff -r` against reference/ is unsatisfiable for any output that also satisfies M1/leg (a). M1 forces every patch to be BASE-relative (each must `git apply --check` clean against a *fresh* scratch commit of project/), and `git apply` applies multiple patch files sequentially against the same working file with exact, no-fuzz context matching. contend's tasks 1-3 all insert a `parser.add_argument(...)` line at the same anchor, between `parser = argparse.ArgumentParser(prog=\"report\")` and `return parser`; once task-1's line lands, tasks 2 and 3 no longer find their context. Verified empirically at git 2.43.0: all-at-once fails with `error: patch failed: clitool/cli.py:6`, and sequentially task-1 applies while task-2 and task-3 fail at the same anchor; the same happens for contend-wide (8 tasks, one anchor) and degrade. `git apply -3` yields conflict markers rather than reference/; -U0 patches would need --unidiff-zero and so would break leg (a); git 2.43 has no `git apply --union`. Unioning same-anchor additions is the fold's job, not `git apply`'s \u2014 which is exactly why the manifest carries `commutes`, and `evals/frontier/corpuslib.py` documents the same class (\"two appends at the SAME anchor, both declared commutative: the weave unions, git conflicts\"). What IS satisfied: applying every task's atoms to project/ reproduces reference/ byte for byte, asserted by the script before it writes.",
+      "actor": "plan",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-117/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1563 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 23%]\n........................................................................ [ 27%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...................................................                      [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1563 passed, 5 warnings in 439.91s (0:07:19) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/publish-fold.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "! grep -En \"spawn[^\\n]*claude|claude -p|claude', \\[\" fleet/tests/test_readiness_fold_order.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 365923,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 1,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n.................................................                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1561 passed, 5 warnings in 372.96s (0:06:12) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "f2aff4581bc2a53c31becc2f22c4925958683347",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-117/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-117/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.605,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "2",
+      "files": [
+        "evals/frontier/split_fixture.py",
+        "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+        "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+        "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+        "fleet/tests/fixtures/readiness/contend/manifest.json",
+        "fleet/tests/fixtures/readiness/contend/task-1.patch",
+        "fleet/tests/fixtures/readiness/contend/task-2.patch",
+        "fleet/tests/fixtures/readiness/contend/task-3.patch",
+        "fleet/tests/fixtures/readiness/contend/task-4.patch",
+        "fleet/tests/fixtures/readiness/degrade/manifest.json",
+        "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+        "fleet/tests/fixtures/readiness/degrade/task-2.patch",
+        "fleet/tests/test_readiness_fixtures.mjs"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "2",
+      "reason": "plan-defect",
+      "why": "plan-defect: leg (b) cannot pass \u2014 `git apply` of all patches together then `diff -r` against reference/ is unsatisfiable for any output that also satisfies M1/leg (a). M1 forces every patch to be BASE-relative (each must `git apply --check` clean against a *fresh* scratch commit of project/), and `git apply` applies multiple patch files sequentially against the same working file with exact, no-fuzz context matching. contend's tasks 1-3 all insert a `parser.add_argument(...)` line at the same anchor, between `parser = argparse.ArgumentParser(prog=\"report\")` and `return parser`; once task-1's line lands, tasks 2 and 3 no longer find their context. Verified empirically at git 2.43.0: all-at-once fails with `error: patch failed: clitool/cli.py:6`, and sequentially task-1 applies while task-2 and task-3 fail at the same anchor; the same happens for contend-wide (8 tasks, one anchor) and degrade. `git apply -3` yields conflict markers rather than reference/; -U0 patches would need --unidiff-zero and so would break leg (a); git 2.43 has no `git apply --union`. Unioning same-anchor additions is the fold's job, not `git apply`'s \u2014 which is exactly why the manifest carries `commutes`, and `evals/frontier/corpuslib.py` documents the same class (\"two appends at the SAME anchor, both declared commutative: the weave unions, git conflicts\"). What IS satisfied: applying every task's atoms to project/ reproduces reference/ byte for byte, asserted by the script before it writes."
+    }
+  ],
+  "judgmentCalls": [
+    "task 2: plan-defect: leg (b) cannot pass \u2014 `git apply` of all patches together then `diff -r` against reference/ is unsatisfiable for any output that also satisfies M1/leg (a). M1 forces every patch to be BASE-relative (each must `git apply --check` clean against a *fresh* scratch commit of project/), and `git apply` applies multiple patch files sequentially against the same working file with exact, no-fuzz context matching. contend's tasks 1-3 all insert a `parser.add_argument(...)` line at the same anchor, between `parser = argparse.ArgumentParser(prog=\"report\")` and `return parser`; once task-1's line lands, tasks 2 and 3 no longer find their context. Verified empirically at git 2.43.0: all-at-once fails with `error: patch failed: clitool/cli.py:6`, and sequentially task-1 applies while task-2 and task-3 fail at the same anchor; the same happens for contend-wide (8 tasks, one anchor) and degrade. `git apply -3` yields conflict markers rather than reference/; -U0 patches would need --unidiff-zero and so would break leg (a); git 2.43 has no `git apply --union`. Unioning same-anchor additions is the fold's job, not `git apply`'s \u2014 which is exactly why the manifest carries `commutes`, and `evals/frontier/corpuslib.py` documents the same class (\"two appends at the SAME anchor, both declared commutative: the weave unions, git conflicts\"). What IS satisfied: applying every task's atoms to project/ reproduces reference/ byte for byte, asserted by the script before it writes.",
+    "task 2: plan-defect: three lines in the reference trees are named by no task's step text, so the symbol rule reaches none of them; per the Context (\"resolve it by hand in the script's per-fixture table, never by editing the fixture\") they are settled in split_fixture.py's OVERRIDES table and each carries its reasoning in a comment. They are: the ` Reference solution.` marker added to the module docstring in contend and contend-wide (the fixture author's line, not any task's \u2014 filed under the first task that edits the file), `import json` in contend-wide (the module `to_json` needs, filed under task 8), and `import re` in degrade (the module `parse_value` needs, filed under task 1). This is a disclosure of how an ambiguity was resolved, not a blocked leg.",
+    "task 2: Quality note, not a criterion: contend-wide's reference rewrites main's tail so that task 8's new `if args.json:`/`else:` re-indents the loop task 2 rewrote. One line therefore fuses two tasks' edits, and the split files it with task 2, leaving task-2.patch and task-8.patch each individually non-compiling Python (their union is exact). No machine criterion or Proof leg constrains per-task syntactic validity, and this contention is what the `contend`/`contend-wide` fixtures exist to exercise.",
+    "task 2: plan-defect against a Proof leg named by the implementer \u2014 no fix round dispatched; failed with actor plan \u2014 plan-defect: leg (b) cannot pass \u2014 `git apply` of all patches together then `diff -r` against reference/ is unsatisfiable for any output that also satisfies M1/leg (a). M1 forces every patch to be BASE-relative (each must `git apply --check` clean against a *fresh* scratch commit of project/), and `git apply` applies multiple patch files sequentially against the same working file with exact, no-fuzz context matching. contend's tasks 1-3 all insert a `parser.add_argument(...)` line at the same anchor, between `parser = argparse.ArgumentParser(prog=\"report\")` and `return parser`; once task-1's line lands, tasks 2 and 3 no longer find their context. Verified empirically at git 2.43.0: all-at-once fails with `error: patch failed: clitool/cli.py:6`, and sequentially task-1 applies while task-2 and task-3 fail at the same anchor; the same happens for contend-wide (8 tasks, one anchor) and degrade. `git apply -3` yields conflict markers rather than reference/; -U0 patches would need --unidiff-zero and so would break leg (a); git 2.43 has no `git apply --union`. Unioning same-anchor additions is the fold's job, not `git apply`'s \u2014 which is exactly why the manifest carries `commutes`, and `evals/frontier/corpuslib.py` documents the same class (\"two appends at the SAME anchor, both declared commutative: the weave unions, git conflicts\"). What IS satisfied: applying every task's atoms to project/ reproduces reference/ byte for byte, asserted by the script before it writes.",
+    "task 1: out-of-FILES: fleet/tests/fixtures/readiness-corpus/replies/corpus/d.txt/h1.txt and .../replies/control/step-{1,2,3}/d.txt/h1.txt \u2014 four committed reply files. The global constraint says no reply is produced at test time and every reply is a committed file, so wave 3's reply and the control's per-step replies had to land on disk; FILES names only the three .mjs paths. Nothing outside FILES was modified or deleted.",
+    "task 1: plan-defect: M4/leg (d) asks the negative control to be built from corpus wave 3's two patches AND to carry different tree shas across at least two orders. With only 3a and 3b, both orders narrate the d.txt conflict at step 2, so a reply keyed by step index is the same file in both orders and the two orders agree. I built the control from wave 3's 3a and 3b plus corpus wave 1's disjoint 1a, which slides the conflict between step 2 and step 3 across the six orders; with one committed reply per step index the orders then diverge, and leg (d) passes as built (verified: verdict `caught`, two distinct order trees, and the same-text copy reads `ok`). This is a disclosure of the resolution I chose, not a park request.",
+    "task 1: plan-defect: the task's Context gives the resolve verb as `resolve --conflict <i> --reply-dir <dir> --base \u2026 --patch \u2026`, but `fold_wave.py resolve` has no `--base` argument \u2014 argparse rejects it, and the verb reads the base out of the fold log. Implemented without `--base`.",
+    "task 1: plan-defect: M7 does not say how `2b` is re-captured against the head that adopted `2a`. Writing 2b's base-relative content onto that head would drop 2a's line, and re-applying 2b's insertion at the anchor would order the two additions the other way; either lands a different tree. I rebase 2b onto the adopted head with `git merge-file --union` (ours = the head, ancestor = BASE, theirs = 2b's content) \u2014 the same both-sides answer the weave gives a declared-commutative path \u2014 then capture the diff in a clone at that head. Documented in `softEdgesSpec`; it yields wave 2's simultaneous tree.",
+    "task 1: The sim reserves stdout for set lines and the sentinel and writes progress to stderr, so leg (f)'s \"set lines are exactly \u2026\" holds under any parse. The soft-edges pair and the control copy are measured without printing a set line, for the same reason.",
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_readiness_fold_order_exam.mjs \u2014 exit 1; the Global Constraints Check: command failed: ! grep -En \"spawn[^\\n]*claude|claude -p|claude', \\[\" fleet/tests/test_readiness_fold_order.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 1: plan-defect: M4 says the negative control's committed reply is \"chosen by the step index the conflict arose at\" and that this makes the two orders materialize different trees. On a two-task set it cannot: step 1 folds a single task, which cannot conflict, so the conflict is narrated at step 2 in BOTH orders and one reply answers both. The prior round resolved this by adding a third task to slide the conflict between steps 2 and 3, but the peer exam's leg (e) [M5] asserts n=2, steps=2 and orders=2 for every one of the six set lines, so a three-task control fails the exam. The control now keys its committed reply on the step index at which 3b \u2014 the side whose edit the conflict is about \u2014 was adopted: the same quantity read one task earlier, and the one that actually differs between the orders of a pair. It is still the mistake the sim exists to catch (a reply that is not a function of (set, path, hunk) alone), still `caught`, and still two distinct order trees.",
+    "task 1: out-of-FILES: the committed conflict replies live under fleet/tests/fixtures/readiness-corpus/replies/ (corpus/d.txt/h1.txt for wave 3, control/step-1 and control/step-2 for the negative control), which the declared FILES list does not name \u2014 it names only the three .mjs files. They were added in the prior round and this round deletes control/step-3/d.txt/h1.txt, now unused. The constraint that every reply be a committed file cannot be met without them. The path is distinct from the sibling-owned fleet/tests/fixtures/readiness/ tree and nothing sibling-owned was touched.",
+    "task 1: The Proof `Run:` command writes to /tmp via `tee /tmp/readiness-fold-order.txt`, which this worker's confine hook denies (it permits writes only inside the clone and the run dir). I ran the same pipeline without the tee: `node fleet/tests/test_readiness_fold_order.mjs 2>&1 | grep -q 'ALL TESTS PASSED'` exits 0. The driver executing the command itself is unaffected.",
+    "task 1: exam: none \u2014 the exam is green on its own terms and I changed nothing in it. Noting only that the exam's spec vocabulary (`fixture`, a function-valued `replies`, a per-task `base`) is wider than the task text's Context describes, which is the exam's prerogative under \"the Produces line pins the answer shape and leaves the question shape to the exam\"; the helper now serves both it and the sim.",
+    "integration review failed to run: WORKER_SIGTERM: SIGTERM: killed with no envelope (exit 143)",
+    "integration review returned no result \u2014 the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "integration review did not run \u2014 completeness unverified; check the tree before merging"
+    }
+  ],
+  "blockedWaves": []
+}
