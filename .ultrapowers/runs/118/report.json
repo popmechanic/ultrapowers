@@ -1,0 +1,90 @@
+{
+  "integrationBranch": "ultra/integration-run-118",
+  "baseSha": "20bae81585628ce7278a6aa277d65ae0c96ab3de",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": null,
+      "reviewVerdict": "proof-red",
+      "notes": "the Proof's Run: command failed: test \"$(head -1 evals/probes/phase-a-stuck.md)\" = \"sims: 41\" \u2014 exit 1; the Proof's Run: command failed: test \"$(ls fleet/tests/test_*.mjs | wc -l | tr -d ' ')\" = 41 \u2014 exit 1",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": false,
+    "output": "not run \u2014 no wave merged",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 0,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n.................................................                        [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1561 passed, 5 warnings in 357.68s (0:05:57) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "SKIPPED",
+      "detail": "no mergeable results \u2014 every task in this wave failed, was blocked, or lost its coordinates; integration branch untouched",
+      "branches": []
+    }
+  ],
+  "frontier": [],
+  "coverage": {
+    "tasks_merged": 0,
+    "tasks_planned": 1,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "evals/probes/phase-a-stuck.md"
+      ]
+    }
+  ],
+  "gitVerified": false,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 1: plan-defect: leg (b) `ls fleet/tests/test_*.mjs | wc -l` prints `41` cannot pass for any output this task may produce. The tree carries 102 such files at BASE 20bae81585628ce7278a6aa277d65ae0c96ab3de (verified with `git ls-tree --name-only HEAD fleet/tests/`, so it is the tree as committed and not a working-tree artifact). Bringing the count to 41 would require deleting 61 sims, which the GLOBAL CONSTRAINTS forbid outright (\"every fleet/tests/test_*.mjs present at BASE is present, byte-identical, on the adopted tree\"), which this task's Files block does not authorize (it names only the probe note), and which the task's own Context explicitly rules out (\"nothing deleted, moved or renamed ... not something to make true\"). The pinned 41 is stale plan data.",
+    "task 1: plan-defect: leg (a) `head -1 evals/probes/phase-a-stuck.md` prints exactly `sims: 41` cannot pass together with the Claim it proves. The Claim is \"The probe note records how many sims the fleet suite carries, and the tree carries exactly that many\", and the Context fixes the count as \"read on the tree as it stands\". The reading is 102. Writing `sims: 41` would make leg (a) green only by recording a count that was not read and that the second half of its own Claim then contradicts \u2014 the note would assert a falsehood about the tree it was written on. I wrote the count I actually read, `sims: 102`, so leg (a) is red as written. If the plan's intent was to pin a literal 41 regardless of the tree, that intent is unsatisfiable in combination with leg (b) and with the no-deletion constraint, and the pinned count needs correcting at the plan level rather than in this task.",
+    "task 1: Both machine checks (M1 and M2) derive from the same stale number, so this is one plan defect with two faces, not two independent ones. The corrected values are `sims: 102` for M1 and `102` for M2; with those substitutions both legs pass on the tree as committed, unchanged.",
+    "task 1: the driver's pre-review pass was red (the Proof's Run: command failed: test \"$(head -1 evals/probes/phase-a-stuck.md)\" = \"sims: 41\" \u2014 exit 1; the Proof's Run: command failed: test \"$(ls fleet/tests/test_*.mjs | wc -l | tr -d ' ')\" = 41 \u2014 exit 1) \u2014 one repair round before any reviewer read the patch",
+    "task 1: plan-defect: the plan pins `sims: 41` but the tree carries 102 `fleet/tests/test_*.mjs`, at BASE 20bae815 and at HEAD alike. The two machine checks M1 (note's first line is exactly `sims: 41`) and M2 (`ls fleet/tests/test_*.mjs | wc -l` prints 41) are jointly unsatisfiable on this tree. M2 is unreachable by any edit available to this task: closing the 61-file gap means deleting sims, which Global Constraint 1 forbids byte-identically and which lies outside the declared FILES scope of `evals/probes/phase-a-stuck.md`. The plan's 41 is the stale value and needs correcting to 102 (or the count re-derived) before this task can go green.",
+    "task 1: plan-defect: I left proof leg (a) red rather than writing the literal string `sims: 41` into the note, even though that edit is within my file scope. Rationale: leg (b) fails regardless, so no arrangement of the note makes the Proof pass; writing 41 would only replace a correct reading with a false one and would falsify the task's own Claim that 'the tree carries exactly that many'. The task Context directs this outcome \u2014 record the conflict, do not make it true. Flagging explicitly because the referee handed me a `Run:` result rather than an opinion, and I am declining to satisfy its literal text with evidence rather than churning the file.",
+    "task 1: blocked-channel: KATA_REF is unset \u2014 absent from the environment and from launch.json (KATA_SERVER, KATA_AUTHOR and KATA_AUTH_TOKEN are set, but no ref). Per instructions I therefore ran no kata command. This matters here because the task Context routes exactly this situation to 'the task's own issue', and that channel was unavailable, so I could not post the approach comment, set work.attention to stuck, or add needs-review. The sentence in the probe note and this report are the only record of the defect I was able to leave.",
+    "task 1: no-op round: this fix round produced no diff. The prior session's work at e95a8100 is already the correct response to the conflict, the suite is green, and both global constraints hold, so there was nothing to commit and I did not create an empty commit. HEAD is unchanged at e95a8100.",
+    "task 1: still red after the pre-review repair round (the Proof's Run: command failed: test \"$(head -1 evals/probes/phase-a-stuck.md)\" = \"sims: 41\" \u2014 exit 1; the Proof's Run: command failed: test \"$(ls fleet/tests/test_*.mjs | wc -l | tr -d ' ')\" = 41 \u2014 exit 1) \u2014 no reviewer was dispatched"
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "blocking",
+      "detail": "no wave merged \u2014 completeness review skipped (the tree is at BASE)"
+    }
+  ],
+  "blockedWaves": []
+}
