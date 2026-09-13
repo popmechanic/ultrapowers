@@ -1,0 +1,6 @@
+Running as unit: fleet-engine-117.service; invocation ID: 285e55ee3bba48e4b20f6e382835ed27
+run-main: preflight
+run-main: kata — record /home/exedev/plans/run-117.kata.json → https://kata.int.exe.xyz
+run-main: tiers — 2 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
+run-main: provision — BASE 20bae81585628ce7278a6aa277d65ae0c96ab3de; 2 task clone(s) + integration
+run-main: engine — waves 2, width bound 12, patch input armed

@@ -1,0 +1,342 @@
+{
+  "ok": true,
+  "stamp": "run-117",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-117"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The fold-order sim",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/tests/_readiness_helpers.mjs",
+          "fleet/tests/test_readiness_fold_order.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`runSet(spec) -> {simTree, simConflictKeys, repliesUsed, orders: [{order, tree, conflictKeys, repliesUsed, steps, kernelCalls}], verdict}` (in `fleet/tests/_readiness_helpers.mjs`)"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The real-join fixture patches",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "evals/frontier/split_fixture.py",
+          "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+          "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+          "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+          "fleet/tests/fixtures/readiness/contend/manifest.json",
+          "fleet/tests/fixtures/readiness/contend/task-1.patch",
+          "fleet/tests/fixtures/readiness/contend/task-2.patch",
+          "fleet/tests/fixtures/readiness/contend/task-3.patch",
+          "fleet/tests/fixtures/readiness/contend/task-4.patch",
+          "fleet/tests/fixtures/readiness/degrade/manifest.json",
+          "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+          "fleet/tests/fixtures/readiness/degrade/task-2.patch"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`split_fixture(fixture: str, out_dir: Path) -> list[Path]` (in `evals/frontier/split_fixture.py`)"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The fold-order sim",
+          "files": [
+            "fleet/tests/_readiness_helpers.mjs",
+            "fleet/tests/test_readiness_fold_order.mjs",
+            "fleet/tests/test_readiness_fold_order_exam.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`runSet(spec) -> {simTree, simConflictKeys, repliesUsed, orders: [{order, tree, conflictKeys, repliesUsed, steps, kernelCalls}], verdict}` (in `fleet/tests/_readiness_helpers.mjs`)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/tests/_readiness_helpers.mjs",
+            "fleet/tests/test_readiness_fold_order.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_readiness_fold_order_exam.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_readiness_fold_order_exam.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_readiness_fold_order.mjs 2>&1 | tee /tmp/readiness-fold-order.txt | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_readiness_fold_order_exam.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/tests/_readiness_helpers.mjs",
+              "fleet/tests/test_readiness_fold_order.mjs",
+              "fleet/tests/test_readiness_fold_order_exam.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_readiness_fold_order_exam.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_readiness_fold_order_exam.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_readiness_fold_order_exam.mjs": "fleet/tests/test_readiness_fold_order_exam.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_readiness_fold_order_exam.mjs"
+            ],
+            "siblingOwned": [
+              "evals/frontier/split_fixture.py",
+              "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+              "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+              "fleet/tests/fixtures/readiness/contend/manifest.json",
+              "fleet/tests/fixtures/readiness/contend/task-1.patch",
+              "fleet/tests/fixtures/readiness/contend/task-2.patch",
+              "fleet/tests/fixtures/readiness/contend/task-3.patch",
+              "fleet/tests/fixtures/readiness/contend/task-4.patch",
+              "fleet/tests/fixtures/readiness/degrade/manifest.json",
+              "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+              "fleet/tests/fixtures/readiness/degrade/task-2.patch",
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "produces": [
+              "`runSet(spec) -> {simTree, simConflictKeys, repliesUsed, orders: [{order, tree, conflictKeys, repliesUsed, steps, kernelCalls}], verdict}` (in `fleet/tests/_readiness_helpers.mjs`)"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The real-join fixture patches",
+          "files": [
+            "evals/frontier/split_fixture.py",
+            "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+            "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+            "fleet/tests/fixtures/readiness/contend/manifest.json",
+            "fleet/tests/fixtures/readiness/contend/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend/task-4.patch",
+            "fleet/tests/fixtures/readiness/degrade/manifest.json",
+            "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+            "fleet/tests/fixtures/readiness/degrade/task-2.patch",
+            "fleet/tests/test_readiness_fixtures.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`split_fixture(fixture: str, out_dir: Path) -> list[Path]` (in `evals/frontier/split_fixture.py`)"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "evals/frontier/split_fixture.py",
+            "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+            "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+            "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+            "fleet/tests/fixtures/readiness/contend/manifest.json",
+            "fleet/tests/fixtures/readiness/contend/task-1.patch",
+            "fleet/tests/fixtures/readiness/contend/task-2.patch",
+            "fleet/tests/fixtures/readiness/contend/task-3.patch",
+            "fleet/tests/fixtures/readiness/contend/task-4.patch",
+            "fleet/tests/fixtures/readiness/degrade/manifest.json",
+            "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+            "fleet/tests/fixtures/readiness/degrade/task-2.patch"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_readiness_fixtures.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_readiness_fixtures.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_readiness_fixtures.mjs 2>&1 | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_readiness_fixtures.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "evals/frontier/split_fixture.py",
+              "fleet/tests/fixtures/readiness/contend-wide/manifest.json",
+              "fleet/tests/fixtures/readiness/contend-wide/task-1.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-2.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-3.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-4.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-5.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-6.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-7.patch",
+              "fleet/tests/fixtures/readiness/contend-wide/task-8.patch",
+              "fleet/tests/fixtures/readiness/contend/manifest.json",
+              "fleet/tests/fixtures/readiness/contend/task-1.patch",
+              "fleet/tests/fixtures/readiness/contend/task-2.patch",
+              "fleet/tests/fixtures/readiness/contend/task-3.patch",
+              "fleet/tests/fixtures/readiness/contend/task-4.patch",
+              "fleet/tests/fixtures/readiness/degrade/manifest.json",
+              "fleet/tests/fixtures/readiness/degrade/task-1.patch",
+              "fleet/tests/fixtures/readiness/degrade/task-2.patch",
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_readiness_fixtures.mjs": "fleet/tests/test_readiness_fixtures.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_readiness_fixtures.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/tests/_readiness_helpers.mjs",
+              "fleet/tests/test_readiness_fold_order.mjs",
+              "fleet/tests/test_readiness_fold_order_exam.mjs"
+            ],
+            "produces": [
+              "`split_fixture(fixture: str, out_dir: Path) -> list[Path]` (in `evals/frontier/split_fixture.py`)"
+            ],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The kernel is untouched: no task edits anything under `skills/ultrapowers/kernel/`, and `vendor/manyana.py` in particular is sha-pinned (#360).\n- The engine and the publish fold are untouched: this plan measures, it does not schedule.\n- The sim is model-free: no `claude` process is spawned anywhere in it, and no reply to a conflict is produced at test time \u2014 every reply is a committed file.\n- A red equality assertion is the measurement, never a defect to patch around: the implementer may not weaken assertion 1 (tree-sha equality), skip a set, or shrink the order sample below the kernel's own `sampled_orders`; a set that diverges fails the sim, and the run parks with the receipt as the reading.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel/",
+        "minor": false
+      },
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-waves.mjs fleet/publish-fold.mjs",
+        "minor": false
+      },
+      {
+        "cmd": "! grep -En \"spawn[^\\n]*claude|claude -p|claude', \\[\" fleet/tests/test_readiness_fold_order.mjs",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-117/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-117/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-117/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-117/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
