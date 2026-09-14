@@ -4,3 +4,13 @@ run-main: kata — record /home/exedev/plans/run-125.kata.json → https://kata.
 run-main: tiers — 4 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE a8a8b9eb461cd54b08399ac8d9d0abba40c07c98; 4 task clone(s) + integration
 run-main: engine — waves 4, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: critic-blocking — 2 blocking completeness finding(s): Global Constraint 3 fails, and Task 2's Claim is the cause: `python3 -m pytest -n auto` is red (32 failed, 100 passed) on the adopted tree. Task 2 made a header-less plan a hard refusal (`skills/ultrapowers/scripts/compile_plan.py:254-274`, `plan_grammar` now raises SystemExit instead of returning LEGACY_GRAMMAR), but three of the 16 survivor test files that Global Constraint 2 freezes byte-identical to BASE drive the compiler with legacy plan fixtures that carry no `**Grammar:** claims-v1` header: `tests/test_ultra_run.py:30-36` (PLAN uses `**Depends-on:**` / `- [ ] **Step 1**`, no Grammar line — 17 failures, every test that calls `run_driver`), `tests/test_ultra_run_bootstrap_cmd.py:34-37` (same fixture — 6 failures), and `tests/test_review_peer.py:33-58` (its PLAN is commented "A legacy-grammar plan (no six-slot body)" — 5 failures). `grep -c Grammar` returns 0 for all three. The plan is internally unsatisfiable as written: Task 2's Claim and Global Constraint 2 cannot both hold, and Task 2's Context slot never names these three survivors among the files the refusal would break. The two `Check:` commands exiting 0 confirms the survivors were correctly left frozen — the red is the plan's defect, exactly as Global Constraint 3 anticipates.; Task 3's deletion of `skills/ultradocket/SKILL.md` orphans a frozen survivor and contributes the 32nd suite failure: `tests/test_review_peer.py:176-178` (`test_ultradocket_skill_marks_review_peer`) reads `ULTRADOCKET_SKILL_MD = ROOT / "skills/ultradocket/SKILL.md"` (line 20) unconditionally, so it now raises FileNotFoundError. `tests/test_review_peer.py` is one of the 16 files Global Constraint 2 freezes byte-identical to BASE, so nothing in the plan could have repaired it. Task 3's Context slot enumerates the documents to reword (`fleet/CONTRACT.md:72`, `skills/ultrawrite/scripts/extract_gate_input.py:35`, `skills/ultrapowers/references/report-format.md:148`) but never names this reader of the deleted skill. — critic-block.json is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 46min 58.944s
+CPU time consumed: 1h 11min 38.091s
+Memory peak: 1.5M
+Memory swap peak: 0B

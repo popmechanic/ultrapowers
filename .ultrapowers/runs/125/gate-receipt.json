@@ -1,0 +1,84 @@
+{
+  "mode": "gate",
+  "stamp": "run-125",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-125/report.json",
+  "branch": "ultra/integration-run-125",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/tests/test_sims_are_hermetic.mjs, fleet/tests/test_run_engine_proof_runs.mjs, fleet/tests/test_readiness_fold_order_exam.mjs \u2014 the three surviving sims whose bridge rows are red in the driver's suite result \u2014 These 3 of the 32 failures are the only ones I could not attribute statically. All three are frozen survivors; none references a path this plan deletes (`grep` for `compile_plan`, `ultralearn`, `ultradocket`, `evals/fixtures` and `Grammar` finds nothing in them or in `_engine_helpers.mjs` / `_readiness_helpers.mjs` / `_helpers.mjs`), and their fixture trees under `fleet/tests/fixtures/hermetic/` and `fleet/tests/fixtures/readiness/` are intact. The driver's excerpt shows `test_sims_are_hermetic.mjs` failing 8 of 21 legs, with the last six legs (f, g, j, h, i, i) green \u2014 so the failures sit in the M1 `simEnv()` / M2 / M3 / M4 sweep legs, which read the sandbox's own PATH and interpreter layout. This environment denied me `node` and `pytest`, so I could not run them to separate a plan-caused red from a pre-existing environmental one. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "1 \u2014 Deleting the 150 files orphans a *survivor* sim: `fleet/tests/test_sims_are_hermetic.mjs` \u2014 one of the 16 files M2 and GLOBAL CONSTRAINT 2 require byte-identical to BASE \u2014 reads the live `fleet/tests/` tree and fails on the patched tree, so `python3 -m pytest -n auto` (GLOBAL CONSTRAINT 3) is red via `tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs]`. Two independent failures: (1) `fleet/tests/test_sims_are_hermetic.mjs:772` asserts `SWEPT.length >= 50`, where `SWEPT = sweptNames(TESTS_DIR)` (line 540) is the live `test_*.mjs` + `_*.mjs` under `fleet/tests/`; after this patch that set is 8 surviving sims (SELF excluded) + 5 `_*.mjs` helpers = 13, so the assertion fails. (2) The `NESTED_AT_BASE` table at `fleet/tests/test_sims_are_hermetic.mjs:873-901` generates one test per entry that does `assert.ok(fs.existsSync(path.join(TESTS_DIR, file)))` and `fs.existsSync` on each sibling; every one of its seven subjects is deleted by this task (`test_run_engine_candidate_bootstrap.mjs`, `test_sandbox_boot_render_env.mjs`, `test_sandbox_boot_state_exams.mjs`, `test_launch_render.mjs`, `test_launch_test_command.mjs`, `test_setup_script_render_env.mjs`, `test_run_engine_state_exams.mjs`), as are most of their listed siblings \u2014 and line 887 `TREE[SWEPT.indexOf(file)]` resolves to `undefined` for a deleted name, so `result.siblings` throws a TypeError as well. No edit inside this task's FILES can fix this: the repair must land in `fleet/tests/test_sims_are_hermetic.mjs`, which is not in FILES and which M2 / GLOBAL CONSTRAINT 2 pin byte-identical, while M1 forbids retaining any of the 150 named files. The plan's Context claim that \"Nothing else in the tree imports a file this task deletes\" is true of imports but misses these existence/source reads. The operator has to settle it \u2014 either by adding `fleet/tests/test_sims_are_hermetic.mjs` to a task's Files block (dropping `NESTED_AT_BASE` and lowering the `>= 50` floor to the surviving count) or by removing that sim from the survivor set."
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "1 \u2014 Same class, second survivor: `fleet/tests/test_run_engine_proof_runs.mjs` (survivor, byte-identical per M2) reads three deleted sims off disk and will throw ENOENT on the patched tree, reddening another `tests/test_fleet_suite.py::test_fleet_mjs` row and GLOBAL CONSTRAINT 3. At `fleet/tests/test_run_engine_proof_runs.mjs:948-976` the top-level loop calls `copyWithProbe(simName, probe)` for legs (f), (h) and (j) with `simName` = `test_run_engine_pre_review.mjs`, `test_run_engine_implementer_suite.mjs` and `test_run_engine_integrated_runs.mjs` \u2014 all three in this task's Delete list \u2014 and `copyWithProbe` (line 930-931) does `fs.readFileSync(path.join(TESTS_DIR, simName), 'utf8')` with `TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))` (line 868), i.e. the live `fleet/tests/`. The loop is unconditional (unlike the `haveBase`-guarded byte-pins at lines 271-277), so the read is reached on every run. As above, no in-FILES edit fixes it: the repair is in a survivor the plan freezes, and M1 forbids keeping the three sims. Settling it needs either those three sims kept out of the deletion set or `fleet/tests/test_run_engine_proof_runs.mjs` opened for edit in some task's Files block."
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "2 \u2014 M1's refusal cannot coexist with Global Constraint 2 + 3: two of the sixteen frozen survivor tests compile header-less (legacy) plans and assert success, so the adopted tree's suite goes red and no edit inside this task's FILES can answer it.\n\n`tests/test_review_peer.py` (BASE, byte-identical per CHECK EVIDENCE) defines its fixture plan at lines 35-59 with NO `**Grammar:** claims-v1` header (and with `**Depends-on:** none` / `**Depends-on:** 1` markers). `_args_entries` at line 75-77 runs `compile_plan.py --emit-launch --emit-args` on it and asserts `p.returncode == 0`. That helper is called from four tests (lines 85, 90, 96, 101). After this patch `plan_grammar` raises `SystemExit` on that text, so all four go red.\n\n`tests/test_ultra_run.py` (BASE, byte-identical per CHECK EVIDENCE) defines its plan at lines 30-35, also header-less and also carrying `**Depends-on:**`. `test_happy_path_receipt` (line 63) runs the driver and asserts `receipt[\"ok\"] is True` with `\"compile\"` among the green stages (lines 66-77); the compile stage now fails. Other tests in that file share `make_repo`, which writes the same plan.\n\nNeither path is in this task's Files block, neither is in any SIBLING FILES set (3: fleet/CONTRACT.md, report-format.md, catch_counter.py, catch_report.py, extract_gate_input.py; 4: CLAUDE.md), and both are named in Task 1's Context as survivors that must stay byte-identical to BASE \u2014 which Global Constraint 2 also pins. So the implementer cannot fix this: the only repairs are (a) adding `**Grammar:** claims-v1` to those two fixture plans and dropping their `**Depends-on:**` markers, which edits frozen files, or (b) the plan conceding one of the two constraints. Note the plan's own third constraint anticipates this class \u2014 'a red it inherits from a deletion ... is this plan's defect, not the tree's' \u2014 which is why this is actor `plan` rather than `implementer`, and why it parks rather than routing to a fix round. Everything the diff itself is responsible for (M1-M5, all nine Proof `Run:` commands) is settled green."
+      },
+      {
+        "type": "deferred:plan-defect",
+        "detail": "3 \u2014 The Files block's deletion set orphans seven surviving test files, so the adopted tree cannot satisfy Global Constraint 3 (`python3 -m pytest -n auto` green), and no lawful edit inside this task's FILES can repair it. Each of these is present at BASE, is NOT in this task's `Delete:` list, and reads a path this patch removes:\n\n- `tests/test_audit_run.py:10` \u2014 `AUDIT = ROOT / \"skills/ultrapowers/scripts/audit_run.py\"`, then `from audit_run import ...` in ~12 tests; the patch deletes `skills/ultrapowers/scripts/audit_run.py`.\n- `tests/test_audit_escalation.py:6` \u2014 bare `import audit_run` at module scope; collection error once the script is gone.\n- `tests/test_compile_docket.py:8-9` \u2014 loads `skills/ultradocket/scripts/compile_docket.py` and `docket_lib.py`, both deleted.\n- `tests/test_docket_lib.py:10` \u2014 loads `skills/ultradocket/scripts/docket_lib.py`, deleted.\n- `tests/test_merge_entry.py:17` \u2014 loads `skills/ultradocket/scripts/merge_entry.py`, deleted.\n- `tests/test_review_peer.py:20,176` \u2014 `test_ultradocket_skill_marks_review_peer` does `ULTRADOCKET_SKILL_MD.read_text()` on `skills/ultradocket/SKILL.md`, deleted. This file is one of the 16 the second Global Constraint freezes byte-identical to BASE (the driver's CHECK EVIDENCE for it exits 0 precisely because the submission left it alone), so the plan simultaneously deletes the file and forbids touching the test that asserts on it.\n- `fleet/tests/test_sandbox_boot_selfmerge.mjs:488,739-742` \u2014 `FLEET_EVENTS_PY = skills/ultralearn/scripts/fleet_events.py`, spawned with `assert.equal(r.status, 0, ...)` in leg (j) `[#703 M6]`; the script is deleted, python exits 2, and the fleet bridge `tests/test_fleet_suite.py` (also frozen) carries that red into pytest. The submission's copy at `skills/ultrapowers/scripts/fleet_events.py` does not help \u2014 the exam hardcodes the ultralearn path.\n\nThis contradicts the task's own Context, which asserts the list is \"every test named for the skills' scripts\"; it is not. Every remedy lies outside this task's FILES (five more `Delete:` bullets for `tests/test_audit_run.py`, `tests/test_audit_escalation.py`, `tests/test_compile_docket.py`, `tests/test_docket_lib.py`, `tests/test_merge_entry.py`, plus an operator decision on the two frozen/unowned exams `tests/test_review_peer.py` and `fleet/tests/test_sandbox_boot_selfmerge.mjs`), and Global Constraint 2 additionally forbids editing any surviving test file \u2014 so this is the plan's to settle, not a fix round's. Note no driver execution of `python3 -m pytest -n auto` was supplied; the conclusion is read off BASE file contents plus this diff, and the constraint itself says a red inherited from a deletion that orphaned an import is the plan's defect."
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": false,
+    "unattributed": [
+      "tests/test_review_peer.py",
+      "tests/test_ultra_run.py",
+      "tests/test_ultra_run_bootstrap_cmd.py",
+      "fleet/tests/test_run_engine_proof_runs.mjs",
+      "fleet/tests/test_readiness_fold_order_exam.mjs",
+      "fleet/tests/test_sims_are_hermetic.mjs"
+    ],
+    "output": "me/exedev/target/.claude/ultrapowers/run-run-125/clones/integration/fleet/tests/test_sims_are_hermetic.mjs:1086:5\nE             ok (1 ms) \u2014 the probe imports nothing from child_process  [M7 / leg (f)]\nE             ok (0 ms) \u2014 the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]\nE             ok (0 ms) \u2014 the sweep reaches exams/<slug>/test_*.mjs and holds an exam to the same rules  [#890 / leg (j)]\nE             ok (1 ms) \u2014 tests/test_fleet_suite.py binds env=sim_env() on the node it runs  [M6 / leg (h)]\nE             ok (1 ms) \u2014 fleet/sandbox-boot.sh names /etc/fleet/render.env once, as its default  [M5 / leg (i)]\nE             ok (4 ms) \u2014 the boot rig pins FLEET_RENDER_ENV under every case's own home  [M5 / leg (i)]\nE             8 FAILED\nE             \nE           assert 1 == 0\nE            +  where 1 = CompletedProcess(args=['node', '/home/exedev/target/.claude/ultrapowers/run-run-125/clones/integration/tests/../fleet/...)]\\nok (4 ms) \u2014 the boot rig pins FLEET_RENDER_ENV under every case's own home  [M5 / leg (i)]\\n8 FAILED\\n\", stderr='').returncode\n\ntests/test_fleet_suite.py:166: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_review_peer.py::test_ultradocket_skill_marks_review_peer - ...\nFAILED tests/test_review_peer.py::test_peer_marker_emits_peer - AssertionErro...\nFAILED tests/test_review_peer.py::test_adversarial_marker_still_compiles_and_emits_peer\nFAILED tests/test_review_peer.py::test_lean_marker_emits_lean - AssertionErro...\nFAILED tests/test_ultra_run.py::test_happy_path_receipt - AssertionError: {\nFAILED tests/test_review_peer.py::test_unmarked_task_emits_lean - AssertionEr...\nFAILED tests/test_review_peer.py::test_invalid_review_value_names_all_three_values\nFAILED tests/test_ultra_run.py::test_dirty_baseline_stage_records_the_preexisting_dirt\nFAILED tests/test_ultra_run.py::test_args_skeleton_carries_plugin_root_and_run_dir\nFAILED tests/test_ultra_run.py::test_dirty_baseline_is_empty_on_a_clean_launch\nFAILED tests/test_ultra_run.py::test_feature_branch_launch_wins_over_repo_default\nFAILED tests/test_ultra_run.py::test_preflight_stamps_detected_test_cmd - Ass...\nFAILED tests/test_ultra_run.py::test_receipt_carries_xdist_cmd_end_to_end - A...\nFAILED tests/test_ultra_run.py::test_detached_head_falls_back_to_repo_default_loudly\nFAILED tests/test_ultra_run.py::test_preflight_knob_wins_and_bootstrap_stamped\nFAILED tests/test_ultra_run.py::test_compile_success_detail_is_summary_not_json\nFAILED tests/test_ultra_run.py::test_detached_head_without_remote_head_fails_closed\nFAILED tests/test_ultra_run.py::test_preflight_fails_closed_when_nothing_detected\nFAILED tests/test_ultra_run.py::test_green_stages_never_carry_failure_phrasings\nFAILED tests/test_ultra_run.py::test_explicit_empty_test_cmd_fails_the_stage[\\t]\nFAILED tests/test_ultra_run.py::test_explicit_empty_test_cmd_fails_the_stage[   ]\nFAILED tests/test_ultra_run.py::test_explicit_empty_test_cmd_fails_the_stage[\\n]\nFAILED tests/test_ultra_run.py::test_explicit_empty_test_cmd_fails_the_stage[]\nFAILED tests/test_ultra_run_bootstrap_cmd.py::test_preflight_derives_the_bootstrap_by_default\nFAILED tests/test_ultra_run_bootstrap_cmd.py::test_empty_bootstrap_cmd_disables_derivation[   ]\nFAILED tests/test_ultra_run_bootstrap_cmd.py::test_explicit_bootstrap_cmd_wins_over_derivation\nFAILED tests/test_ultra_run_bootstrap_cmd.py::test_empty_bootstrap_cmd_disables_derivation[]\nFAILED tests/test_ultra_run_bootstrap_cmd.py::test_receipt_names_the_pep_668_refusal\nFAILED tests/test_ultra_run_bootstrap_cmd.py::test_derived_bootstrap_runs_in_the_probe_worktree_before_the_suite\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_run_engine_proof_runs.mjs]\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_readiness_fold_order_exam.mjs]\nFAILED tests/test_fleet_suite.py::test_fleet_mjs[test_sims_are_hermetic.mjs]\n======================= 32 failed, 100 passed in 23.42s ========================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
