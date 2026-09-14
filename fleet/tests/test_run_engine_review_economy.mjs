@@ -355,14 +355,32 @@ async function pinRun(engine, tasks, rolesDir = ROLES_DIR) {
   // nothing new, so every prompt is byte-identical to BASE's. One label is
   // exempt since #964 Task 2 — BASE's `integration` prompt has no live
   // counterpart, and that absence is the assertion above.
+  //
+  // Run-128 Task 1 re-aims the rule for the `impl:` labels, and only for them:
+  // an implementer is no longer handed the run-wide suite at all but the
+  // `PROOFS:` block of its own task's proofs, so BASE's `TEST COMMAND:` line
+  // has no live counterpart either. The leg is not dropped — it asserts that
+  // ONE substitution and byte-identity everywhere around it, so a second,
+  // unrelated drift in an implementer's inputs still fails right here.
+  const PROOFS_NONE = '\nPROOFS:\n(none — the driver runs the exam at handoff)'
+  const reaimed = (label, basePrompt) => {
+    assert.ok(basePrompt.includes('\nTEST COMMAND: bash check.sh'),
+      'sim precondition: BASE handed ' + label + ' the run-wide suite')
+    return basePrompt.replace('\nTEST COMMAND: bash check.sh', PROOFS_NONE)
+  }
   if (basePin) {
     const baseLabels = Object.keys(basePin.prompts).filter((l) => l !== 'integration').sort()
     assert.deepEqual(Object.keys(live.prompts).sort(), baseLabels,
       'the same roles are dispatched as on BASE\'s engine, less the critic')
     for (const label of baseLabels) {
-      assert.equal(live.prompts[label], basePin.prompts[label],
+      const expected = label.startsWith('impl:')
+        ? reaimed(label, basePin.prompts[label])
+        : basePin.prompts[label]
+      assert.equal(live.prompts[label], expected,
         'an empty-evidence run must leave the ' + label +
-        ' prompt byte-identical to BASE\'s (the run-51 rule)')
+        ' prompt byte-identical to BASE\'s (the run-51 rule; for an `impl:` ' +
+        'label, identical but for the `PROOFS:` block in place of BASE\'s ' +
+        '`TEST COMMAND:` line)')
     }
   }
 }

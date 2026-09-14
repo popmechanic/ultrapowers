@@ -73,10 +73,10 @@ export const ENGINE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 // sandbox's own compile, still boot. It is a MEASURED number, never a vendor
 // one — the exe.dev plan is a dynamically shared pool (a VM's allocated size is
 // a cap, not a reservation — RUNBOOK §Billing: "the plan meters CONSUMPTION,
-// not allocation"), and the sandbox's vCPU are divided among the implementers'
-// suites by capWorkerParallelism, which at width >= 8 already hands each one a
-// serial pytest. So what the fallback guards is the subscription's
-// concurrent-stream headroom.
+// not allocation"), and an implementer no longer runs the whole suite at all:
+// it is handed its own task's proofs, which are a handful of commands rather
+// than a machine-wide pytest. So what the fallback guards is the
+// subscription's concurrent-stream headroom.
 //
 // History: #398's study ran 12/12 clean and stopped there; 8 was chosen as
 // "the last arm with real headroom" and stood until 2026-09-01, when run-49

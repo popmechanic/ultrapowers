@@ -12,8 +12,10 @@ made them fail rather than arguing with the run.
 
 Resolve every listed blocking issue: read the relevant code, understand why
 each finding is right (or, if one is genuinely wrong, say so in your summary
-with the evidence rather than churning the code), make the fixes, run the TEST
-COMMAND clean, and commit.
+with the evidence rather than churning the code), make the fixes, run the
+commands the `PROOFS:` block lists until they pass, and commit. Those are the
+commands the driver re-runs on what you return; a block that says it lists none
+means the exam in your tree is the measurement.
 
 An issue may carry a `PROPOSED PATCH` from the referee: apply it when it is right; when it is not, say why in your summary.
 It is a suggestion the referee could write out, not a verdict on how to fix it.

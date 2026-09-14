@@ -33,7 +33,6 @@
 // command cannot name a sha it has no way to know. The suite, the bootstrap
 // and the exam runs keep the seam's default environment.
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 // The run's event log lives in run-waves.mjs; the engine borrows its ULID
@@ -311,58 +310,45 @@ export function loadRoles(rolesDir = defaultRolesDir()) {
 }
 
 // ── prompt input lines (waves.js parity — same vocabulary, plans unchanged) ──
-//
-// capWorkerParallelism (#436): the driver's own suite runs are serialized —
-// one integration clone, one at a time — so `-n auto` is right for them. The
-// implementers are not: up to WIDTH of them run concurrently, each in its own
-// clone, each running the suite through its red/green/clean cycle. `-n auto`
-// sizes to the whole machine per invocation, so WIDTH=8 on an 8-vCPU sandbox
-// peaks around 64 pytest processes plus the workers themselves — thrash, or
-// an OOM-killed xdist worker reported as a spurious red. Divide the machine
-// among the workers that share it instead. Untouched when the plan pinned an
-// explicit -n, and a no-op for every non-pytest stack.
-export const capWorkerParallelism = (cmd, width, cpus) => {
-  if (typeof cmd !== 'string' || !/-n\s+auto\b/.test(cmd)) return cmd
-  const share = Math.max(1, Math.floor((cpus || 1) / Math.max(1, width)))
-  return cmd.replace(/-n\s+auto\b/, share === 1 ? '-p no:xdist' : '-n ' + share)
-}
-
 const testCmdLine = (task, testCmd) => {
   const cmd = (task && typeof task.testCmd === 'string' && task.testCmd.trim()) || testCmd
   return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
 }
-// #663 — whose command is whose. A Proof `Test:` path is written by a PEER, in
-// the peer's own clone, and reaches the graded tree only at the driver's
-// handoff after the implementer has returned (#653, #551). So a task whose
-// `testCmd` names one of those paths hands its implementer a command that
-// cannot run in the implementer's tree: the file is not there yet, and the
-// worker's red/green/clean cycle is spent on a command that is red for a reason
-// it cannot fix. The exam's command stays the examiner's, the driver's
-// pre-review pass's and the reviewer's — every place that runs it does so on a
-// tree that HAS the exam. The implementer is handed the run-wide suite, which
-// is exactly what a task with no `testCmd` receives.
+// The implementer's and fix round's proofs (#515, #547, #872). A graded worker
+// is handed the commands its OWN task is measured by — the Proof's `Run:`
+// lines and the run's Global Constraints `Check:` lines, verbatim and in plan
+// order — and not the run-wide suite. Two reasons, and neither is taste.
 //
-// The predicate is the plain one the compiler's shapes make honest: every
-// spelling `derive_task_test_cmd` emits (`node <path>`, `python3 -m pytest -q
-// <paths>`, `bun test <paths>`, an `**Exam command:**` template with `{paths}`
-// substituted) contains the Proof path verbatim. A `testCmd` set some other
-// way, or a task whose Proof names no `Test:` path at all, names none of them
-// and keeps its own command.
-const namesProofTest = (task) => {
-  const cmd = task && typeof task.testCmd === 'string' && task.testCmd.trim()
-  if (!cmd) return false
-  const paths = (task && Array.isArray(task.proofTests)) ? task.proofTests : []
-  return paths.some((p) => typeof p === 'string' && p.trim() !== '' && cmd.includes(p.trim()))
+// The suite was never the signal. Since #653 a peer-reviewed task's own command
+// is its exam, written by a PEER in the peer's own clone and reaching the graded
+// tree only at the driver's handoff, so the implementer cannot run it and was
+// handed the whole suite instead. That suite is red for a hundred reasons the
+// task does not own and green for none it does: run-67's and run-124's
+// implementers each spent 10 to 16 of their 15 to 25 minutes on a serial
+// full-suite pass that found zero red proofs. The commands below are the ones
+// the driver will actually execute on the returned tree, so a worker that runs
+// them is iterating against its own grade.
+//
+// And the suite was what made the machine scarce: WIDTH implementers each
+// running `-n auto` concurrently needed the vCPU divided among them, which is
+// why the driver capped the shared command and why the cap capped everyone to
+// a serial pytest. Nobody shares a command here, so nothing needs dividing.
+//
+// A task with no `Run:` in a run with no `Check:` has nothing to iterate
+// against; it is told so, rather than handed an empty heading it might read as
+// a missing input.
+const PROOFS_NONE = '(none — the driver runs the exam at handoff)'
+const proofsBlock = (runs, checks) => {
+  const lines = [
+    ...(Array.isArray(runs) ? runs : [])
+      .filter((c) => typeof c === 'string' && c.trim() !== '')
+      .map((c) => '- Run: ' + c),
+    ...(Array.isArray(checks) ? checks : [])
+      .filter((c) => c && typeof c.cmd === 'string' && c.cmd.trim() !== '')
+      .map((c) => '- Check: ' + c.cmd),
+  ]
+  return '\nPROOFS:\n' + (lines.length ? lines.join('\n') : PROOFS_NONE)
 }
-// The implementer's TEST COMMAND line: its own command, unless that command is
-// the peer's exam — then the run-wide one, capped for the sharers below.
-const implTestCmdLine = (task, testCmd) =>
-  testCmdLine(namesProofTest(task) ? null : task, testCmd)
-// The tasks whose implementer actually RUNS the run-wide command: those with no
-// command of their own, and those whose own command is the exam they will not
-// hold (#547 — divide the machine by the workers that share it, not by WIDTH).
-const sharesRunWideCmd = (task) =>
-  !(task && typeof task.testCmd === 'string' && task.testCmd.trim()) || namesProofTest(task)
 const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
   ? ('\nFILES: ' + task.files.join(', ')) : ''
 const interfacesLine = (task) => {
@@ -637,8 +623,8 @@ const hunksOnly = (p, stdout, stderr) => {
 // trace and then defers it as `deferred:runtime`. That deferral is manufactured:
 // the answer already exists in `lastSuite`. Naming the driver's run authoritative
 // is what the contend cell's critic explicitly asked for. Exported for the unit
-// pin on the red branch (as capWorkerParallelism is) — the engine only ever
-// adopts a green tree, so no live run reaches it.
+// pin on the red branch — the engine only ever adopts a green tree, so no live
+// run reaches it.
 // Composition pinning, as a pure function (exported for the unit pin).
 // Per-task exclusion, never a wave-wide skip (review finding 10): one task
 // missing `writes` must not silence a genuine undeclared double-write between
@@ -1341,25 +1327,6 @@ export async function runEngine({
       })
     : []
   const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) || undefined
-  // #436: the driver's own suite runs stay at full width (serialized, one
-  // integration clone); the concurrent implementers get the machine divided
-  // among them. #547: divide by the workers that actually SHARE the run-wide
-  // command, not by WIDTH. Per-task testCmd (#515) means testCmdLine hands a
-  // task with its own command that command — it never sees the capped one —
-  // so counting it as a sharer over-divides the machine for everyone else.
-  // The count is over every entry in the run (waves are sequential, but the
-  // cap is one string computed once, so the whole run's sharers is the honest
-  // upper bound). Zero sharers means the string is dead: leave it uncapped
-  // rather than log a cap nobody reads. #663: a task whose own command IS its
-  // peer's exam is handed the run-wide one too, so the predicate that picks the
-  // implementer's line is the predicate that counts the sharers.
-  const runWideSharers = WAVES.reduce((n, w) => n + w.filter(sharesRunWideCmd).length, 0)
-  const workerTestCmd = runWideSharers > 0
-    ? capWorkerParallelism(testCmd, runWideSharers, os.cpus().length)
-    : testCmd
-  if (workerTestCmd !== testCmd) {
-    log('run-engine: worker testCmd capped for concurrency (#436) — ' + workerTestCmd)
-  }
   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
@@ -1814,9 +1781,9 @@ export async function runEngine({
     // the bytes it had before this existed.
     const examMoves = proofTests.map((p) => [p, landingOf(p)]).filter(([p, land]) => land !== p)
     // The exam's command, pointed at where the exam lands. Substring
-    // replacement is the same honest predicate `namesProofTest` reads by: every
-    // spelling `derive_task_test_cmd` emits carries the Proof path verbatim,
-    // and a command that names none comes back unchanged.
+    // replacement is honest on every shape the compiler emits: each spelling
+    // `derive_task_test_cmd` produces carries the Proof path verbatim, and a
+    // command that names none comes back unchanged.
     const examRunCmd = examTestCmd
       ? examMoves.reduce((cmd, [p, land]) => cmd.split(p).join(land), examTestCmd)
       : null
@@ -1826,21 +1793,31 @@ export async function runEngine({
     const examPathsBlock = examMoves
       .map(([p, land]) => '\nEXAM PATHS: ' + p + ' -> ' + land).join('')
 
-    // Everything after the TEST COMMAND line is one string both workers get,
-    // byte for byte: the same BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS,
-    // INTERFACES and TASK blocks. Only that one line can differ (#663), and it
-    // differs only for a task whose own command is its peer's exam.
+    // The Proof's `Run:` commands, in Proof order (#589). Absent or empty for
+    // every task compiled before the slot existed — and M6: a `Run:`-only
+    // proof leaves `proofTests` empty, so it dispatches no examiner by the
+    // branch already below, with no new condition. Read here because the
+    // implementer's own proofs are one of its prompt's inputs, below.
+    const proofRuns = Array.isArray(task.proofRuns)
+      ? task.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
+      : []
+
+    // Everything after the first line is one string both workers get, byte for
+    // byte: the same BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS, INTERFACES
+    // and TASK blocks. What differs is only what each is measured by — the
+    // examiner's TEST COMMAND, the implementer's PROOFS.
     const sharedInputs = filesLine(task) + siblingsStr +
       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
     // The examiner's line is the remapped command; a task with no command of
     // its own falls back to the run-wide one exactly as it did.
     const examCmdTask = examRunCmd ? { testCmd: examRunCmd } : task
-    const examinerInputs = testCmdLine(examCmdTask, workerTestCmd) + examPathsBlock + sharedInputs
-    const implementerInputs = implTestCmdLine(task, workerTestCmd) + sharedInputs
-    // The fix rounds run in the GRADED clone, which holds the exam at its
-    // landing path after the handoff — so they are handed the remapped command
-    // too, and no `EXAM PATHS:` line: nothing there writes an exam.
-    const fixTestCmdLine = () => testCmdLine(examCmdTask, workerTestCmd)
+    const examinerInputs = testCmdLine(examCmdTask, testCmd) + examPathsBlock + sharedInputs
+    // The graded worker's inputs: the commands the driver will run against what
+    // it returns, and no run-wide suite. The fix rounds are handed the same
+    // block — they are graded by the same commands in the same clone — and no
+    // `EXAM PATHS:` line: nothing there writes an exam.
+    const proofsInputs = proofsBlock(proofRuns, constraintChecks)
+    const implementerInputs = proofsInputs + sharedInputs
 
     // ── the exam (#553, #653) ────────────────────────────────────────────────
     // A worker writes the tests the Proof names, in a clone of its OWN at BASE,
@@ -1849,9 +1826,9 @@ export async function runEngine({
     // BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS, INTERFACES and TASK
     // blocks — and NOT the implementer's role: the one agent that may not be
     // told to make the suite green is the one writing the thing that measures
-    // it. The one line the two prompts can differ in is TEST COMMAND (#663):
-    // the exam's command is the examiner's, and the implementer, which will not
-    // hold the exam until the handoff, is handed the run-wide suite instead.
+    // it. What the two prompts differ in is the command each is measured by:
+    // the examiner holds the exam's TEST COMMAND, and the implementer, which
+    // will not hold the exam until the handoff, holds its own PROOFS block.
     //
     // Two clones rather than one (#653) buys two things at once. The graded
     // party never holds the exam in its tree while it works, so the peer rule
@@ -1867,13 +1844,6 @@ export async function runEngine({
     // (Amendment 10) — no prompt asks anyone to run git or report a sha.
     const cloneDir = path.join(clonesDir, 'task-' + task.id)
     const examDir = path.join(clonesDir, 'exam-' + task.id)
-    // The Proof's `Run:` commands, in Proof order (#589). Absent or empty for
-    // every task compiled before the slot existed — and M6: a `Run:`-only
-    // proof leaves `proofTests` empty, so it dispatches no examiner by the
-    // branch already below, with no new condition.
-    const proofRuns = Array.isArray(task.proofRuns)
-      ? task.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
-      : []
     // `git hash-object` on the path as it stands in a clone; an absent path is
     // recorded as null, which is itself a value the drift check compares
     // (creating a path the examiner declined to write IS an edit).
@@ -2429,7 +2399,7 @@ export async function runEngine({
         reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
       await postReviewRound(kataRow, 0, reds.map((r) => r.line))
       impl = await agent(
-        roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
+        roles.fix + taskBodyBlock(task, wavesPath) + proofsInputs +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
           '\n\nBlocking issues to resolve:\n' +
           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
