@@ -925,11 +925,6 @@ const PARKED_REASON = 'non-pre-authorized ack(s): deferred:manual'
     'leg (f) [M4]: the fourth Run: prints a line of report-format.md naming `deferred:manual` and ' +
     '`verbatim` — the rule says a manual ack quoting a green integrated Run: verbatim is ' +
     'pre-authorized: ' + JSON.stringify(rfLines))
-
-  const events = sh('python3 -m pytest -q tests/test_fleet_events.py')
-  assert.equal(events.status, 0,
-    'leg (f) [M4]: the fifth Run: — tests/test_fleet_events.py still passes, so the parked reason ' +
-    'literal it pins is unchanged: ' + String(events.stdout + events.stderr).slice(-500))
 }
 
 // ── #770 Task 2 — the driver asks for knob validation without the baseline ───

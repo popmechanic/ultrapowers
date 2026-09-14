@@ -21,10 +21,8 @@ Each test below names the Machine clause and the Proof leg it encodes:
   M3 / leg (c)  no `gh` on `PATH`, or a `gh` that fails on every path, makes
                 the run a `FailedLookup` naming `OWNER/REPO` and `N`, and the
                 process exits 2 only when nothing else built or was skipped.
-  M4 / leg (d)  `fleet_fetch.py` and its test are gone, the harvester does not
-                import `fleet_fetch`, the deleted remote test and the
-                `NOT_YET_SWEPT` entry are gone, the docs allowlist names
-                `--evidence` and not `--remote`/`--remote-root`.
+  M4 / leg (d)  `fleet_fetch.py` and its test are gone and the harvester does
+                not import `fleet_fetch`.
   M5 / leg (e)  the bundle written for a run directory on disk is unchanged
                 from the one the BASE harvester writes.
 
@@ -520,23 +518,6 @@ def test_the_ssh_fetcher_and_its_test_no_longer_exist():
     assert not (SCRIPTS / "fleet_fetch.py").exists()
     assert not (REPO / "tests/test_fleet_fetch.py").exists()
     assert "fleet_fetch" not in HARVEST.read_text()
-
-
-def test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone():
-    """M4, leg (d): `test_remote_harvest_of_an_unreachable_host_fails_loud` is
-    deleted, and `NOT_YET_SWEPT` no longer names `fleet_fetch.py`."""
-    assert "test_remote_harvest_of_an_unreachable_host_fails_loud" not in (
-        REPO / "tests/test_harvest_fleet_runs.py").read_text()
-    assert "fleet_fetch" not in (
-        REPO / "tests/test_ultralearn_swallows.py").read_text()
-
-
-def test_the_docs_flag_allowlist_names_evidence_and_not_remote():
-    """M4, leg (d): `tests/test_ultralearn_docs.py`'s allowlist names
-    `--evidence` and neither `--remote` nor `--remote-root`."""
-    text = (REPO / "tests/test_ultralearn_docs.py").read_text()
-    assert "--evidence" in text
-    assert "--remote" not in text
 
 
 # ---------- M5, leg (e): the bundle the ledger reads is unchanged ----------

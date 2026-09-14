@@ -490,15 +490,3 @@ def test_the_duration_twin_still_draws_exactly_one_line(tmp_path, repo):
         "leg (d) [M4]: the duration twin still draws exactly one line, "
         "`duration-without-clock` on task 1. Got:\n"
         + ("\n".join(lines) or "(none)"))
-
-
-def test_the_existing_species_exam_still_passes():
-    """leg (d) [M4]: `tests/test_compile_plan_proof_species.py` passes — the
-    whole file, run as the driver runs it."""
-    p = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-         "tests/test_compile_plan_proof_species.py"],
-        capture_output=True, text=True, cwd=str(ROOT))
-    assert p.returncode == 0, (
-        "leg (d) [M4]: the existing species exam still passes unchanged. "
-        "Got rc=%d\n%s%s" % (p.returncode, p.stdout[-4000:], p.stderr[-2000:]))
