@@ -151,3 +151,16 @@
 {"kind":"driver:attention","task":"6","attention":"needs-human","msg":"session ended without hand-off","actor":"","id":"01M2GSNKSS00007GH1C2W7WEYQ","ts":1789417672505}
 {"kind":"worker:end","label":"review:6:1","role":"reviewer","sessionId":"bf8fdbad-29c8-4128-a28c-ec9a6766e365","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5948,"output":4340,"cacheRead":247391,"cacheCreation":20430,"costUsd":0.46623549999999997,"models":["claude-opus-5"]},"id":"01M2GSPTAT0000012KMMGZ43W7","ts":1789417711962}
 {"kind":"transcript:slice","label":"review:6:1","sessionId":"bf8fdbad-29c8-4128-a28c-ec9a6766e365","bytes":11495,"id":"01M2GSPTAX0000E5GPJ9TGQ37Q","ts":1789417711965}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1","2","3","4","5","6","7","8","9","10"],"headSha":"1ff535b397341aca10551ec9139059d680efb782","id":"01M2GSZZ3P0000KYTGGHFMDXPT","ts":1789418011766}
+{"kind":"driver:integrated-clean","wave":1,"removed":9,"id":"01M2GSZZ430000BPV7C1602QHF","ts":1789418011779}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini","exit":0,"minor":false,"wave":1,"id":"01M2GSZZ4D0000EWR59J10F1X4","ts":1789418011789}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'","exit":0,"minor":false,"wave":1,"id":"01M2GSZZ4K0000KGTGS9DA986Y","ts":1789418011795}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs","exit":0,"minor":false,"wave":1,"id":"01M2GSZZ4V0000WF8VDHQPFQE9","ts":1789418011803}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2GSZZMP0000PG6WVPWP9QPD","ts":1789418012310}
+{"kind":"driver:stage","stage":"finalize","id":"01M2GSZZPB0000TJYCXNVB29CW","ts":1789418012363}
+{"kind":"driver:stage","stage":"gate","id":"01M2GSZZR80000ZJQAKC6CVBPT","ts":1789418012424}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2GSZZW200000NNZDGAEFX1B","ts":1789418012546}
+{"kind":"driver:stage","stage":"approve","id":"01M2GSZZW200018BYHHFXPBQTR","ts":1789418012546}
+{"kind":"driver:approved","stamp":"run-129","integrationBranch":"ultra/integration-run-129","id":"01M2GSZZY10000Q96XZNFAD74B","ts":1789418012609}
+{"kind":"run:open","runId":"run-129","base":"1c97ba442c65d882354953d16590b1f8eb0c7a7a","source":"fleet/publish-fold.mjs","id":"01M2GT00MK0000JQT02AY7RVT8","ts":1789418013331}
+{"kind":"driver:publish-fold","run":"129","attempt":"1","base":"1c97ba442c65d882354953d16590b1f8eb0c7a7a","tip":"690d22315650be28f65b42040d58a5008f22de9f","candidate":"1ff535b397341aca10551ec9139059d680efb782","reason":"fold parked 3 conflict(s) — no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)","pathsJoined":21,"pathsConflicted":3,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"conflict parked","checks":[],"checkRetries":0,"id":"01M2GT05VE0000J25VK280614E","ts":1789418018670}

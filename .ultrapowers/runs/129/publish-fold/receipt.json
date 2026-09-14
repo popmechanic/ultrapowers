@@ -1,0 +1,17 @@
+{
+  "engineHead": "1ff535b397341aca10551ec9139059d680efb782",
+  "attempts": {
+    "1": {
+      "tip": "690d22315650be28f65b42040d58a5008f22de9f",
+      "candidate": "1ff535b397341aca10551ec9139059d680efb782",
+      "disposition": "conflict parked",
+      "reason": "fold parked 3 conflict(s) — no annotated narration for fleet/tests/test_run_engine.mjs (delete/modify)",
+      "path": "fleet/tests/test_run_engine.mjs",
+      "pathsJoined": 21,
+      "resolversDispatched": 0,
+      "suite": "none",
+      "checks": [],
+      "checkRetries": 0
+    }
+  }
+}
