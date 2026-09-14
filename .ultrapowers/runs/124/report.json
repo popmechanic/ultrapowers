@@ -1,0 +1,280 @@
+{
+  "integrationBranch": "ultra/integration-run-124",
+  "baseSha": "1c97ba442c65d882354953d16590b1f8eb0c7a7a",
+  "waves": [
+    [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "83596e7f7915aea21eb5ea4cb00e896e95b87b6f",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the task's Acceptance is `suite \u2014 the committed suite is the verification`, but the evidence in hand executes only the four Proof `Run:` commands (this file, plus the single `tests/test_compile_plan.py::test_review_marker_emits_adversarial_slot` node) and the three constraint `Check:` diffs \u2014 not the whole committed suite. The one cross-reference to this path I can see at BASE, `tests/test_ultrawrite_surface_rules_implementer_check.py:102` (`test_m5_the_tests_that_read_the_skill_still_pass`), runs `tests/test_review_peer.py` as a subprocess and is settled by Run 4's `exit 0`; nothing else in the tree names this file. What would settle the rest is a full-suite run on the integrated tree after the sibling tasks land \u2014 a cross-task claim this single-file diff cannot carry. No action for this diff.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "e29e073957efe9db1167ef2a7cc520bd4d7e1126",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Claim's clause that the absence of the ssh fetcher is \"guarded where it lives\" is only partly settled by this diff. The deleted `test_the_remote_harvest_test_and_the_swallow_quarantine_entry_are_gone` carried a second assertion \u2014 `\"fleet_fetch\" not in tests/test_ultralearn_swallows.py` \u2014 and the surviving guard the Context names for it, `test_the_ssh_fetcher_and_its_test_no_longer_exist`, only pins that `skills/ultralearn/scripts/fleet_fetch.py` and `tests/test_fleet_fetch.py` are absent and that the harvester's source does not mention `fleet_fetch`. The Context's rationale (\"any surviving reference would fail at import\") does not hold for a `NOT_YET_SWEPT` quarantine-list *string* naming a deleted path, which is what the deleted assertion actually pinned; nothing in either file this task owns covers it after the deletion. `tests/test_ultralearn_swallows.py` is sibling task 5's, so this diff cannot settle it and it does not block here. What would settle it: task 5's tree showing `fleet_fetch` removed from that file's quarantine list, or the full suite green after both tasks land.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "3",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "8b8abe67dd7f20e511405e39e4e29b7c9e3dc8d4",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-3.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Acceptance line is `suite \u2014 the committed suite is the verification`, and the evidence present covers only the three Proof `Run:` commands (which include `pytest tests/test_roles_run_evidence.py`, exit 0) and the three constraint `Check:` diffs (all exit 0); a full-suite run is not in evidence and the diff alone cannot settle it. What would settle it: a green whole-suite run at HEAD. Grounds for confidence short of that: the two deleted names (`test_the_two_role_files_keep_their_register`, `test_both_role_exams_still_pass_with_their_verbatim_pins`) appear nowhere else in the tree, so no other suite file asserts their presence, and the patch adds no lines at all \u2014 it is a pure deletion confined to `tests/test_roles_run_evidence.py`.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "4",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "d51074ca23592bb6d322c0bdd04ebcaae257c12d",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-4.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: M2's surviving-guard leg is checked in this clone only, where sibling task 6's edits to `tests/test_proof_modes_documented.py` are not yet applied. This diff cannot settle that the shout guard survives the fold: task 6 also edits that file (deleting `test_leg_e_m5_validate_skill_prints_skill_ok`, keeping `test_leg_e_m5_no_shouted_whole_word_is_added_to_the_three_files`). Read at BASE, the guard is real \u2014 `tests/test_proof_modes_documented.py:52` defines that test, `:58` sweeps `SKILL_PATH, EXAMINER_PATH, MARKERS_PATH` and `:63` asserts `counts == BASE_SHOUT_COUNTS` \u2014 and task 6's own Proof pins it present with a collect-count of exactly 1, so the edge is declared on both sides. What would settle it: re-running this task's second `Run:` bullet on the integrated tree after task 6 lands. No action needed inside this diff.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "5",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "1c19351ab87aae5432088f81776e27aa9943482e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-5.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Acceptance line is \"suite \u2014 the committed suite is the verification\", but the captured evidence exercises only the five edited files (`python3 -m pytest -q ... five paths` \u2192 exit 0, 116 passed) plus the three GLOBAL CONSTRAINT `Check:` diffs. Nothing in this patch can be wrong across the rest of the suite \u2014 all six removals are whole top-level test functions and the two companion removals are file-local (`SPECIES_EXAM` in tests/test_compile_plan_sha_unguarded.py, `import subprocess`/`import sys` in tests/test_ultralearn_swallows.py, each used at BASE only by the test being deleted; the four compiler files keep those imports because 8\u201311 other `subprocess.`/`sys.` uses remain in each) \u2014 so this is recorded, not a defect. A full `python3 -m pytest -q` at integration would settle it.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "6",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "626fd9bd468a809c8d305e3d15b7aa025f9a7522",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-6.patch",
+      "reviewVerdict": "clean",
+      "notes": "Stale module docstring in `tests/test_skill_setup_section.py`. The deletion of `test_validate_skill_accepts_the_ultrapowers_skill` (and of the `subprocess`/`sys` imports) leaves the header claiming the file still re-pins \"the four things ... the launch line's flags, the walk, the VM name shape, `validate_skill.py`\" (line 24) and that it \"runs one local Python script\" (line 29). Neither is true after the patch: the file now re-pins three things and runs no subprocess. Nothing in the task's Machine clauses or Proof covers the docstring, and the suite is green either way, so this is advisory only \u2014 but it is the one place in the four edited files where a reference to the removed validator run survives.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "7",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "94f981298045c930ece1d5d3406d7139f72f739c",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-7.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "8",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "c07fc0f92a6d8b493ca3ac59c71c8cd176d7277b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-8.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "9",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "66db9955ff882f230672e18929036ff41c58ec41",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-9.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: the Acceptance line is \"suite \u2014 the committed suite is the verification\", but the evidence behind this submission is scoped to this task's own Proof `Run:` commands \u2014 the three greps plus `tests/test_fleet_suite.py::test_fleet_mjs[test_retire.mjs]` (all exit 0). Whole-suite green over the fold of all ten sibling deletions is a cross-task property this one-file diff cannot settle. Nothing in the diff plausibly reaches beyond fleet/tests/test_retire.mjs: the two deleted blocks (BASE 869\u2013875 branchRefs loop, 877\u2013883 pytest spawn) and the tail comment at BASE 1558\u20131560 are self-contained, and the `spawnSync` import (fleet/tests/test_retire.mjs:103) and `REPO_ROOT` (:842) correctly stay because kept code at :903, :1228 and :1488 still uses them. What would settle it: a full `python3 -m pytest -q -p no:cacheprovider` on the integrated branch after all ten tasks fold.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "10",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": null,
+      "headSha": "99afb585040be622f12961050db9e308d13172b1",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-124/patches/task-10.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-124/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1791 items]\n\n........................................................................ [  4%]\n........................................................................ [  8%]\n........................................................................ [ 12%]\n........................................................................ [ 16%]\n........................................................................ [ 20%]\n........................................................................ [ 24%]\n........................................................................ [ 28%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 40%]\n........................................................................ [ 44%]\n........................................................................ [ 48%]\n........................................................................ [ 52%]\n........................................................................ [ 56%]\n........................................................................ [ 60%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 72%]\n........................................................................ [ 76%]\n........................................................................ [ 80%]\n........................................................................ [ 84%]\n........................................................................ [ 88%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n...............................................................          [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1791 passed, 5 warnings in 293.40s (0:04:53) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- skills fleet/roles fleet/CONTRACT.md fleet/RUNBOOK.md README.md hooks .github pytest.ini",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet ':(exclude)fleet/tests'",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- tests/test_docs_agree_with_code.py tests/test_recommendation_rubric.py tests/test_compile_plan.py tests/test_ultralearn_docs.py tests/test_validate_skill.py tests/test_ultrawrite_skill.py tests/test_fleet_suite.py fleet/tests/test_roles_peer.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 584500,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 0,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 51%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 63%]\n........................................................................ [ 67%]\n........................................................................ [ 71%]\n........................................................................ [ 75%]\n........................................................................ [ 79%]\n........................................................................ [ 83%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 95%]\n........................................................................ [ 99%]\n.............                                                            [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1813 passed, 5 warnings in 410.11s (0:06:50) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "33cb54b59d6acc6f313a0cff4ca4e70e82c0142b",
+      "branches": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-124/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-124/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 4.984,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 10,
+    "tasks_planned": 10,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "The exact collected-test counts asserted by the Machine clauses of Tasks 5 and 6 for the parametrized files (tests/test_compile_plan_engine_self_change.py = 15, tests/test_compile_plan_one_sided.py = 31, tests/test_compile_plan_sha_unguarded.py = 36, tests/test_compile_plan_wide_files.py = 26, tests/test_plan_level_claim.py = 33, tests/test_skill_setup_section.py = 33)",
+      "reason": "runtime",
+      "why": "These files use @pytest.mark.parametrize, so the collected count cannot be derived by reading alone, and no shell was available in this read-only editor environment to run `pytest --collect-only`. Every Claim-level assertion for these tasks (no sibling-suite pytest spawn survives, each named deleted test is absent, each surviving guard is present) was verified statically; only the numeric collection counts are unexecuted here. The driver's suite run (`python3 -m pytest -n auto`, passed) and the proof gate cover the execution side."
+    }
+  ],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

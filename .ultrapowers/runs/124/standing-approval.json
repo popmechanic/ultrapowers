@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-124.md run-124 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:runtime",
+      "detail": "The exact collected-test counts asserted by the Machine clauses of Tasks 5 and 6 for the parametrized files (tests/test_compile_plan_engine_self_change.py = 15, tests/test_compile_plan_one_sided.py = 31, tests/test_compile_plan_sha_unguarded.py = 36, tests/test_compile_plan_wide_files.py = 26, tests/test_plan_level_claim.py = 33, tests/test_skill_setup_section.py = 33) — These files use @pytest.mark.parametrize, so the collected count cannot be derived by reading alone, and no shell was available in this read-only editor environment to run `pytest --collect-only`. Every Claim-level assertion for these tasks (no sibling-suite pytest spawn survives, each named deleted test is absent, each surviving guard is present) was verified statically; only the numeric collection counts are unexecuted here. The driver's suite run (`python3 -m pytest -n auto`, passed) and the proof gate cover the execution side. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
