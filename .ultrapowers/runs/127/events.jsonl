@@ -166,3 +166,4 @@
 {"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2GNS09700009V65JMV0SM5Z","ts":1789413589287}
 {"kind":"run:open","runId":"run-127","base":"b64ecc074567229bee293e15388af8ce6e856343","source":"fleet/publish-fold.mjs","id":"01M2GNS12G000050RFJ6H1JPBS","ts":1789413590096}
 {"kind":"driver:publish-fold","run":"127","attempt":"1","base":"b64ecc074567229bee293e15388af8ce6e856343","tip":"50cb6cba68b9b468b1d09bc50e2afe1cb85de404","candidate":"f4f0ee9401336ed7377b39dffeba80895044282b","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M2GNSYVZ000084GBB0YDXAV1","ts":1789413620607}
+{"kind":"publish:pr","url":"https://github.com/popmechanic/ultrapowers/pull/974","number":974,"draft":true,"id":"01M2GNT6AS0000NYVVSHY89S9S","ts":1789413628249}
