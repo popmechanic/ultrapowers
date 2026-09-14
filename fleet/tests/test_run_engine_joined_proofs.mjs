@@ -40,9 +40,10 @@
 //        wave with the blocking behaviour they have today, and the per-task
 //        pre-review `Run:` pass is unchanged.
 //   M6 — `skills/ultrapowers/references/report-format.md`'s `integratedRuns` row
-//        and `fleet/roles/critic.md`'s INTEGRATED RUN EVIDENCE paragraph say a
-//        red integrated run is reported with the pair named and is not a
-//        blocking finding.
+//        says a red integrated run is reported with the pair named and is not a
+//        blocking finding. (#964 Task 2: M6's second half — the same sentence in
+//        `fleet/roles/critic.md`'s INTEGRATED RUN EVIDENCE paragraph — is gone
+//        with that role file; leg (f) reads the report-format row alone.)
 //
 // Legs: (a) M1, (b) M2, (c) M3, (d) M4, (e) M5, (f) M6.
 import assert from 'node:assert/strict'
@@ -50,7 +51,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { rig, makeRepo, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-joined-proofs-'))
 // Removed on exit, red or green.
@@ -58,7 +59,6 @@ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
 
 const REPORT_FORMAT = fileURLToPath(
   new URL('../../skills/ultrapowers/references/report-format.md', import.meta.url))
-const CRITIC_ROLE = fileURLToPath(new URL('../roles/critic.md', import.meta.url))
 
 const mkTask = (id, files, over = {}) => ({
   id, title: id.toLowerCase(), files, tier: 'standard', review: 'lean',
@@ -115,7 +115,8 @@ function fixture({ name, tasks, writes, constraintChecks = null }) {
       // Never expected in these fixtures — every proof below is green in its own
       // clone. Answered rather than thrown so the leg's precondition names it.
       if (kind === 'fix') return doneImpl(cwd)
-      if (opts.label === 'integration') return cleanCritic()
+      // No `integration` arm since #964 Task 2: no worker reads the finished run,
+      // so a dispatch under that label is an unexpected dispatch like any other.
       throw new Error('unexpected dispatch: ' + opts.label)
     },
   })
@@ -345,10 +346,9 @@ assertClean('trio', trioReport, trio.dispatched, 3)
     '[M4] a non-zero integrated `Run:` exit must push NO completeness finding ' +
     'whose detail begins `integrated Run:`: ' + JSON.stringify(report.completenessFindings))
 
-  // [M4] and it does not block the run: the critic was reached and no wave parked.
-  assert.equal(typeof red.prompts['integration'], 'string',
-    '[M4] the run must reach the completeness critic — the red integrated run ' +
-    'is not a gate: dispatched ' + red.dispatched.join(','))
+  // [M4] and it does not block the run: no wave parked. #964 Task 2 removed the
+  // other half of this leg — that the run still reached the completeness critic
+  // — with the critic itself; what is left is the question the red run poses.
   assert.deepEqual(report.blockedWaves, [],
     '[M4] the red integrated run parks no wave: ' + JSON.stringify(report.blockedWaves))
 
@@ -439,26 +439,10 @@ assertClean('trio', trioReport, trio.dispatched, 3)
       'named and is not a blocking finding:\n' + row)
   }
 
-  // The INTEGRATED RUN EVIDENCE section of the critic's role: from the paragraph
-  // that names it up to the INTEGRATED CHECK EVIDENCE paragraph, which is a
-  // different block and answers for the constraints, not the proofs.
-  const critic = fs.readFileSync(CRITIC_ROLE, 'utf8')
-  const start = critic.indexOf('INTEGRATED RUN EVIDENCE')
-  assert.ok(start >= 0,
-    '[M6] fleet/roles/critic.md no longer names INTEGRATED RUN EVIDENCE at all')
-  const after = critic.indexOf('INTEGRATED CHECK EVIDENCE', start)
-  const section = after === -1 ? critic.slice(start) : critic.slice(start, after)
-  // The sentence the task says to keep: the block is authoritative for the
-  // commands it lists.
-  assert.ok(section.includes('authoritative'),
-    '[M6] the INTEGRATED RUN EVIDENCE paragraph must still say the block is ' +
-    'authoritative for the commands it lists:\n' + section)
-  for (const lit of ['reported', 'not a blocking']) {
-    assert.ok(section.includes(lit),
-      '[M6] the INTEGRATED RUN EVIDENCE paragraph does not contain "' + lit + '" — ' +
-      'it must say a red there is reported, with the pair named, and is not a ' +
-      'blocking finding:\n' + section)
-  }
+  // The second document this leg read was `fleet/roles/critic.md`'s INTEGRATED
+  // RUN EVIDENCE paragraph — the same sentence, addressed to the one agent that
+  // read the finished run. #964 Task 2 deleted that role and its file, so the
+  // paragraph has no reader and the leg has one document to check, not two.
 }
 
 console.log('ALL TESTS PASSED')

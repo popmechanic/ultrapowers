@@ -134,7 +134,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   record compiles to nothing and its commit is a `no plan` line in the contending block.
 - **Comment** (≤200 bytes, one line, space-separated `key=value`, this order, nothing else):
   `run=<N> plan=<40-hex> target=<owner>/<repo> base=<40-hex> engine=<40-hex>` then
-  optional `overlap=fold|serialize`, `tier=standard|mostCapable`, `effort=low|medium|high`, `hold=1`.
+  optional `tier=standard|mostCapable`, `effort=low|medium|high`, `hold=1`.
   `plan=` is the tip of `ultra/plan-run-<N>` on the target; `hold=1` keeps the pull request open for a
   person — the sandbox publishes it and does not merge it. Written once by `new --comment`; the sandbox
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
@@ -144,8 +144,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   base the tree was cut at. The two exam sites and the per-task `Run:`/`Check:` sites also receive
   `ULTRA_TASK` (the task id), `ULTRA_RUN_DIR` (`<target>/.claude/ultrapowers/run-<N>`, the same
   directory as `FLEET_RUN_DIR`) and `ULTRA_EXAM_PASS`, whose values are
-  `base`, `0`, `1`, `2` and `integrated`: `base` at the at-BASE probe, `0` at the pre-review pass,
-  `1` or `2` at a review round that re-executes. The integrated `Run:` receives `ULTRA_TASK` and
+  `base`, `0` and `integrated`: `base` at the at-BASE probe, `0` at the pre-review pass and at the
+  repeat that follows the pre-review repair round. A pass number above `0` is a value this engine
+  no longer emits — the one review round reads the pre-review pass's evidence and dispatches no fix
+  worker of its own, so nothing edits the tree after that pass and no round re-executes. The
+  numbers stay in the vocabulary a reader of an older run's record meets. The integrated `Run:` receives `ULTRA_TASK` and
   `ULTRA_EXAM_PASS=integrated` and no `ULTRA_RUN_DIR` — the run directory is the driver's, not the
   fold's; the integrated `Check:` receives only `ULTRA_BASE`; and the suite receives none of the four.
 - **Launch order (launcher):** validate `--target`/`--base`/plan — a `--base` that is not an ancestor
@@ -178,7 +181,18 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     --cpu <cpu> --memory <memory> --setup-script /dev/stdin --json"
   ```
 
-  with the generated setup script on the verb's stdin. The verb carries NO `--integration`: exe.dev
+  with the generated setup script on the verb's stdin, under a `# fleet: width=<W>` header line the
+  launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells nine and
+  `parse_assignment` fails the boot on a tenth), so that header is a record, and the box arrives at
+  the same W itself: `fleet/run-main.mjs` takes the widest wave of its own compile (`args.json`,
+  which carries `waves` and no `width`) as the engine's dispatch bound, and falls back to 12 only
+  when that compile answers no waves. `<cpu>` and `<memory>` are the PLAN's size,
+  not the fleet's: the launcher compiles the plan once before this verb (`compile_plan.py <plan>
+  --stamp run-<N> --base <sha>`, the one payload the sizing and the kata filing both read), takes
+  W — the task count of the widest `launch_waves` entry — and asks for `min(cpu, 2 + ceil(W / 3))`
+  and `min(memory, 2 + W)GB`, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
+  `FLEET_DEFAULTS`) is the CEILING; `--cpu` or `--memory` on the launch line wins outright, and
+  either number is refused when `billing plan --json` cannot seat it. The verb carries NO `--integration`: exe.dev
   refuses it since 2026-09-11 (`new --integration cannot safely rewrite a singular attachment
   policy; create the VM first, then use integrations policy get/set with the complete expression`),
   and the launcher refuses its own line before issuing it should the flag ever reappear. The run's
@@ -306,7 +320,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
     env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz CLAUDE_CODE_OAUTH_TOKEN=placeholder
-    ULTRAPOWERS_FLEET_RUN=run-N TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-} node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …] [--overlap …]`,
+    ULTRAPOWERS_FLEET_RUN=run-N TINYAPP_RENDER_URL=${TINYAPP_RENDER_URL:-} node <engine>/fleet/run-main.mjs /home/exedev/plans/run-N.md run-N --repo /home/exedev/target [--kata /home/exedev/plans/run-N.kata.json] [--tier …]`,
     cwd `/home/exedev/target`, stdout+stderr teed to `/home/exedev/www/engine.log`; the exit code is the
     service's (`--wait`). The render entry passes the boot's render address through to the engine and
     is empty when the run carries no render integration — a value, never a bearer.
@@ -456,7 +470,7 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   and, for a worker whose label's second colon-segment names a task the record knows,
   `KATA_REF=<project name>#<short_id>` of that task's issue — the `short_id` read from the SAME
   `getIssue` answer that checked the revision above and kept on the task's row, never a second read.
-  `integration` (the critic) and `reconcile:*` name no task, so they carry no `KATA_REF`.
+  `reconcile:*` names no task, so it carries no `KATA_REF`.
   The settings file handed to the three write roles carries, beside the unchanged PreToolUse confine
   hook, a `SessionStart` hook running `kata attention-hook start` and a `SessionEnd` hook running
   `kata attention-hook end`, so a worker's start and end are stamped on its issue without the worker
@@ -471,8 +485,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   serialized chain, each post started the moment the one before it has answered, never two in
   flight, in append order. A `driver:*` line goes on the task's issue when it names one and on the
   run's issue otherwise; a worker envelope goes on the issue of the task its label's second
-  colon-segment names (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1:2`) and on the run's issue when
-  that segment names no task the record knows (`integration`, `reconcile:wave1:1`); a phase mark
+  colon-segment names (`impl:1`, `exam:1`, `fix:1:0`, `review:1:1`) and on the run's issue when
+  that segment names no task the record knows (`reconcile:wave1:1`); a phase mark
   goes on the run's issue. `transcript:*`, `engine:log`, `capture:*`, `kata:*` and `run:*` lines
   are never posted. The chain is still drained — every pending comment on the hub — before each
   claim, metadata patch and close and before the engine returns. run-main's own `driver:*` lines
@@ -487,11 +501,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `{task, attention, msg, actor}` on the run's log: `msg` is the metadata's `work.attention_msg`,
   and `actor` is the actor the metadata answer exposes — `''` when it exposes none. An unchanged
   value records nothing, a read the hub refuses records nothing and does not end the run, and a task
-  the record does not name is never polled. And before each fix round's worker is dispatched, the
-  engine posts one comment on the task's issue whose body begins `review round <n>:` — `0` for the
-  pre-review repair round, the reviewer's round number otherwise — followed by that round's blocking
-  findings, one per line, the same lines the fix prompt carries; a refused post is one
-  `kata:write-failed` and the fix round still runs.
+  the record does not name is never polled. And before the fix round's worker is dispatched, the
+  engine posts one comment on the task's issue whose body begins `review round <n>:` — always `0`,
+  the pre-review repair round, which is the only round that dispatches a fix worker — followed by
+  that round's blocking findings, one per line, the same lines the fix prompt carries; a refused
+  post is one `kata:write-failed` and the fix round still runs. A reviewer's own blocking findings
+  reach no comment: they end the task, and the row's `notes` carry them.
   Closes: an adopted task is `done` — `adopted in wave <n> (<verdict>)`, evidence the adopted commit
   and the task's test command, under the idempotency key `<runId>:<task>:close`. A task adopted into
   the tree is the only task the engine ever closes.
@@ -574,12 +589,12 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   `publish-fold/` receipts directory and the `driver:publish-fold` event; `status.json` gains no cell
   for it.
   Inside the record, after `### Plan`, comes a `### Residuals` checklist — one `- [ ]` line per
-  `deferred:external` ack of the gate receipt and per non-blocking reviewer/critic finding of
+  `deferred:external` ack of the gate receipt and per non-blocking reviewer finding of
   `report.json`, each with its evidence sentence — and no section at all when there is none; the
   record closes after it, so the `Closes #<n>` lines are still the body's last lines. The count
   above the record is every one of those items; the `- ` lines above it are the `deferred:external`
-  ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer or
-  critic sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
+  ones and the notes of a task whose report row carries `actor` `plan`, and no other reviewer
+  sentence appears above the record at all. The same items are also rows of `residuals.jsonl` on the run's record,
   written with the evidence and not at publish — the checklist closes with the PR that carries it,
   the rows do not — and the sandbox files no issue for them, against this target or any other.
   The publish record is three event kinds, appended to the run's `events.jsonl` beside the engine's

@@ -7,18 +7,25 @@
 // questions with bytes, so the channel is removed rather than left to
 // manufacture work. In its place the run reports the ratio it never had:
 // wall-clock reviewer milliseconds against the blocking findings those minutes
-// actually returned, with the pair-review premium (`r2MarginalBlocking`) broken
-// out — the number that says whether a second reviewer is worth its cost.
+// actually returned.
+//
+// #964 Task 2 retired the pair and the critic, and this sim lost the legs that
+// were about them: the `pairRounds`/`r2MarginalBlocking` keys and both pair
+// blocks (a concurrent pair contributing both durations; what the second
+// reviewer found that the first did not — the premium those two keys measured),
+// and the CANNOT-VERIFY assertions against the critic's prompt. Every other leg
+// is unchanged, and what the pair legs also covered — de-duplicated blocking
+// counting and the per-reviewer-MINUTE ratio — is kept below over one reviewer.
 //
 // Machine clauses under test (legs (f), (g) and (h) of the Proof):
 //   M6 — the `cannotVerify` channel is gone: no schema property, no
-//        accumulator, no CANNOT-VERIFY checklist in the critic's prompt, no
-//        no-wave-merged judgment calls, and the string does not occur in
-//        `fleet/run-engine.mjs` at all.
+//        accumulator, no no-wave-merged judgment calls, and the string does not
+//        occur in `fleet/run-engine.mjs` at all. (The checklist half of this
+//        clause read the critic's prompt — #964 Task 2.)
 //   M7 — `reviewEconomy: { reviewerMs, blockingFindings,
-//        blockingPerReviewerMinute, pairRounds, r2MarginalBlocking }`;
-//        `reviewerMs` sums every `review:` agent call measured INDIVIDUALLY (a
-//        concurrent pair contributes both durations), `blockingFindings` counts
+//        blockingPerReviewerMinute }`;
+//        `reviewerMs` sums every `review:` agent call measured INDIVIDUALLY,
+//        `blockingFindings` counts
 //        de-duplicated reviewer-returned blocking issues only (driver-minted
 //        Run:/Check: reds excluded), the ratio is per reviewer-minute and 0
 //        when no reviewer ran.
@@ -47,8 +54,7 @@ const ENGINE_SRC = fileURLToPath(new URL('../run-engine.mjs', import.meta.url))
 const BASE_SHA = '2cc873fb2d040fbe081f35ff0ababc408eaa6500'
 
 // Sorted.
-const ECONOMY_KEYS = ['blockingFindings', 'blockingPerReviewerMinute', 'pairRounds',
-                      'r2MarginalBlocking', 'reviewerMs']
+const ECONOMY_KEYS = ['blockingFindings', 'blockingPerReviewerMinute', 'reviewerMs']
 const mkTask = (id, files, over = {}) => ({
   id, title: id.toLowerCase(), files, tier: 'standard', review: 'lean',
   writes: files, commutes: [], proofTests: [], proofRuns: [],
@@ -94,19 +100,15 @@ const eventsOf = (runDir) => {
       return { verdict: 'PASS', issues: [],
                cannotVerify: [{ requirement: 'x', why: 'y' }] }
     }
-    if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'])]], stub, stamp: 're1' })
   const report = await run()
   assert.equal(report.coverage.complete, true,
     'an unread extra field must not fail the task: ' + JSON.stringify(report.tasks))
-  const critic = prompts['integration']
-  assert.ok(!critic.includes('CANNOT-VERIFY'),
-    'the critic prompt must carry no CANNOT-VERIFY checklist: ' + critic.slice(0, 1200))
-  // BASE rendered each escalated item as `- [<task>] <requirement> (<why>)`.
-  assert.ok(!/\[A\]\s*x\b/.test(critic) && !critic.includes('x (y)'),
-    'and no escalated item line of its own: ' + critic.slice(0, 1200))
+  // The two prompt halves of this leg read the completeness critic's prompt for
+  // the CANNOT-VERIFY checklist and the escalated-item line; no such agent is
+  // dispatched since #964 Task 2, so they go and the judgment-call half stays.
   assert.ok(!report.judgmentCalls.some((j) => String(j).includes('cannot-verify')),
     'and no cannot-verify judgment call survives: ' + JSON.stringify(report.judgmentCalls))
 
@@ -114,52 +116,24 @@ const eventsOf = (runDir) => {
   const eco = report.reviewEconomy
   assert.equal(typeof eco, 'object', 'the report carries no `reviewEconomy` object')
   assert.deepEqual(Object.keys(eco).sort(), ECONOMY_KEYS,
-    'reviewEconomy carries exactly those five fields: ' + JSON.stringify(Object.keys(eco)))
+    'reviewEconomy carries exactly those three fields: ' + JSON.stringify(Object.keys(eco)))
   assert.equal(Number.isFinite(eco.reviewerMs), true,
     'reviewerMs is a finite number: ' + JSON.stringify(eco.reviewerMs))
   assert.ok(eco.reviewerMs >= 0, 'and never negative: ' + eco.reviewerMs)
-  assert.equal(eco.pairRounds, 0, 'a lean review dispatches no pair: ' + JSON.stringify(eco))
 }
 
-// ── the pair costs both durations, not the longer one [M7] ───────────────────
-{
-  const repo = makeRepo(path.join(tmp, 'repo-g1'))
-  const runDir = path.join(tmp, 'run-g1')
-  const stub = async (prompt, opts, cwd) => {
-    const kind = opts.label.split(':')[0]
-    if (kind === 'impl') {
-      fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
-      return doneImpl(cwd)
-    }
-    if (kind === 'review') {
-      await sleep(opts.label.split(':')[3] === '2' ? 200 : 30)
-      return passReview()
-    }
-    if (opts.label === 'integration') return cleanCritic()
-    throw new Error('unexpected dispatch: ' + opts.label)
-  }
-  const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { review: 'peer' })]],
-                        stub, stamp: 're2' })
-  const report = await run()
-  const eco = report.reviewEconomy
-  assert.equal(report.coverage.complete, true, 'sim precondition: the task merged')
-  // A per-round MAXIMUM would read about 200 here and fail this bound; the sum
-  // of the two individually-measured calls reads about 230.
-  // 215, not 230: setTimeout(30) + setTimeout(200) summed read 229 on CI (timers
-  // fire a millisecond or two early against Date.now); the bound only has to sit
-  // clear of the ~200 a per-round maximum would read.
-  assert.ok(eco.reviewerMs >= 215,
-    'a concurrent pair contributes BOTH durations (30 ms + 200 ms), got: ' + eco.reviewerMs)
-  assert.ok(eco.reviewerMs < 1000,
-    'and only the reviewer calls, not the whole run: ' + eco.reviewerMs)
-  assert.equal(eco.pairRounds, 1, 'one review round dispatched a pair: ' + JSON.stringify(eco))
-  assert.equal(eco.blockingFindings, 0, 'and returned nothing blocking: ' + JSON.stringify(eco))
-  assert.equal(eco.blockingPerReviewerMinute, 0, 'so the ratio is 0: ' + JSON.stringify(eco))
-  assert.equal(eco.r2MarginalBlocking, 0,
-    'and reviewer 2 found nothing reviewer 1 missed: ' + JSON.stringify(eco))
-}
-
-// ── what the second reviewer was worth [M7] ──────────────────────────────────
+// ── de-duplicated blocking findings, per reviewer-MINUTE [M7] ────────────────
+// #964 Task 2 retired the pair, and the two blocks that stood here went with
+// what they measured. The first paid a concurrent pair 30 ms and 200 ms to
+// prove BOTH durations were summed rather than maxed; the second paid four
+// reviewers across two rounds to price the second reviewer's marginal finding
+// (`pairRounds`, `r2MarginalBlocking`). Neither has a subject any more. What
+// they also proved, and nothing else in this sim does, is kept here over one
+// reviewer per round: a repeated blocking detail is counted once, and the ratio
+// is per reviewer-MINUTE. (Second pass of the same task: with one review round
+// the referee's blocking issues end the task rather than buying a fix and a
+// second reading, so the arithmetic is measured over the one reviewer this run
+// pays for — the counting rule under test is unchanged.)
 {
   const repo = makeRepo(path.join(tmp, 'repo-g2'))
   const runDir = path.join(tmp, 'run-g2')
@@ -177,87 +151,98 @@ const eventsOf = (runDir) => {
     }
     if (kind === 'review') {
       await sleep(30)
-      const [, , round, pass] = opts.label.split(':')
-      if (round !== '1') return passReview()
       const d1 = { severity: 'blocking', detail: 'd1', actor: 'implementer' }
       const d2 = { severity: 'blocking', detail: 'd2', actor: 'implementer' }
-      return { verdict: 'FIX_REQUIRED', issues: pass === '2' ? [d1, d2] : [d1] }
+      return { verdict: 'FIX_REQUIRED', issues: [d1, d1, d2] }
     }
-    if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { review: 'peer' })]],
                         stub, stamp: 're3' })
   const report = await run()
   const eco = report.reviewEconomy
-  assert.equal(report.tasks.find((r) => r.task === 'A').reviewVerdict, 'fixed',
-    'sim precondition: the fix round ran and round 2 passed')
-  assert.equal(calls.filter((l) => l.startsWith('review:')).length, 4,
-    'sim precondition: two pair rounds, four reviewer calls: ' + calls.join(','))
+  assert.equal(report.tasks.find((r) => r.task === 'A').reviewVerdict, 'fix-loop-exhausted',
+    'sim precondition: the one round\'s blocking issues ended the task')
+  assert.deepEqual(calls.filter((l) => l.startsWith('review:')), ['review:A:1'],
+    'sim precondition: one round, one reviewer, whatever `peer` asked for: ' + calls.join(','))
 
-  // 100, not 120: four 30 ms timers summed read 117 on CI (same early-fire
-  // slack); a per-round maximum would read ~60, well under the bound.
-  assert.ok(eco.reviewerMs >= 100,
-    'four reviewers at 30 ms each are summed, not maxed: ' + eco.reviewerMs)
+  // 25, not 30: the timer fires a millisecond or two early against Date.now.
+  assert.ok(eco.reviewerMs >= 25,
+    'the reviewer call is measured: ' + eco.reviewerMs)
   assert.ok(eco.reviewerMs < 1000, 'and nothing else is counted: ' + eco.reviewerMs)
   assert.equal(eco.blockingFindings, 2,
-    '`d1` is de-duplicated across the pair, `d2` is its own: ' + JSON.stringify(eco))
-  assert.equal(eco.pairRounds, 2, 'both rounds dispatched a pair: ' + JSON.stringify(eco))
-  assert.equal(eco.r2MarginalBlocking, 1,
-    'exactly one blocking issue was reviewer 2\'s alone (`d2`): ' + JSON.stringify(eco))
+    '`d1` is counted once however often it is returned, `d2` is its own: ' + JSON.stringify(eco))
   assert.equal(eco.blockingPerReviewerMinute.toFixed(6),
     (2 / (eco.reviewerMs / 60000)).toFixed(6),
     'the ratio is blockingFindings per reviewer-MINUTE: ' + JSON.stringify(eco))
 }
 
 // ── a driver-minted red is not a reviewer's finding [M7] ─────────────────────
-// The Run: is green on the driver's pre-review pass (so the patch reaches a
-// referee) and red on the next execution. Since #713 Task 1 round 1 READS that
-// pass, so the next execution is round 2's, after `fix:A:1` — which round 1's
-// canned reviewer buys with one blocking issue of its own. Round 2's referee
-// returns PASS, the fresh `iter: 2` execution reads red, and the task dies on
-// that red: exactly one blocking finding in the run belongs to a reviewer.
+// #964 Task 2 took this leg's vehicle, not its clause. It used to drive a
+// TOGGLE `Run:` green on the driver's pre-review pass and red on the fresh
+// execution round 2 took after `fix:A:1`: with one review round there is no
+// second execution and no second round, so that arrangement cannot be built.
+// The clause — a red the DRIVER minted is never charged to the referee — is
+// measured here on the one arrangement that still puts both kinds of blocking
+// issue in the same round: the #908 path, where a red exam survives the
+// pre-review repair round beside that round's `exam:` concern, buys review
+// round 1, and is re-appended there as blocking whatever the referee returned.
+// The row's notes then hold two blocking details and the economy counts one.
 {
-  const TOGGLE = "sh -c 'if [ -e seen.txt ]; then exit 1; else : > seen.txt; fi'"
+  const EXAM_CMD = 'bash a_test.sh'
+  const EXAM = '#!/bin/bash\necho exam-is-red\nexit 1\n'
   const repo = makeRepo(path.join(tmp, 'repo-g4'))
   const runDir = path.join(tmp, 'run-g4')
   const calls = []
   const stub = (prompt, opts, cwd) => {
     calls.push(opts.label)
     const kind = opts.label.split(':')[0]
+    if (kind === 'exam') {
+      fs.writeFileSync(path.join(cwd, 'a_test.sh'), EXAM)
+      return { status: 'DONE', summary: 'exam written' }
+    }
     if (kind === 'impl') {
       fs.writeFileSync(path.join(cwd, 'a.txt'), 'from-A\n')
       return doneImpl(cwd)
     }
-    if (kind === 'fix') return doneImpl(cwd)
-    if (kind === 'review') {
-      return opts.label === 'review:A:1'
-        ? { verdict: 'FIX_REQUIRED',
-            issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
-        : passReview()
+    // The repair round cannot turn the exam green and says so in the
+    // `exam:`-prefixed form, which is what buys a referee instead of a park.
+    if (kind === 'fix') {
+      return { ...doneImpl(cwd), status: 'DONE_WITH_CONCERNS',
+               concerns: ['exam: the case is red for any output'] }
     }
-    if (opts.label === 'integration') return cleanCritic()
+    if (kind === 'review') {
+      return { verdict: 'FIX_REQUIRED',
+               issues: [{ severity: 'blocking', detail: 'the referee wants one thing changed' }] }
+    }
     throw new Error('unexpected dispatch: ' + opts.label)
   }
-  const { run } = rig({ repo, runDir, waves: [[mkTask('A', ['a.txt'], { proofRuns: [TOGGLE] })]],
-                        stub, stamp: 're4' })
+  const { run } = rig({
+    repo, runDir, stub, stamp: 're4',
+    waves: [[mkTask('A', ['a.txt'], { proofTests: ['a_test.sh'], testCmd: EXAM_CMD })]],
+  })
   const report = await run()
   const row = report.tasks.find((r) => r.task === 'A')
-  const proofRuns = eventsOf(runDir).filter((e) => e.kind === 'driver:proof-run' && e.task === 'A')
-  assert.deepEqual(proofRuns.map((e) => [e.iter, e.exit]), [[0, 0], [2, 1]],
-    'one green execution on the driver\'s pass, one red on the round the fix bought: ' +
-    JSON.stringify(proofRuns))
-  assert.deepEqual(calls.filter((l) => l !== 'integration'),
-    ['impl:A', 'review:A:1', 'fix:A:1', 'review:A:2'],
-    'sim precondition: the reviewer\'s blocking issue bought the one fix round: ' + calls.join(','))
+  const examRuns = eventsOf(runDir).filter((e) => e.kind === 'driver:exam-run' && e.task === 'A')
+  assert.deepEqual(examRuns.map((e) => [e.iter, e.exit]), [[0, 1], [0, 1]],
+    'the driver\'s pass and its repeat after the repair round, both red, both iter 0: ' +
+    JSON.stringify(examRuns))
+  assert.deepEqual(calls,
+    ['exam:A', 'impl:A', 'fix:A:0', 'review:A:1'],
+    'sim precondition: the red exam bought the one repair round and its `exam:` concern ' +
+    'bought the one review round: ' + calls.join(','))
   assert.equal(row.reviewVerdict, 'fix-loop-exhausted',
-    'and that driver-minted red ended the task, whatever round 2\'s referee returned: ' +
+    'and the still-red exam ended the task, whatever the referee returned: ' +
     JSON.stringify(row))
+  assert.ok(row.notes.includes('the referee wants one thing changed') &&
+            row.notes.includes(EXAM_CMD),
+    'sim precondition: both blocking issues are on the row — the referee\'s and the ' +
+    'driver\'s own red exam: ' + JSON.stringify(row.notes))
   assert.ok(report.reviewEconomy.reviewerMs >= 0,
-    'the reviewers still ran and were still measured: ' + JSON.stringify(report.reviewEconomy))
+    'the reviewer still ran and was still measured: ' + JSON.stringify(report.reviewEconomy))
   assert.equal(report.reviewEconomy.blockingFindings, 1,
-    'a driver-minted Run:/Check: red is never counted as a reviewer\'s finding — only ' +
-    'round 1\'s referee issue is: ' + JSON.stringify(report.reviewEconomy))
+    'a driver-minted exam/Run:/Check: red is never counted as a reviewer\'s finding — only ' +
+    'the round\'s referee issue is: ' + JSON.stringify(report.reviewEconomy))
 }
 
 // ── leg (h): empty evidence changes nothing [M8] ─────────────────────────────
@@ -273,6 +258,12 @@ const haveBase = (() => {
   } catch { return false }
 })()
 let baseRunEngine = null
+// BASE's `loadRoles` reads `fleet/roles/critic.md`, which this release deletes
+// (#964 Task 2), so the BASE engine cannot boot against the live roles dir at
+// all. It is driven against a copy of that dir with BASE's own critic.md
+// restored into it: every other role file is byte-identical to the live one, so
+// the prompts the pin compares are still the live tree's bytes.
+let baseRolesDir = null
 if (haveBase) {
   const baseTree = path.join(tmp, 'base-tree')
   fs.cpSync(FLEET_DIR, path.join(baseTree, 'fleet'), {
@@ -282,6 +273,11 @@ if (haveBase) {
     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
       { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
+  baseRolesDir = path.join(baseTree, 'roles-base')
+  fs.cpSync(ROLES_DIR, baseRolesDir, { recursive: true })
+  fs.writeFileSync(path.join(baseRolesDir, 'critic.md'),
+    execFileSync('git', ['show', BASE_SHA + ':fleet/roles/critic.md'],
+      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }))
   ;({ runEngine: baseRunEngine } =
     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
 } else {
@@ -294,7 +290,7 @@ const pinRunDir = path.join(tmp, 'pin-run')
 // Both engines are driven through the SAME run directory: prompts name the
 // patch FILE, so a second directory would differ in bytes that are not this
 // change.
-async function pinRun(engine, tasks) {
+async function pinRun(engine, tasks, rolesDir = ROLES_DIR) {
   fs.rmSync(pinRunDir, { recursive: true, force: true })
   const { base, clonesDir, patchesDir } =
     provision({ repo: PIN_REPO, runDir: pinRunDir, taskIds: tasks.map((t) => t.id) })
@@ -310,6 +306,9 @@ async function pinRun(engine, tasks) {
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
+    // BASE's engine still dispatches a completeness critic; the live one never
+    // does (#964 Task 2). This arm exists only so the byte-pin can drive BASE —
+    // the assertions below require the live run to produce no such prompt.
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
@@ -328,14 +327,14 @@ async function pinRun(engine, tasks) {
     exec: execSeam,
     paths: { repoDir: PIN_REPO, runDir: pinRunDir, clonesDir },
     log: () => {},
-    rolesDir: ROLES_DIR,
+    rolesDir,
     patchBase,
   })
   return { prompts, report }
 }
 {
   const pair = () => [mkTask('A', ['a.txt']), mkTask('B', ['b.txt'])]
-  const basePin = haveBase ? await pinRun(baseRunEngine, pair()) : null
+  const basePin = haveBase ? await pinRun(baseRunEngine, pair(), baseRolesDir) : null
   const live = await pinRun(runEngine, pair())
 
   assert.equal(live.report.coverage.complete, true, 'sim precondition: both tasks merged')
@@ -346,15 +345,21 @@ async function pinRun(engine, tasks) {
       'every task row carries proofFixes 0 when nothing was repaired: ' + JSON.stringify(row))
   }
   assert.deepEqual(Object.keys(live.report.reviewEconomy || {}).sort(), ECONOMY_KEYS,
-    'and reviewEconomy is present with exactly its five fields: ' +
+    'and reviewEconomy is present with exactly its three fields: ' +
     JSON.stringify(live.report.reviewEconomy))
+  assert.ok(!Object.prototype.hasOwnProperty.call(live.prompts, 'integration'),
+    'the live engine dispatches no completeness critic at all (#964 Task 2): ' +
+    JSON.stringify(Object.keys(live.prompts)))
 
   // The run-51 rule: a run with no proofRuns and no constraintChecks renders
-  // nothing new, so every prompt is byte-identical to BASE's.
+  // nothing new, so every prompt is byte-identical to BASE's. One label is
+  // exempt since #964 Task 2 — BASE's `integration` prompt has no live
+  // counterpart, and that absence is the assertion above.
   if (basePin) {
-    assert.deepEqual(Object.keys(live.prompts).sort(), Object.keys(basePin.prompts).sort(),
-      'the same roles are dispatched as on BASE\'s engine')
-    for (const label of Object.keys(basePin.prompts).sort()) {
+    const baseLabels = Object.keys(basePin.prompts).filter((l) => l !== 'integration').sort()
+    assert.deepEqual(Object.keys(live.prompts).sort(), baseLabels,
+      'the same roles are dispatched as on BASE\'s engine, less the critic')
+    for (const label of baseLabels) {
       assert.equal(live.prompts[label], basePin.prompts[label],
         'an empty-evidence run must leave the ' + label +
         ' prompt byte-identical to BASE\'s (the run-51 rule)')

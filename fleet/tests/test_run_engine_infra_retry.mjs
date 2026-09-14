@@ -3,12 +3,23 @@
 //
 // The only infra signal the engine reads is a `null` reply from `agent()` (the
 // AGENT_NULL doctrine at the top of fleet/run-engine.mjs). A judgment whose
-// death parks or fail-closes a whole run — the completeness critic, the
-// examiner of the wave-0 pair, a reviewer — is dispatched exactly once at BASE,
-// so one overloaded minute costs the run its attestation. These legs pin the
-// second, coarser tier: ONE re-dispatch after a backoff, the record naming both
-// attempts with the status code the worker's own `worker:end` event carried,
-// and a second death that is fail-closed exactly as today.
+// death parks or fail-closes a whole run — the examiner of the wave-0 pair, a
+// reviewer — is dispatched exactly once at BASE, so one overloaded minute costs
+// the run its judgment. These legs pin the second, coarser tier: ONE
+// re-dispatch after a backoff, the record naming both attempts with the status
+// code the worker's own `worker:end` event carried, and a second death that is
+// fail-closed exactly as today.
+//
+// #964 Task 2 retired the completeness critic, which was the third such
+// judgment and the vehicle most of these legs drove (`criticRun`, a lean
+// one-task run whose one `integration` call was canned per attempt). The legs
+// that were ABOUT the critic are gone — the second reply as the attestation,
+// its findings verbatim, the fail-closed twice-dead run and the frozen
+// `gate_check.py` BLOCKED/exit-1 pin over it — and so is the pair, with the leg
+// that priced two dead halves at one backoff. Every leg that needed only a
+// single-dispatch judgment is unchanged except for its vehicle: the lean
+// reviewer, which has the same `null` -> backoff -> one re-dispatch seam and is
+// the one such judgment left.
 //
 // Everything below the agent seam is real (git, clones, capture, the fold
 // kernel, the real exec seam, the frozen gate_check.py); only the judgments are
@@ -22,29 +33,29 @@
 //        and `runEngine` waits `args.infraBackoffMs` ms when that is a finite
 //        number >= 0, else `INFRA_BACKOFF_MS`, between a judgment call's `null`
 //        reply and its re-dispatch.
-//   M2 — a `null` `integration` call is dispatched a second time with a
+//   M2 — a `null` judgment call is dispatched a second time with a
 //        byte-identical prompt and the same `model` and `schema`; a second
-//        reply that is an object IS the attestation (`gitVerified` true,
-//        `completenessFindings` that reply's `findings`).
-//   M3 — two `null`s buy no third dispatch: `gitVerified` false, the one
-//        fail-closed finding of BASE, and `gate_check.py` exits 1 / BLOCKED
-//        with `git-verified` among its failed checks.
+//        reply that is an object IS the judgment. (Its critic half — the
+//        attestation and `completenessFindings` — went with #964 Task 2.)
+//   M3 — two `null`s buy no third dispatch. (Its critic half — `gitVerified`
+//        false, the fail-closed finding, `gate_check.py` BLOCKED/exit 1 — went
+//        with #964 Task 2; the reviewer's own two-null lane is leg (i).)
 //   M4 — each `null` attempt leaves one `judgmentCalls` entry (attempt 1
 //        re-dispatched, attempt 2 fail-closed), carrying the status of the most
 //        recent `worker:end` for that label (`unknown` when there is none), a
 //        task-scoped entry prefixed `task <id>: `; and each re-dispatch appends
 //        one `driver:infra-retry` event `{label, attempt: 1, status}`.
-//   M5 — a THROWN `integration` call is dispatched once and leaves no
+//   M5 — a THROWN judgment call is dispatched once and leaves no
 //        `infra-retry:` entry; a run that never sees a `null` leaves neither
 //        entry nor event.
 //   M6 — a `null` `exam:<id>` beside a KEPT implementer reply re-cuts and
 //        bootstraps the examiner's clone at BASE and dispatches the examiner a
 //        second time, the implementer exactly once; a second `null` proceeds
 //        unexamined as at BASE.
-//   M7 — only the `null` half of a reviewer pair is re-dispatched (a lean
-//        single review likewise), the implementer exactly once and no barrier
-//        park; a second `null` parks and the barrier retry recovers it as at
-//        BASE.
+//   M7 — a `null` review is re-dispatched, the implementer exactly once and no
+//        barrier park; a second `null` parks and the barrier retry recovers it
+//        as at BASE. (Its pair half — only the null half of a pair is re-asked
+//        — went with the pair, #964 Task 2.)
 //   M8 — the backoff elapses BEFORE the re-dispatch. Leg (j) pins what a sim
 //        can hold still: that a configured backoff still buys the one
 //        re-dispatch, and that the record names the milliseconds waited. The
@@ -56,20 +67,18 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 // A namespace import, so a BASE that exports no `INFRA_BACKOFF_MS` fails leg
 // (a)'s assertion — the absent implementation — rather than failing to link.
 import * as engine from '../run-engine.mjs'
 import { simEnv } from './_helpers.mjs'
 import {
-  makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl,
+  makeRepo, rig, passReview, doneImpl,
 } from './_engine_helpers.mjs'
 import { createRunWorker, ATTACHMENT_WINDOW_MS } from '../run-worker.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-infra-retry-'))
 process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
-const SCRIPTS = fileURLToPath(new URL('../../skills/ultrapowers/scripts', import.meta.url))
 
 // ── the record the sims read ────────────────────────────────────────────────
 // The driver's own append-only log. An absent file reads as no records, so an
@@ -101,8 +110,6 @@ const attempt1 = (label, status, ms) =>
 const attempt2 = (label, status) =>
   'infra-retry: ' + label + ' attempt 2 returned null (status ' + status +
   ') — no third attempt; fail-closed'
-const FAIL_CLOSED_DETAIL =
-  'integration review did not run — completeness unverified; check the tree before merging'
 
 // ── the tasks the sims run ──────────────────────────────────────────────────
 const plainTask = (review) => ({
@@ -130,30 +137,47 @@ const freshNames = (tag) => {
   return { stamp, repo: makeRepo(path.join(tmp, 'repo-' + stamp)), runDir: path.join(tmp, 'run-' + stamp) }
 }
 
-// ── a one-task run whose `integration` call is canned per attempt ───────────
-// `integration({ n, runDir })` answers the n-th critic dispatch.
-async function criticRun({ integration, extraArgs = {} }) {
-  const { stamp, repo, runDir } = freshNames('c')
+// ── a one-task run whose reviewer call is canned per attempt ────────────────
+// `review({ label, n, runDir })` answers the n-th dispatch OF THAT LABEL, and
+// `opts` records the dispatch options of each. `extraArgs` is merged after the
+// default `infraBackoffMs: 0`, so the #857 scenarios can ask for a distinctive
+// backoff.
+//
+// Until #964 Task 2 the legs below drove `criticRun`: the same one-task run,
+// with one `integration` call canned per attempt. No such worker is dispatched
+// any more, so every leg that needed only a single-dispatch judgment drives the
+// lean reviewer instead — the same `null` -> backoff -> one re-dispatch seam,
+// on the one single-dispatch judgment the run still has. Its entries are
+// task-scoped (`task T1: `), which the critic's were not.
+async function reviewerRun({ profile, review, extraArgs = {} }) {
+  const { stamp, repo, runDir } = freshNames('r')
   const labels = []
-  const calls = []
-  const stub = (prompt, opts, cwd) => {
-    labels.push(opts.label)
-    const kind = opts.label.split(':')[0]
+  const perLabel = new Map()
+  const prompts = new Map()
+  const opts = new Map()
+  const stub = (prompt, o, cwd) => {
+    labels.push(o.label)
+    const kind = o.label.split(':')[0]
     if (kind === 'impl') { fs.writeFileSync(path.join(cwd, 'T1.txt'), 'v1\n'); return doneImpl(cwd) }
-    if (kind === 'review') return passReview()
-    if (opts.label === 'integration') {
-      calls.push({ prompt, opts })
-      return integration({ n: calls.length, runDir, label: opts.label })
+    if (kind === 'review') {
+      const n = (perLabel.get(o.label) || 0) + 1
+      perLabel.set(o.label, n)
+      prompts.set(o.label + '#' + n, prompt)
+      opts.set(o.label + '#' + n, o)
+      return review({ label: o.label, n, runDir })
     }
-    throw new Error('unexpected dispatch: ' + opts.label)
+    throw new Error('unexpected dispatch: ' + o.label)
   }
-  const { run, integ } = rig({
-    repo, runDir, waves: [[plainTask('lean')]], stub, stamp,
+  const { run } = rig({
+    repo, runDir, waves: [[plainTask(profile)]], stub, stamp,
     extraArgs: { infraBackoffMs: 0, ...extraArgs },
   })
   const report = await run()
-  return { report, labels, calls, runDir, integ, branch: 'ultra/integration-' + stamp }
+  return { report, labels, prompts, opts, runDir }
 }
+// The lean one-task run the retargeted legs use, and the one label it reviews.
+const leanRun = (review, extraArgs = {}) => reviewerRun({ profile: 'lean', review, extraArgs })
+const LEAN = 'review:T1:1'
 
 // ══ (a) the constant, and the backoff the engine falls back to [M1] ═════════
 assert.equal(engine.INFRA_BACKOFF_MS, 60000,
@@ -178,136 +202,96 @@ assert.equal(engine.INFRA_BACKOFF_MS, 60000,
   }
   let r
   try {
-    r = await criticRun({
-      extraArgs: { infraBackoffMs: 'x' },
-      integration: ({ n, runDir }) => (n === 1 ? dieNull(runDir, 'integration', 429) : cleanCritic()),
-    })
+    r = await leanRun(
+      ({ label, n, runDir }) => (n === 1 ? dieNull(runDir, label, 429) : passReview()),
+      { infraBackoffMs: 'x' })
   } finally {
     globalThis.setTimeout = realSetTimeout
   }
-  assert.equal(countOf(r.labels, 'integration'), 2,
+  assert.equal(countOf(r.labels, LEAN), 2,
     '(a)/M1: a non-numeric infraBackoffMs still buys the one re-dispatch: ' + r.labels.join(','))
-  assert.deepEqual(withRetry(r.report), [attempt1('integration', 429, 60000)],
+  assert.deepEqual(withRetry(r.report), ['task T1: ' + attempt1(LEAN, 429, 60000)],
     '(a)/M1: and the call names the fallback backoff: ' + shown(r.report))
   assert.equal(delays.filter((d) => d === 60000).length, 1,
     '(a)/M1: the engine asked setTimeout for exactly 60000 ms once, got delays [' +
     delays.join(',') + ']')
 }
 
-// ══ (b) one null, then an answer: the second reply IS the attestation [M2] ══
+// ══ (b) one null, then an answer: the second reply IS the judgment [M2] ═════
 // Also carries leg (e)'s first half: the attempt-1 entry, no attempt-2 entry,
-// and the one `driver:infra-retry` event [M4].
+// and the one `driver:infra-retry` event [M4]. The critic half of M2 — that the
+// second reply is the run's attestation and its `findings` the report's — went
+// with the critic (#964 Task 2), and so did leg (c), which pinned those
+// findings verbatim.
 {
-  const { report, labels, calls, runDir } = await criticRun({
-    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
-  })
-  assert.equal(countOf(labels, 'integration'), 2,
-    '(b)/M2: the integration label is dispatched exactly twice: ' + labels.join(','))
-  assert.equal(calls[1].prompt, calls[0].prompt,
-    '(b)/M2: the second critic prompt is byte-identical to the first')
-  assert.equal(calls[1].opts.model, calls[0].opts.model,
+  const { report, labels, prompts, opts, runDir } = await leanRun(
+    ({ label, n, runDir: rd }) => (n === 1 ? dieNull(rd, label, 429) : passReview()))
+  assert.equal(countOf(labels, LEAN), 2,
+    '(b)/M2: the review label is dispatched exactly twice: ' + labels.join(','))
+  assert.equal(prompts.get(LEAN + '#2'), prompts.get(LEAN + '#1'),
+    '(b)/M2: the second prompt is byte-identical to the first')
+  assert.equal(opts.get(LEAN + '#2').model, opts.get(LEAN + '#1').model,
     '(b)/M2: dispatched under the first call\'s model')
-  assert.deepEqual(calls[1].opts.schema, calls[0].opts.schema,
+  assert.deepEqual(opts.get(LEAN + '#2').schema, opts.get(LEAN + '#1').schema,
     '(b)/M2: and the first call\'s schema')
-  assert.equal(report.gitVerified, true,
-    '(b)/M2: the second reply is the attestation — gitVerified holds: ' + shown(report))
-  assert.deepEqual(report.completenessFindings, [],
-    '(b)/M2: and completenessFindings is that reply\'s findings: ' +
-    JSON.stringify(report.completenessFindings))
+  assert.equal(report.tasks[0].reviewVerdict, 'clean',
+    '(b)/M2: the second reply is the judgment: ' + JSON.stringify(report.tasks[0]))
+  assert.equal(report.tasks[0].status, 'done',
+    '(b)/M2: and the task ends done: ' + JSON.stringify(report.tasks[0]))
 
   // [M4] the record of the one attempt that died.
-  assert.deepEqual(withRetry(report), [attempt1('integration', 429, 0)],
+  assert.deepEqual(withRetry(report), ['task T1: ' + attempt1(LEAN, 429, 0)],
     '(e)/M4: exactly one infra-retry judgment call, the attempt-1 line: ' + shown(report))
   assert.deepEqual(report.judgmentCalls.filter((j) => String(j).includes('attempt 2')), [],
     '(e)/M4: and no attempt-2 entry: ' + shown(report))
   const marks = infraMarks(runDir)
   assert.equal(marks.length, 1,
     '(e)/M4: exactly one driver:infra-retry event: ' + JSON.stringify(marks))
-  assert.equal(marks[0].label, 'integration', '(e)/M4: labelled integration: ' + JSON.stringify(marks[0]))
+  assert.equal(marks[0].label, LEAN, '(e)/M4: labelled ' + LEAN + ': ' + JSON.stringify(marks[0]))
   assert.equal(marks[0].attempt, 1, '(e)/M4: attempt 1: ' + JSON.stringify(marks[0]))
   assert.equal(marks[0].status, 429, '(e)/M4: carrying the status it read: ' + JSON.stringify(marks[0]))
 }
 
-// ══ (c) the second reply's findings are the report's, verbatim [M2] ════════
-{
-  const findings = [{ severity: 'minor', detail: 'sim' }]
-  const { report } = await criticRun({
-    integration: ({ n, runDir: rd }) =>
-      (n === 1 ? dieNull(rd, 'integration', 429) : criticWithFindings(findings)),
-  })
-  assert.deepEqual(report.completenessFindings, [{ severity: 'minor', detail: 'sim' }],
-    '(c)/M2: the re-dispatched critic\'s findings are the report\'s: ' +
-    JSON.stringify(report.completenessFindings))
-}
-
-// ══ (d) two nulls: no third dispatch, fail-closed, and the frozen gate [M3] ═
-// Also carries leg (e)'s second half: the attempt-2 entry reads the SECOND
-// attempt's own event (503), not the first's (429) [M4].
-{
-  const { report, labels, runDir, integ, branch } = await criticRun({
-    integration: ({ n, runDir: rd }) =>
-      (n === 1 ? dieNull(rd, 'integration', 429) : dieNull(rd, 'integration', 503)),
-  })
-  assert.equal(countOf(labels, 'integration'), 2,
-    '(d)/M3: a second null buys no third dispatch: ' + labels.join(','))
-  assert.equal(report.gitVerified, false,
-    '(d)/M3: gitVerified is withheld, fail-closed as at BASE')
-  assert.equal(report.completenessFindings.length, 1,
-    '(d)/M3: exactly one finding: ' + JSON.stringify(report.completenessFindings))
-  assert.equal(report.completenessFindings[0].detail, FAIL_CLOSED_DETAIL,
-    '(d)/M3: the fail-closed finding of BASE, verbatim: ' +
-    JSON.stringify(report.completenessFindings[0]))
-
-  // [M4] both lines, each carrying its own attempt's status.
-  assert.deepEqual(withRetry(report),
-    [attempt1('integration', 429, 0), attempt2('integration', 503)],
-    '(e)/M4: the attempt-1 line and exactly one attempt-2 line, the latter reading the ' +
-    'second attempt\'s own 503: ' + shown(report))
-  assert.equal(infraMarks(runDir).length, 1,
-    '(e)/M4: no third attempt means exactly one driver:infra-retry event: ' +
-    JSON.stringify(infraMarks(runDir)))
-
-  // [M3] the FROZEN gate on that report — BLOCKED, exit 1, git-verified failed.
-  const reportPath = path.join(runDir, 'workflow-result.json')
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
-  const gate = spawnSync('python3', [path.join(SCRIPTS, 'gate_check.py'),
-    '--run-id', 'sim', '--branch', branch, '--report', reportPath, '--repo', integ],
-    { encoding: 'utf8', env: simEnv() })
-  assert.equal(gate.status, 1,
-    '(d)/M3: gate_check.py must exit 1 on the twice-dead critic: ' + gate.stdout + gate.stderr)
-  const verdict = JSON.parse(gate.stdout)
-  assert.equal(verdict.verdict, 'BLOCKED', '(d)/M3: verdict BLOCKED: ' + gate.stdout)
-  assert.ok((verdict.checks || []).some((c) => c && c.name === 'git-verified' && c.ok === false),
-    '(d)/M3: `git-verified` is among the failed checks: ' + gate.stdout)
-}
+// ══ (c) and (d) went with the critic (#964 Task 2) ══════════════════════════
+// (c) pinned the re-dispatched critic's `findings` as the report's, verbatim.
+// (d) pinned the twice-dead critic: no third dispatch, `gitVerified` withheld,
+// the one fail-closed finding of BASE, and the FROZEN `gate_check.py` over that
+// report — exit 1, verdict BLOCKED, `git-verified` among the failed checks.
+// Neither has a subject any more: no worker reads the finished run, and
+// `gitVerified` is derived from the fold receipts rather than attested. The
+// reviewer's own two-null lane — no third dispatch, then the park and the
+// barrier retry — is leg (i) below, which is unchanged.
 
 // ══ (e) a null with no `worker:end` line reads `status unknown` [M4] ════════
 {
-  const { report, labels } = await criticRun({
-    integration: ({ n }) => (n === 1 ? null : cleanCritic()),
-  })
-  assert.equal(countOf(labels, 'integration'), 2,
+  const { report, labels } = await leanRun(({ n }) => (n === 1 ? null : passReview()))
+  assert.equal(countOf(labels, LEAN), 2,
     '(e)/M4: a status-less null is still one re-dispatch: ' + labels.join(','))
-  assert.deepEqual(withRetry(report), [attempt1('integration', 'unknown', 0)],
+  assert.deepEqual(withRetry(report), ['task T1: ' + attempt1(LEAN, 'unknown', 0)],
     '(e)/M4: with `unknown` where no worker:end event carried the label: ' + shown(report))
 }
 
 // ══ (f) a throw is not a null, and a clean run records nothing [M5] ═════════
 {
-  const { report, labels } = await criticRun({
-    integration: () => { throw new Error('sim: the critic died') },
+  // A throw is not a null: the retry lane never opens. On the critic's vehicle
+  // that read as one dispatch and a withheld attestation; on the reviewer the
+  // throw parks the task, so the label is dispatched once per task attempt and
+  // the barrier retry re-runs the task WHOLE — implementer first. Either way
+  // the thing under test is the same: no back-to-back re-dispatch, no entry.
+  const { report, labels } = await leanRun(({ n }) => {
+    if (n === 1) throw new Error('sim: the reviewer died')
+    return passReview()
   })
-  assert.equal(countOf(labels, 'integration'), 1,
-    '(f)/M5: a critic that THROWS is dispatched exactly once: ' + labels.join(','))
-  assert.equal(report.gitVerified, false,
-    '(f)/M5: and still withholds gitVerified, as test_run_engine_critic_inputs.mjs pins')
+  assert.deepEqual(labels, ['impl:T1', LEAN, 'impl:T1', LEAN],
+    '(f)/M5: a judgment that THROWS is dispatched once per task attempt, never twice ' +
+    'in a row off the backoff: ' + labels.join(','))
   assert.deepEqual(withRetry(report), [],
     '(f)/M5: a throw leaves no infra-retry entry: ' + shown(report))
 }
 {
-  const { report, labels, runDir } = await criticRun({ integration: () => cleanCritic() })
-  assert.equal(countOf(labels, 'integration'), 1,
-    '(f)/M5: an all-green run dispatches the critic once: ' + labels.join(','))
+  const { report, labels, runDir } = await leanRun(() => passReview())
+  assert.equal(countOf(labels, LEAN), 1,
+    '(f)/M5: an all-green run dispatches the reviewer once: ' + labels.join(','))
   assert.deepEqual(withRetry(report), [],
     '(f)/M5: and leaves no infra-retry entry: ' + shown(report))
   assert.deepEqual(infraMarks(runDir), [],
@@ -339,7 +323,6 @@ async function examinerRun({ exam, impl }) {
     if (kind === 'impl') { fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'); return impl(cwd) }
     if (kind === 'fix') { fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'); return doneImpl(cwd) }
     if (kind === 'review') return passReview()
-    if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({
@@ -417,62 +400,14 @@ for (const [name, implReply] of [
 }
 
 // ── the reviewer scenarios [M7] ────────────────────────────────────────────
-// `review({ label, n, runDir })` answers the n-th dispatch OF THAT LABEL.
-// `extraArgs` is merged after the default `infraBackoffMs: 0`, so every caller
-// above is unchanged; the #857 pair scenario below needs a distinctive backoff.
-async function reviewerRun({ profile, review, extraArgs = {} }) {
-  const { stamp, repo, runDir } = freshNames('r')
-  const labels = []
-  const perLabel = new Map()
-  const prompts = new Map()
-  const stub = (prompt, opts, cwd) => {
-    labels.push(opts.label)
-    const kind = opts.label.split(':')[0]
-    if (kind === 'impl') { fs.writeFileSync(path.join(cwd, 'T1.txt'), 'v1\n'); return doneImpl(cwd) }
-    if (kind === 'review') {
-      const n = (perLabel.get(opts.label) || 0) + 1
-      perLabel.set(opts.label, n)
-      prompts.set(opts.label + '#' + n, prompt)
-      return review({ label: opts.label, n, runDir })
-    }
-    if (opts.label === 'integration') return cleanCritic()
-    throw new Error('unexpected dispatch: ' + opts.label)
-  }
-  const { run } = rig({
-    repo, runDir, waves: [[plainTask(profile)]], stub, stamp,
-    extraArgs: { infraBackoffMs: 0, ...extraArgs },
-  })
-  const report = await run()
-  return { report, labels, prompts, runDir }
-}
+// `reviewerRun` is defined above, where `criticRun` used to be (#964 Task 2):
+// the legs that drove the critic drive it now, so the helper leads the file.
 
-// ══ (i) one half of a pair, a lean single, and a second null [M7] ══════════
-{
-  // The pair: only the null half is dispatched again.
-  const { report, labels, prompts } = await reviewerRun({
-    profile: 'peer',
-    review: ({ label, n, runDir }) => {
-      if (label === 'review:T1:1:2' && n === 1) return dieNull(runDir, label, 429)
-      return passReview()
-    },
-  })
-  assert.equal(countOf(labels, 'review:T1:1:2'), 2,
-    '(i)/M7: the null half of the pair is dispatched exactly twice: ' + labels.join(','))
-  assert.equal(prompts.get('review:T1:1:2#2'), prompts.get('review:T1:1:2#1'),
-    '(i)/M7: with the same prompt')
-  assert.equal(countOf(labels, 'review:T1:1:1'), 1,
-    '(i)/M7: the half that answered is dispatched exactly once: ' + labels.join(','))
-  assert.equal(countOf(labels, 'impl:T1'), 1,
-    '(i)/M7: and the implementer exactly once: ' + labels.join(','))
-  assert.equal(report.tasks[0].status, 'done',
-    '(i)/M7: the task ends done: ' + JSON.stringify(report.tasks[0]))
-  assert.deepEqual(report.judgmentCalls.filter((j) => String(j).includes('parked for one barrier retry')),
-    [], '(i)/M7: no barrier park was taken: ' + shown(report))
-  assert.equal(
-    report.judgmentCalls.filter((j) => j === 'task T1: ' + attempt1('review:T1:1:2', 429, 0)).length, 1,
-    '(i)/M4: exactly one call equal to `task T1: ' + attempt1('review:T1:1:2', 429, 0) + '`: ' +
-    shown(report))
-}
+// ══ (i) a lean single, and a second null [M7] ══════════════════════════════
+// The pair block that stood here — only the null half of a `peer` pair is
+// re-dispatched, the half that answered exactly once — went with the pair
+// (#964 Task 2). A `peer` task is reviewed by one worker now, which is the lean
+// lane below.
 {
   // The lean single review.
   const { report, labels } = await reviewerRun({
@@ -513,15 +448,12 @@ async function reviewerRun({ profile, review, extraArgs = {} }) {
 
 // ══ (j) a configured backoff still buys the one re-dispatch [M8] ═══════════
 {
-  const { report, labels } = await criticRun({
-    extraArgs: { infraBackoffMs: 300 },
-    integration: ({ n, runDir }) => (
-      n === 1 ? dieNull(runDir, 'integration', 429) : cleanCritic()
-    ),
-  })
-  assert.equal(countOf(labels, 'integration'), 2,
-    '(j)/M8: the critic is dispatched twice: ' + labels.join(','))
-  assert.deepEqual(withRetry(report), [attempt1('integration', 429, 300)],
+  const { report, labels } = await leanRun(
+    ({ label, n, runDir }) => (n === 1 ? dieNull(runDir, label, 429) : passReview()),
+    { infraBackoffMs: 300 })
+  assert.equal(countOf(labels, LEAN), 2,
+    '(j)/M8: the reviewer is dispatched twice: ' + labels.join(','))
+  assert.deepEqual(withRetry(report), ['task T1: ' + attempt1(LEAN, 429, 300)],
     '(j)/M8: and the call names the backoff it waited: ' + shown(report))
 }
 
@@ -532,24 +464,19 @@ async function reviewerRun({ profile, review, extraArgs = {} }) {
 //   R1 — between a judgment call's `null` reply and its re-dispatch,
 //        `fleet/run-engine.mjs` calls `fs.watch` ZERO times: with `fs.watch`
 //        replaced by a counting, throwing stub, a lean one-task run whose
-//        `integration` call returns `null` once and then answers dispatches
-//        `integration` exactly twice, ends with the critic's attestation in hand
-//        (`gitVerified` true), and leaves the stub's count at 0.
+//        review call returns `null` once and then answers dispatches that label
+//        exactly twice, ends with the reviewer's verdict in hand, and leaves the
+//        stub's count at 0.
 //   R2 — the wait is held by the backoff's TIMER ALONE: with `fs.watch` stubbed
 //        to throw and `globalThis.setTimeout` left real, that same run with
 //        `args.infraBackoffMs` of 50 reaches its report (the sim process is
-//        still alive to assert `gitVerified` is true); and with
+//        still alive to assert the verdict); and with
 //        `globalThis.setTimeout` stubbed to hand back handles that record
 //        `unref` calls, the handle returned for the delay equal to
 //        `args.infraBackoffMs` receives NO `unref` call.
-//   R3 — when both halves of a `peer` pair return `null` on their first
-//        dispatch, `globalThis.setTimeout` is asked for a delay equal to
-//        `args.infraBackoffMs` exactly ONCE; each half's label is dispatched
-//        exactly twice with a byte-identical prompt and the implementer exactly
-//        once; the record holds exactly two `driver:infra-retry` events, one per
-//        half's label, each naming the first attempt; the judgment-call list
-//        holds exactly two `infra-retry:` entries, both for the first attempt;
-//        the task ends `done` and no barrier park is taken.
+//   R3 — (the pair leg: two dead halves waited the backoff exactly once. Gone
+//        with the pair, #964 Task 2 — R2's legs carry what is left of the
+//        timer's behaviour.)
 //   R4 — the kept-reply condition is spelled ONCE: exactly one line of
 //        `fleet/run-engine.mjs` contains both `'DONE_WITH_CONCERNS')` and
 //        `&& hasCoordinates(`, and both examiner lanes still re-dispatch the
@@ -561,8 +488,8 @@ async function reviewerRun({ profile, review, extraArgs = {} }) {
 // 2 where the contract says 1 — is the one a reader meets first. Leg (857-f) is
 // carried by the scenarios already above: the thrown-examiner and null-examiner
 // lanes of leg (g) (examiner twice, implementer once, for both kept statuses),
-// the single-death pair and lean single of leg (i), and the configured backoff
-// of leg (j) — all of which stand unedited and must stay green.
+// the lean single of leg (i), and the configured backoff of leg (j) — all of
+// which must stay green.
 //
 // The two process-wide stubs, each restored in a `finally` before the next
 // scenario runs. No assertion here reads a clock: a backoff is measured by the
@@ -639,16 +566,15 @@ const withWatchStub = async (body) => {
 // count is 1 — and on the real timer left over there the process never reaches
 // this assertion at all.
 {
-  const { value: r, watch } = await withWatchStub(() => criticRun({
-    extraArgs: { infraBackoffMs: 0 },
-    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
-  }))
-  assert.equal(countOf(r.labels, 'integration'), 2,
-    '(857-a)/R1: on a box where fs.watch throws, the null critic is still dispatched ' +
+  const { value: r, watch } = await withWatchStub(() => leanRun(
+    ({ label, n, runDir: rd }) => (n === 1 ? dieNull(rd, label, 429) : passReview()),
+    { infraBackoffMs: 0 }))
+  assert.equal(countOf(r.labels, LEAN), 2,
+    '(857-a)/R1: on a box where fs.watch throws, the null review is still dispatched ' +
     'exactly twice: ' + r.labels.join(','))
-  assert.equal(r.report.gitVerified, true,
-    '(857-a)/R1: and the run ends with the critic\'s attestation in hand: ' + shown(r.report))
-  assert.deepEqual(withRetry(r.report), [attempt1('integration', 429, 0)],
+  assert.equal(r.report.tasks[0].reviewVerdict, 'clean',
+    '(857-a)/R1: and the run ends with the reviewer\'s verdict in hand: ' + shown(r.report))
+  assert.deepEqual(withRetry(r.report), ['task T1: ' + attempt1(LEAN, 429, 0)],
     '(857-a)/R1: by the same one re-dispatch, recorded unchanged: ' + shown(r.report))
   assert.equal(watch.calls, 0,
     '(857-a)/R1: and the backoff called fs.watch zero times, got ' + watch.calls)
@@ -660,17 +586,16 @@ const withWatchStub = async (body) => {
 // ends the process with exit 13 ("unsettled top-level await", measured) and this
 // assertion is never reached; nor is the `ALL TESTS PASSED` sentinel printed.
 {
-  const { value: r } = await withWatchStub(() => criticRun({
-    extraArgs: { infraBackoffMs: 50 },
-    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
-  }))
-  assert.equal(countOf(r.labels, 'integration'), 2,
+  const { value: r } = await withWatchStub(() => leanRun(
+    ({ label, n, runDir: rd }) => (n === 1 ? dieNull(rd, label, 429) : passReview()),
+    { infraBackoffMs: 50 }))
+  assert.equal(countOf(r.labels, LEAN), 2,
     '(857-b)/R2: a real 50 ms backoff on a watch-less box still buys the one ' +
     're-dispatch: ' + r.labels.join(','))
-  assert.equal(r.report.gitVerified, true,
-    '(857-b)/R2: and the sim process is still alive to read the attestation off the ' +
+  assert.equal(r.report.tasks[0].reviewVerdict, 'clean',
+    '(857-b)/R2: and the sim process is still alive to read the verdict off the ' +
     'report — a wait that does not hold the loop never gets here: ' + shown(r.report))
-  assert.deepEqual(withRetry(r.report), [attempt1('integration', 429, 50)],
+  assert.deepEqual(withRetry(r.report), ['task T1: ' + attempt1(LEAN, 429, 50)],
     '(857-b)/R2: the call naming the 50 ms it waited: ' + shown(r.report))
 }
 
@@ -680,12 +605,11 @@ const withWatchStub = async (body) => {
 // handed. At BASE `waitInfraBackoff` unrefs it, so the counter is 1.
 {
   const BACKOFF = 4321
-  const { value: r, delays, unrefs } = await withTimerStub(() => criticRun({
-    extraArgs: { infraBackoffMs: BACKOFF },
-    integration: ({ n, runDir: rd }) => (n === 1 ? dieNull(rd, 'integration', 429) : cleanCritic()),
-  }))
-  assert.equal(countOf(r.labels, 'integration'), 2,
-    '(857-c)/R2: the critic is dispatched exactly twice: ' + r.labels.join(','))
+  const { value: r, delays, unrefs } = await withTimerStub(() => leanRun(
+    ({ label, n, runDir: rd }) => (n === 1 ? dieNull(rd, label, 429) : passReview()),
+    { infraBackoffMs: BACKOFF }))
+  assert.equal(countOf(r.labels, LEAN), 2,
+    '(857-c)/R2: the reviewer is dispatched exactly twice: ' + r.labels.join(','))
   assert.equal(delays.filter((d) => d === BACKOFF).length, 1,
     '(857-c)/R2: exactly one handle was asked for ' + BACKOFF + ' ms, got delays [' +
     delays.join(',') + ']')
@@ -694,69 +618,21 @@ const withWatchStub = async (body) => {
     'call — a ref\'d timer is what holds the loop for the wait — got ' + unrefs(BACKOFF))
 }
 
-// ══ (857-d) two dead halves of a pair wait the backoff ONCE [R3] ════════════
-// Both halves die on their first dispatch, each leaving its own `worker:end`
-// status, and both are re-asked. At BASE the two retries are serial, so the
-// engine asks for the backoff twice.
-{
-  const BACKOFF = 4321
-  const { value: r, delays } = await withTimerStub(() => reviewerRun({
-    profile: 'peer',
-    extraArgs: { infraBackoffMs: BACKOFF },
-    review: ({ label, n, runDir: rd }) => (
-      n === 1 ? dieNull(rd, label, label === 'review:T1:1:1' ? 429 : 503) : passReview()
-    ),
-  }))
-  const { report, labels, prompts, runDir } = r
-  assert.equal(delays.filter((d) => d === BACKOFF).length, 1,
-    '(857-d)/R3: two dead halves wait the backoff exactly once — the engine asked ' +
-    'setTimeout for ' + BACKOFF + ' ms ' + delays.filter((d) => d === BACKOFF).length +
-    ' time(s), delays [' + delays.join(',') + ']')
-  for (const half of ['review:T1:1:1', 'review:T1:1:2']) {
-    assert.equal(countOf(labels, half), 2,
-      '(857-d)/R3: ' + half + ' is dispatched exactly twice: ' + labels.join(','))
-    assert.equal(prompts.get(half + '#2'), prompts.get(half + '#1'),
-      '(857-d)/R3: and the re-dispatched ' + half + ' is handed a byte-identical prompt')
-  }
-  assert.equal(countOf(labels, 'impl:T1'), 1,
-    '(857-d)/R3: the implementer is dispatched exactly once: ' + labels.join(','))
-
-  const marks = infraMarks(runDir)
-  assert.equal(marks.length, 2,
-    '(857-d)/R3: exactly two driver:infra-retry events, one per dead half: ' +
-    JSON.stringify(marks))
-  assert.deepEqual(marks.map((m) => m.label).sort(), ['review:T1:1:1', 'review:T1:1:2'],
-    '(857-d)/R3: one per half\'s label: ' + JSON.stringify(marks))
-  for (const m of marks) {
-    assert.equal(m.attempt, 1,
-      '(857-d)/R3: each naming the first attempt: ' + JSON.stringify(m))
-    assert.equal(m.status, m.label === 'review:T1:1:1' ? 429 : 503,
-      '(857-d)/R3: carrying the status that half\'s own worker:end line wrote: ' +
-      JSON.stringify(m))
-  }
-
-  assert.deepEqual(withRetry(report).slice().sort(), [
-    'task T1: ' + attempt1('review:T1:1:1', 429, BACKOFF),
-    'task T1: ' + attempt1('review:T1:1:2', 503, BACKOFF),
-  ].sort(),
-  '(857-d)/R3: exactly two infra-retry judgment calls, both for the first attempt, ' +
-  'each naming its own half and its own status: ' + shown(report))
-  assert.deepEqual(report.judgmentCalls.filter((j) => String(j).includes('attempt 2')), [],
-    '(857-d)/R3: and no attempt-2 entry — both halves answered the second time: ' +
-    shown(report))
-  assert.equal(report.tasks[0].status, 'done',
-    '(857-d)/R3: the task ends done: ' + JSON.stringify(report.tasks[0]))
-  assert.deepEqual(
-    report.judgmentCalls.filter((j) => String(j).includes('parked for one barrier retry')), [],
-    '(857-d)/R3: and no barrier park was taken: ' + shown(report))
-}
+// ══ (857-d) went with the pair (#964 Task 2) ════════════════════════════════
+// It paid both halves of a `peer` pair to die on their first dispatch and
+// pinned what that cost: `setTimeout` asked for the backoff exactly once for
+// the two concurrent retries, one `driver:infra-retry` event and one
+// `infra-retry:` entry per half, each carrying its own half's status, and the
+// task still done with no barrier park. One worker reviews a task now, so there
+// is no second half to wait for and nothing here to measure; (857-c) above
+// keeps the timer's own behaviour on the one retry that remains.
 
 // ══ #903 — an edge 403 rides the infra lane, with the REAL worker in the rig ═
 // Everything above cans the agent seam. These legs put `createRunWorker`
 // itself under the implementer label, driving a fake `claude` that answers
 // exe.dev's plain-text `403 integration not found or not attached to this VM
 // (trace: <32 hex>)`, with a `curl` stub first on PATH standing in for
-// reflection. Reviews and the critic stay canned. What is proved is the whole
+// reflection. The reviews stay canned. What is proved is the whole
 // path: envelope -> classify -> reflection probe -> `null` -> AGENT_NULL ->
 // parked-infra -> the barrier retry -> a second dispatch that finishes the
 // task -> the run completes, the trace id on the event log.
@@ -811,7 +687,6 @@ out(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reas
       labels.push(opts.label)
       const kind = opts.label.split(':')[0]
       if (kind === 'review') return passReview()
-      if (opts.label === 'integration') return cleanCritic()
       if (kind !== 'impl') throw new Error('unexpected dispatch: ' + opts.label)
       const id = opts.label.split(':')[1]
       const n = (counts.get(id) || 0) + 1

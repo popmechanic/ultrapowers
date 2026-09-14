@@ -44,8 +44,8 @@ import { fileURLToPath } from 'node:url'
 // exam), and the implementer's capture is retaken after the handoff.
 import { ulid, cloneAtBase, patchAgainstBase } from './run-waves.mjs'
 // A red suite's output is quoted, not tailed (#763 part 2): every reader below
-// who is handed a failing suite's text — a judgment call, the critic's brief,
-// the reconcile agent's brief, a blocked wave's detail — gets the failing
+// who is handed a failing suite's text — a judgment call, the reconcile
+// agent's brief, a blocked wave's detail — gets the failing
 // test's own block, so the assertion that named the failing leg survives however
 // long the trailing summary runs. `tail` stays for everything that is not a red
 // suite: git and fold stderr, bootstrap failures, and the Run:/Check:/exam
@@ -233,12 +233,16 @@ export const EXAMINER_SCHEMA = {
   },
 }
 // The fix round's introduction to a referee's patch (#551). Shared literal
-// with fleet/roles/reviewer.md and fleet/roles/fix.md.
+// with fleet/roles/reviewer.md and fleet/roles/fix.md, and kept here as that
+// one spelling; since #964 Task 2 no dispatch in this file renders it, because
+// the one review round dispatches no fix worker of its own — a referee's patch
+// is counted in `proposedPatches` and read by a person.
 export const PROPOSED_PATCH_HEADER =
   'PROPOSED PATCH (from the referee — apply it when it is right; say why not when it is not):'
-// One severity vocabulary for the whole run (#474): the per-task reviewer and
-// the completeness critic grade defects on the same two-word scale, and the
-// pair is spelled here exactly once. Both schemas point at THIS array.
+// One severity vocabulary for the whole run (#474): the per-task reviewer
+// grades defects on a two-word scale, spelled here exactly once. Since #964
+// Task 2 the reviewer is the only judge left that uses it, and the driver's
+// own integrated findings are minted against the same two words.
 export const SEVERITY = Object.freeze(['blocking', 'minor'])
 export const REVIEWER_SCHEMA = {
   type: 'object',
@@ -291,33 +295,16 @@ export const RECONCILE_SCHEMA = {
     summary: { type: 'string' },
   },
 }
-// CRITIC: read-only judgment. testsPassed / onIntegrationHead / ancestryMisses
-// are gone from the model's contract — the driver runs the suite and derives
-// gitVerified and the ancestry check from its own receipts (spec §3.1).
-export const CRITIC_SCHEMA = {
-  type: 'object',
-  required: ['findings'],
-  properties: {
-    findings: { type: 'array', items: { type: 'object',
-      required: ['severity', 'detail'], properties: {
-        severity: { enum: SEVERITY },
-        detail: { type: 'string' } } } },
-    deferredVerification: { type: 'array', items: { type: 'object',
-      required: ['deliverable', 'reason'], properties: {
-        deliverable: { type: 'string' },
-        reason: { type: 'string', enum: ['browser', 'runtime', 'external', 'manual'] },
-        why: { type: 'string' } } } },
-  },
-}
-
 // ── role prompt files (spec §4: one copy, nothing to bake) ───────────────────
 export const defaultRolesDir = () => fileURLToPath(new URL('./roles', import.meta.url))
 export function loadRoles(rolesDir = defaultRolesDir()) {
   const roles = {}
-  // Seven, all hard: no wave can be dispatched without them. The examiner
+  // Six, all hard: no wave can be dispatched without them. The examiner
   // (#553) was soft-gated on its file's presence until 2026-09-02 — a toggle
   // the committed suite made unreachable (#567), and one more branch per task.
-  for (const name of ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'critic', 'examiner']) {
+  // The seventh was the completeness critic, retired with its role file (#964
+  // Task 2): no one reads the finished run but the gate.
+  for (const name of ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'examiner']) {
     roles[name] = fs.readFileSync(path.join(rolesDir, name + '.md'), 'utf8')
   }
   return roles
@@ -388,13 +375,16 @@ const interfacesLine = (task) => {
     (consumes.length ? ('\nConsumes: ' + consumes.join(', ')) : '') +
     (produces.length ? ('\nProduces: ' + produces.join(', ')) : '')
 }
-// Review depth (#556): `peer` is the documented value for the two-reviewer
-// profile — it names the shape (a second independent read of the same patch),
-// not an attitude toward the author. `adversarial` is the legacy spelling of
-// the same profile and stays accepted; anything else is lean.
+// Review depth (#556): `peer` is the documented value for the deeper profile —
+// it names the shape, not an attitude toward the author. `adversarial` is the
+// legacy spelling of the same profile and stays accepted; anything else is
+// lean. Since #964 Task 2 the two profiles buy the same ONE reviewer per round
+// — `peer` still means the patch is reviewed and `lean` still means it is not
+// reviewed by a PAIR — so this predicate is the vocabulary check and the
+// report's record of what the plan asked for, not a dispatch fork.
 export const isPairReview = (profile) => profile === 'peer' || profile === 'adversarial'
-// Round-1 minor findings, rendered for the round-2 reviewers (see the review
-// loop). Exported for the unit pin, as suiteLine is.
+// Round-1 minor findings, rendered for the round-2 reviewer (see the review
+// loop). Exported for the unit pin, as runEvidenceBlock is.
 // #589 — `Run:` proofs. A Proof slot may name a COMMAND instead of a test path,
 // and the driver runs it: models never run git, and they never run the proof
 // either. What the reviewer gets is not a claim that the command passed but the
@@ -573,24 +563,10 @@ export const joinedPathsOf = (touchSets) => {
   }
   return [...counts.entries()].filter(([, n]) => n >= 2).map(([p]) => p).sort()
 }
-// #604 (b)+(c) — the INTEGRATED `Run:` proofs. The per-task execution above
-// answers "does this command pass on the patch its author wrote"; it cannot
-// answer "does it still pass on the tree the wave actually adopted", and the
-// difference is the whole reason a wave is folded rather than trusted. So the
-// driver runs every merged task's commands a second time in the integration
-// clone and hands the critic the bytes — the same move #458 made for the
-// driver-run suite. Naming it authoritative is what closes the cannot-verify
-// item that would otherwise ask for exactly this re-execution.
-// Empty evidence renders nothing at all (the run-51 rule), so a run with no
-// `Run:` proofs keeps the critic prompt it had before this existed, byte for
-// byte. Exported for the unit pin, as suiteLine and runEvidenceBlock are.
-export const integratedRunEvidenceBlock = (runs) => {
-  if (!Array.isArray(runs) || runs.length === 0) return ''
-  return '\n\nINTEGRATED RUN EVIDENCE: the driver executed each merged task\'s Proof ' +
-    '`Run:` commands itself, on the adopted integration tree — this is the authoritative ' +
-    'result; a cannot-verify item asking for their re-execution is settled by it.' +
-    runs.map((r) => '\n\n$ ' + r.cmd + '\nexit ' + r.exit + '\n' + r.stdout).join('')
-}
+// #604 (b)+(c) — the INTEGRATED `Run:` proofs were rendered here, for the one
+// reader of the finished run. That reader is gone (#964 Task 2): what the
+// driver's re-execution on the adopted tree found lives in the report's
+// `integratedRuns`, where the gate and every later reader take it.
 // The Global Constraints `Check:` commands, rendered for the per-task referee.
 // A constraint the run declares once for every task is exactly the thing no
 // single implementer is watching, so the driver runs it in each task's own
@@ -610,16 +586,10 @@ export const checkEvidenceBlock = (checks) => {
     checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
       '\n' + c.stdout).join('')
 }
-// The same commands on the tree the wave ADOPTED. A constraint can be green in
-// every clone and red on the fold — that is the whole reason a wave is folded
-// rather than trusted — and only the driver can tell the critic which it was.
-export const integratedCheckEvidenceBlock = (checks) => {
-  if (!Array.isArray(checks) || checks.length === 0) return ''
-  return '\n\nINTEGRATED CHECK EVIDENCE: the driver executed each Global Constraints `Check:` command ' +
-    'itself, on the adopted integration tree — this is the authoritative result.' +
-    checks.map((c) => '\n\n$ ' + c.cmd + '\nexit ' + c.exit + (c.minor ? ' (minor)' : '') +
-      '\n' + c.stdout).join('')
-}
+// The same commands on the tree the wave ADOPTED had a block of their own for
+// the same reader, and went with it (#964 Task 2): a constraint green in every
+// clone and red on the fold is a finding the DRIVER mints — `integratedChecks`
+// on the report, and a blocking `completenessFindings` entry beside it.
 // #700 — the hunks behind an EXAM EDITED line. Naming the edited paths is not
 // showing them, and the PATCH cannot: `patchAgainstBase` diffs the graded clone
 // against BASE, where the Proof path does not exist, so an edited exam reads
@@ -658,12 +628,9 @@ const hunksOnly = (p, stdout, stderr) => {
   }
   return header + '\n' + lines.slice(at).join('\n').replace(/\n+$/, '')
 }
-export const priorAdvisoriesBlock = (minors) => {
-  if (!Array.isArray(minors) || minors.length === 0) return ''
-  return '\nPRIOR-ROUND ADVISORIES (minor findings from the previous review round, already ' +
-    'recorded in the run report — do not re-report them; raise one again only if the fix ' +
-    'round made it blocking):\n' + minors.map((m) => '- ' + m.detail).join('\n')
-}
+// The PRIOR-ROUND ADVISORIES block went with the round it addressed (#964
+// Task 2): it told round 2 what round 1 had already recorded as minor, and
+// there is no round 2 to tell. A round's minors reach the report as before.
 // #458: the driver runs the suite on the folded tree and the critic was never
 // told. A read-only critic cannot run it — running a PROGRAM is not classified
 // read-only, measured 2026-08-31 (#457) — so it establishes pass/fail by static
@@ -707,17 +674,9 @@ export const compositionUnpinnedRows = (waveNumber, tasks) => {
   return rows
 }
 
-export const suiteLine = (suite, cmd) => {
-  if (!suite) return ''
-  return '\nSUITE (driver-run, post-fold) — this is the authoritative result; ' +
-    'do not re-derive it by reading tests.' +
-    '\ncommand: ' + (cmd || '(unknown)') +
-    '\npassed: ' + Boolean(suite.passed) +
-    // A red suite's output arrives here already narrowed to the failing block,
-    // so it is carried whole: re-tailing it would cut the very lines the block
-    // was chosen to keep.
-    (suite.passed === false ? '\noutput: ' + suite.output : '')
-}
+// The driver-run post-fold suite was rendered for the same reader and is gone
+// with it (#964 Task 2). `report.tests` carries the run, the command and the
+// output the gate reads.
 const siblingLine = (task, wave) => {
   const sibs = wave
     .filter((t) => t.id !== task.id && Array.isArray(t.files) && t.files.length)
@@ -735,39 +694,11 @@ const taskBodyBlock = (task, wavesPath) => {
   }
   return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
 }
-// The critic's contracts block (2026-09-01). Until now the completeness critic
-// was handed task ids and titles and a pointer to the plan, while the per-task
-// reviewers each got a full six-slot body — the one agent that reads the
-// integrated tree got the least of the contract. Post-Manyana the fold settles
-// the MERGE question (two edits to one file combine); it cannot see the
-// COMPOSITION question (Produces on one task and Consumes on another agreeing
-// in name, type and behaviour; two tasks carrying one Context literal; every
-// Proof leg having a test). Those are per-slot checks, so the critic gets every
-// signed body — inline when the task carries it, else the wavesPath pointer the
-// implementer and reviewer already follow — plus the compiler-derived edges,
-// which name the pairs to verify. Exported for the unit pin, as suiteLine is.
-export const contractsBlock = (waves, edges, wavesPath) => {
-  const tasks = (Array.isArray(waves) ? waves : []).flat()
-  if (tasks.length === 0) return ''
-  let out = '\n\nCONTRACTS (each task\'s signed body — hold the integrated tree to its ' +
-    'Claim, Interfaces, Context and Proof; Stale-if and Authorized-by are not yours to judge):'
-  for (const t of tasks) {
-    const body = (typeof t.body === 'string' && t.body.trim() !== '') ? t.body.trim() : null
-    out += '\n\n### Task ' + t.id + (t.title ? (': ' + t.title) : '')
-    if (body) out += '\n' + body
-    else if (wavesPath) {
-      out += '\n(body: in ' + wavesPath + ', the "tasks" entry whose "id" is "' + t.id + '")'
-    }
-  }
-  const pairs = (Array.isArray(edges) ? edges : []).filter((e) => Array.isArray(e) && e.length === 2)
-  if (pairs.length) {
-    out += '\n\nDEPENDENCY EDGES (derived by the compiler from Interfaces and Files — ' +
-      'each names a produced/consumed pair or a shared file to verify in the tree):\n' +
-      pairs.map((e) => '- ' + e[0] + ' -> ' + e[1]).join('\n')
-  }
-  return out
-}
-
+// The critic's contracts block (2026-09-01) stood here: every task's signed
+// body and the compiler's edges, rendered for the one agent that read the
+// integrated tree. Deleted with that agent (#964 Task 2) — the composition
+// question it was meant to answer is the per-task referee's, against the same
+// bodies, before anything merges.
 // ── small exec adapters ──────────────────────────────────────────────────────
 // Shell strings (testCmd, bootstrapCmd) run through `bash -lc`; git always
 // runs argv-form. Both resolve, never reject — callers branch on code.
@@ -1258,9 +1189,8 @@ export async function runEngine({
   // and the status page, through `driver:attention` — sees that it moved.
   //
   // The timer is per TASK and reference-counted, not per dispatch: the
-  // implementer runs beside its examiner and the two reviewers run beside each
-  // other, and two timers on one issue would double the hub's reads and race
-  // each other's readings. The count rises on the first worker of a task and
+  // implementer runs beside its examiner, and two timers on one issue would
+  // double the hub's reads and race each other's readings. The count rises on the first worker of a task and
   // the interval is cleared when the last one settles.
   const attentionPollMs = (() => {
     for (const raw of [args.attentionPollMs, args.ATTENTION_POLL_MS]) {
@@ -1361,9 +1291,10 @@ export async function runEngine({
   // A fix round is dispatched with its blocking findings in its prompt and
   // nothing on the record; the issue the fix worker reads said only that the
   // task was claimed. This is the same list, on the issue, BEFORE that worker
-  // starts — `0` for the pre-review repair round, the reviewer's round number
-  // otherwise — posted through the non-fatal write path (#934) and drained, so
-  // a refused post is one `kata:write-failed` and the round still runs.
+  // starts — `round` is always `0` since #964 Task 2, the pre-review repair
+  // round being the only round that dispatches one — posted through the
+  // non-fatal write path (#934) and drained, so a refused post is one
+  // `kata:write-failed` and the round still runs.
   const postReviewRound = async (row, round, findings) => {
     if (!kataOn || !row) return
     const lines = (Array.isArray(findings) ? findings : [])
@@ -1503,15 +1434,11 @@ export async function runEngine({
   const parkedForPlan = []
   // ── what a reviewer-minute bought ──────────────────────────────────────────
   // The run spends most of its wall clock in referees, and until now the report
-  // said how many rounds ran but never what they returned per minute spent —
-  // so a pair that never finds a second thing looks exactly like one that does.
-  // Every `review:` call is timed INDIVIDUALLY (a concurrent pair contributes
-  // both durations, because both were paid for), and the numerator counts only
-  // what a REVIEWER returned: the driver's own Run:/Check: reds are the
-  // driver's finding, and charging them to the referee flatters the ratio.
+  // said how many rounds ran but never what they returned per minute spent.
+  // Every `review:` call is timed, and the numerator counts only what a
+  // REVIEWER returned: the driver's own Run:/Check: reds are the driver's
+  // finding, and charging them to the referee flatters the ratio.
   let reviewerMs = 0
-  let pairRounds = 0
-  let r2MarginalBlocking = 0
   const reviewerBlockingKeys = new Set()
   const timedReview = async (prompt, opts) => {
     const t0 = Date.now()
@@ -1795,7 +1722,8 @@ export async function runEngine({
     return r.code === 0 ? repoDir : integ
   }
 
-  // ── per-task pipeline: implement → review → bounded fix loop (ported) ──────
+  // ── per-task pipeline: implement → one repair round if the driver's own
+  //    evidence is red → one review round (ported) ─────────────────────────
   async function runTaskInner(task, baseShaForTask, siblingsStr, tierOverride) {
     const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
     const baseModel = resolvedModel(tierName)
@@ -2571,35 +2499,38 @@ export async function runEngine({
       }
     }
 
-    // Round-1 advisories, carried into round 2 (2026-09-01, run-47 read): the
-    // reviewers re-found the same minor findings every round (three of six
-    // named one argv double-parse), spending review turns on items already in
-    // the run report that no fix round is asked to act on. Round 2 is told what
-    // round 1 already recorded; the report keeps the union, not round 2 alone.
-    const priorMinors = []
-    for (let iter = 1; iter <= 2; iter++) {
+    // The round's own minor findings, de-duplicated, for the row's notes. They
+    // were also carried from round 1 into round 2 (2026-09-01, run-47 read) so
+    // the second reviewer would not re-find what the first had recorded; with
+    // one round there is no second reviewer to tell, and the list is simply
+    // what the report keeps.
+    const minorFindings = []
+    // ONE review round (#964 Task 2). A blocking issue in it ends the task at
+    // the `fix-loop-exhausted` exit below instead of buying a repair and a
+    // second reading: the 2026-09-13 review reading counted 27 first fix rounds
+    // against 9 second, and runs with a fix merged 11 times of 17. `iter`
+    // survives as the round number the label and the driver's `iter:` fields
+    // carry, which is always 1.
+    {
+      const iter = 1
       // ── the `Run:` proofs (#589) ─────────────────────────────────────────
-      // Once per FIX, not once per round (#713 Task 1): round 1 reads the
+      // Once per FIX, not once per round (#713 Task 1): the round reads the
       // pre-review pass's evidence, because nothing edited the tree between
-      // that pass and this dispatch; round 2 follows `fix:<id>:1`, so it
-      // executes afresh and its evidence replaces round 1's rather than
-      // re-quoting a run that predates the repair. Same `sh` seam as the
-      // run-wide suite (`bash -lc`, SHELL_TIMEOUT_MS), same cwd the implementer
-      // just wrote to, same tail-truncation the rest of the evidence uses.
-      const runEvidence = iter === 1 ? preRuns : await runCommands(iter)
-      // The exam, on the same terms (#638): round 2 grades the repair, not the
-      // tree that predates it.
-      const examEvidence = iter === 1 ? preExam : await runExam(iter)
-      const checkEvidence = iter === 1 ? preChecks : await runChecks(iter)
-      // Recomputed per round, because the round that edits the exam is usually
-      // the fix round between them: round 2's blocks are the hunks of the tree
-      // round 2 is reading, never round 1's.
+      // that pass and this dispatch. With one round nothing edits it after the
+      // dispatch either — no post-fix round executes afresh, so the pass is the
+      // only execution a referee ever reads.
+      const runEvidence = preRuns
+      // The exam and the Check:s on the same terms (#638).
+      const examEvidence = preExam
+      const checkEvidence = preChecks
+      // The hunks of the tree this round is reading — the pre-review repair
+      // round is the one thing that can have edited the exam before it.
       const editedDiffs = await examEditedDiffs()
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
-        globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
+        globalConstraintsBlock + interfacesLine(task) +
         (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
         examEditedDiffBlock(editedDiffs) +
         runEvidenceBlock(runEvidence) + examEvidenceBlock(examEvidence) +
@@ -2608,70 +2539,31 @@ export async function runEngine({
         // about them.
         examConcernBlock(examConcerns) +
         checkEvidenceBlock(checkEvidence) +
-        // Read HERE, not at the pre-review pass: round 2 grades the tree the
-        // fix round left, so it must read the record that round's own exam
-        // pass wrote rather than pass 0's.
+        // Read HERE, not at the pre-review pass: the round grades the tree the
+        // pre-review repair round left, so it must read the record that round's
+        // own exam pass wrote rather than the first pass's.
         stateExamBlock(stateExamRowsOf(runDirAbs, task.id))
-      const reviewOpts = (pass) => ({
-        label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
+      // One reviewer per round, whatever the task's `**Review:**` value says
+      // (#964 Task 2). The label carries no trailing pass number, because there
+      // is no second half to distinguish from the first: `review:<id>:<iter>`.
+      // `peer` still means the patch is reviewed and `lean` still means it is
+      // not reviewed by a PAIR — the profile survives as the run's record of
+      // what the plan asked for, not as a second bill.
+      const reviewOpts = () => ({
+        label: 'review:' + task.id + ':' + iter,
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
       })
-      let issues, verdicts
-      if (isPairReview(taskReviewProfile(task))) {
-        // Concurrent (2026-09-01): the pair reads the same patch with the same
-        // prompt and neither depends on the other, so they run side by side —
-        // run-47 spent 26 of 79 minutes in six serial reviewer calls. The
-        // pre-0.3.0 rule that a task pipeline stays single-agent (so peak
-        // concurrency equals wave width) is retired here: the bound it
-        // protected was the Workflow tool's, not the API's (#454 measured it).
-        const opts1 = reviewOpts(1)
-        const opts2 = reviewOpts(2)
-        let [r1, r2] = await Promise.all([timedReview(reviewPrompt, opts1),
-                                          timedReview(reviewPrompt, opts2)])
-        // One re-dispatch for the half that DIED, and only that half (#830): the
-        // other reviewer's verdict is in hand, and re-asking it buys a second
-        // read of a patch that was already read. A second null falls through to
-        // the throw below, which is the park and the barrier retry, as at BASE.
-        // Both halves dead is ONE outage, so it is one backoff and one
-        // concurrent re-ask (#857) — serial `retryInfraNull` calls waited the
-        // backoff twice for a single hiccup. One death is the BASE sequence.
-        if (r1 === null || r2 === null) {
-          const scope = 'task ' + task.id + ': '
-          const s1 = r1 === null ? noteInfraDeath(opts1.label, scope) : null
-          const s2 = r2 === null ? noteInfraDeath(opts2.label, scope) : null
-          await waitInfraBackoff()
-          ;[r1, r2] = await Promise.all([
-            r1 === null ? redispatchInfra(opts1.label, scope, s1,
-              () => timedReview(reviewPrompt, opts1)) : r1,
-            r2 === null ? redispatchInfra(opts2.label, scope, s2,
-              () => timedReview(reviewPrompt, opts2)) : r2,
-          ])
-        }
-        if (r1 === null || r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
-        issues = (r1.issues || []).concat(r2.issues || [])
-        verdicts = [r1.verdict, r2.verdict]
-        // What the SECOND referee added that the first did not: the whole
-        // question a pair profile has to answer to justify its second bill.
-        pairRounds += 1
-        const firstKeys = new Set((r1.issues || []).filter((i) => i && i.severity === 'blocking')
-          .map((i) => (i.severity || '') + '|' + (i.detail || '')))
-        for (const i of (r2.issues || [])) {
-          if (!i || i.severity !== 'blocking') continue
-          if (!firstKeys.has((i.severity || '') + '|' + (i.detail || ''))) r2MarginalBlocking += 1
-        }
-      } else {
-        const leanOpts = reviewOpts()
-        let review = await timedReview(reviewPrompt, leanOpts)
-        // The lean profile's one reviewer is as single-dispatch as the pair's
-        // halves are, and its death parks the same task: one re-dispatch (#830).
-        if (review === null) {
-          review = await retryInfraNull(leanOpts.label, 'task ' + task.id + ': ',
-            () => timedReview(reviewPrompt, leanOpts))
-        }
-        if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
-        issues = review.issues || []
-        verdicts = [review.verdict]
+      const leanOpts = reviewOpts()
+      let review = await timedReview(reviewPrompt, leanOpts)
+      // The one reviewer is single-dispatch and its death parks the task: one
+      // re-dispatch after the backoff (#830).
+      if (review === null) {
+        review = await retryInfraNull(leanOpts.label, 'task ' + task.id + ': ',
+          () => timedReview(reviewPrompt, leanOpts))
       }
+      if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
+      let issues = review.issues || []
+      const verdicts = [review.verdict]
       // Counted here, before the driver mints anything of its own: a Run: or
       // Check: red is the DRIVER's finding, and charging it to the referee
       // would inflate the very ratio this measures.
@@ -2764,7 +2656,7 @@ export async function runEngine({
       const patchOf = (i) => (typeof i.proposedPatch === 'string' ? i.proposedPatch : '')
       if (blocking.length > 0) proposedPatches = blocking.filter((b) => patchOf(b) !== '').length
       for (const m of minors) {
-        if (!priorMinors.some((p) => p.detail === m.detail)) priorMinors.push(m)
+        if (!minorFindings.some((p) => p.detail === m.detail)) minorFindings.push(m)
       }
       if (blocking.length === 0) {
         if (verdicts.indexOf('FIX_REQUIRED') !== -1 && planNotes.length === 0) {
@@ -2773,55 +2665,25 @@ export async function runEngine({
         }
         return { task: task.id, baseCorrected, status: 'done', branch: '', exam,
                  headSha: impl.headSha, patch: impl.patch,
-                 reviewVerdict: iter === 1 ? 'clean' : 'fixed',
-                 notes: priorMinors.map((m) => m.detail)
+                 reviewVerdict: 'clean',
+                 notes: minorFindings.map((m) => m.detail)
                    .concat(planNotes)
                    .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: iter - 1, proposedPatches, proofFixes,
+                 tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
                  ...examEditedField() }
       }
-      if (iter === 2) {
-        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                 reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
-                 ...examEditedField() }
-      }
-      // Fix round: same tree (isolation routes fix:<id> to the task's clone),
-      // prior work is simply the tree's state; capture stays cumulative
-      // against the task BASE by construction (withPatchCapture).
-      await postReviewRound(kataRow, iter, blocking.map((b) => b.detail))
-      impl = await agent(
-        roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
-          filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
-          '\n\nBlocking issues to resolve:\n' + blocking.map((b) => {
-            const patch = patchOf(b)
-            return patch === '' ? '- ' + b.detail
-              : '- ' + b.detail + '\n' + PROPOSED_PATCH_HEADER + '\n' + patch
-          }).join('\n'),
-        { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree',
-          model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
-      if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
-      stripUntrustedPatch(impl, patchPrefix)
-      noteConcerns(impl)
-      // Same tree, same rule: a fix round applying a referee's findings may
-      // find the finding WAS the exam (run-53, #556) — recorded, then re-reviewed.
-      await noteDrift('the fix round')
-      if (hasCoordinates(impl)) await kataTouched(kataRow, impl.patch)
-      if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
-        judgmentCalls.push('task ' + task.id + ': fix round lost driver-captured coordinates (' +
-          (impl.captureError || 'capture absent') + ') — failed before re-review')
-        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                 reviewVerdict: 'lost-coordinates',
-                 notes: 'fix round produced no driver-captured patch/headSha',
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
-                 ...examEditedField() }
-      }
-      if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
-        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
-                 reviewVerdict: 'blocked-after-fix', notes: impl.summary,
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches, proofFixes,
-                 ...examEditedField() }
-      }
+      // The round's blocking issues end the task (#964 Task 2). This is the
+      // `fix-loop-exhausted` exit that already existed at the bottom of the
+      // loop; what changed is that it is now reached after the FIRST red rather
+      // than the second, and no fix worker is dispatched from here — the only
+      // repair round a task gets is the pre-review `fix:<id>:0` above, which
+      // answers the driver's own evidence rather than a referee's reading.
+      // `fixIterations` is therefore 0 on every row: no round a REVIEWER's
+      // findings drove exists any more.
+      return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
+               reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches, proofFixes,
+               ...examEditedField() }
     }
   }
 
@@ -3487,7 +3349,7 @@ export async function runEngine({
           // of them is wrong is a question this run cannot answer, and blocking
           // the whole run on it spends a park on an unattributed red. So no
           // completeness finding is minted: the judgment call carries the
-          // reading, the critic reads the same bytes as INTEGRATED RUN
+          // reading, the report carries the same bytes as INTEGRATED RUN
           // EVIDENCE, and the `Check:` pass below keeps the brake it has.
           const call = 'task ' + t.id + '\'s proof ' + cmd + ' went red on the fold of ' +
             shared.join(', ') + ' with task ' + withIds.join(', ')
@@ -3511,13 +3373,12 @@ export async function runEngine({
         if (r.code === 0) continue
         if (c.minor) {
           judgmentCalls.push('wave ' + (w + 1) + ': the minor Check: `' + c.cmd + '` exited ' +
-            r.code + ' on the adopted tree — recorded for the critic, blocking nothing')
+            r.code + ' on the adopted tree — recorded, blocking nothing')
           continue
         }
         const detail = 'integrated Check: ' + c.cmd + ' exited ' + r.code + ' on the adopted tree'
         integratedFindings.push({ severity: 'blocking', detail })
-        judgmentCalls.push(detail + ' — a Global Constraint the fold broke; the run is BLOCKED ' +
-          'whatever the critic returns')
+        judgmentCalls.push(detail + ' — a Global Constraint the fold broke; the run is BLOCKED')
         log('wave ' + (w + 1) + ': ' + detail)
       }
       // The wave is over on the hub too. Last, after the integrated proofs, so
@@ -3549,82 +3410,17 @@ export async function runEngine({
     break
   }
 
-  // ── completeness critic — read-only judgment; the driver already ran the
-  // suite (per adopted wave) and derives gitVerified below from receipts. ────
-  const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
+  // ── no one reads the finished run (#964 Task 2) ────────────────────────────
+  // The completeness critic is gone: it was a second judgment over a tree every
+  // per-task referee had already read, and the driver — which runs the suite,
+  // the integrated `Run:`s and the integrated `Check:`s itself — is the only
+  // party left with a fact about the fold that nobody else holds. What reaches
+  // the report as `completenessFindings` is therefore the DRIVER's own list:
+  // the red integrated `Check:`s of the waves above, which the #474 brake
+  // reads exactly as it read them when they arrived beside a critic's findings.
+  // A red integrated `Run:` is not here: since #887 it is reported with the
+  // pair it names and blocks nothing (the judgment call carries it).
   const waveMergedAny = waveMerges.some((m) => m && m.status === 'MERGED')
-  // criticRan gates gitVerified below (review finding 2): waves.js's critic
-  // attestation made a dead critic fail-closed at the gate, and receipts alone
-  // cannot preserve that — clean receipts say the merge is intact, not that
-  // anyone reviewed its completeness.
-  let criticRan = false
-  let review
-  const criticCalls = []
-  const runCritic = async () => {
-    phase('Integration Review')
-    if (!waveMergedAny) {
-      // Nothing merged: the tree is at BASE, and a critic told it holds "the
-      // final integrated tree" would emit confident findings about the wrong
-      // tree (review finding 8). gitVerified is already false on this path.
-      review = { findings: [{ severity: 'blocking',
-                             detail: 'no wave merged — completeness review skipped (the tree is at BASE)' }],
-                 deferredVerification: [] }
-      return
-    }
-    // The prompt and the options are held rather than inlined: the one
-    // re-dispatch below is the SAME judgment asked again, so it must be asked
-    // byte for byte the same way, with the same model and the same schema.
-    const criticPrompt = roles.critic +
-      (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
-      globalConstraintsBlock +
-      '\n\nTasks:\n' + taskList +
-      contractsBlock(WAVES, EDGES, wavesPath) +
-      '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
-      suiteLine(lastSuite, testCmd) +
-      (baseline && baseline.passed === false
-        ? '\nBaseline: the suite is RED on BASE — ' + baseline.output
-        : '') +
-      integratedRunEvidenceBlock(integratedRuns) +
-      integratedCheckEvidenceBlock(integratedChecks)
-    const criticOpts = { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA }
-    try {
-      review = await agent(criticPrompt, criticOpts)
-      // A dead critic withholds the run's attestation, so it is worth one more
-      // ask before that verdict is spent (#830). A second null keeps the
-      // fail-closed reading below exactly as it is.
-      if (review === null) {
-        review = await retryInfraNull('integration', '', () => agent(criticPrompt, criticOpts))
-      }
-    } catch (e) {
-      const msg = String((e && e.message) || e)
-      criticCalls.push('integration review failed to run: ' + msg)
-      review = null
-    }
-    if (review && typeof review === 'object') {
-      criticRan = true
-    } else {
-      criticCalls.push('integration review returned no result — the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)')
-      review = { findings: [{ severity: 'blocking',
-                             detail: 'integration review did not run — completeness unverified; check the tree before merging' }],
-                 deferredVerification: [] }
-    }
-  }
-
-  // The critic runs alone here — every line below reads its result, so this is
-  // the barrier and there is no other. Its judgment calls land in a local array
-  // and are appended once it is done, so their order in `judgmentCalls` does
-  // not depend on when the call returned.
-  await runCritic()
-  judgmentCalls.push(...criticCalls)
-
-  // A red integrated `Check:` outranks whatever the critic returned, and it is
-  // folded into the SAME list the #474 brake already reads — appended after
-  // the critic so it survives a critic that died and was replaced above. A red
-  // integrated `Run:` is not here: since #887 it is reported with the pair it
-  // names and blocks nothing (the judgment call carries it).
-  if (integratedFindings.length) {
-    review.findings = (Array.isArray(review.findings) ? review.findings : []).concat(integratedFindings)
-  }
 
   // Driver detach: releases the integration branch in the clone. Nothing on
   // the driver path needs the branch checked out from here on (the fetch
@@ -3634,8 +3430,9 @@ export async function runEngine({
   // ── driver-derived verification (spec §3.1: gitVerified is REDEFINED and
   // disclosed) — the branch tip must equal the last adopt receipt, and every
   // task reported merged must appear as a fold event in its wave's fold log.
-  // The old meaning (the critic's own attestation) cannot exist when the
-  // critic no longer detaches; this is the receipt-based equivalent of #70. ──
+  // The old meaning (an integration agent's own attestation) cannot exist when
+  // no agent reads the finished run; this is the receipt-based equivalent of
+  // #70, and since #964 Task 2 it is the whole of it. ──
   const ancestryMisses = []
   for (const wm of waveMerges) {
     if (wm.status !== 'MERGED') continue
@@ -3667,9 +3464,9 @@ export async function runEngine({
       ' reported merged but ' + m.headSha + ' — silently dropped; the run is BLOCKED, do not merge')
   }
   const anyWaveMerged = waveMergedAny
-  // gitVerified = receipts intact AND the completeness review actually ran
-  // (spec §3.1's redefinition, plus review finding 2's fail-closed condition).
-  const gitVerified = anyWaveMerged && tipMatches && ancestryMisses.length === 0 && criticRan
+  // gitVerified = the receipts are intact, and nothing else (spec §3.1's
+  // redefinition). The `criticRan` conjunct went with the critic (#964 Task 2).
+  const gitVerified = anyWaveMerged && tipMatches && ancestryMisses.length === 0
   // A plan defect is verification the RUN cannot do: no fix round can close it
   // and no referee can wave it through, so it travels to the one reader with
   // the standing to change the plan. Only tasks that finished `done` carry one
@@ -3691,11 +3488,11 @@ export async function runEngine({
   for (const p of parkedForPlan) {
     planDeferred.push({ deliverable: p.task, reason: 'plan-defect', why: p.why })
   }
-  const deferredVerification = (Array.isArray(review.deferredVerification)
-    ? review.deferredVerification : [])
-    .concat(planDeferred)
+  // The plan's deferrals are the whole list now: the critic's own
+  // `deferredVerification` went with it (#964 Task 2).
+  const deferredVerification = planDeferred
 
-  // tests: the DRIVER's own suite run on the adopted tree (was: the critic's).
+  // tests: the DRIVER's own suite run on the adopted tree.
   // `unattributed` is always present — `[]` on a green run, on a run that
   // merged nothing, and on one whose reds were every bit its tasks' own.
   const tests = lastSuite
@@ -3788,8 +3585,6 @@ export async function runEngine({
       blockingFindings: reviewerBlockingKeys.size,
       blockingPerReviewerMinute: reviewerMs > 0
         ? reviewerBlockingKeys.size / (reviewerMs / 60000) : 0,
-      pairRounds,
-      r2MarginalBlocking,
     },
     baseline,
     waveMerges,
@@ -3801,7 +3596,10 @@ export async function runEngine({
     deferredVerification,
     judgmentCalls,
     unfinished,
-    completenessFindings: review.findings || [],
+    // The driver's own findings about the fold, and nothing else: `[]` on a run
+    // whose integrated `Check:`s were all green, which is every run that has no
+    // Global Constraints to check (#964 Task 2).
+    completenessFindings: integratedFindings,
     blockedWaves,
   }
 }

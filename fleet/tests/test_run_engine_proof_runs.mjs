@@ -15,8 +15,9 @@
 //        to 4,000 characters. Since #713 that execution happens ONCE before
 //        the first review on a task that starts green: the driver's own pass
 //        (`iter: 0`), whose evidence review round 1 reads rather than
-//        re-measuring a tree no agent has touched since. A fresh execution
-//        comes only at `iter: 2`, after a review-round fix. A red `iter: 0`
+//        re-measuring a tree no agent has touched since. (#964 Task 2: there is
+//        no `iter: 2` execution any more — the one review round dispatches no
+//        fix worker, so nothing edits the tree after the pass.) A red `iter: 0`
 //        pass buys one `fix:<id>:0` round before any referee is dispatched
 //        (its re-execution is `iter: 0` too), and a task still red after it
 //        never reaches a reviewer at all (`reviewVerdict: 'proof-red'`) — the
@@ -27,7 +28,8 @@
 //        prompt byte-identical to BASE's.
 //   M3 — any non-zero exit ⇒ FIX_REQUIRED with a blocking issue naming the
 //        command and its exit code, whatever the reviewer's own verdict; the
-//        fix round re-runs the commands and the new evidence replaces the old.
+//        pre-review repair round re-runs the commands and the new evidence
+//        replaces the old.
 //   M4 — all-zero ⇒ the reviewer's own verdict, unchanged.
 //   M5 — one `driver:proof-run` record per execution in the run's events.jsonl,
 //        carrying task, cmd, exit, iter.
@@ -123,7 +125,9 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
     if (kind === 'impl') { onImpl(cwd); return doneImpl(cwd) }
     if (kind === 'fix') { onFix(cwd, opts.label); return doneImpl(cwd) }
     if (kind === 'review') { reviews += 1; return review(reviews) }
-    if (opts.label === 'integration') return cleanCritic()
+    // No `integration` arm: since #964 Task 2 no worker reads the finished run,
+    // so an `integration` label here would be a dispatch the engine must not
+    // make, and the throw below is the assertion.
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, clonesDir } = rig({
@@ -152,15 +156,14 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
   })
 
   // [M1] after the implementer returned, before the reviewer was called.
-  // (the wave's own critic dispatch, `integration`, is not part of the task's
-  // own order and is dropped.)
+  // (the wave's own critic dispatch, `integration`, used to be dropped here;
+  // there is no such dispatch since #964 Task 2.)
   // There is no trailing `proof-run`: the integrated pass is #887's, and it
   // re-runs a task's commands only when another task of the same wave touched
   // one of its paths. This is a ONE-task wave, so it joins nothing and the
   // driver executes nothing on the adopted tree —
   // `test_run_engine_joined_proofs.mjs` pins that rule in its own sim.
-  const order = fs.readFileSync(orderFile, 'utf8').split('\n')
-    .filter(Boolean).filter((l) => l !== 'integration')
+  const order = fs.readFileSync(orderFile, 'utf8').split('\n').filter(Boolean)
   // The single `proof-run` is the driver's own pre-review pass, whose evidence
   // round 1 reads (#713).
   assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
@@ -275,6 +278,12 @@ const haveBase = (() => {
   } catch { return false }
 })()
 let baseRunEngine = null
+// BASE's `loadRoles` reads `fleet/roles/critic.md`, which this release deletes
+// (#964 Task 2), so the BASE engine is driven against a copy of the roles dir
+// with BASE's own critic.md restored into it. Every other role file in that
+// copy is the live tree's byte-for-byte, so the prompt the pin compares is
+// still rendered from the live roles.
+let baseRolesDir = null
 if (haveBase) {
   const baseTree = path.join(tmp, 'base-tree')
   fs.cpSync(FLEET_DIR, path.join(baseTree, 'fleet'), {
@@ -284,6 +293,11 @@ if (haveBase) {
     execFileSync('git', ['show', BASE_SHA + ':fleet/run-engine.mjs'],
       { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))
   fs.symlinkSync(path.join(REPO_ROOT, 'skills'), path.join(baseTree, 'skills'))
+  baseRolesDir = path.join(baseTree, 'roles-base')
+  fs.cpSync(ROLES_DIR, baseRolesDir, { recursive: true })
+  fs.writeFileSync(path.join(baseRolesDir, 'critic.md'),
+    execFileSync('git', ['show', BASE_SHA + ':fleet/roles/critic.md'],
+      { cwd: REPO_ROOT, env: ENV, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }))
   ;({ runEngine: baseRunEngine } =
     await import(pathToFileURL(path.join(baseTree, 'fleet', 'run-engine.mjs')).href))
 } else {
@@ -293,7 +307,7 @@ if (haveBase) {
 
 const PIN_REPO = makeRepo(path.join(tmp, 'pin-repo'))
 const pinRunDir = path.join(tmp, 'pin-run')
-async function pinPrompt(engine, task) {
+async function pinPrompt(engine, task, rolesDir = ROLES_DIR) {
   fs.rmSync(pinRunDir, { recursive: true, force: true })
   const { base, clonesDir, patchesDir } = provision({ repo: PIN_REPO, runDir: pinRunDir, taskIds: ['T1'] })
   const patchBase = { current: base }
@@ -304,6 +318,8 @@ async function pinPrompt(engine, task) {
     const kind = opts.label.split(':')[0]
     if (kind === 'impl') { fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'); return doneImpl(cwd) }
     if (kind === 'review') { prompt = p; return passReview() }
+    // BASE's engine still dispatches a completeness critic; the live one never
+    // does (#964 Task 2). This arm exists only so the byte-pin can drive BASE.
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
@@ -322,7 +338,7 @@ async function pinPrompt(engine, task) {
     exec: execSeam,
     paths: { repoDir: PIN_REPO, runDir: pinRunDir, clonesDir },
     log: () => {},
-    rolesDir: ROLES_DIR,
+    rolesDir,
     patchBase,
   })
   return { prompt, events: proofRunEvents(pinRunDir) }
@@ -330,7 +346,7 @@ async function pinPrompt(engine, task) {
 {
   const absent = entry()
   delete absent.proofRuns
-  const basePin = haveBase ? await pinPrompt(baseRunEngine, entry()) : null
+  const basePin = haveBase ? await pinPrompt(baseRunEngine, entry(), baseRolesDir) : null
   const liveEmpty = await pinPrompt(runEngine, entry({ proofRuns: [] }))
   const liveAbsent = await pinPrompt(runEngine, absent)
 
@@ -397,7 +413,7 @@ async function pinPrompt(engine, task) {
     onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired-by-the-fix-round\n'),
     review: () => passReview(),
   })
-  assert.deepEqual(calls.filter((l) => l !== 'integration'),
+  assert.deepEqual(calls,
     ['impl:T1', 'fix:T1:0', 'review:T1:1'],
     'red command → repair round → the first review, on a green tree')
   assert.equal(row.status, 'done', 'the second run is green, so the reviewer\'s PASS stands')
@@ -432,11 +448,18 @@ async function pinPrompt(engine, task) {
     review: () => ({ verdict: 'FIX_REQUIRED',
                      issues: [{ severity: 'blocking', detail: 'the reviewer is not satisfied' }] }),
   })
-  assert.deepEqual(events.map((e) => e.exit), [0, 0],
-    'green in the driver\'s pass and in the fresh execution round 2 takes after the fix')
-  assert.deepEqual(events.map((e) => e.iter), [0, 2],
-    'round 1 reads the pass; only the post-fix round executes afresh')
-  assert.ok(calls.includes('fix:T1:1'), 'the reviewer\'s FIX_REQUIRED still drives the fix loop')
+  // #964 Task 2: this leg lost its second execution and its fix dispatch. The
+  // reviewer's FIX_REQUIRED bought `fix:T1:1` and a round 2 that executed the
+  // command afresh at `iter: 2`; with one round it ends the task instead, so
+  // the driver's own pass is the only execution there is. What the leg is for
+  // — an all-zero run contributes no issue of its own, and the recorded notes
+  // are the reviewer's alone — is asserted below unchanged.
+  assert.deepEqual(events.map((e) => e.exit), [0],
+    'green in the driver\'s pass, which is the only execution')
+  assert.deepEqual(events.map((e) => e.iter), [0],
+    'the one round reads the pass; nothing executes after it')
+  assert.ok(!calls.some((l) => l.startsWith('fix:')),
+    'and the reviewer\'s FIX_REQUIRED buys no fix round of its own: ' + calls.join(','))
   assert.equal(row.status, 'failed')
   assert.equal(row.reviewVerdict, 'fix-loop-exhausted')
   assert.equal(row.notes, 'the reviewer is not satisfied',
@@ -451,7 +474,7 @@ async function pinPrompt(engine, task) {
     task,
     onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
   })
-  assert.deepEqual(calls, ['impl:T1', 'review:T1:1', 'integration'],
+  assert.deepEqual(calls, ['impl:T1', 'review:T1:1'],
     'no exam worker starts for a Run:-only proof')
   assert.equal(row.exam, null)
   assert.equal('examEdited' in row, false, 'and no exam-edited entry is recorded')
@@ -504,7 +527,6 @@ const segmentOf = (block, cmd) => {
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
-    if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, base: rigBase } = rig({
@@ -575,7 +597,6 @@ const segmentOf = (block, cmd) => {
       return doneImpl(cwd)
     }
     if (kind === 'review') return passReview()
-    if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run, base } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ub2' })
@@ -639,9 +660,10 @@ const segmentOf = (block, cmd) => {
 // review loop then calls all three again at `iter: 1` before building the round-1
 // prompt, on the same clone and the same tree the pass just measured, with no
 // agent in between. So every command a green task declares is executed twice
-// before its first referee. The clauses below pin the single execution: round 1
-// READS the pass's evidence, and a fresh execution happens only at `iter: 2`,
-// after a review-round fix.
+// before its first referee. The clauses below pin the single execution: the one
+// review round READS the pass's evidence. (#964 Task 2: the `iter: 2`
+// execution that followed a review-round fix is gone with that fix round — the
+// one round is the last thing that happens to a task.)
 //
 //   M1 — a task whose every proofRuns command, exam and non-minor Check: exits 0
 //        on the pre-review pass records exactly one `driver:proof-run` per
@@ -651,8 +673,11 @@ const segmentOf = (block, cmd) => {
 //        and CHECK EVIDENCE blocks carry that pass's commands, exits and outputs.
 //   M2 — a red pass buys one `fix:<id>:0` round and one re-execution, both at
 //        `iter: 0`, and round 1 reads the re-execution — no third execution.
-//   M3 — a review-round fix (`fix:<id>:1`) is followed by one fresh execution at
-//        `iter: 2`, and `review:<id>:2` carries it and not round 1's.
+//   M3 — RETIRED by #964 Task 2: it read "a review-round fix (`fix:<id>:1`) is
+//        followed by one fresh execution at `iter: 2`, and `review:<id>:2`
+//        carries it and not round 1's". There is no review-round fix and no
+//        round 2 to carry anything, so the clause has no subject; leg (d)
+//        below, which was its only leg, goes with it.
 //   M4 — the order around the referee and the row's proofFixes / fixIterations /
 //        reviewVerdict / status are BASE's for the same canned judgments.
 //   M5 — the five sims this re-scopes still print `ALL TESTS PASSED`, and a copy
@@ -688,7 +713,7 @@ const segmentOf = (block, cmd) => {
   // FIRST `exam-run` is the examiner's own red-at-BASE probe in the examiner's
   // clone, which this change leaves exactly as it was.
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
-    .filter(Boolean).filter((l) => l !== 'integration')
+    .filter(Boolean)
   assert.deepEqual(order.slice(0, order.indexOf('review:T1:1') + 1),
     ['exam:T1', 'impl:T1', 'exam-run', 'run-1', 'run-2', 'exam-run', 'check-run', 'review:T1:1'],
     'both Run: commands, the exam and the Check: each execute ONCE, in that order, between ' +
@@ -749,7 +774,7 @@ const segmentOf = (block, cmd) => {
     orderFile,
   })
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
-    .filter(Boolean).filter((l) => l !== 'integration')
+    .filter(Boolean)
   // No trailing `proof-run`: a one-task wave joins nothing, so the #887
   // integrated pass executes nothing on the adopted tree.
   assert.deepEqual(order, ['impl:T1', 'proof-run', 'review:T1:1'],
@@ -775,7 +800,7 @@ const segmentOf = (block, cmd) => {
     onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
     onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'repaired.txt'), 'written-by-the-repair-round\n'),
   })
-  assert.deepEqual(calls.filter((l) => l !== 'integration'),
+  assert.deepEqual(calls,
     ['impl:T1', 'fix:T1:0', 'review:T1:1'],
     'implementer, one repair round, the first review: ' + calls.join(','))
   assert.equal(events.length, 2,
@@ -792,44 +817,15 @@ const segmentOf = (block, cmd) => {
   assert.equal(row.fixIterations, 0, 'a pre-review repair is not a review fix iteration')
 }
 
-// ── #713 Task 1 leg (d): a review-round fix buys the fresh execution [M3] ────
-// The command prints a file the review fix rewrites — the only thing that can
-// tell round 2's evidence from round 1's, since no agent runs between the pass
-// and round 1.
-{
-  const CMD = "sh -c 'cat v.txt'"
-  const BEFORE = 'content-before-the-review-fix'
-  const AFTER = 'content-after-the-review-fix'
-  const { row, calls, prompts, events } = await scenario({
-    task: entry({ proofRuns: [CMD] }),
-    onImpl: (cwd) => {
-      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
-      fs.writeFileSync(path.join(cwd, 'v.txt'), BEFORE + '\n')
-    },
-    onFix: (cwd) => fs.writeFileSync(path.join(cwd, 'v.txt'), AFTER + '\n'),
-    review: (n) => (n === 1
-      ? { verdict: 'FIX_REQUIRED',
-          issues: [{ severity: 'blocking', detail: 'round 1 wants v.txt rewritten' }] }
-      : passReview()),
-  })
-  assert.deepEqual(calls.filter((l) => l !== 'integration'),
-    ['impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
-    'no pre-review repair round, one review fix, two rounds: ' + calls.join(','))
-  assert.equal(events.length, 2,
-    'two executions in all: the pre-review pass and round 2\'s fresh one: ' + JSON.stringify(events))
-  assert.deepEqual(events.map((e) => e.iter), [0, 2],
-    'the pass is iter 0 and the post-fix execution is iter 2 — the number of the round that ' +
-    'produced it, so a sense pass counting executions per iter keeps its meaning')
-  const r1 = evidenceOf(prompts['review:T1:1'])
-  assert.ok(r1.includes(BEFORE), 'round 1 read the pre-review pass\'s own output: ' + r1.slice(0, 400))
-  const r2 = evidenceOf(prompts['review:T1:2'])
-  assert.ok(r2.includes(AFTER),
-    'round 2 reads the execution that followed the fix: ' + r2.slice(0, 400))
-  assert.ok(!r2.includes(BEFORE),
-    'and not round 1\'s, which predates the repair: ' + r2.slice(0, 400))
-  assert.equal(row.fixIterations, 1, JSON.stringify(row))
-  assert.equal(row.reviewVerdict, 'fixed', JSON.stringify(row))
-}
+// ── #713 Task 1 leg (d): DELETED by #964 Task 2 ──────────────────────────────
+// It drove a `review:T1:1` FIX_REQUIRED into `fix:T1:0`, a fresh execution at
+// `iter: 2` and a `review:T1:2` prompt carrying it, and read the row back as
+// `fixIterations: 1`, `reviewVerdict: 'fixed'`. Every one of those is a thing
+// the engine no longer does: one review round, no fix dispatched from it, so no
+// second execution and no second prompt exist to compare. The leg is removed
+// rather than loosened — what survives of its subject (the round reads the
+// pre-review pass's own output) is leg (b)'s and leg (c)'s already, and the
+// no-second-execution half is now asserted by every green leg in this file.
 
 // ── #713 Task 1 leg (e): red on every execution — BASE's shape, unchanged [M2, M4]
 {
@@ -838,7 +834,7 @@ const segmentOf = (block, cmd) => {
     task: entry({ proofRuns: [CMD] }),
     onImpl: (cwd) => fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n'),
   })
-  assert.deepEqual(calls.filter((l) => l !== 'integration'), ['impl:T1', 'fix:T1:0'],
+  assert.deepEqual(calls, ['impl:T1', 'fix:T1:0'],
     'one repair round and no referee at all: ' + calls.join(','))
   assert.ok(!calls.some((l) => l.startsWith('review:')), calls.join(','))
   assert.equal(events.length, 2, JSON.stringify(events))
@@ -903,7 +899,6 @@ const probeSource = ({ tag, runs = [], checks = [], exam = false, pin, why }) =>
       return _h.doneImpl(cwd)
     }
     if (kind === 'review') return _h.passReview()
-    if (opts.label === 'integration') return _h.cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const _r = _h.rig({
