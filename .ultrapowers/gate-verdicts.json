@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "3615b48a6401acae499d998bd8d73781c3fa0f0853576eb30f2b0cac21cf5ea8",
+      "verdict": "pass",
+      "reason": "(a) plus the BASE deep-equal Run falsifies any extra key change and a wrong version; (b)'s ordered regex plus the negative-literal checks falsify a stale or misworded bullet; (c) runs the sync test directly; every pinned literal is jointly satisfiable."
+    }
+  },
+  "tally": {"dispatched": 2, "rejected": 1, "rounds": 2, "history": [{"round": 1, "1": "fail: leg (b) regex kept the escaped 0\\.3\\.26 literal (substitution miss) — self-contradictory"}, {"round": 2, "1": "pass"}]}
+}
