@@ -63,8 +63,9 @@ conflict. Keep both markers in the contiguous run directly under the heading.
 - `**Type:**` — `implementation` (the default, and the only Type that waves),
   `gate`, `release`, `manual`. A write-nothing verification task is `gate`; anything that
   pushes, deploys, or waits on a human is its own `release`/`manual` task.
-- `**Review:**` — optional, `peer` or `lean`. Mark `peer` — a second independent read of
-  the same patch — where failure is costly or hard to see; unmarked is `lean`.
+- `**Review:**` — optional, `peer` or `lean`, kept for the record. Since the engine plan of
+  2026-09-14 (PR #974) every task gets exactly one reviewer and one fix round whatever the
+  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings in 71 runs).
 - There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
   Driver spec §7), a spend authority — never written on a task here.
 - `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
