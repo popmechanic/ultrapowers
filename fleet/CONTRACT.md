@@ -69,8 +69,8 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     re-run also carries `flaky: true` and is read as green: the exam's red leaves the pass and
     the task proceeds (to review, or to the ordinary repair round if a `Run:`/`Check:` is still
     red). An ordinary red exam with no such concern is never re-run; it buys the one repair round.
-    `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record ultralearn's
-    readers slice — is there on the same terms, present when the engine wrote them.
+    `transcripts/<sessionId>.jsonl` — one per worker session, the reduced record a reader
+    slices — is there on the same terms, present when the engine wrote them.
     `state-exams/` — a tree of `task-<id>/<stem>-<pass>/` directories, one per exam run, whose
     contents are the exam's own output copied file by file — is there on the same terms, present
     when the exams wrote it.

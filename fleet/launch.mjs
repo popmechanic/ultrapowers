@@ -125,15 +125,14 @@ import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
  *  flag the launch line may carry. */
 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
                              [--repo <dir>] [--engine <40-hex>]
-                             [--overlap fold|serialize] [--tier standard|mostCapable]
+                             [--tier standard|mostCapable]
                              [--implementer-effort low|medium|high] [--hold]
                              [--cpu <n>] [--memory <n>GB]
                              [--run <N>] [--config <path>] [--account <name>] [--json]`
 
 export const usage = () => USAGE
 
-/** The three enumerated flags, with the exact spellings the comment carries. */
-export const OVERLAP_VALUES = Object.freeze(['fold', 'serialize'])
+/** The two enumerated flags, with the exact spellings the comment carries. */
 export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
 /** The effort the implementers (and their fix rounds) work at; every judge
  *  keeps its own. The CLI also takes `xhigh` and `max`; the knob turns effort
@@ -647,9 +646,6 @@ export async function launch ({
   if (opts.engine !== undefined && !isFullSha(opts.engine)) {
     throw new Refusal(`launch: --engine must be a 40-hex commit sha, got ${JSON.stringify(opts.engine)}`)
   }
-  if (opts.overlap !== undefined && !OVERLAP_VALUES.includes(opts.overlap)) {
-    throw new Refusal(`launch: --overlap must be one of ${OVERLAP_VALUES.join('|')}, got ${JSON.stringify(opts.overlap)}`)
-  }
   if (opts.tier !== undefined && !TIER_VALUES.includes(opts.tier)) {
     throw new Refusal(`launch: --tier must be one of ${TIER_VALUES.join('|')}, got ${JSON.stringify(opts.tier)}`)
   }
@@ -780,7 +776,6 @@ export async function launch ({
     target,
     base: opts.base,
     engine: opts.engine ?? '0'.repeat(40),
-    overlap: opts.overlap,
     tier: opts.tier,
     effort: implementerEffort,
     hold: opts.hold === true ? '1' : undefined

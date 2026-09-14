@@ -106,7 +106,6 @@ export const ROLE_TIMEOUT_MS = {
 // engine at itself is exactly the self-host case being deleted.
 export const DEFAULTS = Object.freeze({
   tier: 'mostCapable',
-  overlap: null,
   // Unset means "the CLI's own default, for every role" — the knob only ever
   // turns the implementer down, and never touches a judge.
   implementerEffort: null,
@@ -122,7 +121,6 @@ export const DEFAULTS = Object.freeze({
 const FLAGS = Object.freeze({
   '--repo': 'repoDir',
   '--tier': 'tier',
-  '--overlap': 'overlap',
   '--implementer-effort': 'implementerEffort',
   '--test-cmd': 'testCmd',
   '--bootstrap-cmd': 'bootstrapCmd',
@@ -132,7 +130,7 @@ const FLAGS = Object.freeze({
 
 export const usage = () =>
   'usage: node fleet/run-main.mjs <plan.md> <runId> --repo DIR [--tier standard|mostCapable] ' +
-  '[--overlap fold|serialize] [--implementer-effort low|medium|high] ' +
+  '[--implementer-effort low|medium|high] ' +
   '[--test-cmd CMD] [--bootstrap-cmd CMD|\'\'] [--cli BIN] [--kata PATH]\n' +
   '  --bootstrap-cmd: omit to derive the install from the target\'s lockfile; \'\' disables it\n' +
   '  --kata: the run\'s kata.json record (url, project, run, tasks) — omit and the ' +
@@ -578,8 +576,8 @@ export async function runMain(parsed, deps = {}) {
   }
 }
 
-// One serialized promise chain: a push starts the moment the post before it
-// has answered, never two in flight, push order = post order. The engine keeps
+// One strictly ordered promise chain: a push starts the moment the post before
+// it has answered, never two in flight, push order = post order. The engine keeps
 // the same shape for its own lines (run-engine.mjs `kataPost`); this one is
 // run-main's, for the `driver:` lines it appends around the engine — the
 // stages, the credential, the critic and ack decisions, the approval — which
@@ -609,7 +607,7 @@ async function runMainInner(parsed, deps, hub) {
       actor: 'engine:' + id,
     }),
   } = deps
-  const { planPath, runId, tier, overlap, implementerEffort, testCmd, bootstrapCmd, cli,
+  const { planPath, runId, tier, implementerEffort, testCmd, bootstrapCmd, cli,
           kata: kataPath } = parsed
   // Absolute, always: patchesDir is derived from repoDir, and waves.js's
   // PATCH_PREFIX second wall arms only for an absolute patchInput — a relative
@@ -654,7 +652,6 @@ async function runMainInner(parsed, deps, hub) {
   // Dropping a falsy `''` here would turn the operator's "no bootstrap" into
   // "derive one".
   if (bootstrapCmd !== null && bootstrapCmd !== undefined) runArgv.push('--bootstrap-cmd', bootstrapCmd)
-  if (overlap) runArgv.push('--overlap', overlap)
   const pre = await exec(py, runArgv, { cwd: repoDir, env: pyEnv })
   if (pre.code !== 0) {
     return fail('preflight-failed', 'ultra_run.py exited ' + pre.code + ': ' +

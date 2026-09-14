@@ -1,1 +1,0 @@
-"""confkit — layered configuration loading."""

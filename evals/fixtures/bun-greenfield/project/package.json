@@ -1,6 +1,0 @@
-{
-  "name": "bun-greenfield-fixture",
-  "private": true,
-  "type": "module",
-  "devDependencies": { "typescript": "^5.6.0", "@types/bun": "latest" }
-}
