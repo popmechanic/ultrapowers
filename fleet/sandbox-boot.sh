@@ -208,6 +208,9 @@ KATA_FILE=""
 # per boot whatever the terminal transition, and a re-entered boot's close
 # rides the same idempotency key.
 KATA_RUN_CLOSED=""
+# Set once the run issue's state key has been written — one metadata patch per
+# boot, whatever the terminal transition, under the run's own idempotency key.
+KATA_RUN_MARKED=""
 VM_NAME=""
 VM_EMAIL=""
 STARTED_AT=""
@@ -1393,12 +1396,13 @@ for row in out:
 # project, and the `collect_evidence` right after it carries it out in
 # `kata.jsonl` on the tag like every other write.
 #
-# THE REASON IS THE DISPOSITION. `done` when the run ended `done`, with the
-# pull request as `{"type":"pr","url"}` evidence and the squash commit as
-# `{"type":"commit","sha"}` when the sandbox merged it; `wontfix` — which kata
-# refuses evidence on — when the run parked or failed, carrying the page's own
-# `error`. A `done` message has to read on its own (kata wants 40 characters or
-# more, run-111): it is the plan's H1 and the merge sha.
+# THE REASON IS THE DISPOSITION, and since #964 the only disposition the boot
+# closes on is `done`: the run ended `done`, with the pull request as
+# `{"type":"pr","url"}` evidence and the squash commit as
+# `{"type":"commit","sha"}` when the sandbox merged it. A `done` message has to
+# read on its own (kata wants 40 characters or more, run-111): it is the plan's
+# H1 and the merge sha. A parked or failed run makes no close at all — its
+# issue stays open under `kata_mark_run`'s keys, for the operator to close.
 #
 # NON-FATAL, THE SAME WAY THE ENGINE'S WRITES ARE (#934): a close the hub
 # refuses, or a hub that has gone dark since the ping, is one
@@ -1458,8 +1462,76 @@ print(json.dumps(body, separators=(",", ":"), ensure_ascii=False))
     "detail=s:run issue close ($reason) answered curl exit $code"
 }
 
-# The first line of the page's `error`, for a close message: a failed run's
-# error carries the engine's last lines and the message wants the sentence.
+# THE RUN ISSUE'S STATE KEY (#964). A park is not a close: the run issue stays
+# open for the operator, who resolves it and closes it by hand. What the boot
+# owes the hub at a non-green exit is therefore the three keys a person filters
+# on — `work.state` `parked` or `failed`, `work.attention` `needs-human`, and
+# `work.attention_msg` the page's own error head — written FLAT, because that
+# is how kata stores a dotted key and how every reader of it spells the read
+# (#960). A green run writes the single key `work.state=done` and no attention
+# keys, and then closes as it always has: the closed issue still carries the
+# word its page ended on.
+#
+# ONE WRITE, at the terminal transition and before that transition's export,
+# for the reason `kata_close_run` gives above: the patch is an event of the
+# run's project and the `collect_evidence` right after carries it out in
+# `kata.jsonl` on the tag. On the `done` path it goes out BEFORE the close, so
+# a reader of the record sees the state and then the closing of it.
+#
+# NO `If-Match`. Measured against the hub on 2026-09-13: the patch answers 200
+# at the next revision without one. A revision this boot would have to read
+# first is a second request that can only go stale between the two.
+#
+# NON-FATAL, the same way the close is: a patch the hub refuses is one
+# `kata:write-failed` event (`what` `metadata`, the run's `uid`, the curl exit
+# in `detail`) on the record, and the run exits exactly as it would have.
+kata_mark_run() { # $1 = done|parked|failed, $2 = the attention message (parks only)
+  local state="$1" message="$2" ids project uid body code
+  # The collection segment, named rather than written inline, for the reason
+  # `kata_export` gives: the residuals check forbids that bare token here.
+  local open="issues"
+  [ -n "$KATA_FILE" ] && [ -f "$KATA_FILE" ] || return 0
+  [ -z "$KATA_RUN_MARKED" ] || return 0
+  KATA_RUN_MARKED=1
+  ids="$(python3 -c '
+import json, sys
+doc = json.load(open(sys.argv[1], encoding="utf-8"))
+print("%s %s" % (doc["project"]["id"], doc["run"]["uid"]))
+' "$KATA_FILE" 2>/dev/null || true)"
+  project="${ids%% *}"
+  uid="${ids##* }"
+  if [ -z "$project" ] || [ -z "$uid" ] || [ "$ids" = "$project" ]; then
+    log "kata: $KATA_FILE names no project.id and run.uid — the run issue keeps no state key"
+    return 0
+  fi
+  # The body, built where a string is a string: the message is the page's error
+  # head verbatim, however it is punctuated.
+  body="$(KATA_ACTOR="sandbox:$RUN_ID" KATA_STATE="$state" KATA_MESSAGE="$message" python3 -c '
+import json, os
+state = os.environ["KATA_STATE"]
+patch = {"work.state": state}
+if state != "done":
+    patch["work.attention"] = "needs-human"
+    patch["work.attention_msg"] = os.environ["KATA_MESSAGE"]
+print(json.dumps({"actor": os.environ["KATA_ACTOR"], "patch": patch},
+                 separators=(",", ":"), ensure_ascii=False))
+')"
+  code=0
+  fleet_curl -fsS --max-time 30 -X POST -H 'content-type: application/json' \
+    -H "Idempotency-Key: $RUN_ID:run:park" -d "$body" \
+    "$KATA_URL/api/v1/projects/$project/$open/$uid/metadata" >/dev/null 2>&1 || code=$?
+  if [ "$code" = 0 ]; then
+    log "kata: run issue $uid marked work.state=$state"
+    return 0
+  fi
+  log "kata: run issue metadata write ($state) refused — curl exit $code, recorded, continuing"
+  append_event kata:write-failed what=s:metadata "uid=s:$uid" \
+    "detail=s:run issue metadata ($state) answered curl exit $code"
+}
+
+# The first line of the page's `error`, for a close message or a park's
+# `work.attention_msg`: a failed run's error carries the engine's last lines
+# and both want the sentence.
 error_head() { { printf '%s' "$ERROR" || true; } | head -n 1; }
 
 collect_evidence() {
@@ -3193,7 +3265,8 @@ do_boot() {
     ERROR="engine exited $code
 $(engine_tail)"
     write_status failed "engine exit $code"
-    kata_close_run wontfix "$(plan_title) — $(error_head)"
+    # Open, and marked: a failed run is a person's to look at (#964).
+    kata_mark_run failed "$(error_head)"
     collect_evidence
     push_evidence "$RUN_ID: failed (engine exit $code)"
     notify "run-$RUN_N failed" "$TARGET_REPO — engine exited $code"
@@ -3238,7 +3311,7 @@ $(engine_tail)"
   if [ "$ahead" = "0" ]; then
     ERROR="parked: $BRANCH has no commits ahead of base (verdict ${verdict:-none})"
     write_status parked "nothing to publish"
-    kata_close_run wontfix "$(plan_title) — $(error_head)"
+    kata_mark_run parked "$(error_head)"
     collect_evidence
     push_evidence "$RUN_ID: parked — nothing ahead of base"
     # A parked run's record is worth as much as a green one's: the evidence
@@ -3340,8 +3413,11 @@ $(engine_tail)"
     # PASS from a NEEDS_ACK the two-move rule signed off without opening the
     # gate receipt — and last what became of it at the merge button.
     write_status done "$PR_URL — $approved_how$fold_tail${MERGE_NOTE:+ — $MERGE_NOTE}"
-    # The run issue on the hub, closed the way the page just was: `done`, with
-    # the merge sha when the sandbox merged and the PR left open when it did not.
+    # The run issue on the hub, marked the way the page just was and then
+    # closed on it: `work.state=done` first — no attention keys, there is
+    # nobody to call — and the close second, with the merge sha when the
+    # sandbox merged and the PR left open when it did not.
+    kata_mark_run done ""
     if [ -n "$MERGED_SHA" ]; then
       kata_close_run done "$(plan_title) — merged $MERGED_SHA"
     else
@@ -3350,7 +3426,8 @@ $(engine_tail)"
   else
     # `ERROR` was set with the outcome, above, so the card could quote it.
     write_status parked "$PR_URL$fold_tail"
-    kata_close_run wontfix "$(plan_title) — $(error_head)"
+    # The draft is left for the operator and so is the issue: marked, open.
+    kata_mark_run parked "$(error_head)"
   fi
   collect_evidence
   push_evidence "$RUN_ID: $outcome — $PR_URL"

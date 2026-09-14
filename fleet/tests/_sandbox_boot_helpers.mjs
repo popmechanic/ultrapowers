@@ -359,6 +359,16 @@ case "$url" in
     say "curl kata close"; printf '%s\\n' "$payload" >>"$FLEET_HOME/kata-close.log"
     emit '{"issue":{"uid":"R7","revision":2,"status":"closed"}}'
     exit \${STUB_KATA_CLOSE_EXIT:-0} ;;
+  *kata.int.exe.xyz/api/v1/projects/*/metadata)
+    # THE RUN ISSUE'S STATE KEY (#964), and BEFORE the issues arm below for the
+    # same reason the close is: its \`issues*\` glob would otherwise swallow this
+    # URL and answer a metadata patch with the export's page. The payload lands
+    # in kata-meta.log, one line per POST, so a leg can read the patch the boot
+    # sent; STUB_KATA_META_EXIT is the curl exit a hub that refuses the write
+    # answers with.
+    say "curl kata metadata"; printf '%s\\n' "$payload" >>"$FLEET_HOME/kata-meta.log"
+    emit '{"issue":{"uid":"R7","revision":3}}'
+    exit \${STUB_KATA_META_EXIT:-0} ;;
   *kata.int.exe.xyz/api/v1/projects/*/issues*)
     # The export's first request. STUB_KATA_ISSUES is the answer;
     # STUB_KATA_ISSUES_EXIT is the curl exit it fails with FROM ITS
@@ -1189,6 +1199,9 @@ export const kataJsonl = (ctx) => lines(kataJsonlRaw(ctx))
 /** `$FLEET_HOME/kata-close.log` — every close the boot POSTed to the run issue,
  *  one parsed body per line, in order (#937). Empty when it made none. */
 export const kataCloses = (ctx) => lines(readLog(ctx, 'kata-close.log')).map((l) => JSON.parse(l))
+/** `$FLEET_HOME/kata-meta.log` — every metadata patch the boot POSTed to the
+ *  run issue, one parsed body per line, in order (#964). Empty when it made none. */
+export const kataMetas = (ctx) => lines(readLog(ctx, 'kata-meta.log')).map((l) => JSON.parse(l))
 /** Every kata URL this run asked for, in order. */
 export const kataUrls = (ctx) =>
   argvLines(ctx, 'curl')

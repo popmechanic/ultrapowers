@@ -21,11 +21,12 @@
  *       canary; the run issue is the one whose `metadata.run` is N, not the
  *       listing's first row; a closed issue older than `--age` is reaped with
  *       `closed_reason` as its state and `closed_at` as its age, a younger one
- *       is not; an open issue is probed at its unit and aged from `updated_at`,
- *       stale from `kata:<project>` at six hours; a run the hub has no project
- *       for is read from the evidence; no `gh api …/contents/…` read names a
- *       run the hub answered; the kept row and the commentless row draw no
- *       hub read; `--dry-run` reads the same and removes nothing
+ *       is not; an open issue with no `work.state` is probed at its unit and
+ *       aged from `updated_at`, stale from `kata:<project>` at six hours; a run
+ *       the hub has no project for is read from the evidence; no
+ *       `gh api …/contents/…` read names a run the hub answered; the kept row
+ *       and the commentless row draw no hub read; `--dry-run` reads the same
+ *       and removes nothing
  *   (b) [M2] the hub is dark: the same fleet with ssh to the hub exiting 255
  *       draws exactly one hub ssh, every row is read from the evidence (tag
  *       first), and the reap decision — the `rm` verbs, the reaped VMs, the
@@ -35,11 +36,14 @@
  *   (c) [M3] a death under the hub: an open issue whose unit is dead draws
  *       the journal read, the two `-X PUT`s on the evidence branch (the page
  *       fetched at the branch, never the tag) and one
- *       `POST /api/v1/projects/<id>/issues/<uid>/actions/close` — `wontfix`,
- *       a message of forty characters or more naming the unit, actor
- *       `janitor`, `Idempotency-Key janitor:run-<N>:death`; a branch with no
- *       page gets the close alone; `--dry-run` reads the unit and writes
- *       nowhere; the closed issue is reaped an hour on by the ordinary rule
+ *       `POST /api/v1/projects/<id>/issues/<uid>/metadata` — body
+ *       `{actor: 'janitor', patch: {work.state failed, work.attention
+ *       needs-human, work.attention_msg the page's own error line}}`, under
+ *       `Idempotency-Key janitor:run-<N>:death`, and no `actions/close` request
+ *       at all (#964: a death marks the issue, it does not close it); a branch
+ *       with no page gets the patch alone; `--dry-run` reads the unit and
+ *       writes nowhere; the marked issue is reaped an hour on by the ordinary
+ *       rule, off the `work.state` the death wrote
  *   (d) [M4] no env file: `hub.dark` names the path, the report opens with
  *       the line, no hub ssh is issued and the rows are read from the
  *       evidence; `kata: null` answers `hub` null and prints no line
@@ -99,6 +103,13 @@ const openIssue = (n, at) => ({
   metadata: { run: n, target: TARGET, base: SHA, closes: [] },
   revision: 1, created_at: hoursAgo(9), updated_at: at
 })
+/** An open run issue carrying its own finish — the flat `work.state` kata
+ *  stores (#960), which is how a park and a death are read off an issue that
+ *  is still open (#964). */
+const markedIssue = (n, state, at) => {
+  const issue = openIssue(n, at)
+  return { ...issue, metadata: { ...issue.metadata, 'work.state': state } }
+}
 /** A task issue, closed long ago, listed FIRST: a janitor that takes the
  *  listing's first row instead of the one whose metadata.run is N reaps on it. */
 const decoyTask = (n) => ({
@@ -114,7 +125,7 @@ const hubAnswer = (json, status = 200) => answer(`${JSON.stringify(json)}\n${sta
  * method and path it reads out of the remote curl line. Every call is
  * recorded with its parsed body (the stdin the transport handed the seam).
  */
-function hubStub ({ projects = [], issues = {}, close = null } = {}) {
+function hubStub ({ projects = [], issues = {}, close = null, patch = null } = {}) {
   const calls = []
   const rule = {
     when: (cmd, argv) => cmd === 'ssh' && argv.includes(HUB_HOST),
@@ -135,6 +146,10 @@ function hubStub ({ projects = [], issues = {}, close = null } = {}) {
       }
       const closing = /^\/api\/v1\/projects\/(\d+)\/issues\/([^/]+)\/actions\/close$/.exec(p)
       if (method === 'POST' && closing && close !== null) return hubAnswer(close(closing[1], closing[2], body))
+      // The metadata route, as kata answers it (measured 2026-09-13): body
+      // `{actor, patch}`, no `If-Match`, 200 with the issue it left behind.
+      const patching = /^\/api\/v1\/projects\/(\d+)\/issues\/([^/]+)\/metadata$/.exec(p)
+      if (method === 'POST' && patching && patch !== null) return hubAnswer(patch(patching[1], patching[2], body))
       return hubAnswer({ status: 404, error: { code: 'not_found' } }, 404)
     }
   }
@@ -413,11 +428,16 @@ const journalText = (n) => `-- journal for fleet-run@${n}.service --\n${vm(n)} r
 const deadUnits = (ns) => vmAnswers(Object.fromEntries(ns.map((n) => [dest(n), (command) =>
   (command.startsWith(JOURNAL_READ) ? answer(journalText(n)) : answer(unitText(DEAD)))])))
 
-/** A hub whose run issues are open, and whose close is recorded and answered. */
+/**
+ * A hub whose run issues are open, and whose metadata patch is recorded and
+ * answered. It answers NO `actions/close`: a close the janitor still issued
+ * would 404 here and be reported as a hub error, which is how this rig tells a
+ * mark from the close it replaced (#964).
+ */
 const deathHub = (ns) => hubStub({
   projects: ns.map(project),
   issues: Object.fromEntries(ns.map((n) => [n, [decoyTask(n), openIssue(n, minutesAgo(1))]])),
-  close: (id, uid, body) => ({ issue: { uid, revision: 2, status: 'closed', closed_reason: body.reason } })
+  patch: (id, uid, body) => ({ issue: { uid, revision: 2, status: 'open', metadata: { ...body.patch } } })
 })
 const deathExec = (ns, pages) => {
   const hub = deathHub(ns)
@@ -448,24 +468,32 @@ const deathExec = (ns, pages) => {
   assert.equal(journal.length, 1, '(c)/M3 and one -X PUT of janitor-journal.txt')
   assert.equal(decode(fieldsOf(journal[0]).content), journalText(R_DEAD), '(c)/M3 carrying the journal read byte for byte')
 
-  const closes = hub.calls.filter((c) => c.method === 'POST')
-  assert.deepEqual(closes.map((c) => c.path), [`/api/v1/projects/${R_DEAD}/issues/${RUN_UID(R_DEAD)}/actions/close`],
-    '(c)/M3 the hub\'s one write is the run issue\'s close, by project id and issue uid')
-  const close = closes[0]
-  assert.equal(close.body.reason, 'wontfix', '(c)/M3 reason wontfix')
-  assert.equal(close.body.actor, 'janitor', '(c)/M3 actor janitor')
-  assert.equal(close.body.retry_protocol, 'close-v1', '(c)/M3 retry_protocol close-v1, as every close carries')
-  assert.equal(close.body.message.length >= 40, true, `(c)/M3 a message of forty characters or more (kata's rule): ${close.body.message}`)
-  assert.equal(close.body.message.includes(`fleet-run@${R_DEAD}.service`) && close.body.message.includes('Result=exit-code'), true,
-    '(c)/M3 naming the unit and its result')
-  assert.equal(close.remote.includes(`-H "Idempotency-Key: janitor:run-${R_DEAD}:death"`), true,
-    `(c)/M3 under the idempotency key janitor:run-${R_DEAD}:death, got ${close.remote}`)
-  assert.equal(close.remote.startsWith(`${REMOTE_PREFIX}POST ${BEARER}`), true, '(c)/M3 the bearer sourced on the hub, as every request')
-  assert.equal(close.argv.some((a) => String(a).includes(CANARY)) || String(close.options?.input ?? '').includes(CANARY), false,
+  const writes = hub.calls.filter((c) => c.method === 'POST')
+  assert.deepEqual(writes.map((c) => c.path), [`/api/v1/projects/${R_DEAD}/issues/${RUN_UID(R_DEAD)}/metadata`],
+    '(c)/M3 the hub\'s one write is a metadata patch of the run issue, by project id and issue uid')
+  assert.deepEqual(hub.calls.filter((c) => c.path.endsWith('/actions/close')), [],
+    '(c)/M3 and no close of any kind: a death marks the issue and leaves it open')
+  const mark = writes[0]
+  assert.deepEqual(mark.body, {
+    actor: 'janitor',
+    patch: {
+      'work.state': 'failed',
+      'work.attention': 'needs-human',
+      'work.attention_msg': body.error
+    }
+  }, '(c)/M3 the body is exactly {actor, patch} over the three flat keys, the message the page\'s own error line')
+  assert.equal(mark.body.patch['work.attention_msg'].includes(`fleet-run@${R_DEAD}.service`) &&
+    mark.body.patch['work.attention_msg'].includes('Result=exit-code'), true,
+    '(c)/M3 which names the unit and its result')
+  assert.equal(mark.remote.includes('If-Match'), false, '(c)/M3 no If-Match rides it: a death is the same patch however often it is driven')
+  assert.equal(mark.remote.includes(`-H "Idempotency-Key: janitor:run-${R_DEAD}:death"`), true,
+    `(c)/M3 under the idempotency key janitor:run-${R_DEAD}:death, got ${mark.remote}`)
+  assert.equal(mark.remote.startsWith(`${REMOTE_PREFIX}POST ${BEARER}`), true, '(c)/M3 the bearer sourced on the hub, as every request')
+  assert.equal(mark.argv.some((a) => String(a).includes(CANARY)) || String(mark.options?.input ?? '').includes(CANARY), false,
     '(c)/M3 and the canary is nowhere')
 
-  assert.deepEqual(result.deaths, [{ vm: vm(R_DEAD), run: R_DEAD, state: 'open', unit: DEAD, applied: true, hubClosed: true }],
-    '(c)/M3 the death is reported: page written, hub closed')
+  assert.deepEqual(result.deaths, [{ vm: vm(R_DEAD), run: R_DEAD, state: 'open', unit: DEAD, applied: true, hubMarked: true }],
+    '(c)/M3 the death is reported: page written, hub marked')
   assert.deepEqual(result.actions, [], '(c)/M3 and the row is in no action: the reap is the next pass\'s')
   assert.deepEqual(exec.mutating(), [], '(c)/M3 no rm')
   assert.equal(renderJanitor(result).split('\n')[0], `death ${vm(R_DEAD)}  run=${R_DEAD} open → failed: ${Object.entries(DEAD).map(([k, v]) => `${k}=${v}`).join(' ')} — ${evidenceBranchFor(R_DEAD)} and the hub`,
@@ -473,15 +501,15 @@ const deathExec = (ns, pages) => {
 }
 
 {
-  // The same death with no page anywhere: the close alone.
+  // The same death with no page anywhere: the mark alone.
   const { exec, hub } = deathExec([R_DEAD_BARE], {})
   const result = await pass(exec)
   assert.deepEqual(puts(exec), [], '(c)/M3 a branch with no page draws no PUT')
   assert.deepEqual(fleetSsh(exec).map((c) => c.command.startsWith(UNIT_READ)), [true], '(c)/M3 the unit read and no journal read')
   assert.deepEqual(hub.calls.filter((c) => c.method === 'POST').map((c) => c.path),
-    [`/api/v1/projects/${R_DEAD_BARE}/issues/${RUN_UID(R_DEAD_BARE)}/actions/close`], '(c)/M3 the close still lands')
-  assert.deepEqual(result.deaths, [{ vm: vm(R_DEAD_BARE), run: R_DEAD_BARE, state: 'open', unit: DEAD, applied: false, hubClosed: true }],
-    '(c)/M3 reported as applied false — no page was written — and hubClosed true')
+    [`/api/v1/projects/${R_DEAD_BARE}/issues/${RUN_UID(R_DEAD_BARE)}/metadata`], '(c)/M3 the mark still lands')
+  assert.deepEqual(result.deaths, [{ vm: vm(R_DEAD_BARE), run: R_DEAD_BARE, state: 'open', unit: DEAD, applied: false, hubMarked: true }],
+    '(c)/M3 reported as applied false — no page was written — and hubMarked true')
 }
 
 {
@@ -492,21 +520,22 @@ const deathExec = (ns, pages) => {
   assert.deepEqual(puts(exec), [], '(c)/M3 and issues no PUT')
   assert.deepEqual(hub.calls.filter((c) => c.method !== 'GET'), [], '(c)/M3 and no hub write')
   assert.deepEqual(contentsReads(exec), [], '(c)/M3 and does not even fetch the page it would not write')
-  assert.deepEqual(result.deaths, [{ vm: vm(R_DEAD), run: R_DEAD, state: 'open', unit: DEAD, applied: false, hubClosed: false }],
+  assert.deepEqual(result.deaths, [{ vm: vm(R_DEAD), run: R_DEAD, state: 'open', unit: DEAD, applied: false, hubMarked: false }],
     '(c)/M3 the death is reported unapplied')
   assert.equal(renderJanitor(result).split('\n')[0].startsWith(`would write death ${vm(R_DEAD)}  run=${R_DEAD} `), true,
     '(c)/M3 as `would write death`')
 }
 
 {
-  // An hour on, the hub says the issue is closed wontfix as of the death: the ordinary reap.
-  const hub = hubStub({ projects: [project(R_DEAD)], issues: { [R_DEAD]: [decoyTask(R_DEAD), closedIssue(R_DEAD, 'wontfix', NOW_ISO)] } })
+  // An hour on, the hub's row is the issue the death marked: still open, its
+  // `work.state` `failed` as of the death — the ordinary reap, off the mark.
+  const hub = hubStub({ projects: [project(R_DEAD)], issues: { [R_DEAD]: [decoyTask(R_DEAD), markedIssue(R_DEAD, 'failed', NOW_ISO)] } })
   const exec = newExec([...lsRules([row(R_DEAD)]), hub.rule, ghRule({})])
   const later = await janitor({ argv: [], exec, config: CONFIG, now: () => laterBy(1.5), kataEnvPath: ENV_PATH })
-  assert.deepEqual(exec.mutating(), [`rm ${vm(R_DEAD)} --json`], '(c)/M3 the closed issue is reaped an hour on, by the ordinary rule')
-  assert.deepEqual(later.actions.map((a) => [a.run, a.state, a.updatedAt]), [[R_DEAD, 'wontfix', NOW_ISO]],
-    '(c)/M3 as wontfix, aged from the close')
-  assert.deepEqual(fleetSsh(exec), [], '(c)/M3 and a closed issue draws no unit read')
+  assert.deepEqual(exec.mutating(), [`rm ${vm(R_DEAD)} --json`], '(c)/M3 the marked issue is reaped an hour on, by the ordinary rule')
+  assert.deepEqual(later.actions.map((a) => [a.run, a.state, a.updatedAt]), [[R_DEAD, 'failed', NOW_ISO]],
+    '(c)/M3 as failed, aged from the mark')
+  assert.deepEqual(fleetSsh(exec), [], '(c)/M3 and a marked issue draws no unit read: the record already says how the run ended')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

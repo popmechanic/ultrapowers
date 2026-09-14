@@ -86,8 +86,9 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     kata project, then `{"kind":"event", …}` per envelope of its event log. Exported at every
     transition to a temporary name and moved into place, so a fetch that fails leaves the last whole
     export exactly as it was — the hub is archived and the run's state outlives it here. The last
-    export carries the run issue's own `issue.closed` (the boot's, `sandbox:run-<N>`, `done` or
-    `wontfix` as the run issue's page ended — #937) beside the task closes the engine made.
+    export carries the run issue's own terminal write (the boot's, `sandbox:run-<N>`: the
+    `issue.closed` of a run that ended `done` — #937 — or the `work.state` patch of one that
+    parked or failed and stays open — #964) beside the task closes the engine made.
     `exams/` is where publish moves the run's reserved exam directories — `tests/exams/<slug>/`
     and `fleet/tests/exams/<slug>/`, under those same paths, byte for byte — off
     `ultra/integration-run-<N>` and onto the record, so the fold's suite still runs them and the
@@ -288,11 +289,19 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
     message, evidence, retry_protocol: "close-v1"}`. A run whose page ends `done` closes `done`
     with `{type: "pr", url}` and, when the sandbox merged, `{type: "commit", sha: <merge sha>}`
     as evidence, the message the plan's H1 and the merge sha (40+ characters — kata refuses a
-    shorter `done`); a run whose page ends `parked` or `failed` closes that run issue `wontfix` with no evidence
-    and the page's `error`. The task issues are the engine's to close; the boot closes only this
-    one, and never at the ping park, where the hub was never reached. A close the hub refuses is
-    one `kata:write-failed` event (`what` `close`, `uid`, `detail` naming the curl exit) on the
-    record, and the run publishes and merges exactly as it would have.
+    shorter `done`), and it writes `work.state` `done` first (see below). A run whose page ends
+    `parked` or `failed` makes no close at all: it leaves that run issue open and marked instead
+    (#964), for the operator to resolve and close by hand. The marking is one
+    `POST …/projects/<project id>/issues/<run uid>/metadata` under
+    `Idempotency-Key: run-<N>:run:park` with NO `If-Match` and the body
+    `{actor: "sandbox:run-<N>", patch: {…}}`, whose patch is the three flat keys `work.state`
+    (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg` (the first
+    line of the page's `error`); a `done` run's patch is the single key `work.state`, with no
+    attention keys and the close after it. The task issues are the engine's to close; the boot
+    closes only this one, and never at the ping park, where the hub was never reached. A close or
+    a patch the hub refuses is one `kata:write-failed` event (`what` `close` or `metadata`, `uid`,
+    `detail` naming the curl exit) on the record, and the run publishes and merges exactly as it
+    would have.
   - status server: `systemd-run --user --unit=fleet-status -p Restart=on-failure -- busybox httpd -f -p 8000 -h /home/exedev/www`
     (skip when the unit is already active). exe.dev proxies port 8000 at `https://<vm>.exe.xyz/`.
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 --
@@ -496,8 +505,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   three writes go through the non-fatal path — a refusal is one `kata:write-failed` whose `what` is
   `label`, `metadata` or `comment`, and the other two still go out — and a task is marked at most
   once, a wave's marking ahead of the end-of-run sweep's.
-  `wontfix` is never the engine's word about a task — it is the run issue's own park (#940) and otherwise a person's decision,
+  `wontfix` is never the engine's word about a task — it is a person's decision (#940, #964),
   taken on the issue this leaves open for them.
+  The RUN issue is not the engine's at all, and since #964 it is nobody's to close automatically:
+  a run whose page ends `parked` or `failed` leaves that issue open, marked by the boot with
+  `work.state` (`parked` or `failed`), `work.attention` (`needs-human`) and `work.attention_msg`
+  (the page's error head) — the three flat keys the boot-script bullet above spells — and the
+  operator resolves it and closes it by hand. Only a run that ended `done` is closed, by the boot.
 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"wave":"<n or null>","state":"queued|examining|implementing|proving|reviewing|fixing|folded|failed","role":"<worker label or null>","lastProof":"{cmd, exit, ts} or null","park":"<detail or null>","attention":"{value, msg, ts} or null"}}}`
   — the SAME bytes are served at `/status.json` and committed to
   `.ultrapowers/runs/<N>/status.json` on `ultra/evidence-run-<N>` at every transition **and, while
@@ -614,8 +628,13 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   needs it, `GET /api/v1/projects?limit=1000`, matched on `name` against the run's project
   `<owner>-<repo>-run-<N>` (kata addresses a project by integer `id`; a name in the path is a 400),
   then `GET /api/v1/projects/<id>/issues?limit=1000`, in which the run issue is the one whose
-  `metadata.run` is N — that run issue `closed` is a finished run, its `closed_reason` (`done`|`wontfix`)
-  the state and its `closed_at` the age; `open` is a run in flight, aged from `updated_at` →
+  `metadata.run` is N — that run issue `closed`, or one still `open` whose metadata carries a
+  `work.state` of `done|parked|failed`, is a finished run:
+  a closed run issue's `closed_reason` (`done`|`wontfix`) is the state and its `closed_at` the age,
+  a marked open one's `work.state` is the state and its `updated_at` the age (kata stores the dotted
+  key flat, so it is read as `metadata["work.state"]` and never as `metadata.work.state`), and a
+  parked run — whose issue stays open for the operator to read — is reaped an hour on like any
+  other; an `open` issue with no such key is a run in flight, aged from `updated_at` →
   `rm <vm> --json` for a finished run older than 1 h. The hub is reached exactly as the launcher
   reaches it, `fleet/kata-client.mjs`'s `sshTransport`: `ssh <KATA_URL host>` running `curl` against
   `localhost:8000`, the bearer sourced from `/etc/kata/kata.env` ON the hub, the laptop's argv
@@ -638,8 +657,11 @@ was about is two tags, `ultra/plan/run-<N>` and `ultra/evidence/run-<N>`.
   cross-checked at its unit (`ssh <ssh_dest> "… systemctl --user show fleet-run@<N>.service …"`, the
   one ssh into a fleet VM); a dead unit is written as the death — the journal and the page as
   `failed`, both `gh api -X PUT` on the evidence branch when it has a page, and, for a row the hub
-  answered, one `wontfix` close of the run issue under `Idempotency-Key janitor:run-<N>:death` with a
-  message of forty characters or more — and reaped an hour later by the ordinary rule. No
+  answered, one `POST …/issues/<run uid>/metadata` patching the run issue's three keys, `work.state`
+  `failed`, `work.attention` `needs-human` and `work.attention_msg` the death's own line, under
+  `Idempotency-Key janitor:run-<N>:death` — the run issue left open and never a `wontfix` close, a
+  close carrying a verified outcome and a death being a run nobody has read yet — and reaped an hour
+  later by the ordinary rule, off the `work.state` the death itself wrote. No
   `created_at`, no clone, no `git`. Run by `fleet/launch.mjs` before every launch and by hand after
   a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB

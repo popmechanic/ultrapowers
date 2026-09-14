@@ -21,11 +21,18 @@
  * addresses a project by integer `id` and a name in the path is a 400 — and
  * that project's issues, `GET /api/v1/projects/<id>/issues?limit=1000`, in
  * which the run issue is the one whose `metadata.run` is N. Its `status` is
- * the verdict: `closed` is a finished run, `closed_reason` (`done`|`wontfix`)
- * its state and `closed_at` its age; `open` is a run in flight, aged from
- * `updated_at`. The sandbox closes the run issue at publish (#937) and the
- * janitor closes it at a death (below), so a row the hub says is open and
- * whose unit is alive is a run still going.
+ * the first half of the verdict: `closed` is a finished run, `closed_reason`
+ * (`done`|`wontfix`) its state and `closed_at` its age. The other half is the
+ * issue's own `work.state` (#964): an OPEN issue whose metadata carries
+ * `done`, `parked` or `failed` there is a finished run too, that value its
+ * state and `updated_at` its age — a parked run's issue stays open for the
+ * operator to read, and its VM is ballast all the same. Kata stores a dotted
+ * key flat (#960), so it is read as `metadata['work.state']` and never as
+ * `metadata.work.state`. An open issue with no such key is a run in flight,
+ * aged from `updated_at`. The sandbox closes the run issue at publish (#937)
+ * and marks it at a park, and the janitor marks it at a death (below), so a
+ * row the hub says is open, unmarked, and whose unit is alive is a run still
+ * going.
  *
  * The fallback. A hub that cannot be read — the env file absent, ssh or curl
  * failing, any answer that is not an answer — darkens the pass: the first such
@@ -77,14 +84,19 @@
  * to `.ultrapowers/runs/<N>/janitor-journal.txt`, then the page itself back
  * with `state` `failed`, both `gh api -X PUT` on the contents API against the
  * evidence BRANCH, when the branch has a page (a hub-read row's page is read
- * then, and only then); and, when the hub answered the row, one `wontfix`
- * close of the run issue under the idempotency key `janitor:run-<N>:death`,
- * so the hub's record says what the page says. The janitor still clones
- * nothing and runs no `git`. Because the close and the page are dated now, the
- * reap does not fire in the same pass: the hour before the `rm` is the
- * operator's window, and the record already holds the journal. A unit that is
- * alive, or that cannot be read at all — a dark VM, an ssh that times out, an
- * empty answer — is left exactly as it was.
+ * then, and only then); and, when the hub answered the row, one metadata patch
+ * of the run issue — `work.state` `failed`, `work.attention` `needs-human`,
+ * `work.attention_msg` the death's own line — under the idempotency key
+ * `janitor:run-<N>:death`, so the hub's record says what the page says. The
+ * issue itself is left OPEN: a close carries a verified outcome and a death is
+ * a run nobody has read yet, so the marking is the record and the operator's
+ * close is the close. The janitor still clones nothing and runs no `git`.
+ * Because the patch and the page are dated now, the reap does not fire in the
+ * same pass: the hour before the `rm` is the operator's window, and the record
+ * already holds the journal — the next pass reads `work.state` `failed` off
+ * that same issue and reaps by the ordinary rule. A unit that is alive, or that
+ * cannot be read at all — a dark VM, an ssh that times out, an empty answer —
+ * is left exactly as it was.
  *
  * The reap is the only removal. The janitor merges nothing — an approved run
  * merges its own pull request from the sandbox — and it deletes no branch and
@@ -117,7 +129,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { makeKataClient, sshTransport } from './kata-client.mjs'
+import { KataError, makeKataClient, sshTransport } from './kata-client.mjs'
 import {
   KATA_HUB_FIX,
   Refusal,
@@ -148,7 +160,11 @@ export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--co
 
 export const usage = () => USAGE
 
-/** Page states that mean the run is over and its VM is ballast. */
+/**
+ * The states that mean the run is over and its VM is ballast — the same three
+ * words wherever a run's finish is read: the status page's `state`, and the run
+ * issue's own `work.state` (#964).
+ */
 export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
 /** Page states that claim the run is still in flight — the ones worth a probe. */
 export const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
@@ -165,8 +181,21 @@ export const STALE_MS = 6 * 60 * 60 * 1000
 export const NEVER_REAP = 'do not reap'
 /** The actor every hub write of the janitor's carries. */
 export const HUB_ACTOR = 'janitor'
-/** The idempotency key of the one hub write: a re-driven death is the same close. */
+/** The idempotency key of the one hub write: a re-driven death is the same patch. */
 export const deathKeyFor = (run) => `janitor:run-${run}:death`
+
+/**
+ * The three keys a run's issue carries about itself, spelled as kata stores
+ * them: FLAT, dotted name and all (#960). `metadata.work.state` reads nothing —
+ * there is no `work` object — so every read and every write here goes through
+ * `metadata['work.state']`.
+ */
+export const STATE_KEY = 'work.state'
+export const ATTENTION_KEY = 'work.attention'
+export const ATTENTION_MSG_KEY = 'work.attention_msg'
+/** What a death writes into those keys: the state, and the hand it raises. */
+export const DEATH_STATE = 'failed'
+export const DEATH_ATTENTION = 'needs-human'
 
 // ── The hub: the run's state, asked of kata ─────────────────────────────────
 
@@ -194,33 +223,84 @@ async function openHub ({ exec, kata, kataEnvPath }) {
   if (host === null) {
     return { client: null, host: null, dark: `${envPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}` }
   }
+  const transport = sshTransport({ sshHost: host, exec })
   return {
-    client: makeKataClient({ transport: sshTransport({ sshHost: host, exec }), actor: HUB_ACTOR }),
+    client: { ...makeKataClient({ transport, actor: HUB_ACTOR }), patchMetadata: metadataPatch(transport) },
     host,
     dark: null
   }
+}
+
+/** One issue's metadata, as kata's API addresses it. */
+const metadataPath = (projectId, uid) => `/api/v1/projects/${projectId}/issues/${uid}/metadata`
+
+/**
+ * The metadata patch the janitor writes, beside the client's other methods and
+ * over the same ssh-curl seam: one `POST …/issues/<uid>/metadata`, body
+ * `{actor, patch}`, and the `Idempotency-Key` the death rides — no `If-Match`,
+ * which is what separates it from the client's own four-argument
+ * `patchMetadata` (the engine's, whose revision is a claim about what it read).
+ * The janitor reads the hub once a pass and a death is the same three keys
+ * however often it is driven, so a revision it held would only turn the second
+ * pass into a 412. `revision` and `idempotencyKey` are the fourth and fifth
+ * arguments precisely so a pass handed the LAUNCHER's plain kata client — which
+ * is this method's four-argument namesake — still writes the same three keys,
+ * under its `If-Match` instead of under the key.
+ */
+const metadataPatch = (transport) => async (projectId, uid, patch, _revision, idempotencyKey) => {
+  const path = metadataPath(projectId, uid)
+  const res = await transport.request({
+    method: 'POST',
+    path,
+    headers: idempotencyKey === undefined ? {} : { 'Idempotency-Key': String(idempotencyKey) },
+    body: { actor: HUB_ACTOR, patch }
+  })
+  const status = res?.status
+  if (!(status >= 200 && status < 300)) {
+    throw new KataError({ method: 'POST', path, status, body: res?.body })
+  }
+  return res?.json ?? null
 }
 
 /** The first line of what went wrong, for a report line and nothing longer. */
 const reasonOf = (error) => String(error?.message ?? error).split('\n')[0].trim()
 
 /**
+ * The finish an OPEN issue carries about itself, or null when it carries none:
+ * `work.state`, read flat, and only when it names one of the three states that
+ * mean the run is over. Anything else there — a run in flight's own word, a
+ * value nobody here knows — is not a finish, and the row is read as open.
+ */
+const markedFinishOf = (issue) => {
+  const value = issue?.metadata?.[STATE_KEY]
+  return typeof value === 'string' && REAPABLE_STATES.includes(value) ? value : null
+}
+
+/**
  * What the hub says about one run, as the row loop reads it: `finished`,
  * `live`, `state`, `updatedAt`, `from`, and the project and issue a death
- * would close. `closed_at` is the age of a finished run and `updated_at` of
- * one in flight — a closed issue's `updated_at` moves with later comments,
- * and the reap's clock is the close.
+ * would mark. A run is finished when its issue is `closed` OR when an open
+ * issue's `work.state` says so — the park is the case that needs the second
+ * reading, since a parked run's issue stays open and its VM is ballast all the
+ * same (#964). `closed_at` is the age of a closed issue and `updated_at` of
+ * every other row — a closed issue's `updated_at` moves with later comments,
+ * and the reap's clock is the close; a marked issue's is the mark, which is
+ * the last thing that touched it.
  */
 const readingOfIssue = (project, issue) => {
   const closed = issue.status === 'closed'
+  const marked = closed ? null : markedFinishOf(issue)
   const updatedAt = closed
     ? (typeof issue.closed_at === 'string' ? issue.closed_at : issue.updated_at)
     : issue.updated_at
   return {
     source: 'hub',
-    finished: closed,
-    live: issue.status === 'open',
-    state: closed ? String(issue.closed_reason ?? 'closed') : String(issue.status ?? 'open'),
+    finished: closed || marked !== null,
+    // A marked run is not in flight, so no unit is probed for it: the record
+    // already says how it ended, and the probe is only ever a cross-check of a
+    // record that claims the run is still going.
+    live: issue.status === 'open' && marked === null,
+    state: closed ? String(issue.closed_reason ?? 'closed') : (marked ?? String(issue.status ?? 'open')),
     updatedAt: typeof updatedAt === 'string' ? updatedAt : null,
     from: `kata:${project.name}`,
     project,
@@ -434,18 +514,18 @@ const deathError = (run, unit, state, said) =>
  * The death, written: the journal first — so the page's transition is the
  * branch's last commit, as the sandbox's own transitions are — then the page,
  * which is the page as read with three cells changed, then, for a row the hub
- * answered, the run issue's close. A hub-read row's page is fetched here, off
- * the evidence BRANCH, since the death is written where the sandbox writes;
+ * answered, the run issue's three keys. A hub-read row's page is fetched here,
+ * off the evidence BRANCH, since the death is written where the sandbox writes;
  * a branch with no page (a boot that never committed) gets no PUT and the
- * close alone. Nothing retries a failed PUT: a 409/422 means the sandbox
+ * marking alone. Nothing retries a failed PUT: a 409/422 means the sandbox
  * pushed between the read and the write, and the next pass reads the fresh
- * record. A close the hub refuses is reported on the entry, never thrown.
+ * record. A patch the hub refuses is reported on the entry, never thrown.
  */
 async function writeDeath ({ exec, dryRun, row, run, target, reading, unit, at, hub }) {
   const fromHub = reading.source === 'hub'
   const said = fromHub ? 'hub' : 'page'
   const death = { vm: row.name, run, state: reading.state, unit, applied: false }
-  if (fromHub) death.hubClosed = false
+  if (fromHub) death.hubMarked = false
   // `--dry-run` reads — the unit read above was one — and writes nothing.
   if (dryRun) return death
 
@@ -475,13 +555,23 @@ async function writeDeath ({ exec, dryRun, row, run, target, reading, unit, at, 
   }
 
   if (fromHub) {
+    // The run issue is MARKED, not closed: a close carries a verified outcome
+    // and this one is nobody's yet, so the record reads `failed` and raises a
+    // hand — the same three keys, spelled the same flat way, that the sandbox
+    // writes at a park.
     try {
-      await hub.client.close(reading.project.id, reading.issue.uid, {
-        reason: 'wontfix',
-        message: deathError(run, unit, reading.state, said),
-        idempotencyKey: deathKeyFor(run)
-      })
-      death.hubClosed = true
+      await hub.client.patchMetadata(
+        reading.project.id,
+        reading.issue.uid,
+        {
+          [STATE_KEY]: DEATH_STATE,
+          [ATTENTION_KEY]: DEATH_ATTENTION,
+          [ATTENTION_MSG_KEY]: deathError(run, unit, reading.state, said)
+        },
+        reading.issue.revision,
+        deathKeyFor(run)
+      )
+      death.hubMarked = true
     } catch (error) {
       death.hubError = reasonOf(error)
     }
@@ -696,11 +786,11 @@ export async function janitor ({
 const renderAction = (a, dryRun) =>
   `${dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}`
 
-/** A hub-read death also names the hub: closed, would be closed, or refused. */
+/** A hub-read death also names the hub: marked, would be marked, or refused. */
 const renderDeathHub = (d, dryRun) => {
-  if (d.hubClosed === undefined) return ''
-  if (d.hubClosed || dryRun) return ' and the hub'
-  return ` (hub not closed: ${d.hubError ?? 'unknown'})`
+  if (d.hubMarked === undefined) return ''
+  if (d.hubMarked || dryRun) return ' and the hub'
+  return ` (hub not marked: ${d.hubError ?? 'unknown'})`
 }
 
 const renderDeath = (d, dryRun) =>
