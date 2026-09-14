@@ -1,0 +1,534 @@
+{
+  "ok": true,
+  "stamp": "run-127",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-127"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "4 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The implementer runs its own proofs, not the suite",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/roles/fix.md",
+          "fleet/roles/implementer.md",
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`PROOFS:` \u2014 the implementer's and fix round's prompt block, `\\nPROOFS:\\n- Run: <cmd>\\n- Check: <cmd>` lines in plan order"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "One reviewer, one fix round, no critic",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/roles/README.md",
+          "fleet/roles/critic.md",
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs",
+          "fleet/tests/test_run_engine_infra_retry.mjs",
+          "fleet/tests/test_run_engine_joined_proofs.mjs",
+          "fleet/tests/test_run_engine_proof_runs.mjs",
+          "fleet/tests/test_run_engine_review_economy.mjs",
+          "skills/ultrapowers/references/report-format.md"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "title": "The VM is sized to the plan, and the width is the plan's",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/launch.mjs",
+          "fleet/run-main.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`vmSizeFor(widestWave, cap) -> { cpu: string, memory: string }` \u2014 exported from `fleet/launch.mjs`, pure, the formula of M1",
+            "`widthOf(args) -> number` \u2014 exported from `fleet/run-main.mjs`, `args.width` when a positive integer, else `12`"
+          ]
+        }
+      },
+      {
+        "id": "4",
+        "title": "The overlap knob is gone from the boot chain",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/RUNBOOK.md",
+          "fleet/lobby.mjs",
+          "fleet/sandbox-boot.sh"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The implementer runs its own proofs, not the suite",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_engine_own_proofs.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`PROOFS:` \u2014 the implementer's and fix round's prompt block, `\\nPROOFS:\\n- Run: <cmd>\\n- Check: <cmd>` lines in plan order"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_own_proofs.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_own_proofs.mjs",
+          "proofRuns": [
+            "test \"$(grep -c -e 'capWorkerParallelism' -e 'sharesRunWideCmd' -e 'runWideSharers' -e 'implTestCmdLine' fleet/run-engine.mjs)\" = 0",
+            "test \"$(grep -c 'TEST COMMAND' fleet/roles/implementer.md fleet/roles/fix.md | awk -F: '{s+=$2} END {print s}')\" = 0",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_own_proofs.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_own_proofs.mjs": "fleet/tests/test_run_engine_own_proofs.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/lobby.mjs",
+              "fleet/roles/README.md",
+              "fleet/roles/critic.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_launch_size.mjs",
+              "fleet/tests/test_run_engine_infra_retry.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_one_of_each.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [
+              "`PROOFS:` \u2014 the implementer's and fix round's prompt block, `\\nPROOFS:\\n- Run: <cmd>\\n- Check: <cmd>` lines in plan order"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "One reviewer, one fix round, no critic",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/README.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_engine_infra_retry.mjs",
+            "fleet/tests/test_run_engine_joined_proofs.mjs",
+            "fleet/tests/test_run_engine_one_of_each.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/roles/README.md",
+            "fleet/roles/critic.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_engine_infra_retry.mjs",
+            "fleet/tests/test_run_engine_joined_proofs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs",
+            "skills/ultrapowers/references/report-format.md"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_one_of_each.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_one_of_each.mjs",
+          "proofRuns": [
+            "test ! -e fleet/roles/critic.md && test \"$(grep -c -e 'runCritic' -e \"roles.critic\" -e 'pairRounds' -e 'r2MarginalBlocking' fleet/run-engine.mjs)\" = 0",
+            "test \"$(grep -c 'critic' fleet/roles/README.md)\" = 0",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_joined_proofs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_infra_retry.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_one_of_each.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/roles/README.md",
+              "fleet/roles/critic.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/tests/test_run_engine_infra_retry.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_one_of_each.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "deletes": [
+              "fleet/roles/critic.md"
+            ],
+            "guards": [
+              "fleet/tests/test_run_engine_one_of_each.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_one_of_each.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_one_of_each.mjs": "fleet/tests/test_run_engine_one_of_each.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_one_of_each.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/lobby.mjs",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_launch_size.mjs",
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "3",
+          "title": "The VM is sized to the plan, and the width is the plan's",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`vmSizeFor(widestWave, cap) -> { cpu: string, memory: string }` \u2014 exported from `fleet/launch.mjs`, pure, the formula of M1",
+              "`widthOf(args) -> number` \u2014 exported from `fleet/run-main.mjs`, `args.width` when a positive integer, else `12`"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/launch.mjs",
+            "fleet/run-main.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_size.mjs",
+          "proofRuns": [
+            "node fleet/launch.mjs --help 2>&1 | grep -q -- '--cpu <n>' && node fleet/launch.mjs --help 2>&1 | grep -q -- '--memory <n>GB'",
+            "test \"$(grep -c 'WIDTH = 12' fleet/run-main.mjs)\" = 0 && grep -q 'boundedParallel(widthOf(' fleet/run-main.mjs",
+            "sed -n '/^## One-time setup/,/^## Per run/p' fleet/RUNBOOK.md | tr '\\n' ' ' | grep -q -i 'ceiling'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/run-main.mjs",
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_size.mjs": "fleet/tests/test_launch_size.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/lobby.mjs",
+              "fleet/roles/README.md",
+              "fleet/roles/critic.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_run_engine_infra_retry.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_one_of_each.mjs",
+              "fleet/tests/test_run_engine_own_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [
+              "`vmSizeFor(widestWave, cap) -> { cpu: string, memory: string }` \u2014 exported from `fleet/launch.mjs`, pure, the formula of M1",
+              "`widthOf(args) -> number` \u2014 exported from `fleet/run-main.mjs`, `args.width` when a positive integer, else `12`"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "4",
+          "title": "The overlap knob is gone from the boot chain",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/lobby.mjs",
+            "fleet/sandbox-boot.sh"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/RUNBOOK.md",
+            "fleet/lobby.mjs",
+            "fleet/sandbox-boot.sh"
+          ],
+          "commutes": [],
+          "proofTests": [],
+          "testCmd": null,
+          "proofRuns": [
+            "test \"$(grep -c -i overlap fleet/sandbox-boot.sh)\" = 0",
+            "test \"$(grep -c -e '--overlap' -e 'overlap=' fleet/CONTRACT.md fleet/RUNBOOK.md | awk -F: '{s+=$2} END {print s}')\" = 0",
+            "bash -n fleet/sandbox-boot.sh",
+            "node fleet/tests/test_sandbox_boot_viz.mjs | grep -q 'ALL TESTS PASSED'",
+            "test \"$(grep -il overlap fleet/*.sh fleet/*.mjs | tr '\\n' ' ')\" = 'fleet/run-engine.mjs ' && test \"$(grep -ic overlap fleet/run-engine.mjs)\" = 1 && grep -i overlap fleet/run-engine.mjs | grep -q 'nobody planned for'"
+          ],
+          "proofGuards": [],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/lobby.mjs",
+              "fleet/sandbox-boot.sh"
+            ],
+            "deletes": [],
+            "guards": [],
+            "proofTests": [],
+            "landing": {},
+            "driverOwned": [],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/RUNBOOK.md",
+              "fleet/launch.mjs",
+              "fleet/roles/README.md",
+              "fleet/roles/critic.md",
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/tests/test_launch_size.mjs",
+              "fleet/tests/test_run_engine_infra_retry.mjs",
+              "fleet/tests/test_run_engine_joined_proofs.mjs",
+              "fleet/tests/test_run_engine_one_of_each.mjs",
+              "fleet/tests/test_run_engine_own_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs",
+              "skills/ultrapowers/references/report-format.md"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "4 parallel tasks"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The examiner, the resolver, the reconciler, the fold, the publish and the compiler are untouched: `fleet/roles/examiner.md`, `fleet/roles/reconcile.md`, `fleet/roles/resolver.md`, `fleet/publish-fold.mjs`, `fleet/run-waves.mjs`, `fleet/run-worker.mjs`, `fleet/confine-hook.mjs`, everything under `skills/ultrapowers/scripts/` and `skills/ultrapowers/kernel/` are byte-identical to BASE.\n- The driver still executes every Proof `Run:`, every exam and every Global Constraints `Check:` itself, in the task's clone and on the adopted tree, and records them as `driver:proof-run`, `driver:exam-run`, `driver:check-run` and `driver:integrated-run` exactly as at BASE: those are the acceptance, and nothing here moves them.\n- Every top-level key `report.json` carries at BASE is still present with the same type after this run (`completenessFindings` stays, as an empty list; `reviewEconomy` stays, with two keys fewer), so `gate_check.py`, `ultra_gate.py`, the PR card in `fleet/sandbox-boot.sh` and the viz projection read the same shape.\n- No role file shouts: a new sentence in `fleet/roles/*.md` carries no all-caps imperative.\n- `fleet/sandbox-boot.sh` changes only where Task 4 names: every line its diff against BASE adds or removes carries the word `overlap` or `OVERLAP`.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md fleet/publish-fold.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs skills/ultrapowers/scripts skills/ultrapowers/kernel",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git diff $ULTRA_BASE -- fleet/sandbox-boot.sh | grep '^[-+]' | grep -v '^+++\\|^---' | grep -v -i overlap | wc -l | tr -d ' ')\" = 0",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-127/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-127/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-127/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-127/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
