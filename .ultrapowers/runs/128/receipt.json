@@ -1,0 +1,276 @@
+{
+  "ok": true,
+  "stamp": "run-128",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-128"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The implementer runs its own proofs, not the suite",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/roles/fix.md",
+          "fleet/roles/implementer.md",
+          "fleet/run-engine.mjs",
+          "fleet/run-main.mjs",
+          "fleet/tests/test_run_engine_proof_runs.mjs",
+          "fleet/tests/test_run_engine_review_economy.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "`PROOFS:` \u2014 the implementer's and fix round's prompt block, `\\nPROOFS:\\n- Run: <cmd>\\n- Check: <cmd>` lines in plan order"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "A bumped launch files its sheets under the number it got",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/launch.mjs",
+          "fleet/tests/test_launch_size.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The implementer runs its own proofs, not the suite",
+          "files": [
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_engine_own_proofs.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "`PROOFS:` \u2014 the implementer's and fix round's prompt block, `\\nPROOFS:\\n- Run: <cmd>\\n- Check: <cmd>` lines in plan order"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/roles/fix.md",
+            "fleet/roles/implementer.md",
+            "fleet/run-engine.mjs",
+            "fleet/run-main.mjs",
+            "fleet/tests/test_run_engine_proof_runs.mjs",
+            "fleet/tests/test_run_engine_review_economy.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_run_engine_own_proofs.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_run_engine_own_proofs.mjs",
+          "proofRuns": [
+            "test \"$(grep -c -e 'capWorkerParallelism' -e 'sharesRunWideCmd' -e 'runWideSharers' -e 'implTestCmdLine' fleet/run-engine.mjs)\" = 0",
+            "test \"$(grep -c 'TEST COMMAND' fleet/roles/implementer.md fleet/roles/fix.md | awk -F: '{s+=$2} END {print s}')\" = 0",
+            "node fleet/tests/test_run_engine_proof_runs.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_run_engine_review_economy.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_run_engine_own_proofs.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/tests/test_run_engine_own_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_run_engine_own_proofs.mjs": "fleet/tests/test_run_engine_own_proofs.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_run_engine_own_proofs.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_bump.mjs",
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "produces": [
+              "`PROOFS:` \u2014 the implementer's and fix round's prompt block, `\\nPROOFS:\\n- Run: <cmd>\\n- Check: <cmd>` lines in plan order"
+            ],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "A bumped launch files its sheets under the number it got",
+          "files": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_bump.mjs",
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "lean",
+          "writes": [
+            "fleet/launch.mjs",
+            "fleet/tests/test_launch_size.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_launch_bump.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_launch_bump.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_launch_bump.mjs | grep -q 'ALL TESTS PASSED'",
+            "node fleet/tests/test_launch_size.mjs | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_launch_bump.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/launch.mjs",
+              "fleet/tests/test_launch_bump.mjs",
+              "fleet/tests/test_launch_size.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_launch_bump.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_launch_bump.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_launch_bump.mjs": "fleet/tests/test_launch_bump.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_launch_bump.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/roles/fix.md",
+              "fleet/roles/implementer.md",
+              "fleet/run-engine.mjs",
+              "fleet/run-main.mjs",
+              "fleet/tests/test_run_engine_own_proofs.mjs",
+              "fleet/tests/test_run_engine_proof_runs.mjs",
+              "fleet/tests/test_run_engine_review_economy.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 Its"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The examiner, the reviewer, the resolver, the reconciler, the fold, the publish, the boot, the lobby and the compiler are untouched: `fleet/roles/examiner.md`, `fleet/roles/reviewer.md`, `fleet/roles/reconcile.md`, `fleet/roles/resolver.md`, `fleet/publish-fold.mjs`, `fleet/sandbox-boot.sh`, `fleet/lobby.mjs`, `fleet/run-waves.mjs`, `fleet/run-worker.mjs`, `fleet/confine-hook.mjs`, everything under `skills/ultrapowers/scripts/` and `skills/ultrapowers/kernel/` are byte-identical to BASE.\n- The driver still executes every Proof `Run:`, every exam and every Global Constraints `Check:` itself, in the task's clone and on the adopted tree, recorded as `driver:proof-run`, `driver:exam-run`, `driver:check-run` and `driver:integrated-run` exactly as at BASE.\n- No role file shouts: a new sentence in `fleet/roles/*.md` carries no all-caps imperative.",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/examiner.md fleet/roles/reviewer.md fleet/roles/reconcile.md fleet/roles/resolver.md fleet/publish-fold.mjs fleet/sandbox-boot.sh fleet/lobby.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs skills/ultrapowers/scripts skills/ultrapowers/kernel",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-128/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-128/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-128/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-128/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
