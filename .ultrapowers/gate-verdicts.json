@@ -1,0 +1,33 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "b64ccdae56f39c771895c6a3e38e960cc105208b31311a425fbf740ec86eafcd",
+   "verdict": "pass",
+   "reason": "Every clause has a leg that fails on its negation; both prompts checked for absence of TEST COMMAND and exact PROOFS contents in both cases."
+  },
+  "2": {
+   "hash": "040a86ea45b0bd4503358cce73357d5c48722de0b401a116d9a58e305b5c6468",
+   "verdict": "pass",
+   "reason": "Each leg falsifies its clause at the launcher's exec/lobby/hub seam; both stamped compiles in order, run_<N+1> in every filed path, run_<N> absent."
+  }
+ },
+ "tally": {
+  "dispatched": 4,
+  "rejected": 2,
+  "round1": {
+   "fail": 2
+  },
+  "round2": {
+   "pass": 2
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "fails": {
+    "1": "M6 'no leg removed' unfalsifiable; (none) case half-stated",
+    "2": "the Run: executed the sizing sim, not the exam"
+   }
+  }
+ ]
+}
