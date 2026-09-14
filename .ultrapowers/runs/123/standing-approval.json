@@ -1,0 +1,10 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-123.md run-123 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "The plan-level Claim's out-of-tree half: \"a PR that bumps the plugin to 0.3.27 in both manifests, opened and merged by the sandbox itself, and on its task's hub issue the first note a worker has ever written there\" — plus the operator's follow-on `gh release create v0.3.27`. — The tree half of this Claim is complete and verified (both manifests and CLAUDE.md read 0.3.27, diff limited to those three lines). The PR open/merge and the worker's hub-issue comment under `impl:1@run-123` are post-gate run behaviors against the GitHub hub: run-run-123/events.jsonl records no issue- or comment-class event at read time, and no INTEGRATED RUN EVIDENCE block covers them. The tag is explicitly the operator's own step after the merge. None of this is executable from the integrated tree, so it routes to acknowledgement rather than silently passing. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}
