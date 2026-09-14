@@ -43,3 +43,11 @@
 {"kind":"transcript:slice","label":"review:2:1:1","sessionId":"f3f1b532-b32f-4218-a5af-c020f28c285c","bytes":11296,"id":"01M2ERXHR40000FW96SED1EB37","ts":1789349775108}
 {"kind":"worker:end","label":"review:2:1:2","role":"reviewer","sessionId":"1b42ec4b-cd0c-4d49-914b-c99059f8b44e","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4728,"output":16212,"cacheRead":1646375,"cacheCreation":79516,"costUsd":2.0472875,"models":["claude-opus-5"]},"id":"01M2ERZFYM0000DZAMX6NXQ4HV","ts":1789349838804}
 {"kind":"transcript:slice","label":"review:2:1:2","sessionId":"1b42ec4b-cd0c-4d49-914b-c99059f8b44e","bytes":11404,"id":"01M2ERZFYT00007CH404MASZYA","ts":1789349838810}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1","2"],"headSha":"8d8da2761a7a550d91c15b1600942394fc246e18","id":"01M2ESDMJE0000468EJA62Z82Q","ts":1789350302286}
+{"kind":"driver:integrated-clean","wave":1,"removed":10,"id":"01M2ESDMJQ0000296Y9J83CZ22","ts":1789350302295}
+{"kind":"driver:integrated-run","task":"1","cmd":"node fleet/tests/test_sandbox_boot_kata.mjs 2>&1 | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"joined":["fleet/CONTRACT.md"],"with":["2"],"id":"01M2ESE6EP0000GQB1JKA8QGE4","ts":1789350320598}
+{"kind":"driver:integrated-run","task":"2","cmd":"node fleet/tests/test_janitor_hub.mjs 2>&1 | grep -q 'ALL TESTS PASSED'","exit":0,"wave":1,"joined":["fleet/CONTRACT.md"],"with":["1"],"id":"01M2ESE6HD0000FGNDRGFSBJ5Y","ts":1789350320685}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/roles/","exit":0,"minor":false,"wave":1,"id":"01M2ESE6HR00004QMYJSV37ZHH","ts":1789350320696}
+{"kind":"driver:integrated-check","cmd":"test \"$(git diff $ULTRA_BASE -- fleet/sandbox-boot.sh | grep -c '^-.*kata_close_run done')\" = 0","exit":0,"minor":false,"wave":1,"id":"01M2ESE6J60000MF5NZ0SWP6J1","ts":1789350320710}
+{"kind":"engine:phase","phase":"Integration Review","id":"01M2ESE6NS0000P2HXMCPA9R1M","ts":1789350320825}
+{"kind":"worker:start","label":"integration","role":"critic","sessionId":"0f147559-3ece-4457-8440-40df3b5b2e26","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-122/clones/integration","model":"opus","id":"01M2ESE6NV0000FZYXT0R739DF","ts":1789350320827}
