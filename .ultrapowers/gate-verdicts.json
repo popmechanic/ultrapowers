@@ -1,0 +1,44 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "535001a94208b96173dfac9333ac862c00aeb9a4eaa5fd36a19cb3b1f28800b3",
+   "verdict": "pass",
+   "reason": "Pinned counts compute from the text (150 deletions, 16 survivors, 9 bridge rows); each leg exits non-zero naming the offending file or count when its clause is false."
+  },
+  "3": {
+   "hash": "e5e39e714cb81527a00219a3a07170a52ac1675ed2f2d90969ed31134459ed32",
+   "verdict": "pass",
+   "reason": "Every clause has a falsifying leg; cmp against $ULTRA_BASE pins the moved bytes so the blob shas follow from BASE rather than being guessed."
+  },
+  "4": {
+   "hash": "82f657523d8b6723988419f6cf07345183200b1551b5fc1dee042da1554689e6",
+   "verdict": "pass",
+   "reason": "Each Run fails exactly when its clause is false; the three clauses are jointly satisfiable by one rewritten CLAUDE.md; 0.3.27 is the recorded version."
+  },
+  "2": {
+   "hash": "979a60568f1ebe8f43e8e2716656bdd704481107e17ca0197f08557c636666ce",
+   "verdict": "pass",
+   "reason": "Every clause has a leg that fails on its own negation; the header-less plan leg now requires the grammar line to name Grammar, and M3 pins the fixture's three implementation rows with heuristic false."
+  }
+ },
+ "tally": {
+  "dispatched": 6,
+  "rejected": 1,
+  "round1": {
+   "pass": 3,
+   "fail": 1
+  },
+  "round2": {
+   "pass": 2,
+   "fail": 0
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "fail",
+   "reason": "Leg (a) only greps ^grammar: and never checks the line names the missing Grammar header; M3's still-parse had no parse leg."
+  }
+ ]
+}
