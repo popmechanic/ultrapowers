@@ -1,0 +1,63 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "be4bfe1b573ca8692adfd6a8838775deaa16938e325000bc5245b38f221ca78e",
+   "verdict": "pass",
+   "reason": "150/15/10/8/7 counts reconcile; each Run fails exactly when its clause is false."
+  },
+  "3": {
+   "hash": "f1d2e4b140c42871482057d9b7125e4ab836f3838c81ea96c0c3295b76603f97",
+   "verdict": "pass",
+   "reason": "Four moved files cmp'd against $ULTRA_BASE, both --help exit 0, zero grep counts."
+  },
+  "4": {
+   "hash": "4ac40aadebe5f521c0ed4bd3c20c7e36ce67f4ab35411e137bbb9bfaeabdfe00",
+   "verdict": "pass",
+   "reason": "Thirteen banned words, eight literals plus the plugin.json version at run time, five ordered headings."
+  },
+  "2": {
+   "hash": "9ee1fdbf5b361814213200970ada5f2845563bc9f6de95b4d30859ae148b72b6",
+   "verdict": "pass",
+   "reason": "Every clause has a falsifying leg incl. the three rewritten pytest files passing with ultradocket gone."
+  }
+ },
+ "tally": {
+  "dispatched": 14,
+  "rejected": 5,
+  "run125": {
+   "round1": {
+    "pass": 3,
+    "fail": 1
+   },
+   "round2": {
+    "pass": 2
+   }
+  },
+  "redrive": {
+   "round1": {
+    "pass": 0,
+    "fail": 4
+   },
+   "round2": {
+    "pass": 4
+   }
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "task": "2",
+   "verdict": "fail",
+   "reason": "Leg (a) only greps ^grammar: and never checks the line names the missing Grammar header; M3's still-parse had no parse leg."
+  },
+  {
+   "redrive": "run-126",
+   "round1_fails": {
+    "1": "M4 quantified over all deletions, leg covered seven",
+    "2": "heuristic absent passes; tasks shape unpinned",
+    "3": "blob shas pinned but never computed",
+    "4": "0.3.27 literal untied to plugin.json"
+   }
+  }
+ ]
+}
