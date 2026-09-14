@@ -1,0 +1,59 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "b06d1c7637dad72593b4f3baeffadc0eae4fb02b42d799732764323ef2ecae67",
+   "verdict": "pass",
+   "reason": "Each leg names a recorded-prompt observation that falsifies its clause; the examiner and reconciler alone keep the suite line."
+  },
+  "2": {
+   "hash": "c66f561925e6878d5a7a768cfc89adfed075586da4cdc6996dec946947a03ad4",
+   "verdict": "pass",
+   "reason": "Exact label sets incl. the absent pair and fix:1 labels, the missing critic.md, the three reviewEconomy keys and the pinned criticDecision answer."
+  },
+  "3": {
+   "hash": "e8dc77e592a9b3e73f6b92419b433a9ed996007ad0a5d2740a5b36f8bcfbabd7",
+   "verdict": "pass",
+   "reason": "Arithmetic checks (1\u21923/3GB, 10\u21926/8GB); legs fail on a wrong size, a bypassed flag, a second compile, a constant width."
+  },
+  "4": {
+   "hash": "7fe9cb3c44028a6473c18bbc32046a46198e37cd761930008be912386ffb7fa3",
+   "verdict": "pass",
+   "reason": "Literal greps that cannot exit 0 while a clause is false; M4 pinned by an exact file list and line count with the surviving fold comment named."
+  }
+ },
+ "tally": {
+  "dispatched": 11,
+  "rejected": 7,
+  "tasks123": {
+   "round1": {
+    "fail": 3
+   },
+   "round2": {
+    "pass": 3
+   }
+  },
+  "task4": {
+   "rounds": 5,
+   "pass_on": 5
+  }
+ },
+ "history": [
+  {
+   "round": 1,
+   "fails": {
+    "1": "M5 reconciler line pinned by grep only",
+    "2": "M4 criticDecision by grep; M5 'no other leg changed' unverifiable",
+    "3": "M4 width by grep only"
+   }
+  },
+  {
+   "task": "4",
+   "fails": [
+    "universal over the sandbox pinned by one file",
+    "non-recursive glob vs 'under fleet/'",
+    "three spellings miss opts.overlap",
+    "a line-number literal no leg checks"
+   ]
+  }
+ ]
+}
