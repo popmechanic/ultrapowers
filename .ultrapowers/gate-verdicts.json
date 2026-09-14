@@ -1,0 +1,13 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "ce1f279e0609994b45b9057a092333e387d237465ae83056d10d294e30e98cac",
+   "verdict": "pass",
+   "reason": "The manifest diff against $ULTRA_BASE can only exit 0 if the sole changed key is the 0.3.28 version; the bullet greps require the ordered phrases and reject 0.3.27 today."
+  }
+ },
+ "tally": {
+  "dispatched": 1,
+  "rejected": 0
+ }
+}
