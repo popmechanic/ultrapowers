@@ -126,8 +126,8 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   `--model=claude-opus-5` reads files, Sol stalls on them; the lobby link drops on long answers —
   read back with `shelley client read`) before editing a script; a hack is only a bridge she has
   blessed. Reason: runs 65–69 each died on one VM-side papercut and each got a same-hour hack, and
-  every one of them had an exe-native shape she named on first ask (memory
-  `trust-shelley-on-exe-dev`, `papercut-ledger-2026-09-03`).
+  every one of them had an exe-native shape she named on first ask (the papercut ledger is
+  on the fleet issues).
 - **Run in parallel; same-file overlap folds at publish** — plans are launched concurrently whatever
   files they share: with `strict=true` + `enforce_admins` on main (2026-09-08), a PR whose base moved
   is refused with a 405 and the sandbox folds its branch onto the new main again, so a second run's
@@ -154,18 +154,45 @@ engine. `python3 -m pytest` is the same suite by hand; it bridges every
   the session they are FOR — and treat one as *what was true when it was written*.
 - **Author plans concurrently from the issues** — the procedure is `skills/ultrawrite/SKILL.md`
   §Authoring a queue: partition by files, one author per bundle, the issue's sentence as the
-  Claim, two operator touches per plan, launches serial (memory `parallel-authoring-from-issues`).
+  Claim, two operator touches per plan, launches serial.
 - **No local scheduled process, ever** — the rule is `skills/ultrapowers/SKILL.md` §Client step 5:
   the launcher reaps, by hand after a sleep, no scheduled job on this machine.
 - **Every choice is an AskUserQuestion** — 2–3 concrete options with their consequences and a
   `(Recommended)` tag, never a bare open question; the operator adjudicates, they do not author
-  (memory `operator-elicitation-style`).
+  (see §Working with the operator).
 - **Test doctrine (operator, 2026-09-09).** The implementer never does TDD: it iterates against the
   suite and writes no test of its own. The peer exam plus driver-run probes are the proof, and the
   target's suite is a *reported sensor* with attribution, measured and never asserted on a
   narrative. Deletion is owed per file, on the reading: a test file that has never caught anything
   goes, and `skills/ultrapowers/scripts/catch_counter.py` is what turns that reading into the
   deletion. Ballast goes behind a measurement gate, never on an incident narrative.
+
+## Working with the operator
+
+- **They adjudicate, they do not author.** Put every decision as 2–3 concrete options with
+  their consequences and a `(Recommended)` tag, through AskUserQuestion; never a bare open
+  question. A signed Claim is their own sentence, elicited, never drafted for countersigning.
+  Explain an idea; do not state it in the technical register and leave them to decode it.
+- **They never read code or tests.** The trust chain is plan → peer exam → gate receipt →
+  smoke. Quote receipts; never narrate a green.
+- **Priorities, in tie-break order: quality, then tokens, then clock.** The simpler design wins
+  whenever it costs none of the three. Per-task model tiering is the one thing never simplified
+  away.
+- **Times in Pacific, 12-hour clock.** The record stays UTC; chat converts.
+- **Propose, then wait for "file it."** Tickets and issue comments follow an explicit ask;
+  least machinery first.
+- **Releases are 0.3.x patches** that bundle several merges behind a confidence run. A minor
+  bump only on their explicit call; 0.3.28 stabilizes the 0.3 feature set and is not 0.4.0.
+- **Three subscriber accounts.** Keychain names are the emails with `@` → `-`; a usage reading
+  names its account; the rate window is measured, never cited as a bound.
+- **Never run `caffeinate`** or touch power settings. Fleet runs survive laptop sleep.
+- **Pull requests.** The sandbox merges its own. A hand PR uses `gh pr merge --auto --squash`;
+  never delete a branch while auto-merge is pending, GitHub closes the PR.
+- **When an engine gate is broken, route around the fleet:** offer to implement the signed
+  plan inline first, not a relaunch.
+- **The durable record is GitHub issues and PRs, the evidence tags and kata — not Claude's
+  memory**, which was turned off on 2026-09-14. A fact worth keeping goes in an issue comment,
+  the RUNBOOK's Traps, or here.
 
 ## Conventions & gotchas
 
