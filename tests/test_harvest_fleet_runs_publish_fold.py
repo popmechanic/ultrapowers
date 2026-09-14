@@ -38,7 +38,6 @@ Self-contained and hermetic: its own `_ev` / `_make_run_dir` fixture helpers
 local run directories only, `--engine-version` passed so nothing shells out for
 a release timeline, no `gh`, no network.
 """
-import ast
 import json
 import re
 import sys
@@ -259,34 +258,6 @@ def test_an_engine_log_row_is_still_capped_in_the_slice_timeline(tmp_path):
     assert len(matching) == 1
     assert matching[0].endswith("…")
     assert len(matching[0]) < 260
-
-
-# ---------- M1, leg (e): the bundle-key pin admits the new key ----------
-
-def _base_bundle_keys():
-    """`BASE_BUNDLE_KEYS` read out of `tests/test_harvest_evidence.py` as a
-    literal — read, not imported, so a sibling task editing the same module
-    cannot make this leg fail for an unrelated reason."""
-    source = (REPO / "tests/test_harvest_evidence.py").read_text()
-    for node in ast.parse(source).body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(t, ast.Name) and t.id == "BASE_BUNDLE_KEYS"
-                   for t in node.targets):
-            continue
-        value = node.value
-        if isinstance(value, ast.Call) and getattr(value.func, "id", None) == "frozenset":
-            value = value.args[0]
-        return set(ast.literal_eval(value))
-    raise AssertionError("no BASE_BUNDLE_KEYS assignment in tests/test_harvest_evidence.py")
-
-
-def test_base_bundle_keys_names_publish_fold():
-    """M1, leg (e): the frozen key set in `tests/test_harvest_evidence.py`
-    names `publishFold`, so
-    `test_a_local_run_dir_bundles_exactly_as_the_base_harvester_did` — which
-    asserts `set(bundle) == BASE_BUNDLE_KEYS` — passes with the new key."""
-    assert "publishFold" in _base_bundle_keys()
 
 
 # ---------- M4, leg (f): the friction lens reads the fold ----------
