@@ -26,10 +26,11 @@
  *       probe names every spawn that does not.
  *   M3  no such file reads, stats or sources a string-literal absolute path
  *       outside the checkout and `os.tmpdir()`, and the probe names every one.
- *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`; each of the
- *       eight sites at BASE survives only as names a sim checks exist under
- *       `fleet/tests/` without running them. A mutated copy of a sim's own
- *       text under the temp root is not a sibling run.
+ *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`; the eight
+ *       sites at BASE became names a sim checked exist under `fleet/tests/`
+ *       without running them, and every sim that held such a list has since
+ *       been retired, so no sibling list is left in the tree at all. A mutated
+ *       copy of a sim's own text under the temp root is not a sibling run.
  *   M5  `fleet/sandbox-boot.sh` names `/etc/fleet/render.env` exactly once, as
  *       the default in `FLEET_RENDER_ENV="${FLEET_RENDER_ENV:-...}"`, and the
  *       rig pins `FLEET_RENDER_ENV` under every case's own home.
@@ -769,8 +770,22 @@ test('home, when given, is where the three keys point  [M1 / leg (a)]', () => {
 // ── (b) every spawn is handed its environment  [M2] ──────────────────────────
 
 test('the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]', () => {
-  assert.ok(SWEPT.length >= 50,
-    `(b) [M2] the sweep covers the pre-flight — ${SWEPT.length} files is not it`)
+  // The reach, pinned by equality against the files the sweep is defined over
+  // and read from the directory here — not by a floor on how many there are. A
+  // floor is a fact about how large the pre-flight happened to be on the day it
+  // was written, and it says nothing when a retired sim leaves the tree; the
+  // set says the one thing that matters, that every file the rules are defined
+  // over was read.
+  const definedOver = fs.readdirSync(TESTS_DIR).filter((n) => isSwept(n) && n !== SELF)
+  const examsDir = path.join(TESTS_DIR, 'exams')
+  const nested = !fs.existsSync(examsDir) ? [] : fs.readdirSync(examsDir)
+    .filter((slug) => fs.statSync(path.join(examsDir, slug)).isDirectory())
+    .flatMap((slug) => fs.readdirSync(path.join(examsDir, slug))
+      .filter(isSwept)
+      .map((n) => `exams/${slug}/${n}`))
+  assert.deepEqual(SWEPT, [...definedOver, ...nested].sort(),
+    `(b) [M2] the sweep reads every fleet/tests/test_*.mjs and _*.mjs but this file, and every ` +
+    `exams/<slug>/ one beside them — not a file fewer: ${JSON.stringify(SWEPT)}`)
   const offenders = treeOffenders('inherit')
   assert.deepEqual(named(offenders), [],
     `(b) [M2] every spawn in fleet/tests/test_*.mjs and fleet/tests/_*.mjs takes an env derived ` +
@@ -867,38 +882,32 @@ test('the same sweep names each shape of a sim running another  [M4 / leg (d)]',
     'level, copyWithProbe(simName, probe) carries no literal, and that pin is not a sibling run')
 })
 
-// ── (e) the eight sites, each replaced by a name read and not run  [M4] ──────
+// ── (e) the nested shape is gone from the tree  [M4] ─────────────────────────
 
-/** The nested sites at BASE and the siblings each one ran. */
-const NESTED_AT_BASE = [
-  ['test_run_engine_candidate_bootstrap.mjs', ['test_run_engine_reconcile.mjs', 'test_run_engine_exam_together.mjs']],
-  ['test_sandbox_boot_render_env.mjs', ['test_sandbox_boot.mjs', 'test_sandbox_boot_effort.mjs', 'test_sandbox_boot_state_exams.mjs']],
-  ['test_sandbox_boot_state_exams.mjs', ['test_sandbox_boot.mjs']],
-  ['test_launch_render.mjs', ['test_launch.mjs', 'test_launch_pins.mjs']],
-  ['test_launch_test_command.mjs', ['test_launch.mjs', 'test_launch_hold.mjs', 'test_launch_effort.mjs', 'test_launch_engine_source.mjs', 'test_launch_reaps.mjs']],
-  ['test_setup_script_render_env.mjs', ['test_setup_script.mjs']],
-  ['test_run_engine_state_exams.mjs', ['test_run_engine_pre_review.mjs', 'test_run_engine_proof_runs.mjs', 'test_run_engine_integrated_runs.mjs']],
-]
+/**
+ * The nested sites at BASE and the siblings each one ran — empty, and the table
+ * is kept so a new one has somewhere to be named. Every sim that held a sibling
+ * list was retired in run-126 for catching no defect over runs 40–123, so the
+ * shape leg (e) used to pin site by site no longer exists in the tree. The leg
+ * below is what is left of it: not "each site reads its list", but "no sim has
+ * a list to read" — the stronger statement, and the one the tree can still make.
+ */
+const NESTED_AT_BASE = []
 
-for (const [file, siblings] of NESTED_AT_BASE) {
-  test(`${file} reads its sibling list and runs none of it  [M4 / leg (e)]`, () => {
-    const full = path.join(TESTS_DIR, file)
-    assert.ok(fs.existsSync(full), `(e) [M4] ${file} is a sim of this pre-flight`)
-    const result = TREE[SWEPT.indexOf(file)]
-    assert.deepEqual(named(result.siblings), [],
-      `(e) [M4] ${file} carries no spawn whose argv names a test_*.mjs: ${JSON.stringify(named(result.siblings))}`)
-    const checked = namesCheckedForExistence(result.src)
-    const missing = siblings.filter((name) => ![...checked].some((q) => q.endsWith(name)))
-    assert.deepEqual(missing, [],
-      `(e) [M4] and every sibling it used to run survives as a name it checks exists under ` +
-      `fleet/tests/ — an fs.existsSync on the repo path, so the list is read and never run. ` +
-      `Unnamed: ${JSON.stringify(missing)}; named: ${JSON.stringify([...checked].filter((q) => q.includes('test_')))}`)
-    for (const name of siblings) {
-      assert.ok(fs.existsSync(path.join(TESTS_DIR, name)),
-        `(e) [M4] ${name} is a file under fleet/tests/ for the bridge to dispatch`)
-    }
-  })
-}
+const SIBLING_NAME_RE = /(^|\/)test_[a-z0-9_]+\.mjs$/
+
+test('no sim of the tree carries a sibling list at all  [M4 / leg (e)]', () => {
+  assert.deepEqual(NESTED_AT_BASE, [],
+    '(e) [M4] the nested sites are gone from fleet/tests/, and so is the table naming them')
+  const reading = SWEPT
+    .map((file, i) => [file, [...namesCheckedForExistence(TREE[i].src)].filter((q) => SIBLING_NAME_RE.test(q))])
+    .filter(([, names]) => names.length)
+    .map(([file, names]) => `${file}: ${JSON.stringify(names)}`)
+  assert.deepEqual(reading, [],
+    `(e) [M4] no surviving sim names a sibling sim, run or merely checked for existence — the ` +
+    `eight sites at BASE became names read rather than run, and the sims holding those names ` +
+    `are themselves gone now:\n  ${reading.join('\n  ')}`)
+})
 
 // ── (f) the probe spawns nothing  [M7] ───────────────────────────────────────
 

@@ -17,7 +17,6 @@ DRIVER = ROOT / "skills/ultrapowers/scripts/ultra_run.py"
 SKILL_MD = ROOT / "skills/ultrawrite/SKILL.md"
 REPORT_FORMAT_MD = ROOT / "skills/ultrapowers/references/report-format.md"
 DEPENDENCY_ANALYSIS_MD = ROOT / "skills/ultrapowers/references/dependency-analysis.md"
-ULTRADOCKET_SKILL_MD = ROOT / "skills/ultradocket/SKILL.md"
 SKILLS_DIR = ROOT / "skills"
 
 # The two code sites that keep the pre-#556 spelling on purpose: the compiler's
@@ -29,33 +28,72 @@ LEGACY_CODE_SITES = [
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 import ultra_run  # noqa: E402
+sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
+from extract_gate_input import gate_input, verdicts_path  # noqa: E402
 
-# A legacy-grammar plan (no six-slot body) with one marked task and one
-# unmarked follower — the smallest shape that exercises both emit paths.
+# A claims-v1 plan with one marked task and one unmarked follower — the
+# smallest shape that exercises both emit paths. The compiler speaks only
+# claims-v1, so every task carries the six body slots.
 PLAN = """# P
 
+**Grammar:** claims-v1
+
 **Acceptance:** suite — test
+
+**Claim:** An operator gets a core that adds and a follower that doubles. (elicited)
 
 ### Task 1: Risky core
 
 **Type:** implementation
-**Depends-on:** none
 **Review:** {value}
 
 **Files:**
 - Modify: `src/a.py`
+- Test: `tests/test_a.py`
 
-- [ ] **Step 1: do it**
+**Claim:** An operator calling the core gets the sum of its two arguments. (derived)
+Machine: M1. `core(1, 2)` returns `3`.
+
+**Authorized-by:** #556
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: `core(a: int, b: int) -> int`
+
+**Context:** `src/a.py` is a one-function module with no registry to update.
+
+**Proof:**
+- Test: `tests/test_a.py`
+- The suite asserts `core(1, 2) == 3`. [M1]
+
+**Stale-if:**
+- path-exists: `src/a.py`
 
 ### Task 2: Quiet follower
 
 **Type:** implementation
-**Depends-on:** 1
 
 **Files:**
 - Modify: `src/b.py`
+- Test: `tests/test_b.py`
 
-- [ ] **Step 1: do it**
+**Claim:** An operator calling the follower gets its argument doubled. (derived)
+Machine: M1. `follow(2)` returns `4`.
+
+**Authorized-by:** #556
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: `follow(n: int) -> int`
+
+**Context:** `src/b.py` is a one-function module sharing no symbol with the core.
+
+**Proof:**
+- Test: `tests/test_b.py`
+- The suite asserts `follow(2) == 4`. [M1]
+
+**Stale-if:**
+- path-exists: `src/b.py`
 """
 
 UNMARKED_PLAN = PLAN.replace("**Review:** {value}\n", "")
@@ -65,11 +103,25 @@ def sh(cmd, cwd=None):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
 
 
+def _write_verdicts(plan):
+    """The gate-verdict artifact a claims-v1 plan compiles against (spec §4.5).
+
+    Hashed by the gate's own extractor, so a fixture edit re-signs itself
+    rather than going stale against a hand-copied digest."""
+    entries = {t: dict(gate_input(plan, t), verdict="pass", reason="fixture")
+               for t in ("1", "2")}
+    verdicts_path(plan).write_text(json.dumps(
+        {"tasks": {t: {"hash": e["hash"], "verdict": e["verdict"],
+                       "reason": e["reason"]} for t, e in entries.items()},
+         "tally": {"dispatched": len(entries), "rejected": 0}}))
+
+
 def _args_entries(tmp_path, plan_markdown, name="plan.md"):
     """Compile plan_markdown and return the --emit-args wave entries keyed by
     task id — the single knob channel the engine reads."""
     plan = tmp_path / name
     plan.write_text(plan_markdown)
+    _write_verdicts(plan)
     launch = tmp_path / (name + ".launch.json")
     argsf = tmp_path / (name + ".args.json")
     p = sh([sys.executable, str(COMPILER), str(plan),
@@ -171,11 +223,6 @@ def test_report_format_review_row_documents_lean_and_peer():
 def test_dependency_analysis_review_knob_example_says_peer():
     text = DEPENDENCY_ANALYSIS_MD.read_text()
     assert "review: { T1: peer, default: lean }" in text
-
-
-def test_ultradocket_skill_marks_review_peer():
-    text = ULTRADOCKET_SKILL_MD.read_text()
-    assert "`**Review:** peer`" in text
 
 
 def test_only_the_two_code_sites_under_skills_say_adversarial():

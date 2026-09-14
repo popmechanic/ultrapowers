@@ -172,26 +172,19 @@ VALID_TIERS = {None, "cheap", "standard", "mostCapable", "most-capable"}
 # entry, so a fresh compile only ever emits `lean` or `peer`.
 VALID_REVIEWS = {"lean", "adversarial", "peer"}
 
-OVERLAP_CHOICES = ("serialize", "fold")
-
-
-def compile_argv(plan, run_dir, overlap=None):
+def compile_argv(plan, run_dir):
     """Build the compile_plan.py argv (everything after the script path)
     for a launch. Pure — no I/O — so this seam is testable without a real
     repo or a real compile_plan.py subprocess.
 
-    `--overlap <mode>` is added only when the caller passed one explicitly;
-    absent, the compiler's own OVERLAP_DEFAULT governs. Nothing else is
-    stamped: the compiler reads the plan and only the plan — the filesystem
-    eligibility pre-filter (and with it `--repo-root`) retired alongside the
-    ordering-guess tiers."""
-    argv = [str(plan),
+    There are no ordering knobs: the compiler reads the plan and only the
+    plan — the filesystem eligibility pre-filter (and with it `--repo-root`)
+    retired alongside the ordering-guess tiers, and same-path overlap is
+    always folded."""
+    return [str(plan),
             "--emit-launch", str(run_dir / "launch.json"),
             "--emit-args", str(run_dir / "args.json"),
             "--run-dir", str(run_dir.resolve())]
-    if overlap is not None:
-        argv += ["--overlap", overlap]
-    return argv
 
 
 def sh(cmd, cwd=None):
@@ -484,10 +477,6 @@ def main(argv=None):
                          "lockfile-derived default, '' disables it; stamped "
                          "into the receipt so the engine provisions its "
                          "clones")
-    ap.add_argument("--overlap", choices=OVERLAP_CHOICES, default=None,
-                    help="scheduling knob forwarded to compile_plan.py's "
-                         "--overlap; omit to use the compiler's own default "
-                         "(fold)")
     a = ap.parse_args(argv)
 
     if a.validate_knobs is not None:
@@ -564,7 +553,7 @@ def main(argv=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
     r = sh([sys.executable, str(HERE / "compile_plan.py")]
-           + compile_argv(a.plan, run_dir, a.overlap),
+           + compile_argv(a.plan, run_dir),
            cwd=root)
     compile_obj, summary = None, ""
     if r.returncode == 0:

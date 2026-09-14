@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
-"""Deterministic compiler for Superpowers plans carrying ultraplan markers.
+"""Deterministic compiler for claims-v1 plans.
 
-Parses a plan into tasks (fence-aware), classifies each per the plan-markers
-contract (explicit **Type:** trusted; heuristics otherwise, flagged
-"heuristic": true), builds the dependency DAG (explicit marker and text edges,
-interface edges, and the one existence edge write-after-create — a task cannot
-modify a file another task has yet to create), runs Kahn layering with cycle
-detection, and emits the Step-3 transparency block as JSON on stdout.
+Parses a plan into tasks (fence-aware), reads each task's disposition from its
+`**Type:**` marker (never guessed from prose), builds the dependency DAG
+(interface edges, the one existence edge write-after-create — a task cannot
+modify a file another task has yet to create, and the non-text same-file tier),
+runs Kahn layering with cycle detection, and emits the Step-3 transparency
+block as JSON on stdout.
+
+The compiler speaks ONE grammar: claims-v1, declared by a `**Grammar:**
+claims-v1` line in the plan header. A plan carrying no such line is refused
+with a `grammar:` line before anything else runs — there is no fallback.
 
 The compiler orders only what a task DECLARES. Two tasks whose declared paths
 merely overlap are NOT ordered — the kernel folds their same-file edits at
-merge time. The one scheduling knob, `--overlap {serialize,fold}` (default
-`fold`), is the rollback lever: `serialize`, and only `serialize`, re-enables
-the document-order `write-after-write` tier.
+merge time, and a shared path the kernel cannot fold line-wise (the non-text
+tier) is the one exception.
 
 What the compiler cannot see it refuses instead of guessing at: an
 implementation task that declares no file paths is invisible to contention
-detection, so it is a loud compile error rather than a silently serialized
-"ambiguous" task.
+detection, so it is a loud compile error rather than an "ambiguous" task.
 
 The orchestrating agent runs this instead of hand-deriving waves; its
-judgment is reserved for heuristic-flagged classifications and the derived
-run knobs (testCmd / baseBranch / tiers / review depth), which stay with
-the agent per dependency-analysis.md.
+judgment is reserved for the derived run knobs (testCmd / baseBranch / tiers /
+review depth), which stay with the agent per dependency-analysis.md.
 """
 from __future__ import annotations
 
@@ -46,7 +47,6 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 # position — `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside
 # form `**Type**:` all count, so a near-miss never silently degrades to prose.
 MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review|commutes)\s*(?:\*\*)?\s*:", re.I)
-MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 # Authored review-depth marker (ultraplan #87): `**Review:** peer|lean`.
 # `adversarial` is the pre-#556 spelling of `peer` — still accepted for one
 # release, normalized to `peer` on the emitted wave entry so the engine and
@@ -56,12 +56,6 @@ MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 MARKER_REVIEW = re.compile(r"^\*\*Review:\*\*\s*([a-z-]+)\s*$")
 VALID_REVIEWS = ("peer", "lean")
 REVIEW_ALIASES = {"adversarial": "peer"}
-# Declared order-insensitive additive registrations (spec §2b): comma-separated
-# backticked paths the task asserts are safe to auto-union with another
-# declaring task's edits to the same path. Validated against the task's own
-# Files: block after it closes (see parse_task) — a path outside Files: is a
-# rendered marker conflict, never a SystemExit.
-MARKER_COMMUTES = re.compile(r"^\*\*Commutes:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Delete|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
 # A Proof `Run:` bullet (#589): the task's proof is a COMMAND, not an exam
 # file. Deliberately NOT a FILE_LINE alternative — a `Run:` value is never a
@@ -87,13 +81,6 @@ FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
 FILES_LABEL_LINE = re.compile(r"^[-*+]\s*([A-Za-z][A-Za-z0-9()/ _-]*?)\s*:\s*(.+?)\s*$")
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
-TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
-# Plural conjunction/comma lists ("depends on Tasks 1 and 3", "after Tasks
-# 1, 2 and 3") parse into one text edge per listed id.
-TEXT_DEP_LIST = re.compile(
-    r"(?:depends\s+on|after|requires)[\s:*]+Tasks\s+"
-    r"((?:[A-Za-z0-9]+)(?:\s*(?:,|and|&)\s*[A-Za-z0-9]+)*)", re.I)
-LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
 # Whether a Files-entry token names a file, vs a bare identifier (function name),
 # a dotted attribute reference (`schema.User`), or a route. Files entries are
 # declared to list paths, so the rule keeps real paths and rejects identifier-
@@ -140,37 +127,9 @@ def match_head(line):
         return None
     return TASK_HEAD.match(line.strip())
 
+# The four dispositions a `**Type:**` marker may name. There is no other way
+# in: a disposition is READ from the marker, never guessed from prose.
 TYPES = ("implementation", "gate", "release", "manual")
-RELEASE_EV = re.compile(
-    r"(git push|git checkout main|git merge (?:main|master)\b|\bssh\b|\bscp\b"
-    r"|systemctl|after the branch merges)", re.I)
-MANUAL_EV = re.compile(
-    r"(the owner runs|cannot be done from this machine|on the deployment)", re.I)
-GATE_EV = re.compile(
-    r"(pytest|npm test|bun test|cargo test|go test|ruff|eslint|git status|git log)", re.I)
-# Implementation verbs beyond build/QA. A task that writes nothing AND whose
-# fence-stripped prose carries none of these is pure verification — the
-# EMPTY_WRITES_GATE rule below treats it as a gate.
-IMPL_PROSE_EV = re.compile(r"\b(implement|add|create|write|refactor|fix|modify)\b", re.I)
-# Positive build/verification/QA evidence. The EMPTY_WRITES_GATE rule fires only
-# when this matches, so a prose-only task with no writes AND no build/QA steps
-# (e.g. a reference-notes task) is NOT swept into the gate bucket — it stays
-# `implementation` for the orchestrator to re-judge. GATE_EV already covers the
-# explicit test-runner/lint/git-status idioms; this adds the build/QA verbs those
-# miss ("run the full build and the QA acceptance check").
-BUILDQA_EV = re.compile(
-    r"\b(build|rebuild|compile|verif\w*|acceptance|qa|smoke|sanity|lint)\b", re.I)
-
-
-def _has_implementation_prose(prose):
-    """True when the prose contains an implementation verb beyond build/QA.
-
-    The prose is already fence-stripped (parse_task strips fenced lines), so a
-    verb inside a fenced example never counts. Conservative by design: any
-    genuine implementation verb keeps an empty-writes task as `implementation`;
-    prose that only describes running build/test/QA returns False so
-    EMPTY_WRITES_GATE can reclassify it as a gate."""
-    return bool(IMPL_PROSE_EV.search(prose))
 
 
 def _fence_aware_lines(text):
@@ -242,16 +201,15 @@ def split_tasks(text):
 
 
 # ---------------------------------------------------------------------------
-# claims-v1 (spec 2026-08-31 §3-§4). An OPT-IN grammar, declared by a
-# `**Grammar:** claims-v1` line in the plan header. Absent, every line below is
-# dead code and the compiler parses exactly as it always has — legacy is the
-# rollback path and its output is pinned byte-for-byte by the fixture corpus.
+# claims-v1 (spec 2026-08-31 §3-§4). The ONLY grammar the compiler speaks,
+# declared by a `**Grammar:** claims-v1` line in the plan header. A plan that
+# carries no such line is refused, not parsed some other way: there is no
+# second grammar left to fall back to.
 #
-# Every diagnostic this section can emit is namespaced `grammar:` so a
-# claims-v1 refusal is never confused with a legacy one, and no pre-existing
-# diagnostic string changes.
+# Every diagnostic this section can emit is namespaced `grammar:`, the missing
+# header's refusal included, so a grammar refusal reads as one wherever it
+# surfaces.
 # ---------------------------------------------------------------------------
-LEGACY_GRAMMAR = "legacy"
 CLAIMS_GRAMMAR = "claims-v1"
 # The declaration line, matched on the plan HEADER only (everything before the
 # first task heading) and fence-aware, so a plan that merely quotes or fences
@@ -295,16 +253,31 @@ CLAIMS_STEP_RE = re.compile(r"^[-*+]\s*\[[ xX]\]")
 
 
 def plan_grammar(md_text):
-    """The grammar a plan declares: "claims-v1" or "legacy" (the default)."""
+    """The grammar a plan declares — always "claims-v1", or a refusal.
+
+    The header (everything before the first task heading, fence-aware) must
+    carry `**Grammar:** claims-v1`. Anything else — no line at all, or a line
+    naming another grammar — raises SystemExit with a `grammar:` refusal: the
+    legacy grammar is gone, so an undeclared plan is refused here, before any
+    task is parsed and before any VM is spent on it."""
+    declared = None
     for line, fenced in _fence_aware_lines(md_text):
         if fenced:
             continue
         if match_head(line):
             break  # the header ends at the first task heading
         m = GRAMMAR_RE.match(line.strip())
-        if m and m.group(1) == CLAIMS_GRAMMAR:
-            return CLAIMS_GRAMMAR
-    return LEGACY_GRAMMAR
+        if m:
+            declared = m.group(1)
+            if declared == CLAIMS_GRAMMAR:
+                return CLAIMS_GRAMMAR
+    raise SystemExit(
+        "grammar: the plan header carries no `**Grammar:** %s` line%s — the "
+        "compiler speaks %s and nothing else; add the header line above the "
+        "first task heading"
+        % (CLAIMS_GRAMMAR,
+           "" if declared is None else " (it declares %r)" % (declared,),
+           CLAIMS_GRAMMAR))
 
 
 # The plan-level Claim (#552): ONE operator sentence above the first task, in
@@ -488,9 +461,8 @@ def _claims_slot_name(raw):
 
 
 def _claims_file_paths(value):
-    """The path(s) a Files-style bullet value names, by the same rule the
-    legacy Files parser uses: backticked path-like tokens, else the first
-    token when it is itself path-like."""
+    """The path(s) a Files-style bullet value names: backticked path-like
+    tokens, else the first token when it is itself path-like."""
     backticked = [p for p in PATH_RE.findall(value) if _is_pathlike(p)]
     if backticked:
         paths = backticked
@@ -907,8 +879,8 @@ def parse_claims_body(body, task_id, plan_claim=None):
 # Task-scoped exams (#515): the implementer's red->green loop runs its OWN
 # Proof, not the whole suite. Only two path shapes are runnable that way — a
 # node test file under `fleet/tests/`, and any pytest file under `tests/`.
-# Anything else (a doc, a fixture, a directory, a legacy body with no Proof at
-# all) derives nothing, and the engine falls back to the run-wide command; the
+# Anything else (a doc, a fixture, a directory, a body whose Proof names no
+# test) derives nothing, and the engine falls back to the run-wide command; the
 # full suite still runs at the integration head and the gate.
 MJS_PROOF_TEST_RE = re.compile(r"^fleet/tests/test_[^/]*\.mjs$")
 PY_PROOF_TEST_RE = re.compile(r"^tests/(?:[^/]+/)*[^/]+\.py$")
@@ -993,17 +965,14 @@ def exam_shape_violations(md_text, tasks):
 
 def _apply_claims_grammar(t, plan_claim=None):
     """Overlay the claims-v1 body grammar on a task whose head markers and
-    **Interfaces:** block the legacy pass has already parsed (they are
-    unchanged under claims-v1, §3). The two tiers claims-v1 does not sign are
-    dropped rather than trusted: whatever the legacy pass read out of a
-    **Depends-on:**/**Commutes:** line is discarded here, and the line itself
-    is a refusal recorded in `grammar_violations`."""
+    **Interfaces:** block the head pass has already parsed (§3 keeps them
+    signed and unchanged). The two tiers claims-v1 does not sign are not read
+    at all: a **Depends-on:**/**Commutes:** line contributes nothing and is a
+    refusal recorded in `grammar_violations`."""
     claims = parse_claims_body(t["body"], t["id"], plan_claim)
     t.update(claims=claims,
              claim_provenance=claims["claim_provenance"],
-             grammar_violations=claims["violations"],
-             depends_on=[], depends_none=False,
-             commutes=[], commutes_conflicts=[])
+             grammar_violations=claims["violations"])
     return t
 
 
@@ -1036,7 +1005,7 @@ def gate_verdict_violations(plan_path, tasks):
 
     Keyed on the LIVE hash of each task's (Claim, Proof) pair, so an edited
     claim or proof goes stale and re-dispatches rather than riding an old
-    verdict. Legacy plans never reach here."""
+    verdict."""
     path = verdicts_path(plan_path)
     if not path.exists():
         return ["grammar: gate verdicts missing — expected `%s` beside the "
@@ -1087,8 +1056,7 @@ def gate_verdict_violations(plan_path, tasks):
 
 
 
-def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
-               plan_claim=None):
+def parse_task(t, raise_on_marker_error=True, plan_claim=None):
     """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
     validation failure (currently: an invalid or duplicate **Review:** value)
     is reported: True (the normal compile path, default) raises SystemExit
@@ -1097,21 +1065,16 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
     task's `marker_violations` list instead, so collect_violations can gather
     every task's violations in one pass rather than aborting at the first.
 
-    `grammar` selects the plan's declared grammar (plan_grammar). Under the
-    default "legacy" this function is exactly what it has always been; under
-    "claims-v1" the head markers (**Type:**/**Files:**/**Review:**) and the
-    **Interfaces:** block parse identically — spec 2026-08-31 §3 keeps them
-    signed and unchanged — and the six-slot body grammar is then overlaid by
-    _apply_claims_grammar, which also drops the two body tiers claims-v1 does
-    not sign (**Depends-on:**/**Commutes:**, both refused outright).
+    The head markers (**Type:**/**Files:**/**Review:**) and the
+    **Interfaces:** block are what spec 2026-08-31 §3 keeps signed; the
+    six-slot body grammar is then overlaid by _apply_claims_grammar, which also
+    refuses the two body tiers claims-v1 does not sign
+    (**Depends-on:**/**Commutes:**).
 
     `plan_claim` is the plan's header Claim, threaded to the body parser so a
     `(derived)` task Claim can be checked against the signature it descends
-    from (#552). The default None preserves BASE behaviour for every caller
-    that does not pass it."""
+    from (#552)."""
     ttype = None
-    deps, deps_none = [], False
-    commutes = []
     late_markers = []
     marker_violations = []
     creates, modifies, reads, deletes = [], [], [], []
@@ -1162,20 +1125,6 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
                     # First valid Type wins; a later or unrecognized value is
                     # ignored (the marker degrades to the heuristic classifier).
                     ttype = val
-        elif (m := MARKER_DEPS.match(s)):
-            if not in_header:
-                late_markers.append(s)
-            else:
-                # Accumulate across repeated **Depends-on:** lines — first-wins
-                # silently dropped declared prerequisites. `none` combined with
-                # concrete ids (across lines OR inline, `none, A`) is
-                # contradictory: the ids win (the none assertion is void).
-                tokens = [d.strip() for d in m.group(1).split(",") if d.strip()]
-                id_tokens = [d for d in tokens if d.lower() != "none"]
-                if len(id_tokens) != len(tokens):
-                    deps_none = True
-                if id_tokens:
-                    deps.extend(id_tokens)
         elif (m := MARKER_REVIEW.match(s)):
             if not in_header:
                 late_markers.append(s)
@@ -1195,33 +1144,18 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
                     marker_violations.append(msg)
                 else:
                     t["review"] = val
-        elif (m := MARKER_COMMUTES.match(s)):
-            if not in_header:
-                late_markers.append(s)
-            else:
-                # Accumulate across repeated **Commutes:** lines, same as
-                # **Depends-on:**. Prefer backticked paths; a bare comma-split
-                # token is kept only when it is path-like on its own — a stray
-                # prose fragment must not fabricate a phantom commutes path.
-                for tok in m.group(1).split(","):
-                    tok = tok.strip()
-                    if not tok:
-                        continue
-                    backticked = [p for p in PATH_RE.findall(tok) if _is_pathlike(p)]
-                    if backticked:
-                        commutes.extend(backticked)
-                    elif _is_pathlike(tok):
-                        commutes.append(tok)
         elif is_markerish and s.rstrip() == "**Depends-on:**":
-            # Exact marker, missing value. Inside the header it silently
-            # degrades to the heuristics; outside it is a placement violation
-            # surfaced like any late marker.
+            # Exact marker, missing value. Wherever it sits the claims-v1 body
+            # grammar refuses the line outright (CLAIMS_REFUSED_MARKERS);
+            # outside the header it is ALSO a placement violation, surfaced
+            # like any late marker.
             if not in_header:
                 late_markers.append(s + "  <missing value>")
         elif is_markerish:
             # A marker-shaped line that is not a trusted marker (`**type:**`,
-            # `**Depends-On:**`, `**Type**:`). Inside the header it degrades to
-            # the heuristics; after the header it surfaces as a late marker.
+            # `**Depends-On:**`, `**Type**:`, `**Commutes:**`). The two tiers
+            # claims-v1 does not sign are refused by the body grammar; after
+            # the header any of them also surfaces as a late marker.
             if not in_header:
                 late_markers.append(s)
         if s.startswith("**Files:**"):
@@ -1283,7 +1217,7 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
             # A checkbox step closes the Files section. Without this, a prose
             # step shaped like a Files line (e.g. "- Modify: nothing in `b.txt`
             # should change yet") that sits AFTER a checkbox would keep parsing
-            # as a Files entry and over-serialize the task. Checkbox lines start
+            # as a Files entry and over-order the task. Checkbox lines start
             # with "- [": close, then fall through to normal processing.
             if s.startswith("- ["):
                 in_files = False
@@ -1339,57 +1273,21 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
                 elif f.group(1) in ("Modify", "Test fixture(s)", "Fixture(s)"):
                     # A declared test fixture is a file the task OWNS and writes
                     # (test data committed alongside the code) — treat it as a
-                    # write so two tasks touching the same fixture serialize.
+                    # write so two tasks touching the same fixture overlap.
                     modifies.extend(paths)
                 else:  # Test — the suite the task reads/runs, not a write
                     reads.extend(paths)
             elif s and not s.startswith("-"):
                 in_files = False
 
-    # Commutes: validation (spec §2b) — now that the Files: block has closed,
-    # every declared commutes path must be one this task itself creates,
-    # modifies, or reads. A path outside that set is a rendered marker
-    # conflict (surfaced by the caller via commutes_conflicts, folded into
-    # marker_conflicts), never a SystemExit — and the offending path is
-    # dropped from the task's own commutes list so it never participates in
-    # auto-union eligibility downstream.
-    commutes_conflicts = []
-    own_paths = set(creates) | set(modifies) | set(reads) | set(deletes)
-    kept_commutes = []
-    for p in commutes:
-        if p in own_paths:
-            kept_commutes.append(p)
-        else:
-            commutes_conflicts.append(
-                "Task {}: Commutes path `{}` is not in this task's own "
-                "Files: block — declaration ignored for that path".format(
-                    t["id"], p))
-    commutes = kept_commutes
-
-    # Fence-stripped prose: classification evidence and text-dependency scanning
-    # run over this, not the raw body, so a fenced example (e.g. a bash snippet
-    # with `git push origin main`, or prose that says "runs after Task A") does
-    # not reclassify a task or fabricate a dependency edge.
-    #
-    # Fix C: also drop the task's own `### Task N: <title>` heading line. The
-    # heading is metadata, not prose — dependency-analysis.md promises task
-    # titles are NOT matched, but split_tasks folds the heading into body, so a
-    # task TITLED "cleanup after Task 1 lands" would otherwise fabricate a real
-    # text edge. Prose BETWEEN headings still folds into the preceding task's
-    # body and stays scanned; only the heading line itself is excluded.
-    prose_lines = [line for line, fenced in _fence_aware_lines(t["body"])
-                   if not fenced and not TASK_HEAD.match(line)]
-    prose = "\n".join(prose_lines)
-
     t.update(marker_type=ttype,
-             # ids win over a contradictory `none` (the none assertion is void
-             # once concrete prerequisites are declared).
-             depends_on=deps, depends_none=deps_none and not deps,
-             # Declared order-insensitive additive registrations (spec §2b),
-             # filtered to paths that survived the own-Files validation above;
-             # [] when the task declares no **Commutes:** marker at all.
-             commutes=sorted(set(commutes)),
-             commutes_conflicts=commutes_conflicts,
+             # Ordering is DERIVED (Interfaces, Files), never declared: a
+             # **Depends-on:** line is a refusal, not an input, so the emitted
+             # key is always empty. Same for **Commutes:** — same-path overlap
+             # is derived from Files — and so its conflict list is empty too.
+             depends_on=[],
+             commutes=[],
+             commutes_conflicts=[],
              late_markers=late_markers,
              # Marker-VALUE validation failures collected instead of raised
              # (only populated when raise_on_marker_error=False — the --check
@@ -1401,35 +1299,19 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
              deletes=sorted(set(deletes)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies) | set(deletes)),
-             interfaces={"consumes": consumes, "produces": produces},
-             prose=prose)
-    if grammar == CLAIMS_GRAMMAR:
-        _apply_claims_grammar(t, plan_claim)
+             interfaces={"consumes": consumes, "produces": produces})
+    _apply_claims_grammar(t, plan_claim)
     return t
 
 
-def classify(t):
-    """Returns (disposition, heuristic). Explicit marker wins; else evidence
-    in plan-markers.md precedence: release -> manual -> gate -> implementation."""
-    if t["marker_type"]:
-        return t["marker_type"], False
-    prose = t["prose"]  # fence-stripped: examples never drive classification
-    if RELEASE_EV.search(prose):
-        return "release", True
-    if MANUAL_EV.search(prose):
-        return "manual", True
-    if not t["writes"] and GATE_EV.search(prose):
-        return "gate", True
-    # EMPTY_WRITES_GATE: a task that writes nothing and whose only steps are
-    # build/verification (positive build/QA evidence, no implementation prose) is
-    # a gate, not implementation — a verification task belongs in the gate
-    # bucket, not in the wave plan ([c171bd23cbab3265]). The build/QA-evidence
-    # guard keeps a prose-only task (no writes, no build/QA steps) classified
-    # `implementation` rather than swept into the gate bucket.
-    if (not t["writes"] and BUILDQA_EV.search(prose)
-            and not _has_implementation_prose(prose)):
-        return "gate", True
-    return "implementation", True
+def disposition(t):
+    """The task's disposition, READ from its `**Type:**` marker.
+
+    There is no prose classifier left to fall back on: a task carrying no
+    marker (or one whose value is outside TYPES, which parse_task refuses to
+    trust) is `implementation`, the disposition that puts it in the wave plan
+    where a human will see it, rather than a guess that quietly drops it out."""
+    return t["marker_type"] or "implementation"
 
 
 # Top-level `## Global Constraints` section (v6, spec 2026-06-16). Fence-aware
@@ -1540,7 +1422,7 @@ PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})
 # to "" and can NEVER pair into an interface edge. The 2026-07-03 live incident
 # motivating this: a leading bare word 'the' tokenized identically across two
 # prose values, pairing 'Produces: the baked reviewer prompt …' with 'Consumes:
-# the reviewer-prompt source layout …' into a spurious edge that over-serialized
+# the reviewer-prompt source layout …' into a spurious edge that over-ordered
 # a real run. A symbol lead is either:
 #   * a backticked symbol — the FIRST backtick span is the symbol, and any prose
 #     tail after the closing backtick is allowed ("`User` dataclass (id, name)"
@@ -1615,13 +1497,9 @@ _FILES_GLOB_CHARS = "*?[{"
 # gate/manual/release task never enters overlap inference, so its placeholder
 # Files text ("- Verify: `(none)`") is structurally inert.
 #
-# The exemption keys on the EXPLICIT `**Type:**` marker (`marker_type`) and
-# NEVER on classify()'s heuristic result. An unknown Files label is itself what
-# empties `writes`, and empty writes is what sends classify() into its gate
-# heuristic — so a heuristic-keyed exemption would let a marker-less
-# implementation task with a typo'd label buy its own exemption, compile
-# silently as a "gate", drop out of the wave plan, and lose overlap coverage.
-# A task with no explicit marker stays fully Files-checked.
+# The exemption keys on the EXPLICIT `**Type:**` marker (`marker_type`), never
+# on the disposition a marker-less task falls back to. A task with no explicit
+# marker stays fully Files-checked.
 FILES_EXEMPT_MARKERS = frozenset({"gate", "manual", "release"})
 
 
@@ -1667,9 +1545,8 @@ def _files_violations(task):
     # with the ambiguous-files tier gone there is no conservative serialization
     # to fall back on, so it would silently share a wave with whatever it
     # actually edits. Refuse instead. Keyed on the EXPLICIT `**Type:**` marker
-    # for the same reason `_files_grammar_exempt` is (a heuristic key would let
-    # the empty Files block that CAUSED the gate guess buy its own exemption),
-    # and a `- none` block reaches here identically: it parses to no paths.
+    # for the same reason `_files_grammar_exempt` is, and a `- none` block
+    # reaches here identically: it parses to no paths.
     if (task.get("marker_type") == "implementation"
             and not (task.get("creates") or task.get("modifies")
                      or task.get("deletes")
@@ -1744,27 +1621,25 @@ def collect_violations(plan_path, base_tree=None):
         return ["duplicate task id(s): " + ", ".join(dups)
                 + " — task headings must be unique."]
 
-    grammar = plan_grammar(plan_text)
-    tasks = [parse_task(t, raise_on_marker_error=False, grammar=grammar,
+    plan_grammar(plan_text)  # refuses a plan that declares no claims-v1 header
+    tasks = [parse_task(t, raise_on_marker_error=False,
                         plan_claim=parse_plan_claim(plan_text))
              for t in raw_tasks]
 
     violations = []
-    # claims-v1 body grammar (empty for every legacy plan, which declares no
-    # grammar and so never enters the slot parser at all).
+    # claims-v1 body grammar.
     for t in tasks:
         violations.extend(t.get("grammar_violations", []))
     # ... and the gate-verdict record, which is a grammar refusal on the same
     # footing (spec §4.5): both channels close on it, so an author never
     # discovers at dispatch that the gate was never run.
-    if grammar == CLAIMS_GRAMMAR:
-        violations.extend(plan_claim_violations(plan_text))
-        violations.extend(gate_verdict_violations(plan_path, tasks))
+    violations.extend(plan_claim_violations(plan_text))
+    violations.extend(gate_verdict_violations(plan_path, tasks))
     # ... and the Global-Constraints `- Check:` commands, which belong to no
-    # task and so are checked once for the whole plan, in either grammar.
+    # task and so are checked once for the whole plan.
     violations.extend(constraint_check_violations(plan_text))
     # ... and the declared exam command (#644), plan-level for the same reason:
-    # the shell that would run it does not care which grammar the plan declares.
+    # the shell that would run it is the plan's, not any one task's.
     violations.extend(exam_command_violations(plan_text))
     violations.extend(exam_shape_violations(plan_text, tasks))
     for t in tasks:
@@ -1780,7 +1655,7 @@ def collect_violations(plan_path, base_tree=None):
             violations.append(_late_marker_note(t["id"], late))
     # Files grammar is disposition-scoped (#91): only EXPLICITLY marked
     # gate/manual/release tasks are exempt — see _files_grammar_exempt for why
-    # this must never key on the heuristic classifier.
+    # this must never key on anything but the marker.
     for t in tasks:
         if _files_grammar_exempt(t):
             continue
@@ -1877,8 +1752,8 @@ def _machine_literals(t, base_tree):
 
 
 def base_fact_lines(tasks, base_tree):
-    """One line per fact, in task order — empty for a legacy plan or a task
-    with nothing to say. Printed by `--check --base` after the verdict."""
+    """One line per fact, in task order — empty for a task with nothing to
+    say. Printed by `--check --base` after the verdict."""
     lines = []
     for t in tasks:
         if _files_grammar_exempt(t) or "claims" not in t:
@@ -2046,8 +1921,8 @@ def _sheet_files(task):
     is a file it owns — which is exactly where this differs from the `files`
     key the engine already reads (`_files_for`, deletes excluded, unchanged).
 
-    A legacy-grammar task has no sheet: every list of its sheet is empty, and
-    it contributes nothing to a wave-mate's sibling set either."""
+    A task with no parsed claims body has no sheet: every list of its sheet is
+    empty, and it contributes nothing to a wave-mate's sibling set either."""
     if not task.get("claims"):
         return []
     return sorted(set(task.get("creates") or []) | set(task.get("modifies") or [])
@@ -2113,17 +1988,11 @@ def factsheet(task, wave, stamp):
     }
 
 
-# Overlap disposition — the ROLLBACK KNOB, and nothing else:
-#   "fold"      (default) — two tasks whose declared paths merely overlap are
-#                 NOT ordered; they share a wave and the kernel folds their
-#                 same-file edits at merge time.
-#   "serialize" — re-enables the document-order `write-after-write` tier, and
-#                 exactly that tier: every other edge label is identical
-#                 between the two modes.
-# `fold` became the default after the 2026-08-14 counted A/B (0.640x wall,
-# 1.111x tokens, all hard gates green — evals/frontier/results/2026-08-14-t15-ab.md).
-OVERLAP_MODES = ("serialize", "fold")
-OVERLAP_DEFAULT = "fold"
+# Two tasks whose declared paths merely overlap are NOT ordered: they share a
+# wave and the kernel folds their same-file edits at merge time. That became
+# the one disposition after the 2026-08-14 counted A/B (0.640x wall, 1.111x
+# tokens, all hard gates green — evals/frontier/results/2026-08-14-t15-ab.md),
+# and it is no longer a knob.
 
 # The one same-file tier claims-v1 can justify (spec 2026-08-31 §3 edge-tier
 # table). `fold` leaves a mere same-file overlap unordered because the kernel
@@ -2156,68 +2025,43 @@ def is_binary(tree_root, rel_path):
         return False
 
 
-def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
-                tree_root=None):
+def build_edges(impl, tree_root=None):
     """Returns (edges, conflicts).
 
-    Edges are DECLARED-ordering only: marker, text, interface, and the one
-    existence edge write-after-create. Mere same-file overlap orders nothing —
-    unless `overlap_mode == "serialize"`, the rollback knob, which re-adds the
-    document-order `write-after-write` tier and only that tier.
+    Edges are DERIVED ordering only (spec 2026-08-31 §3 edge-tier table):
+    the interface tier, the one existence edge write-after-create, and the
+    non-text same-file tier. Nothing is read out of prose and nothing is
+    declared: a Context slot that says "after Task 1 completes" orders nothing,
+    and there is no marker left to say it with.
 
-    `grammar` selects the plan's declared grammar (plan_grammar). Under the
-    default "legacy" every tier below is exactly what it has always been. Under
-    "claims-v1" (spec 2026-08-31 §3 edge-tier table) three things differ, and
-    nothing else: the TEXT tier is off (a body slot's prose orders nothing),
-    the `undeclared-dependency` cross-check is retired (see its own comment),
-    and a same-file pair whose shared path is NON-TEXT under `tree_root` is
-    ordered, since no kernel fold can merge it. `tree_root` is the `BaseTree`
-    the non-text classifier reads — a checkout directory or a commit sha, and
-    this tier cannot tell which; None (the default) leaves the pair unordered.
+    Mere same-file overlap orders nothing — the kernel folds the two edits at
+    merge time — EXCEPT when the shared path is NON-TEXT under `tree_root`,
+    which no fold can merge. `tree_root` is the `BaseTree` the non-text
+    classifier reads — a checkout directory or a commit sha, and this tier
+    cannot tell which; None (the default) leaves the pair unordered.
     """
-    if overlap_mode not in OVERLAP_MODES:
-        raise ValueError("unknown overlap mode: %r" % (overlap_mode,))
-    # Edge precedence:
-    # explicit (marker, text) > semantic order-independent (write-after-create)
-    # > the document-order `write-after-write` heuristic (serialize mode only),
-    # which yields to any opposing earlier PATH (reachability), not just a
-    # direct reverse edge.
+    # Edge precedence: semantic order-independent (write-after-create) then the
+    # derived tiers, each of which yields to any opposing earlier PATH
+    # (reachability), not just a direct reverse edge.
     # A cycle that survives this precedence is a genuine plan contradiction
     # and stays a loud error.
     ids = {t["id"] for t in impl}
+    # `conflicts` is always empty and rides only so the caller's
+    # `marker_conflicts` merge keeps one shape: every tier below is DERIVED, and
+    # a derived edge has no author to blame. Every conflict a plan can still
+    # earn — a late marker, a refused **Depends-on:**/**Commutes:** line — is
+    # raised where it is read, not here.
     edges, conflicts, seen = [], [], set()
     # Fix E: maintain the adjacency map incrementally instead of rebuilding it
     # on every would_cycle call inside the O(N^2) pair loops (measured
     # superlinear blowup >= 80 tasks). add() appends to adj as it appends edges.
     adj = {}
-    # Fix A: dedupe marker_conflicts on the (task, edge) pair. The marker loop
-    # and the text loop share this set so byte-identical drops — e.g. two prose
-    # matches "after Task A" / "after Task A is green", or a `Depends-on: 9, 9`
-    # naming the same ghost twice — surface exactly once.
-    conflict_seen = set()
-
-    # kind separates the two audiences a conflict entry can have:
-    #   "conflict"  — a malformed/ambiguous marker the human should fix.
-    #   "inference" — a benign edge the compiler inferred correctly (a
-    #                 write/prose edge overriding a `Depends-on: none`); it is
-    #                 informational, not a problem. SKILL.md renders the two
-    #                 buckets separately so genuine conflicts are not drowned out.
-    def add_conflict(task, edge, note, kind="conflict"):
-        if (task, edge) not in conflict_seen:
-            conflict_seen.add((task, edge))
-            conflicts.append({"task": task, "edge": edge, "note": note, "kind": kind})
 
     def add(a, b, why):
         if a in ids and b in ids and a != b and (a, b) not in seen:
             seen.add((a, b))
             edges.append({"from": a, "to": b, "why": why})
             adj.setdefault(a, []).append(b)
-            target = next(t for t in impl if t["id"] == b)
-            if target["depends_none"] and why != "marker":
-                add_conflict(
-                    b, f"{a} -> {b} ({why})",
-                    "Depends-on: none overridden by a conflicting edge — its why label is in the edge field",
-                    kind="inference")
 
     def would_cycle(a, b):
         """True if adding a -> b would close a cycle (b already reaches a)."""
@@ -2232,61 +2076,6 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
             stack.extend(adj.get(n, []))
         return False
 
-    # Tier 1: Explicit — marker edges
-    for t in impl:
-        for d in t["depends_on"]:
-            if d == t["id"]:
-                # Self-referential markers no-op inside add() (a != b guard);
-                # surface them like every other bad marker instead of dropping
-                # silently.
-                add_conflict(
-                    t["id"], d + " -> " + t["id"] + " (marker)",
-                    "self-referential Depends-on — a task cannot depend on "
-                    "itself; marker ignored")
-            elif d in ids:
-                add(d, t["id"], "marker")
-            else:
-                add_conflict(
-                    t["id"], d + " -> " + t["id"] + " (marker)",
-                    "Depends-on: " + d + " names a task outside the implementation set "
-                    "(unknown id or gate/release/manual) — edge dropped")
-
-    # Tier 1: Explicit — text edges, LEGACY ONLY. Under claims-v1 ordering
-    # is derived from Interfaces and Files and never from prose (spec §3),
-    # so this tier does not run at all — a Context slot that says "after
-    # Task 1 completes" orders nothing.
-    # (Moved up from the bottom to enforce precedence; scans fence-stripped
-    # prose so a fenced example saying "runs after Task A" fabricates nothing.)
-    if grammar != CLAIMS_GRAMMAR:
-        for b in impl:
-            for m in TEXT_DEP.finditer(b["prose"]):
-                if m.group(1) != b["id"]:
-                    if m.group(1) in ids:
-                        add(m.group(1), b["id"], "text")
-                    else:
-                        # Same surfacing as marker edges: a text dependency on a task
-                        # outside the implementation set (gate/release/manual/unknown)
-                        # drops, but loudly, instead of silently no-opping in add().
-                        # add_conflict dedupes so two prose matches on the same ghost
-                        # task (e.g. "after Task A" and "after Task A is green") yield
-                        # one entry, not two byte-identical ones.
-                        add_conflict(
-                            b["id"], m.group(1) + " -> " + b["id"] + " (text)",
-                            "text dependency names a task outside the implementation set "
-                            "(unknown id or gate/release/manual) — edge dropped")
-            for m in TEXT_DEP_LIST.finditer(b["prose"]):
-                for ref in LIST_SPLIT.split(m.group(1)):
-                    ref = ref.strip()
-                    if not ref or ref == b["id"]:
-                        continue
-                    if ref in ids:
-                        add(ref, b["id"], "text")
-                    else:
-                        add_conflict(
-                            b["id"], ref + " -> " + b["id"] + " (text)",
-                            "text dependency names a task outside the implementation set "
-                            "(unknown id or gate/release/manual) — edge dropped")
-
     # Tier 2: Semantic, order-independent — write-after-create. The ONE
     # existence edge: a task cannot modify a file another task has yet to
     # create, whatever the document order says.
@@ -2300,14 +2089,10 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
     # Interface tier (v6, spec 2026-06-16 §1.3). When B Consumes a symbol A
     # Produces (EXACT normalized-token equality — never fuzzy), B depends on A:
     # add a producer -> consumer edge. The interface signal is the most
-    # informative `why` for its pair, so when an earlier tier (marker, file
-    # overlap) already recorded the (a, b) pair, its label is PROMOTED to
-    # "interface"; otherwise a fresh edge is added. The symbols may not map to
-    # files, so it is cycle-guarded.
-    # Every edge NOT already covered by a Depends-on marker or a file-overlap edge
-    # is surfaced as a loud "undeclared dependency" finding: the plan runs
-    # correctly AND the author is told their Depends-on was wrong. A Consumes with
-    # no matching Produces is not an error.
+    # informative `why` for its pair, so when an earlier tier already recorded
+    # the (a, b) pair, its label is PROMOTED to "interface"; otherwise a fresh
+    # edge is added. The symbols may not map to files, so it is cycle-guarded.
+    # A Consumes with no matching Produces is not an error.
     produced = {a["id"]: {tok for p in a["interfaces"]["produces"]
                           if (tok := _interface_token(p))}
                 for a in impl}
@@ -2325,43 +2110,19 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
                              if e["from"] == a["id"] and e["to"] == b["id"]), None)
             if existing is None and would_cycle(a["id"], b["id"]):
                 continue
-            declared = a["id"] in b["depends_on"]
-            file_overlap = (existing is not None
-                            and existing["why"] in ("write-after-create",
-                                                    "write-after-write"))
             if existing is not None:
-                # Pair already ordered (marker / file overlap / earlier tier):
-                # promote its label to the more informative "interface".
+                # Pair already ordered (an earlier tier): promote its label to
+                # the more informative "interface".
                 existing["why"] = "interface"
-                added = False
             else:
                 add(a["id"], b["id"], "interface")
-                added = True
-            # RETIRED under claims-v1 (spec §3 edge-tier table, amended
-            # after run-43). `declared` reads b's **Depends-on:**, which
-            # the grammar zeroes — so this fired on the canonical happy
-            # path, telling the author to add a marker claims-v1 refuses
-            # outright. The legacy conflict is untouched.
-            if (not declared and not file_overlap
-                    and grammar != CLAIMS_GRAMMAR):
-                shared = sorted(b_consumes & produced[a["id"]])
-                add_conflict(
-                    b["id"],
-                    "undeclared: " + a["id"] + " -> " + b["id"] + " (interface)",
-                    "undeclared dependency: Task " + b["id"] + " Consumes "
-                    + ", ".join(shared[:3]) + " which Task " + a["id"]
-                    + " Produces, but Task " + b["id"]
-                    + " does not declare **Depends-on:** " + a["id"]
-                    + " and shares no file with it — add the marker"
-                    + ("" if added else " (edge already present)"),
-                    kind="undeclared-dependency")
 
     # Tier 2b (claims-v1 ONLY): non-text same-file overlap. `fold` leaves a
     # same-file pair unordered because the kernel merges the two edits line-wise
     # — which it cannot do for a raster asset, a compiled blob, or a symlink. So
     # when a tree root is provided and some shared path is non-text there, the
     # pair is ordered in document order, cycle-guarded like every derived tier.
-    if grammar == CLAIMS_GRAMMAR and tree_root is not None:
+    if tree_root is not None:
         for a in impl:
             for b in impl:
                 if a["id"] == b["id"] or a["order"] >= b["order"]:
@@ -2373,28 +2134,6 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
                 if (a["id"], b["id"]) in seen or would_cycle(a["id"], b["id"]):
                     continue
                 add(a["id"], b["id"], "non-text-overlap")
-
-    # Tier 3 (`--overlap serialize` ONLY — the rollback knob): document-order
-    # `write-after-write`. The overlap set is (writes union reads) on both
-    # sides, so two tasks listing the same `Test:` path serialize too. Add only
-    # when doc order is forward AND b cannot already reach a (reachability
-    # guard, Bug A), so the tier can never close a cycle.
-    #
-    # Under the shipped `fold` default this loop does not run at all: mere
-    # same-file overlap orders nothing and the kernel folds the two edits at
-    # merge time.
-    if overlap_mode == "serialize":
-        for a in impl:
-            for b in impl:
-                if a["id"] == b["id"]:
-                    continue
-                a_touch = set(a["writes"]) | set(a["reads"])
-                b_touch = set(b["writes"]) | set(b["reads"])
-                if (a_touch & b_touch
-                        and a["order"] < b["order"]
-                        and (a["id"], b["id"]) not in seen
-                        and not would_cycle(a["id"], b["id"])):
-                    add(a["id"], b["id"], "write-after-write")
 
     return edges, conflicts
 
@@ -2724,14 +2463,6 @@ def main(argv=None):
                          "or print 'PLAN OK' and exit 0 — never emits waves. "
                          "Mutually exclusive with "
                          "--emit-launch/--emit-args/--run-dir.")
-    ap.add_argument("--overlap", choices=OVERLAP_MODES, default=OVERLAP_DEFAULT,
-                    help="how two tasks whose declared paths overlap are "
-                         "scheduled: 'fold' (the default) does not order them "
-                         "at all — they share a wave and the kernel folds "
-                         "their same-file edits at merge time; 'serialize' is "
-                         "the rollback knob, re-adding the document-order "
-                         "write-after-write edge and nothing else. Every "
-                         "other edge label is identical in both modes.")
     ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
@@ -2788,8 +2519,7 @@ def main(argv=None):
         # outside a task's Files carry a literal its clauses pin.
         if base_tree is not None:
             plan_text = args.plan.read_text()
-            grammar = plan_grammar(plan_text)
-            tasks = [parse_task(t, raise_on_marker_error=False, grammar=grammar,
+            tasks = [parse_task(t, raise_on_marker_error=False,
                                 plan_claim=parse_plan_claim(plan_text))
                      for t in split_tasks(plan_text)]
             for line in base_fact_lines(tasks, base_tree):
@@ -2838,9 +2568,9 @@ def main(argv=None):
               "Refusing to compile." + level_hint, file=sys.stderr)
         raise SystemExit(1)
 
-    grammar = plan_grammar(plan_text)
+    plan_grammar(plan_text)  # refuses a plan that declares no claims-v1 header
     plan_claim = parse_plan_claim(plan_text)
-    tasks = [parse_task(t, grammar=grammar, plan_claim=plan_claim)
+    tasks = [parse_task(t, plan_claim=plan_claim)
              for t in split_tasks(plan_text)]
     if not tasks:
         print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
@@ -2861,26 +2591,24 @@ def main(argv=None):
     # Dispositions resolve BEFORE the Files gate (#91): Files grammar feeds
     # overlap inference, which only implementation tasks enter — a
     # gate/manual/release task's placeholder Files text is structurally
-    # inert and must neither block compile nor warn. The exemption itself keys
-    # on the EXPLICIT marker, not on the stamped (possibly heuristic)
-    # disposition — see _files_grammar_exempt.
+    # inert and must neither block compile nor warn. The disposition is READ
+    # from the `**Type:**` marker, so `heuristic` is always false: there is no
+    # guess left to flag. The key stays in the emitted row for consumers that
+    # still read it.
     for t in tasks:
-        disp, heuristic = classify(t)
-        t["disposition"], t["heuristic"] = disp, heuristic
+        t["disposition"], t["heuristic"] = disposition(t), False
 
     # claims-v1 body grammar (spec 2026-08-31 §4): a slot-shape, Steps,
     # refused-marker, fence, provenance, Stale-if or Proof-disjointness fault
     # is a loud compile error, raised BEFORE edge building for the same reason
     # the Files gate is — a body the compiler cannot read is a body whose
-    # ordering it must not guess at. Empty for every legacy plan.
-    grammar_violations = [v for t in tasks for v in t.get("grammar_violations", [])]
-    if grammar == CLAIMS_GRAMMAR:
-        grammar_violations = (plan_claim_violations(plan_text)
-                              + grammar_violations
-                              + gate_verdict_violations(args.plan, tasks))
-    # Plan-level and grammar-independent: a `- Check:` command belongs to no
-    # task, and the shell that would run it does not care which grammar the
-    # plan declares.
+    # ordering it must not guess at.
+    grammar_violations = (plan_claim_violations(plan_text)
+                          + [v for t in tasks
+                             for v in t.get("grammar_violations", [])]
+                          + gate_verdict_violations(args.plan, tasks))
+    # Plan-level: a `- Check:` command belongs to no task, so it is collected
+    # from the plan text rather than from any task body.
     grammar_violations = (grammar_violations
                           + constraint_check_violations(plan_text)
                           + exam_command_violations(plan_text)
@@ -2921,13 +2649,6 @@ def main(argv=None):
                  .split(": ", 1)[1]}
         for t in tasks if t.get("late_markers")]
 
-    # A **Commutes:** path outside the task's own Files: block (spec §2b) is a
-    # rendered marker conflict, never a compile error — one entry per
-    # offending path, since a task may declare several.
-    type_conflicts.extend(
-        {"task": t["id"], "edge": "", "note": note}
-        for t in tasks for note in t.get("commutes_conflicts", []))
-
     global_constraints = parse_global_constraints(plan_text)
     # The other kind of constraint: commands, not sentences. They ride beside
     # `globalConstraints` in all three payloads — the driver runs them, and
@@ -2943,8 +2664,7 @@ def main(argv=None):
         print("compile_plan: no implementation tasks — nothing to wave "
               "(plan is gates/release/manual only); the per-task "
               "dispositions still apply.", file=sys.stderr)
-    edges, conflicts = build_edges(impl, overlap_mode=args.overlap,
-                                   grammar=grammar, tree_root=base_tree)
+    edges, conflicts = build_edges(impl, tree_root=base_tree)
     waves = layer(impl, edges)
 
     mode, degrade = "parallel", None
@@ -3000,12 +2720,13 @@ def main(argv=None):
           "review": by_id[tid].get("review") or "lean",
           # Contention-detection inputs (spec §2b): writes is sorted
           # creates ∪ modifies (Test: paths excluded — a task never "writes"
-          # what it only reads/runs); commutes is the task's own validated
-          # **Commutes:** declaration, [] when undeclared.
+          # what it only reads/runs). commutes is always [] — same-path
+          # overlap is DERIVED from Files, never declared — and rides only so
+          # the wave-entry shape the engine reads stays unchanged.
           "writes": by_id[tid].get("writes", []),
           "commutes": by_id[tid].get("commutes", []),
           # Task-scoped exam (#515, #553): the Proof `Test:` paths themselves,
-          # in Proof order ([] for a legacy-grammar body), and the command the
+          # in Proof order ([] for a body that names none), and the command the
           # implementer iterates against, derived from that same list. The
           # command is None whenever the Proof names nothing runnable, which
           # the engine reads as "use the run-wide command" — the paths still
@@ -3017,16 +2738,15 @@ def main(argv=None):
               (by_id[tid].get("claims") or {}).get("proof_tests_ordered", []),
               exam_command),
           # The Proof `Run:` commands (#589), in Proof order, [] for a task
-          # that names none (and for every legacy-grammar body). The driver
-          # executes these in the task's clone; no model ever runs one, and
-          # they are additive to testCmd, which still derives from `Test:`
-          # paths alone.
+          # that names none. The driver executes these in the task's clone; no
+          # model ever runs one, and they are additive to testCmd, which still
+          # derives from `Test:` paths alone.
           "proofRuns": list(
               (by_id[tid].get("claims") or {}).get("proof_runs", [])),
           # The Proof `Guard:` paths (#777), in Proof order, [] for a task that
-          # names none (and for every legacy-grammar body). Plain data, not an
-          # obligation: the engine reads it with `Array.isArray` and an absent
-          # key as [], and no `grammar:` line is ever drawn from it.
+          # names none. Plain data, not an obligation: the engine reads it with
+          # `Array.isArray` and an absent key as [], and no `grammar:` line is
+          # ever drawn from it.
           "proofGuards": list(
               (by_id[tid].get("claims") or {}).get("proof_guards", [])),
           # The fact sheet (#913): the task's own paths (deletes included),
