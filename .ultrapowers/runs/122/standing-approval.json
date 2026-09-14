@@ -1,0 +1,14 @@
+{
+  "grantedAt": "launch directive",
+  "instruction": "node fleet/run-main.mjs /home/exedev/plans/run-122.md run-122 (deterministic driver; #243 pre-authorization)",
+  "ackList": [
+    {
+      "type": "deferred:external",
+      "detail": "fleet/sandbox-boot.sh — kata_mark_run's POST to /api/v1/projects/<id>/issues/<uid>/metadata against the live kata hub — The boot's metadata write is exercised only against the sim's stubbed curl (fleet/tests/_sandbox_boot_helpers.mjs:362-371, which logs the payload and answers a canned issue envelope). That the real hub answers 200 at the next revision with no If-Match, and stores the three dotted keys FLAT, rests on the Context's measurement of 2026-09-13; no hub is reachable from this environment to re-measure it. [structural false-green: sandbox could not execute it against the target]"
+    },
+    {
+      "type": "deferred:external",
+      "detail": "fleet/janitor.mjs — metadataPatch's ssh-curl POST of the death's three keys to the live kata hub — The death write goes over the sshTransport seam and is exercised only against the sims' fake hub. Two things it cannot settle: the live hub's acceptance of the patch under Idempotency-Key janitor:run-<N>:death, and the branch where launch.mjs:954 hands the janitor its own kata client — that client's four-argument patchMetadata (fleet/kata-client.mjs:228-230) sends If-Match \"rev-<revision>\" built from reading.issue.revision as listIssues returns it, which is the path a real launch takes and no sim drives. [structural false-green: sandbox could not execute it against the target]"
+    }
+  ]
+}

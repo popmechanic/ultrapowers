@@ -1,0 +1,166 @@
+{
+  "integrationBranch": "ultra/integration-run-122",
+  "baseSha": "d8ee9a3c4eabbeb5099af96180412a959dc59872",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9c8179510e39e5b2933b27d927d0292f223d7730",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-122/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/CONTRACT.md is left self-contradictory about the run issue. The implementer updated the two sentences M3 names (~line 290 and ~line 506) and the `kata.jsonl` export sentence (~line 88), but the sentence immediately above the edited one \u2014 patched fleet/CONTRACT.md:285-287, \"With the file, the RUN issue \u2014 the file's `run.uid` \u2014 is closed by the boot, once, at the terminal transition and before that transition's export, so the `issue.closed` rides `kata.jsonl` on the tag (#937)\" \u2014 still asserts unconditionally that the boot closes the run issue, three lines above the new \"A run whose page ends `parked` or `failed` makes no close at all\". It is also now the only place stating the write's timing, and it states it only of the close, so the contract never says the `work.state` patch rides that same pre-export slot (the sandbox-boot.sh comment does). M3's exam does not read this line, so nothing here is unverified \u2014 the clause is simply false for two of the three exits in a file this task owns. The proposed patch keeps both literals leg (e) of test_sandbox_boot_kata.mjs pins in this bullet (`run-<N>:run:close`, `sandbox:run-<N>`) and does not disturb M3's `parked.*failed.*open.*work\\.state.*work\\.attention.*work\\.attention_msg` match.; The diff modifies fleet/tests/_sandbox_boot_helpers.mjs (the `*/metadata)` stub arm, the `STUB_KATA_META_EXIT` knob, `kata-meta.log` and the `kataMetas` reader), which is outside this task's FILES. The edit is lawful and required \u2014 the task's own Context says \"the stub needs a `STUB_KATA_META_EXIT` knob (beside `STUB_KATA_CLOSE_EXIT`)\" and names the file \u2014 so the defect is the Files block omitting the path, not the change. It is not a SIBLING FILES path, so nothing of task 2's was touched. Fix lies in the task text: add `Modify: fleet/tests/_sandbox_boot_helpers.mjs` to the Files block.; Copy-pasted logic in fleet/sandbox-boot.sh: `kata_mark_run` reproduces `kata_close_run`'s prologue verbatim \u2014 the `local open=\"issues\"` spelling, the `[ -n \"$KATA_FILE\" ] && [ -f \"$KATA_FILE\" ]` guard, the inline `python3` that prints `project.id` and `run.uid`, the `${ids%% *}`/`${ids##* }` split and the `[ \"$ids\" = \"$project\" ]` malformed-blob guard \u2014 about twelve identical lines, differing only in the log sentence. The task's Context did say `kata_close_run` \"is the pattern to copy\", so this is faithful rather than careless, but a shared `kata_run_ids()` emitting `\"$project $uid\"` (or returning non-zero when the blob names neither) would leave one reader of the blob instead of two that must stay in step.; Leftover `wontfix` affordance in fleet/sandbox-boot.sh: after this change no caller passes `wontfix` to `kata_close_run` (the three sites are now `kata_mark_run`), yet the helper still advertises it \u2014 the signature comment `kata_close_run() { # $1 = done|wontfix, $2 = message` and the body comment \"`wontfix` carries no evidence because kata refuses any\" \u2014 while the block comment above it was correctly rewritten to say `done` is the only disposition the boot closes on. Narrowing the signature comment to `# $1 = done, $2 = message` (and dropping the evidence aside, or keeping it as a note on why the evidence list is built only for `done`) would stop the helper from documenting a path nothing reaches.; Footprint: the diff modifies `fleet/tests/_sandbox_boot_helpers.mjs` (a new `*\u2026/projects/*/metadata)` arm on the `curl` stub carrying `STUB_KATA_META_EXIT`, and a new `kataMetas(ctx)` reader over `kata-meta.log`), a path the task's Files block does not declare. The task's own Context requires exactly this work \u2014 \"the stub needs a `STUB_KATA_META_EXIT` knob (beside `STUB_KATA_CLOSE_EXIT`)\" \u2014 so the defect is the Files block, not the edit: the footprint should have listed `fleet/tests/_sandbox_boot_helpers.mjs` as a Modify. The edit is additive only (a new case arm placed ahead of the `*/issues*` arm, plus one new export), it changes no existing rig behaviour, and it is not a SIBLING FILES path \u2014 task 2 owns only `fleet/janitor.mjs`, `fleet/tests/test_janitor_hub.mjs`, `fleet/tests/test_janitor_state_key.mjs` and `fleet/CONTRACT.md` \u2014 so nothing collides. Recorded, not blocking.; Copy-pasted logic: `kata_mark_run` (fleet/sandbox-boot.sh, the new helper after `kata_close_run`) repeats ~20 lines of `kata_close_run` verbatim \u2014 the `[ -n \"$KATA_FILE\" ] && [ -f \"$KATA_FILE\" ]` guard, the `local open=\"issues\"` dodge of the residuals check, the inline `python3` read of `doc[\"project\"][\"id\"]`/`doc[\"run\"][\"uid\"]`, the `${ids%% *}`/`${ids##* }` parse and its `[ \"$ids\" = \"$project\" ]` guard. The task's Context did say `kata_close_run` \"is the pattern to copy\", so this is lawful, but the two readers can now drift: a fixture whose blob shape changes has to be fixed twice. Suggested: lift the ids read into one `kata_run_ids()` helper that echoes `\"<project> <uid>\"` (or returns 1 with the log line) and have both callers use it; the per-boot latch (`KATA_RUN_CLOSED` / `KATA_RUN_MARKED`), the body builder and the curl stay where they are.; Contract over-claim against the code: the new sentence at fleet/CONTRACT.md (the kata bullet, the `+` block at ~line 289) reads \"A run whose page ends `parked` or `failed` makes no close at all: it leaves that run issue open and marked instead\". The first half is now universally true \u2014 all three `kata_close_run wontfix` sites are gone \u2014 but the second half holds only at the three exits M1 names. The other terminal non-green transitions write no state key: `fail()` (fleet/sandbox-boot.sh:578-580, the generic post-clone failure path), the credential park (:1134), the deadman park (:3399) and the kata-unreachable ping park (:808) all reach a `parked`/`failed` page without calling `kata_mark_run`, so their run issues are now left neither closed nor marked. Parity with BASE is preserved (none of those closed `wontfix` either) and M1/M3 as written are satisfied, so this blocks nothing; but the deadman and `fail()` paths are precisely the ones an operator wants `work.attention=needs-human` on. Either qualify the sentence to the exits the boot marks, or add `kata_mark_run failed \"$(error_head)\"` / `kata_mark_run parked \"$(error_head)\"` at those sites \u2014 the helper already self-guards on `$KATA_FILE` and on `KATA_RUN_MARKED`, so an early failure with no blob is still a no-op. Note the exam's leg (c) regex (`parked.*failed.*open.*work\\.state.*work\\.attention.*work\\.attention_msg`) must keep matching whichever way it is settled.; unverified: the metadata patch rides `Idempotency-Key: $RUN_ID:run:park` for BOTH dispositions \u2014 the park's three keys and the green run's single `work.state=done` (fleet/sandbox-boot.sh, `kata_mark_run`'s `fleet_curl` line). The key is the one the task's Context dictates and no Machine clause pins it, so the diff is faithful; but `KATA_RUN_MARKED` is per-process, so a boot that parked and a later re-entered boot of the same run that goes green send two different bodies under one key. If the hub replays the first response for a repeated key, the second write is swallowed and the run issue is closed `done` while still carrying `work.state=parked`, `work.attention=needs-human`. Nothing in this diff can settle it: what would is the hub's documented (or measured) behaviour for a repeated `Idempotency-Key` on `\u2026/issues/<uid>/metadata` with a differing body \u2014 the same measurement of 2026-09-13 that established the no-`If-Match` shape. If it replays, the fix is a per-disposition key (`run-<N>:run:park` vs `run-<N>:run:state-done`), which is a plan-text change, not an implementer one.; concern: out-of-FILES: fleet/tests/_sandbox_boot_helpers.mjs \u2014 the task's Context asks for the `STUB_KATA_META_EXIT` knob 'beside STUB_KATA_CLOSE_EXIT', which lives in the rig, and the stub's `*/issues*` glob would otherwise swallow the metadata URL and answer a patch with the export's issues page (breaking M4's per-export issues count). Added: a `*/metadata)` arm before the issues arm that logs the payload to `$FLEET_HOME/kata-meta.log` and exits `${STUB_KATA_META_EXIT:-0}`, and a `kataMetas(ctx)` reader beside `kataCloses(ctx)`. Nothing else in the rig changed; the exam can equally read the patch off the recorded curl argv's `-d` word.; concern: plan-defect: leg (a)'s third exit names `STUB_ENGINE_CODE: '1'` as the knob for a non-zero engine exit, but that knob alone does not produce a failed run: the boot rescues an exit of exactly 1 that left a gate receipt behind ('a verdict, not a crash', sandbox-boot.sh ~line 3251) and the rig writes a `PASS` receipt by default, so the run ends `done`. The failed exit needs `STUB_ENGINE_CODE: '1'` together with `STUB_NO_RECEIPT: '1'` (or `STUB_ENGINE_CODE: '2'`). The leg is satisfiable \u2014 my sim's third case uses that pair and passes, with a comment at the case naming why \u2014 but a peer exam that sets only `STUB_ENGINE_CODE: '1'` will drive a green run and see the `done` close.; concern: plan-defect: M3 and leg (c) call the sentence at ~line 289 'the `Kata record` bullet', but that sentence lives inside the `- **Boot script (`fleet/sandbox-boot.sh`)\u2026**` bullet; the file's only literally-named `- **Kata record (engine):**` bullet is the engine's, at ~line 438. I resolved it by making leg (c)'s reading hold for BOTH: the boot-script bullet carries the rewritten sentence, and the engine bullet gains one cross-reference sentence saying the run issue is not the engine's and stays open with the three keys. Verified both blocks match `parked.*failed.*open.*work\\.state.*work\\.attention.*work\\.attention_msg` and neither matches `parked.*or.*failed.*closes that run issue .wontfix`.; concern: For consistency I also rewrote CONTRACT.md ~line 89 ('the last export carries the run issue's own `issue.closed` \u2026 `done` or `wontfix` as the run issue's page ended'), which M3 does not name but which the change makes false. It now says the export carries the `issue.closed` of a `done` run or the `work.state` patch of one that parked or failed. All edits are in files I own; the sibling's janitor bullets (~614-640) are untouched.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "47865ba771739d2919758d296f56728560d6f4bc",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-122/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "unverified: M3's `Idempotency-Key: janitor:run-<N>:death` holds only on the CLI path. `openHub` (fleet/janitor.mjs:183) returns an injected `kata` client verbatim, and fleet/launch.mjs:954 injects one (`janitor({..., kata: hub})`) \u2014 the production path. That client's `patchMetadata(projectId, uid, patch, revision)` (fleet/kata-client.mjs:228) sends `If-Match: \"rev-<n>\"` and NO `Idempotency-Key`, so under the launcher the death write rides the revision instead of the death key. The implementer disclosed this deliberately (the comment on `metadataPatch` explains the 4th/5th argument order precisely so the launcher's client still writes the same three keys), and it is benign: `reading.issue.revision` comes from the listing read in the same pass, and a re-driven pass reads `work.state: failed` off that issue and writes nothing, so the If-Match cannot realistically 412. Before this change the launcher path did carry the key, since `close(projectId, uid, {idempotencyKey})` took it in the options object; neither sim exercises the injected-client path, so nothing pins the new shape. What would settle it: a case driving `janitor({kata: <fake client>})` through a dead unit and asserting the three keys land, or an `idempotencyKey` parameter on `kata-client.mjs`'s `patchMetadata` \u2014 both outside this task's FILES, hence actor `plan`.; fleet/janitor.mjs: inside the new `metadataPatch` wrapper, `const path = metadataPath(projectId, uid)` shadows the module-level `import path from 'node:path'`. Nothing in that function needs the module, so it is correct today, but it is the one place in the file where `path` does not mean node:path, and a later edit that reaches for `path.join` there would silently take the string. Rename the local.; Doc drift the task's Files block does not cover: fleet/RUNBOOK.md:312 still tells the operator a dead run's issue is \"closed `wontfix` on the hub \u2014 and reaped an hour later\". After this diff the janitor marks the issue and leaves it open, so that line is now wrong. RUNBOOK.md is outside this task's FILES (editing it here would be scope creep), so this is for the operator to route \u2014 either to the sibling's fold or to a follow-up.; unverified: M3's `Idempotency-Key: janitor:run-<N>:death` holds only on the path `openHub` builds for itself. `fleet/janitor.mjs` `openHub` returns an INJECTED client verbatim (`if (kata !== undefined) return { client: kata, ... }`), and `fleet/launch.mjs:954` runs the pre-launch pass as `janitor({ ..., kata: hub })` with `hub = makeKataClient({ transport: sshTransport(...), actor: 'launch' })` (launch.mjs:740). That client's `patchMetadata(projectId, uid, patch, revision)` (kata-client.mjs:228) takes four arguments: the fifth argument `writeDeath` now passes (`deathKeyFor(run)`) is dropped, so on the launcher-driven pass the death POST rides `If-Match: \"rev-<n>\"` and NO `Idempotency-Key`, and a revision stale by one comment answers 412 -> reported as `hubError` with the issue left unmarked. The divergence is disclosed in the doc comment on `metadataPatch` and is deliberate, and the exam plus test_janitor_hub.mjs both drive the env-file path only, so nothing in the graded tree sees it. (The same path also sends `actor: 'launch'` rather than M3's `janitor` \u2014 pre-existing: the BASE close had it too.) The clean fix is an `idempotencyKey` option on `makeKataClient`'s `patchMetadata` in `fleet/kata-client.mjs`, which is outside this task's FILES, hence actor `plan`. What would settle it: a sim of the janitor handed the launcher's plain client, asserting what the death request carries.; unverified: no evidence that the live hub accepts an `Idempotency-Key` on the metadata route. M3 requires the death patch to travel under `Idempotency-Key: janitor:run-<N>:death`, and the implementation does that (`fleet/janitor.mjs` `metadataPatch`), but the measurement the task cites (2026-09-13, `POST /api/v1/projects/13/issues/<uid>/metadata` answering 200) was taken with body `{actor, patch}` and no such header, while `fleet/kata-client.mjs:244-246` records the daemon's rule that `retry_protocol` is not optional beside an `Idempotency-Key`. The kata daemon is not in this repo (`fleet/kata-hub.mjs` only builds its VM), so no sim here can decide it; if the daemon enforces that pair generally, the real death write is refused and surfaces as `hubError` (no crash, no close, page still written). What would settle it: one live POST to the metadata route carrying the key and no `retry_protocol`. The sibling boot task carries the identical exposure.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-122/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1567 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 27%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 96%]\n.......................................................                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1567 passed, 5 warnings in 461.01s (0:07:41) =================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [
+    {
+      "task": "1",
+      "cmd": "node fleet/tests/test_sandbox_boot_kata.mjs 2>&1 | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md"
+      ],
+      "with": [
+        "2"
+      ]
+    },
+    {
+      "task": "2",
+      "cmd": "node fleet/tests/test_janitor_hub.mjs 2>&1 | grep -q 'ALL TESTS PASSED'",
+      "exit": 0,
+      "stdout": "",
+      "joined": [
+        "fleet/CONTRACT.md"
+      ],
+      "with": [
+        "1"
+      ]
+    }
+  ],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/roles/",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git diff $ULTRA_BASE -- fleet/sandbox-boot.sh | grep -c '^-.*kata_close_run done')\" = 0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 858513,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0,
+    "pairRounds": 2,
+    "r2MarginalBlocking": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "..................................................... [ 41%]\n........................................................................ [ 46%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 69%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 92%]\n........................................................................ [ 96%]\n.....................................................                    [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1565 passed, 5 warnings in 450.60s (0:07:30) =================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "8d8da2761a7a550d91c15b1600942394fc246e18",
+      "branches": [
+        "1",
+        "2"
+      ],
+      "joined": [
+        "fleet/CONTRACT.md"
+      ]
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-122/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-122/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.486,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [
+    {
+      "deliverable": "fleet/sandbox-boot.sh \u2014 kata_mark_run's POST to /api/v1/projects/<id>/issues/<uid>/metadata against the live kata hub",
+      "reason": "external",
+      "why": "The boot's metadata write is exercised only against the sim's stubbed curl (fleet/tests/_sandbox_boot_helpers.mjs:362-371, which logs the payload and answers a canned issue envelope). That the real hub answers 200 at the next revision with no If-Match, and stores the three dotted keys FLAT, rests on the Context's measurement of 2026-09-13; no hub is reachable from this environment to re-measure it."
+    },
+    {
+      "deliverable": "fleet/janitor.mjs \u2014 metadataPatch's ssh-curl POST of the death's three keys to the live kata hub",
+      "reason": "external",
+      "why": "The death write goes over the sshTransport seam and is exercised only against the sims' fake hub. Two things it cannot settle: the live hub's acceptance of the patch under Idempotency-Key janitor:run-<N>:death, and the branch where launch.mjs:954 hands the janitor its own kata client \u2014 that client's four-argument patchMetadata (fleet/kata-client.mjs:228-230) sends If-Match \"rev-<revision>\" built from reading.issue.revision as listIssues returns it, which is the path a real launch takes and no sim drives."
+    }
+  ],
+  "judgmentCalls": [
+    "task 1: out-of-FILES: fleet/tests/_sandbox_boot_helpers.mjs \u2014 the task's Context asks for the `STUB_KATA_META_EXIT` knob 'beside STUB_KATA_CLOSE_EXIT', which lives in the rig, and the stub's `*/issues*` glob would otherwise swallow the metadata URL and answer a patch with the export's issues page (breaking M4's per-export issues count). Added: a `*/metadata)` arm before the issues arm that logs the payload to `$FLEET_HOME/kata-meta.log` and exits `${STUB_KATA_META_EXIT:-0}`, and a `kataMetas(ctx)` reader beside `kataCloses(ctx)`. Nothing else in the rig changed; the exam can equally read the patch off the recorded curl argv's `-d` word.",
+    "task 1: plan-defect: leg (a)'s third exit names `STUB_ENGINE_CODE: '1'` as the knob for a non-zero engine exit, but that knob alone does not produce a failed run: the boot rescues an exit of exactly 1 that left a gate receipt behind ('a verdict, not a crash', sandbox-boot.sh ~line 3251) and the rig writes a `PASS` receipt by default, so the run ends `done`. The failed exit needs `STUB_ENGINE_CODE: '1'` together with `STUB_NO_RECEIPT: '1'` (or `STUB_ENGINE_CODE: '2'`). The leg is satisfiable \u2014 my sim's third case uses that pair and passes, with a comment at the case naming why \u2014 but a peer exam that sets only `STUB_ENGINE_CODE: '1'` will drive a green run and see the `done` close.",
+    "task 1: plan-defect: M3 and leg (c) call the sentence at ~line 289 'the `Kata record` bullet', but that sentence lives inside the `- **Boot script (`fleet/sandbox-boot.sh`)\u2026**` bullet; the file's only literally-named `- **Kata record (engine):**` bullet is the engine's, at ~line 438. I resolved it by making leg (c)'s reading hold for BOTH: the boot-script bullet carries the rewritten sentence, and the engine bullet gains one cross-reference sentence saying the run issue is not the engine's and stays open with the three keys. Verified both blocks match `parked.*failed.*open.*work\\.state.*work\\.attention.*work\\.attention_msg` and neither matches `parked.*or.*failed.*closes that run issue .wontfix`.",
+    "task 1: For consistency I also rewrote CONTRACT.md ~line 89 ('the last export carries the run issue's own `issue.closed` \u2026 `done` or `wontfix` as the run issue's page ended'), which M3 does not name but which the change makes false. It now says the export carries the `issue.closed` of a `done` run or the `work.state` patch of one that parked or failed. All edits are in files I own; the sibling's janitor bullets (~614-640) are untouched."
+  ],
+  "unfinished": [],
+  "completenessFindings": [
+    {
+      "severity": "minor",
+      "detail": "fleet/RUNBOOK.md still describes the pre-#964 behaviour the integrated tree no longer has, so the operator-facing runbook now contradicts fleet/CONTRACT.md and fleet/janitor.mjs. Line 311-312 (\"a unit that has died is written as the death \u2014 the journal and the page on the evidence branch, the run issue closed `wontfix` on the hub\") is flatly wrong against task 2's Claim/M3: writeDeath (fleet/janitor.mjs:557-577) now patches work.state/work.attention/work.attention_msg under Idempotency-Key janitor:run-<N>:death and makes no actions/close request at all. Line 296-297 (\"`rm`s every VM whose run issue has been closed for over an hour\") states the reap rule as closure-only and so omits the half of task 2's Claim that is the point of the run \u2014 an OPEN run issue carrying work.state done|parked|failed is a finished run and is reaped an hour on (fleet/janitor.mjs:290-309, :746). fleet/RUNBOOK.md is in neither task's Files slot, so nothing in either task's Proof reaches it; the code and fleet/CONTRACT.md are correct and consistent, which is why this is minor rather than blocking."
+    }
+  ],
+  "blockedWaves": []
+}

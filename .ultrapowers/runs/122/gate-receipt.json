@@ -1,0 +1,65 @@
+{
+  "mode": "gate",
+  "stamp": "run-122",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-122/report.json",
+  "branch": "ultra/integration-run-122",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/sandbox-boot.sh \u2014 kata_mark_run's POST to /api/v1/projects/<id>/issues/<uid>/metadata against the live kata hub \u2014 The boot's metadata write is exercised only against the sim's stubbed curl (fleet/tests/_sandbox_boot_helpers.mjs:362-371, which logs the payload and answers a canned issue envelope). That the real hub answers 200 at the next revision with no If-Match, and stores the three dotted keys FLAT, rests on the Context's measurement of 2026-09-13; no hub is reachable from this environment to re-measure it. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/janitor.mjs \u2014 metadataPatch's ssh-curl POST of the death's three keys to the live kata hub \u2014 The death write goes over the sshTransport seam and is exercised only against the sims' fake hub. Two things it cannot settle: the live hub's acceptance of the patch under Idempotency-Key janitor:run-<N>:death, and the branch where launch.mjs:954 hands the janitor its own kata client \u2014 that client's four-argument patchMetadata (fleet/kata-client.mjs:228-230) sends If-Match \"rev-<revision>\" built from reading.issue.revision as listIssues returns it, which is the path a real launch takes and no sim drives. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 2,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-122/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [1567 items]\n\n........................................................................ [  4%]\n........................................................................ [  9%]\n........................................................................ [ 13%]\n........................................................................ [ 18%]\n........................................................................ [ 22%]\n........................................................................ [ 27%]\n........................................................................ [ 32%]\n........................................................................ [ 36%]\n........................................................................ [ 41%]\n........................................................................ [ 45%]\n........................................................................ [ 50%]\n........................................................................ [ 55%]\n........................................................................ [ 59%]\n........................................................................ [ 64%]\n........................................................................ [ 68%]\n........................................................................ [ 73%]\n........................................................................ [ 78%]\n........................................................................ [ 82%]\n........................................................................ [ 87%]\n........................................................................ [ 91%]\n........................................................................ [ 96%]\n.......................................................                  [100%]\n=============================== warnings summary ===============================\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n    warnings.warn(\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n================= 1567 passed, 5 warnings in 461.01s (0:07:41) =================\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
