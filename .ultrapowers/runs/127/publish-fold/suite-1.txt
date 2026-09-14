@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0
+rootdir: /home/exedev/target/.claude/ultrapowers/run-run-127/clones/integration
+configfile: pytest.ini
+testpaths: tests
+plugins: xdist-3.4.0
+created: 6/6 workers
+6 workers [132 items]
+
+........................................................................ [ 54%]
+............................................................             [100%]
+============================= 132 passed in 26.49s =============================

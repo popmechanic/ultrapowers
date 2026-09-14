@@ -158,3 +158,11 @@
 {"kind":"driver:integrated-check","cmd":"test \"$(git diff $ULTRA_BASE -- fleet/sandbox-boot.sh | grep '^[-+]' | grep -v '^+++\\|^---' | grep -v -i overlap | wc -l | tr -d ' ')\" = 0","exit":0,"minor":false,"wave":1,"id":"01M2GNC2P40000YRTPAHXKV791","ts":1789413165764}
 {"kind":"engine:phase","phase":"Integration Review","id":"01M2GNC2TY0000CZ5WZBP6WRCH","ts":1789413165918}
 {"kind":"worker:start","label":"integration","role":"critic","sessionId":"58c77e14-896c-4336-a3aa-ab20f4b9eadc","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-127/clones/integration","model":"opus","id":"01M2GNC2TY0001AP0TZ79P7SSQ","ts":1789413165918}
+{"kind":"worker:end","label":"integration","role":"critic","sessionId":"58c77e14-896c-4336-a3aa-ab20f4b9eadc","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":4893,"output":32087,"cacheRead":2106947,"cacheCreation":143631,"costUsd":3.3164235,"models":["claude-opus-5"]},"id":"01M2GNRZQ80000KG65KJE0K0GK","ts":1789413588712}
+{"kind":"transcript:slice","label":"integration","sessionId":"58c77e14-896c-4336-a3aa-ab20f4b9eadc","bytes":11979,"id":"01M2GNRZQS0000289Q8D0ZA6HH","ts":1789413588729}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2GNRZZW0000PMCBR3P4WZFE","ts":1789413588988}
+{"kind":"driver:stage","stage":"finalize","id":"01M2GNS02W00003S8H013MWGZ6","ts":1789413589084}
+{"kind":"driver:stage","stage":"gate","id":"01M2GNS0520000V5SJ7T8PYNQ4","ts":1789413589154}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2GNS09700009V65JMV0SM5Z","ts":1789413589287}
+{"kind":"run:open","runId":"run-127","base":"b64ecc074567229bee293e15388af8ce6e856343","source":"fleet/publish-fold.mjs","id":"01M2GNS12G000050RFJ6H1JPBS","ts":1789413590096}
+{"kind":"driver:publish-fold","run":"127","attempt":"1","base":"b64ecc074567229bee293e15388af8ce6e856343","tip":"50cb6cba68b9b468b1d09bc50e2afe1cb85de404","candidate":"f4f0ee9401336ed7377b39dffeba80895044282b","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"pass","disposition":"folded","checks":[],"checkRetries":0,"id":"01M2GNSYVZ000084GBB0YDXAV1","ts":1789413620607}

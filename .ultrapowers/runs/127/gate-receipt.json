@@ -1,0 +1,69 @@
+{
+  "mode": "gate",
+  "stamp": "run-127",
+  "reportPath": "/home/exedev/target/.claude/ultrapowers/run-run-127/report.json",
+  "branch": "ultra/integration-run-127",
+  "gateCheck": {
+    "verdict": "BLOCKED",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": false,
+        "detail": "failed/blocked tasks left declared deliverables unproduced: [{\"task\": \"1\", \"files\": [\"fleet/CONTRACT.md\", \"fleet/roles/fix.md\", \"fleet/roles/implementer.md\", \"fleet/run-engine.mjs\", \"fleet/run-main.mjs\", \"fleet/tests/test_run_engine_own_proofs.mjs\"]}]"
+      }
+    ],
+    "acks": [
+      {
+        "type": "coverage",
+        "detail": "green suite but 3/4 tasks merged \u2014 a passing suite over an incomplete merge is a false-green"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "Task 3 \u2014 `fleet/launch.mjs` VM sizing against the real exe.dev lobby: the `--cpu`/`--memory` the `new` verb actually carries, the `billing plan --json` refusals, and the `# fleet: width=<W>` setup-script header arriving on a real box. \u2014 The exam drives the launcher against the fake lobby in fleet/tests/_lobby_helpers.mjs; no exe.dev endpoint, credential or VM is reachable from this read-only tree, so the end-to-end launch was exercised only in simulation. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "The plan's own Claim (plan line 5) that on a run-67 replay \"the run comes in well under the 25 minutes I measured today\", and the pre-registered readings of plan line 8 (launch\u2192approved minutes, suite passes on the critical path, first-attempt proof-red rate, judging share of worker minutes). \u2014 These are measurements of a live fleet run; nothing in this environment can launch or replay a run, and the readings are the experiment's output rather than a deliverable in the tree. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "notes": [],
+    "repo": "/home/exedev/target"
+  },
+  "gateCheckExit": 1,
+  "suite": {
+    "passed": true,
+    "unattributed": [],
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-127/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 6/6 workers\n6 workers [132 items]\n\n........................................................................ [ 54%]\n............................................................             [100%]\n============================= 132 passed in 24.07s =============================\n"
+  },
+  "verdict": "BLOCKED"
+}
