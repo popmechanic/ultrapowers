@@ -13,7 +13,15 @@ command carrying a backtick is `command carries a backtick` from
 check, here, against this file — `suite-total-pin` and `directory-absence-pin`
 included. Nothing prints them.
 
-## The eleven rows
+## The twelve rows
+
+- **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
+  `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
+  leaves the comment that named it — three of four tasks on run-127 (2026-09-14) took a fix
+  round on exactly that, where run-126's Task 2 had listed the 14 comment carriers of
+  `serialize` in Context and took none. Before dispatch, `grep -n` the literal across the
+  task's Files and put the comment carriers in Context, or pin the definition (`^def x`,
+  `^export const x`) instead of the bare word.
 
 - **Every wave leaves the folded tree green.** A wave-1 producer that deletes or
   renames a symbol whose consumers are a wave-2 rewrite turns the wave-1 folded
