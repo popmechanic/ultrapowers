@@ -442,6 +442,14 @@ on the next one, ask her before editing a script.
 
 **The Claude proxy.**
 
+- `claude-token.mjs usage` rotates an EXPIRED account's access token with `install: false`,
+  and Anthropic's refresh grant revokes the previous token — the one the edge holds — so a
+  live run dies at its next call with `401 OAuth access token has been revoked` (run-100,
+  2026-09-11). Never `refresh --force` while `ssh exe.dev ls` shows a `fleet-r*` VM running;
+  the launcher's own in-window refresh is the safe one (measured 2026-09-11).
+- `claude-token.mjs login --account <x>` rewrites `claude-max`'s bearer at once: every
+  in-flight run switches to that account mid-run (run-96, 2026-09-11). Enrol a new account
+  before a drain, not during one.
 - Editing `claude-max` is destructive by default. `integrations edit
   --clear-header` removed the bearer on the live proxy (`config_summary` read
   `(no-auth)`), and a bearer is shown as `***` and cannot be read back — it is
@@ -464,6 +472,10 @@ on the next one, ask her before editing a script.
 
 **The GitHub edge.**
 
+- Branch protection `strict=true` enforces nothing without at least one required status
+  context: with `contexts=[]` a behind PR's merge PUT is accepted (probe on a scratch repo,
+  2026-09-10). Since CI was removed the sandbox checks main's tip itself before its PUT and
+  folds again if it moved (decision 15); never cite `strict` as the guard.
 - `integrations edit` on a GitHub integration serves the cached installation
   token for 30–60 s afterwards: a `gh pr create` twenty seconds after a binding
   produced a bot-authored PR. The grant is a standing policy the VM matches from
@@ -497,6 +509,13 @@ on the next one, ask her before editing a script.
 
 **Tags, keys and names.**
 
+- One HTTPS service per VM: `share port` sets the VM's single `proxy_port`, so a second
+  service is a second VM reached through a peer integration by tag (measured 2026-09-12).
+- `new` takes no positional arguments — `new --name <vm> … --setup-script /dev/stdin` — and
+  a `--comment` with spaces must travel inside one ssh argument with its quotes intact, or
+  the lobby reads the tail as positionals. `exe-setup.service` runs the setup script as
+  `exedev`, not root: plain user commands with `sudo -n` for root steps (three papercuts of
+  the ultraviz deploy, 2026-09-12; copy the launcher's verbs, never re-derive them).
 - `tag -d <vm> fleet` detaches every tag-scoped integration on the VM at
   once, your own tag-scoped ssh key included. Never mid-run.
 - A tag-scoped key cannot bind or unbind integrations; `launch.mjs` needs
@@ -508,6 +527,15 @@ on the next one, ask her before editing a script.
 
 **Reading the lobby.**
 
+- exe.dev exposes nothing finer than 24 h (`stat --range=24h`, `billing usage`,
+  `pool list --usage` for host-computed starvation, gated). There is no per-VM steal or
+  pressure metric and no consumption refusal — over-commit degrades, never errors. The
+  instrument is in-guest: `/proc/stat` steal and `/proc/pressure/{cpu,memory}` sampled
+  every 5 s (Shelley, 2026-09-05).
+- The evidence branch lags by a whole wave: `commit_phase_evidence` fires when the phase
+  STRING changes and a wave is one string, so mid-wave the branch is frozen at
+  `worker:start`. Silence is not a hang; the status page and the hub's events feed are
+  live (#877).
 - `ls --json` is `{"shared_vms": [...], "vms": [...]}`. Read `.vms[]` only;
   `shared_vms` are other people's, and a first-array parse hid every fleet VM
   once. `vm_name`, `ssh_dest`, `ssh_host` and `status` are documented;
