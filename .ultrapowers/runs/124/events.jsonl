@@ -1,0 +1,20 @@
+{"kind":"run:open","runId":"run-124","base":"","source":"fleet/run-main.mjs","id":"01M2GAGGH50000ZR909RNEMBE3","ts":1789401776677}
+{"kind":"driver:stage","stage":"kata","detail":"record /home/exedev/plans/run-124.kata.json → https://kata.int.exe.xyz","id":"01M2GAGGH70000RX912CABH6J6","ts":1789401776679}
+{"kind":"driver:stage","stage":"tiers","detail":"10 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)","id":"01M2GAGGH80000JZGD0R5J8XNT","ts":1789401776680}
+{"kind":"driver:stage","stage":"provision","detail":"BASE 1c97ba442c65d882354953d16590b1f8eb0c7a7a; 10 task clone(s) + integration","id":"01M2GAGGWB00001G5ZCSMBT7PG","ts":1789401777035}
+{"kind":"driver:auth","authMethod":"oauth_token","apiKeySource":null,"subscriptionType":null,"id":"01M2GAGJ590000BFVG7J8GJ05H","ts":1789401778345}
+{"kind":"driver:stage","stage":"engine","detail":"waves 10, width bound 12, patch input armed","id":"01M2GAGJ59000147QNGV0HSEG7","ts":1789401778345}
+{"kind":"engine:log","line":"run-engine: worker testCmd capped for concurrency (#436) — python3 -m pytest -p no:xdist","id":"01M2GAGJ5E0000KM71T2N9H5TX","ts":1789401778350}
+{"kind":"engine:phase","phase":"Setup","id":"01M2GAGJ5F0000V8GNSHXXNTNB","ts":1789401778351}
+{"kind":"engine:log","line":"setup: branch ultra/integration-run-124 at 1c97ba442c65d882354953d16590b1f8eb0c7a7a","id":"01M2GAGJ9T0000ZQR3HW2TYD0S","ts":1789401778490}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2GAGJ9W0000X65WKM5EMNCJ","ts":1789401778492}
+{"kind":"worker:start","label":"impl:3","role":"implementer","sessionId":"a678a7a9-6703-4667-ba7b-598d97510cdd","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-3","model":"opus","id":"01M2GAGJW700002JF9HSVQ0P2H","ts":1789401779079}
+{"kind":"worker:start","label":"impl:2","role":"implementer","sessionId":"6411a57c-8b9f-4e60-ab99-734058c0ff43","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-2","model":"opus","id":"01M2GAGJWE0000SHPXRMN0DPW5","ts":1789401779086}
+{"kind":"worker:start","label":"impl:1","role":"implementer","sessionId":"5c4ac74c-6596-49f6-9fa3-718e88458b8d","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-1","model":"opus","id":"01M2GAGJX10000VJV97ZEW4RDZ","ts":1789401779105}
+{"kind":"worker:start","label":"impl:4","role":"implementer","sessionId":"f25b982d-78ab-422a-9511-10f8c6dcc794","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-4","model":"opus","id":"01M2GAGJX30000924183MCKJ7G","ts":1789401779107}
+{"kind":"worker:start","label":"impl:8","role":"implementer","sessionId":"4bfb63ab-67f8-435e-9f1c-a3ad14fd19ba","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-8","model":"opus","id":"01M2GAGJXB0000FM4Z77T3X1GQ","ts":1789401779115}
+{"kind":"worker:start","label":"impl:7","role":"implementer","sessionId":"c5a91c67-e6b2-412a-a88a-b3eb745b8106","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-7","model":"opus","id":"01M2GAGJXN0000VFRRBRPY1TKQ","ts":1789401779125}
+{"kind":"worker:start","label":"impl:5","role":"implementer","sessionId":"e0a6ecdf-4c8b-461a-8949-00e27d77a4b7","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-5","model":"opus","id":"01M2GAGJXR0000HTDW1PFV5WN8","ts":1789401779128}
+{"kind":"worker:start","label":"impl:6","role":"implementer","sessionId":"b65a8c74-66df-4843-818e-f49282bfcb53","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-6","model":"opus","id":"01M2GAGJY10000YSD8P09HWV86","ts":1789401779137}
+{"kind":"worker:start","label":"impl:10","role":"implementer","sessionId":"d8f18dcc-228f-4669-b330-dbda803082c5","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-10","model":"opus","id":"01M2GAGJYH0000PWX7W47VWSBW","ts":1789401779153}
+{"kind":"worker:start","label":"impl:9","role":"implementer","sessionId":"6a903ecc-3a26-464e-877e-485dd3ffbed7","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-124/clones/task-9","model":"opus","id":"01M2GAGJYQ0000AHCBC0V9KHAT","ts":1789401779159}
