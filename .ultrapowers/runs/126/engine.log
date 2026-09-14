@@ -4,3 +4,13 @@ run-main: kata — record /home/exedev/plans/run-126.kata.json → https://kata.
 run-main: tiers — 4 null tier slot(s) stamped mostCapable (uniform driver fill; per-task tier is the intent document's slot, #243)
 run-main: provision — BASE a8a8b9eb461cd54b08399ac8d9d0abba40c07c98; 4 task clone(s) + integration
 run-main: engine — waves 4, width bound 12, patch input armed
+run-main: engine-done — report saved
+run-main: finalize
+run-main: gate
+run-main: critic-blocking — 1 blocking completeness finding(s): Task 2 (Claim/Context, the `--overlap` removal) left the knob half-removed across the boot chain, and only the integrated view shows it. `fleet/run-main.mjs` no longer knows the flag: `FLAGS` (fleet/run-main.mjs:121-129) has no `'--overlap'` entry and `parseArgs` throws `run-main: unknown flag --overlap` on anything unrecognized (fleet/run-main.mjs:144-146). But `fleet/sandbox-boot.sh` — frozen byte-identical to BASE by Global Constraint 1, and the driver's Check confirms it — still reads `overlap=` from the assignment comment (fleet/sandbox-boot.sh:670), still validates `''|fold|serialize` as legal (:682), and still builds `knobs+=(--overlap "$OVERLAP")` for the engine invocation in `run_engine()` (:1161). `fleet/CONTRACT.md:137` — which CLAUDE.md:70-71 names as "the authority for every literal ... the contract wins" — still declares `overlap=fold|serialize` a legal comment key, and CONTRACT.md:309 still shows `[--overlap …]` in the `run-main.mjs` argv it specifies; `fleet/RUNBOOK.md:223` still tells the operator `--overlap` "rides the comment to the engine". So an assignment comment the boot accepts as well-formed now kills the run at engine start. This is reachable in practice, not only by hand-editing a comment: the launcher runs from the installed plugin, which "lags the repo" (CLAUDE.md:217-219), while the sandbox clones the engine at the sha the assignment names — a pre-cut `launch.mjs` that writes `overlap=fold` into the comment plus a post-cut engine sha is exactly the failing pair. Task 2's Context scoped the knob's surface to four files (`compile_plan.py`, `ultra_run.py`, `fleet/launch.mjs`, `fleet/run-main.mjs`) and M2 is met on all four; the surface was larger than the slot said. — critic-block.json is the terminal artifact
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 52min 59.001s
+CPU time consumed: 1h 8min 28.878s
+Memory peak: 512.0K
+Memory swap peak: 0B
