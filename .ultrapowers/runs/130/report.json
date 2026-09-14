@@ -1,0 +1,96 @@
+{
+  "integrationBranch": "ultra/integration-run-130",
+  "baseSha": "690d22315650be28f65b42040d58a5008f22de9f",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "9dda4ce2624c7351e306313560c7ee854cc36c63",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-130/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Exam `tests/exams/run_130/test_release_0_3_28.py`, `_baseline()` (patch lines 89-106): the ref chain ends in `\"HEAD\"`. If `ULTRA_BASE` is unset and the hard-coded `BASE_SHA` is unreachable (e.g. the exam is re-run on the evidence tag in a shallow or re-rooted clone), the baseline is read from the *current* commit, so `test_plugin_json_changes_nothing_but_the_version` and `test_marketplace_json_changes_nothing_but_the_version` compare the post-bump tree against itself and pass no matter what else those manifests gained \u2014 the M1 \"no other key changes\" leg silently goes vacuous rather than erroring. It does not block here: the Proof's first `Run:` reads both manifests at `$ULTRA_BASE` directly and exited 0 in RUN EVIDENCE, and the exam itself exited 0 in EXAM EVIDENCE, so M1 is established for this tree. Fix by dropping the `HEAD` last resort so an unreachable base raises the AssertionError the helper already writes.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-130/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [144 items]\n\n........................................................................ [ 50%]\n........................................................................ [100%]\n============================= 144 passed in 40.90s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "python3 -c \"import json; a=json.load(open('.claude-plugin/plugin.json'))['version']; b=[p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins'] if p['name']=='ultrapowers'][0]['version']; assert a==b, (a,b); print(a)\"",
+      "exit": 0,
+      "stdout": "0.3.28\n",
+      "minor": false
+    },
+    {
+      "cmd": "test \"$(git diff --name-only $ULTRA_BASE | grep -v -e '^.claude-plugin/plugin.json$' -e '^.claude-plugin/marketplace.json$' -e '^CLAUDE.md$' -e '^tests/exams/' | wc -l | tr -d ' ')\" = 0",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 40508,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-130/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [134 items]\n\n........................................................................ [ 53%]\n..............................................................           [100%]\n============================= 134 passed in 40.57s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "22aa69a0dc4e04aafcac08c1d69ceec2d04621dd",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-130/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-130/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.529,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
