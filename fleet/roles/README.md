@@ -10,13 +10,13 @@ dispatch, one file per role:
 - `fix.md` — act on a review's findings
 - `resolver.md` — settle a conflicted merge
 - `reconcile.md` — repair a wave that landed inconsistent
-- `critic.md` — read the finished run for what the plan missed
 
 The register is scientific peer review (#556): a referee checks that a
-submission establishes its claim by the stated exam and helps it get there, the
-critic is the editor's completeness read, and what a diff cannot settle is a
-`minor` finding prefixed `unverified:` rather than a channel of its own. Every
-issue the referee raises names its actor — `implementer` when a fix inside this
+submission establishes its claim by the stated exam and helps it get there, and
+what a diff cannot settle is a `minor` finding prefixed `unverified:` rather
+than a channel of its own. One referee reads each task, once (#964 Task 2):
+nobody reads the finished run, so what the plan missed is the referee's to find
+while it can still be fixed. Every issue the referee raises names its actor — `implementer` when a fix inside this
 task's FILES answers it, `plan` when only the task's own text can.
 
 There is no bake step: this directory is the single copy, so editing a file

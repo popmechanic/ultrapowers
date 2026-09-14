@@ -62,13 +62,21 @@ import { makeKataClient, httpTransport } from './kata-client.mjs'
 export const ENGINE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 // The driver's scheduler bound: how many `claude -p` processes one run may
-// have in flight. It is a MEASURED number, never a vendor one — the exe.dev
-// plan is a dynamically shared pool (16 vCPU / 64 GB across every VM; a VM's
-// allocated size is a cap, not a reservation — RUNBOOK §Billing: "the plan
-// meters CONSUMPTION, not allocation"), and the sandbox's own 8 vCPU are
-// divided among the implementers' suites by capWorkerParallelism, which at
-// width >= 8 already hands each one a serial pytest. So the only thing this
-// constant guards is the subscription's concurrent-stream headroom.
+// have in flight. It is the PLAN's number — the task count of its widest wave,
+// which the launcher already knows from the compile it sizes the VM against and
+// writes into the run's arguments as `width`. A wave never has more work in it
+// than it has tasks, so a bound above that reserves headroom nothing can use,
+// and a plan of one task has no reason to hold twelve streams open.
+//
+// The fallback is 12, and it is what an argument set with no `width` gets: a
+// re-drive of an older assignment, and every run whose arguments come off the
+// sandbox's own compile, still boot. It is a MEASURED number, never a vendor
+// one — the exe.dev plan is a dynamically shared pool (a VM's allocated size is
+// a cap, not a reservation — RUNBOOK §Billing: "the plan meters CONSUMPTION,
+// not allocation"), and the sandbox's vCPU are divided among the implementers'
+// suites by capWorkerParallelism, which at width >= 8 already hands each one a
+// serial pytest. So what the fallback guards is the subscription's
+// concurrent-stream headroom.
 //
 // History: #398's study ran 12/12 clean and stopped there; 8 was chosen as
 // "the last arm with real headroom" and stood until 2026-09-01, when run-49
@@ -76,8 +84,37 @@ export const ENGINE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 // (eleven concurrent streams on one account, no throttling, pool meter at 25%).
 // 12 is the study's clean figure. Raise past it only with a suite-running
 // width arm that watches sandbox memory (~3 GB per busy implementer) and the
-// pool meter, not the load average (#402 item 7; test_run_main pins <= 12).
-export const WIDTH = 12
+// pool meter, not the load average (#402 item 7).
+export const WIDTH_FALLBACK = 12
+
+/** The run's width bound: the `width` its arguments carry when that is a
+ *  positive integer, and the fallback otherwise. */
+export const widthOf = (args) => {
+  const asked = Number(args?.width)
+  return Number.isInteger(asked) && asked > 0 ? asked : WIDTH_FALLBACK
+}
+
+/** W for the arguments a launch composes, off the box's OWN compile: the
+ *  `width` they already carry when that is a positive integer, else the widest
+ *  wave of `args.waves`, else the fallback.
+ *
+ *  Why the waves and not the launcher's number: `args.json` is written on the
+ *  box by `compile_plan.py --emit-args` and amended by `ultra_run.py` with the
+ *  two command knobs only — neither writes a `width`, and neither is a file a
+ *  plan may touch. So the W the launcher sized the VM to has no carrier down
+ *  to here (the assignment's keys are enumerated in two places that fail a
+ *  boot on a tenth), and without this the bound would be the fallback on every
+ *  real run. The widest wave of the compile the box did itself IS that W —
+ *  one plan, compiled twice off the same base — so the engine reads it rather
+ *  than being told it. A re-drive whose compile answers no waves still boots,
+ *  at the fallback. */
+export const widestWaveOf = (args) => {
+  const asked = Number(args?.width)
+  if (Number.isInteger(asked) && asked > 0) return asked
+  const waves = Array.isArray(args?.waves) ? args.waves : []
+  const widest = Math.max(0, ...waves.map((w) => (Array.isArray(w) ? w.length : 0)))
+  return widest > 0 ? widest : WIDTH_FALLBACK
+}
 
 // Per-role wall-clock deadlines. Placement (which role gets which bound) is
 // principled — a read-only reviewer has no suite to run and no tree to edit,
@@ -99,7 +136,6 @@ export const ROLE_TIMEOUT_MS = {
   examiner: 90 * 60 * 1000,
   reviewer: 15 * 60 * 1000,
   resolver: 15 * 60 * 1000,
-  critic: 15 * 60 * 1000,
 }
 
 // No `repoDir` key: the target is mandatory, and a default that pointed the
@@ -239,17 +275,19 @@ export function fillTiers(argsObj, tier) {
 export const acksOf = (gateReceipt) =>
   (gateReceipt && gateReceipt.gateCheck && gateReceipt.gateCheck.acks) || []
 
-// A `deferred:manual` ack is pre-authorized when the critic's `why` cites, in
+// A `deferred:manual` ack is pre-authorized when the deferral's `why` cites, in
 // the ack's frozen `detail` (`deliverable — why`, gate_check.py:132-140), a
 // command the driver itself re-ran on the adopted tree and that exited 0
 // (#753). `report.integratedRuns` is that execution record — `{ task, cmd,
-// exit, stdout }`, rendered to the critic as the `$ <cmd>` lines it quotes
-// from — so the citation test is a verbatim substring of an executed command.
-// A detail that also names a RED command is not pre-authorized however many
-// green ones it cites: the settled part of the item is the green evidence, and
-// a red run is the opposite of settling. Citing is the critic's act, verifying
-// is the driver's; a paraphrase is not a citation and parks, which is the safe
-// failure. `report` defaults to `{}` — with no report nothing is cited.
+// exit, stdout }` — so the citation test is a verbatim substring of an executed
+// command. A detail that also names a RED command is not pre-authorized however
+// many green ones it cites: the settled part of the item is the green evidence,
+// and a red run is the opposite of settling. Citing is the deferring party's
+// act, verifying is the driver's; a paraphrase is not a citation and parks,
+// which is the safe failure. `report` defaults to `{}` — with no report nothing
+// is cited. Since #964 Task 2 the run's only deferrals are the plan defects the
+// engine defers itself (`deferred:plan-defect`, which this never pre-authorizes)
+// — the manual lane stays for the receipts of runs that still carry one.
 export function ackDecision(gateReceipt, report = {}) {
   const acks = acksOf(gateReceipt)
   const runs = (report && Array.isArray(report.integratedRuns)) ? report.integratedRuns : []
@@ -285,8 +323,11 @@ export function ackDecision(gateReceipt, report = {}) {
 // The check sits OUTSIDE the `gate.code === 2` branch on purpose: run-26 is the
 // run that proves a clean `PASS` can carry unrouted findings, so the clean path
 // is exactly the one that needs the brake. A bare-string finding is pre-#474
-// evidence — the critic that wrote it had no way to say "blocking" — so it
+// evidence — the judge that wrote it had no way to say "blocking" — so it
 // never blocks; runs 1–32 wrote strings and are still read.
+// Since #964 Task 2 the findings this reads are the DRIVER's own — the red
+// integrated `Check:`s of the run — and the name stays because the report key,
+// the gate, the card and the viz projection all spell it this way.
 export function criticDecision(report) {
   const findings = (report && report.completenessFindings) || []
   const blocking = findings.filter((f) => f && typeof f === 'object' && f.severity === 'blocking')
@@ -468,7 +509,7 @@ export function kataRefFor(record, label) {
 // Closing it properly means giving the reviewer a per-task subset of the launch
 // file in its own cwd, which is new machinery; filed rather than smuggled in.
 export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
-  (role === 'reviewer' || role === 'resolver' || role === 'critic')
+  (role === 'reviewer' || role === 'resolver')
     ? [runDir]
     : []
 
@@ -539,7 +580,7 @@ export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, worke
   return { agent, patchInput: patchesDir }
 }
 
-// Bounded parallel: at most WIDTH thunks in flight. Rejection semantics match
+// Bounded parallel: at most `limit` thunks in flight. Rejection semantics match
 // defaultParallel (the first rejection propagates); waves.js's dispatch sites
 // catch their own agent errors, so a rejection here is a programming error
 // surfacing, not a worker outcome.
@@ -854,13 +895,16 @@ async function runMainInner(parsed, deps, hub) {
   const integrationBranch = 'ultra/integration-' + stamp
   const launchArgs = {
     ...argsObj,
+    // The dispatch width, derived here because nothing carries the launcher's
+    // down: `args.json` has `waves` and no `width` (see `widestWaveOf`).
+    width: widestWaveOf(argsObj),
     integrationBranch,
     stamp,
     baseBranch,
     patchInput,
   }
   stage('engine', 'waves ' + argsObj.waves.map((w) => w.length).join('/') +
-    ', width bound ' + WIDTH + ', patch input armed')
+    ', width bound ' + widthOf(launchArgs) + ', patch input armed')
   let report
   try {
     // Amendment 10: the native engine (fleet/run-engine.mjs) — every git verb
@@ -871,10 +915,10 @@ async function runMainInner(parsed, deps, hub) {
       // number of them that share the machine — it must be told the real one.
       // The kata pair travels together or not at all: the client is the seam,
       // the record is which project and which issue each task is.
-      args: { ...launchArgs, width: WIDTH, ...(kata ? { kataRecord } : {}) },
+      args: { ...launchArgs, width: widthOf(launchArgs), ...(kata ? { kataRecord } : {}) },
       ...(kata ? { kata } : {}),
       agent,
-      parallel: boundedParallel(WIDTH),
+      parallel: boundedParallel(widthOf(launchArgs)),
       exec,
       paths: { repoDir, runDir, clonesDir: tree.clonesDir },
       log: eventLog.log,

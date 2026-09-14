@@ -201,7 +201,7 @@ export const DEFAULT_REPORT = '{"stamp":"run-7"'
   + ',"waveMerges":[{"wave":1,"status":"MERGED","suite":{"passed":true,"output":"ok"}}]}'
 export const ASSIGNMENT =
   `run=7 plan=${PLAN_SHA} target=${TARGET} base=${BASE_SHA} engine=${ENGINE_SHA} ` +
-  'overlap=fold tier=mostCapable'
+  'tier=mostCapable'
 
 // ── stub bin dir ─────────────────────────────────────────────────────────────
 

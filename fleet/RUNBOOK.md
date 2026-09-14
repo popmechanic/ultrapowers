@@ -69,9 +69,10 @@ sees only fleet-tagged VMs in `ls --json`, can `comment` and `rm` them, and gets
 "not found" for anything else. That is the key for a machine that only reaps by
 hand.
 
-**2. `capacity` — the size of a run.** `ssh exe.dev "billing plan --json"` is
-the account's pool; `~/.ultrapowers/fleet.json` is how large one run asks to be.
-The file is optional, has exactly two keys, and an unknown key is ignored:
+**2. `capacity` — the ceiling a run may ask for.** `ssh exe.dev "billing plan
+--json"` is the account's pool; `~/.ultrapowers/fleet.json` is the **ceiling**
+one run may ask for — not the size every run gets. The file is optional, has
+exactly two keys, and an unknown key is ignored:
 
 ```json
 {
@@ -81,11 +82,21 @@ The file is optional, has exactly two keys, and an unknown key is ignored:
 ```
 
 Those are also the defaults. `memory` is `<int>GB` or `<int>G`; a bare number or
-a fractional `1.5GB` is unreadable. The `capacity` doctor row is a report of
-those two facts and of nothing else: the pool the account has, beside the `cpu`
-and `memory` one run asks for. It divides one by the other nowhere, because
-allocated vCPU is over-committable (§Capacity) and a quotient there would be a
-number nothing stands behind.
+a fractional `1.5GB` is unreadable.
+
+The size a run actually asks for is its PLAN's. The launcher compiles the plan
+before it creates anything, takes W — the task count of the widest wave — and
+asks for `min(cpu, 2 + ceil(W / 3))` vCPU and `min(memory, 2 + W)` GB, so a
+one-task plan gets `--cpu 3 --memory 3GB` and a ten-task plan `--cpu 6 --memory
+8GB` under a ceiling of `6`/`8GB`. `--cpu <n>` or `--memory <n>GB` on the launch
+line overrides the formula outright, and either way the number is still checked
+against `billing plan --json` before a VM exists.
+
+The `capacity` doctor row is a report of those two facts and of nothing else:
+the pool the account has, beside the `cpu` and `memory` ceiling a run is bounded
+by. It divides one by the other nowhere, because allocated vCPU is
+over-committable (§Capacity) and a quotient there would be a number nothing
+stands behind.
 
 **3. `claude` — the subscription, as an `http-proxy` integration.** The token
 goes in on stdin and never touches a VM or an argv. Inject the bearer and
@@ -220,7 +231,7 @@ exits before the plan branch is pushed and before any lobby verb runs.
 
 `--engine <sha>` pins the engine; the default is the public tip of this
 repository, because the sandbox clones from GitHub. `--run N` overrides the
-run number; `--overlap` and `--tier` ride the comment to the engine.
+run number; `--tier` rides the comment to the engine.
 `--hold` keeps the pull request open for a person: the sandbox publishes it
 and does not merge it (a measurement run).
 

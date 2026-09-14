@@ -187,7 +187,6 @@ PLAN_SHA=""
 TARGET_REPO=""
 BASE_SHA=""
 ENGINE_SHA=""
-OVERLAP=""
 TIER=""
 EFFORT=""
 # `hold=1` in the assignment: publish the PR and stop there, leaving the merge
@@ -667,7 +666,6 @@ parse_assignment() { # $1 = the comment line
       target)  TARGET_REPO="$val" ;;
       base)    BASE_SHA="$val" ;;
       engine)  ENGINE_SHA="$val" ;;
-      overlap) OVERLAP="$val" ;;
       tier)    TIER="$val" ;;
       effort)  EFFORT="$val" ;;
       hold)    HOLD="$val" ;;
@@ -679,7 +677,6 @@ parse_assignment() { # $1 = the comment line
   is_target "$TARGET_REPO" || fail "assignment: target is not owner/repo ('$TARGET_REPO')"
   is_sha "$BASE_SHA"    || fail "assignment: base is not a 40-hex sha ('$BASE_SHA')"
   is_sha "$ENGINE_SHA"  || fail "assignment: engine is not a 40-hex sha ('$ENGINE_SHA')"
-  case "$OVERLAP" in ''|fold|serialize) : ;; *) fail "assignment: bad overlap '$OVERLAP'" ;; esac
   case "$TIER" in ''|standard|mostCapable) : ;; *) fail "assignment: bad tier '$TIER'" ;; esac
   case "$EFFORT" in ''|low|medium|high) : ;; *) fail "assignment: bad effort '$EFFORT'" ;; esac
   # One value, `1`. `hold=0` and `hold=yes` are refused rather than read as
@@ -694,7 +691,6 @@ parse_assignment() { # $1 = the comment line
   EVIDENCE_PATH=".ultrapowers/runs/$RUN_N"
   PLAN_FILE="$PLANS_DIR/$RUN_ID.md"
   ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
-  log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>} effort=${EFFORT:-<default>} hold=${HOLD:-<default>}"
 }
 
 # --- clones ------------------------------------------------------------------
@@ -1158,7 +1154,6 @@ run_engine() {
   # commit carried none is handed no `--kata` at all rather than an empty one.
   [ -n "$KATA_FILE" ] && kata+=(--kata "$KATA_FILE")
   [ -n "$TIER" ] && knobs+=(--tier "$TIER")
-  [ -n "$OVERLAP" ] && knobs+=(--overlap "$OVERLAP")
   [ -n "$EFFORT" ] && knobs+=(--implementer-effort "$EFFORT")
   :
   log_auth_status
