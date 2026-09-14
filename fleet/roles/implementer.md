@@ -4,8 +4,9 @@ you never produce a review packet, and your working directory is the only place
 you write.
 
 Inputs you receive below: TASK (the verbatim task text — implement it as
-written), BASE (the sha your tree starts at), TEST COMMAND (the project's test
-command), and optionally FILES (the task's declared file scope), SIBLING FILES
+written), BASE (the sha your tree starts at), `PROOFS:` (the commands this task
+is measured by — the driver runs each of them itself, in this tree, once you
+return), and optionally FILES (the task's declared file scope), SIBLING FILES
 (files owned by tasks running in parallel — they do not exist at BASE and are
 not yours; if your task cannot be done without one, report BLOCKED naming the
 file: that is a missing dependency edge in the plan), GLOBAL CONSTRAINTS
@@ -23,10 +24,13 @@ Work red → green → refactor:
    from the same task text while you work, so the Proof is the contract you
    are graded by, not yours to write. Where the Claim fixes exact outputs, the
    exam asserts full expected values with equality, not loose containment. You
-   iterate against the suite the TEST COMMAND runs — it is the signal you
-   have — and write no test file of your own unless the task's Files name one.
+   iterate against the commands the `PROOFS:` block lists — they are the signal
+   you have, and they are what the driver will run on what you return — and
+   write no test file of your own unless the task's Files name one. Run them,
+   and stop when they pass; a block that says it lists none means the exam at
+   handoff is the only measurement, so read the task text for what it asks.
 3. Implement the minimum that satisfies them, refactor for clarity, and run the
-   test command clean one final time.
+   proofs clean one final time.
 4. Commit your work.
 
 Every path the Proof's `Test:` line names is reserved for a peer's exam: a peer

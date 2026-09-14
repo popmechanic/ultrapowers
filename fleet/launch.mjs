@@ -38,8 +38,10 @@
  *      attachment policy `tag:fleet`, so `--tag fleet` is what grants them.
  *
  * `<cpu>` and `<memory>` are the PLAN's, not the fleet's: the launcher compiles
- * the plan once before the verb, takes W — the task count of the widest wave —
- * and asks for `vmSizeFor(W, cap)`, where `cap` is the `cpu`/`memory` pair
+ * the plan under the run number it is pushing — once, before the verb, unless
+ * the push is bumped and it compiles again under the number it got — takes W,
+ * the task count of the widest wave of the compile whose number won, and asks
+ * for `vmSizeFor(W, cap)`, where `cap` is the `cpu`/`memory` pair
  * `~/.ultrapowers/fleet.json` names (or `FLEET_DEFAULTS`) read as a CEILING. A
  * one-task plan gets a small box and a ten-task plan a bigger one; `--cpu` or
  * `--memory` on the launch line wins outright.
@@ -646,12 +648,14 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
 }
 
 /**
- * The launch's one stamped compile: `compile_plan.py <plan> --stamp run-<N>
- * --base <sha>`, run once, before the `new` verb, and read by everything that
- * needs to know what the plan IS — how wide its widest wave is (which is what
- * the VM is sized to and what the engine's dispatch bound becomes) and the
- * fact sheets the hub is filed with. It used to run inside `fileRunOnHub`,
- * where a hubless launch never reached it and the verb could not see it.
+ * The launch's stamped compile: `compile_plan.py <plan> --stamp run-<N>
+ * --base <sha>`, run once per run number the launch attempts — so once, before
+ * the `new` verb, unless the push is bumped — and read by everything that
+ * needs to know what the plan IS under that number: how wide its widest wave
+ * is (which is what the VM is sized to and what the engine's dispatch bound
+ * becomes), and the fact sheets the hub is filed with, whose reserved exam
+ * paths the stamp decides. It used to run inside `fileRunOnHub`, where a
+ * hubless launch never reached it and the verb could not see it.
  *
  * Answers `{ stamp, payload, waves, edges }`; both refusals are the ones that
  * filer carried, word for word.
@@ -1045,42 +1049,56 @@ export async function launch ({
   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
   const engine = opts.engine ?? await defaultEngineSha(exec)
 
-  // ── The stamped compile. ONE per launch, here: the run number it is stamped
-  //    with is known now, and everything downstream reads this one payload —
-  //    the VM's size, the width the engine dispatches at, and the sheets
-  //    `fileRunOnHub` files on the hub. It used to run inside that filer, which
-  //    meant a launch that reached no hub compiled once and a launch that did
-  //    compiled twice, and neither compile was available to the verb.
-  const compiled = await compilePlanForRun({
-    exec, repoDir, planPath, base: opts.base, stamp: `run-${firstRun}`
+  // ── The stamped compile. One per run number the launch ATTEMPTS, and for a
+  //    launch that is not bumped that is exactly one, here, before the `new`
+  //    verb — everything downstream reads the compile for the number the push
+  //    ended up with: the VM's size, the width the engine dispatches at, and
+  //    the sheets `fileRunOnHub` files on the hub. It used to run inside that
+  //    filer, which meant a launch that reached no hub compiled once and a
+  //    launch that did compiled twice, and neither compile was available to
+  //    the verb. `--stamp` is not decoration: it is what `compile_plan.py`
+  //    reserves each task's exam directory under (`exams/<run-id>/`), so a
+  //    launch that has to take the next number compiles again under it rather
+  //    than re-filing the first N's sheets — see `pushPlan`.
+  const compileFor = (n) => compilePlanForRun({
+    exec, repoDir, planPath, base: opts.base, stamp: `run-${n}`
   })
-  // W: the task count of the widest wave. Floored at one — a payload with no
-  // waves launches nothing, and a box below the one-task size would be a
-  // smaller answer than the smallest real plan's.
-  const width = Math.max(1, compiled.waves.reduce(
-    (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
-  ))
-  // The size this plan asks for: the formula, clamped by the ceiling — unless
-  // the launch line named a number outright, which wins whatever the plan is.
-  const sized = vmSizeFor(width, { cpu: cpuCap, memory: memoryCap })
-  const cpu = opts.cpu === undefined ? sized.cpu : cpuCap
-  const memory = opts.memory === undefined ? sized.memory : memoryCap
-  const memoryGb = parseMemoryGb(memory)
+  // The box one compiled payload asks for. W is the task count of its widest
+  // wave, floored at one — a payload with no waves launches nothing, and a box
+  // below the one-task size would be a smaller answer than the smallest real
+  // plan's — and the size is the formula clamped by the ceiling, unless the
+  // launch line named a number outright, which wins whatever the plan is.
+  const sizeFromCompile = (payload) => {
+    const width = Math.max(1, payload.waves.reduce(
+      (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
+    ))
+    const sized = vmSizeFor(width, { cpu: cpuCap, memory: memoryCap })
+    return {
+      width,
+      cpu: opts.cpu === undefined ? sized.cpu : cpuCap,
+      memory: opts.memory === undefined ? sized.memory : memoryCap
+    }
+  }
+  const firstCompiled = await compileFor(firstRun)
+  const firstSize = sizeFromCompile(firstCompiled)
+  const memoryGb = parseMemoryGb(firstSize.memory)
 
   // One run must fit the plan's pool. Allocation is over-committable and
   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
   // contention bounds concurrency, and two plans at once is by design. Still
   // before the credential, the push and the verb, so a refusal here has
-  // mutated nothing.
+  // mutated nothing — which is why it reads the first compile's size and not
+  // the bumped one's: a stamp names exam directories and nothing else, so the
+  // widest wave, and the box it asks for, are the same under every N.
   const capacity = await readPlanCapacity(exec)
-  if (capacity.maxCpus < Number(cpu)) {
+  if (capacity.maxCpus < Number(firstSize.cpu)) {
     throw new Refusal(
-      `launch: --cpu ${cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
+      `launch: --cpu ${firstSize.cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
     )
   }
   if (capacity.maxMemoryGb < memoryGb) {
     throw new Refusal(
-      `launch: --memory ${memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
+      `launch: --memory ${firstSize.memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
     )
   }
 
@@ -1096,11 +1114,10 @@ export async function launch ({
   const commands = []
   // The hub's half of each push attempt: the project and issues filed under
   // THIS N, the record read back — and, on a bump, the project purged before
-  // the next N is filed. The sheets are the ones the single compile above
-  // produced; a bump re-files them under the new N rather than recompiling, so
-  // the run has exactly one payload and the sheets a bumped run files name the
-  // first N's exam directory. The sandbox compiles for itself on the box, and
-  // that compile is what the exams actually land under.
+  // the next N is filed. The sheets are the ones the compile stamped for THIS
+  // N produced, so the exam directory a filed sheet names is the one the
+  // sandbox's own compile will reserve. A bump used to re-file the first N's
+  // sheets, which named `exams/run_<N>/` for a run that lands under N+1.
   const kataCall = async (method, fn) => {
     try {
       return await fn()
@@ -1110,7 +1127,7 @@ export async function launch ({
   }
   const kataStep = hub === null
     ? null
-    : async (n) => {
+    : async (n, compiled) => {
         const record = await fileRunOnHub({
           hub, call: kataCall, planText, target, base: opts.base, n, compiled
         })
@@ -1131,11 +1148,17 @@ export async function launch ({
     // move: a refused push under it is refused, never retried elsewhere.
     reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir),
     kataStep,
-    kataPurge
+    kataPurge,
+    compiled: firstCompiled,
+    recompile: compileFor
   })
   const run = plan.run
   const planBranch = plan.branch
   const planSha = plan.sha
+  // The size and the width the verb carries are read off the compile for the
+  // number the push got — the first one when nothing bumped, the recompile
+  // when something did.
+  const { width, cpu, memory } = sizeFromCompile(plan.compiled)
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
@@ -1428,27 +1451,42 @@ export const PUSH_ATTEMPTS = 3
  * `--run N` names an N the operator chose, so it is pushed once and refused if
  * that is refused: `reread` is null and no re-read is made at all.
  *
+ * The compile follows the number. `compiled` is the launch's compile for the N
+ * it came in asking for, and `recompile(n)` is run once per N it goes on to
+ * try, because `--stamp run-<n>` is what `compile_plan.py` reserves each task's
+ * exam directory under: sheets filed from the first N's payload would name
+ * `exams/run_<N>/` for a run that ends up as N+1, while the sandbox's own
+ * compile — the one the exams actually land under — names `exams/run_<N+1>/`.
+ * So a launch that is not bumped compiles exactly once, and the compile the
+ * winning N was filed under rides back out on `compiled` for the verb to size
+ * the box from.
+ *
  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
  * text a single refused push has always carried — with ` after <n> tries` when
  * more than one was made.
  */
 async function pushPlan ({
-  exec, repoDir, base, run, planText, verdictsText, commands, reread, kataStep = null, kataPurge = null
+  exec, repoDir, base, run, planText, verdictsText, commands, reread,
+  kataStep = null, kataPurge = null, compiled = null, recompile = null
 }) {
   let n = run
+  let payload = compiled
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
     const branch = planBranchFor(n)
     // The hub is filed for THIS N before the commit is built, because the
-    // project's name and every sheet's landing slug carry the number: a bump
-    // purges what was filed and files again for N+1.
-    const filed = kataStep === null ? null : await kataStep(n)
+    // project's name, every sheet's landing slug and every reserved exam path
+    // carry the number: a bump purges what was filed, recompiles under N+1 and
+    // files that payload's sheets instead.
+    const filed = kataStep === null ? null : await kataStep(n, payload)
     const sha = await commitPlan({
       exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
     })
     const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
     commands.push(`git ${pushArgv.join(' ')}`)
     const push = await exec('git', pushArgv)
-    if (push.code === 0) return { run: n, sha, branch, kata: filed === null ? null : filed.record }
+    if (push.code === 0) {
+      return { run: n, sha, branch, compiled: payload, kata: filed === null ? null : filed.record }
+    }
 
     const refusal = () =>
       new Refusal(
@@ -1460,14 +1498,15 @@ async function pushPlan ({
     if (highest < n) throw refusal()
     n = highest + 1
     if (filed !== null) await kataPurge(filed.record)
+    if (recompile !== null) payload = await recompile(n)
   }
 }
 
 /**
- * The run, filed on the hub for one run number: the sheets of the launch's own
- * stamped compile (`compilePlanForRun`, the compiler's second call of the
- * launch — the first was `--check`), one project `<owner>-<repo>-run-<n>`, one
- * run issue carrying the
+ * The run, filed on the hub for one run number: the sheets of the compile
+ * stamped `run-<n>` (`compilePlanForRun`, one of the launch's stamped calls —
+ * its first call of the compiler was `--check`), one project
+ * `<owner>-<repo>-run-<n>`, one run issue carrying the
  * plan's title, Claim line and Closes numbers, one issue per task in wave
  * order carrying its fact sheet and a `parent` link to the run, one `blocks`
  * link per dependency edge created ON the task that blocks, and then one
@@ -1489,9 +1528,10 @@ async function pushPlan ({
  *
  * Every hub call goes through `call`, which turns a throw into the launch's
  * LobbyError naming the method; the missing `short_id` is the launch's own
- * refusal. The sheets are `compiled` — the launch's one stamped compile,
- * handed in rather than run again here, so a launch compiles the plan once
- * whether or not it reaches a hub.
+ * refusal. The sheets are `compiled` — the stamped compile for THIS `n`,
+ * handed in rather than run again here, so a launch that is not bumped
+ * compiles the plan once whether or not it reaches a hub, and a bumped one
+ * files the payload stamped with the number it got.
  */
 async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled }) {
   const stamp = `run-${n}`

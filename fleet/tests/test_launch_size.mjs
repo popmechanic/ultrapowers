@@ -21,9 +21,14 @@
  *       and a value above the fake billing plan's `max_cpus`/`max_memory_gb` is
  *       refused with the same message as at BASE, word for word;
  *   (c) [M3] the fake exec records exactly one `compile_plan.py … --stamp …`
- *       invocation per launch, ordered before the `new` verb — with no hub,
- *       where the sizing is the only reader, and with a recording fake hub,
- *       where the filing's issues cover exactly that one payload's tasks;
+ *       invocation per UN-BUMPED launch — the only kind this exam drives, both
+ *       of its launches pushing to their own origin at the first N they ask
+ *       for — ordered before the `new` verb, with no hub, where the sizing is
+ *       the only reader, and with a recording fake hub, where the filing's
+ *       issues cover exactly that one payload's tasks. A launch whose push is
+ *       refused takes the next run number and compiles again under it, so its
+ *       stamped compiles are two: that is run-128 task 2's exam
+ *       (`test_launch_bump.mjs`), not this leg's;
  *   (d) [M4] the launch arguments the fake sandbox receives carry `width` equal
  *       to the widest wave; `widthOf` answers 4 for `{ width: 4 }`, 12 for `{}`
  *       and 12 for `{ width: 0 }`; `boundedParallel(widthOf(` is present in
@@ -346,13 +351,22 @@ const indexOfNew = (exec) => exec.calls.findIndex(
   wsMem.cleanup()
 }
 
-// ── c. [M3] one stamped compile per launch, before the verb, read by both ───
+// ── c. [M3] one stamped compile per un-bumped launch, before the verb ───────
+//
+// Both launches below push to their own origin, which holds no `ultra/plan-*`
+// ref at all, so the first push wins and the first N is the N: exactly one
+// stamped compile. Run-128 task 2 made the compile follow the number — a
+// launch whose push is refused re-reads the target, bumps to N+1 and compiles
+// AGAIN under it, so that the sheets it files name the exam directory the
+// sandbox will actually reserve — so "one per launch" is now "one per run
+// number the launch attempts". The bumped count is `test_launch_bump.mjs`'s
+// leg (a); this leg pins the un-bumped launch it has always driven.
 {
   const solo = await drive({ compiled: TEN_WIDE, config: CAPPED })
   const soloStamps = stampCalls(solo.exec)
   assert.equal(
     soloStamps.length, 1,
-    `(c) [M3] exactly one compile_plan.py --stamp per launch, got ${soloStamps.length}: ${soloStamps.map((c) => c.argv.join(' ')).join(' | ')}`
+    `(c) [M3] exactly one compile_plan.py --stamp per un-bumped launch, got ${soloStamps.length}: ${soloStamps.map((c) => c.argv.join(' ')).join(' | ')}`
   )
   const call = soloStamps[0]
   assert.equal(call.argv[0], COMPILER, '(c) [M3] the plugin\'s own compile_plan.py')
@@ -377,7 +391,7 @@ const indexOfNew = (exec) => exec.calls.findIndex(
   const filed = await drive({ compiled: TEN_WIDE, config: CAPPED, kata: hub })
   assert.equal(
     stampCalls(filed.exec).length, 1,
-    '(c) [M3] with a hub too: one stamped compile, not one per reader'
+    '(c) [M3] with a hub too: one stamped compile for this un-bumped launch, not one per reader'
   )
   assert.ok(
     indexOfStamp(filed.exec) < indexOfNew(filed.exec),
