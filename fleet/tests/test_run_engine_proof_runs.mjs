@@ -19,9 +19,9 @@
 //        comes only at `iter: 2`, after a review-round fix. A red `iter: 0`
 //        pass buys one `fix:<id>:0` round before any referee is dispatched
 //        (its re-execution is `iter: 0` too), and a task still red after it
-//        never reaches a reviewer at all (`reviewVerdict: 'proof-red'`) —
-//        test_run_engine_pre_review.mjs owns that contract; this file is
-//        pinned to it so the two cannot drift.
+//        never reaches a reviewer at all (`reviewVerdict: 'proof-red'`) — the
+//        pre-review sim owned that contract until it was retired for catching
+//        nothing, and this file carries the pin now.
 //   M2 — the review prompt carries a `RUN EVIDENCE:` block (command verbatim,
 //        `exit <n>`, the recorded output); no proofRuns → no block, and a
 //        prompt byte-identical to BASE's.
@@ -158,8 +158,7 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
   // re-runs a task's commands only when another task of the same wave touched
   // one of its paths. This is a ONE-task wave, so it joins nothing and the
   // driver executes nothing on the adopted tree —
-  // `test_run_engine_joined_proofs.mjs` pins that rule in its own sim, and
-  // `test_run_engine_integrated_runs.mjs` the pass itself.
+  // `test_run_engine_joined_proofs.mjs` pins that rule in its own sim.
   const order = fs.readFileSync(orderFile, 'utf8').split('\n')
     .filter(Boolean).filter((l) => l !== 'integration')
   // The single `proof-run` is the driver's own pre-review pass, whose evidence
@@ -266,8 +265,8 @@ async function scenario({ task, review = () => passReview(), onImpl = () => {},
 // The byte-pin needs BASE in the object store. A depth-1 clone — the shape
 // `actions/checkout` gives CI by default — has no 0a3559a; there the pin has
 // nothing to say and says so, rather than failing for a reason unrelated to
-// the tree (test_run_engine_exam_fix_edit.mjs guards the same way; the engine's
-// own depth-1 rehearsal, deleted in #712, caught exactly this back in run-54).
+// the tree (the engine's own depth-1 rehearsal, deleted in #712, caught exactly
+// this back in run-54).
 const haveBase = (() => {
   try {
     execFileSync('git', ['cat-file', '-e', BASE_SHA + '^{commit}'],
@@ -465,7 +464,7 @@ async function pinPrompt(engine, task) {
 // clone's BASE for the per-task pass, the run base for the integrated pass —
 // so a Global Constraint like `git diff --quiet $ULTRA_BASE -- fleet/` is
 // writable at all. This file owns the `Run:` half (legs (a), (b), (e)); the
-// `Check:` half is test_run_engine_pre_review.mjs's legs (c), (d), (g).
+// `Check:` half belonged to the retired pre-review sim's legs (c), (d), (g).
 //
 // One command's evidence, read out of a rendered block: everything from
 // `\n\n$ <cmd>\n` up to the next `\n\n$ ` (or the block's end) is that
@@ -945,32 +944,16 @@ const copyWithProbe = (simName, probe) => {
 }
 
 const TOGGLE = "sh -c 'if [ -e seen.txt ]; then exit 1; else : > seen.txt; fi'"
+// The rows whose sims were retired for catching nothing are gone with them: a
+// probe copy is built by reading the sim's own text, so a row naming a file the
+// tree no longer holds is not a weaker pin but an unreadable one.
 for (const [leg, simName, probe, pinName] of [
-  // (f) the pre-review sim: its `[M3]` review-round `driver:check-run` at iter 1.
-  ['f', 'test_run_engine_pre_review.mjs',
-    probeSource({ tag: 'f713', checks: [{ cmd: 'test -e one.txt', minor: false }],
-      pin: 'evs.some((e) => e.kind === \'driver:check-run\' && e.task === \'T1\' && e.iter === 1)',
-      why: 'BASE ran the Check: again for the review round' }),
-    'a `driver:check-run` at `iter` 1'],
-  // (h) the implementer-suite sim: a `driver:exam-run` at iter 1.
-  ['h', 'test_run_engine_implementer_suite.mjs',
-    probeSource({ tag: 'h713', exam: true,
-      pin: 'evs.some((e) => e.kind === \'driver:exam-run\' && e.task === \'T1\' && e.iter === 1)',
-      why: 'BASE ran the exam again for the review round' }),
-    'a `driver:exam-run` at `iter` 1'],
   // (i) the review-economy sim: the TOGGLE's second execution inside round 1.
   ['i', 'test_run_engine_review_economy.mjs',
     probeSource({ tag: 'i713', runs: [TOGGLE],
       pin: 'evs.some((e) => e.kind === \'driver:proof-run\' && e.iter === 1 && e.exit !== 0)',
       why: 'BASE surfaced the toggle\'s red second execution in review round 1' }),
     'the toggle\'s second execution in round 1'],
-  // (j) the integrated-runs sim: four `driver:proof-run` events, two at iter 1.
-  ['j', 'test_run_engine_integrated_runs.mjs',
-    probeSource({ tag: 'j713', runs: ["sh -c 'echo one'", "sh -c 'echo two'"],
-      pin: 'evs.filter((e) => e.kind === \'driver:proof-run\' && e.task === \'T1\').length === 4 && ' +
-        'evs.filter((e) => e.kind === \'driver:proof-run\' && e.iter === 1).length === 2',
-      why: 'BASE recorded four driver:proof-run events, two of them at iter 1' }),
-    'four `driver:proof-run` events with two at `iter` 1'],
 ]) {
   const copy = copyWithProbe(simName, probe)
   const r = spawnSync(process.execPath, [copy], { encoding: 'utf8', env: ENV })

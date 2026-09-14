@@ -145,7 +145,6 @@ When the workflow completes, the main agent renders the report as a concise huma
    gate receipt only, so the operator reads any `release`/`manual` tasks from the
    compiled plan. The merge-method and deploy-target checks in
    `references/finishing-notes.md` are the operator's, at the PR.
-11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, plus escalated-task and thrash signals. Advisory only: it informs the next run's tier assignments and never gates this one.
 
 This pre-merge review is the **second and final gate** (after plan approval; the wave plan
 is rendered for transparency but does not pause for approval). After the summary the session

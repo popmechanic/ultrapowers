@@ -27,13 +27,50 @@ PYTEST_CMD = "python3 -m pytest -n auto" if ultra_run._xdist_available() else "p
 # set. Every driver invocation in this file runs as the engine session.
 FLEET_ENV = dict(os.environ, ULTRAPOWERS_FLEET_RUN="run-test")
 
+# A two-task claims-v1 plan — the only grammar the compiler speaks. Both tasks
+# carry the six body slots; `a.py` and `b.py` stay disjoint so the pair waves
+# together exactly as the legacy fixture's pair did.
 PLAN = (
-    "# P\n\n**Acceptance:** waived — test fixture\n\n"
-    "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
-    "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
-    "### Task 2: B\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
-    "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1: do**\n"
+    "# P\n\n**Grammar:** claims-v1\n\n"
+    "**Acceptance:** waived — test fixture\n\n"
+    "**Claim:** An operator gets an `a` module and a `b` module. (elicited)\n\n"
+    "### Task 1: A\n\n**Type:** implementation\n\n"
+    "**Files:**\n- Create: `a.py`\n- Test: `tests/test_a.py`\n\n"
+    "**Claim:** An operator importing `a` gets its one entry point. (derived)\n"
+    "Machine: M1. `a.run()` returns `\"a\"`.\n\n"
+    "**Authorized-by:** #1\n\n"
+    "**Interfaces:**\n- Consumes: nothing\n- Produces: `run() -> str`\n\n"
+    "**Context:** `a.py` is a new one-function module with no registry to update.\n\n"
+    "**Proof:**\n- Test: `tests/test_a.py`\n"
+    "- The suite asserts `a.run() == \"a\"`. [M1]\n\n"
+    "**Stale-if:**\n- path-exists: `a.py`\n\n"
+    "### Task 2: B\n\n**Type:** implementation\n\n"
+    "**Files:**\n- Create: `b.py`\n- Test: `tests/test_b.py`\n\n"
+    "**Claim:** An operator importing `b` gets its one entry point. (derived)\n"
+    "Machine: M1. `b.step()` returns `\"b\"`.\n\n"
+    "**Authorized-by:** #1\n\n"
+    "**Interfaces:**\n- Consumes: nothing\n- Produces: `step() -> str`\n\n"
+    "**Context:** `b.py` is a new one-function module sharing no symbol with `a.py`.\n\n"
+    "**Proof:**\n- Test: `tests/test_b.py`\n"
+    "- The suite asserts `b.step() == \"b\"`. [M1]\n\n"
+    "**Stale-if:**\n- path-exists: `b.py`\n"
 )
+
+sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
+from extract_gate_input import gate_input, verdicts_path  # noqa: E402
+
+
+def write_plan(directory, name="plan.md"):
+    """Land PLAN and the gate-verdict artifact a claims-v1 plan compiles
+    against (spec §4.5), hashed by the gate's own extractor so a fixture edit
+    re-signs itself."""
+    plan = directory / name
+    plan.write_text(PLAN)
+    verdicts_path(plan).write_text(json.dumps(
+        {"tasks": {t: {"hash": gate_input(plan, t)["hash"], "verdict": "pass",
+                       "reason": "fixture"} for t in ("1", "2")},
+         "tally": {"dispatched": 2, "rejected": 0}}))
+    return plan
 
 
 def sh(cmd, cwd=None, check=True, env=None):
@@ -48,7 +85,7 @@ def make_repo(tmp_path):
     sh(["git", "config", "user.email", "t@t"], cwd=repo)
     sh(["git", "config", "user.name", "t"], cwd=repo)
     (repo / ".gitignore").write_text(".claude/\n")
-    (repo / "plan.md").write_text(PLAN)
+    write_plan(repo)
     (repo / "pytest.ini").write_text("[pytest]\n")
     sh(["git", "add", "."], cwd=repo)
     sh(["git", "commit", "-qm", "base"], cwd=repo)
