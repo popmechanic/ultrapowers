@@ -1,0 +1,264 @@
+{
+  "ok": true,
+  "stamp": "run-122",
+  "stages": [
+    {
+      "stage": "fleet-run",
+      "ok": true,
+      "detail": "fleet run run-122"
+    },
+    {
+      "stage": "git-repo",
+      "ok": true,
+      "detail": "/home/exedev/target"
+    },
+    {
+      "stage": "worktree-probe",
+      "ok": true,
+      "detail": "worktree capability verified (probe cut and removed)"
+    },
+    {
+      "stage": "compile",
+      "ok": true,
+      "detail": "2 task(s) in 1 wave(s)"
+    },
+    {
+      "stage": "test-command",
+      "ok": true,
+      "detail": "python3 -m pytest -n auto (detected:pytest-ini)"
+    },
+    {
+      "stage": "bootstrap-command",
+      "ok": true,
+      "detail": "none \u2014 no lockfile or manifest derives one"
+    },
+    {
+      "stage": "dirty-baseline",
+      "ok": true,
+      "detail": "dirty baseline recorded: 0 pre-existing line(s)"
+    },
+    {
+      "stage": "base-branch",
+      "ok": true,
+      "detail": "detached HEAD \u2192 fell back to repo default 'main'"
+    }
+  ],
+  "compile": {
+    "tasks": [
+      {
+        "id": "1",
+        "title": "The boot leaves a parked run's issue open with the state key",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/sandbox-boot.sh",
+          "fleet/tests/test_sandbox_boot_kata.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "title": "The janitor reads a run's finish from the state key",
+        "disposition": "implementation",
+        "heuristic": false,
+        "writes": [
+          "fleet/CONTRACT.md",
+          "fleet/janitor.mjs",
+          "fleet/tests/test_janitor_hub.mjs"
+        ],
+        "depends_on": [],
+        "interfaces": {
+          "consumes": [
+            "none"
+          ],
+          "produces": [
+            "none"
+          ]
+        }
+      }
+    ],
+    "dag_edges": [],
+    "marker_conflicts": [],
+    "waves": [
+      [
+        "1",
+        "2"
+      ]
+    ],
+    "launch_waves": [
+      [
+        {
+          "id": "1",
+          "title": "The boot leaves a parked run's issue open with the state key",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_kata.mjs",
+            "fleet/tests/test_sandbox_boot_park_state.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/sandbox-boot.sh",
+            "fleet/tests/test_sandbox_boot_kata.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_sandbox_boot_park_state.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_sandbox_boot_park_state.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_sandbox_boot_kata.mjs 2>&1 | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_sandbox_boot_park_state.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_kata.mjs",
+              "fleet/tests/test_sandbox_boot_park_state.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_sandbox_boot_park_state.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_sandbox_boot_park_state.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_sandbox_boot_park_state.mjs": "fleet/tests/test_sandbox_boot_park_state.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_sandbox_boot_park_state.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/janitor.mjs",
+              "fleet/tests/test_janitor_hub.mjs",
+              "fleet/tests/test_janitor_state_key.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        },
+        {
+          "id": "2",
+          "title": "The janitor reads a run's finish from the state key",
+          "files": [
+            "fleet/CONTRACT.md",
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor_hub.mjs",
+            "fleet/tests/test_janitor_state_key.mjs"
+          ],
+          "depends_on": [],
+          "interfaces": {
+            "consumes": [
+              "none"
+            ],
+            "produces": [
+              "none"
+            ]
+          },
+          "tier": null,
+          "review": "peer",
+          "writes": [
+            "fleet/CONTRACT.md",
+            "fleet/janitor.mjs",
+            "fleet/tests/test_janitor_hub.mjs"
+          ],
+          "commutes": [],
+          "proofTests": [
+            "fleet/tests/test_janitor_state_key.mjs"
+          ],
+          "testCmd": "node fleet/tests/test_janitor_state_key.mjs",
+          "proofRuns": [
+            "node fleet/tests/test_janitor_hub.mjs 2>&1 | grep -q 'ALL TESTS PASSED'"
+          ],
+          "proofGuards": [
+            "fleet/tests/test_janitor_state_key.mjs"
+          ],
+          "factsheet": {
+            "files": [
+              "fleet/CONTRACT.md",
+              "fleet/janitor.mjs",
+              "fleet/tests/test_janitor_hub.mjs",
+              "fleet/tests/test_janitor_state_key.mjs"
+            ],
+            "deletes": [],
+            "guards": [
+              "fleet/tests/test_janitor_state_key.mjs"
+            ],
+            "proofTests": [
+              "fleet/tests/test_janitor_state_key.mjs"
+            ],
+            "landing": {
+              "fleet/tests/test_janitor_state_key.mjs": "fleet/tests/test_janitor_state_key.mjs"
+            },
+            "driverOwned": [
+              "fleet/tests/test_janitor_state_key.mjs"
+            ],
+            "siblingOwned": [
+              "fleet/CONTRACT.md",
+              "fleet/sandbox-boot.sh",
+              "fleet/tests/test_sandbox_boot_kata.mjs",
+              "fleet/tests/test_sandbox_boot_park_state.mjs"
+            ],
+            "produces": [],
+            "consumes": []
+          }
+        }
+      ]
+    ],
+    "waveLabels": [
+      "2 States"
+    ],
+    "mode": "parallel",
+    "degrade_reason": null,
+    "globalConstraints": "- The engine is untouched; the task-issue close discipline of #959 (a failed task stays open with `needs-review` + `needs-human`) is untouched.\n- The `done` path is untouched: a gate-green run still closes its run issue `done` with the merge sha or the PR as evidence.\n- The three keys are spelled the same everywhere: `work.state`, `work.attention`, `work.attention_msg` \u2014 the flat spellings kata stores (#960). (Each task's own exam pins its file's spelling; a check spanning both files would run in each task's clone, where only one is edited \u2014 run-121 parked on exactly that.)",
+    "constraintChecks": [
+      {
+        "cmd": "git diff --quiet $ULTRA_BASE -- fleet/run-engine.mjs fleet/run-main.mjs fleet/run-worker.mjs fleet/roles/",
+        "minor": false
+      },
+      {
+        "cmd": "test \"$(git diff $ULTRA_BASE -- fleet/sandbox-boot.sh | grep -c '^-.*kata_close_run done')\" = 0",
+        "minor": false
+      }
+    ],
+    "launch_file": "/home/exedev/target/.claude/ultrapowers/run-run-122/launch.json",
+    "args_file": "/home/exedev/target/.claude/ultrapowers/run-run-122/args.json"
+  },
+  "baseBranch": "main",
+  "launchFile": "/home/exedev/target/.claude/ultrapowers/run-run-122/launch.json",
+  "argsFile": "/home/exedev/target/.claude/ultrapowers/run-run-122/args.json",
+  "workflowName": "ultrapowers-run",
+  "llmDerives": [
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; the engine reads knobs ONLY from these inline entries \u2014 never a top-level launch key)",
+    "nothing for waves[][].testCmd \u2014 the per-task command is compiler-derived from the task's Proof `Test:` paths and pre-filled on the wave entries (run-wide testCmd is driver-derived \u2014 knob or detection \u2014 and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd \u2014 driver-derived from the target's lockfile/manifest (or the --bootstrap-cmd knob) and stamped in the args file and receipt, so validation, the engine and the gate share one value",
+    "nothing for review depth \u2014 it is plan-authored (**Review:** marker), pre-filled on the args wave entries"
+  ],
+  "testCmd": "python3 -m pytest -n auto",
+  "testCmdSource": "detected:pytest-ini"
+}
