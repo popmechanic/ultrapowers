@@ -1,0 +1,113 @@
+{
+  "integrationBranch": "ultra/integration-run-128",
+  "baseSha": "14bf65a604c8850a55bc7c206aade32ff2006054",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "54e6473a61132bc3964766746827444f7fb5829b",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-128/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Examiner fallback lost the concurrency cap. At BASE the examiner's line was `testCmdLine(examCmdTask, workerTestCmd)` (fleet/run-engine.mjs:1838) \u2014 when a task has proofTests but no `testCmd` of its own, `examCmdTask` is the task itself and the line falls back to the run-wide command, which was the capped `workerTestCmd`. The diff rewrites that to `testCmdLine(examCmdTask, testCmd)`, so in that fallback the examiner is now handed the uncapped run-wide command (`-n auto` restored). The implementer had no choice: M4 requires `capWorkerParallelism`/`runWideSharers` deleted, while the Context says to leave `testCmdLine(examCmdTask, \u2026)` 'exactly as they are' \u2014 the two cannot both hold once `workerTestCmd` is gone, and the diff resolves it the only way available and discloses the reasoning in the new comment at the `proofsBlock` site ('Nobody shares a command here'). Reachability is narrow: the compiler's `derive_task_test_cmd` gives every peer-reviewed task its own command, so the fallback is only taken by a task carrying a Proof `Test:` path and no `testCmd`. Recorded for the operator; no edit inside this task's FILES can restore the cap without reintroducing a symbol M4 forbids. M3 ('unchanged from BASE') is still satisfied for every task the exam and the review-economy byte-identity pin exercise \u2014 S1 asserts the examiner's single `TEST COMMAND:` line names the exam command, and `test_run_engine_review_economy.mjs` asserts every non-`impl:` prompt is byte-identical to BASE's, both green.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 1,
+      "examEdited": [],
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "a5389392ba43173308d79a136d97d3c777298704",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-128/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "fleet/launch.mjs:1084-1103 \u2014 the billing-capacity refusal is computed from `firstSize` (the first N's compile) while the `new` verb at :1161/:1177 asks for `sizeFromCompile(plan.compiled)`, the winning N's. In production the two are equal, because `--stamp` changes only reserved exam paths and not the waves, and the comment at :1090-1092 discloses exactly that. It is worth naming anyway because this task's own exam deliberately builds a world where they differ (run-1 waves 2/10/1 -> 6/8GB, run-2 waves 2/4/1 -> 4/6GB): if a future compiler ever made the widest wave stamp-dependent, a bumped launch would issue `new` with a size the `billing plan --json` check never saw, and by then the plan branch is pushed and the hub filed, so the launcher's own Refusal is no longer available \u2014 only the lobby's raw error. No patch proposed: re-refusing after the push would trade a clean pre-mutation refusal for a post-mutation one. If you want the invariant enforced rather than assumed, the cheap form is comparing `sizeFromCompile(plan.compiled)` to `firstSize` at :1161 and refusing only when they disagree.; fleet/launch.mjs:1071 \u2014 `sizeFromCompile (payload)` names its parameter `payload`, but what it is handed is the whole `compilePlanForRun` answer `{ stamp, payload, waves, edges }` (:674-679), which itself has a `payload` key holding the raw compiler JSON. Inside the function `payload.waves` is the compile's normalised waves, while `payload.payload.launch_waves` is the thing the name suggests. `fileRunOnHub` calls the same object `compiled`; using that name here too would remove the collision.",
+      "tier": "opus",
+      "review": "lean",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-128/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [134 items]\n\n........................................................................ [ 53%]\n..............................................................           [100%]\n============================= 134 passed in 39.76s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles/examiner.md fleet/roles/reviewer.md fleet/roles/reconcile.md fleet/roles/resolver.md fleet/publish-fold.mjs fleet/sandbox-boot.sh fleet/lobby.mjs fleet/run-waves.mjs fleet/run-worker.mjs fleet/confine-hook.mjs skills/ultrapowers/scripts skills/ultrapowers/kernel",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 339534,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-128/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [132 items]\n\n........................................................................ [ 54%]\n............................................................             [100%]\n============================= 132 passed in 40.92s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "5591b390b7ea9d99dbe9f1ea86151fc283d5c32b",
+      "branches": [
+        "1",
+        "2"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-128/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-128/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 1.448,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 2,
+    "tasks_planned": 2,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [
+    "task 2: examiner: (b) [M2] \u2026 the narrowed sizing sim still prints its sentinel \u2014 Not encodable as a live run inside this exam: fleet/tests/test_sims_are_hermetic.mjs M4 forbids any test_*.mjs from spawning another test_*.mjs (and its leg (e) forbids even naming one to existsSync/statSync/accessSync), so an exam that executed test_launch_size.mjs would turn that probe red. The Proof's own second `Run:` \u2014 node fleet/tests/test_launch_size.mjs | grep -q 'ALL TESTS PASSED' \u2014 is what runs it, and the driver executes that itself. In its place the exam reads that file's source and pins that its leg (c) marker and its sentinel line survive, so the narrowing is in place rather than a deletion.",
+    "task 1: the driver's pre-review pass was red (the Proof's exam failed: node fleet/tests/test_run_engine_own_proofs.mjs \u2014 exit 1) \u2014 one repair round before any reviewer read the patch"
+  ],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

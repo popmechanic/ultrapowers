@@ -1,0 +1,1529 @@
+diff --git a/fleet/launch.mjs b/fleet/launch.mjs
+index 55c41339ef3bccf9b6cdfd793de91f70a73f1b53..8be7d28e51f77ccd4779ff8a86acfe67d83dfba8 100644
+--- a/fleet/launch.mjs
++++ b/fleet/launch.mjs
+@@ -38,8 +38,10 @@
+  *      attachment policy `tag:fleet`, so `--tag fleet` is what grants them.
+  *
+  * `<cpu>` and `<memory>` are the PLAN's, not the fleet's: the launcher compiles
+- * the plan once before the verb, takes W — the task count of the widest wave —
+- * and asks for `vmSizeFor(W, cap)`, where `cap` is the `cpu`/`memory` pair
++ * the plan under the run number it is pushing — once, before the verb, unless
++ * the push is bumped and it compiles again under the number it got — takes W,
++ * the task count of the widest wave of the compile whose number won, and asks
++ * for `vmSizeFor(W, cap)`, where `cap` is the `cpu`/`memory` pair
+  * `~/.ultrapowers/fleet.json` names (or `FLEET_DEFAULTS`) read as a CEILING. A
+  * one-task plan gets a small box and a ten-task plan a bigger one; `--cpu` or
+  * `--memory` on the launch line wins outright.
+@@ -646,12 +648,14 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
+ }
+ 
+ /**
+- * The launch's one stamped compile: `compile_plan.py <plan> --stamp run-<N>
+- * --base <sha>`, run once, before the `new` verb, and read by everything that
+- * needs to know what the plan IS — how wide its widest wave is (which is what
+- * the VM is sized to and what the engine's dispatch bound becomes) and the
+- * fact sheets the hub is filed with. It used to run inside `fileRunOnHub`,
+- * where a hubless launch never reached it and the verb could not see it.
++ * The launch's stamped compile: `compile_plan.py <plan> --stamp run-<N>
++ * --base <sha>`, run once per run number the launch attempts — so once, before
++ * the `new` verb, unless the push is bumped — and read by everything that
++ * needs to know what the plan IS under that number: how wide its widest wave
++ * is (which is what the VM is sized to and what the engine's dispatch bound
++ * becomes), and the fact sheets the hub is filed with, whose reserved exam
++ * paths the stamp decides. It used to run inside `fileRunOnHub`, where a
++ * hubless launch never reached it and the verb could not see it.
+  *
+  * Answers `{ stamp, payload, waves, edges }`; both refusals are the ones that
+  * filer carried, word for word.
+@@ -1045,42 +1049,56 @@ export async function launch ({
+   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
+   const engine = opts.engine ?? await defaultEngineSha(exec)
+ 
+-  // ── The stamped compile. ONE per launch, here: the run number it is stamped
+-  //    with is known now, and everything downstream reads this one payload —
+-  //    the VM's size, the width the engine dispatches at, and the sheets
+-  //    `fileRunOnHub` files on the hub. It used to run inside that filer, which
+-  //    meant a launch that reached no hub compiled once and a launch that did
+-  //    compiled twice, and neither compile was available to the verb.
+-  const compiled = await compilePlanForRun({
+-    exec, repoDir, planPath, base: opts.base, stamp: `run-${firstRun}`
++  // ── The stamped compile. One per run number the launch ATTEMPTS, and for a
++  //    launch that is not bumped that is exactly one, here, before the `new`
++  //    verb — everything downstream reads the compile for the number the push
++  //    ended up with: the VM's size, the width the engine dispatches at, and
++  //    the sheets `fileRunOnHub` files on the hub. It used to run inside that
++  //    filer, which meant a launch that reached no hub compiled once and a
++  //    launch that did compiled twice, and neither compile was available to
++  //    the verb. `--stamp` is not decoration: it is what `compile_plan.py`
++  //    reserves each task's exam directory under (`exams/<run-id>/`), so a
++  //    launch that has to take the next number compiles again under it rather
++  //    than re-filing the first N's sheets — see `pushPlan`.
++  const compileFor = (n) => compilePlanForRun({
++    exec, repoDir, planPath, base: opts.base, stamp: `run-${n}`
+   })
+-  // W: the task count of the widest wave. Floored at one — a payload with no
+-  // waves launches nothing, and a box below the one-task size would be a
+-  // smaller answer than the smallest real plan's.
+-  const width = Math.max(1, compiled.waves.reduce(
+-    (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
+-  ))
+-  // The size this plan asks for: the formula, clamped by the ceiling — unless
+-  // the launch line named a number outright, which wins whatever the plan is.
+-  const sized = vmSizeFor(width, { cpu: cpuCap, memory: memoryCap })
+-  const cpu = opts.cpu === undefined ? sized.cpu : cpuCap
+-  const memory = opts.memory === undefined ? sized.memory : memoryCap
+-  const memoryGb = parseMemoryGb(memory)
++  // The box one compiled payload asks for. W is the task count of its widest
++  // wave, floored at one — a payload with no waves launches nothing, and a box
++  // below the one-task size would be a smaller answer than the smallest real
++  // plan's — and the size is the formula clamped by the ceiling, unless the
++  // launch line named a number outright, which wins whatever the plan is.
++  const sizeFromCompile = (payload) => {
++    const width = Math.max(1, payload.waves.reduce(
++      (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
++    ))
++    const sized = vmSizeFor(width, { cpu: cpuCap, memory: memoryCap })
++    return {
++      width,
++      cpu: opts.cpu === undefined ? sized.cpu : cpuCap,
++      memory: opts.memory === undefined ? sized.memory : memoryCap
++    }
++  }
++  const firstCompiled = await compileFor(firstRun)
++  const firstSize = sizeFromCompile(firstCompiled)
++  const memoryGb = parseMemoryGb(firstSize.memory)
+ 
+   // One run must fit the plan's pool. Allocation is over-committable and
+   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
+   // contention bounds concurrency, and two plans at once is by design. Still
+   // before the credential, the push and the verb, so a refusal here has
+-  // mutated nothing.
++  // mutated nothing — which is why it reads the first compile's size and not
++  // the bumped one's: a stamp names exam directories and nothing else, so the
++  // widest wave, and the box it asks for, are the same under every N.
+   const capacity = await readPlanCapacity(exec)
+-  if (capacity.maxCpus < Number(cpu)) {
++  if (capacity.maxCpus < Number(firstSize.cpu)) {
+     throw new Refusal(
+-      `launch: --cpu ${cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
++      `launch: --cpu ${firstSize.cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
+     )
+   }
+   if (capacity.maxMemoryGb < memoryGb) {
+     throw new Refusal(
+-      `launch: --memory ${memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
++      `launch: --memory ${firstSize.memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
+     )
+   }
+ 
+@@ -1096,11 +1114,10 @@ export async function launch ({
+   const commands = []
+   // The hub's half of each push attempt: the project and issues filed under
+   // THIS N, the record read back — and, on a bump, the project purged before
+-  // the next N is filed. The sheets are the ones the single compile above
+-  // produced; a bump re-files them under the new N rather than recompiling, so
+-  // the run has exactly one payload and the sheets a bumped run files name the
+-  // first N's exam directory. The sandbox compiles for itself on the box, and
+-  // that compile is what the exams actually land under.
++  // the next N is filed. The sheets are the ones the compile stamped for THIS
++  // N produced, so the exam directory a filed sheet names is the one the
++  // sandbox's own compile will reserve. A bump used to re-file the first N's
++  // sheets, which named `exams/run_<N>/` for a run that lands under N+1.
+   const kataCall = async (method, fn) => {
+     try {
+       return await fn()
+@@ -1110,7 +1127,7 @@ export async function launch ({
+   }
+   const kataStep = hub === null
+     ? null
+-    : async (n) => {
++    : async (n, compiled) => {
+         const record = await fileRunOnHub({
+           hub, call: kataCall, planText, target, base: opts.base, n, compiled
+         })
+@@ -1131,11 +1148,17 @@ export async function launch ({
+     // move: a refused push under it is refused, never retried elsewhere.
+     reread: opts.run ? null : () => highestRunOnTarget(exec, repoDir),
+     kataStep,
+-    kataPurge
++    kataPurge,
++    compiled: firstCompiled,
++    recompile: compileFor
+   })
+   const run = plan.run
+   const planBranch = plan.branch
+   const planSha = plan.sha
++  // The size and the width the verb carries are read off the compile for the
++  // number the push got — the first one when nothing bumped, the recompile
++  // when something did.
++  const { width, cpu, memory } = sizeFromCompile(plan.compiled)
+ 
+   // ── The one mutating lobby verb. ──────────────────────────────────────────
+   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
+@@ -1428,27 +1451,42 @@ export const PUSH_ATTEMPTS = 3
+  * `--run N` names an N the operator chose, so it is pushed once and refused if
+  * that is refused: `reread` is null and no re-read is made at all.
+  *
++ * The compile follows the number. `compiled` is the launch's compile for the N
++ * it came in asking for, and `recompile(n)` is run once per N it goes on to
++ * try, because `--stamp run-<n>` is what `compile_plan.py` reserves each task's
++ * exam directory under: sheets filed from the first N's payload would name
++ * `exams/run_<N>/` for a run that ends up as N+1, while the sandbox's own
++ * compile — the one the exams actually land under — names `exams/run_<N+1>/`.
++ * So a launch that is not bumped compiles exactly once, and the compile the
++ * winning N was filed under rides back out on `compiled` for the verb to size
++ * the box from.
++ *
+  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
+  * text a single refused push has always carried — with ` after <n> tries` when
+  * more than one was made.
+  */
+ async function pushPlan ({
+-  exec, repoDir, base, run, planText, verdictsText, commands, reread, kataStep = null, kataPurge = null
++  exec, repoDir, base, run, planText, verdictsText, commands, reread,
++  kataStep = null, kataPurge = null, compiled = null, recompile = null
+ }) {
+   let n = run
++  let payload = compiled
+   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
+     const branch = planBranchFor(n)
+     // The hub is filed for THIS N before the commit is built, because the
+-    // project's name and every sheet's landing slug carry the number: a bump
+-    // purges what was filed and files again for N+1.
+-    const filed = kataStep === null ? null : await kataStep(n)
++    // project's name, every sheet's landing slug and every reserved exam path
++    // carry the number: a bump purges what was filed, recompiles under N+1 and
++    // files that payload's sheets instead.
++    const filed = kataStep === null ? null : await kataStep(n, payload)
+     const sha = await commitPlan({
+       exec, repoDir, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
+     })
+     const pushArgv = ['-C', repoDir, 'push', 'origin', `${sha}:refs/heads/${branch}`]
+     commands.push(`git ${pushArgv.join(' ')}`)
+     const push = await exec('git', pushArgv)
+-    if (push.code === 0) return { run: n, sha, branch, kata: filed === null ? null : filed.record }
++    if (push.code === 0) {
++      return { run: n, sha, branch, compiled: payload, kata: filed === null ? null : filed.record }
++    }
+ 
+     const refusal = () =>
+       new Refusal(
+@@ -1460,14 +1498,15 @@ async function pushPlan ({
+     if (highest < n) throw refusal()
+     n = highest + 1
+     if (filed !== null) await kataPurge(filed.record)
++    if (recompile !== null) payload = await recompile(n)
+   }
+ }
+ 
+ /**
+- * The run, filed on the hub for one run number: the sheets of the launch's own
+- * stamped compile (`compilePlanForRun`, the compiler's second call of the
+- * launch — the first was `--check`), one project `<owner>-<repo>-run-<n>`, one
+- * run issue carrying the
++ * The run, filed on the hub for one run number: the sheets of the compile
++ * stamped `run-<n>` (`compilePlanForRun`, one of the launch's stamped calls —
++ * its first call of the compiler was `--check`), one project
++ * `<owner>-<repo>-run-<n>`, one run issue carrying the
+  * plan's title, Claim line and Closes numbers, one issue per task in wave
+  * order carrying its fact sheet and a `parent` link to the run, one `blocks`
+  * link per dependency edge created ON the task that blocks, and then one
+@@ -1489,9 +1528,10 @@ async function pushPlan ({
+  *
+  * Every hub call goes through `call`, which turns a throw into the launch's
+  * LobbyError naming the method; the missing `short_id` is the launch's own
+- * refusal. The sheets are `compiled` — the launch's one stamped compile,
+- * handed in rather than run again here, so a launch compiles the plan once
+- * whether or not it reaches a hub.
++ * refusal. The sheets are `compiled` — the stamped compile for THIS `n`,
++ * handed in rather than run again here, so a launch that is not bumped
++ * compiles the plan once whether or not it reaches a hub, and a bumped one
++ * files the payload stamped with the number it got.
+  */
+ async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled }) {
+   const stamp = `run-${n}`
+diff --git a/fleet/roles/fix.md b/fleet/roles/fix.md
+index d5492bd91fe97e7632ca343f78414e80a9e726d7..9c829357394b75279ff20222e1364a468001b5ef 100644
+--- a/fleet/roles/fix.md
++++ b/fleet/roles/fix.md
+@@ -12,8 +12,10 @@ made them fail rather than arguing with the run.
+ 
+ Resolve every listed blocking issue: read the relevant code, understand why
+ each finding is right (or, if one is genuinely wrong, say so in your summary
+-with the evidence rather than churning the code), make the fixes, run the TEST
+-COMMAND clean, and commit.
++with the evidence rather than churning the code), make the fixes, run the
++commands the `PROOFS:` block lists until they pass, and commit. Those are the
++commands the driver re-runs on what you return; a block that says it lists none
++means the exam in your tree is the measurement.
+ 
+ An issue may carry a `PROPOSED PATCH` from the referee: apply it when it is right; when it is not, say why in your summary.
+ It is a suggestion the referee could write out, not a verdict on how to fix it.
+diff --git a/fleet/roles/implementer.md b/fleet/roles/implementer.md
+index eca9e1676c6150869e108dc77ad821346dd96997..525d5b2c553a1826df0745a7cb33e306d11d1490 100644
+--- a/fleet/roles/implementer.md
++++ b/fleet/roles/implementer.md
+@@ -4,8 +4,9 @@ you never produce a review packet, and your working directory is the only place
+ you write.
+ 
+ Inputs you receive below: TASK (the verbatim task text — implement it as
+-written), BASE (the sha your tree starts at), TEST COMMAND (the project's test
+-command), and optionally FILES (the task's declared file scope), SIBLING FILES
++written), BASE (the sha your tree starts at), `PROOFS:` (the commands this task
++is measured by — the driver runs each of them itself, in this tree, once you
++return), and optionally FILES (the task's declared file scope), SIBLING FILES
+ (files owned by tasks running in parallel — they do not exist at BASE and are
+ not yours; if your task cannot be done without one, report BLOCKED naming the
+ file: that is a missing dependency edge in the plan), GLOBAL CONSTRAINTS
+@@ -23,10 +24,13 @@ Work red → green → refactor:
+    from the same task text while you work, so the Proof is the contract you
+    are graded by, not yours to write. Where the Claim fixes exact outputs, the
+    exam asserts full expected values with equality, not loose containment. You
+-   iterate against the suite the TEST COMMAND runs — it is the signal you
+-   have — and write no test file of your own unless the task's Files name one.
++   iterate against the commands the `PROOFS:` block lists — they are the signal
++   you have, and they are what the driver will run on what you return — and
++   write no test file of your own unless the task's Files name one. Run them,
++   and stop when they pass; a block that says it lists none means the exam at
++   handoff is the only measurement, so read the task text for what it asks.
+ 3. Implement the minimum that satisfies them, refactor for clarity, and run the
+-   test command clean one final time.
++   proofs clean one final time.
+ 4. Commit your work.
+ 
+ Every path the Proof's `Test:` line names is reserved for a peer's exam: a peer
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 5c5722732daca9b350e068f1326edf2811e1ceb0..8adede7d7a821012c92dd9593cc0d3abb27fa953 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -33,7 +33,6 @@
+ // command cannot name a sha it has no way to know. The suite, the bootstrap
+ // and the exam runs keep the seam's default environment.
+ import fs from 'node:fs'
+-import os from 'node:os'
+ import path from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ // The run's event log lives in run-waves.mjs; the engine borrows its ULID
+@@ -311,58 +310,45 @@ export function loadRoles(rolesDir = defaultRolesDir()) {
+ }
+ 
+ // ── prompt input lines (waves.js parity — same vocabulary, plans unchanged) ──
+-//
+-// capWorkerParallelism (#436): the driver's own suite runs are serialized —
+-// one integration clone, one at a time — so `-n auto` is right for them. The
+-// implementers are not: up to WIDTH of them run concurrently, each in its own
+-// clone, each running the suite through its red/green/clean cycle. `-n auto`
+-// sizes to the whole machine per invocation, so WIDTH=8 on an 8-vCPU sandbox
+-// peaks around 64 pytest processes plus the workers themselves — thrash, or
+-// an OOM-killed xdist worker reported as a spurious red. Divide the machine
+-// among the workers that share it instead. Untouched when the plan pinned an
+-// explicit -n, and a no-op for every non-pytest stack.
+-export const capWorkerParallelism = (cmd, width, cpus) => {
+-  if (typeof cmd !== 'string' || !/-n\s+auto\b/.test(cmd)) return cmd
+-  const share = Math.max(1, Math.floor((cpus || 1) / Math.max(1, width)))
+-  return cmd.replace(/-n\s+auto\b/, share === 1 ? '-p no:xdist' : '-n ' + share)
+-}
+-
+ const testCmdLine = (task, testCmd) => {
+   const cmd = (task && typeof task.testCmd === 'string' && task.testCmd.trim()) || testCmd
+   return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
+ }
+-// #663 — whose command is whose. A Proof `Test:` path is written by a PEER, in
+-// the peer's own clone, and reaches the graded tree only at the driver's
+-// handoff after the implementer has returned (#653, #551). So a task whose
+-// `testCmd` names one of those paths hands its implementer a command that
+-// cannot run in the implementer's tree: the file is not there yet, and the
+-// worker's red/green/clean cycle is spent on a command that is red for a reason
+-// it cannot fix. The exam's command stays the examiner's, the driver's
+-// pre-review pass's and the reviewer's — every place that runs it does so on a
+-// tree that HAS the exam. The implementer is handed the run-wide suite, which
+-// is exactly what a task with no `testCmd` receives.
++// The implementer's and fix round's proofs (#515, #547, #872). A graded worker
++// is handed the commands its OWN task is measured by — the Proof's `Run:`
++// lines and the run's Global Constraints `Check:` lines, verbatim and in plan
++// order — and not the run-wide suite. Two reasons, and neither is taste.
++//
++// The suite was never the signal. Since #653 a peer-reviewed task's own command
++// is its exam, written by a PEER in the peer's own clone and reaching the graded
++// tree only at the driver's handoff, so the implementer cannot run it and was
++// handed the whole suite instead. That suite is red for a hundred reasons the
++// task does not own and green for none it does: run-67's and run-124's
++// implementers each spent 10 to 16 of their 15 to 25 minutes on a serial
++// full-suite pass that found zero red proofs. The commands below are the ones
++// the driver will actually execute on the returned tree, so a worker that runs
++// them is iterating against its own grade.
++//
++// And the suite was what made the machine scarce: WIDTH implementers each
++// running `-n auto` concurrently needed the vCPU divided among them, which is
++// why the driver capped the shared command and why the cap capped everyone to
++// a serial pytest. Nobody shares a command here, so nothing needs dividing.
+ //
+-// The predicate is the plain one the compiler's shapes make honest: every
+-// spelling `derive_task_test_cmd` emits (`node <path>`, `python3 -m pytest -q
+-// <paths>`, `bun test <paths>`, an `**Exam command:**` template with `{paths}`
+-// substituted) contains the Proof path verbatim. A `testCmd` set some other
+-// way, or a task whose Proof names no `Test:` path at all, names none of them
+-// and keeps its own command.
+-const namesProofTest = (task) => {
+-  const cmd = task && typeof task.testCmd === 'string' && task.testCmd.trim()
+-  if (!cmd) return false
+-  const paths = (task && Array.isArray(task.proofTests)) ? task.proofTests : []
+-  return paths.some((p) => typeof p === 'string' && p.trim() !== '' && cmd.includes(p.trim()))
++// A task with no `Run:` in a run with no `Check:` has nothing to iterate
++// against; it is told so, rather than handed an empty heading it might read as
++// a missing input.
++const PROOFS_NONE = '(none — the driver runs the exam at handoff)'
++const proofsBlock = (runs, checks) => {
++  const lines = [
++    ...(Array.isArray(runs) ? runs : [])
++      .filter((c) => typeof c === 'string' && c.trim() !== '')
++      .map((c) => '- Run: ' + c),
++    ...(Array.isArray(checks) ? checks : [])
++      .filter((c) => c && typeof c.cmd === 'string' && c.cmd.trim() !== '')
++      .map((c) => '- Check: ' + c.cmd),
++  ]
++  return '\nPROOFS:\n' + (lines.length ? lines.join('\n') : PROOFS_NONE)
+ }
+-// The implementer's TEST COMMAND line: its own command, unless that command is
+-// the peer's exam — then the run-wide one, capped for the sharers below.
+-const implTestCmdLine = (task, testCmd) =>
+-  testCmdLine(namesProofTest(task) ? null : task, testCmd)
+-// The tasks whose implementer actually RUNS the run-wide command: those with no
+-// command of their own, and those whose own command is the exam they will not
+-// hold (#547 — divide the machine by the workers that share it, not by WIDTH).
+-const sharesRunWideCmd = (task) =>
+-  !(task && typeof task.testCmd === 'string' && task.testCmd.trim()) || namesProofTest(task)
+ const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
+   ? ('\nFILES: ' + task.files.join(', ')) : ''
+ const interfacesLine = (task) => {
+@@ -637,8 +623,8 @@ const hunksOnly = (p, stdout, stderr) => {
+ // trace and then defers it as `deferred:runtime`. That deferral is manufactured:
+ // the answer already exists in `lastSuite`. Naming the driver's run authoritative
+ // is what the contend cell's critic explicitly asked for. Exported for the unit
+-// pin on the red branch (as capWorkerParallelism is) — the engine only ever
+-// adopts a green tree, so no live run reaches it.
++// pin on the red branch — the engine only ever adopts a green tree, so no live
++// run reaches it.
+ // Composition pinning, as a pure function (exported for the unit pin).
+ // Per-task exclusion, never a wave-wide skip (review finding 10): one task
+ // missing `writes` must not silence a genuine undeclared double-write between
+@@ -1341,25 +1327,6 @@ export async function runEngine({
+       })
+     : []
+   const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) || undefined
+-  // #436: the driver's own suite runs stay at full width (serialized, one
+-  // integration clone); the concurrent implementers get the machine divided
+-  // among them. #547: divide by the workers that actually SHARE the run-wide
+-  // command, not by WIDTH. Per-task testCmd (#515) means testCmdLine hands a
+-  // task with its own command that command — it never sees the capped one —
+-  // so counting it as a sharer over-divides the machine for everyone else.
+-  // The count is over every entry in the run (waves are sequential, but the
+-  // cap is one string computed once, so the whole run's sharers is the honest
+-  // upper bound). Zero sharers means the string is dead: leave it uncapped
+-  // rather than log a cap nobody reads. #663: a task whose own command IS its
+-  // peer's exam is handed the run-wide one too, so the predicate that picks the
+-  // implementer's line is the predicate that counts the sharers.
+-  const runWideSharers = WAVES.reduce((n, w) => n + w.filter(sharesRunWideCmd).length, 0)
+-  const workerTestCmd = runWideSharers > 0
+-    ? capWorkerParallelism(testCmd, runWideSharers, os.cpus().length)
+-    : testCmd
+-  if (workerTestCmd !== testCmd) {
+-    log('run-engine: worker testCmd capped for concurrency (#436) — ' + workerTestCmd)
+-  }
+   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
+   const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
+   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
+@@ -1814,9 +1781,9 @@ export async function runEngine({
+     // the bytes it had before this existed.
+     const examMoves = proofTests.map((p) => [p, landingOf(p)]).filter(([p, land]) => land !== p)
+     // The exam's command, pointed at where the exam lands. Substring
+-    // replacement is the same honest predicate `namesProofTest` reads by: every
+-    // spelling `derive_task_test_cmd` emits carries the Proof path verbatim,
+-    // and a command that names none comes back unchanged.
++    // replacement is honest on every shape the compiler emits: each spelling
++    // `derive_task_test_cmd` produces carries the Proof path verbatim, and a
++    // command that names none comes back unchanged.
+     const examRunCmd = examTestCmd
+       ? examMoves.reduce((cmd, [p, land]) => cmd.split(p).join(land), examTestCmd)
+       : null
+@@ -1826,21 +1793,31 @@ export async function runEngine({
+     const examPathsBlock = examMoves
+       .map(([p, land]) => '\nEXAM PATHS: ' + p + ' -> ' + land).join('')
+ 
+-    // Everything after the TEST COMMAND line is one string both workers get,
+-    // byte for byte: the same BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS,
+-    // INTERFACES and TASK blocks. Only that one line can differ (#663), and it
+-    // differs only for a task whose own command is its peer's exam.
++    // The Proof's `Run:` commands, in Proof order (#589). Absent or empty for
++    // every task compiled before the slot existed — and M6: a `Run:`-only
++    // proof leaves `proofTests` empty, so it dispatches no examiner by the
++    // branch already below, with no new condition. Read here because the
++    // implementer's own proofs are one of its prompt's inputs, below.
++    const proofRuns = Array.isArray(task.proofRuns)
++      ? task.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
++      : []
++
++    // Everything after the first line is one string both workers get, byte for
++    // byte: the same BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS, INTERFACES
++    // and TASK blocks. What differs is only what each is measured by — the
++    // examiner's TEST COMMAND, the implementer's PROOFS.
+     const sharedInputs = filesLine(task) + siblingsStr +
+       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
+     // The examiner's line is the remapped command; a task with no command of
+     // its own falls back to the run-wide one exactly as it did.
+     const examCmdTask = examRunCmd ? { testCmd: examRunCmd } : task
+-    const examinerInputs = testCmdLine(examCmdTask, workerTestCmd) + examPathsBlock + sharedInputs
+-    const implementerInputs = implTestCmdLine(task, workerTestCmd) + sharedInputs
+-    // The fix rounds run in the GRADED clone, which holds the exam at its
+-    // landing path after the handoff — so they are handed the remapped command
+-    // too, and no `EXAM PATHS:` line: nothing there writes an exam.
+-    const fixTestCmdLine = () => testCmdLine(examCmdTask, workerTestCmd)
++    const examinerInputs = testCmdLine(examCmdTask, testCmd) + examPathsBlock + sharedInputs
++    // The graded worker's inputs: the commands the driver will run against what
++    // it returns, and no run-wide suite. The fix rounds are handed the same
++    // block — they are graded by the same commands in the same clone — and no
++    // `EXAM PATHS:` line: nothing there writes an exam.
++    const proofsInputs = proofsBlock(proofRuns, constraintChecks)
++    const implementerInputs = proofsInputs + sharedInputs
+ 
+     // ── the exam (#553, #653) ────────────────────────────────────────────────
+     // A worker writes the tests the Proof names, in a clone of its OWN at BASE,
+@@ -1849,9 +1826,9 @@ export async function runEngine({
+     // BASE, FILES, SIBLING FILES, GLOBAL CONSTRAINTS, INTERFACES and TASK
+     // blocks — and NOT the implementer's role: the one agent that may not be
+     // told to make the suite green is the one writing the thing that measures
+-    // it. The one line the two prompts can differ in is TEST COMMAND (#663):
+-    // the exam's command is the examiner's, and the implementer, which will not
+-    // hold the exam until the handoff, is handed the run-wide suite instead.
++    // it. What the two prompts differ in is the command each is measured by:
++    // the examiner holds the exam's TEST COMMAND, and the implementer, which
++    // will not hold the exam until the handoff, holds its own PROOFS block.
+     //
+     // Two clones rather than one (#653) buys two things at once. The graded
+     // party never holds the exam in its tree while it works, so the peer rule
+@@ -1867,13 +1844,6 @@ export async function runEngine({
+     // (Amendment 10) — no prompt asks anyone to run git or report a sha.
+     const cloneDir = path.join(clonesDir, 'task-' + task.id)
+     const examDir = path.join(clonesDir, 'exam-' + task.id)
+-    // The Proof's `Run:` commands, in Proof order (#589). Absent or empty for
+-    // every task compiled before the slot existed — and M6: a `Run:`-only
+-    // proof leaves `proofTests` empty, so it dispatches no examiner by the
+-    // branch already below, with no new condition.
+-    const proofRuns = Array.isArray(task.proofRuns)
+-      ? task.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
+-      : []
+     // `git hash-object` on the path as it stands in a clone; an absent path is
+     // recorded as null, which is itself a value the drift check compares
+     // (creating a path the examiner declined to write IS an edit).
+@@ -2429,7 +2399,7 @@ export async function runEngine({
+         reds.map((r) => r.line).join('; ') + ') — one repair round before any reviewer read the patch')
+       await postReviewRound(kataRow, 0, reds.map((r) => r.line))
+       impl = await agent(
+-        roles.fix + taskBodyBlock(task, wavesPath) + fixTestCmdLine() +
++        roles.fix + taskBodyBlock(task, wavesPath) + proofsInputs +
+           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
+           '\n\nBlocking issues to resolve:\n' +
+           reds.map((r) => '- ' + r.line + '\n  output (last 4,000 characters):\n' + r.stdout).join('\n'),
+diff --git a/fleet/run-main.mjs b/fleet/run-main.mjs
+index 7ab8cef07618dd4cd94598d02e2aa6b76bff914a..955737a57a379c947f03036dacb328ad14b10a11 100644
+--- a/fleet/run-main.mjs
++++ b/fleet/run-main.mjs
+@@ -73,10 +73,10 @@ export const ENGINE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.ur
+ // sandbox's own compile, still boot. It is a MEASURED number, never a vendor
+ // one — the exe.dev plan is a dynamically shared pool (a VM's allocated size is
+ // a cap, not a reservation — RUNBOOK §Billing: "the plan meters CONSUMPTION,
+-// not allocation"), and the sandbox's vCPU are divided among the implementers'
+-// suites by capWorkerParallelism, which at width >= 8 already hands each one a
+-// serial pytest. So what the fallback guards is the subscription's
+-// concurrent-stream headroom.
++// not allocation"), and an implementer no longer runs the whole suite at all:
++// it is handed its own task's proofs, which are a handful of commands rather
++// than a machine-wide pytest. So what the fallback guards is the
++// subscription's concurrent-stream headroom.
+ //
+ // History: #398's study ran 12/12 clean and stopped there; 8 was chosen as
+ // "the last arm with real headroom" and stood until 2026-09-01, when run-49
+diff --git a/fleet/tests/test_launch_bump.mjs b/fleet/tests/test_launch_bump.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f19b3b6ab4bce6cc98aff67634d7e5fab42ff329
+--- /dev/null
++++ b/fleet/tests/test_launch_bump.mjs
+@@ -0,0 +1,536 @@
++/**
++ * fleet/tests/test_launch_bump.mjs — the exam for "A bumped launch files its
++ * sheets under the number it got" (task 2).
++ *
++ * A launch compiles the plan once, stamped with the run number it read off the
++ * target; when the push of `ultra/plan-run-<N>` is refused and the launcher
++ * bumps to N+1, that first payload is re-filed under the new number, so the
++ * sheets on the hub name `exams/run_<N>/` while the box's own compile names
++ * `exams/run_<N+1>/`. After this run the compile follows the number.
++ *
++ * The Machine clauses this file is written against, restated:
++ *
++ *   M1  when the plan push for `ultra/plan-run-<N>` is refused and the launcher
++ *       re-reads the target's highest run and bumps to N+1, it runs
++ *       `compile_plan.py <plan> --stamp run-<N+1> --base <sha>` BEFORE filing
++ *       the hub's project and sheets for N+1, and the sheets it files carry the
++ *       N+1 stamp's exam directory (`exams/run_<N+1>/`), never `run_<N>`'s.
++ *   M2  a launch that is not bumped runs exactly one stamped compile, ordered
++ *       before its `new` verb, and the VM size read off that compile is
++ *       unchanged from BASE.
++ *   M3  on a bump, the size the `new` verb carries is computed from the
++ *       recompiled payload, and the assignment comment carries `run=<N+1>`.
++ *
++ * The legs, each naming the clause it comes from:
++ *
++ *   (a) [M1] under the fake lobby with the first push refused, the fake exec
++ *       records two stamped compiles, `run-1` then `run-2`; the second is
++ *       ordered after the refused push and before the project filed for run 2;
++ *       and the project and sheets filed on the fake hub for run 2 carry
++ *       `run_2` in every exam path and no `run_1` anywhere.
++ *   (b) [M2] with no push refused, exactly one stamped compile is recorded,
++ *       before the `new` verb, and the `--cpu`/`--memory` on `new` equal BASE's
++ *       for the same plan — `6`/`8GB`, the formula's answer for a widest wave
++ *       of 10 under the caps `6`/`8GB`. The sizing sim beside this one keeps its
++ *       leg (c) and its sentinel; running it is the Proof's second `Run:`, and
++ *       not this file's, because no `test_*.mjs` may spawn another
++ *       (`fleet/tests/test_sims_are_hermetic.mjs`, M4) — so what is read here is
++ *       its source, and the driver runs it.
++ *   (c) [M3] on the bumped launch, the `new` verb's `--comment` carries `run=2`
++ *       and its `--cpu`/`--memory` equal the size computed from the SECOND
++ *       compile's waves.
++ *
++ * How the bump is driven, and why the two compiles answer different payloads:
++ *
++ *   The refusal is real, not a story the seam tells. The rule that refuses the
++ *   first push of `ultra/plan-run-1` first pushes `base` onto the bare origin as
++ *   that very ref — the racing launch, arriving — so the launcher's own re-read
++ *   of `highestRunOnTarget` reads 1 as taken off the target's refs and bumps to
++ *   2 by its own arithmetic. Nothing here parses or fakes git's wording.
++ *
++ *   The compiler stub answers per `--stamp`, the way the real compiler does:
++ *   `run-1` yields waves of 2/10/1 with every Proof path landing under
++ *   `tests/exams/run_1/`, `run-2` yields waves of 2/4/1 landing under
++ *   `tests/exams/run_2/`. Two payloads is what makes M3 falsifiable at all: the
++ *   widest wave of the first is 10 (`--cpu 6 --memory 8GB` under the caps) and
++ *   of the second is 4 (`--cpu 4 --memory 6GB`), so a launch that sized the box
++ *   off the compile it no longer files is red here. A stamp the stub was not
++ *   given answers non-zero, so a third compile is a refusal and not a silence.
++ *
++ * Everything a launch would execute is answered by the exec seam, and the
++ * compiler is never really run; the only real subprocesses are the fixture's own
++ * git commands against a bare origin on disk. No socket is opened. The
++ * scaffolding is `fleet/tests/test_launch_size.mjs`'s, copied rather than
++ * imported — that file exports nothing, and its own header records the same
++ * convention.
++ */
++
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++
++import { launch } from '../launch.mjs'
++import { EXE_HOST, defaultExec, parseComment } from '../lobby.mjs'
++import {
++  answer, cleanup, makeExec, makeTargetRepo, sshRule, tempDir
++} from './_lobby_helpers.mjs'
++
++const TARGET = 'popmechanic/smoke'
++const GH = 'gh-popmechanic-smoke'
++const ORIGIN_URL = `https://github.com/${TARGET}.git`
++const ENGINE = 'b'.repeat(40)
++const NOW = new Date('2026-09-14T18:20:00.000Z')
++/** The caps every drive here runs under: a `fleet.json` saying `6` and `8GB`. */
++const CAPPED = { cpu: '6', memory: '8GB' }
++const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
++const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n', 'pytest.ini': '[pytest]\n' }
++const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
++
++const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
++const TESTS_DIR = path.join(FLEET_DIR, 'tests')
++const VERBS = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
++/** The compiler the launcher must name: the plugin's own. */
++const COMPILER = path.resolve(FLEET_DIR, '..', 'skills', 'ultrapowers', 'scripts', 'compile_plan.py')
++/** The sizing sim leg (b) reads — read, never run: a sim spawns no sibling sim. */
++const SIZE_SIM = path.join(TESTS_DIR, 'test_launch_size.mjs')
++
++/** The run the target's refs make this launch ask for first, and the one the
++ *  race then forces it onto. */
++const FIRST = 1
++const BUMPED = 2
++const planBranch = (n) => `ultra/plan-run-${n}`
++const projectName = (n) => `popmechanic-smoke-run-${n}`
++
++// ── The compiled plan, as the stub answers it, per stamp ────────────────────
++
++/** `run-7` -> `run_7`: `compile_plan.py`'s `exam_slug`. */
++const examSlug = (stamp) => String(stamp).replace(/[^A-Za-z0-9_]/g, '_')
++/** Where a task's Proof path lands under a stamp: the reserved exam directory. */
++const examPathFor = (stamp, id) => `tests/exams/${examSlug(stamp)}/t${id}_test.py`
++/** One task's fact sheet, in the shape the launcher carries whole to the hub. */
++const factsheetFor = (stamp, id) => ({
++  files: [`src/f${id}.py`, `tests/t${id}_test.py`],
++  deletes: [],
++  guards: [],
++  proofTests: [`tests/t${id}_test.py`],
++  landing: { [`tests/t${id}_test.py`]: examPathFor(stamp, id) },
++  driverOwned: [examPathFor(stamp, id), `tests/exams/${examSlug(stamp)}/__init__.py`],
++  siblingOwned: [],
++  produces: [],
++  consumes: []
++})
++const taskFor = (stamp, id) => ({
++  id: String(id),
++  title: `task ${id}`,
++  factsheet: factsheetFor(stamp, id)
++})
++/** A payload of waves of the given sizes, task ids 1.. in wave order. */
++const payloadFor = (stamp, sizes) => {
++  let n = 0
++  return {
++    launch_waves: sizes.map((size) => Array.from({ length: size }, () => taskFor(stamp, (n += 1)))),
++    dag_edges: []
++  }
++}
++/**
++ * The two stamps this exam's compiler knows, and nothing else. The widest wave
++ * differs on purpose — see the header: it is what tells a size read off the
++ * recompiled payload from one read off the payload the run no longer files.
++ */
++const PAYLOADS = {
++  [`run-${FIRST}`]: payloadFor(`run-${FIRST}`, [2, 10, 1]),
++  [`run-${BUMPED}`]: payloadFor(`run-${BUMPED}`, [2, 4, 1])
++}
++const idsOf = (payload) => payload.launch_waves.flat().map((t) => t.id)
++/** BASE's size for the 2/10/1 plan under the 6/8GB caps: min(6, 2 + ceil(10/3))
++ *  and min(8, 2 + 10). */
++const SIZE_OF_FIRST = { cpu: '6', memory: '8GB' }
++/** And for the 2/4/1 one: min(6, 2 + ceil(4/3)) and min(8, 2 + 4). */
++const SIZE_OF_SECOND = { cpu: '4', memory: '6GB' }
++
++// ── The seam's rules ────────────────────────────────────────────────────────
++
++const NEW_OK = (cmd, argv) =>
++  answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
++const ENGINE_RULE = {
++  when: (cmd, argv) =>
++    cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: answer(`${ENGINE}\tHEAD\n`)
++}
++const pointAtOrigin = (repo, argv) => {
++  const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
++  const fetchAt = argv.indexOf('fetch')
++  if (fetchAt < 0) return pointed
++  const remoteAt = argv.indexOf('origin', fetchAt)
++  const branch = String(argv[remoteAt + 1] ?? '')
++  if (remoteAt < 0 || branch === '' || branch.startsWith('-') || branch.includes(':')) return pointed
++  pointed[remoteAt + 1] = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
++  return pointed
++}
++const localRemote = (repo) => ({
++  when: (cmd, argv) => cmd === 'git' &&
++    (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
++    !argv.includes('--get-url') &&
++    !argv.some((a) => /ultrapowers/.test(String(a))),
++  answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
++})
++const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
++const NO_REMOTE_OPS = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
++  answer: OFFLINE
++}
++const NO_NETWORK_GIT = {
++  when: (cmd, argv) => cmd === 'git' && argv.some((a) => /:\/\/|github\.com/.test(String(a))),
++  answer: OFFLINE
++}
++const helpText = (verb, flags) => [
++  `Command: ${verb}`, '', 'Options:', ...flags.map((flag) => `  ${flag}  what ${flag} does`), ''
++].join('\n')
++const HELP_OK = (cmd, argv) => {
++  const verb = String(argv[1] ?? '').slice('help '.length)
++  const flags = VERBS.verbs[verb]
++  return flags
++    ? answer(helpText(verb, flags))
++    : answer(`No help available for unrecognized command: ${verb}\n`)
++}
++/** `--check` answers `PLAN OK`; a stamped compile answers that stamp's payload,
++ *  and a stamp this exam did not prepare is a non-zero exit rather than a
++ *  silence the launcher would read as JSON. */
++const COMPILER_RULE = {
++  when: (cmd) => cmd === 'python3',
++  answer: (cmd, argv) => {
++    if (argv.includes('--check')) return answer('PLAN OK\n')
++    const stamp = String(argv[argv.indexOf('--stamp') + 1] ?? '')
++    const payload = PAYLOADS[stamp]
++    return payload === undefined
++      ? answer('', { code: 3, stderr: `exam: no payload prepared for --stamp ${stamp}\n` })
++      : answer(JSON.stringify(payload))
++  }
++}
++
++/**
++ * The race, made real: the first push of `ultra/plan-run-<FIRST>` is refused,
++ * and the ref it wanted appears on the origin at that moment — pushed there by
++ * the fixture, as another launch would have. The launcher's own re-read is what
++ * then decides the number; nothing here tells it which one to take.
++ */
++const refusedFirstPush = (repo, state) => ({
++  when: (cmd, argv) => cmd === 'git' && argv.includes('push') &&
++    argv.some((a) => String(a).endsWith(`:refs/heads/${planBranch(FIRST)}`)),
++  answer: () => {
++    state.refusals += 1
++    repo.git(['push', repo.origin, `${repo.base}:refs/heads/${planBranch(FIRST)}`])
++    return answer('', {
++      code: 1,
++      stderr: ` ! [rejected]        ${planBranch(FIRST)} (non-fast-forward)\n` +
++        `error: failed to push some refs to '${ORIGIN_URL}'\n`
++    })
++  }
++})
++
++const readRules = ({ repo, bump = null }) => [
++  ENGINE_RULE,
++  ...(bump === null ? [] : [refusedFirstPush(repo, bump)]),
++  localRemote(repo),
++  COMPILER_RULE,
++  sshRule('help ', HELP_OK),
++  sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
++  sshRule('billing plan --json', answer(BILLING_OK)),
++  sshRule('new ', NEW_OK),
++  NO_REMOTE_OPS,
++  NO_NETWORK_GIT
++]
++
++// ── The hub, faked: a recorder with the client's method names ───────────────
++//
++// Every call records `at`, the number of exec calls made when it was issued, so
++// a leg can say a compile came before a filing without the two records having
++// to share a clock.
++
++const ULID = (n) => `01ARZ3NDEKTSV4RRFFQ69G5F${String(n).padStart(2, '0')}`
++function makeFakeKata ({ at = () => 0, url = 'http://hub.fake' } = {}) {
++  const calls = []
++  let projects = 0
++  let issues = 0
++  const rec = (method, args) => calls.push({ method, args, at: at() })
++  return {
++    url,
++    calls,
++    async ping () {
++      rec('ping', [])
++      return { ok: true, service: 'kata', version: '0.17.2' }
++    },
++    async createProject (name) {
++      rec('createProject', [name])
++      projects += 1
++      return { id: projects, uid: ULID(projects), name, revision: 1 }
++    },
++    async purgeProject (id, reason) {
++      rec('purgeProject', [id, reason])
++      return {}
++    },
++    async createIssue (projectId, spec) {
++      rec('createIssue', [projectId, spec])
++      issues += 1
++      return { uid: ULID(10 + issues), revision: 1, short_id: `K-${issues}` }
++    },
++    async link (projectId, fromUid, spec) {
++      rec('link', [projectId, fromUid, spec])
++      return { revision: 2 }
++    },
++    async getIssue (uid) {
++      rec('getIssue', [uid])
++      return { uid, revision: 1, metadata: {}, status: 'open', owner: null, project_id: projects }
++    }
++  }
++}
++
++// ── The workspace ───────────────────────────────────────────────────────────
++
++function workspace () {
++  const root = tempDir('fleet-launch-bump-')
++  const repo = makeTargetRepo({ root, files: { ...SEED } })
++  repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
++  const planDir = path.join(root, 'plans-src')
++  fs.mkdirSync(planDir)
++  const planPath = path.join(planDir, 'a-plan.md')
++  fs.writeFileSync(planPath, PLAN)
++  return { root, repo, planPath, cleanup: () => cleanup(root) }
++}
++
++/** One launch, end to end. `bump` asks for the refused first push. */
++const drive = async ({ bump = false, withHub = true } = {}) => {
++  const ws = workspace()
++  const state = { refusals: 0 }
++  const exec = makeExec({ rules: readRules({ repo: ws.repo, bump: bump ? state : null }) })
++  const hub = withHub ? makeFakeKata({ at: () => exec.calls.length }) : null
++  const result = await launch({
++    argv: [
++      ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir,
++      '--engine', ENGINE
++    ],
++    exec,
++    config: CAPPED,
++    now: () => NOW,
++    sleep: async () => {},
++    refreshCredential: () => ({ ok: true }),
++    kata: hub
++  })
++  return { result, exec, hub, ws, state }
++}
++
++// ── Reading the calls ───────────────────────────────────────────────────────
++
++const newCallOf = (exec) => exec.calls.find(
++  (c) => c.cmd === 'ssh' && c.argv[0] === EXE_HOST && String(c.argv[1] ?? '').startsWith('new ')
++)
++const indexOfNew = (exec) => exec.calls.findIndex(
++  (c) => c.cmd === 'ssh' && c.argv[0] === EXE_HOST && String(c.argv[1] ?? '').startsWith('new ')
++)
++/** Every `compile_plan.py … --stamp …` the launch ran, in order. */
++const stampCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3' && c.argv.includes('--stamp'))
++const stampsOf = (exec) => stampCalls(exec).map((c) => String(c.argv[c.argv.indexOf('--stamp') + 1]))
++const indexOfStamp = (exec, stamp) => exec.calls.findIndex(
++  (c) => c.cmd === 'python3' && c.argv[c.argv.indexOf('--stamp') + 1] === stamp
++)
++const indexOfPush = (exec, branch) => exec.calls.findIndex(
++  (c) => c.cmd === 'git' && c.argv.includes('push') &&
++    c.argv.some((a) => String(a).endsWith(`:refs/heads/${branch}`))
++)
++/** The `--cpu`/`--memory` pair the `new` verb carries. */
++const sizeOf = (exec, leg) => {
++  const call = newCallOf(exec)
++  assert.ok(call, `${leg} the launch issued a \`new\` verb`)
++  const m = /--cpu (\S+) --memory (\S+)/.exec(String(call.argv[1] ?? ''))
++  assert.ok(m, `${leg} the \`new\` verb carries --cpu <n> --memory <n>GB, got ${call.argv[1]}`)
++  return { cpu: m[1], memory: m[2] }
++}
++/** The assignment `--comment` the `new` verb carries, as its fields. */
++const commentOf = (exec, leg) => {
++  const call = newCallOf(exec)
++  assert.ok(call, `${leg} the launch issued a \`new\` verb`)
++  const m = /--comment '([^']*)'/.exec(String(call.argv[1] ?? ''))
++  assert.ok(m, `${leg} the \`new\` verb carries --comment '<fields>', got ${call.argv[1]}`)
++  return { text: m[1], fields: parseComment(m[1]) }
++}
++const methodCalls = (hub, method) => hub.calls.filter((c) => c.method === method)
++/** The issues filed against one project, in the order they were created. */
++const issuesOf = (hub, projectId) => methodCalls(hub, 'createIssue').filter((c) => c.args[0] === projectId)
++const sheetsOf = (hub, projectId) => issuesOf(hub, projectId)
++  .filter((c) => c.args[1]?.metadata?.task !== undefined)
++
++// ── a. [M1] the bump recompiles, and files the new number's sheets ──────────
++{
++  const run = await drive({ bump: true })
++
++  assert.equal(
++    run.state.refusals, 1,
++    '(a) [M1] the fixture refused exactly one push — the bump this leg is about'
++  )
++  assert.equal(
++    run.result.run, BUMPED,
++    `(a) [M1] the launcher re-read the target's highest run and bumped to ${BUMPED}`
++  )
++  assert.equal(run.result.runId, `run-${BUMPED}`, `(a) [M1] its run id is run-${BUMPED}`)
++  assert.equal(
++    run.result.planBranch, planBranch(BUMPED),
++    `(a) [M1] and its plan is on ${planBranch(BUMPED)}`
++  )
++
++  assert.deepEqual(
++    stampsOf(run.exec), [`run-${FIRST}`, `run-${BUMPED}`],
++    `(a) [M1] the fake exec records two stamped compiles, run-${FIRST} then run-${BUMPED}: ` +
++    `got ${JSON.stringify(stampsOf(run.exec))}`
++  )
++  const second = stampCalls(run.exec)[1]
++  assert.deepEqual(
++    second.argv,
++    [COMPILER, run.ws.planPath, '--stamp', `run-${BUMPED}`, '--base', run.ws.repo.base],
++    '(a) [M1] the second is `compile_plan.py <plan> --stamp run-2 --base <sha>`, the clause\'s own line: ' +
++    `got ${second.argv.join(' ')}`
++  )
++  assert.equal(second.options?.cwd, run.ws.repo.dir, '(a) [M1] run in the checkout, as the first is')
++
++  const firstPushAt = indexOfPush(run.exec, planBranch(FIRST))
++  const secondCompileAt = indexOfStamp(run.exec, `run-${BUMPED}`)
++  assert.ok(firstPushAt >= 0, `(a) [M1] the launch pushed ${planBranch(FIRST)} first`)
++  assert.ok(
++    secondCompileAt > firstPushAt,
++    `(a) [M1] the second compile follows the refused push — it is what the bump causes, not a ` +
++    `compile made in advance (push at ${firstPushAt}, compile at ${secondCompileAt})`
++  )
++
++  const projects = methodCalls(run.hub, 'createProject')
++  assert.deepEqual(
++    projects.map((c) => c.args[0]), [projectName(FIRST), projectName(BUMPED)],
++    `(a) [M1] one project filed per attempted number: ${JSON.stringify(projects.map((c) => c.args[0]))}`
++  )
++  assert.ok(
++    projects[1].at > secondCompileAt,
++    `(a) [M1] and the ${BUMPED} compile is ordered BEFORE the hub's project for ${BUMPED} is filed ` +
++    `(compile at exec call ${secondCompileAt}, createProject after ${projects[1].at})`
++  )
++  assert.deepEqual(
++    methodCalls(run.hub, 'purgeProject').map((c) => c.args[0]), [1],
++    '(a) [M1] and what was filed under the first number was purged'
++  )
++
++  const filed = sheetsOf(run.hub, 2)
++  assert.deepEqual(
++    filed.map((c) => String(c.args[1].metadata.task)), idsOf(PAYLOADS[`run-${BUMPED}`]),
++    `(a) [M1] the sheets filed for run ${BUMPED} are the run-${BUMPED} compile's tasks, in wave order: ` +
++    `got ${JSON.stringify(filed.map((c) => String(c.args[1].metadata.task)))}`
++  )
++  for (const call of filed) {
++    const id = String(call.args[1].metadata.task)
++    assert.deepEqual(
++      call.args[1].metadata.factsheet, factsheetFor(`run-${BUMPED}`, id),
++      `(a) [M1] task ${id}'s fact sheet is the run-${BUMPED} stamp's, whole — its Proof path lands at ` +
++      `${examPathFor(`run-${BUMPED}`, id)}: got ${JSON.stringify(call.args[1].metadata.factsheet)}`
++    )
++  }
++  const filedForBumped = JSON.stringify(
++    run.hub.calls.filter((c) => c.args[0] === 2 || c.args[0] === projectName(BUMPED))
++  )
++  assert.equal(
++    filedForBumped.includes(`exams/${examSlug(`run-${BUMPED}`)}/`), true,
++    `(a) [M1] every exam path filed for run ${BUMPED} names exams/${examSlug(`run-${BUMPED}`)}/`
++  )
++  assert.equal(
++    filedForBumped.includes(examSlug(`run-${FIRST}`)), false,
++    `(a) [M1] and nothing filed for run ${BUMPED} names ${examSlug(`run-${FIRST}`)} — the first ` +
++    `number's reserved exam directory is not what the box will use`
++  )
++
++  run.ws.cleanup()
++}
++
++// ── b. [M2] an un-bumped launch still compiles once, and is sized as at BASE ─
++{
++  const solo = await drive({ bump: false, withHub: false })
++  assert.equal(solo.state.refusals, 0, '(b) [M2] no push was refused')
++  assert.equal(solo.result.run, FIRST, `(b) [M2] so the launch kept the number it read, ${FIRST}`)
++  assert.deepEqual(
++    stampsOf(solo.exec), [`run-${FIRST}`],
++    `(b) [M2] exactly one stamped compile, run-${FIRST}: got ${JSON.stringify(stampsOf(solo.exec))}`
++  )
++  assert.ok(indexOfNew(solo.exec) >= 0, '(b) [M2] the launch reached the `new` verb')
++  assert.ok(
++    indexOfStamp(solo.exec, `run-${FIRST}`) < indexOfNew(solo.exec),
++    '(b) [M2] ordered before the `new` verb'
++  )
++  assert.deepEqual(
++    sizeOf(solo.exec, '(b) [M2]'), SIZE_OF_FIRST,
++    '(b) [M2] and the size on `new` is BASE\'s for this plan: a widest wave of 10 under the caps ' +
++    '6/8GB is --cpu 6 --memory 8GB'
++  )
++  solo.ws.cleanup()
++
++  const filed = await drive({ bump: false, withHub: true })
++  assert.deepEqual(
++    stampsOf(filed.exec), [`run-${FIRST}`],
++    '(b) [M2] with a hub too: one stamped compile, not one per reader'
++  )
++  assert.ok(
++    indexOfStamp(filed.exec, `run-${FIRST}`) < indexOfNew(filed.exec),
++    '(b) [M2] still ordered before the `new` verb'
++  )
++  assert.deepEqual(
++    methodCalls(filed.hub, 'createProject').map((c) => c.args[0]), [projectName(FIRST)],
++    '(b) [M2] one project, filed under the number the launch kept'
++  )
++  assert.deepEqual(
++    sheetsOf(filed.hub, 1).map((c) => String(c.args[1].metadata.task)), idsOf(PAYLOADS[`run-${FIRST}`]),
++    `(b) [M2] and the sheets are that one compile's tasks`
++  )
++  assert.deepEqual(
++    sizeOf(filed.exec, '(b) [M2]'), SIZE_OF_FIRST,
++    '(b) [M2] sized off the same compile'
++  )
++  filed.ws.cleanup()
++
++  // The sizing sim's own leg (c) is narrowed to the un-bumped launch in place,
++  // and the sim still prints its sentinel. Reading it is all this file may do —
++  // `fleet/tests/test_sims_are_hermetic.mjs` M4 forbids one sim spawning
++  // another — so the running of it is the Proof's second `Run:`, which the
++  // driver executes and greps for that sentinel.
++  const sizeSim = fs.readFileSync(SIZE_SIM, 'utf8')
++  assert.ok(
++    sizeSim.includes('(c) [M3]'),
++    '(b) [M2] fleet/tests/test_launch_size.mjs keeps its leg (c) — the one-compile pin is narrowed ' +
++    'to the un-bumped launch in place, not deleted'
++  )
++  assert.ok(
++    sizeSim.includes('ALL TESTS PASSED'),
++    '(b) [M2] and it still prints the sentinel the Proof\'s second `Run:` greps for'
++  )
++}
++
++// ── c. [M3] the bumped launch is sized and labelled by the compile it kept ──
++{
++  const run = await drive({ bump: true })
++
++  const comment = commentOf(run.exec, '(c) [M3]')
++  assert.equal(
++    comment.fields.run, String(BUMPED),
++    `(c) [M3] the \`new\` verb's --comment carries run=${BUMPED}: got ${JSON.stringify(comment.text)}`
++  )
++  assert.deepEqual(
++    sizeOf(run.exec, '(c) [M3]'), SIZE_OF_SECOND,
++    `(c) [M3] and its --cpu/--memory are the size computed from the second compile's waves — the ` +
++    `run-${BUMPED} payload's widest wave is 4, so --cpu 4 --memory 6GB under the caps 6/8GB`
++  )
++  assert.notDeepEqual(
++    sizeOf(run.exec, '(c) [M3]'), SIZE_OF_FIRST,
++    `(c) [M3] and so NOT the size of the run-${FIRST} payload the bump left behind (--cpu 6 --memory 8GB)`
++  )
++  assert.equal(
++    parseComment(run.result.comment).run, String(BUMPED),
++    `(c) [M3] the record's own comment says the same run=${BUMPED}`
++  )
++
++  run.ws.cleanup()
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_launch_size.mjs b/fleet/tests/test_launch_size.mjs
+index e9952b7c51b8e4488b536f6e4da74476841e6abc..69f3d3709056ef4795510a4a25d963cba494f10b 100644
+--- a/fleet/tests/test_launch_size.mjs
++++ b/fleet/tests/test_launch_size.mjs
+@@ -21,9 +21,14 @@
+  *       and a value above the fake billing plan's `max_cpus`/`max_memory_gb` is
+  *       refused with the same message as at BASE, word for word;
+  *   (c) [M3] the fake exec records exactly one `compile_plan.py … --stamp …`
+- *       invocation per launch, ordered before the `new` verb — with no hub,
+- *       where the sizing is the only reader, and with a recording fake hub,
+- *       where the filing's issues cover exactly that one payload's tasks;
++ *       invocation per UN-BUMPED launch — the only kind this exam drives, both
++ *       of its launches pushing to their own origin at the first N they ask
++ *       for — ordered before the `new` verb, with no hub, where the sizing is
++ *       the only reader, and with a recording fake hub, where the filing's
++ *       issues cover exactly that one payload's tasks. A launch whose push is
++ *       refused takes the next run number and compiles again under it, so its
++ *       stamped compiles are two: that is run-128 task 2's exam
++ *       (`test_launch_bump.mjs`), not this leg's;
+  *   (d) [M4] the launch arguments the fake sandbox receives carry `width` equal
+  *       to the widest wave; `widthOf` answers 4 for `{ width: 4 }`, 12 for `{}`
+  *       and 12 for `{ width: 0 }`; `boundedParallel(widthOf(` is present in
+@@ -346,13 +351,22 @@ const indexOfNew = (exec) => exec.calls.findIndex(
+   wsMem.cleanup()
+ }
+ 
+-// ── c. [M3] one stamped compile per launch, before the verb, read by both ───
++// ── c. [M3] one stamped compile per un-bumped launch, before the verb ───────
++//
++// Both launches below push to their own origin, which holds no `ultra/plan-*`
++// ref at all, so the first push wins and the first N is the N: exactly one
++// stamped compile. Run-128 task 2 made the compile follow the number — a
++// launch whose push is refused re-reads the target, bumps to N+1 and compiles
++// AGAIN under it, so that the sheets it files name the exam directory the
++// sandbox will actually reserve — so "one per launch" is now "one per run
++// number the launch attempts". The bumped count is `test_launch_bump.mjs`'s
++// leg (a); this leg pins the un-bumped launch it has always driven.
+ {
+   const solo = await drive({ compiled: TEN_WIDE, config: CAPPED })
+   const soloStamps = stampCalls(solo.exec)
+   assert.equal(
+     soloStamps.length, 1,
+-    `(c) [M3] exactly one compile_plan.py --stamp per launch, got ${soloStamps.length}: ${soloStamps.map((c) => c.argv.join(' ')).join(' | ')}`
++    `(c) [M3] exactly one compile_plan.py --stamp per un-bumped launch, got ${soloStamps.length}: ${soloStamps.map((c) => c.argv.join(' ')).join(' | ')}`
+   )
+   const call = soloStamps[0]
+   assert.equal(call.argv[0], COMPILER, '(c) [M3] the plugin\'s own compile_plan.py')
+@@ -377,7 +391,7 @@ const indexOfNew = (exec) => exec.calls.findIndex(
+   const filed = await drive({ compiled: TEN_WIDE, config: CAPPED, kata: hub })
+   assert.equal(
+     stampCalls(filed.exec).length, 1,
+-    '(c) [M3] with a hub too: one stamped compile, not one per reader'
++    '(c) [M3] with a hub too: one stamped compile for this un-bumped launch, not one per reader'
+   )
+   assert.ok(
+     indexOfStamp(filed.exec) < indexOfNew(filed.exec),
+diff --git a/fleet/tests/test_run_engine_own_proofs.mjs b/fleet/tests/test_run_engine_own_proofs.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..dfde89aef13dee23e638b1fb724953c4a233412e
+--- /dev/null
++++ b/fleet/tests/test_run_engine_own_proofs.mjs
+@@ -0,0 +1,340 @@
++// fleet/tests/test_run_engine_own_proofs.mjs — the implementer runs its OWN
++// proofs, not the suite.
++//
++// After this run an implementer is handed its own task's proofs and iterates
++// against those: the `TEST COMMAND:` line is gone from the implementer's and
++// the fix round's prompts, replaced by a `PROOFS:` block built from the task's
++// Proof `Run:` commands and the run's Global Constraints `Check:` commands.
++// The examiner keeps its `TEST COMMAND:` line (it is the one worker that must
++// know how the exam is invoked) and so does the reconciler (it is handed the
++// run-wide suite, which is the thing it repairs).
++//
++// Everything below the agent seam is the real thing — real git repos, real
++// clones at BASE, real capture, the real fold kernel, the real `sh` — and only
++// `agent` is stubbed, so every prompt this file reads is a prompt the engine
++// actually built and dispatched.
++//
++// Machine clauses under test, and the Proof legs that carry them:
++//
++//   M1 — the implementer's prompt carries no line beginning `TEST COMMAND:`
++//        and carries one `PROOFS:` block: one line per Proof `Run:` command of
++//        its task and one line per Global Constraints `Check:` command, each
++//        verbatim, in plan order, prefixed `- Run: ` and `- Check: `
++//        respectively; a task with no `Run:` and a run with no `Check:` gets a
++//        `PROOFS:` block that says `(none — the driver runs the exam at
++//        handoff)`. Leg (a).
++//   M2 — the fix round's prompt has the same shape as M1: no `TEST COMMAND:`
++//        line, the same `PROOFS:` block. Leg (b).
++//   M3 — the examiner's prompt still carries its `TEST COMMAND:` line naming
++//        the exam command, unchanged from BASE. Leg (c).
++//   M4 — `capWorkerParallelism`, `sharesRunWideCmd`, `runWideSharers` and
++//        `implTestCmdLine` are not defined in `fleet/run-engine.mjs`, and
++//        neither `fleet/roles/implementer.md` nor `fleet/roles/fix.md`
++//        contains the string `TEST COMMAND`. Leg (d).
++//   M5 — the reconciler's prompt still carries the run-wide `TEST COMMAND:`
++//        line and no `PROOFS:` block. Leg (e).
++//   M6 — the two survivor sims this task may edit each print
++//        `ALL TESTS PASSED` on the patched tree. Leg (f) — the Proof's two
++//        `Run:` lines are what execute them, in the driver's own clone; what
++//        this file pins is that each is still there and still ends in the
++//        sentinel those commands grep for.
++//
++// Two readings are recorded on the kata issue and repeated here, because a
++// later session would otherwise have to reconstruct them:
++//
++//   The block's ORDER. M1 says "one line per Proof `Run:` ... and one line per
++//   ... `Check:` ..., each verbatim, in plan order", and the task's Produces
++//   interface spells the block `\nPROOFS:\n- Run: <cmd>\n- Check: <cmd>`. That
++//   is read here as every `- Run: ` line in `task.proofRuns` order first, then
++//   every `- Check: ` line in `constraintChecks` order — not interleaved — and
++//   the exact block string is asserted as a substring of the prompt.
++//
++//   The examiner's prompt. M3's "unchanged from BASE" is asserted as: exactly
++//   one line beginning `TEST COMMAND:`, and that line is exactly the exam's
++//   own command. Whether the examiner ALSO gains a `PROOFS:` block is
++//   deliberately not asserted — nothing in the task asks for one, and pinning
++//   its absence would grade a choice the Machine clauses never make. The
++//   reconciler is the opposite case: M5 names the absence itself, so leg (e)
++//   asserts it.
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++import os from 'node:os'
++import path from 'node:path'
++import { fileURLToPath } from 'node:url'
++import { rig, makeRepo, passReview, doneImpl } from './_engine_helpers.mjs'
++
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-own-proofs-'))
++// rmSync unlinks a tree's `skills` symlink rather than following it.
++process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }))
++const TESTS_DIR = fileURLToPath(new URL('.', import.meta.url))
++const ROLES_DIR = fileURLToPath(new URL('../roles/', import.meta.url))
++const ENGINE_SRC = fileURLToPath(new URL('../run-engine.mjs', import.meta.url))
++
++// A task body with no `TEST COMMAND` in it: the prompt assertions below read
++// LINES, so a mention inside the task text could not be mistaken for the input
++// line — but keeping the text clean keeps the failure messages readable.
++const BODY = '**Claim:** the tree gains one.txt\n' +
++  'Machine: M1. The tree holds `one.txt`.\n\n' +
++  '**Proof:**\n- Legs: (a) `one.txt` exists [M1]'
++const mkTask = (id, files, over = {}) => ({
++  id, title: id.toLowerCase(), files, tier: 'standard', review: 'lean',
++  writes: files, commutes: [], proofTests: [], proofRuns: [],
++  body: BODY, ...over,
++})
++
++// ── reading a prompt the way the contract spells it ──────────────────────────
++// An input line is `KEY: value` at the head of a line; the role text above it
++// mentions `TEST COMMAND` in prose (implementer.md line 7, reconcile.md line
++// 20 at BASE), which is M4's grep to answer, not this one's. So every
++// assertion here is about a LINE that BEGINS with the key.
++const linesOf = (prompt) => String(prompt || '').split('\n')
++const INPUT_KEY = /^[A-Z][A-Z ]*:/
++const testCmdLinesOf = (prompt) => linesOf(prompt).filter((l) => l.startsWith('TEST COMMAND:'))
++const proofsHeadsOf = (prompt) => linesOf(prompt).filter((l) => l === 'PROOFS:')
++// The block's body: the lines under the `PROOFS:` line, up to the next input
++// key or a blank line. `null` when the prompt carries no block at all, which
++// is a different failure from a block with the wrong lines in it.
++const proofsBodyOf = (prompt) => {
++  const lines = linesOf(prompt)
++  const i = lines.indexOf('PROOFS:')
++  if (i === -1) return null
++  const body = []
++  for (const line of lines.slice(i + 1)) {
++    if (line === '' || INPUT_KEY.test(line)) break
++    body.push(line)
++  }
++  return body
++}
++const NONE_LINE = '(none — the driver runs the exam at handoff)'
++
++// ── S1: legs (a) first half [M1], (b) [M2], (c) [M3] ─────────────────────────
++// One task carrying two Proof `Run:` lines, in a run carrying one Global
++// Constraints `Check:`, with an exam of its own. The second `Run:` is red on
++// the driver's pass and green once the repair round has written its file, so
++// this single run records `impl:T1`, `exam:T1` AND `fix:T1:0` — which is why
++// leg (b)'s "the same `PROOFS:` block" can be asserted as string equality
++// between two prompts of the SAME task rather than across two runs.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-block'))
++  const runDir = path.join(tmp, 'run-block')
++  const RUN_A = 'test -f one.txt'
++  const RUN_B = 'test -f fixed.txt'
++  const CHECK = 'test -f check.sh'
++  const EXAM_CMD = 'bash t1_test.sh'
++  // Red at BASE (the examiner's clone has no `one.txt`), green on the patch.
++  const EXAM = '#!/bin/bash\n[ -f one.txt ]\n'
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'exam') {
++      fs.writeFileSync(path.join(cwd, 't1_test.sh'), EXAM)
++      return { status: 'DONE', summary: 'exam written' }
++    }
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'from T1\n')
++      return doneImpl(cwd)
++    }
++    // The repair round clears the one red `Run:`; the pass repeats green and
++    // the task goes on to its review round exactly as a task that started
++    // green does.
++    if (kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'fixed.txt'), 'repaired\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op1',
++    waves: [[mkTask('T1', ['one.txt', 'fixed.txt'], {
++      proofTests: ['t1_test.sh'], testCmd: EXAM_CMD, proofRuns: [RUN_A, RUN_B],
++    })]],
++    extraArgs: { constraintChecks: [{ cmd: CHECK, minor: false }] },
++  })
++  const report = await run()
++  const row = report.tasks.find((r) => r.task === 'T1')
++
++  assert.deepEqual(labels.filter((l) => l === 'impl:T1'), ['impl:T1'],
++    'sim precondition: one implementer was dispatched — ' + JSON.stringify(labels))
++  assert.deepEqual(labels.filter((l) => l === 'exam:T1'), ['exam:T1'],
++    'sim precondition: the examiner was dispatched — ' + JSON.stringify(labels))
++  assert.equal(row.proofFixes, 1,
++    'sim precondition: the red `Run:` bought one repair round — ' + JSON.stringify(row))
++  assert.deepEqual(labels.filter((l) => l === 'fix:T1:0'), ['fix:T1:0'],
++    'sim precondition: that round is the recorded `fix:T1:0` dispatch — ' + JSON.stringify(labels))
++
++  // The block this task's two `Run:` lines and this run's one `Check:` line
++  // make, spelled the way the Produces interface spells it.
++  const BLOCK = '\nPROOFS:\n- Run: ' + RUN_A + '\n- Run: ' + RUN_B + '\n- Check: ' + CHECK
++  const BODY_LINES = ['- Run: ' + RUN_A, '- Run: ' + RUN_B, '- Check: ' + CHECK]
++
++  // [M1] leg (a): the implementer's prompt carries no TEST COMMAND line ...
++  const implPrompt = prompts['impl:T1']
++  assert.deepEqual(testCmdLinesOf(implPrompt), [],
++    'the implementer\'s prompt carries NO line beginning `TEST COMMAND:` — it is handed its ' +
++    'own task\'s proofs, never the suite: ' + JSON.stringify(testCmdLinesOf(implPrompt)))
++  // ... and carries ONE `PROOFS:` block ...
++  assert.deepEqual(proofsHeadsOf(implPrompt), ['PROOFS:'],
++    'and exactly one `PROOFS:` block: ' + JSON.stringify(proofsHeadsOf(implPrompt)))
++  // ... whose lines are the task's `Run:` commands then the run's `Check:`
++  // commands, each verbatim, in plan order.
++  assert.deepEqual(proofsBodyOf(implPrompt), BODY_LINES,
++    'whose lines are exactly the two Proof `Run:` commands and the one Global Constraints ' +
++    '`Check:` command, each verbatim, in plan order, prefixed `- Run: ` and `- Check: `: ' +
++    JSON.stringify(proofsBodyOf(implPrompt)))
++  assert.ok(implPrompt.includes(BLOCK),
++    'and the block is that exact string — `' + JSON.stringify(BLOCK) + '` — as the task\'s ' +
++    'Produces interface spells it')
++
++  // [M2] leg (b): the fix round's prompt has the same shape and the same block.
++  const fixPrompt = prompts['fix:T1:0']
++  assert.deepEqual(testCmdLinesOf(fixPrompt), [],
++    'the fix round\'s prompt carries no line beginning `TEST COMMAND:` either: ' +
++    JSON.stringify(testCmdLinesOf(fixPrompt)))
++  assert.deepEqual(proofsHeadsOf(fixPrompt), ['PROOFS:'],
++    'it carries exactly one `PROOFS:` block: ' + JSON.stringify(proofsHeadsOf(fixPrompt)))
++  assert.deepEqual(proofsBodyOf(fixPrompt), BODY_LINES,
++    'and that block is the same one the implementer was handed, line for line: ' +
++    JSON.stringify(proofsBodyOf(fixPrompt)))
++  assert.ok(fixPrompt.includes(BLOCK),
++    'as the same exact string the implementer\'s prompt carried — the repair round iterates ' +
++    'against the same proofs the implementer did')
++
++  // [M3] leg (c): the examiner keeps its TEST COMMAND line, naming the exam.
++  const examPrompt = prompts['exam:T1']
++  assert.deepEqual(testCmdLinesOf(examPrompt), ['TEST COMMAND: ' + EXAM_CMD],
++    'the examiner\'s prompt still carries exactly one `TEST COMMAND:` line and it names the ' +
++    'exam command, unchanged from BASE: ' + JSON.stringify(testCmdLinesOf(examPrompt)))
++}
++
++// ── S2: leg (a), second half [M1] ────────────────────────────────────────────
++// A task with no Proof `Run:` in a run with no Global Constraints `Check:`.
++// The task still carries a `testCmd` of its own and the run still has its
++// run-wide one, so a prompt that kept either would be visible here: what M1
++// asks for is the `(none — ...)` sentence and no TEST COMMAND line at all.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-none'))
++  const runDir = path.join(tmp, 'run-none')
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'two.txt'), 'from T2\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op2',
++    // No `constraintChecks` at all: the run has no `Check:` to list.
++    waves: [[mkTask('T2', ['two.txt'], { testCmd: 'bash check.sh' })]],
++  })
++  await run()
++
++  assert.deepEqual(labels.filter((l) => l === 'impl:T2'), ['impl:T2'],
++    'sim precondition: one implementer was dispatched — ' + JSON.stringify(labels))
++  const implPrompt = prompts['impl:T2']
++  assert.deepEqual(testCmdLinesOf(implPrompt), [],
++    'a task with no `Run:` still carries no line beginning `TEST COMMAND:` — neither its own ' +
++    'command nor the run-wide one: ' + JSON.stringify(testCmdLinesOf(implPrompt)))
++  assert.deepEqual(proofsHeadsOf(implPrompt), ['PROOFS:'],
++    'it still carries exactly one `PROOFS:` block: ' + JSON.stringify(proofsHeadsOf(implPrompt)))
++  assert.deepEqual(proofsBodyOf(implPrompt), [NONE_LINE],
++    'and with no `Run:` on the task and no `Check:` on the run that block says exactly ' +
++    '`' + NONE_LINE + '`: ' + JSON.stringify(proofsBodyOf(implPrompt)))
++}
++
++// ── S3: leg (e) [M5] ─────────────────────────────────────────────────────────
++// The reconciler is not a graded party and has no proofs of its own: it is
++// handed the run-wide suite, which is the thing it repairs. The implementer
++// here writes the rig's `BROKEN` marker, so `bash check.sh` is red on the
++// FOLDED tree once and a `reconcile:` worker is dispatched; the stub removes
++// the marker and reports FIXED, so the wave still adopts and the run ends the
++// way every other scenario here does.
++{
++  const repo = makeRepo(path.join(tmp, 'repo-recon'))
++  const runDir = path.join(tmp, 'run-recon')
++  const RUN_WIDE = 'bash check.sh'
++  const labels = []
++  const prompts = {}
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    prompts[opts.label] = prompt
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'BROKEN'), 'the marker check.sh reads\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (kind === 'reconcile') {
++      // cwd is the integration clone (the reconcile label carries no
++      // `isolation: 'worktree'`), which is where the red candidate lives.
++      fs.rmSync(path.join(cwd, 'BROKEN'), { force: true })
++      return { status: 'FIXED', summary: 'removed the marker' }
++    }
++    throw new Error('unexpected dispatch: ' + opts.label)
++  }
++  const { run } = rig({
++    repo, runDir, stub, stamp: 'op3', testCmd: RUN_WIDE,
++    waves: [[mkTask('T3', ['BROKEN'])]],
++  })
++  await run()
++
++  const reconciles = labels.filter((l) => l.startsWith('reconcile:'))
++  assert.deepEqual(reconciles, ['reconcile:wave1:1'],
++    'sim precondition: the folded tree\'s suite was red once and bought exactly one ' +
++    'reconcile dispatch — ' + JSON.stringify(labels))
++  const recPrompt = prompts['reconcile:wave1:1']
++  assert.deepEqual(testCmdLinesOf(recPrompt), ['TEST COMMAND: ' + RUN_WIDE],
++    'the reconciler\'s prompt still carries the run-wide `TEST COMMAND:` line: ' +
++    JSON.stringify(testCmdLinesOf(recPrompt)))
++  assert.deepEqual(proofsHeadsOf(recPrompt), [],
++    'and no `PROOFS:` block — the proofs belong to a task, and the reconciler repairs the ' +
++    'fold: ' + JSON.stringify(proofsHeadsOf(recPrompt)))
++}
++
++// ── S4: leg (d) [M4] ─────────────────────────────────────────────────────────
++// The same two facts the Proof's first two `Run:` lines read, asserted here so
++// the sim says what the commands say. Both greps count comment lines too: a
++// symbol left behind in a comment paragraph that only exists to explain it is
++// as much a hit as a definition.
++{
++  const src = fs.readFileSync(ENGINE_SRC, 'utf8')
++  for (const sym of ['capWorkerParallelism', 'sharesRunWideCmd', 'runWideSharers',
++                     'implTestCmdLine']) {
++    assert.equal(src.includes(sym), false,
++      'the string `' + sym + '` no longer occurs anywhere in fleet/run-engine.mjs — the ' +
++      'symbol and the comment paragraph that exists to explain it both go')
++  }
++  for (const name of ['implementer.md', 'fix.md']) {
++    const role = fs.readFileSync(path.join(ROLES_DIR, name), 'utf8')
++    assert.equal(role.includes('TEST COMMAND'), false,
++      'fleet/roles/' + name + ' contains no `TEST COMMAND` at all — the input it names is ' +
++      'the `PROOFS:` block now')
++    assert.ok(role.includes('PROOFS:'),
++      'and it names `PROOFS:` instead: the worker is told which block to run its proofs from')
++  }
++}
++
++// ── S5: leg (f) [M6] ─────────────────────────────────────────────────────────
++// The Proof's last two `Run:` lines are what actually execute these, in the
++// driver's own clone; what this pins is that each file is still there and
++// still prints the line those commands grep for, so a survivor this task is
++// allowed to edit cannot be dropped or silenced and read as green.
++{
++  for (const name of ['test_run_engine_proof_runs.mjs', 'test_run_engine_review_economy.mjs']) {
++    const file = path.join(TESTS_DIR, name)
++    assert.equal(fs.existsSync(file), true, 'the surviving sim ' + name + ' is still here')
++    assert.ok(fs.readFileSync(file, 'utf8').includes("console.log('ALL TESTS PASSED')"),
++      name + ' still ends in the `ALL TESTS PASSED` sentinel its `Run:` line greps for')
++  }
++}
++
++console.log('ALL TESTS PASSED')
+diff --git a/fleet/tests/test_run_engine_review_economy.mjs b/fleet/tests/test_run_engine_review_economy.mjs
+index 6710169f1f8f6b79fc496e90f942b3569b1daab0..752d0ad2420dbedf0de2ba17dfc400ab29c9e8b6 100644
+--- a/fleet/tests/test_run_engine_review_economy.mjs
++++ b/fleet/tests/test_run_engine_review_economy.mjs
+@@ -355,14 +355,32 @@ async function pinRun(engine, tasks, rolesDir = ROLES_DIR) {
+   // nothing new, so every prompt is byte-identical to BASE's. One label is
+   // exempt since #964 Task 2 — BASE's `integration` prompt has no live
+   // counterpart, and that absence is the assertion above.
++  //
++  // Run-128 Task 1 re-aims the rule for the `impl:` labels, and only for them:
++  // an implementer is no longer handed the run-wide suite at all but the
++  // `PROOFS:` block of its own task's proofs, so BASE's `TEST COMMAND:` line
++  // has no live counterpart either. The leg is not dropped — it asserts that
++  // ONE substitution and byte-identity everywhere around it, so a second,
++  // unrelated drift in an implementer's inputs still fails right here.
++  const PROOFS_NONE = '\nPROOFS:\n(none — the driver runs the exam at handoff)'
++  const reaimed = (label, basePrompt) => {
++    assert.ok(basePrompt.includes('\nTEST COMMAND: bash check.sh'),
++      'sim precondition: BASE handed ' + label + ' the run-wide suite')
++    return basePrompt.replace('\nTEST COMMAND: bash check.sh', PROOFS_NONE)
++  }
+   if (basePin) {
+     const baseLabels = Object.keys(basePin.prompts).filter((l) => l !== 'integration').sort()
+     assert.deepEqual(Object.keys(live.prompts).sort(), baseLabels,
+       'the same roles are dispatched as on BASE\'s engine, less the critic')
+     for (const label of baseLabels) {
+-      assert.equal(live.prompts[label], basePin.prompts[label],
++      const expected = label.startsWith('impl:')
++        ? reaimed(label, basePin.prompts[label])
++        : basePin.prompts[label]
++      assert.equal(live.prompts[label], expected,
+         'an empty-evidence run must leave the ' + label +
+-        ' prompt byte-identical to BASE\'s (the run-51 rule)')
++        ' prompt byte-identical to BASE\'s (the run-51 rule; for an `impl:` ' +
++        'label, identical but for the `PROOFS:` block in place of BASE\'s ' +
++        '`TEST COMMAND:` line)')
+     }
+   }
+ }

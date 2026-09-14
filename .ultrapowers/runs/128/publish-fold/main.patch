@@ -1,0 +1,76 @@
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 3b77387106e3bd7898bacad71d7a5be7af93144d..181a0e30e8756f2d3f913a6580bfdf2c6bc5e82a 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -442,6 +442,14 @@ on the next one, ask her before editing a script.
+ 
+ **The Claude proxy.**
+ 
++- `claude-token.mjs usage` rotates an EXPIRED account's access token with `install: false`,
++  and Anthropic's refresh grant revokes the previous token — the one the edge holds — so a
++  live run dies at its next call with `401 OAuth access token has been revoked` (run-100,
++  2026-09-11). Never `refresh --force` while `ssh exe.dev ls` shows a `fleet-r*` VM running;
++  the launcher's own in-window refresh is the safe one (measured 2026-09-11).
++- `claude-token.mjs login --account <x>` rewrites `claude-max`'s bearer at once: every
++  in-flight run switches to that account mid-run (run-96, 2026-09-11). Enrol a new account
++  before a drain, not during one.
+ - Editing `claude-max` is destructive by default. `integrations edit
+   --clear-header` removed the bearer on the live proxy (`config_summary` read
+   `(no-auth)`), and a bearer is shown as `***` and cannot be read back — it is
+@@ -464,6 +472,10 @@ on the next one, ask her before editing a script.
+ 
+ **The GitHub edge.**
+ 
++- Branch protection `strict=true` enforces nothing without at least one required status
++  context: with `contexts=[]` a behind PR's merge PUT is accepted (probe on a scratch repo,
++  2026-09-10). Since CI was removed the sandbox checks main's tip itself before its PUT and
++  folds again if it moved (decision 15); never cite `strict` as the guard.
+ - `integrations edit` on a GitHub integration serves the cached installation
+   token for 30–60 s afterwards: a `gh pr create` twenty seconds after a binding
+   produced a bot-authored PR. The grant is a standing policy the VM matches from
+@@ -497,6 +509,13 @@ on the next one, ask her before editing a script.
+ 
+ **Tags, keys and names.**
+ 
++- One HTTPS service per VM: `share port` sets the VM's single `proxy_port`, so a second
++  service is a second VM reached through a peer integration by tag (measured 2026-09-12).
++- `new` takes no positional arguments — `new --name <vm> … --setup-script /dev/stdin` — and
++  a `--comment` with spaces must travel inside one ssh argument with its quotes intact, or
++  the lobby reads the tail as positionals. `exe-setup.service` runs the setup script as
++  `exedev`, not root: plain user commands with `sudo -n` for root steps (three papercuts of
++  the ultraviz deploy, 2026-09-12; copy the launcher's verbs, never re-derive them).
+ - `tag -d <vm> fleet` detaches every tag-scoped integration on the VM at
+   once, your own tag-scoped ssh key included. Never mid-run.
+ - A tag-scoped key cannot bind or unbind integrations; `launch.mjs` needs
+@@ -508,6 +527,15 @@ on the next one, ask her before editing a script.
+ 
+ **Reading the lobby.**
+ 
++- exe.dev exposes nothing finer than 24 h (`stat --range=24h`, `billing usage`,
++  `pool list --usage` for host-computed starvation, gated). There is no per-VM steal or
++  pressure metric and no consumption refusal — over-commit degrades, never errors. The
++  instrument is in-guest: `/proc/stat` steal and `/proc/pressure/{cpu,memory}` sampled
++  every 5 s (Shelley, 2026-09-05).
++- The evidence branch lags by a whole wave: `commit_phase_evidence` fires when the phase
++  STRING changes and a wave is one string, so mid-wave the branch is frozen at
++  `worker:start`. Silence is not a hang; the status page and the hub's events feed are
++  live (#877).
+ - `ls --json` is `{"shared_vms": [...], "vms": [...]}`. Read `.vms[]` only;
+   `shared_vms` are other people's, and a first-array parse hid every fleet VM
+   once. `vm_name`, `ssh_dest`, `ssh_host` and `status` are documented;
+diff --git a/skills/ultrawrite/SKILL.md b/skills/ultrawrite/SKILL.md
+index 7d3b0441bd58670a6ecd2a295cb480ace137e4cd..0145da19f36fc65cddff5e4d51081c4d07714d6e 100644
+--- a/skills/ultrawrite/SKILL.md
++++ b/skills/ultrawrite/SKILL.md
+@@ -63,8 +63,9 @@ conflict. Keep both markers in the contiguous run directly under the heading.
+ - `**Type:**` — `implementation` (the default, and the only Type that waves),
+   `gate`, `release`, `manual`. A write-nothing verification task is `gate`; anything that
+   pushes, deploys, or waits on a human is its own `release`/`manual` task.
+-- `**Review:**` — optional, `peer` or `lean`. Mark `peer` — a second independent read of
+-  the same patch — where failure is costly or hard to see; unmarked is `lean`.
++- `**Review:**` — optional, `peer` or `lean`, kept for the record. Since the engine plan of
++  2026-09-14 (PR #974) every task gets exactly one reviewer and one fix round whatever the
++  value says; the pair `peer` used to buy is gone on its reading (8 marginal findings in 71 runs).
+ - There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
+   Driver spec §7), a spend authority — never written on a task here.
+ - `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
