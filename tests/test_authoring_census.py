@@ -14,9 +14,10 @@ The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
   * (c)/[M2] `--register` prints one line per option of every question of every
     row, in row order then question order then option order, and no header.
   * (d)/[M3] `--fetch o/r --runs 131..133 --into <dir> --gh <fake>` writes the
-    two files per run from the two tags, skips the run whose plan tag has no
-    record with one stderr line naming it, invokes the binary `--gh` names and
-    no other, and then prints the M1 table over `<dir>`.
+    record from the plan tag and the status and report from the evidence tag,
+    skips the run whose plan tag has no record with one stderr line naming it,
+    invokes the binary `--gh` names and no other, and then prints the M1 table
+    over `<dir>`.
 
 The script is driven as a subprocess over directories built under `tmp_path`,
 with a fake `gh` written there that answers from a table keyed on the `ref=`
@@ -118,23 +119,28 @@ def blob(obj):
 # ------------------------------------------------------------ the M1 expected
 
 HEADER = tsv("run", "authoring_min", "probes", "dispatched", "rejected",
-             "routing", "lane", "questions", "recommended_picked", "run_min")
+             "routing", "lane", "questions", "recommended_picked", "run_min",
+             "amendments")
 
 # (a): the no-`authoring` record — `-` in every authoring column, its tally
-# read, and `-` for `run_min` (it carries no `status.json`).
-ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-")
+# read, and `-` for `run_min` (it carries no `status.json`). `amendments` is
+# `-` on every row here: `build_root` writes no `report.json`, and a run that
+# left no report reads `-`, never `0`.
+ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "-")
 # (a): the leg's row, verbatim.
 ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
-              "1/1", "16")
+              "1/1", "16", "-")
 # (a): `rejected` and `run_min` both `-`, `recommended_picked` 1/1 — the
 # null-recommended question counts in neither p nor q.
 ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
-              "1/1", "-")
+              "1/1", "-", "-")
 # (a): m = the rows with a routing record (131, 133), k = those whose branch
 # is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
-# row carrying a `run_min`.
+# row carrying a `run_min`; no row carries an amendment count, so the sum over
+# the rows that do is 0.
 TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
-          "recommended_picked=2/2 authoring_min=165 run_min=16")
+          "recommended_picked=2/2 authoring_min=165 run_min=16 "
+          "amendments=0")
 
 TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
 
@@ -252,6 +258,11 @@ def status_path(number):
             "?ref=ultra/evidence/run-%d" % (number, number))
 
 
+def report_path(number):
+    return ("repos/o/r/contents/.ultrapowers/runs/%d/report.json"
+            "?ref=ultra/evidence/run-%d" % (number, number))
+
+
 def lines(text):
     return text.splitlines()
 
@@ -268,8 +279,9 @@ def test_a_the_table_over_three_runs(tmp_path):
 
 
 def test_a_the_header_line_is_exact(tmp_path):
-    """(a)/[M1]: the first line is the ten tab-separated column names, in the
-    clause's order — read on its own so a drift there reads as a drift there."""
+    """(a)/[M1]: the first line is the eleven tab-separated column names, in
+    the clause's order, `amendments` last — read on its own so a drift there
+    reads as a drift there."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert lines(p.stdout)[0] == HEADER, p.stdout
@@ -303,7 +315,8 @@ def test_a_run_min_is_whole_minutes_rounded_down(tmp_path):
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert ROW_131 in lines(p.stdout), p.stdout
-    assert lines(p.stdout)[2].split("\t")[-1] == "16", p.stdout
+    # `run_min` is the second-to-last cell now that `amendments` closes the row.
+    assert lines(p.stdout)[2].split("\t")[-2] == "16", p.stdout
 
 
 def test_a_the_totals_line_is_exact(tmp_path):
@@ -379,7 +392,8 @@ def test_c_register_leaves_the_rec_column_dashed_for_a_null_recommended(
 def fetch_answers():
     """The fake's table: the plan record for 131 and 133, a `status.json` for
     131 only. Run 132's plan tag and run 133's evidence tag are absent, so the
-    fake exits 1 for them."""
+    fake exits 1 for them — and no `report.json` is answered at all, so every
+    row's `amendments` is `-`."""
     return {
         plan_path(131): blob(RECORD_131).decode("utf-8"),
         plan_path(133): blob(RECORD_133).decode("utf-8"),
@@ -434,22 +448,24 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
     assert lines(p.stdout) == [
         HEADER, ROW_131, ROW_133,
         ("totals: plans=2 runs=131..133 risk_override=1/2 "
-         "recommended_picked=2/2 authoring_min=165 run_min=16"),
+         "recommended_picked=2/2 authoring_min=165 run_min=16 "
+         "amendments=0"),
     ], p.stdout + p.stderr
 
 
 def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
     """(d)/[M3]: each call's first two arguments are `api` and a
     `repos/o/r/contents/` path carrying the expected `ref=` tag — the plan tag
-    for the record, the evidence tag for the status — and no argv names any
-    other repository. The three plan reads and the two status reads the leg
-    asks for are all made."""
+    for the record, the evidence tag for the status and the report — and no
+    argv names any other repository. The three plan reads, the two status reads
+    and the two report reads the leg asks for are all made."""
     p, _into, calls, _bare = run_fetch(tmp_path)
     argvs = [json.loads(line) for line in lines(calls.read_text())
              if line.strip()]
     assert argvs, "the fake `gh` was never invoked: " + p.stdout + p.stderr
     expected = {plan_path(n) for n in (131, 132, 133)}
     expected |= {status_path(n) for n in (131, 132, 133)}
+    expected |= {report_path(n) for n in (131, 132, 133)}
     for argv in argvs:
         assert argv[0] == "api", argv
         assert argv[1].startswith("repos/o/r/contents/"), argv
@@ -459,8 +475,12 @@ def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
                 assert owner_repo == "o/r", argv
     made = {argv[1] for argv in argvs}
     for required in (plan_path(131), plan_path(132), plan_path(133),
-                     status_path(131), status_path(133)):
+                     status_path(131), status_path(133),
+                     report_path(131), report_path(133)):
         assert required in made, sorted(made)
+    # 132's plan tag carries no record, so the run is skipped whole: neither
+    # its status nor its report is ever read.
+    assert report_path(132) not in made, sorted(made)
 
 
 def test_d_the_bare_gh_on_path_is_never_resolved(tmp_path):

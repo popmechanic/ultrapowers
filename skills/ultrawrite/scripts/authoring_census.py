@@ -14,7 +14,8 @@ is a question about the pile. This census is that pile read into one table.
     authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
 
 `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
-`run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
+`run-<N>/status.json` and a `run-<N>/report.json` beside each; a `run-<N>`
+with no record is not a row.
 `--register` prints one line per option of every question instead of the table
 (#735). `--fetch` fills `<dir>` from the plan and evidence tags over `gh api`
 and then prints the table over it. `--gh` swaps that binary — the test seam,
@@ -39,6 +40,7 @@ RUN_DIR_RE = re.compile(r"^run-(\d+)$")
 
 RECORD_NAME = "gate-verdicts.json"
 STATUS_NAME = "status.json"
+REPORT_NAME = "report.json"
 
 #: The table's columns, in order. The first line of `--from` output is exactly
 #: these names, tab-separated.
@@ -53,6 +55,7 @@ COLUMNS = (
     "questions",
     "recommended_picked",
     "run_min",
+    "amendments",
 )
 
 #: What a column prints when the run's files do not carry it.
@@ -95,6 +98,23 @@ def _run_minutes(status):
     except ValueError:
         return None
     return int((b - a).total_seconds() // 60)
+
+
+def _amendments(report):
+    """How many amendments the run's workers made, from its `report.json`.
+
+    The report's top-level `amendments` is a list of `{task, amends, what,
+    why}` rows, `[]` when none — so the count is that list's length. None when
+    the file is absent, unreadable, not an object, or carries no list under
+    that key: every run before the plan that introduced the key reads `-`,
+    never `0`, because a run that never wrote the key is not a run that made
+    no amendment."""
+    if not isinstance(report, dict):
+        return None
+    amendments = report.get("amendments")
+    if not isinstance(amendments, list):
+        return None
+    return len(amendments)
 
 
 def _questions(authoring):
@@ -148,6 +168,7 @@ def census_rows(root):
 
         status = _load_json(directory / STATUS_NAME)
         run_min = _run_minutes(status) if isinstance(status, dict) else None
+        amendments = _amendments(_load_json(directory / REPORT_NAME))
 
         rows.append({
             "run": number,
@@ -161,6 +182,7 @@ def census_rows(root):
             "recommended_picked": (
                 _recommended_picked(questions) if has_authoring else None),
             "run_min": run_min,
+            "amendments": amendments,
             "questions_detail": questions,
         })
     return rows
@@ -196,7 +218,8 @@ def _totals_line(rows):
 
     `risk_override` is over the rows that carry a routing record at all — a
     pre-plan record has no branch and is no part of the denominator — and the
-    two `recommended_picked` sums are over every row."""
+    two `recommended_picked` sums are over every row. `amendments` sums the
+    rows that carry a count; a release where no run wrote one reads 0."""
     routed = [row for row in rows if row["routing"] is not None]
     risk = [row for row in routed if row["routing"] == "risk"]
     picked = offered = 0
@@ -206,10 +229,12 @@ def _totals_line(rows):
             picked += p
             offered += q
     return ("totals: plans=%d runs=%s risk_override=%d/%d "
-            "recommended_picked=%d/%d authoring_min=%d run_min=%d"
+            "recommended_picked=%d/%d authoring_min=%d run_min=%d "
+            "amendments=%d"
             % (len(rows), _window(rows), len(risk), len(routed),
                picked, offered,
-               _sum(rows, "authoring_min"), _sum(rows, "run_min")))
+               _sum(rows, "authoring_min"), _sum(rows, "run_min"),
+               _sum(rows, "amendments")))
 
 
 def render_table(rows):
@@ -284,15 +309,18 @@ def _fetch_file(gh, target, path, ref):
 
 
 def fetch_runs(target, first, last, into, gh="gh"):
-    """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
-    for each N from `first` to `last` inclusive; return the runs written.
+    """Fill `into` with `run-<N>/gate-verdicts.json`, `run-<N>/status.json` and
+    `run-<N>/report.json` for each N from `first` to `last` inclusive; return
+    the runs written.
 
     The plan tag `ultra/plan/run-<N>` carries the record and the evidence tag
-    `ultra/evidence/run-<N>` carries the status. A run whose plan tag has no
-    record is skipped whole — one line on stderr, nothing written for it, no
-    directory left behind — because a run with no record is no row. A status
-    that does not answer leaves that file unwritten and the row's `run_min` a
-    `-`: the authoring numbers are still worth reading without it."""
+    `ultra/evidence/run-<N>` carries both the status and the report. A run
+    whose plan tag has no record is skipped whole — one line on stderr, nothing
+    written for it, no directory left behind — because a run with no record is
+    no row. A status that does not answer leaves that file unwritten and the
+    row's `run_min` a `-`, and a report that does not answer leaves that file
+    unwritten and the row's `amendments` a `-`: the authoring numbers are still
+    worth reading without either."""
     into = Path(into)
     # The destination exists whether or not any run answers: a release where
     # every tag is missing is an empty census, not a usage error.
@@ -315,6 +343,11 @@ def fetch_runs(target, first, last, into, gh="gh"):
             "ultra/evidence/run-%d" % number)
         if status is not None:
             (directory / STATUS_NAME).write_bytes(status)
+        report = _fetch_file(
+            command, target, ".ultrapowers/runs/%d/report.json" % number,
+            "ultra/evidence/run-%d" % number)
+        if report is not None:
+            (directory / REPORT_NAME).write_bytes(report)
         written.append(number)
     return written
 
