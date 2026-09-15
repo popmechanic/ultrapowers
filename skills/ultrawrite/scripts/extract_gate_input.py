@@ -52,6 +52,7 @@ from compile_plan import (  # noqa: E402
     _CASE_LINE_RE,
     _LITERAL_MIN,
     _RULE_RE,
+    _SHA40_RE,
     _claims_run_command,
     _path_referent,
     BaseTree,
@@ -292,6 +293,18 @@ def main(argv=None):
     if args.plan_mode and args.base is not None:
         ap.exit(2, "extract_gate_input: --base rides a task diet only; the "
                    "plan-level diet (--plan) reads no tree\n")
+    # A base that is neither a checkout directory nor a 40-hex sha is refused
+    # here, before the compiler's reader sees it: that reader treats any
+    # non-sha value as a directory on purpose, so an 8-character abbreviation
+    # became `git -C <abbrev>` and every file read `absent` — a diet six gate
+    # readers were handed on 2026-09-15 (#1025). A 40-hex sha the repository
+    # does not have is still the reader's own `error:` refusal.
+    if (args.base is not None and not Path(args.base).is_dir()
+            and not _SHA40_RE.fullmatch(args.base)):
+        sys.stderr.write("extract: --base %s is not a commit this repository "
+                         "has — pass the 40-hex sha or a checkout directory\n"
+                         % args.base)
+        return 2
     payload = (plan_input(args.plan) if args.plan_mode
                else gate_input(args.plan, args.task))
     if args.base is not None:

@@ -283,3 +283,47 @@ def test_f_m6_skill_says_it_in_order():
         r".*does not exist.*hash.*unchanged", flat), "(f) [M6] the new sentence, in order"
     assert re.search(r"STALE fact.*refus.*unreadable.*advisory", flat), \
         "(f) [M6] the Stale-if pin still holds"
+
+
+# ── extractor-and-authoring-refusals task 1 (#1025): a base that is neither a
+# checkout directory nor a 40-hex sha is refused on one line, exit 2 ─────────
+
+REFUSAL = ("extract: --base %s is not a commit this repository has — "
+           "pass the 40-hex sha or a checkout directory")
+
+
+@pytest.mark.parametrize("label", ["abbrev", "word"])
+def test_g_m1_a_short_or_unknown_base_is_refused_on_one_line(repo, label):
+    """(a) [M1]: the fixture HEAD's first 8 characters, and the word
+    `notasha` — exit 2, empty stdout, exactly one stderr line, the issue's
+    message with the value substituted."""
+    r, plan, head = repo
+    value = head[:8] if label == "abbrev" else "notasha"
+    p = run(plan, "--task", "1", "--base", value)
+    assert p.returncode == 2, (p.returncode, p.stderr)
+    assert p.stdout == "", p.stdout
+    assert p.stderr.strip().splitlines() == [REFUSAL % value], p.stderr
+
+
+def test_g_m3_a_real_sha_and_a_directory_still_read_present(repo):
+    """(d) [M3]: the 40-hex sha and the checkout directory both print
+    `present` for a file that exists, and the hash equals the no-base diet's."""
+    r, plan, head = repo
+    plain = load(run(plan, "--task", "1"))
+    for rev in (head, str(r)):
+        d = load(run(plan, "--task", "1", "--base", rev))
+        by = {f["path"]: f for f in d["base"]["files"]}
+        assert by["tests/test_mod.py"]["status"] == "present", rev
+        assert d["hash"] == plain["hash"], rev
+
+
+def test_g_m4_the_skill_names_the_refusal():
+    """(e) [M4]: the proof-gate section says a value that is neither a
+    checkout directory nor a 40-hex sha is refused with exit 2, not read as
+    every file absent — and the two existing pins still hold."""
+    flat = _section()
+    assert re.search(r"neither a checkout directory nor a 40-hex sha.*exit 2"
+                     r".*every file.*absent", flat)
+    assert re.search(r"--base <sha>.*base.*excerpt.*8000.*24000.*already pins the opposite"
+                     r".*does not exist.*hash.*unchanged", flat)
+    assert re.search(r"STALE fact.*refus.*unreadable.*advisory", flat)
