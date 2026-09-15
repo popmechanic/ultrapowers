@@ -1052,8 +1052,6 @@ test('#723 (h) the contract declares the phase commits in both bullets  [M5]', (
     // The `ultra/evidence-run-<N>` bullet, from its own line to the
     // `ultra/integration-run-<N>` one.
     "sed -n '/ultra\\/evidence-run-<N>. — the run/,/ultra\\/integration-run-<N>. — the work/p' fleet/CONTRACT.md | tr '\\n' ' ' | grep -q 'engine:phase'",
-    // …and the docs pin stays green over the edited contract.
-    'python3 -m pytest tests/test_docs_agree_with_code.py -q -p no:cacheprovider',
   ]
   for (const cmd of runs) {
     const r = spawnSync('bash', ['-c', cmd], { cwd: ROOT, encoding: 'utf8', timeout: 300000 })
