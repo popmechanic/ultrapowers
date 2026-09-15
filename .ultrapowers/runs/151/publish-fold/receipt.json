@@ -39,7 +39,8 @@
           "result": "pass"
         }
       ],
-      "checkRetries": 0
+      "checkRetries": 0,
+      "pushedHead": "6cfd9af0312d94f3938c20be0095a4b186fdeb3a"
     }
   }
 }
