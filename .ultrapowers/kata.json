@@ -1,0 +1,64 @@
+{
+  "url": "https://kata.int.exe.xyz",
+  "project": {
+    "id": 31,
+    "uid": "01M2HBYF26YQWA0S07E1J3NSGF",
+    "name": "popmechanic-ultrapowers"
+  },
+  "run": {
+    "uid": "01M2JZ41SQADXFY0GRYR28F8GA",
+    "revision": 1
+  },
+  "tasks": {
+    "1": {
+      "uid": "01M2JZ42S6VF9WMFH9GAJPPSBX",
+      "short_id": "psbx",
+      "revision": 2
+    },
+    "2": {
+      "uid": "01M2JZ46R7A0NMP2R3HKER07RD",
+      "short_id": "07rd",
+      "revision": 2
+    },
+    "3": {
+      "uid": "01M2JZ4AVQS8QBYFX93NWS32QM",
+      "short_id": "32qm",
+      "revision": 2
+    },
+    "4": {
+      "uid": "01M2JZ52CJPJKD7ANK2SR9BR2N",
+      "short_id": "br2n",
+      "revision": 2
+    },
+    "5": {
+      "uid": "01M2JZ561T0T61HP8HGF3HGX1C",
+      "short_id": "gx1c",
+      "revision": 2
+    },
+    "6": {
+      "uid": "01M2JZ4EMDYYRNNJAYXK87Z82V",
+      "short_id": "z82v",
+      "revision": 2
+    },
+    "7": {
+      "uid": "01M2JZ4JGXJDVX5ATMAJZCGWES",
+      "short_id": "gwes",
+      "revision": 2
+    },
+    "8": {
+      "uid": "01M2JZ4PMX4VT161CTDSANBDF9",
+      "short_id": "bdf9",
+      "revision": 2
+    },
+    "9": {
+      "uid": "01M2JZ4TK8SBKZ6G5FEG94MM4P",
+      "short_id": "mm4p",
+      "revision": 2
+    },
+    "10": {
+      "uid": "01M2JZ4YJWRT7PMFWF13PW59KG",
+      "short_id": "59kg",
+      "revision": 2
+    }
+  }
+}
