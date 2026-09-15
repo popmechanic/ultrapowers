@@ -31,6 +31,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import string
 import subprocess
 import sys
@@ -1728,7 +1729,181 @@ def collect_violations(plan_path, base_tree=None):
                         "grammar: task %s: `- Delete: `%s`` names a path absent "
                         "at BASE — a deleted file must exist at the base the "
                         "plan launches on" % (t["id"], rel))
+        # ... and the Stale-if slot, read against the same tree (#538): a
+        # predicate that already HOLDS at BASE is a task the plan is stale
+        # about. The advisory half of the same read is printed after the
+        # verdict by main(), not collected here.
+        violations.extend(evaluate_stale_if(tasks, base_tree)[0])
     return violations
+
+
+# --------------------------------------------------------------------------- #
+# Stale-if predicates evaluated at BASE under `--check --base` (#538)          #
+# --------------------------------------------------------------------------- #
+# A Stale-if entry is a predicate about the tree the plan launches on: it names
+# the condition under which the task is already done, already impossible, or
+# aimed at a file that is not there. Nothing at runtime re-evaluates one — the
+# question is asked once, on the laptop, with a base to read.
+#
+# A predicate that HOLDS at BASE is a refusal, not a fact: the plan is stale
+# before it is dispatched, so it joins the violations and the compile exits 2.
+# A predicate the machine cannot DECIDE — an issue `gh` will not answer, an
+# argument that is not a predicate's argument at all — is an advisory printed
+# after the verdict beside the `BASE fact:` lines: an unreachable network is
+# evidence about the laptop, never about the plan.
+_STALE_ENTRY_RE = re.compile(
+    r"^(path-exists|path-absent|sha-matches|issue-open|issue-closed)\s*:\s*(.*)$")
+# `#538`, or the bare number — anything else has no digits to read.
+_ISSUE_ARG_RE = re.compile(r"^#?\s*(\d+)$")
+# One answer per issue number per process, so a number named by many tasks —
+# and asked after by both halves of the read, the refusals inside
+# collect_violations and the advisories inside main() — costs one `gh`.
+_ISSUE_STATE_CACHE = {}
+
+
+def _stale_entries(t):
+    """A task's Stale-if entries, bullet stripped and text otherwise verbatim.
+    `parse_claims_body` puts them under the task's `claims` overlay; the flat
+    key is read too, so a caller holding a bare parse result is answered the
+    same."""
+    entries = (t.get("claims") or {}).get("stale_if_entries")
+    if entries is None:
+        entries = t.get("stale_if_entries") or []
+    return entries
+
+
+def _stale_argument(text):
+    """An entry's argument: the text after the head, whitespace and the
+    author's backticks stripped (`- path-exists: \\`fleet/reader.mjs\\`` asks
+    about `fleet/reader.mjs`)."""
+    return text.strip().strip("`").strip()
+
+
+def _read_issue_state(repo, number):
+    """(state, reason) from one `gh issue view` in `repo` — the shape
+    `check_provenance.py` already uses, run with the base repository as its
+    working directory so `gh` resolves the repository from that checkout's
+    origin."""
+    gh = shutil.which("gh")
+    if gh is None:
+        return None, "gh not on PATH"
+    try:
+        p = subprocess.run(
+            [gh, "issue", "view", number, "--json", "state", "-q", ".state"],
+            capture_output=True, text=True, cwd=str(repo))
+    except OSError:
+        return None, "gh not on PATH"
+    if p.returncode != 0:
+        first = (p.stderr or "").strip().splitlines()
+        return None, ("gh exited %d%s"
+                      % (p.returncode, (": " + first[0]) if first else ""))
+    state = (p.stdout or "").strip()
+    if state not in ("OPEN", "CLOSED"):
+        return None, "gh printed %r" % state
+    return state, None
+
+
+def _issue_state(repo, number):
+    """`_read_issue_state`, memoized process-wide by issue number."""
+    if number not in _ISSUE_STATE_CACHE:
+        _ISSUE_STATE_CACHE[number] = _read_issue_state(repo, number)
+    return _ISSUE_STATE_CACHE[number]
+
+
+def _base_entry_exists(base_tree, path):
+    """True when `path` is an entry of the tree at BASE. A directory base reads
+    the disk, the way `BaseTree.read_text` does; a sha base asks `git ls-tree`,
+    whose one read answers existence for a blob and a tree alike."""
+    if not path:
+        return False
+    if not base_tree.is_sha:
+        return (base_tree.repo / path).exists()
+    return bool(_git(base_tree.repo, "ls-tree", base_tree.rev,
+                     "--", path).strip())
+
+
+def _base_blob_id(base_tree, path):
+    """`path`'s object id at BASE when it is a blob there, else None — the
+    `git ls-tree` id for a sha base, `git hash-object` of the file on disk for
+    a directory one."""
+    if not path:
+        return None
+    if not base_tree.is_sha:
+        f = base_tree.repo / path
+        if not f.is_file():
+            return None
+        return _git(base_tree.repo, "hash-object", "--", str(f)).strip() or None
+    for line in _git(base_tree.repo, "ls-tree", base_tree.rev,
+                     "--", path).splitlines():
+        head = line.split("\t", 1)[0].split()
+        if len(head) >= 3 and head[1] == "blob":
+            return head[2]
+    return None
+
+
+def _stale_entry_holds(head, argument, base_tree):
+    """(holds, reason) for one entry. A non-None `reason` means the machine
+    could not decide it, and `holds` says nothing."""
+    if head in ("path-exists", "path-absent"):
+        there = _base_entry_exists(base_tree, _stale_argument(argument))
+        return (there if head == "path-exists" else not there), None
+
+    if head == "sha-matches":
+        path, sep, want = argument.strip().rpartition("@")
+        path, want = _stale_argument(path), _stale_argument(want)
+        if not sep or not path or not want:
+            return False, "malformed argument"
+        blob = _base_blob_id(base_tree, path)
+        # A path that is not a blob at BASE cannot match an id — that is the
+        # predicate answered, not a read that failed.
+        if blob is None:
+            return False, None
+        return blob.startswith(want.lower()), None
+
+    m = _ISSUE_ARG_RE.match(_stale_argument(argument))
+    if m is None:
+        return False, "malformed argument"
+    state, reason = _issue_state(base_tree.repo, m.group(1))
+    if reason is not None:
+        return False, reason
+    return state == ("OPEN" if head == "issue-open" else "CLOSED"), None
+
+
+def evaluate_stale_if(tasks, base_tree):
+    """The Stale-if slot of every task, answered against the tree at BASE.
+
+    Returns `(refusals, advisories)`: one
+    `STALE fact: task <id>: <entry> holds at BASE` line per entry that holds —
+    a violation like any other, so the compile exits 2 and prints no
+    `PLAN OK` — and one
+    `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` line per
+    entry the machine cannot decide, printed after the verdict. An entry that
+    is decidable and does not hold produces neither line.
+
+    `<entry>` is the Stale-if line exactly as the author wrote it after its
+    bullet, backticks and all, so the line the author reads is the line the
+    author typed.
+
+    Every task is evaluated, including the ones whose Files grammar is exempt:
+    a gate/manual/release task carries the slot and goes stale the same way.
+    Called only with a base to read — a bare `--check` and a plain compile
+    evaluate no predicate at all."""
+    refusals, advisories = [], []
+    for t in tasks:
+        for entry in _stale_entries(t):
+            m = _STALE_ENTRY_RE.match(entry)
+            if m is None:
+                continue  # not a predicate at all — already a grammar refusal
+            holds, reason = _stale_entry_holds(
+                m.group(1), m.group(2), base_tree)
+            if reason is not None:
+                advisories.append(
+                    "STALE fact: task %s: %s unreadable at BASE — %s"
+                    % (t["id"], entry, reason))
+            elif holds:
+                refusals.append(
+                    "STALE fact: task %s: %s holds at BASE" % (t["id"], entry))
+    return refusals, advisories
 
 
 # --------------------------------------------------------------------------- #
@@ -2605,6 +2780,12 @@ def main(argv=None):
                                 plan_claim=parse_plan_claim(plan_text))
                      for t in split_tasks(plan_text)]
             for line in base_fact_lines(tasks, base_tree):
+                print(line)
+            # ... and beside them, the Stale-if entries the machine could not
+            # decide (#538). The refusals of the same read already rode in the
+            # violations above; these are advisories, so they follow the
+            # verdict whichever way it went and change no exit code.
+            for line in evaluate_stale_if(tasks, base_tree)[1]:
                 print(line)
         return rc
     if emit_args is not None and emit_launch is None:

@@ -216,7 +216,7 @@ never by `integrations attach`.
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
-The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines of a clean compile are printed after the engine line.
+The launcher compiles the plan against `--base` itself (`compile_plan.py --check --base`, after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `BASE fact:` lines and the `STALE fact:` lines of a clean compile are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it.
 
 The launcher, in this order: validates the plan, the target and the base;
 reads the pool; computes N from the target's `ultra/*-run-*` branches and its
