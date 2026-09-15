@@ -1,0 +1,84 @@
+{
+  "integrationBranch": "ultra/integration-run-142",
+  "baseSha": "fdb2dd2755ada15c8a00159ea9919c3bf6b2ae2a",
+  "waves": [
+    [
+      "1"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "5d0db83bf6f87328c3c07820706d09a78c614a4e",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-142/patches/task-1.patch",
+      "reviewVerdict": "clean",
+      "notes": "Footprint note: the diff adds an empty package marker `tests/exams/run_142/__init__.py`, a path outside the task's FILES list (which names the exam as `tests/test_release_0_3_29.py`). No change is required \u2014 the task's Context relocates the exam to `tests/exams/<run>/`, M3 and the fifth `Run:` line both explicitly admit anything under `tests/exams/`, and the footprint check exited 0 with the file present. Recording it so the run report shows the complete footprint rather than the three modified files alone.; unverified: the Claim's prose content \u2014 that CLAUDE.md still says a release is a plan the fleet runs, merged by the sandbox, then tagged by the operator \u2014 is established only by substring greps (`a release is a fleet plan`, `merged by the`, `gh release create`), which would also pass over surrounding prose that contradicted them. This diff touches exactly one line of CLAUDE.md and leaves the rest of the bullet at BASE, so nothing in the patch can have broken it; what would settle it fully is a reading of the whole bullet, which is outside what this diff changed.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "landedAt": 1789489671537,
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-142/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [188 items]\n\n........................................................................ [ 38%]\n........................................................................ [ 76%]\n............................................                             [100%]\n============================= 188 passed in 45.83s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [],
+  "reviewEconomy": {
+    "reviewerMs": 72474,
+    "blockingFindings": 0,
+    "blockingPerReviewerMinute": 0
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-142/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [175 items]\n\n........................................................................ [ 41%]\n........................................................................ [ 82%]\n...............................                                          [100%]\n============================= 175 passed in 45.75s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "a2c6035ce6791a67a84b5fa3f0556f3e33e32662",
+      "branches": [
+        "1"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-142/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-142/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.482,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 1,
+    "complete": true
+  },
+  "missingDeliverables": [],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}

@@ -23,3 +23,16 @@
 {"kind":"driver:proof-run","task":"1","cmd":"wc -w skills/*/SKILL.md fleet/roles/*.md","exit":0,"iter":0,"id":"01M2JY8MCX00006H2YMN35JJ68","ts":1789489598877}
 {"kind":"driver:exam-run","task":"1","cmd":"python3 -m pytest -q tests/exams/run_142/test_release_0_3_29.py","exit":0,"iter":0,"stdout":".............                                                            [100%]\n13 passed in 0.02s\n","id":"01M2JY8MJN0000DNE7K47NTMH9","ts":1789489599061}
 {"kind":"worker:start","label":"review:1:1","role":"reviewer","sessionId":"0f093114-b85d-424d-8978-661e79f6cc51","cwd":"/home/exedev/target/.claude/ultrapowers/run-run-142/clones/integration","model":"opus","id":"01M2JY8MJQ0000HAEMP5A5XSTC","ts":1789489599063}
+{"kind":"worker:end","label":"review:1:1","role":"reviewer","sessionId":"0f093114-b85d-424d-8978-661e79f6cc51","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5252,"output":5347,"cacheRead":221894,"cacheCreation":55082,"costUsd":0.8217019999999999,"models":["claude-opus-5"]},"id":"01M2JYAVBD0000MTQ5Z036BE2R","ts":1789489671533}
+{"kind":"transcript:slice","label":"review:1:1","sessionId":"0f093114-b85d-424d-8978-661e79f6cc51","bytes":11685,"id":"01M2JYAVBG00004YEDE4HABD72","ts":1789489671536}
+{"kind":"engine:phase","phase":"Wave 1","id":"01M2JYAVD60000RPCEAH7CPFKX","ts":1789489671590}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["1"],"headSha":"a2c6035ce6791a67a84b5fa3f0556f3e33e32662","why":"end","id":"01M2JYC8VG000045Y3M8VF24NY","ts":1789489718128}
+{"kind":"driver:integrated-clean","wave":1,"removed":7,"id":"01M2JYC8VP0000C3V5G07Y7MFQ","ts":1789489718134}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2JYC8ZT0000XJT4QF347Y8S","ts":1789489718266}
+{"kind":"driver:stage","stage":"finalize","id":"01M2JYC90S0000GKPNK4J5BZ3N","ts":1789489718297}
+{"kind":"driver:stage","stage":"gate","id":"01M2JYC92K0000DSTX74RGX4XP","ts":1789489718355}
+{"kind":"driver:critic-decision","approve":true,"reason":"0 completeness finding(s), none blocking","id":"01M2JYC96F0000AV581GG3M8XE","ts":1789489718479}
+{"kind":"driver:stage","stage":"approve","id":"01M2JYC96G0000SVBTAAQQ5HSH","ts":1789489718480}
+{"kind":"driver:approved","stamp":"run-142","integrationBranch":"ultra/integration-run-142","id":"01M2JYC98G0000FXREHA0JVTDN","ts":1789489718544}
+{"kind":"run:open","runId":"run-142","base":"fdb2dd2755ada15c8a00159ea9919c3bf6b2ae2a","source":"fleet/publish-fold.mjs","id":"01M2JYCA0D0000PQ465JFN8X2T","ts":1789489719309}
+{"kind":"driver:publish-fold","run":"142","attempt":"1","base":"fdb2dd2755ada15c8a00159ea9919c3bf6b2ae2a","tip":"fdb2dd2755ada15c8a00159ea9919c3bf6b2ae2a","candidate":"a2c6035ce6791a67a84b5fa3f0556f3e33e32662","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2JYCAYC0000ZM8E21V554X9","ts":1789489720268}
