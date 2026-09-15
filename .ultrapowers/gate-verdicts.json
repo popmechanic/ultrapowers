@@ -1,0 +1,24 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "0131a81338ab8ed7eb28ab0bbd197f3b96d50251dfbf82dd226c7693eee043d2",
+      "verdict": "pass",
+      "reason": "Every clause M1-M8 has a leg producing the pinned STALE fact line and its negation, the unreadable rows are each enumerated, and the exam runs the real compiler at --check --base plus the SKILL.md grep, so a green makes the sentence true at the compiler layer."
+    },
+    "2": {
+      "hash": "8cbc55b1030350a62145efaf74c0c3dc788d1ece25a58dd59b3d5136eab96697",
+      "verdict": "pass",
+      "reason": "Each clause has a leg that would fail without it, the literals are mutually consistent (exit 0 collects, exit 2 refuses), and widening verifyPlanCompiles' filter to STALE fact: lines is exactly what makes both halves of the Claim follow."
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 1,
+    "round_1": {
+      "dispatched": 2,
+      "pass": 2,
+      "fail": 0
+    }
+  }
+}
