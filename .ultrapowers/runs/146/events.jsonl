@@ -71,3 +71,4 @@
 {"kind":"driver:wave-adopted","wave":3,"tasks":["3"],"headSha":"98f7fff9988a2ec513427e0c83c73d0caea57c97","why":"aged","id":"01M2K1PJRP00005191G54FBRCM","ts":1789493201686}
 {"kind":"driver:integrated-clean","wave":3,"removed":7,"id":"01M2K1PJRT00002NHPGMYRXTEC","ts":1789493201690}
 {"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- skills/ultrapowers/kernel fleet/launch.mjs fleet/run-worker.mjs fleet/run-waves.mjs fleet/run-main.mjs fleet/publish-fold.mjs fleet/kata-client.mjs fleet/roles/fix.md fleet/roles/reviewer.md fleet/roles/examiner.md fleet/roles/reconcile.md fleet/roles/resolver.md","exit":0,"minor":false,"wave":3,"id":"01M2K1PJS300004EWXJFF24AV8","ts":1789493201699}
+{"kind":"driver:attention","task":"1","attention":"ok","msg":"session ended without hand-off","actor":"","id":"01M2K1RQ850000M7R97RQ34FC3","ts":1789493271813}
