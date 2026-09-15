@@ -49,3 +49,12 @@
 {"kind":"worker:end","label":"review:2:1","role":"reviewer","sessionId":"00bb3972-16ee-46dd-b488-f314902e53b6","exitCode":0,"timedOut":false,"outcome":"ok","class":"success","status":null,"meter":{"input":5935,"output":7023,"cacheRead":479638,"cacheCreation":41205,"costUsd":0.8571190000000001,"models":["claude-opus-5"]},"id":"01M2J6KNVF0000MXXFM6W1TR58","ts":1789464794991}
 {"kind":"transcript:slice","label":"review:2:1","sessionId":"00bb3972-16ee-46dd-b488-f314902e53b6","bytes":11592,"id":"01M2J6KNVQ0000RA4M9F112HTQ","ts":1789464794999}
 {"kind":"engine:phase","phase":"Wave 1","id":"01M2J6KNVT00003HRFYZYB4N2G","ts":1789464795002}
+{"kind":"driver:wave-adopted","wave":1,"tasks":["2"],"headSha":"2d4d6e2b487eb12d8d012b238832adb765da6908","id":"01M2J6MPM700007D80NPYH0EN0","ts":1789464828551}
+{"kind":"driver:integrated-clean","wave":1,"removed":6,"id":"01M2J6MPMB0000RZ5TRTHNMF73","ts":1789464828555}
+{"kind":"driver:integrated-check","cmd":"git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-engine.mjs","exit":0,"minor":false,"wave":1,"id":"01M2J6MPMM0000NXCCNEPW860X","ts":1789464828564}
+{"kind":"driver:stage","stage":"engine-done","detail":"report saved","id":"01M2J6MPY100004YKPWYZ17D4N","ts":1789464828865}
+{"kind":"driver:stage","stage":"finalize","id":"01M2J6MPZS0000ZGRD16711596","ts":1789464828921}
+{"kind":"driver:stage","stage":"gate","id":"01M2J6MQ1B0000H9W2KXXY2Y46","ts":1789464828971}
+{"kind":"driver:fail","verdict":"gate-blocked","detail":"ultra_gate exited 1 — gate receipt is the terminal artifact","id":"01M2J6MQ4B0000P4CTM28DC1Q8","ts":1789464829067}
+{"kind":"run:open","runId":"run-138","base":"a94143bb79f780a63e41e751418b9a3d3a9d2db2","source":"fleet/publish-fold.mjs","id":"01M2J6MQVY00009WKTCW2YRD9M","ts":1789464829822}
+{"kind":"driver:publish-fold","run":"138","attempt":"1","base":"a94143bb79f780a63e41e751418b9a3d3a9d2db2","tip":"a94143bb79f780a63e41e751418b9a3d3a9d2db2","candidate":"2d4d6e2b487eb12d8d012b238832adb765da6908","pathsJoined":0,"pathsConflicted":0,"resolversDispatched":0,"resolverRetries":0,"suite":"none","disposition":"nothing to join","checks":[],"checkRetries":0,"id":"01M2J6MRAC0000HPB8E0JPNKZB","ts":1789464830284}

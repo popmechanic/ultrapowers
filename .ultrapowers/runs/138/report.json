@@ -1,0 +1,113 @@
+{
+  "integrationBranch": "ultra/integration-run-138",
+  "baseSha": "a94143bb79f780a63e41e751418b9a3d3a9d2db2",
+  "waves": [
+    [
+      "1",
+      "2"
+    ]
+  ],
+  "dependencyEdges": [],
+  "tasks": [
+    {
+      "task": "1",
+      "baseCorrected": null,
+      "status": "failed",
+      "branch": "",
+      "exam": null,
+      "reviewVerdict": "fix-loop-exhausted",
+      "notes": "`waveMerges` row (new file line 105, patch line 24) says the array \"may be empty or absent when no epoch ever folded \u2014 the run was interrupted before the first fold, or a red baseline parked it before any task was dispatched.\" The red-baseline park is not such a case: the engine pushes a row for it (`fleet/run-engine.mjs:3513`, `waveMerges.push({ wave: epoch, status: 'TEST_FAILED', detail, branches })`), and this same diff says so twice elsewhere \u2014 the `baseline` row (\"one `TEST_FAILED` epoch row with a `detail` beginning `baseline: the suite is RED on BASE`\") and the `TEST_FAILED` bullet (\"this is the row the `baseline` field describes\"). A consumer reading the field reference would be told a red-baseline run can carry no `waveMerges` at all, which never happens. The same sentence's field list over-generalizes for the same row: \"Each row carries `wave`, `status`, `headSha`, `detail`, `branches` \u2026 and `joined`\" \u2014 the park row at 3513 carries only `wave`, `status`, `detail` and `branches`; `headSha`, `joined` and `suite` come from the fold push at 3731. Since the task's Claim is that this file describes the report the ready-set engine writes, and `waveMerges`' shape is the Claim's first clause, the sentence has to be corrected. The proposed patch rewrites only that one line, keeping the M1 greps satisfied (`one row per epoch` \u2026 `the epoch` on the line beginning `| `waveMerges` |`) and introducing none of the words M3/M4 forbid.",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 1,
+      "proofFixes": 0,
+      "stateExams": []
+    },
+    {
+      "task": "2",
+      "baseCorrected": null,
+      "status": "done",
+      "branch": "",
+      "exam": "red",
+      "headSha": "83ce7e8f285d1d79848d411b08d3ca493f216ad9",
+      "patch": "/home/exedev/target/.claude/ultrapowers/run-run-138/patches/task-2.patch",
+      "reviewVerdict": "clean",
+      "notes": "",
+      "tier": "opus",
+      "review": "peer",
+      "fixIterations": 0,
+      "proposedPatches": 0,
+      "proofFixes": 0,
+      "examEdited": [],
+      "stateExams": []
+    }
+  ],
+  "tests": {
+    "command": "python3 -m pytest -n auto",
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-138/clones/integration\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [154 items]\n\n........................................................................ [ 46%]\n........................................................................ [ 93%]\n..........                                                               [100%]\n============================= 154 passed in 32.30s =============================\n",
+    "unattributed": []
+  },
+  "integratedRuns": [],
+  "integratedChecks": [
+    {
+      "cmd": "git diff --quiet $ULTRA_BASE -- fleet/roles skills/ultrapowers/kernel fleet/run-engine.mjs",
+      "exit": 0,
+      "stdout": "",
+      "minor": false
+    }
+  ],
+  "reviewEconomy": {
+    "reviewerMs": 260302,
+    "blockingFindings": 1,
+    "blockingPerReviewerMinute": 0.23050149441802215
+  },
+  "baseline": {
+    "passed": true,
+    "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-7.4.4, pluggy-1.4.0\nrootdir: /home/exedev/target/.claude/ultrapowers/run-run-138/clones/baseline\nconfigfile: pytest.ini\ntestpaths: tests\nplugins: xdist-3.4.0\ncreated: 3/3 workers\n3 workers [154 items]\n\n........................................................................ [ 46%]\n........................................................................ [ 93%]\n..........                                                               [100%]\n============================= 154 passed in 32.58s =============================\n"
+  },
+  "waveMerges": [
+    {
+      "wave": 1,
+      "status": "MERGED",
+      "headSha": "2d4d6e2b487eb12d8d012b238832adb765da6908",
+      "branches": [
+        "2"
+      ],
+      "joined": []
+    }
+  ],
+  "frontier": [
+    {
+      "wave": 1,
+      "foldLogPath": "/home/exedev/target/.claude/ultrapowers/run-run-138/frontier/wave-1/fold_log.jsonl",
+      "conflictsIndex": "/home/exedev/target/.claude/ultrapowers/run-run-138/frontier/wave-1/conflicts.json",
+      "selfChecks": "ok",
+      "foldCliCalls": 3,
+      "foldCliWallTimeSec": 0.999,
+      "autoResolved": 0,
+      "resolverTranscripts": []
+    }
+  ],
+  "coverage": {
+    "tasks_merged": 1,
+    "tasks_planned": 2,
+    "complete": false
+  },
+  "missingDeliverables": [
+    {
+      "task": "1",
+      "files": [
+        "skills/ultrapowers/references/report-format.md"
+      ]
+    }
+  ],
+  "gitVerified": true,
+  "ancestryMisses": [],
+  "deferredVerification": [],
+  "judgmentCalls": [],
+  "unfinished": [],
+  "completenessFindings": [],
+  "blockedWaves": []
+}
