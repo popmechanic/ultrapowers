@@ -1,0 +1,44 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "1199cfc1ca2ccac02672b8c926bd9bb52086fec563a39f3191ec1b3a555db63c",
+   "verdict": "pass",
+   "reason": "Every leg falsifies its clause with ordered or fixed-string greps over the edited file alone, the right layer since the sandbox has no fixture clone; TINYAPP_RENDER_URL is present at BASE so removal is tested; the shell is sound on GNU and BSD grep."
+  },
+  "2": {
+   "hash": "ea7dc584bddb5b04fa1cc5b13719d22d83a39b1f32ea6015045743d1a8799932",
+   "verdict": "pass",
+   "reason": "Every literal computes against the tree: eight ids in the doctor's order, the stale-key red for a render key, no importer of the removed symbols outside the task's files, CONTRACT's table drops nine to eight and its four renderer phrases all lie in this task's bullets."
+  },
+  "3": {
+   "hash": "f6a11d1d64cb08220c199caa8f32f4feea8adb039998ac2d065a784bf8d6a329",
+   "verdict": "pass",
+   "reason": "The sed range opens only at the engine unit so the fold unit never matches, the adjacency grep fails at BASE, the planted FLEET_RENDER_ENV is the exact hook the BASE boot sources, and TINYAPP_RENDER_URL and render address occur in CONTRACT.md only on this task's lines."
+  },
+  "4": {
+   "hash": "d6771c86f2325e984d62dc2201673804c4698e977b0be34f96c1285aa5cc578d",
+   "verdict": "pass",
+   "reason": "stateExamsOf feeds tasks[].stateExams directly, so the eight-key row with type-gated action_ms/browser makes the sentence true at the report layer; legs falsify with wrong-typed values, the pre-#834 shape and the missing file, and both stateExamBlock branches."
+  }
+ },
+ "tally": {
+  "dispatched": 9,
+  "rejected": 4,
+  "rounds": {
+   "1": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "2": [
+    1,
+    1,
+    1
+   ],
+   "3": [
+    1
+   ]
+  }
+ }
+}
